@@ -1,460 +1,176 @@
-"""
-Modular Plan-and-Execute Framework for LangGraph Subgraphs.
-
-This module provides a reusable, class-based framework for implementing
-plan-and-execute patterns with specialized operation nodes.
-
-Based on LangGraph plan-and-execute tutorial:
-https://langchain-ai.github.io/langgraph/tutorials/plan-and-execute/plan-and-execute/
-"""
-
-import operator
 from abc import ABC, abstractmethod
-from typing import Annotated, Any, Dict, List, Union
+from typing import Annotated, Any, Callable, Dict, List, Optional, TypedDict
 
-from app.config.loggers import langchain_logger as logger
-from langchain_core.language_models import LanguageModelLike
+from app.langchain.llm.client import init_llm
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.runnables import RunnableConfig
-from langgraph.graph import END, START, StateGraph
-from langgraph.store.base import BaseStore
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import PromptTemplate
+from langgraph.graph import END, StateGraph, add_messages
 from pydantic import BaseModel, Field
-from typing_extensions import TypedDict
 
 
-# Base State and Models
+# Pydantic models for structured output
 class PlanStep(BaseModel):
-    """A single step in an execution plan."""
+    """Individual step in the execution plan"""
 
-    node_name: str = Field(
-        description="Name of the operation node to execute this step"
-    )
-    action_description: str = Field(description="Description of the action to perform")
-    context: Dict[str, Any] = Field(
-        default_factory=dict, description="Additional context for the step"
+    step_id: int = Field(description="Unique identifier for the step")
+    node_name: str = Field(description="Name of the node to execute")
+    instructions: str = Field(description="Detailed instructions for this step")
+    context: str = Field(description="Additional context or parameters needed")
+    dependencies: List[int] = Field(
+        default=[], description="List of step IDs this step depends on"
     )
 
 
 class ExecutionPlan(BaseModel):
-    """Execution plan containing sequential steps."""
+    """Complete execution plan with all steps"""
 
-    steps: List[PlanStep] = Field(description="Sequential steps to execute")
+    steps: List[PlanStep] = Field(description="List of execution steps in order")
+    description: str = Field(description="Overall description of the plan")
 
 
 class ExecutionResult(BaseModel):
-    """Result of executing a plan step."""
+    """Result from executing a single step"""
 
-    step: PlanStep = Field(description="The executed step")
-    result: str = Field(description="Result description")
-    data: Dict[str, Any] = Field(
-        default_factory=dict, description="Structured result data"
-    )
-    success: bool = Field(default=True, description="Whether execution was successful")
-
-
-class PlanExecuteResponse(BaseModel):
-    """Final response to user."""
-
-    response: str = Field(description="Final response message to the user")
+    step_id: int
+    success: bool
+    output: Any
+    error: Optional[str] = None
+    execution_time: Optional[float] = None
 
 
-class PlanExecuteAction(BaseModel):
-    """Next action to perform."""
+# State management
+class PlanExecuteState(TypedDict):
+    """State for the plan and execute graph"""
 
-    action: Union[PlanExecuteResponse, ExecutionPlan] = Field(
-        description="Either respond to user or continue with execution plan"
-    )
+    # Input
+    query: str
+    manual_plan: Optional[ExecutionPlan]
+    available_nodes: Dict[str, str]  # node_name -> description
+    include_previous_outputs: bool
 
+    # Planning phase
+    plan: Optional[ExecutionPlan]
 
-class BasePlanExecuteState(TypedDict):
-    """Base state for plan-and-execute subgraphs."""
+    # Execution phase
+    current_step: int
+    execution_results: Annotated[List[ExecutionResult], add_messages]
+    completed_steps: List[int]
+    ready_steps: List[int]  # Steps ready for execution (dependencies satisfied)
+    pending_steps: List[int]  # Steps waiting on dependencies
+    in_progress_steps: List[int]  # Steps currently executing
+    step_execution_contexts: Dict[int, Dict[str, Any]]  # Execution contexts by step ID
+    step_node_mappings: Dict[int, str]  # Maps step IDs to node names
 
-    input: str  # Original user request
-    plan: List[PlanStep]  # Current execution plan steps
-    past_steps: Annotated[
-        List[ExecutionResult], operator.add
-    ]  # Completed steps with results
-    response: str  # Final response
-    messages: List  # Message history for context
-    available_nodes: Dict[str, str]  # Available operation nodes {name: description}
+    # Dynamic routing
+    _next_node: Optional[str]  # Next node to route to
+    _execution_context: Optional[Dict[str, Any]]  # Current execution context
 
-
-class OperationNode(ABC):
-    """Abstract base class for specialized operation nodes."""
-
-    def __init__(
-        self, node_name: str, description: str, tools: List[str], llm: LanguageModelLike
-    ):
-        self.node_name = node_name
-        self.description = description
-        self.tools = tools
-        self.llm = llm
-
-    @abstractmethod
-    def get_prompt(self) -> str:
-        """Get the system prompt for this operation node."""
-        pass
-
-    async def execute(
-        self, state: BasePlanExecuteState, config: RunnableConfig, *, store: BaseStore
-    ) -> Dict[str, Any]:
-        """Execute the operation node."""
-        # Initialize variables
-        current_step = None
-        remaining_steps = []
-
-        try:
-            logger.info(f"{self.node_name} node executing")
-
-            # Get current step context with previous results
-            current_plan = state.get("plan", [])
-            if not current_plan:
-                return {"response": f"No steps to execute for {self.node_name}"}
-
-            current_step = current_plan[0]
-            remaining_steps = current_plan[1:]
-            past_results = state.get("past_steps", [])
-
-            # Build context from previous steps
-            context = self._build_context(current_step, past_results)
-
-            # Create messages for this node
-            messages = [
-                SystemMessage(content=self.get_prompt()),
-                HumanMessage(
-                    content=self._format_execution_message(current_step, context)
-                ),
-            ]
-
-            # Add recent message context if available
-            if state.get("messages"):
-                messages.extend(state["messages"][-3:])
-
-            # Execute with LLM
-            response = await self.llm.ainvoke(messages)
-
-            # Extract content from response
-            content = self._extract_content(response)
-
-            # Create execution result with enhanced data
-            import datetime
-
-            execution_result = ExecutionResult(
-                step=current_step,
-                result=content,
-                data={
-                    "node_name": self.node_name,
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "tools_used": self.tools,
-                    "context_inherited": bool(context["previous_results"]),
-                    "step_context": current_step.context,
-                },
-                success=True,
-            )
-
-            logger.info(f"{self.node_name} node completed successfully")
-
-            return {
-                "plan": remaining_steps,
-                "past_steps": [execution_result],
-                "messages": [response]
-                if hasattr(response, "content")
-                else [HumanMessage(content=content)],
-            }
-
-        except Exception as e:
-            logger.error(f"{self.node_name} node error: {e}")
-
-            # Create error result - handle case where current_step is None
-            if current_step is None:
-                current_step = PlanStep(
-                    node_name=self.node_name,
-                    action_description=f"Execute {self.node_name} operation",
-                    context={},
-                )
-
-            error_result = ExecutionResult(
-                step=current_step,
-                result=f"Error in {self.node_name}: {str(e)}",
-                data={"node_name": self.node_name, "error": str(e)},
-                success=False,
-            )
-
-            return {
-                "plan": remaining_steps,
-                "past_steps": [error_result],
-                "response": f"Error in {self.node_name}: {str(e)}",
-            }
-
-    def _build_context(
-        self, current_step: PlanStep, past_results: List[ExecutionResult]
-    ) -> Dict[str, Any]:
-        """Build comprehensive context from previous step results."""
-        context = {
-            "current_action": current_step.action_description,
-            "step_context": current_step.context,
-            "previous_results": [],
-            "relevant_data": {},
-            "execution_chain": [],
-        }
-
-        # Add results from previous steps with full context
-        for i, result in enumerate(past_results):
-            step_info = {
-                "step_number": i + 1,
-                "node_name": result.data.get("node_name", "unknown"),
-                "action": result.step.action_description,
-                "result": result.result,
-                "success": result.success,
-                "data": result.data,
-                "timestamp": result.data.get("timestamp", ""),
-            }
-            context["previous_results"].append(step_info)
-            context["execution_chain"].append(
-                f"Step {i + 1}: {result.step.action_description} -> {result.result}"
-            )
-
-            # Extract relevant data for context inheritance
-            if result.success and result.data:
-                for key, value in result.data.items():
-                    if key not in ["node_name", "timestamp", "error"]:
-                        context["relevant_data"][
-                            f"{result.data.get('node_name', 'step')}_{key}"
-                        ] = value
-
-        return context
-
-    def _format_execution_message(self, step: PlanStep, context: Dict[str, Any]) -> str:
-        """Format comprehensive execution message with full context."""
-        message = f"**Current Task:** {step.action_description}\n\n"
-
-        # Add execution chain for context
-        if context["execution_chain"]:
-            message += "**Previous Execution Chain:**\n"
-            for chain_item in context["execution_chain"][-3:]:  # Last 3 steps
-                message += f"- {chain_item}\n"
-            message += "\n"
-
-        # Add detailed previous results
-        if context["previous_results"]:
-            message += "**Previous Step Results (for context):**\n"
-            for prev in context["previous_results"][-2:]:  # Last 2 detailed results
-                status = "✅ Success" if prev["success"] else "❌ Failed"
-                message += f"**{prev['node_name']}** ({status}): {prev['action']}\n"
-                message += f"  Result: {prev['result']}\n"
-                if prev.get("data") and prev["success"]:
-                    message += f"  Available data: {list(prev['data'].keys())}\n"
-                message += "\n"
-
-        # Add relevant inherited data
-        if context["relevant_data"]:
-            message += "**Available Context Data:**\n"
-            for key, value in list(context["relevant_data"].items())[
-                :5
-            ]:  # Limit to 5 items
-                message += f"- {key}: {str(value)[:100]}{'...' if len(str(value)) > 100 else ''}\n"
-            message += "\n"
-
-        # Add step-specific context
-        if step.context:
-            message += f"**Step Context:** {step.context}\n\n"
-
-        message += "**Instructions:** Execute the current task using the context from previous steps. "
-        message += "Leverage any relevant data or results from previous operations."
-
-        return message.strip()
-
-    def _extract_content(self, response) -> str:
-        """Extract content from LLM response."""
-        if isinstance(response, str):
-            return response
-        elif hasattr(response, "content"):
-            return response.content
-        else:
-            return str(response)
+    # Output
+    final_result: Optional[Any]
+    is_complete: bool
 
 
-class BasePlanAndExecute(ABC):
-    """Base class for plan-and-execute subgraphs."""
+class FlexiblePlanExecuteGraph(ABC):
+    """
+    A flexible and reusable Plan and Execute graph using LangGraph
+    Abstract base class that can be extended for different implementations
+    """
 
-    def __init__(self, llm: LanguageModelLike, provider_name: str):
-        self.llm = llm
+    def __init__(self, provider_name: str):
+        """
+        Initialize the Plan and Execute graph
+
+        Args:
+            provider_name: Name of the provider implementing this framework
+        """
+        self.llm = init_llm()
         self.provider_name = provider_name
-        self.operation_nodes: Dict[str, OperationNode] = {}
+        self.specialized_nodes: Dict[str, Callable] = {}
         self._initialize_operation_nodes()
+        self.graph = self._build_parallel_graph()
 
     @abstractmethod
     def _initialize_operation_nodes(self):
-        """Initialize the operation nodes for this provider."""
+        """Initialize the operation nodes for this provider. Must be implemented by subclasses."""
         pass
 
     @abstractmethod
     def get_planner_prompt(self) -> str:
-        """Get the planner system prompt."""
+        """Get the planner system prompt. Must be implemented by subclasses."""
         pass
 
-    def register_operation_node(self, node: OperationNode):
-        """Register an operation node."""
-        self.operation_nodes[node.node_name] = node
-        logger.info(f"Registered operation node: {node.node_name}")
+    def register_operation_node(self, name: str, func: Callable, description: str):
+        """Register an operation node with name, function and description"""
+        self.specialized_nodes[name] = func
+        # Update the graph with the new node
+        self.graph = self._build_parallel_graph()
 
     def get_available_nodes(self) -> Dict[str, str]:
-        """Get available operation nodes with descriptions."""
-        return {name: node.description for name, node in self.operation_nodes.items()}
+        """Get available operation nodes with descriptions"""
+        return {
+            name: f"Specialized node for {name}"
+            for name in self.specialized_nodes.keys()
+        }
 
-    async def plan_step(self, state: BasePlanExecuteState) -> Dict[str, Any]:
-        """Plan execution steps based on user input."""
-        try:
-            logger.info(
-                f"{self.provider_name} Planner analyzing request: {state['input']}"
-            )
+    def _planning_step(self, state: PlanExecuteState) -> PlanExecuteState:
+        """Planning phase - create or use manual plan"""
+        # Use manual plan if provided
+        if state.get("manual_plan"):
+            state["plan"] = state["manual_plan"]
+            state["current_step"] = 0
+            self._prepare_step_execution(state)
+            return state
 
-            # Create planner messages with available nodes context
-            available_nodes_text = "\\n".join(
-                [
-                    f"- **{name}**: {desc}"
-                    for name, desc in self.get_available_nodes().items()
-                ]
-            )
+        # Generate plan using LLM
+        if not self.llm:
+            raise ValueError("LLM required for automatic planning")
 
-            planner_prompt = self.get_planner_prompt().format(
-                provider_name=self.provider_name, available_nodes=available_nodes_text
-            )
+        # Prepare available nodes description
+        nodes_description = "\n".join(
+            [f"- {name}: {desc}" for name, desc in state["available_nodes"].items()]
+        )
 
-            messages = [
-                SystemMessage(content=planner_prompt),
-                HumanMessage(content=f"User Request: {state['input']}"),
-            ]
+        # Set up the PydanticOutputParser
+        parser = PydanticOutputParser(pydantic_object=ExecutionPlan)
+        format_instructions = parser.get_format_instructions()
 
-            # Add memory context if available
-            if state.get("messages"):
-                messages.extend(state["messages"][-5:])
+        # Create template with parser instructions integrated
+        template = PromptTemplate(
+            template="{planner_prompt}\n\n{format_instructions}",
+            input_variables=["planner_prompt"],
+            partial_variables={"format_instructions": format_instructions},
+        )
 
-            # Get plan from LLM
-            response = await self.llm.ainvoke(messages)
-            content = self._extract_content(response)
+        # Format planner prompt
+        planner_prompt = self.get_planner_prompt().format(
+            provider_name=self.provider_name,
+            available_nodes=nodes_description,
+            query=state["query"],
+        )
 
-            # Parse plan steps
-            steps = self._parse_plan_steps(content, state["input"])
+        # Apply template to integrate format instructions
+        formatted_prompt = template.format(planner_prompt=planner_prompt)
 
-            logger.info(f"{self.provider_name} Planner created {len(steps)} steps")
-            return {"plan": steps, "available_nodes": self.get_available_nodes()}
+        # Format prompt with parser instructions
+        messages = [
+            SystemMessage(content=formatted_prompt),
+            HumanMessage(content=f"User Request: {state['query']}"),
+        ]
 
-        except Exception as e:
-            logger.error(f"{self.provider_name} Planner error: {e}")
-            # Create fallback plan
-            fallback_step = PlanStep(
-                node_name=list(self.operation_nodes.keys())[0]
-                if self.operation_nodes
-                else "default",
-                action_description=f"Handle {self.provider_name} request with available operations",
-                context={"fallback": True},
-            )
-            return {
-                "plan": [fallback_step],
-                "available_nodes": self.get_available_nodes(),
-            }
+        # Get plan from LLM
+        raw_response = self.llm.invoke(messages)
+        content = self._extract_content(raw_response)
 
-    def _parse_plan_steps(self, content: str, user_input: str) -> List[PlanStep]:
-        """Parse plan steps from LLM response."""
-        steps = []
+        # Parse the plan using the PydanticOutputParser
+        plan = parser.parse(content)
+        state["plan"] = plan
 
-        if isinstance(content, str) and ("Step 1:" in content or "1." in content):
-            # Parse structured plan
-            lines = content.split("\\n")
-            for line in lines:
-                line = line.strip()
-                if any(
-                    line.startswith(prefix)
-                    for prefix in ["Step ", "1.", "2.", "3.", "4.", "5."]
-                ):
-                    if ":" in line or "-" in line:
-                        # Extract step content
-                        step_content = line.split(":", 1)[-1].split("-", 1)[-1].strip()
+        # Initialize execution tracking
+        state["current_step"] = 0
+        self._prepare_step_execution(state)
 
-                        # Determine node from content
-                        node_name = self._determine_node_from_content(
-                            step_content, user_input
-                        )
-
-                        if step_content and node_name:
-                            steps.append(
-                                PlanStep(
-                                    node_name=node_name,
-                                    action_description=step_content,
-                                    context={},
-                                )
-                            )
-
-        # If no structured steps found, create intelligent fallback
-        if not steps:
-            steps = self._create_fallback_plan(user_input)
-
-        return steps
-
-    @abstractmethod
-    def _determine_node_from_content(self, content: str, user_input: str) -> str:
-        """Determine appropriate operation node from content."""
-        pass
-
-    @abstractmethod
-    def _create_fallback_plan(self, user_input: str) -> List[PlanStep]:
-        """Create fallback plan when parsing fails."""
-        pass
-
-    async def replanner_step(self, state: BasePlanExecuteState) -> Dict[str, Any]:
-        """Re-evaluate plan and decide next action."""
-        try:
-            remaining_plan = state.get("plan", [])
-            completed_steps = state.get("past_steps", [])
-
-            # Check if we should continue or end
-            if not remaining_plan or len(remaining_plan) == 0:
-                # Generate summary response
-                successful_steps = [step for step in completed_steps if step.success]
-                failed_steps = [step for step in completed_steps if not step.success]
-
-                response = f"{self.provider_name} operations completed successfully. "
-                response += f"{len(successful_steps)} steps executed successfully."
-
-                if failed_steps:
-                    response += f" {len(failed_steps)} steps had errors."
-
-                return {"response": response}
-
-            # Continue with remaining plan
-            logger.info(
-                f"{self.provider_name} Replanner: {len(remaining_plan)} steps remaining"
-            )
-            return {"plan": remaining_plan}
-
-        except Exception as e:
-            logger.error(f"{self.provider_name} Replanner error: {e}")
-            completed_count = len(state.get("past_steps", []))
-            return {
-                "response": f"{self.provider_name} operations completed. {completed_count} steps executed."
-            }
-
-    def should_continue(self, state: BasePlanExecuteState) -> str:
-        """Determine next step in execution."""
-        # If we have a final response, end execution
-        if "response" in state and state["response"]:
-            return END
-
-        # If we have remaining plan steps, continue execution
-        if state.get("plan") and len(state["plan"]) > 0:
-            # Route to the appropriate operation node
-            current_step = state["plan"][0]
-            target_node = current_step.node_name
-
-            if target_node in self.operation_nodes:
-                return target_node
-            else:
-                logger.warning(f"Unknown node: {target_node}, routing to replanner")
-                return "replanner"
-
-        # If no plan steps remain, go to replanner to assess completion
-        return "replanner"
+        return state
 
     def _extract_content(self, response) -> str:
         """Extract content from LLM response."""
@@ -465,69 +181,312 @@ class BasePlanAndExecute(ABC):
         else:
             return str(response)
 
-    def create_graph(self) -> StateGraph:
-        """Create the plan-and-execute graph."""
-        logger.info(f"Creating {self.provider_name} plan-and-execute subgraph")
+    def _prepare_step_execution(self, state: PlanExecuteState) -> None:
+        """Prepare step execution by identifying ready and pending steps"""
+        plan = state["plan"]
+        if not plan:
+            return
 
-        # Define state type for this provider
-        class ProviderState(BasePlanExecuteState):
-            pass
+        # Initialize tracking structures
+        state["ready_steps"] = []
+        state["pending_steps"] = []
+        state["in_progress_steps"] = []
+        state["step_execution_contexts"] = {}
+        state["step_node_mappings"] = {}
 
-        workflow = StateGraph(ProviderState)
+        # Identify ready and pending steps
+        for step in plan.steps:
+            # Map step ID to node name for execution routing
+            state["step_node_mappings"][step.step_id] = step.node_name
+
+            # Prepare execution context
+            execution_context = {
+                "instructions": step.instructions,
+                "context": step.context,
+                "step_id": step.step_id,
+                "dependencies": step.dependencies,
+            }
+            state["step_execution_contexts"][step.step_id] = execution_context
+
+            # Determine if step is ready or pending
+            if not step.dependencies or all(
+                dep in state["completed_steps"] for dep in step.dependencies
+            ):
+                state["ready_steps"].append(step.step_id)
+            else:
+                state["pending_steps"].append(step.step_id)
+
+    def _execution_step(self, state: PlanExecuteState) -> PlanExecuteState:
+        """Main execution coordinator"""
+        plan = state.get("plan")
+        if not plan:
+            state["is_complete"] = True
+            return state
+
+        # Check if all steps are completed
+        total_steps = len(plan.steps)
+        completed_count = len(state.get("completed_steps", []))
+
+        if completed_count >= total_steps:
+            state["is_complete"] = True
+            return state
+
+        # Update ready steps based on completed dependencies
+        self._update_ready_steps(state)
+
+        # If we have ready steps, execute one of them
+        ready_steps = state.get("ready_steps", [])
+        if ready_steps:
+            # Get the first ready step
+            step_id = ready_steps[0]
+
+            # Move from ready to in-progress
+            state["ready_steps"].remove(step_id)
+            state["in_progress_steps"].append(step_id)
+
+            # Get the node name for this step
+            node_name = state["step_node_mappings"].get(step_id)
+            if not node_name:
+                raise ValueError(f"No node mapping for step {step_id}")
+
+            # Get execution context
+            execution_context = state["step_execution_contexts"].get(step_id, {})
+
+            # Add previous outputs if configured
+            if state["include_previous_outputs"]:
+                # Get results from dependency steps
+                dependencies = execution_context.get("dependencies", [])
+                execution_context["previous_results"] = [
+                    result
+                    for result in state.get("execution_results", [])
+                    if result.step_id in dependencies
+                ]
+
+            # Set routing information
+            state["_next_node"] = node_name
+            state["_execution_context"] = execution_context
+
+            return state
+        else:
+            # No ready steps available, either we're done or waiting on dependencies
+            pending_steps = state.get("pending_steps", [])
+            in_progress = state.get("in_progress_steps", [])
+
+            if not pending_steps and not in_progress and completed_count < total_steps:
+                # This is an error state - we have steps that can't be executed
+                raise ValueError(
+                    f"Execution deadlock: {total_steps - completed_count} steps remaining but none ready or in progress"
+                )
+
+        return state
+
+    def _update_ready_steps(self, state: PlanExecuteState) -> None:
+        """Update which steps are ready based on completed dependencies"""
+        completed_steps = state.get("completed_steps", [])
+        pending_steps = state.get("pending_steps", [])
+
+        # Check pending steps to see if any are now ready
+        newly_ready = []
+        still_pending = []
+
+        for step_id in pending_steps:
+            dependencies = (
+                state["step_execution_contexts"]
+                .get(step_id, {})
+                .get("dependencies", [])
+            )
+            if all(dep in completed_steps for dep in dependencies):
+                newly_ready.append(step_id)
+            else:
+                still_pending.append(step_id)
+
+        # Update state
+        state["pending_steps"] = still_pending
+        state["ready_steps"].extend(newly_ready)
+
+    def _create_node_wrapper(self, node_name: str) -> Callable:
+        """Create a wrapper for specialized nodes"""
+
+        def node_wrapper(state: PlanExecuteState) -> PlanExecuteState:
+            execution_context = state.get("_execution_context") or {}
+            node_func = self.specialized_nodes[node_name]
+            step_id = execution_context.get("step_id")
+
+            if not step_id:
+                raise ValueError(
+                    f"Missing step_id in execution context for {node_name}"
+                )
+
+            try:
+                result = node_func(execution_context)
+
+                # Record execution result
+                execution_result = ExecutionResult(
+                    step_id=step_id,
+                    success=True,
+                    output=result,
+                    error=None,
+                    execution_time=None,
+                )
+
+                state["execution_results"].append(execution_result)
+            except Exception as error:
+                # Record execution failure
+                execution_result = ExecutionResult(
+                    step_id=step_id,
+                    success=False,
+                    output=None,
+                    error=str(error),
+                    execution_time=None,
+                )
+                state["execution_results"].append(execution_result)
+            finally:
+                state["completed_steps"].append(step_id)
+
+                # Remove from in_progress
+                if step_id in state.get("in_progress_steps", []):
+                    state["in_progress_steps"].remove(step_id)
+
+            return state
+
+        return node_wrapper
+
+    def _should_continue_execution(self, state: PlanExecuteState) -> str:
+        """Determine next step in execution with support for parallel execution"""
+        # If execution is complete, finalize
+        if state.get("is_complete", False):
+            return "finalize"
+
+        # Route to specific node if set for current step
+        if state.get("_next_node"):
+            next_node = state["_next_node"]
+            state["_next_node"] = None  # Clear the routing
+            return next_node if next_node else "continue"
+
+        # Otherwise continue with execution coordinator
+        return "continue"
+
+    def _finalization_step(self, state: PlanExecuteState) -> PlanExecuteState:
+        """Finalize the execution and compile results"""
+        plan = state.get("plan")
+        if not plan:
+            state["final_result"] = {"error": "No execution plan was created"}
+            state["is_complete"] = True
+            return state
+
+        # Compile final result from all execution results
+        all_results = state.get("execution_results", [])
+        successful_results = [r for r in all_results if r.success]
+        failed_results = [r for r in all_results if not r.success]
+
+        # Simplified but comprehensive final result
+        final_result = {
+            "provider": self.provider_name,
+            "plan_description": plan.description,
+            "total_steps": len(plan.steps),
+            "completed_steps": len(state.get("completed_steps", [])),
+            "successful_steps": len(successful_results),
+            "failed_steps": len(failed_results),
+            "results": [
+                {
+                    "step_id": r.step_id,
+                    "node": state["step_node_mappings"].get(r.step_id, "unknown"),
+                    "success": r.success,
+                    "output": r.output,
+                    "error": r.error,
+                }
+                for r in all_results
+            ],
+        }
+
+        state["final_result"] = final_result
+        state["is_complete"] = True
+
+        return state
+
+    def _build_parallel_graph(self):
+        """Build the LangGraph workflow with support for parallel execution"""
+        workflow = StateGraph(PlanExecuteState)
 
         # Add core planning and execution nodes
-        workflow.add_node("planner", self.plan_step)
-        workflow.add_node("replanner", self.replanner_step)
+        workflow.add_node("planner", self._planning_step)
+        workflow.add_node("executor", self._execution_step)
+        workflow.add_node("finalizer", self._finalization_step)
 
-        # Add specialized operation nodes
-        for node_name, operation_node in self.operation_nodes.items():
-            workflow.add_node(node_name, operation_node.execute)
+        # Add specialized nodes
+        for node_name in self.specialized_nodes.keys():
+            workflow.add_node(node_name, self._create_node_wrapper(node_name))
 
         # Define workflow edges
-        workflow.add_edge(START, "planner")
+        workflow.set_entry_point("planner")
+        workflow.add_edge("planner", "executor")
 
-        # After planning, route to appropriate node based on first step
+        # Conditional edges from executor
         workflow.add_conditional_edges(
-            "planner",
-            self.should_continue,
+            "executor",
+            self._should_continue_execution,
             {
-                "replanner": "replanner",
-                END: END,
-                **{node_name: node_name for node_name in self.operation_nodes.keys()},
+                "continue": "executor",
+                "finalize": "finalizer",
+                **{node_name: node_name for node_name in self.specialized_nodes.keys()},
             },
         )
 
-        # Conditional edges based on should_continue logic
-        # Add conditional edges from replanner to all possible destinations
-        workflow.add_conditional_edges(
-            "replanner",
-            self.should_continue,
-            {
-                "replanner": "replanner",
-                END: END,
-                **{node_name: node_name for node_name in self.operation_nodes.keys()},
-            },
-        )
+        # Add edges from specialized nodes back to executor
+        for node_name in self.specialized_nodes.keys():
+            workflow.add_edge(node_name, "executor")
 
-        # All operation nodes route back to replanner
-        for node_name in self.operation_nodes.keys():
-            workflow.add_edge(node_name, "replanner")
+        workflow.add_edge("finalizer", END)
 
-        logger.info(f"{self.provider_name} subgraph structure created successfully")
-        return workflow
+        return workflow.compile()
 
-    def compile(self):
-        """Compile the subgraph for use."""
-        from app.langchain.tools.core.store import get_tools_store
+    def execute(
+        self,
+        query: str,
+        manual_plan: Optional[ExecutionPlan] = None,
+        include_previous_outputs: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Execute the plan and execute workflow
 
-        workflow = self.create_graph()
-        store = get_tools_store()
+        Args:
+            query: The task query to plan and execute
+            manual_plan: Optional pre-defined plan to use instead of LLM planning
+            include_previous_outputs: Whether to include previous step outputs in context
 
-        compiled_graph = workflow.compile(
-            store=store,
-            name=f"{self.provider_name.lower()}_subgraph",
-            checkpointer=False,
-        )
+        Returns:
+            Final execution results
+        """
+        # Get node descriptions
+        available_nodes = {}
+        for name in self.specialized_nodes.keys():
+            # For each node, create a descriptive entry
+            available_nodes[name] = f"Specialized node for {name}"
 
-        logger.info(f"{self.provider_name} subgraph compiled successfully")
-        return compiled_graph
+        # Prepare initial state with empty tracking structures
+        # Initialize with properly formatted dict
+        initial_state = {
+            "query": query,
+            "manual_plan": manual_plan,
+            "available_nodes": available_nodes,
+            "include_previous_outputs": include_previous_outputs,
+            "plan": None,
+            "current_step": 0,
+            "execution_results": [],
+            "completed_steps": [],
+            "ready_steps": [],
+            "pending_steps": [],
+            "in_progress_steps": [],
+            "step_execution_contexts": {},
+            "step_node_mappings": {},
+            "_next_node": None,
+            "_execution_context": None,
+            "final_result": None,
+            "is_complete": False,
+        }
+
+        # Execute the graph
+        # Cast initial state to PlanExecuteState for type compatibility
+        typed_state = PlanExecuteState(**initial_state)
+        result = self.graph.invoke(typed_state)
+        return result["final_result"]
