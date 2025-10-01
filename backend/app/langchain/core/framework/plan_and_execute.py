@@ -1,11 +1,14 @@
+import asyncio
+import inspect
 from abc import ABC, abstractmethod
-from typing import Annotated, Any, Callable, Dict, List, Optional, TypedDict
+from typing import Any, Callable, Dict, List, Optional, TypedDict, cast
 
 from app.langchain.llm.client import init_llm
+from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
-from langgraph.graph import END, StateGraph, add_messages
+from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
 
 
@@ -36,7 +39,6 @@ class ExecutionResult(BaseModel):
     success: bool
     output: Any
     error: Optional[str] = None
-    execution_time: Optional[float] = None
 
 
 # State management
@@ -54,7 +56,7 @@ class PlanExecuteState(TypedDict):
 
     # Execution phase
     current_step: int
-    execution_results: Annotated[List[ExecutionResult], add_messages]
+    execution_results: List[ExecutionResult]
     completed_steps: List[int]
     ready_steps: List[int]  # Steps ready for execution (dependencies satisfied)
     pending_steps: List[int]  # Steps waiting on dependencies
@@ -77,14 +79,20 @@ class FlexiblePlanExecuteGraph(ABC):
     Abstract base class that can be extended for different implementations
     """
 
-    def __init__(self, provider_name: str):
+    def __init__(
+        self,
+        provider_name: str,
+        *,
+        llm: Optional[LanguageModelLike] = None,
+    ):
         """
         Initialize the Plan and Execute graph
 
         Args:
             provider_name: Name of the provider implementing this framework
         """
-        self.llm = init_llm()
+
+        self.llm = llm or init_llm()
         self.provider_name = provider_name
         self.specialized_nodes: Dict[str, Callable] = {}
         self._initialize_operation_nodes()
@@ -319,33 +327,36 @@ class FlexiblePlanExecuteGraph(ABC):
 
             try:
                 result = node_func(execution_context)
+                if inspect.isawaitable(result):
+                    loop = asyncio.new_event_loop()
+                    try:
+                        result = loop.run_until_complete(result)  # type: ignore[assignment]
+                    finally:
+                        loop.close()
 
-                # Record execution result
                 execution_result = ExecutionResult(
                     step_id=step_id,
                     success=True,
                     output=result,
                     error=None,
-                    execution_time=None,
                 )
 
                 state["execution_results"].append(execution_result)
             except Exception as error:
-                # Record execution failure
                 execution_result = ExecutionResult(
                     step_id=step_id,
                     success=False,
                     output=None,
                     error=str(error),
-                    execution_time=None,
                 )
                 state["execution_results"].append(execution_result)
             finally:
                 state["completed_steps"].append(step_id)
 
-                # Remove from in_progress
                 if step_id in state.get("in_progress_steps", []):
                     state["in_progress_steps"].remove(step_id)
+
+                state["_execution_context"] = None
 
             return state
 
@@ -487,6 +498,6 @@ class FlexiblePlanExecuteGraph(ABC):
 
         # Execute the graph
         # Cast initial state to PlanExecuteState for type compatibility
-        typed_state = PlanExecuteState(**initial_state)
+        typed_state = cast(PlanExecuteState, initial_state)
         result = self.graph.invoke(typed_state)
         return result["final_result"]
