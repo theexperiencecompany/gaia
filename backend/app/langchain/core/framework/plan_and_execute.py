@@ -1,14 +1,32 @@
 import asyncio
 import inspect
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, TypedDict, cast
+from dataclasses import dataclass
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    TypedDict,
+    cast,
+)
 
 from app.langchain.llm.client import init_llm
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field
 
 
@@ -41,6 +59,23 @@ class ExecutionResult(BaseModel):
     error: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class PlanExecuteNodeConfig:
+    """Configuration for prompt-driven execution nodes."""
+
+    name: str
+    description: str
+    system_prompt: str
+
+
+ExecutionContext = Dict[str, Any]
+HumanMessageFormatter = Callable[[ExecutionContext], str]
+TaskExtractor = Callable[[List[BaseMessage]], str]
+ContextExtractor = Callable[[List[BaseMessage]], str]
+QueryBuilder = Callable[[str, str], str]
+ResponseBuilder = Callable[[Dict[str, Any]], AIMessage]
+
+
 # State management
 class PlanExecuteState(TypedDict):
     """State for the plan and execute graph"""
@@ -71,6 +106,217 @@ class PlanExecuteState(TypedDict):
     # Output
     final_result: Optional[Any]
     is_complete: bool
+
+
+class PlanExecuteAgentState(TypedDict, total=False):
+    """Generic agent state wrapper used by provider subgraphs."""
+
+    messages: List[BaseMessage]
+    metadata: Dict[str, Any]
+    plan_execute_scratchpad: Dict[str, Any]
+
+
+@dataclass(frozen=True)
+class PlanExecuteSubgraphConfig:
+    """Configuration required to build a provider-specific subgraph."""
+
+    provider_name: str
+    agent_name: str
+    planner_prompt: str
+    node_configs: Sequence[PlanExecuteNodeConfig]
+    llm: LanguageModelLike
+    history_window: int = 6
+    human_message_formatter: Optional[HumanMessageFormatter] = None
+    task_extractor: Optional[TaskExtractor] = None
+    context_extractor: Optional[ContextExtractor] = None
+    query_builder: Optional[QueryBuilder] = None
+    response_builder: Optional[ResponseBuilder] = None
+
+
+def _shorten_text(value: Any, max_length: int = 500) -> str:
+    text = str(value).strip()
+    if len(text) <= max_length:
+        return text
+    return text[: max_length - 3].rstrip() + "..."
+
+
+def _format_previous_results(results: Iterable[Any]) -> str:
+    lines: List[str] = []
+    for result in results:
+        if hasattr(result, "model_dump"):
+            payload = result.model_dump()
+        elif isinstance(result, dict):
+            payload = result
+        else:
+            payload = {"output": str(result)}
+
+        step_id = payload.get("step_id", "unknown")
+        success = payload.get("success", True)
+        output = _shorten_text(payload.get("output", ""), 350)
+        status = "success" if success else "failed"
+        lines.append(f"- Step {step_id} [{status}] {output}")
+
+    return "\n".join(lines)
+
+
+def _default_human_message_formatter(execution_context: ExecutionContext) -> str:
+    instruction = str(execution_context.get("instructions", "")).strip()
+    contextual_notes = str(execution_context.get("context", "")).strip()
+    previous_results = execution_context.get("previous_results", [])
+
+    sections: List[str] = []
+    if instruction:
+        sections.append(f"Instruction: {instruction}")
+    if contextual_notes:
+        sections.append(f"Additional context: {contextual_notes}")
+    if previous_results:
+        formatted = _format_previous_results(previous_results)
+        if formatted:
+            sections.append("Relevant previous results:\n" + formatted)
+
+    if sections:
+        return "\n\n".join(sections)
+    return "Execute the requested operation."
+
+
+def _coerce_message_content(message: BaseMessage) -> str:
+    content = getattr(message, "content", "")
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            if isinstance(item, dict) and "text" in item:
+                parts.append(str(item["text"]))
+            else:
+                parts.append(str(item))
+        return "\n".join(parts).strip()
+    return str(content).strip()
+
+
+def _build_plan_error(provider_name: str, error_message: str) -> Dict[str, Any]:
+    return {
+        "provider": provider_name,
+        "plan_description": f"{provider_name} plan execution failed",
+        "total_steps": 0,
+        "completed_steps": 0,
+        "successful_steps": 0,
+        "failed_steps": 0,
+        "results": [],
+        "error": error_message,
+    }
+
+
+def _format_step_lines(results: Iterable[Any]) -> List[str]:
+    lines: List[str] = []
+    for entry in results:
+        if hasattr(entry, "model_dump"):
+            payload = entry.model_dump()
+        elif isinstance(entry, dict):
+            payload = entry
+        else:
+            payload = {"output": str(entry)}
+
+        step_id = payload.get("step_id", "?")
+        node_name = payload.get("node", "unknown")
+        success = payload.get("success", True)
+        output = _shorten_text(payload.get("output", ""), 350)
+        status = "success" if success else "failed"
+        lines.append(f"- Step {step_id} ({node_name}) [{status}]: {output}")
+
+    return lines
+
+
+def _summarize_plan_result(provider_name: str, plan_result: Dict[str, Any]) -> str:
+    if not plan_result:
+        return f"The {provider_name} subagent did not return any results."
+
+    description = plan_result.get(
+        "plan_description", f"{provider_name} plan results"
+    ).strip()
+    successful = plan_result.get("successful_steps", 0)
+    failed = plan_result.get("failed_steps", 0)
+    total = plan_result.get("total_steps", successful + failed)
+    lines = [description]
+    lines.append(f"Steps: {successful} succeeded, {failed} failed, {total} total")
+
+    step_lines = _format_step_lines(plan_result.get("results", []))
+    if step_lines:
+        lines.append("Step results:")
+        lines.extend(step_lines)
+
+    error_text = plan_result.get("error")
+    if error_text:
+        lines.append(f"Error: {error_text}")
+
+    content = "\n".join(line for line in lines if line).strip()
+    if not content:
+        return f"{provider_name} subagent completed without additional details."
+    return content
+
+
+def _default_task_extractor(agent_name: str) -> TaskExtractor:
+    def extractor(messages: List[BaseMessage]) -> str:
+        for message in reversed(messages):
+            if isinstance(message, HumanMessage) and (
+                message.name is None or message.name == agent_name
+            ):
+                instruction = message.text()
+                if instruction:
+                    return instruction
+        return ""
+
+    return extractor
+
+
+def _default_context_extractor(
+    agent_name: str, history_window: int
+) -> ContextExtractor:
+    def extractor(messages: List[BaseMessage]) -> str:
+        if not messages:
+            return ""
+
+        context_entries: List[str] = []
+        for message in messages[-history_window:]:
+            if isinstance(message, ToolMessage):
+                continue
+            if isinstance(message, HumanMessage) and message.name == agent_name:
+                continue
+            if isinstance(message, SystemMessage) and message.name == agent_name:
+                continue
+
+            content = _coerce_message_content(message)
+            if not content:
+                continue
+
+            speaker = message.name or (
+                message.__class__.__name__.replace("Message", "").lower()
+            )
+            context_entries.append(f"{speaker}: {content}")
+
+        return "\n".join(context_entries).strip()
+
+    return extractor
+
+
+def _default_query_builder(task: str, context: str) -> str:
+    task = task.strip()
+    context = context.strip()
+    if not task:
+        return context
+    if context:
+        return f"Task:\n{task}\n\nConversation Context:\n{context}"
+    return task
+
+
+def _default_response_builder(provider_name: str, agent_name: str) -> ResponseBuilder:
+    def builder(plan_result: Dict[str, Any]) -> AIMessage:
+        content = _summarize_plan_result(provider_name, plan_result)
+        return AIMessage(
+            content=content,
+            name=agent_name,
+            additional_kwargs={"plan_result": plan_result},
+        )
+
+    return builder
 
 
 class FlexiblePlanExecuteGraph(ABC):
@@ -501,3 +747,142 @@ class FlexiblePlanExecuteGraph(ABC):
         typed_state = cast(PlanExecuteState, initial_state)
         result = self.graph.invoke(typed_state)
         return result["final_result"]
+
+
+class PromptDrivenPlanExecuteGraph(FlexiblePlanExecuteGraph):
+    """Plan/execute graph that uses prompt-driven operation nodes."""
+
+    def __init__(
+        self,
+        provider_name: str,
+        planner_prompt: str,
+        *,
+        node_configs: Sequence[PlanExecuteNodeConfig],
+        llm: Optional[LanguageModelLike] = None,
+        human_message_formatter: Optional[HumanMessageFormatter] = None,
+    ):
+        self._planner_prompt = planner_prompt
+        self._node_configs = list(node_configs)
+        self._human_message_formatter = (
+            human_message_formatter or _default_human_message_formatter
+        )
+        super().__init__(provider_name=provider_name, llm=llm)
+
+    def _initialize_operation_nodes(self):
+        for config in self._node_configs:
+            self.register_operation_node(
+                name=config.name,
+                func=self._create_prompt_node(config),
+                description=config.description,
+            )
+
+    def get_planner_prompt(self) -> str:
+        return self._planner_prompt
+
+    def _create_prompt_node(
+        self, node_config: PlanExecuteNodeConfig
+    ) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+        def node(execution_context: Dict[str, Any]) -> Dict[str, Any]:
+            human_content = self._human_message_formatter(execution_context).strip()
+            if not human_content:
+                human_content = "Execute the requested operation."
+
+            messages = [
+                SystemMessage(content=node_config.system_prompt),
+                HumanMessage(content=human_content),
+            ]
+
+            try:
+                response = self.llm.invoke(messages)
+                result_text = (
+                    response.text()
+                    if isinstance(response, BaseMessage)
+                    else str(response)
+                )
+                return {"output": result_text, "success": True}
+            except Exception as exc:  # pragma: no cover - external service dependency
+                error_text = str(exc)
+                return {"output": error_text, "success": False, "error": error_text}
+
+        return node
+
+
+def build_plan_execute_subgraph(
+    config: PlanExecuteSubgraphConfig,
+) -> CompiledStateGraph:
+    """Compile a provider-specific plan/execute subgraph using shared utilities."""
+
+    graph = PromptDrivenPlanExecuteGraph(
+        provider_name=config.provider_name,
+        planner_prompt=config.planner_prompt,
+        node_configs=config.node_configs,
+        llm=config.llm,
+        human_message_formatter=config.human_message_formatter,
+    )
+
+    task_extractor = config.task_extractor or _default_task_extractor(config.agent_name)
+    context_extractor = config.context_extractor or _default_context_extractor(
+        config.agent_name, config.history_window
+    )
+    query_builder = config.query_builder or _default_query_builder
+    response_builder = config.response_builder or _default_response_builder(
+        config.provider_name, config.agent_name
+    )
+
+    def prepare_state(state: PlanExecuteAgentState) -> PlanExecuteAgentState:
+        messages = list(state.get("messages", []))
+        task_description = task_extractor(messages)
+        conversation_context = context_extractor(messages)
+        query = query_builder(task_description, conversation_context)
+
+        state["plan_execute_scratchpad"] = {
+            "task": task_description,
+            "context": conversation_context,
+            "query": query,
+        }
+        return state
+
+    def execute_plan(state: PlanExecuteAgentState) -> PlanExecuteAgentState:
+        scratchpad = state.get("plan_execute_scratchpad", {})
+        query = scratchpad.get("query", "").strip()
+
+        if not query:
+            plan_result = _build_plan_error(
+                config.provider_name,
+                f"Missing task description for {config.provider_name.lower()} subagent",
+            )
+        else:
+            try:
+                plan_result = graph.execute(
+                    query=query,
+                    include_previous_outputs=True,
+                )
+            except Exception as exc:  # pragma: no cover - external service dependency
+                plan_result = _build_plan_error(config.provider_name, str(exc))
+
+        scratchpad["result"] = plan_result
+        state["plan_execute_scratchpad"] = scratchpad
+        return state
+
+    def finalize(state: PlanExecuteAgentState) -> PlanExecuteAgentState:
+        scratchpad = state.get("plan_execute_scratchpad", {})
+        plan_result = scratchpad.get("result", {})
+        response_message = response_builder(plan_result)
+
+        messages = list(state.get("messages", []))
+        messages.append(response_message)
+        state["messages"] = messages
+
+        state.pop("plan_execute_scratchpad", None)
+        return state
+
+    builder = StateGraph(PlanExecuteAgentState)
+    builder.add_node("prepare", prepare_state)
+    builder.add_node("plan_execute", execute_plan)
+    builder.add_node("finalize", finalize)
+
+    builder.set_entry_point("prepare")
+    builder.add_edge("prepare", "plan_execute")
+    builder.add_edge("plan_execute", "finalize")
+
+    return builder.compile(checkpointer=False, name=config.agent_name)
