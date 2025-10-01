@@ -2,13 +2,7 @@
 
 from typing import Sequence
 
-from app.config.loggers import langchain_logger as logger
-from app.langchain.core.framework.plan_and_execute import (
-    PlanExecuteNodeConfig,
-    PlanExecuteSubgraphConfig,
-    build_plan_execute_subgraph,
-)
-from app.langchain.prompts.gmail_node_prompts import (
+from app.agents.prompts.gmail_node_prompts import (
     ATTACHMENT_HANDLING_PROMPT,
     COMMUNICATION_PROMPT,
     CONTACT_MANAGEMENT_PROMPT,
@@ -16,6 +10,12 @@ from app.langchain.prompts.gmail_node_prompts import (
     EMAIL_MANAGEMENT_PROMPT,
     EMAIL_RETRIEVAL_PROMPT,
     GMAIL_PLANNER_PROMPT,
+)
+from app.config.loggers import langchain_logger as logger
+from app.langchain.core.framework.plan_and_execute import (
+    PlanExecuteNodeConfig,
+    PlanExecuteSubgraphConfig,
+    build_plan_execute_subgraph,
 )
 from langchain_core.language_models import LanguageModelLike
 from langgraph.graph.state import CompiledStateGraph

@@ -30,7 +30,6 @@ from app.services.composio.composio_service import (
     COMPOSIO_SOCIAL_CONFIGS,
     get_composio_service,
 )
-from app.utils.redis_utils import RedisPoolManager
 from app.services.oauth_service import store_user_info
 from app.services.onboarding_service import (
     complete_onboarding,
@@ -39,6 +38,7 @@ from app.services.onboarding_service import (
 )
 from app.services.user_service import update_user_profile
 from app.utils.oauth_utils import fetch_user_info_from_google, get_tokens_from_code
+from app.utils.redis_utils import RedisPoolManager
 from bson import ObjectId
 from fastapi import (
     APIRouter,

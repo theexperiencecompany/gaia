@@ -30,7 +30,6 @@ async def build_graph(
     in_memory_checkpointer: bool = False,
 ):
     """Construct and compile the state graph with integrated sub-agent graphs."""
-
     # Get default LLM if none provided
     if chat_llm is None:
         chat_llm = init_llm()
