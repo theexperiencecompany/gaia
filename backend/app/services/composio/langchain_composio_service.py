@@ -43,6 +43,13 @@ class LangchainProvider(
     ):
         def function(**kwargs: t.Any) -> t.Dict:
             """Wrapper function for composio action."""
+
+            # Discardnig other data except metadata from __runnable_config__
+            runnable_config = kwargs.get("__runnable_config__", {})
+            kwargs["__runnable_config__"] = {
+                "metadata": runnable_config.get("metadata", {})
+            }
+
             return execute_tool(tool, kwargs)
 
         parameters = get_signature_format_from_schema_params(

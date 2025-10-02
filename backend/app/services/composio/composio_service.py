@@ -8,7 +8,7 @@ from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import TriggerConfig
 from app.services.composio.langchain_composio_service import LangchainProvider
-from app.utils.composio_hooks.composio_hooks import (
+from app.utils.composio_hooks.registry import (
     master_after_execute_hook,
     master_before_execute_hook,
 )

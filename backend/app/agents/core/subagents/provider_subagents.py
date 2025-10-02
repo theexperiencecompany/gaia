@@ -12,6 +12,7 @@ import asyncio
 from typing import Any
 
 from app.agents.prompts.subagent_prompts import (
+    GMAIL_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
@@ -40,6 +41,14 @@ class ProviderSubAgents:
         logger.info("Creating clean Gmail plan-and-execute subgraph")
 
         gmail_agent = await create_gmail_subgraph(llm=llm)
+
+        gmail_agent = await SubAgentFactory.create_provider_subagent(
+            provider="gmail",
+            llm=llm,
+            tool_space="gmail",
+            name="gmail_agent",
+            prompt=GMAIL_AGENT_SYSTEM_PROMPT,
+        )
 
         logger.info("Gmail subgraph created successfully")
         return gmail_agent

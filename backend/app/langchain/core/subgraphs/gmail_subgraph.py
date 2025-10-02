@@ -63,7 +63,7 @@ async def get_node_configs() -> Sequence[PlanExecuteNodeConfig]:
                 "GMAIL_SEND_DRAFT",
                 "GMAIL_LIST_DRAFTS",
                 "GMAIL_DELETE_DRAFT",
-            ]
+            ],
         ),
         composio_service.get_tools_by_name(
             [
