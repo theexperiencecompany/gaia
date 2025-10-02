@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 from dataclasses import dataclass
 from typing import (
@@ -13,32 +12,35 @@ from typing import (
     List,
     Optional,
     Sequence,
-    Tuple,
     TypedDict,
     Union,
     cast,
 )
 
-from app.langchain.llm.client import init_llm
+from app.agents.llm.client import init_llm
+from app.utils.plan_and_execute_utils import default_human_message_formatter
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.graph import END, StateGraph
-from langgraph.graph.state import CompiledStateGraph
-from langgraph.utils.runnable import RunnableCallable
+from langgraph.store.base import BaseStore
 from pydantic import BaseModel, Field
 
-from backend.app.utils.plan_and_execute_utils import (
-    build_plan_error,
-    default_context_extractor,
-    default_human_message_formatter,
-    default_query_builder,
-    default_response_builder,
-    default_task_extractor,
-)
+DEFAULT_BASE_PLANNER_PROMPT = """
+You are a planning agent that creates execution plans for {provider_name} operations.
+
+PLANNING SPECIFICATIONS:
+1. Break down the user request into discrete, executable steps
+2. Each step should target a specific node based on its capabilities
+3. Steps can have dependencies on previous steps (use step_id references)
+4. Include relevant context for each step
+5. Ensure steps are logically ordered and dependencies are correctly specified
+
+Create a detailed execution plan with clear step descriptions and proper node assignments.
+"""
 
 
 class ExecutionResult:
@@ -84,7 +86,7 @@ class ExecutionContext(TypedDict, total=False):
 
 
 class PlanExecuteState(TypedDict, total=False):
-    query: str
+    messages: List[BaseMessage]
     manual_plan: Optional[ExecutionPlan]
     available_nodes: Dict[str, str]
     include_previous_outputs: bool
@@ -115,6 +117,13 @@ ContextExtractor = Callable[[Sequence[BaseMessage]], str]
 QueryBuilder = Callable[[str, str], str]
 ResponseBuilder = Callable[[Dict[str, Any]], BaseMessage]
 
+HookType = Union[
+    Callable[[PlanExecuteState, RunnableConfig, BaseStore], PlanExecuteState],
+    Callable[
+        [PlanExecuteState, RunnableConfig, BaseStore], Awaitable[PlanExecuteState]
+    ],
+]
+
 
 @dataclass
 class PlanExecuteNodeConfig:
@@ -125,33 +134,11 @@ class PlanExecuteNodeConfig:
 
 
 @dataclass
-class PlanExecuteRunnableNode:
-    name: str
-    description: str
-    runnable: Union[
-        Callable[[ExecutionContext], Any],
-        Callable[[ExecutionContext], Awaitable[Any]],
-        RunnableCallable,
-        CompiledStateGraph,
-    ]
-
-
-NodeDefinition = Union[
-    PlanExecuteNodeConfig,
-    PlanExecuteRunnableNode,
-    RunnableCallable,
-    CompiledStateGraph,
-    Callable[[ExecutionContext], Any],
-    Callable[[ExecutionContext], Awaitable[Any]],
-]
-
-
-@dataclass
 class PlanExecuteSubgraphConfig:
     provider_name: str
     agent_name: str
     planner_prompt: str
-    node_configs: Sequence[NodeDefinition]
+    node_configs: Sequence[PlanExecuteNodeConfig]
     llm: Optional[LanguageModelLike] = None
     human_message_formatter: Optional[HumanMessageFormatter] = None
     task_extractor: Optional[TaskExtractor] = None
@@ -159,6 +146,9 @@ class PlanExecuteSubgraphConfig:
     query_builder: Optional[QueryBuilder] = None
     response_builder: Optional[ResponseBuilder] = None
     history_window: int = 6
+    base_planner_prompt: Optional[str] = None
+    pre_plan_hooks: Optional[List[HookType]] = None
+    end_graph_hooks: Optional[List[HookType]] = None
 
 
 class PromptDrivenPlanExecuteGraph:
@@ -169,31 +159,46 @@ class PromptDrivenPlanExecuteGraph:
     def __init__(
         self,
         provider_name: str,
+        agent_name: str,
         planner_prompt: str,
         *,
-        node_configs: Sequence[NodeDefinition],
+        node_configs: Sequence[PlanExecuteNodeConfig],
         llm: Optional[LanguageModelLike] = None,
         human_message_formatter: Optional[HumanMessageFormatter] = None,
+        pre_plan_hooks: Optional[List[HookType]] = None,
+        end_graph_hooks: Optional[List[HookType]] = None,
     ):
         self.provider_name = provider_name
+        self.agent_name = agent_name
         self._planner_prompt = planner_prompt
         self.llm = llm or init_llm()
         self._human_message_formatter = (
             human_message_formatter or default_human_message_formatter
         )
+        self._pre_plan_hooks = pre_plan_hooks or []
+        self._end_graph_hooks = end_graph_hooks or []
         self._nodes: Dict[str, PromptDrivenPlanExecuteGraph.NodeHandler] = {}
         self._node_descriptions: Dict[str, str] = {}
 
-        for definition in node_configs:
-            name, description, handler = self._resolve_node_definition(definition)
-            if name in self._nodes:
-                raise ValueError(f"Duplicate node name detected: {name}")
-            self._nodes[name] = handler
-            self._node_descriptions[name] = description
+        for node_config in node_configs:
+            if node_config.name in self._nodes:
+                raise ValueError(f"Duplicate node name detected: {node_config.name}")
+            self._nodes[node_config.name] = self._create_prompt_node(node_config)
+            self._node_descriptions[node_config.name] = node_config.description
 
         self._graph = self._build_parallel_graph()
 
-    async def _planning_step(self, state: PlanExecuteState) -> PlanExecuteState:
+    async def _planning_step(
+        self, state: PlanExecuteState, config: RunnableConfig, store: BaseStore
+    ) -> PlanExecuteState:
+        # Apply pre_plan_hooks for message filtering
+        for hook in self._pre_plan_hooks:
+            result = hook(state, config, store)
+            if inspect.iscoroutine(result):
+                state = await result  # type: ignore
+            else:
+                state = result  # type: ignore
+
         manual_plan = state.get("manual_plan")
         if manual_plan is not None:
             state["plan"] = manual_plan
@@ -215,27 +220,31 @@ class PromptDrivenPlanExecuteGraph:
             partial_variables={"format_instructions": format_instructions},
         )
 
-        query = state.get("query", "")
         planner_prompt = self._planner_prompt.format(
             provider_name=self.provider_name,
             available_nodes=nodes_description,
-            query=query,
         )
 
         formatted_prompt = template.format(planner_prompt=planner_prompt)
-        messages = [
-            SystemMessage(content=formatted_prompt),
-            HumanMessage(content=f"User Request: {query}"),
-        ]
+
+        state["messages"][-2] = SystemMessage(content=formatted_prompt)  # type: ignore
 
         metadata = state.get("metadata", {})
-        raw_response = await self._invoke_llm(self.llm, messages, metadata)
+        raw_response = await self._invoke_llm(self.llm, state["messages"], metadata)  # type: ignore
         content = self._extract_content(raw_response)
 
         plan = parser.parse(content)
         state["plan"] = plan
         state["current_step"] = 0
         self._prepare_step_execution(state)
+
+        # Create planner output message with agent_name_planner for preservation
+        planner_message = AIMessage(
+            content=f"Created execution plan with {len(plan.steps)} steps",
+            name=self.agent_name,
+        )
+        state.setdefault("messages", []).append(planner_message)
+
         return state
 
     def _extract_content(self, response: Any) -> str:
@@ -356,33 +365,30 @@ class PromptDrivenPlanExecuteGraph:
         async def node_wrapper(
             state: PlanExecuteState, config: RunnableConfig
         ) -> PlanExecuteState:
-            execution_context = state.get("_execution_context") or {}
-            step_id = execution_context.get("step_id")
+            ctx = state.get("_execution_context")
+            if not ctx:
+                return state
 
-            if step_id is None:
-                raise ValueError(
-                    f"Missing step_id in execution context for {node_name}"
-                )
-
+            step_id = ctx.get("step_id", -1)
             try:
-                result = await node_func(execution_context)
+                result = await node_func(ctx)
                 execution_result = ExecutionResult(
-                    step_id=step_id, success=True, output=result
+                    step_id=step_id,
+                    success=True,
+                    output=result,
                 )
-                state.setdefault("execution_results", []).append(execution_result)
-            except Exception as error:
+            except Exception as e:
                 execution_result = ExecutionResult(
-                    step_id=step_id, success=False, output=None, error=str(error)
+                    step_id=step_id,
+                    success=False,
+                    output=None,
+                    error=str(e),
                 )
-                state.setdefault("execution_results", []).append(execution_result)
-            finally:
-                state.setdefault("completed_steps", []).append(step_id)
-                _ = config
-                in_progress = state.get("in_progress_steps") or []
-                if step_id in in_progress:
-                    in_progress.remove(step_id)
-                state["_execution_context"] = None
 
+            state.setdefault("execution_results", []).append(execution_result)
+            state.setdefault("completed_steps", []).append(step_id)
+            state["_next_node"] = None
+            state["_execution_context"] = None
             return state
 
         return node_wrapper
@@ -399,18 +405,21 @@ class PromptDrivenPlanExecuteGraph:
     def _finalization_step(self, state: PlanExecuteState) -> PlanExecuteState:
         plan = state.get("plan")
         if not plan:
-            state["final_result"] = {"error": "No execution plan was created"}
+            state["final_result"] = {"error": "No plan found"}
             state["is_complete"] = True
             return state
 
         all_results = state.get("execution_results", [])
+        failed_steps = [r for r in all_results if not r.success]
+        successful_steps = [r for r in all_results if r.success]
+
         final_result = {
             "provider": self.provider_name,
             "plan_description": plan.description,
             "total_steps": len(plan.steps),
             "completed_steps": len(state.get("completed_steps", [])),
-            "successful_steps": len([r for r in all_results if r.success]),
-            "failed_steps": len([r for r in all_results if not r.success]),
+            "successful_steps": len(successful_steps),
+            "failed_steps": len(failed_steps),
             "results": [
                 {
                     "step_id": r.step_id,
@@ -425,15 +434,47 @@ class PromptDrivenPlanExecuteGraph:
             ],
         }
 
+        # Create finalizer output message with agent_name_finalizer for preservation
+        if failed_steps:
+            status_msg = f"Plan execution completed with {len(failed_steps)} failed steps out of {len(all_results)} total steps"
+        else:
+            status_msg = (
+                f"Plan execution completed successfully with {len(all_results)} steps"
+            )
+
+        finalizer_message = AIMessage(
+            content=status_msg,
+            name=self.agent_name,
+        )
+        state.setdefault("messages", []).append(finalizer_message)
+
         state["final_result"] = final_result
         state["is_complete"] = True
         return state
 
-    def _build_parallel_graph(self) -> CompiledStateGraph:
+    def _build_parallel_graph(
+        self,
+    ) -> StateGraph[PlanExecuteState, None, PlanExecuteState, PlanExecuteState]:
         workflow = StateGraph(PlanExecuteState)
         workflow.add_node("planner", self._planning_step)
         workflow.add_node("executor", self._execution_step)
         workflow.add_node("finalizer", self._finalization_step)
+
+        # Add end_graph_hooks node if hooks are provided
+        if self._end_graph_hooks:
+
+            async def end_hooks_node(
+                state: PlanExecuteState, config: RunnableConfig, store: BaseStore
+            ) -> PlanExecuteState:
+                for hook in self._end_graph_hooks:
+                    result = hook(state, config, store)
+                    if inspect.iscoroutine(result):
+                        state = await result  # type: ignore
+                    else:
+                        state = result  # type: ignore
+                return state
+
+            workflow.add_node("end_graph_hooks", end_hooks_node)
 
         for node_name, node_func in self._nodes.items():
             workflow.add_node(
@@ -457,72 +498,14 @@ class PromptDrivenPlanExecuteGraph:
         for node_name in self._nodes.keys():
             workflow.add_edge(node_name, "executor")
 
-        workflow.add_edge("finalizer", END)
-
-        return workflow.compile()
-
-    async def aexecute(
-        self,
-        *,
-        query: str,
-        manual_plan: Optional[ExecutionPlan] = None,
-        include_previous_outputs: bool = True,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        state: PlanExecuteState = {
-            "query": query,
-            "manual_plan": manual_plan,
-            "available_nodes": dict(self._node_descriptions),
-            "include_previous_outputs": include_previous_outputs,
-            "metadata": metadata or {},
-            "current_step": 0,
-            "execution_results": [],
-            "completed_steps": [],
-            "ready_steps": [],
-            "pending_steps": [],
-            "in_progress_steps": [],
-            "step_execution_contexts": {},
-            "step_node_mappings": {},
-            "_next_node": None,
-            "_execution_context": None,
-            "is_complete": False,
-        }
-
-        result = await self._graph.ainvoke(state)
-        return result.get("final_result", {})
-
-    def execute(
-        self,
-        *,
-        query: str,
-        manual_plan: Optional[ExecutionPlan] = None,
-        include_previous_outputs: bool = True,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(
-                self.aexecute(
-                    query=query,
-                    manual_plan=manual_plan,
-                    include_previous_outputs=include_previous_outputs,
-                    metadata=metadata,
-                )
-            )
+        # Connect finalizer to end_graph_hooks or END
+        if self._end_graph_hooks:
+            workflow.add_edge("finalizer", "end_graph_hooks")
+            workflow.add_edge("end_graph_hooks", END)
         else:
-            if loop.is_running():
-                raise RuntimeError(
-                    "execute() cannot be called inside an existing event loop; use aexecute() instead."
-                )
-            return loop.run_until_complete(
-                self.aexecute(
-                    query=query,
-                    manual_plan=manual_plan,
-                    include_previous_outputs=include_previous_outputs,
-                    metadata=metadata,
-                )
-            )
+            workflow.add_edge("finalizer", END)
+
+        return workflow
 
     def _create_prompt_node(
         self, node_config: PlanExecuteNodeConfig
@@ -549,70 +532,6 @@ class PromptDrivenPlanExecuteGraph:
 
         return node
 
-    def _resolve_node_definition(
-        self,
-        definition: NodeDefinition,
-    ) -> Tuple[str, str, PromptDrivenPlanExecuteGraph.NodeHandler]:
-        if isinstance(definition, PlanExecuteNodeConfig):
-            handler = self._create_prompt_node(definition)
-            return definition.name, definition.description, handler
-
-        if isinstance(definition, PlanExecuteRunnableNode):
-            handler = self._wrap_runnable(definition.runnable)
-            return definition.name, definition.description, handler
-
-        if isinstance(definition, RunnableCallable):
-            name = getattr(definition, "name", None) or "runnable_node"
-            description = getattr(definition, "description", "") or name
-            handler = self._wrap_runnable(definition)
-            return name, description, handler
-
-        if isinstance(definition, CompiledStateGraph):
-            name_attr = getattr(definition, "name", None)
-            name = (
-                name_attr
-                if isinstance(name_attr, str) and name_attr
-                else "compiled_subgraph"
-            )
-            description_attr = getattr(definition, "description", None)
-            description = (
-                description_attr
-                if isinstance(description_attr, str) and description_attr
-                else f"Subgraph node {name}"
-            )
-            handler = self._wrap_runnable(definition)
-            return name, description, handler
-
-        if callable(definition):
-            name = getattr(definition, "__name__", "callable_node")
-            description = (getattr(definition, "__doc__", "") or name).strip()
-            handler = self._wrap_runnable(definition)
-            return name, description, handler
-
-        raise TypeError(f"Unsupported node definition: {definition!r}")
-
-    def _wrap_runnable(
-        self,
-        runnable: Union[
-            Callable[[ExecutionContext], Any],
-            Callable[[ExecutionContext], Awaitable[Any]],
-            RunnableCallable,
-            CompiledStateGraph,
-        ],
-    ) -> PromptDrivenPlanExecuteGraph.NodeHandler:
-        async def handler(execution_context: ExecutionContext) -> Any:
-            if isinstance(runnable, RunnableCallable):
-                return await runnable.ainvoke(execution_context)
-            if isinstance(runnable, CompiledStateGraph):
-                return await runnable.ainvoke(execution_context)
-
-            result = runnable(execution_context)
-            if inspect.isawaitable(result):
-                return await result
-            return result
-
-        return handler
-
     def _bind_tools(self, llm: LanguageModelLike, tools: Sequence[Any]) -> Any:
         if not hasattr(llm, "bind_tools"):
             raise ValueError("Provided LLM does not support tool binding")
@@ -633,91 +552,41 @@ class PromptDrivenPlanExecuteGraph:
         llm: Any,
         messages: List[BaseMessage],
         metadata: Dict[str, Any],
-    ) -> Any:
+    ) -> AIMessage:
         config: Optional[RunnableConfig] = None
         if metadata:
             config = {"metadata": metadata}
-        if hasattr(llm, "ainvoke"):
-            return await llm.ainvoke(messages, config=config)
-        if config is not None:
-            return llm.invoke(messages, config=config)
-        return llm.invoke(messages)
+        return await llm.ainvoke(messages, config=config)
 
 
 def build_plan_execute_subgraph(
     config: PlanExecuteSubgraphConfig,
-) -> CompiledStateGraph:
+) -> StateGraph:
+    """Build a plan-and-execute subgraph.
+
+    Args:
+        config: Configuration for the subgraph
+
+    Returns:
+        CompiledStateGraph if config.return_compiled is True, otherwise StateGraph
+    """
+    # Use base prompt if provided, otherwise use the default base planner prompt
+    base_prompt = config.base_planner_prompt
+    if base_prompt is None:
+        base_prompt = DEFAULT_BASE_PLANNER_PROMPT
+
+    # Combine base prompt with specific prompt
+    effective_prompt = f"{base_prompt}\n\n{config.planner_prompt}"
+
     graph = PromptDrivenPlanExecuteGraph(
         provider_name=config.provider_name,
-        planner_prompt=config.planner_prompt,
+        agent_name=config.agent_name,
+        planner_prompt=effective_prompt,
         node_configs=config.node_configs,
         llm=config.llm,
         human_message_formatter=config.human_message_formatter,
+        pre_plan_hooks=config.pre_plan_hooks,
+        end_graph_hooks=config.end_graph_hooks,
     )
 
-    task_extractor = config.task_extractor or default_task_extractor(config.agent_name)
-    context_extractor = config.context_extractor or default_context_extractor(
-        config.agent_name, config.history_window
-    )
-    query_builder = config.query_builder or default_query_builder
-    response_builder = config.response_builder or default_response_builder(
-        config.provider_name, config.agent_name
-    )
-
-    def prepare_state(state: PlanExecuteAgentState) -> PlanExecuteAgentState:
-        messages = list(state.get("messages", []))
-        task_description = task_extractor(messages)
-        conversation_context = context_extractor(messages)
-        query = query_builder(task_description, conversation_context)
-
-        state["plan_execute_scratchpad"] = {
-            "task": task_description,
-            "context": conversation_context,
-            "query": query,
-        }
-        return state
-
-    def execute_plan(state: PlanExecuteAgentState) -> PlanExecuteAgentState:
-        scratchpad = state.get("plan_execute_scratchpad", {})
-        query = scratchpad.get("query", "").strip()
-
-        if not query:
-            plan_result = build_plan_error(
-                config.provider_name,
-                f"Missing task description for {config.provider_name.lower()} subagent",
-            )
-        else:
-            try:
-                plan_result = graph.execute(
-                    query=query,
-                    include_previous_outputs=True,
-                )
-            except Exception as exc:
-                plan_result = build_plan_error(config.provider_name, str(exc))
-
-        scratchpad["result"] = plan_result
-        state["plan_execute_scratchpad"] = scratchpad
-        return state
-
-    def finalize(state: PlanExecuteAgentState) -> PlanExecuteAgentState:
-        scratchpad = state.get("plan_execute_scratchpad", {})
-        plan_result = scratchpad.get("result", {})
-        response_message = response_builder(plan_result)
-
-        messages = list(state.get("messages", []))
-        messages.append(response_message)
-        state["messages"] = messages
-
-        state.pop("plan_execute_scratchpad", None)
-        return state
-
-    builder = StateGraph(PlanExecuteAgentState)
-    builder.add_node("prepare", prepare_state)
-    builder.add_node("plan_execute", execute_plan)
-    builder.add_node("finalize", finalize)
-
-    builder.set_entry_point("prepare")
-    builder.add_edge("prepare", "plan_execute")
-    builder.add_edge("plan_execute", "finalize")
-
-    return builder.compile(checkpointer=False, name=config.agent_name)
+    return graph._graph

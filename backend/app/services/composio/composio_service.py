@@ -6,7 +6,6 @@ from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.oauth_models import TriggerConfig
 from app.services.composio.langchain_composio_service import LangchainProvider
 from app.utils.composio_hooks.composio_hooks import (
@@ -25,11 +24,6 @@ class ComposioService:
             provider=LangchainProvider(), api_key=api_key, timeout=120
         )
 
-    @CacheInvalidator(
-        key_patterns=[
-            "composio:connection_status:{user_id}",
-        ]
-    )
     async def connect_account(
         self, provider: str, user_id: str, frontend_redirect_path: Optional[str] = None
     ) -> dict:
@@ -114,6 +108,50 @@ class ComposioService:
         )
         return result
 
+    async def get_tools_by_name(
+        self,
+        tool_names: list[str],
+        use_before_hook: bool = True,
+        use_after_hook: bool = True,
+    ):
+        """
+        Get specific tools by names with unified master hooks.
+
+        The master hooks handle ALL tools automatically including:
+        - User ID extraction from RunnableConfig metadata
+        - Frontend streaming setup
+        - All registered tool-specific hooks (Gmail, etc.)
+        """
+        logger.info(f"Loading tools: {tool_names}...")
+        start_time = time.time()
+
+        modifiers = []
+
+        # Add hooks based on flags
+        if use_before_hook:
+            master_before_modifier = before_execute(tools=tool_names)(
+                master_before_execute_hook
+            )
+            modifiers.append(master_before_modifier)
+
+        if use_after_hook:
+            master_after_modifier = after_execute(tools=tool_names)(
+                master_after_execute_hook
+            )
+            modifiers.append(master_after_modifier)
+
+        # Run the tools.get() call asynchronously
+        result = await asyncio.to_thread(
+            self.composio.tools.get,
+            tools=tool_names,
+            user_id="",
+            modifiers=modifiers,
+        )
+
+        tools_time = time.time() - start_time
+        logger.info(f"Tools loaded: {len(result)} tools in {tools_time:.3f}s")
+        return result
+
     def get_tool(
         self,
         tool_name: str,
@@ -159,11 +197,6 @@ class ComposioService:
             logger.error(f"Error getting tool {tool_name}: {e}")
             return None
 
-    @Cacheable(
-        key_pattern="composio:connection_status:{user_id}",
-        ttl=300,  # 5 minutes
-        # No model needed for simple dict[str, bool] - default Any serialization works fine
-    )
     async def check_connection_status(
         self, providers: list[str], user_id: str
     ) -> dict[str, bool]:

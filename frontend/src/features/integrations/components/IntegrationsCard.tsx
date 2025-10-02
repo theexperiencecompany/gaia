@@ -106,11 +106,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     setExpanded(expanded);
   };
 
-  // Force refresh integration status on mount
-  useEffect(() => {
-    refreshStatus();
-  }, [refreshStatus]);
-
   const handleConnect = async (integrationId: string) => {
     try {
       await connectIntegration(integrationId);

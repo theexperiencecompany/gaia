@@ -69,6 +69,7 @@ async def get_available_models(user_plan: str = "all") -> List[ModelResponse]:
     key_pattern="chat_models:model_by_id:{model_id}",
     ttl=3600,  # Cache for 1 hour
     model=ModelConfig,
+    ignore_none=True,
 )
 async def get_model_by_id(model_id: str) -> Optional[ModelConfig]:
     """
@@ -169,6 +170,7 @@ async def update_user_selected_model(
     key_pattern="chat_models:selected_model:{user_id}",
     ttl=3600,  # Cache for 1 hour
     model=ModelConfig,
+    ignore_none=True,
 )
 async def get_user_selected_model(user_id: str) -> Optional[ModelConfig]:
     """
@@ -202,6 +204,7 @@ async def get_user_selected_model(user_id: str) -> Optional[ModelConfig]:
     key_pattern="chat_models:default_model",
     ttl=3600,  # Cache for 1 hour
     model=ModelConfig,
+    ignore_none=True,
 )
 async def get_default_model() -> Optional[ModelConfig]:
     """

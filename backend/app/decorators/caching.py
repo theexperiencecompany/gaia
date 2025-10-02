@@ -109,6 +109,7 @@ class Cacheable(Generic[T]):
         model: Optional[type] = None,
         smart_hash: bool = False,
         namespace: str = "api",
+        ignore_none: bool = False,
     ):
         """
         Initialize the cache decorator.
@@ -145,6 +146,7 @@ class Cacheable(Generic[T]):
         self.key = key
         self.smart_hash = smart_hash
         self.namespace = namespace
+        self.ignore_none = ignore_none
 
         if not key and not key_pattern and not key_generator and not smart_hash:
             raise ValueError(
@@ -208,6 +210,9 @@ class Cacheable(Generic[T]):
                 result = await func(*args, **kwargs)
             else:
                 result = func(*args, **kwargs)
+
+            if result is None and self.ignore_none:
+                return result
 
             serialized_result = result
             if self.serializer:

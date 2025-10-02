@@ -22,6 +22,23 @@ export interface UseIntegrationsReturn {
   isUnifiedIntegrationConnected: (unifiedId: string) => boolean;
 }
 
+type UseFetchIntegrationStatusParams = {
+  refetchOnMount?: boolean | "always";
+};
+
+export const useFetchIntegrationStatus = ({
+  refetchOnMount,
+}: UseFetchIntegrationStatusParams = {}) => {
+  return useQuery({
+    queryKey: ["integrations", "status"],
+    queryFn: integrationsApi.getIntegrationStatus,
+    staleTime: 30 * 60 * 1000, // 30 minutes - cache status for reasonable time
+    gcTime: 60 * 60 * 1000, // 1 hour - keep in cache longer than staleTime
+    retry: 2,
+    refetchOnMount: refetchOnMount,
+  });
+};
+
 /**
  * Hook for managing integrations and their connection status
  */
@@ -43,14 +60,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     data: statusData,
     isLoading: statusLoading,
     error,
-  } = useQuery({
-    queryKey: ["integrations", "status"],
-    queryFn: integrationsApi.getIntegrationStatus,
-    staleTime: 30 * 60 * 1000, // 30 minutes - cache status for reasonable time
-    gcTime: 60 * 60 * 1000, // 1 hour - keep in cache longer than staleTime
-    retry: 2,
-    refetchOnWindowFocus: false, // Don't refetch when user focuses window
-  });
+  } = useFetchIntegrationStatus();
 
   const integrationConfigs = useMemo(
     () => configData?.integrations || [],

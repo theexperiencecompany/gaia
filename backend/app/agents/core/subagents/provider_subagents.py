@@ -17,6 +17,7 @@ from app.agents.prompts.subagent_prompts import (
     TWITTER_AGENT_SYSTEM_PROMPT,
 )
 from app.config.loggers import langchain_logger as logger
+from app.langchain.core.subgraphs.gmail_subgraph import create_gmail_subgraph
 from langchain_core.language_models import LanguageModelLike
 
 from .base_subagent import SubAgentFactory
@@ -38,10 +39,7 @@ class ProviderSubAgents:
         """
         logger.info("Creating clean Gmail plan-and-execute subgraph")
 
-        # Import the Gmail subgraph here to avoid circular imports
-        from app.langchain.core.subgraphs.gmail_subgraph import create_gmail_subgraph
-
-        gmail_agent = create_gmail_subgraph(llm=llm)
+        gmail_agent = await create_gmail_subgraph(llm=llm)
 
         logger.info("Gmail subgraph created successfully")
         return gmail_agent
