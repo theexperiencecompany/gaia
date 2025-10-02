@@ -20,12 +20,16 @@ from typing import (
 from app.agents.llm.client import init_llm
 from app.utils.plan_and_execute_utils import default_human_message_formatter
 from langchain_core.language_models import LanguageModelLike
+from langchain_core.language_models.chat_models import (
+    BaseChatModel,
+)
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables.config import RunnableConfig
-from langchain_core.tools import BaseTool, StructuredTool
+from langchain_core.tools import BaseTool
 from langgraph.graph import END, StateGraph
+from langgraph.prebuilt import create_react_agent
 from langgraph.store.base import BaseStore
 from pydantic import BaseModel, Field
 
@@ -130,7 +134,7 @@ class PlanExecuteNodeConfig:
     name: str
     description: str
     system_prompt: str
-    tools: Optional[Sequence[Any]] = None
+    tools: Optional[Sequence[BaseTool]] = None
 
 
 @dataclass
@@ -154,7 +158,10 @@ class PlanExecuteSubgraphConfig:
 class PromptDrivenPlanExecuteGraph:
     """LangGraph-backed planner/executor with support for prompt and runnable nodes."""
 
-    NodeHandler = Callable[[ExecutionContext], Awaitable[Any]]
+    NodeHandler = Callable[
+        [ExecutionContext, Optional[RunnableConfig], Optional[BaseStore]],
+        Awaitable[Any],
+    ]
 
     def __init__(
         self,
@@ -247,7 +254,7 @@ class PromptDrivenPlanExecuteGraph:
 
         return state
 
-    def _extract_content(self, response: Any) -> str:
+    def _extract_content(self, response: Union[str, BaseMessage]) -> str:
         if isinstance(response, str):
             return response
         if isinstance(response, BaseMessage):
@@ -363,7 +370,10 @@ class PromptDrivenPlanExecuteGraph:
         node_func: PromptDrivenPlanExecuteGraph.NodeHandler,
     ) -> Callable[[PlanExecuteState, RunnableConfig], Awaitable[PlanExecuteState]]:
         async def node_wrapper(
-            state: PlanExecuteState, config: RunnableConfig
+            state: PlanExecuteState,
+            config: RunnableConfig,
+            *,
+            store: BaseStore | None = None,
         ) -> PlanExecuteState:
             ctx = state.get("_execution_context")
             if not ctx:
@@ -371,7 +381,7 @@ class PromptDrivenPlanExecuteGraph:
 
             step_id = ctx.get("step_id", -1)
             try:
-                result = await node_func(ctx)
+                result = await node_func(ctx, config, store)
                 execution_result = ExecutionResult(
                     step_id=step_id,
                     success=True,
@@ -510,49 +520,69 @@ class PromptDrivenPlanExecuteGraph:
     def _create_prompt_node(
         self, node_config: PlanExecuteNodeConfig
     ) -> PromptDrivenPlanExecuteGraph.NodeHandler:
-        async def node(execution_context: ExecutionContext) -> Dict[str, Any]:
+        """Create a prompt-based node with tool call handling using create_react_agent."""
+        tools: list[BaseTool] = list(node_config.tools or [])
+
+        node_agent = create_react_agent(
+            model=self.llm,
+            tools=tools,
+            prompt=node_config.system_prompt,
+            name=f"{self.agent_name}_{node_config.name}",
+        )
+
+        async def node(
+            execution_context: ExecutionContext,
+            runtime_config: Optional[RunnableConfig] = None,
+            store: Optional[BaseStore] = None,
+        ) -> Dict[str, Any]:
             human_content = self._human_message_formatter(execution_context).strip()
             if not human_content:
                 human_content = "Execute the requested operation."
 
-            messages = [
-                SystemMessage(content=node_config.system_prompt),
-                HumanMessage(content=human_content),
-            ]
+            messages = [HumanMessage(content=human_content)]
+            initial_state = {"messages": messages}
 
-            metadata = execution_context.get("metadata", {})
-            llm = self.llm
+            graph_config: RunnableConfig = cast(
+                RunnableConfig, dict(runtime_config or {})
+            )
+            metadata = execution_context.get("metadata") or {}
+            if metadata:
+                existing_metadata = graph_config.get("metadata") or {}
+                graph_config["metadata"] = {**existing_metadata, **metadata}
 
-            if node_config.tools:
-                llm = self._bind_tools(llm, node_config.tools)
+                model_configurations = metadata.get("model_configurations")
+                if isinstance(model_configurations, dict):
+                    configurable_section = dict(graph_config.get("configurable") or {})
+                    configurable_section["model_configurations"] = model_configurations
+                    graph_config["configurable"] = configurable_section
 
-            response = await self._invoke_llm(llm, messages, metadata)
-            text = self._extract_content(response)
+            invoke_kwargs: Dict[str, Any] = {"config": graph_config}
+            if store is not None:
+                invoke_kwargs["store"] = store
+
+            result_state = await node_agent.ainvoke(initial_state, **invoke_kwargs)
+            final_messages = result_state.get("messages", [])
+            response_message = next(
+                (msg for msg in reversed(final_messages) if isinstance(msg, AIMessage)),
+                None,
+            )
+            text = response_message.text() if response_message else ""
             return {"output": text, "success": True}
 
         return node
 
-    def _bind_tools(self, llm: LanguageModelLike, tools: Sequence[Any]) -> Any:
-        if not hasattr(llm, "bind_tools"):
-            raise ValueError("Provided LLM does not support tool binding")
+    def _bind_tools(self, llm, tools: Sequence[BaseTool]):
+        if isinstance(llm, BaseChatModel):
+            return llm.bind_tools(tools)
 
-        normalized_tools = [self._normalize_tool(tool) for tool in tools]
-        bindable_llm = cast(Any, llm)
-        return bindable_llm.bind_tools(normalized_tools)
-
-    def _normalize_tool(self, tool: Any) -> BaseTool:
-        if isinstance(tool, BaseTool):
-            return tool
-        if callable(tool):
-            return StructuredTool.from_function(tool)
-        raise TypeError(f"Unsupported tool type: {type(tool)!r}")
+        raise ValueError("Provided LLM does not support tool binding")
 
     async def _invoke_llm(
         self,
-        llm: Any,
+        llm: LanguageModelLike,
         messages: List[BaseMessage],
         metadata: Dict[str, Any],
-    ) -> AIMessage:
+    ) -> BaseMessage | str:
         config: Optional[RunnableConfig] = None
         if metadata:
             config = {"metadata": metadata}

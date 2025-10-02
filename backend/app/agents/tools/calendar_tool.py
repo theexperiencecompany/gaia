@@ -1,22 +1,14 @@
 import json
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
-from app.config.loggers import chat_logger as logger
-from app.decorators import require_integration, with_doc, with_rate_limiting
-from app.templates.docstrings.calendar_tool_docs import (
-    CALENDAR_EVENT,
-    DELETE_CALENDAR_EVENT,
-    EDIT_CALENDAR_EVENT,
-    FETCH_CALENDAR_EVENTS,
-    FETCH_CALENDAR_LIST,
-    SEARCH_CALENDAR_EVENTS,
-    VIEW_CALENDAR_EVENT,
-)
 from app.agents.templates.calendar_template import (
     CALENDAR_LIST_TEMPLATE,
     CALENDAR_PROMPT_TEMPLATE,
 )
+from app.config.loggers import chat_logger as logger
+from app.decorators import require_integration, with_doc, with_rate_limiting
 from app.models.calendar_models import (
     CalendarEventToolRequest,
     CalendarEventUpdateToolRequest,
@@ -28,10 +20,68 @@ from app.services.calendar_service import (
     list_calendars,
     search_calendar_events_native,
 )
+from app.templates.docstrings.calendar_tool_docs import (
+    CALENDAR_EVENT,
+    DELETE_CALENDAR_EVENT,
+    EDIT_CALENDAR_EVENT,
+    FETCH_CALENDAR_EVENTS,
+    FETCH_CALENDAR_LIST,
+    SEARCH_CALENDAR_EVENTS,
+    VIEW_CALENDAR_EVENT,
+)
 from app.utils.oauth_utils import get_tokens_by_user_id
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
+
+
+def transform_calendar_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Transform calendar events to essential fields for LLM consumption.
+    Reduces token usage by removing unnecessary metadata.
+
+    Args:
+        events: List of full event objects from Google Calendar API.
+
+    Returns:
+        List of events with only essential fields.
+    """
+    transformed = []
+    for event in events:
+        transformed_event = {
+            "id": event.get("id"),
+            "summary": event.get("summary"),
+            "start": event.get("start"),
+            "end": event.get("end"),
+        }
+
+        # Add optional fields only if they exist and are non-empty
+        if event.get("description"):
+            transformed_event["description"] = event["description"]
+        if event.get("location"):
+            transformed_event["location"] = event["location"]
+        if event.get("attendees"):
+            # Simplify attendees to only essential info: email, response status, and organizer flag
+            transformed_event["attendees"] = [
+                {
+                    "email": attendee.get("email"),
+                    "responseStatus": attendee.get("responseStatus"),
+                    "organizer": attendee.get("organizer", False),
+                }
+                for attendee in event["attendees"]
+            ]
+        if event.get("recurrence"):
+            transformed_event["recurrence"] = event["recurrence"]
+        if event.get("status"):
+            transformed_event["status"] = event["status"]
+        if event.get("calendarId"):
+            transformed_event["calendarId"] = event["calendarId"]
+        if event.get("calendarTitle"):
+            transformed_event["calendarTitle"] = event["calendarTitle"]
+
+        transformed.append(transformed_event)
+
+    return transformed
 
 
 @tool()
@@ -255,6 +305,7 @@ async def fetch_calendar_events(
     time_min: Optional[str] = None,
     time_max: Optional[str] = None,
     selected_calendars: Optional[List[str]] = None,
+    limit: int = 20,
 ) -> str:
     try:
         if not config:
@@ -272,7 +323,11 @@ async def fetch_calendar_events(
             logger.error("Failed to get valid tokens from token registry")
             return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
 
-        logger.info(f"Fetching calendar events for user {user_id}")
+        logger.info(f"Fetching calendar events for user {user_id} with limit {limit}")
+
+        # Set default time_min to current time for future events only
+        if time_min is None:
+            time_min = datetime.now(timezone.utc).isoformat()
 
         events_data = await get_calendar_events(
             user_id=user_id,
@@ -280,10 +335,12 @@ async def fetch_calendar_events(
             selected_calendars=selected_calendars,
             time_min=time_min,
             time_max=time_max,
+            max_results=limit,
         )
 
-        events = events_data.get("events", [])
-        logger.info(f"Fetched {len(events)} events")
+        # Transform events to reduce token usage
+        events = transform_calendar_events(events_data.get("events", []))
+        logger.info(f"Fetched and transformed {len(events)} events")
 
         # Build array of {summary, start_time} for all events
         calendar_fetch_data = []

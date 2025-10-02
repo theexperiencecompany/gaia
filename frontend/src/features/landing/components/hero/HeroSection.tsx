@@ -1,16 +1,12 @@
 import Link from "next/link";
 
 import ShinyText from "@/components/ui/shadcn/shimmering-chip";
-import { useLatestRelease } from "@/hooks/useLatestRelease";
 import { MotionContainer } from "@/layouts/MotionContainer";
 
 import GetStartedButton from "../shared/GetStartedButton";
 import { SplitTextBlur } from "./SplitTextBlur";
 
 export default function HeroSection() {
-  const { data: release, isLoading: isReleaseLoading } =
-    useLatestRelease("heygaia/gaia");
-
   return (
     <div className="relative mt-28 w-screen flex-col gap-8 py-16 sm:pb-10">
       {/* <div className="particles absolute top-0 z-1 h-screen w-full overflow-hidden bg-[#00bbff50] bg-[radial-gradient(circle_at_center,_#00bbff50_0%,_#00bbff50_40%,_#01bbff0d_75%,_transparent_100%)]">
