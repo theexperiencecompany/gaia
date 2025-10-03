@@ -3,11 +3,6 @@
 import asyncio
 from typing import Sequence
 
-from app.agents.core.nodes import trim_messages_node
-from app.agents.core.nodes.delete_system_messages import (
-    create_delete_system_messages_node,
-)
-from app.agents.core.nodes.filter_messages import create_filter_messages_node
 from app.agents.prompts.gmail_node_prompts import (
     ATTACHMENT_HANDLING_PROMPT,
     COMMUNICATION_PROMPT,
@@ -15,34 +10,19 @@ from app.agents.prompts.gmail_node_prompts import (
     EMAIL_COMPOSITION_PROMPT,
     EMAIL_MANAGEMENT_PROMPT,
     EMAIL_RETRIEVAL_PROMPT,
+    GMAIL_FINALIZER_PROMPT,
     GMAIL_PLANNER_PROMPT,
 )
-from app.agents.prompts.subagent_prompts import GMAIL_AGENT_SYSTEM_PROMPT
 from app.config.loggers import langchain_logger as logger
 from app.langchain.core.framework.plan_and_execute import (
     PlanExecuteNodeConfig,
-    PlanExecuteState,
     PlanExecuteSubgraphConfig,
     build_plan_execute_subgraph,
 )
 from app.services.composio.composio_service import get_composio_service
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.runnables import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.store.base import BaseStore
-from langgraph_bigtool.graph import State
 
-AVAILABLE_NODES_DESCRIPTION = """
-Available Gmail Operation Nodes:
-
-- email_composition - Create, draft, send emails and manage drafts
-- email_retrieval - Search, fetch, list emails and conversation threads
-- email_management - Organize, label, delete, archive emails
-- communication - Reply to threads, forward messages, manage conversations
-- contact_management - Search people, contacts, profiles in Gmail
-- attachment_handling - Download and process email attachments
-- free_llm - General reasoning, brainstorming, structuring tasks
-"""
 
 async def get_node_configs() -> Sequence[PlanExecuteNodeConfig]:
     """Get the list of Gmail node configurations."""
@@ -156,73 +136,22 @@ async def create_gmail_subgraph(llm: LanguageModelLike) -> CompiledStateGraph:
         llm: Language model to use for the subgraph
 
     Returns:
-        CompiledStateGraph with message filtering and system message management
+        CompiledStateGraph with automatic message filtering and cleanup
     """
-
     logger.info("Creating Gmail subgraph using plan-and-execute framework")
-
-    agent_name = "gmail_agent"
-
-    # Create filter message node for PlanExecuteState
-    filter_node = create_filter_messages_node(
-        agent_name=agent_name,
-        allow_memory_system_messages=True,
-    )
-    delete_node = create_delete_system_messages_node(
-        prompt=GMAIL_AGENT_SYSTEM_PROMPT,
-    )
-
-    async def filter_hook(
-        state: PlanExecuteState, config: RunnableConfig, store: BaseStore
-    ) -> PlanExecuteState:
-        # Adapt PlanExecuteState to State for filter_messages_node
-        adapted_state: State = {
-            "messages": state.get("messages", []),  # type: ignore
-            "selected_tool_ids": [],
-        }
-        filtered_state = await filter_node(adapted_state, config, store)
-        state["messages"] = filtered_state["messages"]  # type: ignore
-        return state
-
-    async def trim_hook(
-        state: PlanExecuteState, config: RunnableConfig, store: BaseStore
-    ) -> PlanExecuteState:
-        # Adapt PlanExecuteState to State for trim_messages_node
-        adapted_state: State = {
-            "messages": state.get("messages", []),  # type: ignore
-            "selected_tool_ids": [],
-        }
-        # trim_messages_node is sync, not async
-        trimmed_state = trim_messages_node(adapted_state, config, store)  # type: ignore
-        state["messages"] = trimmed_state["messages"]  # type: ignore
-        return state
-
-    async def delete_hook(
-        state: PlanExecuteState, config: RunnableConfig, store: BaseStore
-    ) -> PlanExecuteState:
-        # Adapt PlanExecuteState to State for delete_system_messages_node
-        adapted_state: State = {
-            "messages": state.get("messages", []),  # type: ignore
-            "selected_tool_ids": [],
-        }
-        deleted_state = await delete_node(adapted_state, config, store)
-        state["messages"] = deleted_state["messages"]  # type: ignore
-        return state
 
     config = PlanExecuteSubgraphConfig(
         provider_name="Gmail",
-        agent_name=agent_name,
-        base_planner_prompt=None,  # Use the default base planner prompt
-        planner_prompt=GMAIL_PLANNER_PROMPT + "\n\n" + AVAILABLE_NODES_DESCRIPTION,
+        agent_name="gmail_agent",
+        planner_prompt=GMAIL_PLANNER_PROMPT,
         node_configs=await get_node_configs(),
         llm=llm,
-        pre_plan_hooks=[filter_hook, trim_hook],
-        end_graph_hooks=[delete_hook],
+        finalizer_prompt=GMAIL_FINALIZER_PROMPT,
     )
 
     result = build_plan_execute_subgraph(config)
     graph = result.compile()
-    logger.info("Gmail subgraph created successfully with message filtering hooks")
+    logger.info("Gmail subgraph created successfully")
 
     return graph
 
