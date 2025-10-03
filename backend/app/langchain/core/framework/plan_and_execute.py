@@ -35,15 +35,30 @@ from langgraph.store.base import BaseStore
 from langgraph_bigtool.graph import State
 from pydantic import BaseModel, Field
 
+BASE_NODE_INSTRUCTION = """IMPORTANT EXECUTION CONTEXT:
+You are executing a specific step within a multi-step plan. The delegation chain is: User → Main Agent → Sub-graph → You (Current Node).
+
+KEY CONSTRAINTS:
+- You CANNOT directly communicate with users or ask them questions
+- You are part of an automated execution pipeline
+- The sub-graph has created a step-by-step plan, and you are executing one specific step
+
+YOUR RESPONSIBILITIES:
+- Execute your assigned task completely and accurately
+- When finished, briefly explain what you did and the outcome
+- Include actionable results: IDs, statuses, key data points, relevant details
+- Your output will be passed to subsequent steps in the plan
+- Be clear, concise, and provide sufficient context for next steps"""
+
 _DEFAULT_BASE_PLANNER_PROMPT = """
 You are a planning agent that creates execution plans.
 
 PLANNING SPECIFICATIONS:
 1. Break down the user request into discrete, executable steps
 2. Each step should target a specific node based on its capabilities
-3. Steps can have dependencies on previous steps (use step_id references)
-4. Include relevant context for each step
-5. Ensure steps are logically ordered and dependencies are correctly specified
+3. Include relevant context for each step
+4. Ensure steps are logically ordered for sequential execution
+5. Each step will have access to outputs from all previous steps
 
 Create a detailed execution plan with clear step descriptions and proper node assignments.
 
@@ -80,7 +95,6 @@ class ExecutionStep(BaseModel):
     node_name: str
     instructions: str
     context: Dict[str, Any] = Field(default_factory=dict)
-    dependencies: List[int] = Field(default_factory=list)
 
 
 class ExecutionPlan(BaseModel):
@@ -92,9 +106,8 @@ class ExecutionContext(TypedDict, total=False):
     instructions: str
     context: Dict[str, Any]
     step_id: int
-    dependencies: List[int]
     metadata: Dict[str, Any]
-    previous_results: List[ExecutionResult]
+    previous_step_outputs: str
 
 
 class PlanExecuteState(TypedDict, total=False):
@@ -272,19 +285,14 @@ class PromptDrivenPlanExecuteGraph:
                 "instructions": step.instructions,
                 "context": step.context,
                 "step_id": step.step_id,
-                "dependencies": step.dependencies,
                 "metadata": metadata,
             }
             state.setdefault("step_execution_contexts", {})[step.step_id] = (
                 execution_context
             )
 
-            if not step.dependencies or all(
-                dep in state.get("completed_steps", []) for dep in step.dependencies
-            ):
-                state.setdefault("ready_steps", []).append(step.step_id)
-            else:
-                state.setdefault("pending_steps", []).append(step.step_id)
+            # All steps start as ready (sequential execution)
+            state.setdefault("ready_steps", []).append(step.step_id)
 
     def _execution_step(self, state: PlanExecuteState) -> PlanExecuteState:
         plan = state.get("plan")
@@ -315,13 +323,29 @@ class PromptDrivenPlanExecuteGraph:
                 step_id, {}
             )
 
+            # Compile all previous step outputs from messages
             if state.get("include_previous_outputs", True):
-                dependencies = execution_context.get("dependencies", [])
-                execution_context["previous_results"] = [
-                    result
-                    for result in state.get("execution_results", [])
-                    if result.step_id in dependencies
-                ]
+                completed_steps = state.get("completed_steps", [])
+                if completed_steps:
+                    previous_outputs = []
+                    messages = state.get("messages", [])
+
+                    # Get all previous step outputs in order
+                    for completed_step_id in completed_steps:
+                        for msg in reversed(messages):
+                            if isinstance(msg, AIMessage):
+                                exec_metadata = msg.additional_kwargs.get("execution_metadata", {})
+                                if exec_metadata.get("step_id") == completed_step_id:
+                                    node_name = exec_metadata.get("node_name", "unknown")
+                                    previous_outputs.append(
+                                        f"Step {completed_step_id} ({node_name}): {msg.content}"
+                                    )
+                                    break
+
+                    if previous_outputs:
+                        execution_context["previous_step_outputs"] = "\n\n".join(
+                            previous_outputs
+                        )
 
             state["_next_node"] = node_name
             state["_execution_context"] = execution_context
@@ -338,22 +362,13 @@ class PromptDrivenPlanExecuteGraph:
         return state
 
     def _update_ready_steps(self, state: PlanExecuteState) -> None:
-        completed_steps = state.get("completed_steps", [])
+        # Sequential execution: move pending steps to ready as previous steps complete
         pending_steps = state.get("pending_steps", [])
-        execution_contexts = state.get("step_execution_contexts") or {}
 
-        newly_ready: List[int] = []
-        still_pending: List[int] = []
-
-        for step_id in pending_steps:
-            dependencies = execution_contexts.get(step_id, {}).get("dependencies", [])
-            if all(dep in completed_steps for dep in dependencies):
-                newly_ready.append(step_id)
-            else:
-                still_pending.append(step_id)
-
-        state["pending_steps"] = still_pending
-        state.setdefault("ready_steps", []).extend(newly_ready)
+        if pending_steps:
+            # Make the next pending step ready
+            next_step = pending_steps.pop(0)
+            state.setdefault("ready_steps", []).append(next_step)
 
     def _create_node_wrapper(
         self,
@@ -378,6 +393,26 @@ class PromptDrivenPlanExecuteGraph:
                     success=True,
                     output=result,
                 )
+
+                # Store node output as AIMessage with execution metadata
+                output_content = (
+                    result.get("output", "")
+                    if isinstance(result, dict)
+                    else str(result)
+                )
+                node_message = AIMessage(
+                    content=output_content,
+                    name=self.agent_name,
+                    additional_kwargs={
+                        "execution_metadata": {
+                            "step_id": step_id,
+                            "node_name": node_name,
+                            "success": True,
+                        }
+                    },
+                )
+                state.setdefault("messages", []).append(node_message)
+
             except Exception as e:
                 execution_result = ExecutionResult(
                     step_id=step_id,
@@ -385,6 +420,21 @@ class PromptDrivenPlanExecuteGraph:
                     output=None,
                     error=str(e),
                 )
+
+                # Store error as AIMessage too
+                error_message = AIMessage(
+                    content=f"Error executing step: {str(e)}",
+                    name=self.agent_name,
+                    additional_kwargs={
+                        "execution_metadata": {
+                            "step_id": step_id,
+                            "node_name": node_name,
+                            "success": False,
+                            "error": str(e),
+                        }
+                    },
+                )
+                state.setdefault("messages", []).append(error_message)
 
             state.setdefault("execution_results", []).append(execution_result)
             state.setdefault("completed_steps", []).append(step_id)
@@ -588,10 +638,13 @@ Please compile this information into a comprehensive summary for the main agent 
         """Create a prompt-based node with tool call handling using create_react_agent."""
         tools: list[BaseTool] = list(node_config.tools or [])
 
+        # Combine base instructions with node-specific prompt
+        enhanced_prompt = f"{BASE_NODE_INSTRUCTION}\n\n{node_config.system_prompt}"
+
         node_agent = create_react_agent(
             model=self.llm,
             tools=tools,
-            prompt=node_config.system_prompt,
+            prompt=enhanced_prompt,
             name=f"{self.agent_name}_{node_config.name}",
         )
 
@@ -600,10 +653,17 @@ Please compile this information into a comprehensive summary for the main agent 
             runtime_config: Optional[RunnableConfig] = None,
             store: Optional[BaseStore] = None,
         ) -> Dict[str, Any]:
-            # Simple default: use instructions from execution context
+            # Build human message with instructions and previous outputs
             human_content = execution_context.get("instructions", "")
             if not human_content:
                 human_content = "Execute the requested operation."
+
+            # Add previous step outputs if available
+            previous_outputs = execution_context.get("previous_step_outputs", "")
+            if previous_outputs:
+                human_content = (
+                    f"{human_content}\n\nPREVIOUS STEP OUTPUTS:\n{previous_outputs}"
+                )
 
             messages = [HumanMessage(content=human_content)]
             initial_state = {"messages": messages}
