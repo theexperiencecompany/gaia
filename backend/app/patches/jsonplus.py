@@ -8,6 +8,7 @@ when using msgpack encoding, preventing serialization errors.
 from typing import Any
 
 import ormsgpack
+from langchain_core.messages import BaseMessage
 from langgraph.checkpoint.serde import jsonplus
 from langgraph.checkpoint.serde.jsonplus import _msgpack_default, _option
 
@@ -17,7 +18,9 @@ def message_to_dict(msg):
     Recursively convert a message or object into a dict/str (safe for serialization).
     """
     # Handles HumanMessage, AIMessage, ToolMessage, etc.
-    if hasattr(msg, "to_dict"):
+    if isinstance(msg, BaseMessage):
+        return msg.model_dump()
+    elif hasattr(msg, "to_dict"):
         return msg.to_dict()
     elif isinstance(msg, dict):
         # Recursively convert dict values

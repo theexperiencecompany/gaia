@@ -6,7 +6,6 @@ state while preserving all other message types in their original order.
 """
 
 from app.config.loggers import chat_logger as logger
-from app.agents.prompts.agent_prompts import AGENT_SYSTEM_PROMPT
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
@@ -62,9 +61,7 @@ def create_filter_messages_node(
                 is_allowed_memory_system_message = (
                     allow_memory_system_messages
                     and isinstance(msg, SystemMessage)
-                    and not (
-                        msg.text().strip().startswith(AGENT_SYSTEM_PROMPT[:100].strip())
-                    )
+                    and msg.model_dump().get("memory_message", False)
                 )
 
                 # Keep message if it matches either condition

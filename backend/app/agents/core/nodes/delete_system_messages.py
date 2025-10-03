@@ -6,16 +6,13 @@ state while preserving all other message types in their original order.
 """
 
 from app.config.loggers import chat_logger as logger
-from app.agents.prompts.agent_prompts import AGENT_SYSTEM_PROMPT
 from langchain_core.messages import RemoveMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 from langgraph_bigtool.graph import State
 
 
-def create_delete_system_messages_node(
-    prompt: str = AGENT_SYSTEM_PROMPT,
-):
+def create_delete_system_messages_node():
     """Create a node that deletes system messages from the conversation state."""
 
     async def delete_system_messages(
@@ -59,7 +56,7 @@ def create_delete_system_messages_node(
                 # Checking for content match because we don't want to remove memories in SystemMessage
                 if (
                     msg.type == "system"
-                    and msg.text().startswith(prompt[:50])
+                    and msg.model_dump().get("memory_message", False) is False
                     and msg.id
                 ):
                     messages_to_remove.append(RemoveMessage(id=msg.id))

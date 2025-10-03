@@ -18,12 +18,8 @@ from typing import (
 )
 
 from app.agents.core.nodes import trim_messages_node
-from app.agents.core.nodes.delete_system_messages import (
-    create_delete_system_messages_node,
-)
 from app.agents.core.nodes.filter_messages import create_filter_messages_node
 from app.agents.llm.client import init_llm
-
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
@@ -449,7 +445,7 @@ class PromptDrivenPlanExecuteGraph:
 
             finalizer_message = AIMessage(
                 content=status_msg,
-                name=self.agent_name,
+                name=f"{self.agent_name},main_agent",  # added main_agent to make this visible to main_agent
             )
             state.setdefault("messages", []).append(finalizer_message)
             state["final_result"] = final_result
@@ -525,7 +521,7 @@ Please compile this information into a comprehensive summary for the main agent 
         # Create finalizer message with comprehensive compiled summary
         finalizer_message = AIMessage(
             content=finalizer_content,
-            name=self.agent_name,
+            name=f"{self.agent_name},main_agent",  # added main_agent to make this visible to main_agent
         )
         state.setdefault("messages", []).append(finalizer_message)
 
@@ -680,9 +676,6 @@ def build_plan_execute_subgraph(
         agent_name=config.agent_name,
         allow_memory_system_messages=True,
     )
-    delete_node = create_delete_system_messages_node(
-        prompt=planner_prompt,
-    )
 
     # Create hooks that adapt PlanExecuteState to State
     async def filter_hook(
@@ -708,20 +701,9 @@ def build_plan_execute_subgraph(
         state["messages"] = trimmed_state["messages"]  # type: ignore
         return state
 
-    async def delete_hook(
-        state: PlanExecuteState, config_arg: RunnableConfig, store: BaseStore
-    ) -> PlanExecuteState:
-        adapted_state: State = {
-            "messages": state.get("messages", []),  # type: ignore
-            "selected_tool_ids": [],
-        }
-        deleted_state = await delete_node(adapted_state, config_arg, store)
-        state["messages"] = deleted_state["messages"]  # type: ignore
-        return state
 
     # Use built-in hooks automatically (no custom hooks needed from config)
     pre_plan_hooks: Sequence[HookType] = [filter_hook, trim_hook]
-    end_graph_hooks: Sequence[HookType] = [delete_hook]
 
     graph = PromptDrivenPlanExecuteGraph(
         provider_name=config.provider_name,
@@ -731,7 +713,7 @@ def build_plan_execute_subgraph(
         llm=config.llm,
         finalizer_prompt=config.finalizer_prompt,
         pre_plan_hooks=pre_plan_hooks,
-        end_graph_hooks=end_graph_hooks,
+        end_graph_hooks=[],
     )
 
     return graph._graph

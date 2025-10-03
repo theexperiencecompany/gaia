@@ -13,7 +13,6 @@ from app.agents.core.nodes import (
 from app.agents.core.nodes.filter_messages import create_filter_messages_node
 from app.agents.core.subagents.provider_subagents import ProviderSubAgents
 from app.agents.llm.client import init_llm
-from app.agents.prompts.agent_prompts import AGENT_SYSTEM_PROMPT
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
@@ -55,9 +54,7 @@ async def build_graph(
         ],
         end_graph_hooks=[
             follow_up_actions_node,
-            create_delete_system_messages_node(
-                prompt=AGENT_SYSTEM_PROMPT,
-            ),
+            create_delete_system_messages_node(),
         ],
     )
 

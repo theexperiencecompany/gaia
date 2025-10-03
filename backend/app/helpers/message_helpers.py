@@ -1,12 +1,12 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from app.config.loggers import llm_logger as logger
-from app.agents.templates.agent_template import AGENT_PROMPT_TEMPLATE
 from app.agents.prompts.workflow_prompts import (
-    WORKFLOW_EXECUTION_PROMPT,
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
+    WORKFLOW_EXECUTION_PROMPT,
 )
+from app.agents.templates.agent_template import AGENT_PROMPT_TEMPLATE
+from app.config.loggers import llm_logger as logger
 from app.models.message_models import FileData, SelectedWorkflowData
 from app.services.memory_service import memory_service
 from app.services.onboarding_service import get_user_preferences_for_agent
