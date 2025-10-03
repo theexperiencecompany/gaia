@@ -23,7 +23,7 @@ from app.agents.core.nodes.delete_system_messages import (
 )
 from app.agents.core.nodes.filter_messages import create_filter_messages_node
 from app.agents.llm.client import init_llm
-from app.utils.plan_and_execute_utils import default_human_message_formatter
+
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
@@ -127,12 +127,6 @@ class PlanExecuteAgentState(TypedDict, total=False):
     plan_execute_scratchpad: Dict[str, Any]
 
 
-HumanMessageFormatter = Callable[[ExecutionContext], str]
-TaskExtractor = Callable[[Sequence[BaseMessage]], str]
-ContextExtractor = Callable[[Sequence[BaseMessage]], str]
-QueryBuilder = Callable[[str, str], str]
-ResponseBuilder = Callable[[Dict[str, Any]], BaseMessage]
-
 HookType = Union[
     Callable[[PlanExecuteState, RunnableConfig, BaseStore], PlanExecuteState],
     Callable[
@@ -160,10 +154,7 @@ class PlanExecuteSubgraphConfig:
     planner_prompt: str
     node_configs: Sequence[PlanExecuteNodeConfig]
     llm: Optional[LanguageModelLike] = None
-    human_message_formatter: Optional[HumanMessageFormatter] = None
     finalizer_prompt: Optional[str] = None
-    pre_plan_hooks: Optional[List[HookType]] = None
-    end_graph_hooks: Optional[List[HookType]] = None
 
 
 class PromptDrivenPlanExecuteGraph:
@@ -177,19 +168,15 @@ class PromptDrivenPlanExecuteGraph:
         *,
         node_configs: Sequence[PlanExecuteNodeConfig],
         llm: Optional[LanguageModelLike] = None,
-        human_message_formatter: Optional[HumanMessageFormatter] = None,
         finalizer_prompt: Optional[str] = None,
-        pre_plan_hooks: Optional[List[HookType]] = None,
-        end_graph_hooks: Optional[List[HookType]] = None,
+        pre_plan_hooks: Optional[Sequence[HookType]] = None,
+        end_graph_hooks: Optional[Sequence[HookType]] = None,
     ):
         self.provider_name = provider_name
         self.agent_name = agent_name
         self._planner_prompt = planner_prompt
         self._finalizer_prompt = finalizer_prompt
         self.llm = llm or init_llm()
-        self._human_message_formatter = (
-            human_message_formatter or default_human_message_formatter
-        )
         self._pre_plan_hooks = pre_plan_hooks or []
         self._end_graph_hooks = end_graph_hooks or []
         self._nodes: Dict[str, NodeHandler] = {}
@@ -617,7 +604,8 @@ Please compile this information into a comprehensive summary for the main agent 
             runtime_config: Optional[RunnableConfig] = None,
             store: Optional[BaseStore] = None,
         ) -> Dict[str, Any]:
-            human_content = self._human_message_formatter(execution_context).strip()
+            # Simple default: use instructions from execution context
+            human_content = execution_context.get("instructions", "")
             if not human_content:
                 human_content = "Execute the requested operation."
 
@@ -731,9 +719,9 @@ def build_plan_execute_subgraph(
         state["messages"] = deleted_state["messages"]  # type: ignore
         return state
 
-    # Combine user-provided hooks with built-in hooks
-    pre_plan_hooks = [filter_hook, trim_hook] + (config.pre_plan_hooks or [])
-    end_graph_hooks = [delete_hook] + (config.end_graph_hooks or [])
+    # Use built-in hooks automatically (no custom hooks needed from config)
+    pre_plan_hooks: Sequence[HookType] = [filter_hook, trim_hook]
+    end_graph_hooks: Sequence[HookType] = [delete_hook]
 
     graph = PromptDrivenPlanExecuteGraph(
         provider_name=config.provider_name,
@@ -741,7 +729,6 @@ def build_plan_execute_subgraph(
         planner_prompt=planner_prompt,
         node_configs=config.node_configs,
         llm=config.llm,
-        human_message_formatter=config.human_message_formatter,
         finalizer_prompt=config.finalizer_prompt,
         pre_plan_hooks=pre_plan_hooks,
         end_graph_hooks=end_graph_hooks,
