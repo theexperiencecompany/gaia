@@ -2,7 +2,6 @@
 
 import { Button as HeroButton } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import { formatDistanceToNow } from "date-fns";
 import {
   AlertCircle,
   CheckCheck,
@@ -20,7 +19,7 @@ import {
   NotificationRecord,
   NotificationStatus,
 } from "@/types/features/notificationTypes";
-import { getNotificationIcon } from "@/utils/notifications";
+import { parseDate } from "@/utils/date/dateUtils";
 
 import { Button } from "../../../components/ui";
 
@@ -73,73 +72,74 @@ export const EnhancedNotificationCard = ({
   const getActionIcon = (actionType: ActionType) => {
     switch (actionType) {
       case "redirect":
-        return <ExternalLink className="h-3 w-3" />;
+        return <ExternalLink className="h-3 w-3" strokeWidth={2.5} />;
       case "api_call":
-        return <CheckCircle className="h-3 w-3" />;
+        return <CheckCircle className="h-3 w-3" strokeWidth={2.5} />;
       case "workflow":
-        return <Clock className="h-3 w-3" />;
+        return <Clock className="h-3 w-3" strokeWidth={2.5} />;
       case "modal":
-        return <AlertCircle className="h-3 w-3" />;
+        return <AlertCircle className="h-3 w-3" strokeWidth={2.5} />;
       default:
         return null;
     }
   };
 
-  const timeAgo = formatDistanceToNow(new Date(notification.created_at), {
-    addSuffix: true,
-  });
+  const formattedDate = parseDate(notification.created_at);
   const isUnread = notification.status === NotificationStatus.DELIVERED;
 
   return (
     <div
-      className={`w-full rounded-xl p-4 pb-1 transition-all duration-200 ${
-        isUnread ? "bg-zinc-800" : "bg-zinc-800/70"
+      className={`group relative w-full rounded-xl transition-all ${
+        isUnread ? "bg-zinc-800/70" : "bg-zinc-900/40"
       }`}
     >
-      <div className="flex items-start gap-3">
-        <div className="mt-1 flex-shrink-0">
-          {getNotificationIcon(notification.source)}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1">
-              <div className="mb-1 flex items-center gap-2">
-                <h3 className="text-sm font-medium text-white">
-                  {notification.content.title}
-                </h3>
-                {isUnread && (
-                  <div className="h-2 w-2 rounded-full bg-primary" />
-                )}
-              </div>
-              <p className="text-sm whitespace-pre-line text-zinc-300">
-                {notification.content.body}
-              </p>
-              <span className="flex-shrink-0 text-xs text-zinc-500">
-                {timeAgo}
-              </span>
+      <div className="px-4 py-3.5">
+        <div className="flex items-start justify-between gap-3">
+          {/* Main content */}
+          <div className="min-w-0 flex-1 space-y-1">
+            {/* Title with unread indicator */}
+            <div className="flex items-center gap-2">
+              <h3 className="text-[15px] leading-tight font-semibold text-white">
+                {notification.content.title}
+              </h3>
+              {isUnread && (
+                <div className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />
+              )}
             </div>
 
-            {notification.status !== NotificationStatus.READ &&
-              notification.status !== NotificationStatus.ARCHIVED && (
-                <Tooltip content="Mark as Read">
-                  <HeroButton
-                    size="sm"
-                    onPress={handleMarkAsRead}
-                    variant={"flat"}
-                    isIconOnly
-                  >
-                    <CheckCheck className="h-3.5 w-3.5" />
-                  </HeroButton>
-                </Tooltip>
-              )}
+            {/* Description */}
+            <p className="text-[13px] leading-relaxed text-zinc-400">
+              {notification.content.body}
+            </p>
+
+            {/* Date */}
+            <span className="inline-block text-[11px] text-zinc-600">
+              {formattedDate}
+            </span>
           </div>
 
-          {/* Actions */}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            {notification?.content?.actions &&
-              notification?.content?.actions.length > 0 &&
-              notification.content?.actions.map((action) => {
+          {/* Mark as read button */}
+          {notification.status !== NotificationStatus.READ &&
+            notification.status !== NotificationStatus.ARCHIVED && (
+              <Tooltip content="Mark as read" delay={300}>
+                <HeroButton
+                  size="sm"
+                  onPress={handleMarkAsRead}
+                  variant="light"
+                  isIconOnly
+                  className="h-8 w-8 min-w-8 flex-shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                >
+                  <CheckCheck className="h-4 w-4 text-zinc-500" />
+                </HeroButton>
+              </Tooltip>
+            )}
+        </div>
+
+        {/* Actions */}
+        {notification?.content?.actions &&
+          notification?.content?.actions.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {notification.content.actions.map((action) => {
                 const buttonProps = getActionButtonProps(action);
                 const isLoading =
                   loading === action.id || executingActionId === action.id;
@@ -154,30 +154,32 @@ export const EnhancedNotificationCard = ({
                     size="sm"
                     disabled={buttonProps.disabled || isLoading || isExecuted}
                     onClick={() => handleActionClick(action.id)}
-                    className={`${
+                    className={`h-8 gap-1.5 rounded-md px-3 text-xs font-medium transition-all ${
                       action.style === "primary"
-                        ? "border-none bg-blue-600 text-white hover:bg-blue-700"
+                        ? "bg-primary/10 text-primary hover:bg-primary/20"
                         : action.style === "danger"
-                          ? "border-none bg-red-600 text-white hover:bg-red-700"
-                          : "border-none bg-zinc-700 text-white hover:bg-zinc-600"
+                          ? "bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                          : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"
                     } ${showLoading ? "opacity-50" : ""} ${
-                      isExecuted ? "cursor-not-allowed opacity-50" : ""
+                      isExecuted ? "cursor-not-allowed opacity-60" : ""
                     }`}
                   >
                     {showLoading ? (
                       <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
                     ) : (
                       <>
-                        {action.label}
-                        {isExecuted && <span className="ml-1">✓</span>}
+                        <span>{action.label}</span>
+                        {isExecuted && (
+                          <CheckCircle className="h-3 w-3" strokeWidth={2.5} />
+                        )}
                         {!isExecuted && getActionIcon(action.type)}
                       </>
                     )}
                   </Button>
                 );
               })}
-          </div>
-        </div>
+            </div>
+          )}
       </div>
 
       {/* Confirmation Dialog */}

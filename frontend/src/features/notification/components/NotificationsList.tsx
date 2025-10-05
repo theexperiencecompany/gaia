@@ -47,9 +47,10 @@ export const NotificationsList = ({
 
   if (loading) {
     return (
-      <div className="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center text-white">
-        <div className="flex flex-col items-center space-y-4">
-          <Spinner />
+      <div className="mx-auto flex h-full w-full max-w-4xl items-center justify-center">
+        <div className="flex flex-col items-center space-y-3">
+          <Spinner size="lg" color="primary" />
+          <p className="text-sm text-zinc-500">Loading notifications...</p>
         </div>
       </div>
     );
@@ -57,16 +58,18 @@ export const NotificationsList = ({
 
   if (notifications.length === 0) {
     return (
-      <div className="mx-auto flex h-[70vh] w-full max-w-4xl items-center justify-center text-white">
+      <div className="mx-auto mt-10 flex h-full w-full max-w-4xl items-center justify-center">
         <div className="flex flex-col items-center space-y-4 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800">
-            <span className="text-2xl">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900/50 ring-1 ring-zinc-800">
+            <span className="text-3xl text-zinc-600">
               <NotificationIcon />
             </span>
           </div>
-          <div>
-            <h3 className="text-lg font-medium text-white">{emptyMessage}</h3>
-            <p className="text-sm text-zinc-400">{emptyDescription}</p>
+          <div className="space-y-1">
+            <h3 className="text-base font-semibold text-white">
+              {emptyMessage}
+            </h3>
+            <p className="text-sm text-zinc-500">{emptyDescription}</p>
           </div>
         </div>
       </div>
@@ -74,27 +77,27 @@ export const NotificationsList = ({
   }
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-4xl overflow-y-auto pb-14 text-white">
-      <div className="space-y-6 p-4">
-        {Object.entries(groupedNotifications).map(
-          ([timeGroup, groupNotifications]) => (
-            <div key={timeGroup} className="space-y-4">
-              <h3 className="text-sm font-medium text-zinc-400">{timeGroup}</h3>
-              <div className="space-y-3">
-                {groupNotifications.map((notification) => (
-                  <EnhancedNotificationCard
-                    key={notification.id}
-                    notification={notification}
-                    onMarkAsRead={handleMarkAsRead}
-                    onRefresh={onRefresh}
-                    onModalOpen={onModalOpen}
-                  />
-                ))}
-              </div>
+    <div className="mx-auto w-full max-w-4xl space-y-8 px-6 py-6">
+      {Object.entries(groupedNotifications).map(
+        ([timeGroup, groupNotifications]) => (
+          <div key={timeGroup} className="space-y-3">
+            <h3 className="px-0.5 text-xs font-semibold tracking-wider text-zinc-500 uppercase">
+              {timeGroup}
+            </h3>
+            <div className="space-y-2.5">
+              {groupNotifications.map((notification) => (
+                <EnhancedNotificationCard
+                  key={notification.id}
+                  notification={notification}
+                  onMarkAsRead={handleMarkAsRead}
+                  onRefresh={onRefresh}
+                  onModalOpen={onModalOpen}
+                />
+              ))}
             </div>
-          ),
-        )}
-      </div>
+          </div>
+        ),
+      )}
     </div>
   );
 };
