@@ -8,7 +8,6 @@ from typing import Optional, Tuple
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from app.agents.core.agent import call_agent_silent
 from app.api.v1.middleware.tiered_rate_limiter import tiered_rate_limit
 from app.config.loggers import worker_logger as logger
 from app.config.token_repository import token_repository
@@ -27,6 +26,7 @@ from app.services.workflow.conversation_service import (
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.services.workflow.service import WorkflowService
 from bson import ObjectId
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 
 async def get_user_authentication_tokens(
@@ -164,6 +164,7 @@ async def execute_workflow_by_id(
 
     scheduler = WorkflowScheduler()
     workflow = None
+    execution_messages = []
 
     try:
         await scheduler.initialize()
@@ -190,13 +191,25 @@ async def execute_workflow_by_id(
         return f"Workflow {workflow_id} executed successfully with {len(execution_messages)} messages"
 
     except Exception as e:
-        logger.error(f"Error executing workflow {workflow_id}: {str(e)}")
+        logger.error(f"Error executing workflow {workflow_id}: {str(e)}", exc_info=True)
 
-        # Track failed execution if we have workflow info
+        # Track failed execution
         if workflow:
-            await WorkflowService.increment_execution_count(
-                workflow_id, workflow.user_id, is_successful=False
-            )
+            try:
+                await WorkflowService.increment_execution_count(
+                    workflow_id, workflow.user_id, is_successful=False
+                )
+            except Exception:
+                pass  # Don't break on stats update failure
+
+        # Try to store error messages if any were generated
+        if execution_messages and workflow:
+            try:
+                await create_workflow_completion_notification(
+                    workflow, execution_messages, workflow.user_id
+                )
+            except Exception:
+                pass  # Already logged in notification function
 
         return f"Error executing workflow {workflow_id}: {str(e)}"
 
@@ -219,6 +232,10 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
     Returns:
         List of MessageModel objects from the execution
     """
+
+    # Avoid circular import
+    from app.agents.core.agent import call_agent_silent
+
     # Extract user_id from user dict for backward compatibility
     user_id = user["user_id"]
 
@@ -299,14 +316,17 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
             selectedWorkflow=selected_workflow_data,
         )
 
+        usage_metadata_callback = UsageMetadataCallbackHandler()
+
         # Execute using the same logic as normal chat
-        complete_message, tool_data, _ = await call_agent_silent(
+        complete_message, tool_data = await call_agent_silent(
             request=request,
             conversation_id=conversation["conversation_id"],
             user=user_data,
             user_time=user_time,
             user_model_config=user_model_config,
             trigger_context=context,
+            usage_metadata_callback=usage_metadata_callback,
         )
 
         # Create execution messages with proper tool data
@@ -332,9 +352,6 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
         )
         execution_messages.append(bot_message)
 
-        logger.info(
-            f"Workflow {workflow.id} executed successfully with {len(execution_messages)} messages"
-        )
         return execution_messages
 
     except Exception as e:
@@ -450,9 +467,47 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
 async def create_workflow_completion_notification(
     workflow, execution_messages, user_id: str
 ):
-    """Create or update workflow conversation with execution results and send notification."""
+    """Store workflow execution messages and send completion notification."""
+    from app.services.workflow.conversation_service import (
+        add_workflow_execution_messages,
+        get_or_create_workflow_conversation,
+    )
+
+    # Get or create conversation (required for storage)
+    conversation = await get_or_create_workflow_conversation(
+        workflow_id=workflow.id,
+        user_id=user_id,
+        workflow_title=workflow.title,
+    )
+    logger.info(
+        f"Workflow conversation: {conversation['conversation_id']} for workflow {workflow.id}"
+    )
+
+    # Store execution messages
+    if execution_messages:
+        try:
+            logger.info(
+                f"Storing {len(execution_messages)} messages to conversation {conversation['conversation_id']}"
+            )
+            await add_workflow_execution_messages(
+                conversation_id=conversation["conversation_id"],
+                workflow_execution_messages=execution_messages,
+                user_id=user_id,
+            )
+            logger.info(
+                f"Successfully stored {len(execution_messages)} messages for workflow {workflow.id}"
+            )
+        except Exception as storage_error:
+            logger.error(
+                f"Failed to store messages for workflow {workflow.id}: {storage_error}",
+                exc_info=True,
+            )
+            raise  # Re-raise to ensure storage failures are visible
+    else:
+        logger.warning(f"No execution messages to store for workflow {workflow.id}")
+
+    # Send notification (best effort - don't fail if this breaks)
     try:
-        # Import here to avoid circular imports
         from app.models.notification.notification_models import (
             ActionConfig,
             ActionStyle,
@@ -465,61 +520,42 @@ async def create_workflow_completion_notification(
             RedirectConfig,
         )
         from app.services.notification_service import notification_service
-        from app.services.workflow.conversation_service import (
-            add_workflow_execution_messages,
-            get_or_create_workflow_conversation,
-        )
 
-        # Get or create the workflow's persistent conversation
-        conversation = await get_or_create_workflow_conversation(
-            workflow_id=workflow.id,
-            user_id=user_id,
-            workflow_title=workflow.title,
-        )
-
-        # Add execution messages to the conversation
-        if execution_messages:
-            await add_workflow_execution_messages(
-                conversation_id=conversation["conversation_id"],
-                workflow_execution_messages=execution_messages,
+        await notification_service.create_notification(
+            NotificationRequest(
                 user_id=user_id,
-            )
-
-        # Send notification with action to view results
-        notification_request = NotificationRequest(
-            user_id=user_id,
-            source=NotificationSourceEnum.BACKGROUND_JOB,
-            content=NotificationContent(
-                title=f"Workflow Completed: {workflow.title}",
-                body=f"Your workflow '{workflow.title}' has completed successfully.",
-                actions=[
-                    NotificationAction(
-                        type=ActionType.REDIRECT,
-                        label="View Results",
-                        style=ActionStyle.PRIMARY,
-                        config=ActionConfig(
-                            redirect=RedirectConfig(
-                                url=f"/c/{conversation['conversation_id']}",
-                                open_in_new_tab=False,
-                                close_notification=True,
-                            )
-                        ),
-                    )
+                source=NotificationSourceEnum.BACKGROUND_JOB,
+                content=NotificationContent(
+                    title=f"Workflow Completed: {workflow.title}",
+                    body=f"Your workflow '{workflow.title}' has completed successfully.",
+                    actions=[
+                        NotificationAction(
+                            type=ActionType.REDIRECT,
+                            label="View Results",
+                            style=ActionStyle.PRIMARY,
+                            config=ActionConfig(
+                                redirect=RedirectConfig(
+                                    url=f"/c/{conversation['conversation_id']}",
+                                    open_in_new_tab=False,
+                                    close_notification=True,
+                                )
+                            ),
+                        )
+                    ],
+                ),
+                channels=[
+                    ChannelConfig(channel_type="inapp", enabled=True, priority=1)
                 ],
-            ),
-            channels=[ChannelConfig(channel_type="inapp", enabled=True, priority=1)],
-            metadata={
-                "workflow_id": workflow.id,
-                "conversation_id": conversation["conversation_id"],
-            },
+                metadata={
+                    "workflow_id": workflow.id,
+                    "conversation_id": conversation["conversation_id"],
+                },
+            )
         )
-
-        await notification_service.create_notification(notification_request)
-        logger.info(f"Sent workflow completion notification for workflow {workflow.id}")
-
+        logger.info(f"Notification sent for workflow {workflow.id}")
     except Exception as e:
-        logger.error(f"Failed to create workflow completion notification: {str(e)}")
-        # Don't raise - this shouldn't fail the workflow execution
+        logger.error(f"Failed to send notification for workflow {workflow.id}: {e}")
+        # Don't raise - notification is optional
 
 
 # from old process_workflow.py - kept for reference

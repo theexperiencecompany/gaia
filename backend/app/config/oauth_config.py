@@ -102,7 +102,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="gmail",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_Tnn55kCyinEJ", toolkit="GMAIL"
+            auth_config_id="ac_svLPDmjcTVMX", toolkit="GMAIL"
         ),
         associated_triggers=[
             TriggerConfig(

@@ -67,13 +67,9 @@ class WebSocketManager:
             self.connections[user_id].discard(ws)
 
     async def _publish_to_rabbitmq(self, user_id: str, message: Dict[str, Any]) -> None:
-        """Publish WebSocket message to RabbitMQ for main app to broadcast"""
+        """Publish WebSocket message to RabbitMQ for main app to broadcast."""
         try:
             publisher = await get_rabbitmq_publisher()
-
-            # Ensure publisher is connected
-            if not publisher.channel:
-                await publisher.connect()
 
             # Create message for WebSocket broadcasting
             rabbitmq_message = {
@@ -83,12 +79,15 @@ class WebSocketManager:
             }
 
             message_body = json.dumps(rabbitmq_message).encode("utf-8")
+            # Publisher now handles connection health automatically
             await publisher.publish("websocket-events", message_body)
 
-            logger.info(f"Published WebSocket message for user {user_id} to RabbitMQ")
+            logger.debug(f"Published WebSocket message for user {user_id} to RabbitMQ")
 
         except Exception as e:
-            logger.error(f"Failed to publish WebSocket message to RabbitMQ: {e}")
+            logger.error(
+                f"Failed to publish WebSocket message to RabbitMQ: {e}", exc_info=True
+            )
 
 
 # Create a singleton instance of WebSocketManager

@@ -45,7 +45,14 @@ async def follow_up_actions_node(
 
     # Send completion marker as soon as follow-up actions start
     writer = get_stream_writer()
-    writer({"main_response_complete": True})
+    try:
+        writer({"main_response_complete": True})
+    except Exception as write_error:
+        # Stream is closed (user disconnected), no need to continue
+        logger.debug(
+            f"Stream already closed when sending completion marker: {write_error}"
+        )
+        return state
 
     tool_registry = await get_tool_registry()
     llm = init_llm()
@@ -55,7 +62,10 @@ async def follow_up_actions_node(
 
         # Skip if insufficient conversation history for meaningful suggestions
         if not messages or len(messages) < 2:
-            writer({"follow_up_actions": []})
+            try:
+                writer({"follow_up_actions": []})
+            except Exception:
+                pass  # Stream closed, ignore
             return state
 
         # Set up structured output parsing
@@ -79,16 +89,25 @@ async def follow_up_actions_node(
             actions = parser.parse(result if isinstance(result, str) else result.text())
         except Exception as parse_exc:
             logger.error(f"Error parsing follow-up actions: {parse_exc}")
-            writer({"follow_up_actions": []})
+            try:
+                writer({"follow_up_actions": []})
+            except Exception:
+                pass  # Stream closed, ignore
             return state
 
         # Always stream follow-up actions, even if empty
-        writer({"follow_up_actions": actions.actions if actions.actions else []})
+        try:
+            writer({"follow_up_actions": actions.actions if actions.actions else []})
+        except Exception:
+            pass  # Stream closed, ignore
         return state
 
     except Exception as e:
         logger.error(f"Error in follow-up actions node: {e}")
-        writer({"follow_up_actions": []})
+        try:
+            writer({"follow_up_actions": []})
+        except Exception:
+            pass  # Stream closed, client already disconnected
         return state
 
 

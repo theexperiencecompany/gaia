@@ -136,8 +136,18 @@ async def process_email_task(ctx: dict, user_id: str, email_data: dict) -> str:
 
                 for workflow in workflows_to_execute:
                     try:
+                        from app.workers.tasks.workflow_tasks import (
+                            create_workflow_completion_notification,
+                        )
+
+                        # Execute workflow
                         execution_messages = await execute_workflow_as_chat(
                             workflow, {"user_id": user_id}, trigger_context
+                        )
+
+                        # Store messages and send notification
+                        await create_workflow_completion_notification(
+                            workflow, execution_messages, user_id
                         )
 
                         # Update workflow statistics
@@ -164,19 +174,28 @@ async def process_email_task(ctx: dict, user_id: str, email_data: dict) -> str:
 
                     except RateLimitExceededException as rate_error:
                         logger.warning(
-                            f"Rate limit exceeded for user {user_id} executing workflow {workflow.id}: {rate_error}"
+                            f"Rate limit exceeded for workflow {workflow.id}: {rate_error}"
                         )
                         workflow_executions.append(
                             {
                                 "workflow_id": workflow.id,
                                 "status": "rate_limited",
-                                "error": f"Rate limit exceeded: {str(rate_error)}",
+                                "error": str(rate_error),
                             }
                         )
+                        try:
+                            await workflows_collection.update_one(
+                                {"_id": workflow.id, "user_id": user_id},
+                                {"$inc": {"total_executions": 1}},
+                            )
+                        except Exception:
+                            pass
 
                     except Exception as workflow_error:
-                        logger.error(f"Workflow {workflow.id} failed: {workflow_error}")
-
+                        logger.error(
+                            f"Workflow {workflow.id} failed: {workflow_error}",
+                            exc_info=True,
+                        )
                         workflow_executions.append(
                             {
                                 "workflow_id": workflow.id,
@@ -184,15 +203,13 @@ async def process_email_task(ctx: dict, user_id: str, email_data: dict) -> str:
                                 "error": str(workflow_error),
                             }
                         )
-
-                        # Update failure statistics
                         try:
                             await workflows_collection.update_one(
                                 {"_id": workflow.id, "user_id": user_id},
                                 {"$inc": {"total_executions": 1}},
                             )
-                        except Exception as stats_error:
-                            logger.error(f"Failed to update stats: {stats_error}")
+                        except Exception:
+                            pass
         successful_executions = len(
             [w for w in workflow_executions if w["status"] == "success"]
         )

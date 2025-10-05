@@ -97,6 +97,15 @@ async def close_reminder_scheduler():
         logger.error(f"Error closing reminder scheduler: {e}")
 
 
+async def close_workflow_scheduler():
+    """Close workflow scheduler."""
+    try:
+        await workflow_scheduler.close()
+        logger.info("Workflow scheduler closed")
+    except Exception as e:
+        logger.error(f"Error closing workflow scheduler: {e}")
+
+
 async def close_websocket_async():
     """Close WebSocket event consumer."""
     try:
