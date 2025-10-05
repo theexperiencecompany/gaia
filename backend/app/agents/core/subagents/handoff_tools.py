@@ -1,6 +1,6 @@
 from typing import Annotated, List, Optional
 
-from app.agents.prompts.gmail_node_prompts import GMAIL_PLANNER_PROMPT
+from app.agents.prompts.gmail_node_prompts import GMAIL_ORCHESTRATOR_PROMPT
 from app.agents.prompts.subagent_prompts import (
     LINKEDIN_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
@@ -91,7 +91,7 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
                     domain="email management",
                     capabilities="composing, sending, reading, organizing emails, managing labels, drafts, attachments, and advanced email workflows",
                 ),
-                system_prompt=GMAIL_PLANNER_PROMPT,
+                system_prompt=GMAIL_ORCHESTRATOR_PROMPT,
             )
         )
 

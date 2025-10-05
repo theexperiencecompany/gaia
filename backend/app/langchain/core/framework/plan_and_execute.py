@@ -83,18 +83,40 @@ class NodeHandoff(BaseModel):
 
 # Orchestrator System Prompt Template
 ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = PromptTemplate(
-    input_variables=["orchestrator_prompt", "node_descriptions", "handoff_format"],
-    template="""{orchestrator_prompt}
+    input_variables=["orchestrator_prompt", "handoff_format"],
+    template="""
+## EXECUTION FLOW
 
-AVAILABLE SPECIALIZED NODES:
-{node_descriptions}
+You are part of a multi-agent system with this flow:
+main_agent → YOU (orchestrator) → specialized nodes → YOU → ... → finalizer → main_agent
 
-HANDOFF INSTRUCTIONS:
-If you need to delegate to a specialized node, respond with ONLY this JSON format:
+**You cannot directly communicate with the user.** Your responses go to the finalizer, which compiles results for the main_agent.
+
+## YOUR ROLE
+
+You coordinate operations by either:
+1. **Handling directly** - Use your tools and respond normally
+2. **Delegating to specialized nodes** - Return JSON handoff for domain experts
+
+All nodes are fully agentic and can handle complex, multi-step workflows autonomously.
+
+## HANDOFF MECHANISM
+
+When delegating, respond with ONLY this JSON format:
 {handoff_format}
 
-If you can handle the task yourself or are providing a final response, respond normally (no JSON).
-If you make any tool calls, continue your work - you're not done yet.
+Give nodes complete instructions - they can handle complexity:
+✅ "Find all unread emails from John about Q4, label them 'Q4-Project', and archive"
+❌ Breaking into 3 separate handoffs
+
+## CONTINUATION
+
+- If you make tool calls, continue your work - you're not done yet
+- If you delegate, the node will complete its task and return control to you
+- Keep coordinating until the user's request is fully satisfied
+- When complete and no more handoffs/tool calls needed, provide your final summary
+
+{orchestrator_prompt}
 """,
 )
 
@@ -200,17 +222,16 @@ class OrchestratorGraph:
 
         # Inject system prompt only once at the beginning
         if not state.get("system_prompt_injected", False):
-            node_descriptions = "\n".join(
-                f"- {name}: {desc}" for name, desc in self._node_descriptions.items()
-            )
-
             system_content = ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE.format(
                 orchestrator_prompt=self._orchestrator_prompt,
-                node_descriptions=node_descriptions,
                 handoff_format=self._handoff_parser.get_format_instructions(),
             )
 
-            system_message = SystemMessage(content=system_content, name=self.agent_name)
+            system_message = SystemMessage(
+                content=system_content,
+                name=self.agent_name,
+                additional_kwargs={"orchestrator_role": "orchestrator_system"},
+            )
             messages = [system_message] + messages
             state["system_prompt_injected"] = True
 
@@ -227,11 +248,17 @@ class OrchestratorGraph:
         )
         response_message.name = self.agent_name
 
+        content = self._extract_content(response)
+        handoff = self._try_parse_handoff(content)
+
+        # Mark handoff messages for later deletion
+        if handoff:
+            response_message.additional_kwargs["orchestrator_role"] = "handoff"
+        else:
+            response_message.additional_kwargs["orchestrator_role"] = "orchestrator"
+
         state["messages"] = [*state["messages"], response_message]
 
-        content = self._extract_content(response)
-
-        handoff = self._try_parse_handoff(content)
         if handoff:
             if handoff.name not in self._nodes:
                 error_msg = AIMessage(
@@ -312,6 +339,9 @@ class OrchestratorGraph:
                 for msg in new_messages:
                     if isinstance(msg, (AIMessage, HumanMessage)):
                         msg.name = self.agent_name
+                    # Mark node messages
+                    if not msg.additional_kwargs.get("orchestrator_role"):
+                        msg.additional_kwargs["orchestrator_role"] = "node"
 
                 state.setdefault("messages", []).extend(new_messages)
 
@@ -340,13 +370,20 @@ class OrchestratorGraph:
 
         messages = state.get("messages", [])
 
-        finalizer_messages: List[AnyMessage] = [
-            SystemMessage(content=self._finalizer_prompt, name=self.agent_name),
-        ]
-        finalizer_messages.extend(messages)
-        finalizer_messages.append(
-            HumanMessage(content=FINALIZER_HUMAN_PROMPT, name=self.agent_name)
+        finalizer_system = SystemMessage(
+            content=self._finalizer_prompt,
+            name=self.agent_name,
+            additional_kwargs={"orchestrator_role": "finalizer_system"},
         )
+        finalizer_human = HumanMessage(
+            content=FINALIZER_HUMAN_PROMPT,
+            name=self.agent_name,
+            additional_kwargs={"orchestrator_role": "finalizer_human"},
+        )
+
+        finalizer_messages: List[AnyMessage] = [finalizer_system]
+        finalizer_messages.extend(messages)
+        finalizer_messages.append(finalizer_human)
 
         response = await self._invoke_llm(self.llm, finalizer_messages)
         finalizer_content = self._extract_content(response)
@@ -354,6 +391,7 @@ class OrchestratorGraph:
         finalizer_message = AIMessage(
             content=finalizer_content,
             name=self.agent_name,
+            additional_kwargs={"orchestrator_role": "finalizer"},
         )
         state["messages"] = [*state["messages"], finalizer_message]
 
@@ -503,6 +541,58 @@ class OrchestratorGraph:
         return await llm.ainvoke(messages, config=config)
 
 
+def _create_cleanup_hook(agent_name: str) -> HookType:
+    """Create a cleanup hook that removes orchestrator-specific messages and normalizes names.
+
+    This hook:
+    1. Removes orchestrator system prompts (will be re-added in next request)
+    2. Removes AI messages that are just handoff JSON
+    3. Removes finalizer system and human messages
+    4. Keeps only finalizer AI messages (the actual summary)
+    5. Adds agent_name to all remaining orchestrator messages
+    """
+
+    def cleanup_messages(
+        state: OrchestratorState, config: RunnableConfig, store: BaseStore
+    ) -> OrchestratorState:
+        try:
+            messages = state.get("messages", [])
+            cleaned_messages = []
+
+            for msg in messages:
+                orchestrator_role = msg.additional_kwargs.get("orchestrator_role")
+
+                # Skip orchestrator-created messages that should be removed
+                if orchestrator_role in [
+                    "orchestrator_system",  # Orchestrator system prompt
+                    "handoff",  # Handoff AI messages
+                    "finalizer_system",  # Finalizer system prompt
+                    "finalizer_human",  # Finalizer human instruction
+                ]:
+                    continue
+
+                # Keep all non-orchestrator messages unchanged
+                if not orchestrator_role:
+                    cleaned_messages.append(msg)
+                    continue
+
+                # For remaining orchestrator messages, ensure they have agent_name
+                if orchestrator_role in ["orchestrator", "node", "finalizer"]:
+                    if not msg.name:
+                        msg.name = agent_name
+                    cleaned_messages.append(msg)
+
+            return {**state, "messages": cleaned_messages}  # type: ignore[return-value]
+
+        except Exception as e:
+            from app.config.loggers import chat_logger as logger
+
+            logger.error(f"Error in cleanup hook: {e}")
+            return state
+
+    return cleanup_messages
+
+
 def build_orchestrator_subgraph(
     config: OrchestratorSubgraphConfig,
 ):
@@ -519,6 +609,8 @@ def build_orchestrator_subgraph(
         allow_memory_system_messages=True,
     )
 
+    cleanup_hook = _create_cleanup_hook(config.agent_name)
+
     graph = OrchestratorGraph(
         provider_name=config.provider_name,
         agent_name=config.agent_name,
@@ -528,7 +620,7 @@ def build_orchestrator_subgraph(
         llm=config.llm,
         finalizer_prompt=config.finalizer_prompt,
         pre_llm_hooks=[filter_node, trim_messages_node],
-        end_graph_hooks=[],
+        end_graph_hooks=[cleanup_hook],
     )
 
     return graph._graph.compile()
