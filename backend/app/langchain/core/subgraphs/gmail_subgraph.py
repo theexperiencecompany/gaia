@@ -15,16 +15,16 @@ from app.agents.prompts.gmail_node_prompts import (
 )
 from app.config.loggers import langchain_logger as logger
 from app.langchain.core.framework.plan_and_execute import (
-    PlanExecuteNodeConfig,
-    PlanExecuteSubgraphConfig,
-    build_plan_execute_subgraph,
+    OrchestratorNodeConfig,
+    OrchestratorSubgraphConfig,
+    build_orchestrator_subgraph,
 )
 from app.services.composio.composio_service import get_composio_service
 from langchain_core.language_models import LanguageModelLike
 from langgraph.graph.state import CompiledStateGraph
 
 
-async def get_node_configs() -> Sequence[PlanExecuteNodeConfig]:
+async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
     """Get the list of Gmail node configurations."""
     composio_service = get_composio_service()
 
@@ -85,43 +85,43 @@ async def get_node_configs() -> Sequence[PlanExecuteNodeConfig]:
     )
 
     return (
-        PlanExecuteNodeConfig(
+        OrchestratorNodeConfig(
             name="email_composition",
             description="Create, draft, send emails and manage drafts",
             system_prompt=EMAIL_COMPOSITION_PROMPT,
             tools=email_composition_tools,
         ),
-        PlanExecuteNodeConfig(
+        OrchestratorNodeConfig(
             name="email_retrieval",
             description="Search, fetch, list emails and conversation threads",
             system_prompt=EMAIL_RETRIEVAL_PROMPT,
             tools=email_retrieval_tools,
         ),
-        PlanExecuteNodeConfig(
+        OrchestratorNodeConfig(
             name="email_management",
             description="Organize, label, delete, archive emails",
             system_prompt=EMAIL_MANAGEMENT_PROMPT,
             tools=email_management_tools,
         ),
-        PlanExecuteNodeConfig(
+        OrchestratorNodeConfig(
             name="communication",
             description="Reply to threads, forward messages, manage conversations",
             system_prompt=COMMUNICATION_PROMPT,
             tools=communication_tools,
         ),
-        PlanExecuteNodeConfig(
+        OrchestratorNodeConfig(
             name="contact_management",
             description="Search people, contacts, profiles in Gmail",
             system_prompt=CONTACT_MANAGEMENT_PROMPT,
             tools=contact_management_tools,
         ),
-        PlanExecuteNodeConfig(
+        OrchestratorNodeConfig(
             name="attachment_handling",
             description="Download and process email attachments",
             system_prompt=ATTACHMENT_HANDLING_PROMPT,
             tools=attachment_handling_tools,
         ),
-        PlanExecuteNodeConfig(
+        OrchestratorNodeConfig(
             name="free_llm",
             description="General reasoning, brainstorming, structuring tasks",
             system_prompt="You are a helpful Gmail assistant. Execute the given instruction using your knowledge and reasoning abilities. Be thorough and provide clear, actionable responses.",
@@ -140,16 +140,16 @@ async def create_gmail_subgraph(llm: LanguageModelLike) -> CompiledStateGraph:
     """
     logger.info("Creating Gmail subgraph using plan-and-execute framework")
 
-    config = PlanExecuteSubgraphConfig(
+    config = OrchestratorSubgraphConfig(
         provider_name="Gmail",
         agent_name="gmail_agent",
-        planner_prompt=GMAIL_PLANNER_PROMPT,
+        orchestrator_prompt=GMAIL_PLANNER_PROMPT,
         node_configs=await get_node_configs(),
         llm=llm,
         finalizer_prompt=GMAIL_FINALIZER_PROMPT,
     )
 
-    graph = build_plan_execute_subgraph(config)
+    graph = build_orchestrator_subgraph(config)
     logger.info("Gmail subgraph created successfully")
 
     return graph
