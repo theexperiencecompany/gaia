@@ -4,18 +4,20 @@ Delete System Messages Node for the conversational graph.
 This module provides functionality to remove system messages from the conversation
 state while preserving all other message types in their original order.
 """
+from typing import Callable, TypeVar
 
 from app.config.loggers import chat_logger as logger
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.graph import MessagesState
 from langgraph.store.base import BaseStore
-from langgraph_bigtool.graph import State
 
+T = TypeVar("T", bound=MessagesState)
 
 def create_filter_messages_node(
     agent_name: str = "main_agent",
     allow_memory_system_messages: bool = False,
-):
+) -> Callable[[T, RunnableConfig, BaseStore], T]:
     """Create a node that filters out system messages from the conversation state.
     Args:
         agent_name: Name of the agent whose system messages should be included.
@@ -25,9 +27,7 @@ def create_filter_messages_node(
         A callable node that filters messages in the conversation state.
     """
 
-    async def filter_messages(
-        state: State, config: RunnableConfig, store: BaseStore
-    ) -> State:
+    def filter_messages(state: T, config: RunnableConfig, store: BaseStore) -> T:
         """
         Filters out system messages from the conversation state.
         Args:
@@ -77,7 +77,7 @@ def create_filter_messages_node(
                         for tool_call in msg.tool_calls:
                             allowed_tool_messages_ids.add(tool_call.get("id"))
 
-            return {**state, "messages": filtered_messages}
+            return {**state, "messages": filtered_messages}  # type: ignore[return-value]
 
         except Exception as e:
             logger.error(f"Error in delete system messages node: {e}")

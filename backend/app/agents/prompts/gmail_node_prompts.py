@@ -29,14 +29,6 @@ You break down complex Gmail requests into sequential, actionable steps that can
 4. **Consider** dependencies between steps (e.g., fetch email before replying)
 5. **Optimize** for efficiency and user experience
 
-## Plan Format
-Return plans as structured steps:
-```
-Step 1: [node_name] - [specific action description]
-Step 2: [node_name] - [specific action description]
-...
-```
-
 ## Examples
 
 **User Request**: "Reply to John's latest email about the project meeting"

@@ -1,4 +1,37 @@
-"""Shared plan-and-execute framework for provider specific subgraphs."""
+"""Shared plan-and-execute framework for provider specific subgraphs.
+
+ARCHITECTURE OVERVIEW:
+This framework implements a message-history-based plan-and-execute pattern where:
+
+1. PLANNER: Creates a step-by-step execution plan
+2. EXECUTOR: Runs each step sequentially with full conversation context
+3. SPECIALIZED NODES: Each node has its own prompt and tools
+4. FINALIZER: Compiles results from complete message history
+
+KEY DIFFERENCES FROM STANDARD AGENTIC FLOW:
+- Explicit planner/executor separation
+- Each node has specialized prompts (not one monolithic prompt)
+- Full message history (including tool calls) flows through steps
+- Finalizer provides structured compilation
+
+MESSAGE FLOW:
+- Planning phase stores planning messages
+- Each step receives ALL previous messages (not just summaries)
+- Tool calls are naturally preserved in message history
+- Subsequent steps can see previous tool calls and their results
+- Finalizer sees complete conversation to compile final output
+
+BENEFITS:
+- No prompt engineering needed to "pass context" between steps
+- Tool calls are never lost - they're in the message history
+- Each node can make informed decisions based on what previous steps did
+- Natural conversation flow while maintaining specialized behavior per node
+- Finalizer has complete context to produce comprehensive summaries
+
+USAGE:
+Use build_plan_execute_subgraph() with PlanExecuteSubgraphConfig to create
+a configured subgraph with automatic message filtering and cleanup hooks.
+"""
 
 from __future__ import annotations
 
@@ -24,15 +57,20 @@ from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+)
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import create_react_agent
 from langgraph.store.base import BaseStore
-from langgraph_bigtool.graph import State
 from pydantic import BaseModel, Field
 
 BASE_NODE_INSTRUCTION = """IMPORTANT EXECUTION CONTEXT:
@@ -42,12 +80,14 @@ KEY CONSTRAINTS:
 - You CANNOT directly communicate with users or ask them questions
 - You are part of an automated execution pipeline
 - The sub-graph has created a step-by-step plan, and you are executing one specific step
+- You can see the full conversation history including previous steps' tool calls and outputs
 
 YOUR RESPONSIBILITIES:
-- Execute your assigned task completely and accurately
+- Execute your assigned task completely and accurately using the specialized tools and context available to you
+- Review previous steps' outputs and tool calls to inform your decisions
 - When finished, briefly explain what you did and the outcome
 - Include actionable results: IDs, statuses, key data points, relevant details
-- Your output will be passed to subsequent steps in the plan
+- Your output and tool calls will be visible to subsequent steps
 - Be clear, concise, and provide sufficient context for next steps"""
 
 _DEFAULT_BASE_PLANNER_PROMPT = """
@@ -63,11 +103,21 @@ PLANNING SPECIFICATIONS:
 Create a detailed execution plan with clear step descriptions and proper node assignments.
 
 {provider_planner_prompt}
+
+{format_instructions}
 """
 
 DEFAULT_BASE_PLANNER_PROMPT_TEMPLATE = PromptTemplate(
-    input_variables=["provider_planner_prompt"], template=_DEFAULT_BASE_PLANNER_PROMPT
+    input_variables=["provider_planner_prompt", "format_instructions"],
+    template=_DEFAULT_BASE_PLANNER_PROMPT,
 )
+
+_NODE_ENHANCED_PROMPT_TEMPLATE = """{base_instruction}
+
+{node_system_prompt}
+
+CURRENT EXECUTION:
+You are currently executing Step {step_id} of the plan."""
 
 
 class ExecutionResult:
@@ -106,16 +156,11 @@ class ExecutionContext(TypedDict, total=False):
     instructions: str
     context: Dict[str, Any]
     step_id: int
-    metadata: Dict[str, Any]
-    previous_step_outputs: str
 
 
-class PlanExecuteState(TypedDict, total=False):
-    messages: List[BaseMessage]
-    manual_plan: Optional[ExecutionPlan]
+class PlanExecuteState(MessagesState, total=False):
     available_nodes: Dict[str, str]
     include_previous_outputs: bool
-    metadata: Dict[str, Any]
     plan: ExecutionPlan
     current_step: int
     execution_results: List[ExecutionResult]
@@ -143,7 +188,12 @@ HookType = Union[
     ],
 ]
 NodeHandler = Callable[
-    [ExecutionContext, Optional[RunnableConfig], Optional[BaseStore]],
+    [
+        ExecutionContext,
+        Optional[RunnableConfig],
+        Optional[BaseStore],
+        Sequence[AnyMessage],
+    ],
     Awaitable[Any],
 ]
 
@@ -169,6 +219,8 @@ class PlanExecuteSubgraphConfig:
 class PromptDrivenPlanExecuteGraph:
     """LangGraph-backed planner/executor with support for prompt and runnable nodes."""
 
+    _parser = PydanticOutputParser(pydantic_object=ExecutionPlan)
+
     def __init__(
         self,
         provider_name: str,
@@ -178,7 +230,7 @@ class PromptDrivenPlanExecuteGraph:
         node_configs: Sequence[PlanExecuteNodeConfig],
         llm: Optional[LanguageModelLike] = None,
         finalizer_prompt: Optional[str] = None,
-        pre_plan_hooks: Optional[Sequence[HookType]] = None,
+        pre_llm_hooks: Optional[Sequence[HookType]] = None,
         end_graph_hooks: Optional[Sequence[HookType]] = None,
     ):
         self.provider_name = provider_name
@@ -186,7 +238,7 @@ class PromptDrivenPlanExecuteGraph:
         self._planner_prompt = planner_prompt
         self._finalizer_prompt = finalizer_prompt
         self.llm = llm or init_llm()
-        self._pre_plan_hooks = pre_plan_hooks or []
+        self._pre_llm_hooks = pre_llm_hooks or []
         self._end_graph_hooks = end_graph_hooks or []
         self._nodes: Dict[str, NodeHandler] = {}
         self._node_descriptions: Dict[str, str] = {}
@@ -203,60 +255,37 @@ class PromptDrivenPlanExecuteGraph:
         self, state: PlanExecuteState, config: RunnableConfig, store: BaseStore
     ) -> PlanExecuteState:
         # Apply pre_plan_hooks for message filtering
-        for hook in self._pre_plan_hooks:
+        for hook in self._pre_llm_hooks:
             result = hook(state, config, store)
             if inspect.iscoroutine(result):
                 state = await result  # type: ignore
             else:
                 state = result  # type: ignore
 
-        manual_plan = state.get("manual_plan")
-        if manual_plan is not None:
-            state["plan"] = manual_plan
-            state["current_step"] = 0
-            self._prepare_step_execution(state)
-            return state
+        # Overriding system prompt sent by handoff tool
+        state["messages"][-2] = SystemMessage(content=self._planner_prompt)  # type: ignore
 
-        available_nodes = state.get("available_nodes") or {}
-        nodes_description = "\n".join(
-            f"- {name}: {desc}" for name, desc in available_nodes.items()
-        )
+        response = await self._invoke_llm(self.llm, state["messages"])
 
-        parser = PydanticOutputParser(pydantic_object=ExecutionPlan)
-        format_instructions = parser.get_format_instructions()
+        content = self._extract_content(response)
 
-        template = PromptTemplate(
-            template="{planner_prompt}\n\n{format_instructions}",
-            input_variables=["planner_prompt"],
-            partial_variables={"format_instructions": format_instructions},
-        )
-
-        planner_prompt = self._planner_prompt.format(
-            provider_name=self.provider_name,
-            available_nodes=nodes_description,
-        )
-
-        formatted_prompt = template.format(planner_prompt=planner_prompt)
-
-        state["messages"][-2] = SystemMessage(content=formatted_prompt)  # type: ignore
-
-        metadata = state.get("metadata", {})
-        raw_response = await self._invoke_llm(self.llm, state["messages"], metadata)  # type: ignore
-        content = self._extract_content(raw_response)
-
-        plan = parser.parse(content)
+        plan = self._parser.parse(content)
         state["plan"] = plan
         state["current_step"] = 0
         self._prepare_step_execution(state)
 
         # Create planner output message with agent_name_planner for preservation
-        planner_message = AIMessage(
-            content=f"Created execution plan with {len(plan.steps)} steps",
-            name=self.agent_name,
-        )
-        state.setdefault("messages", []).append(planner_message)
+        planner_response = None
+        if isinstance(response, BaseMessage):
+            planner_response = cast(AIMessage, response)
+            planner_response.name = self.agent_name
+        else:
+            planner_response = AIMessage(
+                content=content,
+                name=self.agent_name,
+            )
 
-        return state
+        return {"messages": [planner_response]}
 
     def _extract_content(self, response: Union[str, BaseMessage]) -> str:
         if isinstance(response, str):
@@ -276,8 +305,6 @@ class PromptDrivenPlanExecuteGraph:
         state["step_execution_contexts"] = {}
         state["step_node_mappings"] = {}
 
-        metadata = state.get("metadata", {})
-
         for step in plan.steps:
             state["step_node_mappings"][step.step_id] = step.node_name
 
@@ -285,7 +312,6 @@ class PromptDrivenPlanExecuteGraph:
                 "instructions": step.instructions,
                 "context": step.context,
                 "step_id": step.step_id,
-                "metadata": metadata,
             }
             state.setdefault("step_execution_contexts", {})[step.step_id] = (
                 execution_context
@@ -322,30 +348,6 @@ class PromptDrivenPlanExecuteGraph:
             execution_context = (state.get("step_execution_contexts") or {}).get(
                 step_id, {}
             )
-
-            # Compile all previous step outputs from messages
-            if state.get("include_previous_outputs", True):
-                completed_steps = state.get("completed_steps", [])
-                if completed_steps:
-                    previous_outputs = []
-                    messages = state.get("messages", [])
-
-                    # Get all previous step outputs in order
-                    for completed_step_id in completed_steps:
-                        for msg in reversed(messages):
-                            if isinstance(msg, AIMessage):
-                                exec_metadata = msg.additional_kwargs.get("execution_metadata", {})
-                                if exec_metadata.get("step_id") == completed_step_id:
-                                    node_name = exec_metadata.get("node_name", "unknown")
-                                    previous_outputs.append(
-                                        f"Step {completed_step_id} ({node_name}): {msg.content}"
-                                    )
-                                    break
-
-                    if previous_outputs:
-                        execution_context["previous_step_outputs"] = "\n\n".join(
-                            previous_outputs
-                        )
 
             state["_next_node"] = node_name
             state["_execution_context"] = execution_context
@@ -387,31 +389,27 @@ class PromptDrivenPlanExecuteGraph:
 
             step_id = ctx.get("step_id", -1)
             try:
-                result = await node_func(ctx, config, store)
+                # Pass current messages to node, get back new messages
+                result = await node_func(ctx, config, store, state.get("messages", []))
+
+                # Result contains new messages from agent execution
+                new_messages = result.get("messages", [])
+                output_text = result.get("output", "")
+
+                # Set agent_name on all AI and Human messages from node execution
+                for msg in new_messages:
+                    if isinstance(msg, (AIMessage, HumanMessage)):
+                        if not msg.name:
+                            msg.name = self.agent_name
+
+                # Add all new messages (including tool calls) to state
+                state.setdefault("messages", []).extend(new_messages)
+
                 execution_result = ExecutionResult(
                     step_id=step_id,
                     success=True,
-                    output=result,
+                    output=output_text,
                 )
-
-                # Store node output as AIMessage with execution metadata
-                output_content = (
-                    result.get("output", "")
-                    if isinstance(result, dict)
-                    else str(result)
-                )
-                node_message = AIMessage(
-                    content=output_content,
-                    name=self.agent_name,
-                    additional_kwargs={
-                        "execution_metadata": {
-                            "step_id": step_id,
-                            "node_name": node_name,
-                            "success": True,
-                        }
-                    },
-                )
-                state.setdefault("messages", []).append(node_message)
 
             except Exception as e:
                 execution_result = ExecutionResult(
@@ -420,21 +418,6 @@ class PromptDrivenPlanExecuteGraph:
                     output=None,
                     error=str(e),
                 )
-
-                # Store error as AIMessage too
-                error_message = AIMessage(
-                    content=f"Error executing step: {str(e)}",
-                    name=self.agent_name,
-                    additional_kwargs={
-                        "execution_metadata": {
-                            "step_id": step_id,
-                            "node_name": node_name,
-                            "success": False,
-                            "error": str(e),
-                        }
-                    },
-                )
-                state.setdefault("messages", []).append(error_message)
 
             state.setdefault("execution_results", []).append(execution_result)
             state.setdefault("completed_steps", []).append(step_id)
@@ -456,6 +439,14 @@ class PromptDrivenPlanExecuteGraph:
     async def _finalization_step(
         self, state: PlanExecuteState, config: RunnableConfig, store: BaseStore
     ) -> PlanExecuteState:
+        # Apply pre_llm_hooks for message filtering before finalization
+        for hook in self._pre_llm_hooks:
+            result = hook(state, config, store)
+            if inspect.iscoroutine(result):
+                state = await result  # type: ignore
+            else:
+                state = result  # type: ignore
+
         plan = state.get("plan")
         if not plan:
             state["final_result"] = {"error": "No plan found"}
@@ -466,6 +457,7 @@ class PromptDrivenPlanExecuteGraph:
         failed_steps = [r for r in all_results if not r.success]
         successful_steps = [r for r in all_results if r.success]
         step_node_mappings = state.get("step_node_mappings") or {}
+        messages = state.get("messages", [])
 
         # If no finalizer prompt, use simple formatting (backward compatibility)
         if not self._finalizer_prompt:
@@ -486,16 +478,17 @@ class PromptDrivenPlanExecuteGraph:
                     }
                     for r in all_results
                 ],
+                "message_count": len(messages),
             }
 
             if failed_steps:
-                status_msg = f"Plan execution completed with {len(failed_steps)} failed steps out of {len(all_results)} total steps"
+                status_msg = f"Plan execution completed with {len(failed_steps)} failed steps out of {len(all_results)} total steps. Full conversation with {len(messages)} messages preserved."
             else:
-                status_msg = f"Plan execution completed successfully with {len(all_results)} steps"
+                status_msg = f"Plan execution completed successfully with {len(all_results)} steps. Full conversation with {len(messages)} messages preserved including all tool calls."
 
             finalizer_message = AIMessage(
                 content=status_msg,
-                name=f"{self.agent_name},main_agent",  # added main_agent to make this visible to main_agent
+                name=f"{self.agent_name},main_agent",
             )
             state.setdefault("messages", []).append(finalizer_message)
             state["final_result"] = final_result
@@ -503,7 +496,10 @@ class PromptDrivenPlanExecuteGraph:
             return state
 
         # LLM-powered finalization with finalizer_prompt
-        # Build comprehensive context for the finalizer
+        # The finalizer sees the ENTIRE conversation history including all tool calls
+        # This allows it to understand exactly what happened and compile accordingly
+
+        # Build a summary header for context
         execution_summary = []
         for i, step in enumerate(plan.steps, 1):
             step_result = next(
@@ -523,7 +519,7 @@ Status: {"Success" if step_result and step_result.success else "Failed"}
 
         execution_details = "\n".join(execution_summary)
 
-        # Create human message with all execution context
+        # Create human message explaining the task
         human_content = f"""PLAN EXECUTION COMPLETED
 
 Plan Description: {plan.description}
@@ -532,19 +528,23 @@ Completed Steps: {len(state.get("completed_steps", []))}
 Successful Steps: {len(successful_steps)}
 Failed Steps: {len(failed_steps)}
 
-DETAILED EXECUTION RESULTS:
+STEP SUMMARY:
 
 {execution_details}
 
-Please compile this information into a comprehensive summary for the main agent following your instructions."""
+You have access to the complete conversation history above, including all tool calls, inputs, and outputs from each step.
+Please compile this information into a comprehensive summary for the main agent following your specialized instructions."""
 
-        messages = [
+        # Start with system prompt, then full message history, then finalization request
+        finalizer_messages: List[AnyMessage] = [
             SystemMessage(content=self._finalizer_prompt),
-            HumanMessage(content=human_content),
         ]
+        # Add all execution messages (contains full context with tool calls)
+        finalizer_messages.extend(messages)
+        # Add the finalization request
+        finalizer_messages.append(HumanMessage(content=human_content))
 
-        metadata = state.get("metadata", {})
-        response = await self._invoke_llm(self.llm, messages, metadata)
+        response = await self._invoke_llm(self.llm, finalizer_messages)
         finalizer_content = self._extract_content(response)
 
         # Store the comprehensive final result
@@ -556,6 +556,8 @@ Please compile this information into a comprehensive summary for the main agent 
             "successful_steps": len(successful_steps),
             "failed_steps": len(failed_steps),
             "compiled_summary": finalizer_content,
+            "message_count": len(messages),
+            "tool_calls_preserved": True,
             "raw_results": [
                 {
                     "step_id": r.step_id,
@@ -569,9 +571,10 @@ Please compile this information into a comprehensive summary for the main agent 
         }
 
         # Create finalizer message with comprehensive compiled summary
+        # The finalizer has seen all tool calls and messages, so its summary is well-informed
         finalizer_message = AIMessage(
             content=finalizer_content,
-            name=f"{self.agent_name},main_agent",  # added main_agent to make this visible to main_agent
+            name=f"{self.agent_name},main_agent",
         )
         state.setdefault("messages", []).append(finalizer_message)
 
@@ -638,13 +641,10 @@ Please compile this information into a comprehensive summary for the main agent 
         """Create a prompt-based node with tool call handling using create_react_agent."""
         tools: list[BaseTool] = list(node_config.tools or [])
 
-        # Combine base instructions with node-specific prompt
-        enhanced_prompt = f"{BASE_NODE_INSTRUCTION}\n\n{node_config.system_prompt}"
-
+        # Create react agent without system prompt - we'll add it manually
         node_agent = create_react_agent(
             model=self.llm,
             tools=tools,
-            prompt=enhanced_prompt,
             name=f"{self.agent_name}_{node_config.name}",
         )
 
@@ -652,48 +652,82 @@ Please compile this information into a comprehensive summary for the main agent 
             execution_context: ExecutionContext,
             runtime_config: Optional[RunnableConfig] = None,
             store: Optional[BaseStore] = None,
+            previous_messages: Sequence[AnyMessage] = (),
         ) -> Dict[str, Any]:
-            # Build human message with instructions and previous outputs
-            human_content = execution_context.get("instructions", "")
-            if not human_content:
-                human_content = "Execute the requested operation."
+            # Start with all previous messages (full conversation history)
+            messages = list(previous_messages)
 
-            # Add previous step outputs if available
-            previous_outputs = execution_context.get("previous_step_outputs", "")
-            if previous_outputs:
-                human_content = (
-                    f"{human_content}\n\nPREVIOUS STEP OUTPUTS:\n{previous_outputs}"
+            # Apply pre_llm_hooks for message filtering before node execution
+            temp_state: PlanExecuteState = {"messages": messages}  # type: ignore
+            for hook in self._pre_llm_hooks:
+                result = hook(temp_state, runtime_config or {}, store)  # type: ignore
+                if inspect.iscoroutine(result):
+                    temp_state = await result  # type: ignore
+                else:
+                    temp_state = result  # type: ignore
+            messages = list(temp_state.get("messages", []))
+
+            # Get step context
+            step_id = execution_context.get("step_id", 0)
+            step_instruction = execution_context.get("instructions", "")
+            if not step_instruction:
+                step_instruction = "Execute the requested operation."
+
+            # Add step context if available
+            step_context = execution_context.get("context", {})
+            if step_context:
+                context_str = "\n".join(f"{k}: {v}" for k, v in step_context.items())
+                step_instruction = (
+                    f"{step_instruction}\n\nAdditional Context:\n{context_str}"
                 )
 
-            messages = [HumanMessage(content=human_content)]
-            initial_state = {"messages": messages}
+            # Use template to create enhanced prompt with step info
+            enhanced_prompt = _NODE_ENHANCED_PROMPT_TEMPLATE.format(
+                base_instruction=BASE_NODE_INSTRUCTION,
+                node_system_prompt=node_config.system_prompt,
+                step_id=step_id,
+            )
+
+            # Add system message
+            system_message = SystemMessage(
+                content=enhanced_prompt,
+                name=self.agent_name,
+            )
+
+            # Add human message with step instruction
+            human_message = HumanMessage(
+                content=step_instruction,
+                name=self.agent_name,
+            )
+
+            # Construct final message list: previous messages + system + instruction
+            final_messages = messages + [system_message, human_message]
+            initial_state = {"messages": final_messages}
 
             graph_config: RunnableConfig = cast(
                 RunnableConfig, dict(runtime_config or {})
             )
-            metadata = execution_context.get("metadata") or {}
-            if metadata:
-                existing_metadata = graph_config.get("metadata") or {}
-                graph_config["metadata"] = {**existing_metadata, **metadata}
-
-                model_configurations = metadata.get("model_configurations")
-                if isinstance(model_configurations, dict):
-                    configurable_section = dict(graph_config.get("configurable") or {})
-                    configurable_section["model_configurations"] = model_configurations
-                    graph_config["configurable"] = configurable_section
 
             invoke_kwargs: Dict[str, Any] = {"config": graph_config}
             if store is not None:
                 invoke_kwargs["store"] = store
 
             result_state = await node_agent.ainvoke(initial_state, **invoke_kwargs)
-            final_messages = result_state.get("messages", [])
+            final_messages_result = result_state.get("messages", [])
+
+            # Get only the NEW messages generated by this node execution
+            # (everything after the input messages we provided)
+            new_messages = final_messages_result[len(final_messages) :]
+
+            # Extract final text output from last AI message
             response_message = next(
-                (msg for msg in reversed(final_messages) if isinstance(msg, AIMessage)),
+                (msg for msg in reversed(new_messages) if isinstance(msg, AIMessage)),
                 None,
             )
             text = response_message.text() if response_message else ""
-            return {"output": text, "success": True}
+
+            # Return both the text output and all new messages (including tool calls)
+            return {"output": text, "messages": new_messages, "success": True}
 
         return node
 
@@ -706,12 +740,9 @@ Please compile this information into a comprehensive summary for the main agent 
     async def _invoke_llm(
         self,
         llm: LanguageModelLike,
-        messages: List[BaseMessage],
-        metadata: Dict[str, Any],
+        messages: List[AnyMessage],
+        config: Optional[RunnableConfig] = None,
     ) -> BaseMessage | str:
-        config: Optional[RunnableConfig] = None
-        if metadata:
-            config = {"metadata": metadata}
         return await llm.ainvoke(messages, config=config)
 
 
@@ -728,7 +759,8 @@ def build_plan_execute_subgraph(
     """
     # Combine base prompt with specific prompt
     planner_prompt = DEFAULT_BASE_PLANNER_PROMPT_TEMPLATE.format(
-        provider_planner_prompt=config.planner_prompt
+        provider_planner_prompt=config.planner_prompt,
+        format_instructions=PromptDrivenPlanExecuteGraph._parser.get_format_instructions(),
     )
 
     # Create common nodes
@@ -737,34 +769,6 @@ def build_plan_execute_subgraph(
         allow_memory_system_messages=True,
     )
 
-    # Create hooks that adapt PlanExecuteState to State
-    async def filter_hook(
-        state: PlanExecuteState, config_arg: RunnableConfig, store: BaseStore
-    ) -> PlanExecuteState:
-        adapted_state: State = {
-            "messages": state.get("messages", []),  # type: ignore
-            "selected_tool_ids": [],
-        }
-        filtered_state = await filter_node(adapted_state, config_arg, store)
-        state["messages"] = filtered_state["messages"]  # type: ignore
-        return state
-
-    async def trim_hook(
-        state: PlanExecuteState, config_arg: RunnableConfig, store: BaseStore
-    ) -> PlanExecuteState:
-        adapted_state: State = {
-            "messages": state.get("messages", []),  # type: ignore
-            "selected_tool_ids": [],
-        }
-        # trim_messages_node is sync, not async
-        trimmed_state = trim_messages_node(adapted_state, config_arg, store)  # type: ignore
-        state["messages"] = trimmed_state["messages"]  # type: ignore
-        return state
-
-
-    # Use built-in hooks automatically (no custom hooks needed from config)
-    pre_plan_hooks: Sequence[HookType] = [filter_hook, trim_hook]
-
     graph = PromptDrivenPlanExecuteGraph(
         provider_name=config.provider_name,
         agent_name=config.agent_name,
@@ -772,7 +776,7 @@ def build_plan_execute_subgraph(
         node_configs=config.node_configs,
         llm=config.llm,
         finalizer_prompt=config.finalizer_prompt,
-        pre_plan_hooks=pre_plan_hooks,
+        pre_llm_hooks=[filter_node, trim_messages_node],
         end_graph_hooks=[],
     )
 
