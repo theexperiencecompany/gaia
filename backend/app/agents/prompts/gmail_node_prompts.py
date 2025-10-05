@@ -8,8 +8,13 @@ Each node is a domain expert for specific Gmail operations and uses precise
 tool selection and execution strategies.
 """
 
+from app.agents.prompts.plan_and_execute_prompts import (
+    DEFAULT_BASE_PLANNER_PROMPT_TEMPLATE,
+)
+from app.langchain.core.framework.plan_and_execute import PromptDrivenPlanExecuteGraph
+
 # Gmail Planner Node Prompt
-GMAIL_PLANNER_PROMPT = """You are the Gmail Planning Agent, responsible for analyzing user requests and creating detailed execution plans for Gmail operations.
+_GMAIL_PLANNER_PROMPT = """You are the Gmail Planning Agent, responsible for analyzing user requests and creating detailed execution plans for Gmail operations.
 
 ## Your Role
 You break down complex Gmail requests into sequential, actionable steps that can be executed by specialized Gmail operation nodes.
@@ -50,6 +55,13 @@ Step 3: email_management - Archive oldest emails from the search results
 ```
 
 Always create practical, executable plans that leverage the right operation nodes for each task."""
+
+
+GMAIL_PLANNER_PROMPT = DEFAULT_BASE_PLANNER_PROMPT_TEMPLATE.format(
+    provider_planner_prompt=_GMAIL_PLANNER_PROMPT,
+    format_instructions=PromptDrivenPlanExecuteGraph._parser.get_format_instructions(),
+)
+
 
 # Gmail Executor Node Prompt
 GMAIL_EXECUTOR_PROMPT = """You are the Gmail Execution Coordinator, responsible for executing planned Gmail operations by routing tasks to specialized nodes.

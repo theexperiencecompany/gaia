@@ -53,6 +53,11 @@ from typing import (
 from app.agents.core.nodes import trim_messages_node
 from app.agents.core.nodes.filter_messages import create_filter_messages_node
 from app.agents.llm.client import init_llm
+from app.agents.prompts.plan_and_execute_prompts import (
+    BASE_NODE_INSTRUCTION,
+    DEFAULT_BASE_PLANNER_PROMPT_TEMPLATE,
+    NODE_ENHANCED_PROMPT_TEMPLATE,
+)
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
@@ -65,59 +70,12 @@ from langchain_core.messages import (
     SystemMessage,
 )
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, MessagesState, StateGraph
 from langgraph.prebuilt import create_react_agent
 from langgraph.store.base import BaseStore
 from pydantic import BaseModel, Field
-
-BASE_NODE_INSTRUCTION = """IMPORTANT EXECUTION CONTEXT:
-You are executing a specific step within a multi-step plan. The delegation chain is: User → Main Agent → Sub-graph → You (Current Node).
-
-KEY CONSTRAINTS:
-- You CANNOT directly communicate with users or ask them questions
-- You are part of an automated execution pipeline
-- The sub-graph has created a step-by-step plan, and you are executing one specific step
-- You can see the full conversation history including previous steps' tool calls and outputs
-
-YOUR RESPONSIBILITIES:
-- Execute your assigned task completely and accurately using the specialized tools and context available to you
-- Review previous steps' outputs and tool calls to inform your decisions
-- When finished, briefly explain what you did and the outcome
-- Include actionable results: IDs, statuses, key data points, relevant details
-- Your output and tool calls will be visible to subsequent steps
-- Be clear, concise, and provide sufficient context for next steps"""
-
-_DEFAULT_BASE_PLANNER_PROMPT = """
-You are a planning agent that creates execution plans.
-
-PLANNING SPECIFICATIONS:
-1. Break down the user request into discrete, executable steps
-2. Each step should target a specific node based on its capabilities
-3. Include relevant context for each step
-4. Ensure steps are logically ordered for sequential execution
-5. Each step will have access to outputs from all previous steps
-
-Create a detailed execution plan with clear step descriptions and proper node assignments.
-
-{provider_planner_prompt}
-
-{format_instructions}
-"""
-
-DEFAULT_BASE_PLANNER_PROMPT_TEMPLATE = PromptTemplate(
-    input_variables=["provider_planner_prompt", "format_instructions"],
-    template=_DEFAULT_BASE_PLANNER_PROMPT,
-)
-
-_NODE_ENHANCED_PROMPT_TEMPLATE = """{base_instruction}
-
-{node_system_prompt}
-
-CURRENT EXECUTION:
-You are currently executing Step {step_id} of the plan."""
 
 
 class ExecutionResult:
@@ -172,7 +130,6 @@ class PlanExecuteState(MessagesState, total=False):
     step_node_mappings: Dict[int, str]
     _next_node: Optional[str]
     _execution_context: Optional[ExecutionContext]
-    final_result: Dict[str, Any]
     is_complete: bool
 
 
@@ -212,8 +169,8 @@ class PlanExecuteSubgraphConfig:
     agent_name: str
     planner_prompt: str
     node_configs: Sequence[PlanExecuteNodeConfig]
+    finalizer_prompt: str
     llm: Optional[LanguageModelLike] = None
-    finalizer_prompt: Optional[str] = None
 
 
 class PromptDrivenPlanExecuteGraph:
@@ -229,7 +186,7 @@ class PromptDrivenPlanExecuteGraph:
         *,
         node_configs: Sequence[PlanExecuteNodeConfig],
         llm: Optional[LanguageModelLike] = None,
-        finalizer_prompt: Optional[str] = None,
+        finalizer_prompt: str,
         pre_llm_hooks: Optional[Sequence[HookType]] = None,
         end_graph_hooks: Optional[Sequence[HookType]] = None,
     ):
@@ -262,9 +219,6 @@ class PromptDrivenPlanExecuteGraph:
             else:
                 state = result  # type: ignore
 
-        # Overriding system prompt sent by handoff tool
-        state["messages"][-2] = SystemMessage(content=self._planner_prompt)  # type: ignore
-
         response = await self._invoke_llm(self.llm, state["messages"])
 
         content = self._extract_content(response)
@@ -285,7 +239,8 @@ class PromptDrivenPlanExecuteGraph:
                 name=self.agent_name,
             )
 
-        return {"messages": [planner_response]}
+        state["messages"] = [*state["messages"], planner_response]
+        return state
 
     def _extract_content(self, response: Union[str, BaseMessage]) -> str:
         if isinstance(response, str):
@@ -439,7 +394,6 @@ class PromptDrivenPlanExecuteGraph:
     async def _finalization_step(
         self, state: PlanExecuteState, config: RunnableConfig, store: BaseStore
     ) -> PlanExecuteState:
-        # Apply pre_llm_hooks for message filtering before finalization
         for hook in self._pre_llm_hooks:
             result = hook(state, config, store)
             if inspect.iscoroutine(result):
@@ -449,136 +403,30 @@ class PromptDrivenPlanExecuteGraph:
 
         plan = state.get("plan")
         if not plan:
-            state["final_result"] = {"error": "No plan found"}
             state["is_complete"] = True
             return state
 
-        all_results = state.get("execution_results", [])
-        failed_steps = [r for r in all_results if not r.success]
-        successful_steps = [r for r in all_results if r.success]
-        step_node_mappings = state.get("step_node_mappings") or {}
         messages = state.get("messages", [])
 
-        # If no finalizer prompt, use simple formatting (backward compatibility)
-        if not self._finalizer_prompt:
-            final_result = {
-                "provider": self.provider_name,
-                "plan_description": plan.description,
-                "total_steps": len(plan.steps),
-                "completed_steps": len(state.get("completed_steps", [])),
-                "successful_steps": len(successful_steps),
-                "failed_steps": len(failed_steps),
-                "results": [
-                    {
-                        "step_id": r.step_id,
-                        "node": step_node_mappings.get(r.step_id, "unknown"),
-                        "success": r.success,
-                        "output": r.output,
-                        "error": r.error,
-                    }
-                    for r in all_results
-                ],
-                "message_count": len(messages),
-            }
-
-            if failed_steps:
-                status_msg = f"Plan execution completed with {len(failed_steps)} failed steps out of {len(all_results)} total steps. Full conversation with {len(messages)} messages preserved."
-            else:
-                status_msg = f"Plan execution completed successfully with {len(all_results)} steps. Full conversation with {len(messages)} messages preserved including all tool calls."
-
-            finalizer_message = AIMessage(
-                content=status_msg,
-                name=f"{self.agent_name},main_agent",
-            )
-            state.setdefault("messages", []).append(finalizer_message)
-            state["final_result"] = final_result
-            state["is_complete"] = True
-            return state
-
-        # LLM-powered finalization with finalizer_prompt
-        # The finalizer sees the ENTIRE conversation history including all tool calls
-        # This allows it to understand exactly what happened and compile accordingly
-
-        # Build a summary header for context
-        execution_summary = []
-        for i, step in enumerate(plan.steps, 1):
-            step_result = next(
-                (r for r in all_results if r.step_id == step.step_id), None
-            )
-            node_name = step_node_mappings.get(step.step_id, "unknown")
-
-            step_info = f"""Step {i}: {node_name} - {step.instructions}
-Status: {"Success" if step_result and step_result.success else "Failed"}
-"""
-            if step_result:
-                if step_result.success:
-                    step_info += f"Output: {step_result.output}\n"
-                else:
-                    step_info += f"Error: {step_result.error}\n"
-            execution_summary.append(step_info)
-
-        execution_details = "\n".join(execution_summary)
-
-        # Create human message explaining the task
-        human_content = f"""PLAN EXECUTION COMPLETED
-
-Plan Description: {plan.description}
-Total Steps: {len(plan.steps)}
-Completed Steps: {len(state.get("completed_steps", []))}
-Successful Steps: {len(successful_steps)}
-Failed Steps: {len(failed_steps)}
-
-STEP SUMMARY:
-
-{execution_details}
-
+        human_content = """
 You have access to the complete conversation history above, including all tool calls, inputs, and outputs from each step.
 Please compile this information into a comprehensive summary for the main agent following your specialized instructions."""
 
-        # Start with system prompt, then full message history, then finalization request
         finalizer_messages: List[AnyMessage] = [
             SystemMessage(content=self._finalizer_prompt),
         ]
-        # Add all execution messages (contains full context with tool calls)
         finalizer_messages.extend(messages)
-        # Add the finalization request
         finalizer_messages.append(HumanMessage(content=human_content))
 
         response = await self._invoke_llm(self.llm, finalizer_messages)
         finalizer_content = self._extract_content(response)
 
-        # Store the comprehensive final result
-        final_result = {
-            "provider": self.provider_name,
-            "plan_description": plan.description,
-            "total_steps": len(plan.steps),
-            "completed_steps": len(state.get("completed_steps", [])),
-            "successful_steps": len(successful_steps),
-            "failed_steps": len(failed_steps),
-            "compiled_summary": finalizer_content,
-            "message_count": len(messages),
-            "tool_calls_preserved": True,
-            "raw_results": [
-                {
-                    "step_id": r.step_id,
-                    "node": step_node_mappings.get(r.step_id, "unknown"),
-                    "success": r.success,
-                    "output": r.output,
-                    "error": r.error,
-                }
-                for r in all_results
-            ],
-        }
-
-        # Create finalizer message with comprehensive compiled summary
-        # The finalizer has seen all tool calls and messages, so its summary is well-informed
         finalizer_message = AIMessage(
             content=finalizer_content,
-            name=f"{self.agent_name},main_agent",
+            name="main_agent",
         )
-        state.setdefault("messages", []).append(finalizer_message)
+        state["messages"] = [*state["messages"], finalizer_message]
 
-        state["final_result"] = final_result
         state["is_complete"] = True
         return state
 
@@ -682,7 +530,7 @@ Please compile this information into a comprehensive summary for the main agent 
                 )
 
             # Use template to create enhanced prompt with step info
-            enhanced_prompt = _NODE_ENHANCED_PROMPT_TEMPLATE.format(
+            enhanced_prompt = NODE_ENHANCED_PROMPT_TEMPLATE.format(
                 base_instruction=BASE_NODE_INSTRUCTION,
                 node_system_prompt=node_config.system_prompt,
                 step_id=step_id,
@@ -748,14 +596,14 @@ Please compile this information into a comprehensive summary for the main agent 
 
 def build_plan_execute_subgraph(
     config: PlanExecuteSubgraphConfig,
-) -> StateGraph:
+):
     """Build a plan-and-execute subgraph with automatic filter, trim, and delete hooks.
 
     Args:
         config: Configuration for the subgraph
 
     Returns:
-        StateGraph with built-in message filtering and cleanup
+        Compiled CompiledGraph with PlanExecuteState and built-in message filtering and cleanup
     """
     # Combine base prompt with specific prompt
     planner_prompt = DEFAULT_BASE_PLANNER_PROMPT_TEMPLATE.format(
@@ -780,4 +628,4 @@ def build_plan_execute_subgraph(
         end_graph_hooks=[],
     )
 
-    return graph._graph
+    return graph._graph.compile()

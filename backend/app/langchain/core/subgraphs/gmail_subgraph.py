@@ -149,8 +149,7 @@ async def create_gmail_subgraph(llm: LanguageModelLike) -> CompiledStateGraph:
         finalizer_prompt=GMAIL_FINALIZER_PROMPT,
     )
 
-    result = build_plan_execute_subgraph(config)
-    graph = result.compile()
+    graph = build_plan_execute_subgraph(config)
     logger.info("Gmail subgraph created successfully")
 
     return graph

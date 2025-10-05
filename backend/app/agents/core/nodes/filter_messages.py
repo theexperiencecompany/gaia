@@ -17,12 +17,17 @@ T = TypeVar("T", bound=MessagesState)
 def create_filter_messages_node(
     agent_name: str = "main_agent",
     allow_memory_system_messages: bool = False,
+    remove_system_messages: bool = False,
 ) -> Callable[[T, RunnableConfig, BaseStore], T]:
     """Create a node that filters out system messages from the conversation state.
     Args:
         agent_name: Name of the agent whose system messages should be included.
         allow_empty_agent_name: If True, allows empty agent_name to skip filtering.
             If False, It filters out all the messages having empty names.
+        remove_system_messages: If True, removes all system messages from the conversation.
+            Except those marked as memory messages if allow_memory_system_messages is True.
+            When this is True, make sure to add SystemMessage after this hook is executed if SystemMessage
+            is required for the agent to function properly.
     Returns:
         A callable node that filters messages in the conversation state.
     """
@@ -64,12 +69,16 @@ def create_filter_messages_node(
                     and msg.model_dump().get("memory_message", False)
                 )
 
+                is_system_message = remove_system_messages and isinstance(
+                    msg, SystemMessage
+                )
+
                 # Keep message if it matches either condition
                 if (
                     is_from_target_agent
                     or is_allowed_tool_message
                     or is_allowed_memory_system_message
-                ):
+                ) and not is_system_message:
                     filtered_messages.append(msg)
 
                     # If this is an AI message, track its tool call IDs for future tool messages

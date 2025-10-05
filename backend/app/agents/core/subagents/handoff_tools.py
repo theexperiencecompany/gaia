@@ -1,12 +1,12 @@
 from typing import Annotated, List, Optional
 
-from app.config.loggers import common_logger as logger
+from app.agents.prompts.gmail_node_prompts import GMAIL_PLANNER_PROMPT
 from app.agents.prompts.subagent_prompts import (
-    GMAIL_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
 )
+from app.config.loggers import common_logger as logger
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.graph import MessagesState
@@ -91,7 +91,7 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
                     domain="email management",
                     capabilities="composing, sending, reading, organizing emails, managing labels, drafts, attachments, and advanced email workflows",
                 ),
-                system_prompt=GMAIL_AGENT_SYSTEM_PROMPT,
+                system_prompt=GMAIL_PLANNER_PROMPT,
             )
         )
 
