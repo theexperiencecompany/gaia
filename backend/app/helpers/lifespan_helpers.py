@@ -10,6 +10,7 @@ from app.db.postgresql import close_postgresql_db
 from app.db.rabbitmq import get_rabbitmq_publisher
 from app.services.reminder_service import reminder_scheduler
 from app.services.workflow.scheduler import workflow_scheduler
+from app.core.lazy_loader import providers
 
 
 def setup_event_loop_policy() -> None:
@@ -126,6 +127,17 @@ async def close_publisher_async():
         logger.info("Publisher closed")
     except Exception as e:
         logger.error(f"Error closing publisher: {e}")
+
+
+async def close_checkpointer_manager():
+    """Close checkpointer manager and connection pool."""
+    try:
+        checkpointer_manager = await providers.aget("checkpointer_manager")
+        if checkpointer_manager:
+            await checkpointer_manager.close()
+            logger.info("Checkpointer manager closed")
+    except Exception as e:
+        logger.error(f"Error closing checkpointer manager: {e}")
 
 
 def _process_results(results, service_names):

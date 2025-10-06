@@ -34,6 +34,7 @@ from app.db.postgresql import init_postgresql_engine
 from app.db.rabbitmq import init_rabbitmq_publisher
 from app.helpers.lifespan_helpers import (
     _process_results,
+    close_checkpointer_manager,
     close_postgresql_async,
     close_publisher_async,
     close_reminder_scheduler,
@@ -148,6 +149,7 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         (close_postgresql_async, "postgresql"),
         (close_reminder_scheduler, "reminder_scheduler"),
         (close_workflow_scheduler, "workflow_scheduler"),
+        (close_checkpointer_manager, "checkpointer_manager"),
     ]
 
     # Context-specific cleanup: additional services only for FastAPI
