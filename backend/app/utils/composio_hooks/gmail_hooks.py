@@ -15,6 +15,11 @@ from app.agents.templates.mail_templates import (
     process_list_messages_response,
 )
 from app.config.loggers import app_logger as logger
+from app.utils.markdown_utils import (
+    convert_markdown_to_html,
+    convert_markdown_to_plain_text,
+    is_markdown_content,
+)
 from composio.types import ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
 
@@ -32,6 +37,29 @@ def gmail_compose_before_hook(
     try:
         writer = get_stream_writer()
         arguments = params.get("arguments", {})
+
+        body = arguments.get("body", "")
+        is_html = arguments.get("is_html", False)
+
+        # Detect and convert markdown content
+        if body and is_markdown_content(body):
+            logger.info(
+                f"Markdown detected in email body for {tool}, converting to {'HTML' if is_html else 'plain text'}"
+            )
+
+            if is_html:
+                # Convert markdown to HTML
+                converted_body = convert_markdown_to_html(body)
+                arguments["body"] = converted_body
+                logger.debug(f"Converted markdown to HTML for {tool}")
+            else:
+                # Convert markdown to plain text
+                converted_body = convert_markdown_to_plain_text(body)
+                arguments["body"] = converted_body
+                logger.debug(f"Converted markdown to plain text for {tool}")
+
+            # Update params with converted body
+            params["arguments"] = arguments
 
         recipients = [
             arguments.get("recipient_email", ""),
@@ -66,7 +94,7 @@ def gmail_compose_before_hook(
         return params
 
     except Exception as e:
-        logger.error(f"Error in gmail_compose_after_hook: {e}")
+        logger.error(f"Error in gmail_compose_before_hook: {e}")
         return params
 
 
