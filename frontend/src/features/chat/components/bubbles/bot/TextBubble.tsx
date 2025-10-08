@@ -35,6 +35,7 @@ import {
   DeepResearchResults,
   DocumentData,
   EmailComposeData,
+  EmailSentData,
   EmailThreadData,
   GoalDataMessageType,
   GoogleDocsData,
@@ -58,6 +59,7 @@ import CalendarEventSection from "./CalendarEventSection";
 import CodeExecutionSection from "./CodeExecutionSection";
 import DocumentSection from "./DocumentSection";
 import EmailComposeSection from "./EmailComposeSection";
+import EmailSentSection from "./EmailSentSection";
 import GoalSection from "./goals/GoalSection";
 import { GoalAction } from "./goals/types";
 import GoogleDocsSection from "./GoogleDocsSection";
@@ -110,6 +112,14 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       key={`tool-email-compose-${index}`}
       email_compose_data={
         (Array.isArray(data) ? data : [data]) as EmailComposeData[]
+      }
+    />
+  ),
+  email_sent_data: (data, index) => (
+    <EmailSentSection
+      key={`tool-email-sent-${index}`}
+      email_sent_data={
+        (Array.isArray(data) ? data : [data]) as EmailSentData[]
       }
     />
   ),
