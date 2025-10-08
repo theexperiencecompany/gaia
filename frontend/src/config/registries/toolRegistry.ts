@@ -17,7 +17,12 @@ import type {
   CalendarFetchData,
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
-import type { EmailFetchData, EmailSentData } from "@/types/features/mailTypes";
+import type {
+  ContactData,
+  EmailFetchData,
+  EmailSentData,
+  PeopleSearchData,
+} from "@/types/features/mailTypes";
 import type { NotificationRecord } from "@/types/features/notificationTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
 
@@ -58,6 +63,8 @@ export const TOOL_REGISTRY = {
   email_fetch_data: null as unknown as EmailFetchData[],
   email_compose_data: null as unknown as EmailComposeData[],
   email_sent_data: null as unknown as EmailSentData[],
+  contacts_data: null as unknown as ContactData[],
+  people_search_data: null as unknown as PeopleSearchData[],
   calendar_options: null as unknown as CalendarOptions[],
   calendar_delete_options: null as unknown as CalendarDeleteOptions[],
   calendar_edit_options: null as unknown as CalendarEditOptions[],

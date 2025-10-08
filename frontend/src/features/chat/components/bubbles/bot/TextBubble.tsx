@@ -44,6 +44,10 @@ import {
   WeatherData,
 } from "@/types";
 import {
+  ContactData,
+  PeopleSearchData,
+} from "@/types/features/mailTypes";
+import {
   CalendarFetchData,
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
@@ -57,10 +61,12 @@ import { CalendarDeleteSection } from "./CalendarDeleteSection";
 import { CalendarEditSection } from "./CalendarEditSection";
 import CalendarEventSection from "./CalendarEventSection";
 import CodeExecutionSection from "./CodeExecutionSection";
+import ContactListSection from "./ContactListSection";
 import DocumentSection from "./DocumentSection";
 import EmailComposeSection from "./EmailComposeSection";
 import EmailSentSection from "./EmailSentSection";
 import GoalSection from "./goals/GoalSection";
+import PeopleSearchSection from "./PeopleSearchSection";
 import { GoalAction } from "./goals/types";
 import GoogleDocsSection from "./GoogleDocsSection";
 import NotificationListSection from "./NotificationListSection";
@@ -120,6 +126,20 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       key={`tool-email-sent-${index}`}
       email_sent_data={
         (Array.isArray(data) ? data : [data]) as EmailSentData[]
+      }
+    />
+  ),
+  contacts_data: (data, index) => (
+    <ContactListSection
+      key={`tool-contacts-${index}`}
+      contacts_data={(Array.isArray(data) ? data : [data]) as ContactData[]}
+    />
+  ),
+  people_search_data: (data, index) => (
+    <PeopleSearchSection
+      key={`tool-people-search-${index}`}
+      people_search_data={
+        (Array.isArray(data) ? data : [data]) as PeopleSearchData[]
       }
     />
   ),
