@@ -229,8 +229,10 @@ class OrchestratorGraph:
 
             system_message = SystemMessage(
                 content=system_content,
-                name=self.agent_name,
-                additional_kwargs={"orchestrator_role": "orchestrator_system"},
+                additional_kwargs={
+                    "orchestrator_role": "orchestrator_system",
+                    "visible_to": {self.agent_name},
+                },
             )
             messages = [system_message] + messages
             state["system_prompt_injected"] = True
@@ -244,9 +246,8 @@ class OrchestratorGraph:
         response_message = (
             cast(AIMessage, response)
             if isinstance(response, BaseMessage)
-            else AIMessage(content=str(response), name=self.agent_name)
+            else AIMessage(content=str(response))
         )
-        response_message.name = self.agent_name
 
         content = self._extract_content(response)
         handoff = self._try_parse_handoff(content)
@@ -254,8 +255,10 @@ class OrchestratorGraph:
         # Mark handoff messages for later deletion
         if handoff:
             response_message.additional_kwargs["orchestrator_role"] = "handoff"
+            response_message.additional_kwargs["visible_to"] = {self.agent_name}
         else:
             response_message.additional_kwargs["orchestrator_role"] = "orchestrator"
+            response_message.additional_kwargs["visible_to"] = {self.agent_name}
 
         state["messages"] = [*state["messages"], response_message]
 
@@ -263,7 +266,10 @@ class OrchestratorGraph:
             if handoff.name not in self._nodes:
                 error_msg = AIMessage(
                     content=f"Error: Unknown node '{handoff.name}'. Available nodes: {', '.join(self._node_descriptions.keys())}",
-                    name=self.agent_name,
+                    additional_kwargs={
+                        "orchestrator_role": "orchestrator",
+                        "visible_to": {self.agent_name},
+                    },
                 )
                 state["messages"] = [*state["messages"], error_msg]
                 state["is_complete"] = False
@@ -337,18 +343,20 @@ class OrchestratorGraph:
                 new_messages = result.get("messages", [])
 
                 for msg in new_messages:
-                    if isinstance(msg, (AIMessage, HumanMessage)):
-                        msg.name = self.agent_name
                     # Mark node messages
                     if not msg.additional_kwargs.get("orchestrator_role"):
                         msg.additional_kwargs["orchestrator_role"] = "node"
+                        msg.additional_kwargs["visible_to"] = {self.agent_name}
 
                 state.setdefault("messages", []).extend(new_messages)
 
             except Exception as e:
                 error_msg = AIMessage(
                     content=f"Error in node {node_name}: {str(e)}",
-                    name=self.agent_name,
+                    additional_kwargs={
+                        "orchestrator_role": "node",
+                        "visible_to": {self.agent_name},
+                    },
                 )
                 state.setdefault("messages", []).append(error_msg)
 
@@ -372,13 +380,17 @@ class OrchestratorGraph:
 
         finalizer_system = SystemMessage(
             content=self._finalizer_prompt,
-            name=self.agent_name,
-            additional_kwargs={"orchestrator_role": "finalizer_system"},
+            additional_kwargs={
+                "orchestrator_role": "finalizer_system",
+                "visible_to": {self.agent_name},
+            },
         )
         finalizer_human = HumanMessage(
             content=FINALIZER_HUMAN_PROMPT,
-            name=self.agent_name,
-            additional_kwargs={"orchestrator_role": "finalizer_human"},
+            additional_kwargs={
+                "orchestrator_role": "finalizer_human",
+                "visible_to": {self.agent_name},
+            },
         )
 
         finalizer_messages: List[AnyMessage] = [finalizer_system]
@@ -390,8 +402,10 @@ class OrchestratorGraph:
 
         finalizer_message = AIMessage(
             content=finalizer_content,
-            name=self.agent_name,
-            additional_kwargs={"orchestrator_role": "finalizer"},
+            additional_kwargs={
+                "orchestrator_role": "finalizer",
+                "visible_to": {"main_agent", self.agent_name},
+            },
         )
         state["messages"] = [*state["messages"], finalizer_message]
 
@@ -492,12 +506,10 @@ class OrchestratorGraph:
 
             system_message = SystemMessage(
                 content=node_config.system_prompt,
-                name=self.agent_name,
             )
 
             human_message = HumanMessage(
                 content=instruction,
-                name=self.agent_name,
             )
 
             final_messages = messages + [system_message, human_message]
@@ -576,9 +588,14 @@ def _create_cleanup_hook(agent_name: str) -> HookType:
                     cleaned_messages.append(msg)
                     continue
 
-                # For remaining orchestrator messages, ensure they have agent_name
+                # For remaining orchestrator messages, set name from visible_to
                 if orchestrator_role in ["orchestrator", "node", "finalizer"]:
-                    if not msg.name:
+                    visible_to = msg.additional_kwargs.get("visible_to", set())
+                    if visible_to:
+                        # Convert set to comma-separated string for name
+                        msg.name = ",".join(sorted(visible_to))
+                    else:
+                        # Fallback to agent_name if visible_to not set
                         msg.name = agent_name
                     cleaned_messages.append(msg)
 
@@ -607,6 +624,7 @@ def build_orchestrator_subgraph(
     filter_node = create_filter_messages_node(
         agent_name=config.agent_name,
         allow_memory_system_messages=True,
+        version="v2",
     )
 
     cleanup_hook = _create_cleanup_hook(config.agent_name)

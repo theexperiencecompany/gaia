@@ -121,11 +121,6 @@ async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
             system_prompt=ATTACHMENT_HANDLING_PROMPT,
             tools=attachment_handling_tools,
         ),
-        OrchestratorNodeConfig(
-            name="free_llm",
-            description="General reasoning, brainstorming, structuring tasks",
-            system_prompt="You are a helpful Gmail assistant. Execute the given instruction using your knowledge and reasoning abilities. Be thorough and provide clear, actionable responses.",
-        ),
     )
 
 
