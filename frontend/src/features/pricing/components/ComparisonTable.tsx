@@ -1,7 +1,7 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
 import Image from "next/image";
+import Link from "next/link";
 
 import {
   AiBrain01Icon,
@@ -18,7 +18,6 @@ import {
   ZapIcon,
 } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/shadcn/raised-button";
-import Link from "next/link";
 
 interface FeatureStatus {
   available: boolean;

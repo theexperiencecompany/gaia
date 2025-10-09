@@ -1,4 +1,4 @@
-import { formatDistanceToNow, isValid, parseISO } from "date-fns";
+import { isValid, parseISO } from "date-fns";
 
 const nth = (date: number): string => {
   if (date > 3 && date < 21) return "th";

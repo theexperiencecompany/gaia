@@ -9,10 +9,10 @@ import { Workflow } from "../api/workflowApi";
 import { getTriggerDisplay } from "../utils/triggerDisplay";
 import BaseWorkflowCard from "./shared/BaseWorkflowCard";
 import {
-  TriggerDisplay,
-  RunWorkflowButton,
   ActivationStatus,
   getNextRunDisplay,
+  RunWorkflowButton,
+  TriggerDisplay,
 } from "./shared/WorkflowCardComponents";
 
 interface WorkflowCardProps {

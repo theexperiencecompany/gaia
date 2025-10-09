@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Clock, Mail, Play, Zap } from "lucide-react";
+import { Clock, Mail } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
 
@@ -10,8 +10,8 @@ import { CursorMagicSelection03Icon } from "@/components";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { Workflow } from "@/features/workflows/api/workflowApi";
-import { getTriggerDisplay } from "../utils/triggerDisplay";
 
+import { getTriggerDisplay } from "../utils/triggerDisplay";
 import BaseWorkflowCard from "./shared/BaseWorkflowCard";
 
 interface UserWorkflowCardProps {

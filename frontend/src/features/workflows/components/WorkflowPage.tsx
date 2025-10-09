@@ -2,22 +2,22 @@
 
 import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/modal";
-import { ExternalLink, RefreshCw, ZapIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ExternalLink, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
+import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 
-import Link from "next/link";
-import { toast } from "sonner";
-import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { Workflow, CommunityWorkflow, workflowApi } from "../api/workflowApi";
+import { CommunityWorkflow, Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
 import { useWorkflowCreation } from "../hooks/useWorkflowCreation";
+import CommunityWorkflowCard from "./CommunityWorkflowCard";
 import CreateWorkflowModal from "./CreateWorkflowModal";
 import EditWorkflowModal from "./EditWorkflowModal";
 import WorkflowCard from "./WorkflowCard";
-import CommunityWorkflowCard from "./CommunityWorkflowCard";
 import { WorkflowListSkeleton } from "./WorkflowSkeletons";
 
 export default function WorkflowPage() {

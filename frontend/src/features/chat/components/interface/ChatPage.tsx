@@ -1,6 +1,5 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import React, { useEffect } from "react";
 
 import { chatApi } from "@/features/chat/api/chatApi";

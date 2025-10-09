@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { ArrowUpRight, Zap } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 

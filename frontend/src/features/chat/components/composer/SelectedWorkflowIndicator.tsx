@@ -1,9 +1,8 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { X } from "lucide-react";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { SelectedWorkflowData } from "@/features/chat/hooks/useWorkflowSelection";

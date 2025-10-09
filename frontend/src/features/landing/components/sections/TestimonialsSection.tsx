@@ -1,10 +1,11 @@
+import Image from "next/image";
+
 import { Marquee } from "@/components/ui/marquee";
 import { cn } from "@/lib/utils";
 
 import { testimonials } from "../../data/testimonials";
 import LargeHeader from "../shared/LargeHeader";
 import SectionLayout from "../shared/SectionLayout";
-import Image from "next/image";
 
 const firstRow = testimonials.slice(0, testimonials.length / 2);
 const secondRow = testimonials.slice(testimonials.length / 2);

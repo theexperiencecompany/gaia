@@ -1,4 +1,5 @@
 import { Skeleton } from "@heroui/react";
+
 import BaseWorkflowCard from "./shared/BaseWorkflowCard";
 import { TriggerDisplay } from "./shared/WorkflowCardComponents";
 
