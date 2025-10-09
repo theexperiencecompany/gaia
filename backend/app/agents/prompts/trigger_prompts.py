@@ -83,7 +83,10 @@ def generate_trigger_context(trigger_config: Optional[Any] = None) -> str:
         return "No trigger configuration provided - this is a manual workflow."
 
     # Convert to dict first, then to JSON
-    config_dict = getattr(trigger_config, "model_dump", lambda: trigger_config)()
+    if hasattr(trigger_config, "model_dump"):
+        config_dict = trigger_config.model_dump(mode="json")
+    else:
+        config_dict = trigger_config
     trigger_data = json.dumps(config_dict, indent=2)
 
     # Generate trigger-specific guidance

@@ -34,3 +34,5 @@ Use meaningful names for variables, functions, classes, and modules. Avoid vague
 Github Repository: https://github.com/heygaia/gaia
 Use DeepWiki MCP (when available) for understanding the codebase. Use the ask_question tool to clarify doubts. Verify DeepWiki information against the latest codebase.
 Maintain clarity, conciseness, and production-level quality in all code edits.
+
+Don't unnecessary read log files if the user has already told you what to do and has passed you the necessary logs.

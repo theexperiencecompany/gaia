@@ -76,7 +76,7 @@ class WorkflowGenerationService:
             # Convert to list of dictionaries for storage
             steps_data = []
             for i, step in enumerate(result.steps, 1):
-                steps_data.append(step.model_dump())
+                steps_data.append(step.model_dump(mode="json"))
 
             logger.info(f"Generated {len(steps_data)} workflow steps for: {title}")
             return steps_data

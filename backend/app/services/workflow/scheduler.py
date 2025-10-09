@@ -233,7 +233,7 @@ class WorkflowScheduler(BaseSchedulerService):
             workflow = Workflow(user_id=user_id, **workflow_data)
 
             # Insert into database
-            workflow_dict = workflow.model_dump()
+            workflow_dict = workflow.model_dump(mode="json")
             workflow_dict["_id"] = workflow_dict["id"]
 
             result = await workflows_collection.insert_one(workflow_dict)

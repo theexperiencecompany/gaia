@@ -649,7 +649,7 @@ async def seed_workflows(
             workflow = create_workflow_from_config(config)
 
             # Convert to dict for MongoDB insertion
-            workflow_dict = workflow.model_dump()
+            workflow_dict = workflow.model_dump(mode="json")
             workflow_dict["_id"] = workflow_dict["id"]
 
             workflows_to_insert.append(workflow_dict)

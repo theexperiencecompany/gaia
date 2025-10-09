@@ -64,7 +64,7 @@ class WorkflowService:
             )
 
             # Insert into database
-            workflow_dict = workflow.model_dump()
+            workflow_dict = workflow.model_dump(mode="json")
             workflow_dict["_id"] = workflow_dict["id"]
 
             result = await workflows_collection.insert_one(workflow_dict)
@@ -230,7 +230,9 @@ class WorkflowService:
                         )
 
                 # Convert TriggerConfig back to dict for MongoDB storage
-                update_fields["trigger_config"] = new_trigger_config.model_dump()
+                update_fields["trigger_config"] = new_trigger_config.model_dump(
+                    mode="json"
+                )
 
             update_data.update(update_fields)
 
