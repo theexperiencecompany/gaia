@@ -92,6 +92,9 @@ export default function EmailListCard({
                 content={`Ask about this email from ${extractSenderName(email.from || "Unknown Sender")}`}
                 showArrow
                 color="foreground"
+                delay={0}
+                closeDelay={0}
+                disableAnimation
               >
                 <div
                   className="group flex cursor-pointer items-center gap-4 p-3 transition-colors hover:bg-zinc-700"
