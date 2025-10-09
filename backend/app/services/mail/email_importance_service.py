@@ -1,15 +1,13 @@
 """Simple email processing with Gemini for background tasks."""
 
-import logging
 from typing import Any, Dict, List, Optional
 
-from app.db.mongodb.collections import mail_collection
 from app.agents.llm.client import init_llm
 from app.agents.prompts.mail_prompts import EMAIL_COMPREHENSIVE_ANALYSIS
+from app.config.loggers import common_logger as logger
+from app.db.mongodb.collections import mail_collection
 from app.models.mail_models import EmailComprehensiveAnalysis
 from langchain_core.output_parsers import PydanticOutputParser
-
-logger = logging.getLogger(__name__)
 
 email_comprehensive_parser = PydanticOutputParser(
     pydantic_object=EmailComprehensiveAnalysis

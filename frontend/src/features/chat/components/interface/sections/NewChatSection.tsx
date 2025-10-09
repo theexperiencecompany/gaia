@@ -2,6 +2,8 @@ import React from "react";
 
 import Composer from "@/features/chat/components/composer/Composer";
 import StarterText from "@/features/chat/components/interface/StarterText";
+import CardStackContainer from "../CardStackContainer";
+import { ChatSuggestions } from "./ChatSuggestions";
 
 interface NewChatSectionProps {
   composerProps: {
@@ -22,14 +24,16 @@ export const NewChatSection: React.FC<NewChatSectionProps> = ({
   composerProps,
 }) => {
   return (
-    <div className="relative flex w-full snap-start items-center justify-center p-4 pt-[25vh]">
-      <div className="flex w-full max-w-(--breakpoint-xl) flex-col items-center justify-center gap-10">
+    <div className="relative flex w-full snap-start items-center justify-center p-4 pt-[28vh]">
+      <div className="flex w-full max-w-7xl flex-col items-center justify-center gap-10">
         <div className="flex flex-col items-center gap-2">
           <StarterText />
         </div>
         <div className="w-full">
           <Composer {...composerProps} />
         </div>
+
+        <ChatSuggestions />
         {/* <CardStackContainer /> */}
       </div>
     </div>

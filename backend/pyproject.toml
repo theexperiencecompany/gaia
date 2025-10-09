@@ -120,6 +120,7 @@ dependencies = [
 [tool.taskipy.tasks]
 dev = "uv run uvicorn app.main:app --port 8000 --reload --log-level warning"
 start = "uv run fastapi run"
+arq = "uv run arq app.worker.WorkerSettings"
 lint = "uvx ruff check ."
 "lint.fix" = "uvx ruff check . --fix"
 format = "uvx ruff format ."

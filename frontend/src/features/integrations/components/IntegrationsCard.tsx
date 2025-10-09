@@ -29,10 +29,8 @@ const IntegrationItem: React.FC<{
 
   return (
     <div
-      className={`flex items-center gap-2 rounded-lg p-2 px-3 hover:outline-1 hover:outline-white/5 ${
-        isAvailable && !isConnected
-          ? "cursor-pointer hover:bg-zinc-800/50"
-          : "hover:bg-zinc-800/20"
+      className={`flex items-center gap-2 rounded-lg p-2 px-3 transition ${
+        isAvailable && !isConnected ? "cursor-pointer hover:bg-zinc-700/40" : ""
       }`}
       onClick={handleClick}
     >
@@ -131,13 +129,16 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   ).length;
 
   return (
-    <div className="mx-2 mb-4 cursor-pointer! rounded-xl bg-zinc-800">
+    <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
         variant="light"
         isCompact
         selectedKeys={selectedKeys}
         onSelectionChange={handleSelectionChange}
-        itemClasses={{ base: "pb-1" }}
+        itemClasses={{
+          base: "pb-1",
+          trigger: "cursor-pointer",
+        }}
       >
         <AccordionItem
           key="integrations"
@@ -145,10 +146,10 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
             <div className="flex items-center gap-3 px-1 pt-1">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-foreground-600">
+                  <span className="text-xs font-normal text-foreground-500">
                     Integrations
                   </span>
-                  <span className="text-xs text-zinc-400">
+                  <span className="text-xs font-light text-zinc-400">
                     {connectedCount}/{regularIntegrations.length}
                   </span>
                 </div>

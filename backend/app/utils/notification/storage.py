@@ -130,14 +130,6 @@ class MongoDBNotificationStorage:
 
         results = await cursor.to_list(length=limit)
 
-        # Debug logging
-        logger.info(f"Found {len(results)} notifications for user {user_id}")
-        if results:
-            sample = results[0]
-            logger.info(
-                f"Sample notification from DB: id={sample.get('id')}, status={sample.get('status')}, read_at={sample.get('read_at')}"
-            )
-
         return [NotificationRecord.model_validate(doc) for doc in results]
 
     async def get_notification_count(

@@ -1,12 +1,11 @@
 "use client";
 
-import { Tooltip } from "@heroui/react";
-import { ArrowUpRight, User } from "lucide-react";
-import Image from "next/image";
+import { ArrowUpRight } from "lucide-react";
 import { ReactNode } from "react";
 
 import { ToolsIcon } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { RunCountDisplay } from "./WorkflowCardComponents";
 
 interface BaseWorkflowCardProps {
   title: string;
@@ -17,10 +16,10 @@ interface BaseWorkflowCardProps {
   showArrowIcon?: boolean;
   headerRight?: ReactNode;
   footerContent?: ReactNode;
-  creator?: {
-    name: string;
-    avatar?: string;
-  };
+  triggerContent?: ReactNode;
+  totalExecutions?: number;
+  hideExecutions?: boolean;
+  useBlurEffect?: boolean;
 }
 
 export default function BaseWorkflowCard({
@@ -32,7 +31,10 @@ export default function BaseWorkflowCard({
   showArrowIcon = false,
   headerRight,
   footerContent,
-  creator,
+  triggerContent,
+  totalExecutions = 0,
+  hideExecutions = false,
+  useBlurEffect = false,
 }: BaseWorkflowCardProps) {
   const renderToolIcons = () => {
     let categories: string[];
@@ -72,14 +74,26 @@ export default function BaseWorkflowCard({
     }
 
     const validIcons = categories
-      .slice(0, 3)
-      .map((category) => {
+      .slice(0, 5)
+      .map((category, index) => {
         const IconComponent = getToolCategoryIcon(category, {
-          width: 23,
-          height: 23,
+          width: 25,
+          height: 25,
         });
         return IconComponent ? (
-          <div key={category} className="flex items-center justify-center">
+          <div
+            key={category}
+            className="relative flex items-center justify-center"
+            style={{
+              rotate:
+                categories.length > 1
+                  ? index % 2 == 0
+                    ? "8deg"
+                    : "-8deg"
+                  : "0deg",
+              zIndex: index,
+            }}
+          >
             {IconComponent}
           </div>
         ) : null;
@@ -88,15 +102,13 @@ export default function BaseWorkflowCard({
 
     if (validIcons.length === 0 && categories.length > 0) {
       validIcons.push(
-        <div key="default-tools" className="flex items-center justify-center">
-          <ToolsIcon width={25} height={25} className="text-foreground-400" />
-        </div>,
+        <ToolsIcon width={25} height={25} className="text-foreground-400" />,
       );
     }
 
     return (
       <>
-        {validIcons}
+        <div className="flex min-h-8 -space-x-1.5">{validIcons}</div>
         {categories.length > 3 && (
           <div className="flex h-[25px] w-[25px] items-center justify-center rounded-lg bg-zinc-700 text-xs text-foreground-500">
             +{categories.length - 3}
@@ -108,8 +120,8 @@ export default function BaseWorkflowCard({
 
   return (
     <div
-      className={`group relative flex min-h-[200px] w-full flex-col gap-3 rounded-2xl border-1 border-zinc-800 bg-zinc-800 p-4 transition-all select-none ${
-        onClick ? "cursor-pointer hover:scale-105 hover:border-zinc-600" : ""
+      className={`group relative z-[1] flex min-h-[140px] w-full flex-col gap-2 rounded-2xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${
+        onClick ? "cursor-pointer hover:bg-zinc-700/50" : ""
       }`}
       onClick={onClick}
     >
@@ -126,42 +138,23 @@ export default function BaseWorkflowCard({
       </div>
 
       <div>
-        <h3 className="line-clamp-1 text-lg font-medium">{title}</h3>
-        <div className="line-clamp-3 flex-1 text-sm text-foreground-500">
+        <h3 className="line-clamp-2 text-lg font-medium">{title}</h3>
+        <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-zinc-400">
           {description}
         </div>
       </div>
 
-      {creator && (
-        <Tooltip
-          content="Created by"
-          showArrow
-          placement="left"
-          color="foreground"
-        >
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full">
-              {creator.avatar ? (
-                <Image
-                  src={creator.avatar}
-                  alt={creator.name}
-                  width={27}
-                  height={27}
-                  className="rounded-full"
-                />
-              ) : (
-                <User className="h-4 w-4 text-zinc-400" />
-              )}
-            </div>
-            <div className="flex min-w-0 flex-1 flex-col">
-              <p className="truncate text-xs font-medium text-zinc-400">
-                {creator.name}
-              </p>
-            </div>
-          </div>
-        </Tooltip>
-      )}
-      {footerContent}
+      <div className="mt-auto">
+        {triggerContent && <div className="mt-1">{triggerContent}</div>}
+        <div className="flex items-center justify-between gap-2">
+          {!hideExecutions && (
+            <RunCountDisplay totalExecutions={totalExecutions} />
+          )}
+          {footerContent && (
+            <div className="flex-shrink-0">{footerContent}</div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

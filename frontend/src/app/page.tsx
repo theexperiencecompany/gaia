@@ -30,6 +30,10 @@ const Personalised = lazy(
   () => import("@/features/landing/components/sections/Personalised"),
 );
 
+const TestimonialsSection = lazy(
+  () => import("@/features/landing/components/sections/TestimonialsSection"),
+);
+
 const FAQAccordion = lazy(() =>
   import("@/features/pricing/components/FAQAccordion").then((module) => ({
     default: module.FAQAccordion,
@@ -76,7 +80,7 @@ export default function LandingPage() {
                 animationStyle="from-center"
                 videoSrc="https://www.youtube.com/embed/K-ZbxMHxReM?si=U9Caazt9Ondagnr8"
                 thumbnailSrc="https://img.youtube.com/vi/K-ZbxMHxReM/maxresdefault.jpg"
-                // thumbnailSrc="/images/hero.webp?q=80"
+                // thumbnailSrc="/images/switsze.webp?q=80"
                 thumbnailAlt="Hero Section Video"
               />
             </div>
@@ -94,6 +98,10 @@ export default function LandingPage() {
             <Suspense fallback={<SuspenseLoader />}>
               <Tired />
               <Personalised />
+            </Suspense>
+
+            <Suspense fallback={<SuspenseLoader />}>
+              <TestimonialsSection />
             </Suspense>
 
             <Suspense fallback={<SuspenseLoader />}>

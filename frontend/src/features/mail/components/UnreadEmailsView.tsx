@@ -35,7 +35,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
   return (
     <BaseCardView
       title="Unread emails"
-      icon={<Gmail width={24} height={24} className="text-zinc-500" />}
+      icon={<Gmail className="h-5 w-5 text-zinc-500" />}
       isLoading={isLoading}
       error={error?.message}
       isEmpty={isEmpty}

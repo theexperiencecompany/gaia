@@ -3,5 +3,4 @@
  */
 
 export * from "./IntegrationsCard";
-export * from "./IntegrationsSection";
 export * from "./SpecialIntegrationCard";

@@ -15,6 +15,7 @@ interface SplitTextBlurProps {
     mass: number;
   };
   yOffset?: number;
+  disableIntersectionObserver?: boolean;
 }
 
 const SplitTextBlur = ({
@@ -28,6 +29,7 @@ const SplitTextBlur = ({
     mass: 1,
   },
   yOffset = 2,
+  disableIntersectionObserver = false,
 }: SplitTextBlurProps) => {
   const ref = useRef<HTMLDivElement>(null);
   const isVisible = useIntersectionObserver(ref, { threshold: 0.1 });
@@ -65,11 +67,13 @@ const SplitTextBlur = ({
     },
   };
 
+  const shouldAnimate = disableIntersectionObserver || isVisible;
+
   return (
     <motion.div
       ref={ref}
       initial="hidden"
-      animate={isVisible ? "visible" : "hidden"}
+      animate={shouldAnimate ? "visible" : "hidden"}
       variants={containerVariants}
       className={cn(className)}
       style={{

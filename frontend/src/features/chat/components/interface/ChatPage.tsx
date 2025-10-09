@@ -17,8 +17,6 @@ import { ChatWithMessages, NewChatLayout } from "./layouts";
 import ScrollToBottomButton from "./ScrollToBottomButton";
 
 const ChatPage = React.memo(function MainChat() {
-  const searchParams = useSearchParams();
-
   const { updateConvoMessages, clearMessages, convoMessages } =
     useConversation();
   const pendingPrompt = usePendingPrompt();

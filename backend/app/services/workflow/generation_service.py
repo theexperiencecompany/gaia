@@ -56,25 +56,27 @@ class WorkflowGenerationService:
             # Initialize LLM
             llm = init_llm()
 
-            # Create chain using the template
-            chain = WORKFLOW_GENERATION_TEMPLATE | llm | parser
-
-            # Generate workflow plan
-            result = await chain.ainvoke(
-                {
-                    "description": description,
-                    "title": title,
-                    "trigger_context": trigger_context,
-                    "tools": "\n".join(tools_with_categories),
-                    "categories": ", ".join(category_names),
-                    "format_instructions": parser.get_format_instructions(),
-                }
+            # Format the prompt using the template
+            formatted_prompt = WORKFLOW_GENERATION_TEMPLATE.format(
+                description=description,
+                title=title,
+                trigger_context=trigger_context,
+                tools="\n".join(tools_with_categories),
+                categories=", ".join(category_names),
+                format_instructions=parser.get_format_instructions(),
             )
+
+            # Generate workflow plan using LLM directly
+            llm_response = await llm.ainvoke(formatted_prompt)
+
+            # Parse the response content - handle different response types
+            response_content = getattr(llm_response, "content", str(llm_response))
+            result = parser.parse(response_content)
 
             # Convert to list of dictionaries for storage
             steps_data = []
             for i, step in enumerate(result.steps, 1):
-                steps_data.append(step.model_dump())
+                steps_data.append(step.model_dump(mode="json"))
 
             logger.info(f"Generated {len(steps_data)} workflow steps for: {title}")
             return steps_data

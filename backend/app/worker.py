@@ -13,11 +13,13 @@ from app.workers.tasks import (
     generate_workflow_steps,
     process_reminder,
     process_workflow_generation_task,
+    process_email_task,
 )
 
 # Configure the worker settings with all task functions and lifecycle hooks
 WorkerSettings.functions = [
     process_reminder,
+    process_email_task,
     cleanup_expired_reminders,
     check_inactive_users,
     process_workflow_generation_task,

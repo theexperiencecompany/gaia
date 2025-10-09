@@ -12,15 +12,15 @@ export default function Personalised() {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center gap-10">
-      <div className="flex w-full max-w-7xl flex-col justify-center p-7">
-        <div className="mb-2 text-center text-2xl font-light text-primary">
+    <div className="flex flex-col items-center justify-center gap-6 px-4 sm:gap-8 sm:px-6 lg:gap-10 lg:px-8">
+      <div className="flex w-full max-w-7xl flex-col justify-center p-4 sm:p-6 lg:p-7">
+        <div className="mb-2 text-center text-xl font-light text-primary sm:text-2xl">
           Truly Personalised
         </div>
-        <div className="text-center text-5xl font-normal">
+        <div className="px-2 text-center text-3xl font-normal sm:text-4xl lg:text-5xl">
           Finally, AI that feels like it's made for you
         </div>
-        <div className="grid w-full max-w-7xl grid-cols-3 grid-rows-1 justify-between gap-7 py-10">
+        <div className="mx-auto grid w-full max-w-4xl grid-cols-1 grid-rows-1 justify-between gap-4 py-6 sm:gap-6 sm:py-8 lg:grid-cols-2 lg:gap-7 lg:py-10">
           <BentoItem
             title="Recall Everything Instantly"
             description="GAIA remembers every detail you mention in a conversation"
@@ -32,16 +32,14 @@ export default function Personalised() {
               {personalInfo.map((info, index) => (
                 <div
                   key={index}
-                  className="mr-7 flex gap-1 rounded-2xl bg-zinc-700 px-4 py-2"
+                  className="mr-2 flex gap-1 rounded-xl bg-zinc-700 px-2 py-1.5 text-xs sm:mr-4 sm:gap-2 sm:rounded-2xl sm:px-3 sm:py-2 sm:text-sm lg:mr-7 lg:px-4 lg:text-base"
                 >
-                  <AiBrain01Icon className="relative top-0.5 text-zinc-400" />
-
+                  <AiBrain01Icon className="relative top-0.5 h-3 w-3 flex-shrink-0 text-zinc-400 sm:h-4 sm:w-4 lg:h-5 lg:w-5" />
                   <div className="w-full">{info}</div>
                 </div>
               ))}
             </div>
           </BentoItem>
-          <BentoItem title="lorem ipsum" description="lorem ipsum" />
 
           <BentoItem
             title="Build a Knowledge Graph"

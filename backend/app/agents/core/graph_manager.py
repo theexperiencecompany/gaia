@@ -19,7 +19,24 @@ class GraphManager:
     @classmethod
     async def get_graph(cls, graph_name: str = "default_graph") -> Any:
         """Get the graph instance by name."""
-        graph = await providers.aget(graph_name)
-        if graph is not None:
-            logger.debug("Retrieved graph from lazy provider")
-            return graph
+        logger.info(f"Attempting to get graph '{graph_name}'")
+        try:
+            graph = await providers.aget(graph_name)
+            if graph is not None:
+                logger.info(
+                    f"Successfully retrieved graph '{graph_name}' from lazy provider"
+                )
+                return graph
+            else:
+                logger.error(
+                    f"Graph '{graph_name}' returned None from lazy provider - this means the provider function failed or returned None"
+                )
+                return None
+        except KeyError as e:
+            logger.error(
+                f"Graph provider '{graph_name}' not registered in lazy providers: {e}"
+            )
+            return None
+        except Exception as e:
+            logger.error(f"Error retrieving graph '{graph_name}': {e}", exc_info=True)
+            return None

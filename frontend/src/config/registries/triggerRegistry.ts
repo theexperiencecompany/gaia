@@ -63,15 +63,15 @@ export const TRIGGER_CONFIG = {
     description: "Trigger when new emails arrive",
     configSchema: {},
   },
-  calendar: {
-    integrationId: "google_calendar",
-    label: "on calendar events",
-    name: "Google Calendar",
-    description: "Trigger when new events are created",
-    configSchema: {
-      // Future: calendar-specific config fields
-    },
-  },
+  // calendar: {
+  //   integrationId: "google_calendar",
+  //   label: "on calendar events",
+  //   name: "Google Calendar",
+  //   description: "Trigger when new events are created",
+  //   configSchema: {
+  //     // Future: calendar-specific config fields
+  //   },
+  // },
   schedule: {
     integrationId: null, // No integration needed
     label: "scheduled", // Will be overridden by cron description if available

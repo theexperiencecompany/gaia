@@ -4,6 +4,9 @@ import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
 
 import { PricingCards } from "@/features/pricing/components/PricingCards";
+import { ComparisonTable } from "@/features/pricing/components/ComparisonTable";
+import { FAQAccordion } from "./FAQAccordion";
+import FinalSection from "@/features/landing/components/sections/FinalSection";
 
 export default function PricingPage() {
   return (
@@ -43,7 +46,10 @@ export default function PricingPage() {
           </Tabs>
         </div>
 
-        {/* <FAQAccordion /> */}
+        <ComparisonTable />
+
+        <FAQAccordion />
+        <FinalSection />
       </div>
     </div>
   );

@@ -55,8 +55,8 @@ export const GridSection = () => {
   };
 
   return (
-    <div className="relative flex h-fit snap-start flex-col items-center justify-center p-4">
-      <div className="min-h-scree mb-20 grid w-full max-w-7xl grid-cols-1 grid-rows-1 gap-4 space-y-14 sm:min-h-[40vh] sm:grid-cols-2 sm:space-y-0">
+    <div className="relative flex h-fit w-full snap-start flex-col items-center justify-center">
+      <div className="mb-20 grid min-h-screen w-full max-w-7xl grid-cols-1 grid-rows-1 gap-8 space-y-14 sm:min-h-[40vh] sm:grid-cols-2 sm:space-y-0">
         <UnreadEmailsView
           emails={emailData}
           isLoading={isLoading}

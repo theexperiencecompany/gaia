@@ -44,10 +44,10 @@ export default function Footer() {
   const randomTagline = taglines[Math.floor(Math.random() * taglines.length)];
 
   return (
-    <div className="relative z-[1] m-0! flex flex-col items-center gap-7 overflow-hidden p-5 font-light sm:p-10 sm:pt-20 sm:pb-5">
-      <div className="flex h-fit w-screen items-center justify-center">
-        <div className="grid w-full max-w-5xl grid-cols-2 gap-8 sm:grid-cols-4">
-          <div className="relative -top-2 flex h-full w-fit flex-col gap-1 text-foreground-600">
+    <div className="relative z-[1] m-0! flex flex-col items-center gap-6 overflow-hidden p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5">
+      <div className="flex h-fit w-screen items-center justify-center px-2 sm:px-4">
+        <div className="grid w-full max-w-5xl grid-cols-4 gap-6 sm:gap-8">
+          <div className="relative -top-1 col-span-1 flex h-full w-fit flex-col gap-1 text-foreground-600 sm:-top-2">
             <div className="flex w-fit items-center justify-center rounded-xl p-1">
               <iframe
                 src="https://status.heygaia.io/badge?theme=dark"
@@ -58,7 +58,7 @@ export default function Footer() {
                 style={{ colorScheme: "normal" }}
               />
             </div>
-            <div className="mt-2 flex flex-col items-start px-3 text-2xl font-medium text-white">
+            <div className="mt-2 flex flex-col items-start px-2 text-xl font-medium text-white sm:px-3 sm:text-2xl">
               <Link href={"/"}>
                 <Image
                   src="/images/logos/logo.webp"
@@ -77,9 +77,9 @@ export default function Footer() {
           {footerSections.map((section) => (
             <div
               key={section.title}
-              className="flex h-full w-full flex-col items-end text-foreground-500"
+              className="flex h-full w-full flex-col items-start text-foreground-500 sm:items-end"
             >
-              <div className="mb-3 pl-2 text-sm text-foreground">
+              <div className="mb-2 pl-0 text-sm font-medium text-foreground sm:mb-3 sm:pl-2">
                 {section.title}
               </div>
               {section.links
@@ -100,29 +100,19 @@ export default function Footer() {
                   <Link
                     key={link.href}
                     href={link.href}
-                    className="group relative flex w-full cursor-pointer justify-end py-1 text-sm"
+                    className="group relative flex w-full cursor-pointer justify-start py-1 text-sm sm:justify-end"
                   >
-                    {/* {section.title == "Connect" &&
-                      link.label !== "Contact Us" &&
-                      link.icon && (
-                        <div className="group-hover:text-primary">
-                          {link.icon}
-                        </div>
-                      )} */}
                     <span className="text-foreground-400 transition-colors group-hover:text-primary">
                       {link.label}
                     </span>
-                    {/* <span className="ml-1 -translate-x-10 opacity-0 transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100">
-                        <ArrowUpRight width={17} />
-                      </span> */}
                   </Link>
                 ))}
             </div>
           ))}
         </div>
       </div>
-      <div className="mx-auto mt-10 flex w-full max-w-5xl items-center justify-between border-t-1 border-zinc-800 py-8 pb-3 text-xs font-light text-zinc-600">
-        <div className="flex items-center gap-3">
+      <div className="mx-auto mt-6 flex w-full max-w-5xl flex-col items-center justify-between gap-4 border-t-1 border-zinc-800 px-2 py-6 pb-3 text-xs font-light text-zinc-600 sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10">
+        <div className="order-2 flex items-center gap-3 sm:order-1">
           {connect.map((link) => (
             <Link
               key={link.href}
@@ -136,9 +126,11 @@ export default function Footer() {
             </Link>
           ))}
         </div>
-        <div>{appConfig.site.copyright}</div>
+        <div className="order-1 text-center sm:order-2">
+          {appConfig.site.copyright}
+        </div>
 
-        <div className="flex border-separate items-center gap-2">
+        <div className="order-3 flex border-separate items-center gap-2 text-center">
           <Link href={"/terms"} className="underline-offset-2 hover:underline">
             Terms of Use
           </Link>

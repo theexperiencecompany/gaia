@@ -61,7 +61,7 @@ export const SOCIAL_LINKS = [
 
 export default function FinalSection() {
   return (
-    <div className="relative z-1 m-0! flex min-h-[90vh] w-screen flex-col items-center justify-center gap-4 overflow-hidden">
+    <div className="relative z-1 m-0! flex min-h-[90vh] w-screen flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
       <div className="absolute inset-0 h-full w-full">
         <Image
           src="/images/wallpapers/surreal.webp"
@@ -71,23 +71,23 @@ export default function FinalSection() {
           className="noisy object-cover opacity-85"
           priority
         />
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30vh] bg-gradient-to-b from-black via-black/50 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[30vh] bg-gradient-to-t from-black to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[40vh] bg-gradient-to-b from-black via-black/50 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-black to-transparent" />
       </div>
 
-      <div className="relative z-2 mb-30 flex h-full flex-col items-center justify-start gap-4">
+      <div className="relative z-2 mb-30 flex h-full flex-col items-center justify-start gap-4 sm:gap-6">
         <SplitTextBlur
           text="Your Life, Supercharged by GAIA"
           delay={0}
-          className="z-[10] max-w-(--breakpoint-xl) text-center text-[2.8rem] leading-none font-medium tracking-tighter sm:text-[5rem]"
+          className="z-[10] max-w-(--breakpoint-xl) text-center text-[2.2rem] leading-tight font-medium tracking-tighter sm:text-[3.5rem] sm:leading-none md:text-[4.5rem] lg:text-[5rem]"
         />
 
-        <div className="z-[1] mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-lg leading-7 font-light tracking-tighter text-foreground-600 sm:px-0 sm:text-xl">
+        <div className="z-[1] mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter text-foreground-600 sm:px-0 sm:text-lg sm:leading-7 md:text-xl">
           Join thousands already upgrading their productivity.
         </div>
         <GetStartedButton />
 
-        <div className="mt-6 flex items-center gap-2">
+        <div className="mt-4 flex items-center gap-3 sm:mt-6 sm:gap-2">
           {SOCIAL_LINKS.map(
             ({ href, ariaLabel, buttonProps, icon, label }, index) => {
               const color = `hover:text-[${buttonProps.color}]`;
@@ -96,7 +96,7 @@ export default function FinalSection() {
                   <Link
                     href={href}
                     aria-label={ariaLabel}
-                    className={`flex w-10 scale-125 justify-center p-1 transition hover:scale-150 ${color}`}
+                    className={`flex w-10 scale-110 justify-center p-1 transition hover:scale-125 sm:w-10 sm:scale-125 sm:hover:scale-150 ${color}`}
                   >
                     {icon}
                   </Link>

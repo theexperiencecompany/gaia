@@ -119,6 +119,10 @@ export interface Workflow {
   execution_logs: string[];
   error_message?: string;
 
+  // Execution statistics
+  total_executions: number;
+  successful_executions: number;
+
   // Community features
   is_public?: boolean;
   created_by?: string;

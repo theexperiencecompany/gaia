@@ -129,8 +129,7 @@ async def execute_graph_silent(
     graph,
     initial_state: dict,
     config: dict,
-    usage_metadata_callback: UsageMetadataCallbackHandler,
-) -> tuple[str, dict, dict]:
+) -> tuple[str, dict]:
     """Execute LangGraph in silent mode with real-time progress storage.
 
     Runs the agent graph asynchronously and accumulates all results including
@@ -149,7 +148,6 @@ async def execute_graph_silent(
         Tuple containing:
         - complete_message: Full response text accumulated from all chunks
         - tool_data: Dictionary of extracted tool execution data and results
-        - token_metadata: Dictionary containing token usage information
     """
     complete_message = ""
     tool_data = {}
@@ -188,10 +186,7 @@ async def execute_graph_silent(
                         conversation_id, user_id, complete_message, tool_data
                     )
 
-    # Get token usage metadata from callback
-    token_metadata = usage_metadata_callback.usage_metadata
-
-    return complete_message, tool_data, token_metadata
+    return complete_message, tool_data
 
 
 @traceable(run_type="llm", name="Call Agent")

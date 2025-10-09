@@ -1,5 +1,4 @@
-import { isValid, parseISO } from "date-fns";
-
+import { formatDistanceToNow, isValid, parseISO } from "date-fns";
 
 const nth = (date: number): string => {
   if (date > 3 && date < 21) return "th";
@@ -34,22 +33,63 @@ export const parsingDate = (isoString: string) => {
 
 export function parseDate(isoDateString: string): string {
   const date = new Date(isoDateString);
+  const now = new Date();
+  const diffInMs = now.getTime() - date.getTime();
+
+  // Format the actual time for display in brackets
   const optionsTime: Intl.DateTimeFormatOptions = {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
   };
+  const formattedTime = date
+    .toLocaleString(navigator.language, optionsTime)
+    .toUpperCase();
+
+  // Show exact relative time for recent dates (within 7 days)
+  if (diffInMs < 7 * 24 * 60 * 60 * 1000) {
+    // 7 days in milliseconds
+    const seconds = Math.floor(diffInMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    let relativeTime = "";
+
+    if (days > 0) {
+      const remainingHours = hours % 24;
+      relativeTime = days === 1 ? "1 day" : `${days} days`;
+      if (remainingHours > 0) {
+        relativeTime +=
+          remainingHours === 1 ? " 1 hour" : ` ${remainingHours} hours`;
+      }
+    } else if (hours > 0) {
+      const remainingMinutes = minutes % 60;
+      relativeTime = hours === 1 ? "1 hour" : `${hours} hours`;
+      if (remainingMinutes > 0) {
+        relativeTime +=
+          remainingMinutes === 1 ? " 1 min" : ` ${remainingMinutes} mins`;
+      }
+    } else if (minutes > 0) {
+      relativeTime = minutes === 1 ? "1 min" : `${minutes} mins`;
+    } else {
+      relativeTime = "just now";
+    }
+
+    return relativeTime === "just now"
+      ? `${relativeTime} (${formattedTime})`
+      : `${relativeTime} ago (${formattedTime})`;
+  }
+
+  // For older dates, show the full date format
   const optionsMonth: Intl.DateTimeFormatOptions = { month: "short" };
   const optionsYear: Intl.DateTimeFormatOptions = { year: "2-digit" };
 
-  const time = date
-    .toLocaleString(navigator.language, optionsTime)
-    .toUpperCase();
   const month = date.toLocaleString(navigator.language, optionsMonth);
   const year = date.toLocaleString(navigator.language, optionsYear);
   const day = date.getDate();
 
-  return `${time} ${day}${nth(day)} ${month} '${year}`.trim();
+  return `${day}${nth(day)} ${month} '${year} (${formattedTime})`;
 }
 
 export function parseDate2(isoDateString: string): string {
@@ -60,7 +100,6 @@ export function parseDate2(isoDateString: string): string {
 
   return `${day}${nth(day)} ${month}`.trim();
 }
-
 
 /**
  * Formats a date string into a human-readable date format

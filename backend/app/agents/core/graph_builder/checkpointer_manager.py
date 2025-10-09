@@ -72,7 +72,7 @@ class CheckpointerManager:
     name="checkpointer_manager",
     required_keys=[settings.POSTGRES_URL],
     strategy=MissingKeyStrategy.WARN,
-    auto_initialize=False,
+    auto_initialize=True,
     warning_message="PostgreSQL URL not configured. Langraph checkpointing features will be disabled. Langraph graph persistence will not work.",
 )
 async def init_checkpointer_manager() -> CheckpointerManager:

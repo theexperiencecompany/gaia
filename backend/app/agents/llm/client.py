@@ -78,6 +78,7 @@ def init_gemini_llm():
         model=PROVIDER_MODELS["gemini"],
         temperature=0.1,
     ).configurable_fields(
+        # gemini uses model instead of model_name unlike others
         model=ConfigurableField(id="model_name", name="LLM Model Name")
     )
 

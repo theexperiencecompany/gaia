@@ -9,6 +9,10 @@ import {
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
 import CommunityWorkflowCard from "@/features/workflows/components/CommunityWorkflowCard";
+import Image from "next/image";
+import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { SplitTextBlur } from "@/features/landing/components/hero/SplitTextBlur";
+import { MotionContainer } from "@/layouts/MotionContainer";
 
 export default function UseCasesPage() {
   const [communityWorkflows, setCommunityWorkflows] = useState<
@@ -36,26 +40,43 @@ export default function UseCasesPage() {
   }, []);
 
   return (
-    <div className="min-h-screen" ref={contentRef}>
-      <div className="container mx-auto px-6 pt-30 pb-8">
+    <div className="relative h-fit min-h-screen pt-80" ref={contentRef}>
+      <div className="absolute inset-0 top-0 h-screen w-full">
+        <Image
+          src={"/images/wallpapers/meadow_1.webp"}
+          alt="Wallpaper"
+          sizes="100vw"
+          priority
+          fill
+          className="aspect-video object-cover opacity-60"
+        />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-background via-background to-transparent" />
+      </div>
+
+      <div
+        className="relative z-[1] container mx-auto px-6 pb-8"
+        // disableIntersectionObserver={true}
+      >
         <div className="mb-8 text-center">
-          <h1 className="mb-4 text-5xl font-bold">Use Cases</h1>
-          <p className="mx-auto max-w-3xl text-xl text-foreground-500">
-            Discover powerful automation templates and AI prompts to streamline
-            your workflow
+          <h1 className="mb-1 text-6xl font-normal tracking-tighter">
+            See what's Possible
+          </h1>
+          <p className="mx-auto max-w-3xl text-lg text-zinc-300/80">
+            Practical use cases showing how GAIA works for you
           </p>
         </div>
 
         <UseCaseSection dummySectionRef={contentRef} />
 
-        <div id="community-section" className="mt-14 space-y-6">
-          <div className="text-center">
-            <h2 className="mb-2 text-4xl font-bold">By the Community</h2>
-            <p className="mx-auto max-w-2xl text-lg text-foreground-500">
-              Discover workflows created and shared by our community of users
+        <div id="community-section" className="mt-22 space-y-6">
+          <div className="mb-14 text-center">
+            <h1 className="mb-1 text-5xl font-normal tracking-tighter">
+              Published by The Community
+            </h1>
+            <p className="mx-auto max-w-3xl text-lg text-zinc-300/80">
+              Discover what others are building with GAIA
             </p>
           </div>
-
           {isLoadingCommunity ? (
             <div className="flex h-48 items-center justify-center">
               <Spinner />
@@ -67,7 +88,7 @@ export default function UseCasesPage() {
               </div>
             </div>
           ) : (
-            <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
               {communityWorkflows.map((workflow) => (
                 <CommunityWorkflowCard key={workflow.id} workflow={workflow} />
               ))}
@@ -75,6 +96,8 @@ export default function UseCasesPage() {
           )}
         </div>
       </div>
+
+      <FinalSection />
     </div>
   );
 }

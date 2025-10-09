@@ -1,0 +1,98 @@
+export const testimonials = [
+  {
+    name: "Ananya Patel",
+    body: "GAIA feels less like a tool and more like a teammate. It keeps track of all the context I usually lose between projects and nudges me before I even realize I'm behind.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=ananya",
+    role: "Software Engineer",
+  },
+  {
+    name: "Jason Lee",
+    body: "I used to bounce between Notion, Google Calendar, and endless sticky notes. Now GAIA just connects it all. It's the first time an assistant has actually saved me time instead of wasting it.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=jason",
+    role: "Startup Founder",
+  },
+  {
+    name: "Meera Singh",
+    body: "GAIA remembers things I would have completely forgotten like follow-ups from weeks ago. It's almost scary how well it pieces my scattered thoughts together.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=meera",
+    role: "Content Strategist",
+  },
+  {
+    name: "Tom Garcia",
+    body: "I've tried other AI apps but they all felt generic. GAIA actually learns what I care about and adapts to my workflow instead of forcing me to adapt to it.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=tom",
+    role: "Product Designer",
+  },
+  {
+    name: "Sophia Li",
+    body: "The integrations blew me away. My email, tasks, and goals all just click together. It's like GAIA finally gave me one brain for all my digital mess.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=sophia",
+    role: "Engineering Manager",
+  },
+  {
+    name: "Ravi Kumar",
+    body: "What stood out to me is how proactive GAIA is. It doesn't just answer it does. It reminds me to slow down, helps me prioritize, and even flags things I missed entirely.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=ravi",
+    role: "Data Analyst",
+  },
+  {
+    name: "Emily Carter",
+    body: "GAIA actually understands the human side of productivity. It doesn't just dump reminders it balances my work with personal commitments in a way no other tool has.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=emily",
+    role: "Marketing Director",
+  },
+  {
+    name: "Daniel Brooks",
+    body: "Every update makes GAIA feel smarter. It's gone from being a helpful organizer to something closer to a second brain. I can't imagine managing my week without it now.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=daniel",
+    role: "Consultant",
+  },
+  {
+    name: "Alex Chen",
+    body: "ChatGPT is smart, but GAIA has hands. It doesn't just tell me what to do, it actually does it.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=alex",
+    role: "Developer",
+  },
+  {
+    name: "Sarah Kim",
+    body: "Finally, an AI that talks like a human instead of a textbook.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=sarah",
+    role: "UX Designer",
+  },
+  {
+    name: "Marcus Johnson",
+    body: "It's like ChatGPT got upgraded with actual tools and personality.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=marcus",
+    role: "Product Manager",
+  },
+  {
+    name: "Luna Rodriguez",
+    body: "GAIA gets things done while other AI just talks about it.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=luna",
+    role: "Freelancer",
+  },
+  {
+    name: "David Park",
+    body: "Best AI assistant I've used. Actually feels like talking to a colleague.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=david",
+    role: "Team Lead",
+  },
+  {
+    name: "Maya Thompson",
+    body: "Other assistants give you answers. GAIA gives you solutions.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=maya",
+    role: "Researcher",
+  },
+  {
+    name: "Ryan Walsh",
+    body: "It's like having ChatGPT with superpowers and a personality.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=ryan",
+    role: "Analyst",
+  },
+  {
+    name: "Zoe Martinez",
+    body: "GAIA doesn't just understand what I say, it understands what I mean.",
+    img: "https://api.dicebear.com/7.x/notionists/svg?seed=zoe",
+    role: "Writer",
+  },
+];

@@ -147,7 +147,7 @@ async def call_agent_silent(
     usage_metadata_callback: Optional[UsageMetadataCallbackHandler] = None,
     user_model_config: Optional[ModelConfig] = None,
     trigger_context: Optional[dict] = None,
-) -> tuple[str, dict, dict]:
+) -> tuple[str, dict]:
     """
     Execute agent in silent mode for background processing.
 
@@ -161,13 +161,11 @@ async def call_agent_silent(
             user_time,
             user_model_config,
             trigger_context,
-            usage_metadata_callback,
+            usage_metadata_callback=usage_metadata_callback,
         )
 
-        return await execute_graph_silent(
-            graph, initial_state, config, usage_metadata_callback
-        )
+        return await execute_graph_silent(graph, initial_state, config)
 
     except Exception as exc:
         logger.error(f"Error when calling silent agent: {exc}")
-        return f"Error when calling silent agent: {str(exc)}", {}, {}
+        return f"Error when calling silent agent: {str(exc)}", {}

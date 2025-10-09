@@ -1,7 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { ChevronUp, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -10,13 +8,20 @@ import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreat
 
 import { CommunityWorkflow, workflowApi } from "../api/workflowApi";
 import BaseWorkflowCard from "./shared/BaseWorkflowCard";
+import {
+  CreateWorkflowButton,
+  CreatorAvatar,
+  TriggerDisplay,
+} from "./shared/WorkflowCardComponents";
 
 interface CommunityWorkflowCardProps {
   workflow: CommunityWorkflow;
+  onClick?: () => void;
 }
 
 export default function CommunityWorkflowCard({
   workflow,
+  onClick,
 }: CommunityWorkflowCardProps) {
   const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
   const [isUpvoting, setIsUpvoting] = useState(false);
@@ -117,20 +122,20 @@ export default function CommunityWorkflowCard({
     localWorkflow.id,
   ]);
 
-  const handleUpvote = useCallback(() => {
-    // Prevent rapid clicks by checking if already processing
-    if (isUpvoting) return;
+  // const handleUpvote = useCallback(() => {
+  //   // Prevent rapid clicks by checking if already processing
+  //   if (isUpvoting) return;
 
-    // Clear any existing timeout
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
+  //   // Clear any existing timeout
+  //   if (debounceTimeoutRef.current) {
+  //     clearTimeout(debounceTimeoutRef.current);
+  //   }
 
-    // Set new timeout for debouncing
-    debounceTimeoutRef.current = setTimeout(() => {
-      handleUpvoteImmediate();
-    }, 300); // 300ms debounce
-  }, [isUpvoting, handleUpvoteImmediate]);
+  //   // Set new timeout for debouncing
+  //   debounceTimeoutRef.current = setTimeout(() => {
+  //     handleUpvoteImmediate();
+  //   }, 300); // 300ms debounce
+  // }, [isUpvoting, handleUpvoteImmediate]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -141,35 +146,19 @@ export default function CommunityWorkflowCard({
     };
   }, []);
 
+  const triggerContent = (
+    <TriggerDisplay triggerType="manual" triggerLabel="Manual" />
+  );
+
   const footerContent = (
-    <div className="flex w-full items-center gap-3">
-      <Button
-        color="default"
-        size="sm"
-        startContent={<Plus width={16} height={16} />}
-        className="flex-1"
+    <div className="flex items-center gap-3">
+      {localWorkflow.creator && (
+        <CreatorAvatar creator={localWorkflow.creator} />
+      )}
+      <CreateWorkflowButton
         isLoading={isCreatingWorkflow}
         onPress={handleCreateWorkflow}
-      >
-        Create Workflow
-      </Button>
-
-      <Button
-        variant={localWorkflow.is_upvoted ? "solid" : "flat"}
-        color={localWorkflow.is_upvoted ? "primary" : "default"}
-        size="sm"
-        isIconOnly
-        isLoading={isUpvoting}
-        onPress={handleUpvote}
-        className={`flex flex-shrink-0 flex-col`}
-      >
-        <ChevronUp width={50} height={50} />
-        <span
-          className={`min-w-0 text-xs font-bold ${localWorkflow.is_upvoted ? "text-black" : "text-zinc-500"}`}
-        >
-          {localWorkflow.upvotes}
-        </span>
-      </Button>
+      />
     </div>
   );
 
@@ -178,11 +167,10 @@ export default function CommunityWorkflowCard({
       title={localWorkflow.title}
       description={localWorkflow.description}
       steps={localWorkflow.steps}
-      creator={{
-        name: localWorkflow.creator.name,
-        avatar: localWorkflow.creator.avatar,
-      }}
+      triggerContent={triggerContent}
       footerContent={footerContent}
+      totalExecutions={0}
+      onClick={onClick}
     />
   );
 }
