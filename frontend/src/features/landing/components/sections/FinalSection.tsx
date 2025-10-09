@@ -71,8 +71,8 @@ export default function FinalSection() {
           className="noisy object-cover opacity-85"
           priority
         />
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30vh] bg-gradient-to-b from-black via-black/50 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[30vh] bg-gradient-to-t from-black to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[40vh] bg-gradient-to-b from-black via-black/50 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-black to-transparent" />
       </div>
 
       <div className="relative z-2 mb-30 flex h-full flex-col items-center justify-start gap-4 sm:gap-6">

@@ -70,10 +70,8 @@ export default function UseCaseCard({
         variant="flat"
         className="ml-auto w-fit text-primary"
         endContent={
-          isLoading ? undefined : action_type === "prompt" ? (
+          (isLoading ? undefined : action_type === "prompt") && (
             <ArrowUpRight width={16} height={16} />
-          ) : (
-            <Zap width={16} height={16} color={undefined} />
           )
         }
         isLoading={isLoading}
@@ -95,6 +93,7 @@ export default function UseCaseCard({
       footerContent={footerContent}
       onClick={isCardClickable ? handleAction : undefined}
       showArrowIcon={false}
+      useBlurEffect={true}
     />
   );
 }

@@ -287,7 +287,6 @@ export default function WorkflowPage() {
               fullWidth
               onPress={onOpen}
               className="text-primary"
-              endContent={<ZapIcon width={14} height={14} />}
             >
               Create Workflow
             </Button>

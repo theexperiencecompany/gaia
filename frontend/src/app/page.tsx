@@ -80,7 +80,7 @@ export default function LandingPage() {
                 animationStyle="from-center"
                 videoSrc="https://www.youtube.com/embed/K-ZbxMHxReM?si=U9Caazt9Ondagnr8"
                 thumbnailSrc="https://img.youtube.com/vi/K-ZbxMHxReM/maxresdefault.jpg"
-                // thumbnailSrc="/images/hero.webp?q=80"
+                // thumbnailSrc="/images/switsze.webp?q=80"
                 thumbnailAlt="Hero Section Video"
               />
             </div>

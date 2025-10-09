@@ -90,7 +90,6 @@ export default function UserWorkflowCard({ workflow }: UserWorkflowCardProps) {
         onPress={handleRunWorkflow}
         variant="flat"
         className="ml-auto w-fit text-primary"
-        startContent={<Zap width={16} height={16} />}
       >
         Run Workflow
       </Button>

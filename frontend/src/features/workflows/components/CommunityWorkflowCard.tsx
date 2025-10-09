@@ -9,12 +9,10 @@ import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreat
 import { CommunityWorkflow, workflowApi } from "../api/workflowApi";
 import BaseWorkflowCard from "./shared/BaseWorkflowCard";
 import {
-  TriggerDisplay,
   CreateWorkflowButton,
   CreatorAvatar,
+  TriggerDisplay,
 } from "./shared/WorkflowCardComponents";
-import { Tooltip } from "@heroui/tooltip";
-import Image from "next/image";
 
 interface CommunityWorkflowCardProps {
   workflow: CommunityWorkflow;
@@ -124,20 +122,20 @@ export default function CommunityWorkflowCard({
     localWorkflow.id,
   ]);
 
-  const handleUpvote = useCallback(() => {
-    // Prevent rapid clicks by checking if already processing
-    if (isUpvoting) return;
+  // const handleUpvote = useCallback(() => {
+  //   // Prevent rapid clicks by checking if already processing
+  //   if (isUpvoting) return;
 
-    // Clear any existing timeout
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
+  //   // Clear any existing timeout
+  //   if (debounceTimeoutRef.current) {
+  //     clearTimeout(debounceTimeoutRef.current);
+  //   }
 
-    // Set new timeout for debouncing
-    debounceTimeoutRef.current = setTimeout(() => {
-      handleUpvoteImmediate();
-    }, 300); // 300ms debounce
-  }, [isUpvoting, handleUpvoteImmediate]);
+  //   // Set new timeout for debouncing
+  //   debounceTimeoutRef.current = setTimeout(() => {
+  //     handleUpvoteImmediate();
+  //   }, 300); // 300ms debounce
+  // }, [isUpvoting, handleUpvoteImmediate]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -169,10 +167,6 @@ export default function CommunityWorkflowCard({
       title={localWorkflow.title}
       description={localWorkflow.description}
       steps={localWorkflow.steps}
-      creator={{
-        name: localWorkflow.creator.name,
-        avatar: localWorkflow.creator.avatar,
-      }}
       triggerContent={triggerContent}
       footerContent={footerContent}
       totalExecutions={0}

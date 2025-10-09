@@ -131,7 +131,7 @@ export default function NotificationsPage() {
             </div>
           }
         >
-          <div className="max-h-[calc(100vh-200px)] overflow-scroll">
+          <div className="max-h-[calc(100vh-200px)] overflow-y-auto">
             <NotificationsList
               notifications={unreadNotifications}
               loading={unreadLoading}
@@ -144,7 +144,7 @@ export default function NotificationsPage() {
           </div>
         </Tab>
         <Tab key="all" title="All">
-          <div className="max-h-[calc(100vh-200px)] overflow-scroll">
+          <div className="max-h-[calc(100vh-200px)] overflow-y-auto">
             <NotificationsList
               notifications={allNotifications}
               loading={allLoading}

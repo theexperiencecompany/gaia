@@ -76,8 +76,8 @@ export default function Productivity() {
           ))}
         </div>
 
-        <div className="grid max-w-7xl grid-cols-1 grid-rows-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 lg:gap-6 xl:grid-cols-4">
-          {filteredUseCases.slice(0, 4).map((useCase, index) => (
+        <div className="grid max-w-7xl grid-cols-1 grid-rows-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 lg:gap-6 xl:grid-cols-3">
+          {filteredUseCases.slice(0, 6).map((useCase, index) => (
             <UseCaseCard
               key={useCase.published_id || index}
               title={useCase.title || ""}

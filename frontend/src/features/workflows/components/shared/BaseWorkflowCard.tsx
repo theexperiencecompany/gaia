@@ -1,11 +1,9 @@
 "use client";
 
-import { Tooltip } from "@heroui/react";
-import { ArrowUpRight, User } from "lucide-react";
-import Image from "next/image";
+import { ArrowUpRight } from "lucide-react";
 import { ReactNode } from "react";
 
-import { PlayIcon, ToolsIcon } from "@/components";
+import { ToolsIcon } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { RunCountDisplay } from "./WorkflowCardComponents";
 
@@ -19,12 +17,9 @@ interface BaseWorkflowCardProps {
   headerRight?: ReactNode;
   footerContent?: ReactNode;
   triggerContent?: ReactNode;
-  creator?: {
-    name: string;
-    avatar?: string;
-  };
   totalExecutions?: number;
   hideExecutions?: boolean;
+  useBlurEffect?: boolean;
 }
 
 export default function BaseWorkflowCard({
@@ -37,9 +32,9 @@ export default function BaseWorkflowCard({
   headerRight,
   footerContent,
   triggerContent,
-  creator,
   totalExecutions = 0,
   hideExecutions = false,
+  useBlurEffect = false,
 }: BaseWorkflowCardProps) {
   const renderToolIcons = () => {
     let categories: string[];
@@ -125,7 +120,7 @@ export default function BaseWorkflowCard({
 
   return (
     <div
-      className={`group relative flex min-h-[140px] w-full flex-col gap-2 rounded-2xl bg-zinc-800 p-4 transition-all select-none ${
+      className={`group relative z-[1] flex min-h-[140px] w-full flex-col gap-2 rounded-2xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${
         onClick ? "cursor-pointer hover:bg-zinc-700/50" : ""
       }`}
       onClick={onClick}

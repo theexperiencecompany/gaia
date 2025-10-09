@@ -89,7 +89,7 @@ export const EnhancedNotificationCard = ({
 
   return (
     <div
-      className={`group relative w-full rounded-xl transition-all ${
+      className={`group relative w-full rounded-2xl transition-all ${
         isUnread ? "bg-zinc-800/70" : "bg-zinc-900/40"
       }`}
     >
@@ -108,14 +108,9 @@ export const EnhancedNotificationCard = ({
             </div>
 
             {/* Description */}
-            <p className="text-[13px] leading-relaxed text-zinc-400">
+            <p className="mb-0 text-[13px] text-zinc-400">
               {notification.content.body}
             </p>
-
-            {/* Date */}
-            <span className="inline-block text-[11px] text-zinc-600">
-              {formattedDate}
-            </span>
           </div>
 
           {/* Mark as read button */}
@@ -127,7 +122,6 @@ export const EnhancedNotificationCard = ({
                   onPress={handleMarkAsRead}
                   variant="light"
                   isIconOnly
-                  className="h-8 w-8 min-w-8 flex-shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
                 >
                   <CheckCheck className="h-4 w-4 text-zinc-500" />
                 </HeroButton>
@@ -135,51 +129,60 @@ export const EnhancedNotificationCard = ({
             )}
         </div>
 
-        {/* Actions */}
-        {notification?.content?.actions &&
-          notification?.content?.actions.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {notification.content.actions.map((action) => {
-                const buttonProps = getActionButtonProps(action);
-                const isLoading =
-                  loading === action.id || executingActionId === action.id;
-                const isExecuted = action.executed || false;
+        <div className="mt-3 flex items-end justify-between">
+          {/* Actions */}
+          {notification?.content?.actions &&
+            notification?.content?.actions.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                {notification.content.actions.map((action) => {
+                  const buttonProps = getActionButtonProps(action);
+                  const isLoading =
+                    loading === action.id || executingActionId === action.id;
+                  const isExecuted = action.executed || false;
 
-                // Don't show loading for modal actions
-                const showLoading = isLoading && action.type !== "modal";
+                  // Don't show loading for modal actions
+                  const showLoading = isLoading && action.type !== "modal";
 
-                return (
-                  <Button
-                    key={action.id}
-                    size="sm"
-                    disabled={buttonProps.disabled || isLoading || isExecuted}
-                    onClick={() => handleActionClick(action.id)}
-                    className={`h-8 gap-1.5 rounded-md px-3 text-xs font-medium transition-all ${
-                      action.style === "primary"
-                        ? "bg-primary/10 text-primary hover:bg-primary/20"
-                        : action.style === "danger"
-                          ? "bg-red-500/10 text-red-500 hover:bg-red-500/20"
-                          : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"
-                    } ${showLoading ? "opacity-50" : ""} ${
-                      isExecuted ? "cursor-not-allowed opacity-60" : ""
-                    }`}
-                  >
-                    {showLoading ? (
-                      <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
-                    ) : (
-                      <>
-                        <span>{action.label}</span>
-                        {isExecuted && (
-                          <CheckCircle className="h-3 w-3" strokeWidth={2.5} />
-                        )}
-                        {!isExecuted && getActionIcon(action.type)}
-                      </>
-                    )}
-                  </Button>
-                );
-              })}
-            </div>
-          )}
+                  return (
+                    <Button
+                      key={action.id}
+                      disabled={buttonProps.disabled || isLoading || isExecuted}
+                      onClick={() => handleActionClick(action.id)}
+                      className={`gap-1.5 rounded-lg px-4 text-xs font-normal transition ${
+                        action.style === "primary"
+                          ? "bg-primary/10 text-primary hover:bg-primary/20"
+                          : action.style === "danger"
+                            ? "bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                            : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"
+                      } ${showLoading ? "opacity-50" : ""} ${
+                        isExecuted ? "cursor-not-allowed opacity-60" : ""
+                      }`}
+                    >
+                      {showLoading ? (
+                        <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      ) : (
+                        <>
+                          <span>{action.label}</span>
+                          {isExecuted && (
+                            <CheckCircle
+                              className="h-3 w-3"
+                              strokeWidth={2.5}
+                            />
+                          )}
+
+                          {!isExecuted && getActionIcon(action.type)}
+                        </>
+                      )}
+                    </Button>
+                  );
+                })}
+              </div>
+            )}
+
+          <span className="inline-block text-[11px] text-zinc-600">
+            {formattedDate}
+          </span>
+        </div>
       </div>
 
       {/* Confirmation Dialog */}

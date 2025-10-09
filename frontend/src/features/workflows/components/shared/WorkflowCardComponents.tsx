@@ -154,7 +154,6 @@ export function RunWorkflowButton({
       onPress={onPress}
       variant={variant}
       className={`text-primary ${className}`}
-      startContent={<Zap width={16} height={16} />}
     >
       Run Workflow
     </Button>
@@ -183,7 +182,6 @@ export function CreateWorkflowButton({
       size={size}
       variant={variant}
       className={`text-primary ${className}`}
-      endContent={<Zap width={14} height={14} />}
       isLoading={isLoading}
       onPress={onPress}
     >
@@ -251,6 +249,8 @@ export function CreatorAvatar({
     <Tooltip
       content={`Created by ${creator.name}`}
       showArrow
+      closeDelay={0}
+      delay={0}
       placement="left"
       color="foreground"
     >

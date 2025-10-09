@@ -175,7 +175,7 @@ export default function UseCaseSection({
             key={category as string}
             variant={selectedCategory === category ? "solid" : "flat"}
             color={selectedCategory === category ? "primary" : "default"}
-            className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "text-foreground-500"} font-light!`}
+            className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
             size="lg"
             onClick={() => handleCategoryClick(category as string)}
           >
