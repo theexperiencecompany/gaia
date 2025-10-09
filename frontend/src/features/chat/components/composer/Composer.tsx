@@ -109,12 +109,22 @@ const Composer: React.FC<MainSearchbarProps> = ({
     }
     autoSendExecutedRef.current = true;
 
+    const workflowToRun = selectedWorkflow;
+    const toolToRun = selectedTool;
+    const toolCategoryToRun = selectedToolCategory;
+    const filesToSend = uploadedFileData;
+
     // Clear state immediately to prevent any race conditions
     // Note: clearSelectedWorkflow() already sets autoSend to false
     clearSelectedWorkflow();
 
     setIsLoading(true);
-    sendMessage("Run this workflow", conversationId ?? "");
+    sendMessage("Run this workflow", conversationId, {
+      files: filesToSend,
+      selectedWorkflow: workflowToRun,
+      selectedTool: toolToRun ?? null,
+      selectedToolCategory: toolCategoryToRun ?? null,
+    });
 
     if (inputRef.current) inputRef.current.focus();
 
@@ -130,6 +140,9 @@ const Composer: React.FC<MainSearchbarProps> = ({
   }, [
     inputRef,
     selectedWorkflow,
+    selectedTool,
+    selectedToolCategory,
+    uploadedFileData,
     autoSend,
     clearSelectedWorkflow,
     sendMessage,
@@ -194,7 +207,12 @@ const Composer: React.FC<MainSearchbarProps> = ({
     // Use contextual loading with user's message for similarity-based loading text
     setContextualLoading(true, inputText);
 
-    sendMessage(inputText, conversationId ?? "");
+    sendMessage(inputText, conversationId, {
+      files: uploadedFileData,
+      selectedTool: selectedTool ?? null,
+      selectedToolCategory: selectedToolCategory ?? null,
+      selectedWorkflow,
+    });
 
     clearInputText();
     clearAllFiles();

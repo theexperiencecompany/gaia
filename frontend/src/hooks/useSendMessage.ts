@@ -8,6 +8,7 @@ import { useComposerStore } from "@/stores/composerStore";
 import { useConversationStore } from "@/stores/conversationStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 import { MessageType } from "@/types/features/convoTypes";
+import { WorkflowData } from "@/types/features/workflowTypes";
 import fetchDate from "@/utils/date/dateUtils";
 
 type ChatStoreState = ReturnType<typeof useChatStore.getState>;
@@ -16,6 +17,13 @@ const selectAddOrUpdateMessage = (state: ChatStoreState) =>
   state.addOrUpdateMessage;
 const selectSetMessagesForConversation = (state: ChatStoreState) =>
   state.setMessagesForConversation;
+
+type SendMessageOverrides = {
+  files?: MessageType["fileData"];
+  selectedTool?: string | null;
+  selectedToolCategory?: string | null;
+  selectedWorkflow?: WorkflowData | null;
+};
 
 export const useSendMessage = () => {
   const addOrUpdateMessage = useChatStore(selectAddOrUpdateMessage);
@@ -26,7 +34,11 @@ export const useSendMessage = () => {
   const fetchChatStream = useChatStream();
 
   return useCallback(
-    async (content: string, conversationId: string) => {
+    async (
+      content: string,
+      conversationId?: string | null,
+      overrides?: SendMessageOverrides,
+    ) => {
       const trimmedContent = content.trim();
       if (!trimmedContent) {
         return;
@@ -34,6 +46,17 @@ export const useSendMessage = () => {
 
       const composerState = useComposerStore.getState();
       const workflowState = useWorkflowSelectionStore.getState();
+
+  const files = overrides?.files ?? composerState.uploadedFileData;
+  const normalizedFiles = (files ?? []) as typeof composerState.uploadedFileData;
+      const selectedTool =
+        overrides?.selectedTool ?? composerState.selectedTool ?? null;
+      const selectedToolCategory =
+        overrides?.selectedToolCategory ??
+        composerState.selectedToolCategory ??
+        null;
+      const selectedWorkflow =
+        overrides?.selectedWorkflow ?? workflowState.selectedWorkflow ?? null;
 
       const isoTimestamp = fetchDate();
       const createdAt = new Date(isoTimestamp);
@@ -45,11 +68,11 @@ export const useSendMessage = () => {
         response: trimmedContent,
         date: isoTimestamp,
         message_id: tempMessageId,
-        fileIds: composerState.uploadedFileData.map((file) => file.fileId),
-        fileData: composerState.uploadedFileData,
-        selectedTool: composerState.selectedTool ?? undefined,
-        toolCategory: composerState.selectedToolCategory ?? undefined,
-        selectedWorkflow: workflowState.selectedWorkflow ?? undefined,
+  fileIds: normalizedFiles.map((file) => file.fileId),
+  fileData: normalizedFiles,
+        selectedTool: selectedTool ?? undefined,
+        toolCategory: selectedToolCategory ?? undefined,
+        selectedWorkflow: selectedWorkflow ?? undefined,
       };
 
       addLegacyMessage(userMessage);
@@ -59,10 +82,10 @@ export const useSendMessage = () => {
           trimmedContent,
           [userMessage],
           botMessageId,
-          userMessage.fileData ?? [],
-          userMessage.selectedTool ?? null,
-          userMessage.toolCategory ?? null,
-          workflowState.selectedWorkflow ?? null,
+          normalizedFiles,
+          selectedTool,
+          selectedToolCategory,
+          selectedWorkflow,
         );
         return;
       }
@@ -137,10 +160,10 @@ export const useSendMessage = () => {
           trimmedContent,
           [streamingUserMessage],
           botMessageId,
-          userMessage.fileData ?? [],
-          userMessage.selectedTool ?? null,
-          userMessage.toolCategory ?? null,
-          workflowState.selectedWorkflow ?? null,
+          normalizedFiles,
+          selectedTool,
+          selectedToolCategory,
+          selectedWorkflow,
         );
       } catch (error) {
         const failedMessage: IMessage = {

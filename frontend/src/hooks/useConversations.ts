@@ -45,7 +45,7 @@ export const useConversations = (): ConversationsHookResult => {
           await chatApi.fetchConversations(1, 20);
         if (!isActive) return;
 
-        const mappedConversations = mapApiConversations(apiConversations);
+  const mappedConversations = mapApiConversations(apiConversations);
 
         try {
           await db.putConversationsBulk(mappedConversations);
@@ -76,17 +76,22 @@ export const useConversations = (): ConversationsHookResult => {
   };
 };
 
-const mapApiConversations = (conversations: Conversation[]): IConversation[] =>
-  conversations.map((conversation) => ({
-    id: conversation.conversation_id,
-    title: conversation.description || "Untitled conversation",
-    description: conversation.description,
-    userId: conversation.user_id,
-    starred: conversation.starred ?? false,
-    isSystemGenerated: conversation.is_system_generated ?? false,
-    systemPurpose: conversation.system_purpose ?? null,
-    createdAt: new Date(conversation.createdAt),
-    updatedAt: conversation.updatedAt
-      ? new Date(conversation.updatedAt)
-      : new Date(conversation.createdAt),
-  }));
+export const mapApiConversation = (
+  conversation: Conversation,
+): IConversation => ({
+  id: conversation.conversation_id,
+  title: conversation.description || "Untitled conversation",
+  description: conversation.description,
+  userId: conversation.user_id,
+  starred: conversation.starred ?? false,
+  isSystemGenerated: conversation.is_system_generated ?? false,
+  systemPurpose: conversation.system_purpose ?? null,
+  createdAt: new Date(conversation.createdAt),
+  updatedAt: conversation.updatedAt
+    ? new Date(conversation.updatedAt)
+    : new Date(conversation.createdAt),
+});
+
+export const mapApiConversations = (
+  conversations: Conversation[],
+): IConversation[] => conversations.map(mapApiConversation);

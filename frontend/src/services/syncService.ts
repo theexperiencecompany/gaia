@@ -1,5 +1,6 @@
 import { chatApi, type Conversation } from "@/features/chat/api/chatApi";
-import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
+import { mapApiConversation } from "@/hooks/useConversations";
+import { db, type IMessage } from "@/lib/db/chatDb";
 import { MessageType } from "@/types/features/convoTypes";
 
 const MAX_SYNC_CONVERSATIONS = 50;
@@ -58,20 +59,6 @@ const fetchRecentConversations = async (): Promise<Conversation[]> => {
     return [];
   }
 };
-
-const mapApiConversation = (conversation: Conversation): IConversation => ({
-  id: conversation.conversation_id,
-  title: conversation.description || "Untitled conversation",
-  description: conversation.description,
-  userId: conversation.user_id,
-  starred: conversation.starred ?? false,
-  isSystemGenerated: conversation.is_system_generated ?? false,
-  systemPurpose: conversation.system_purpose ?? null,
-  createdAt: new Date(conversation.createdAt),
-  updatedAt: conversation.updatedAt
-    ? new Date(conversation.updatedAt)
-    : new Date(conversation.createdAt),
-});
 
 const toTimestamp = (timestamp?: string): number => {
   if (!timestamp) return Date.now();
