@@ -1,6 +1,9 @@
 import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
+import { Skeleton } from "@heroui/skeleton";
+import { motion } from "framer-motion";
 import Image from "next/image";
+import { useState, useCallback } from "react";
 
 import { NewsIcon } from "@/components/shared/icons";
 import { useImageDialog } from "@/stores/uiStore";
@@ -50,29 +53,87 @@ function ImageResults({ images }: ImageResultsProps) {
         if (!imageUrl || typeof imageUrl !== "string") return null;
 
         return (
-          <div
+          <ImageItem
             key={index}
-            onClick={() => openDialog(imageUrl)}
-            className={`group cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-all duration-300 ${(index + 1) % 2 == 0 ? "-rotate-7 hover:-rotate-0" : "rotate-7 hover:rotate-0"}`}
-            style={{ zIndex: index }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.zIndex = (images.length + 10).toString();
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.zIndex = index.toString();
-            }}
-          >
-            <Image
-              src={imageUrl}
-              alt={`Search result image ${index + 1}`}
-              width={700}
-              height={700}
-              className={`aspect-square h-full bg-zinc-800 object-cover transition`}
-            />
-          </div>
+            imageUrl={imageUrl}
+            index={index}
+            onImageClick={() => openDialog(imageUrl)}
+            totalImages={images.length}
+          />
         );
       })}
     </div>
+  );
+}
+
+interface ImageItemProps {
+  imageUrl: string;
+  index: number;
+  onImageClick: () => void;
+  totalImages: number;
+}
+
+function ImageItem({
+  imageUrl,
+  index,
+  onImageClick,
+  totalImages,
+}: ImageItemProps) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  const handleLoad = useCallback(() => {
+    setIsLoading(false);
+  }, []);
+
+  const handleError = useCallback(() => {
+    setIsLoading(false);
+    setHasError(true);
+  }, []);
+
+  if (hasError) {
+    return null;
+  }
+
+  return (
+    <motion.div
+      onClick={onImageClick}
+      className={`group cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-all duration-200 ${(index + 1) % 2 == 0 ? "-rotate-7 hover:-rotate-0" : "rotate-7 hover:rotate-0"}`}
+      style={{
+        zIndex: index,
+      }}
+      initial={{ scale: 0.6, filter: "blur(10px)" }}
+      animate={{ scale: 1, filter: "blur(0px)" }}
+      transition={{
+        delay: index * 0.1,
+        duration: 0.1,
+        ease: [0.19, 1, 0.22, 1],
+        scale: {
+          duration: 0.2,
+        },
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.zIndex = (totalImages + 10).toString();
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.zIndex = index.toString();
+      }}
+    >
+      {isLoading && (
+        <div className="absolute inset-0 z-10">
+          <Skeleton className="aspect-square h-full w-full rounded-2xl" />
+        </div>
+      )}
+      <Image
+        src={imageUrl}
+        alt={`Search result image ${index + 1}`}
+        width={700}
+        height={700}
+        className={`aspect-square h-full bg-zinc-800 object-cover transition ${isLoading ? "opacity-0" : "opacity-100"}`}
+        onLoad={handleLoad}
+        onError={handleError}
+      />
+    </motion.div>
   );
 }
 
@@ -90,14 +151,14 @@ function SourcesButton({ web }: SourcesButtonProps) {
               {web.slice(0, 4).map((result, index) => (
                 <div
                   key={index}
-                  className="flex h-6 w-6 items-center justify-center rounded-full border-1 border-zinc-900 bg-zinc-700"
+                  className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-700"
                 >
                   <Image
                     src={`https://www.google.com/s2/favicons?domain=${new URL(result.url).hostname}&sz=64`}
                     alt={`${new URL(result.url).hostname} favicon`}
                     width={16}
                     height={16}
-                    className="rounded-full"
+                    className="h-full w-full rounded-full"
                     onError={(e) => {
                       const target = e.target as HTMLImageElement;
                       target.style.display = "none";
