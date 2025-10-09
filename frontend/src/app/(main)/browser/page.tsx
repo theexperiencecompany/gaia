@@ -41,8 +41,6 @@ interface StepData {
   actions?: Action[];
   url?: string;
   title?: string;
-  screenshot?: string;
-  screenshot_url?: string;
 
   data?: {
     step: number;
@@ -50,7 +48,6 @@ interface StepData {
     actions: Action[];
     url: string;
     title: string;
-    screenshot_url?: string;
   };
 }
 
@@ -76,7 +73,7 @@ interface TaskResult {
         url: string;
         title: string;
       }>;
-      screenshot?: string;
+
       interacted_element: {
         selector?: string;
         text?: string;
@@ -94,7 +91,6 @@ interface TaskResult {
     };
   }>;
   session_id: string;
-  screenshots?: string[];
 }
 
 type MessageRole = "user" | "assistant" | "system";
@@ -190,8 +186,6 @@ const BrowserAutomationChat = () => {
               : [],
             url: stepUpdateData.url,
             title: stepUpdateData.title,
-            screenshot: stepUpdateData.screenshot,
-            screenshot_url: stepUpdateData.screenshot_url,
           };
 
           addMessage({
@@ -246,7 +240,7 @@ const BrowserAutomationChat = () => {
                   actions: lastItem.model_output.action,
                   url: lastItem.state.url,
                   title: lastItem.state.title,
-                  screenshot: lastItem.state.screenshot,
+
                   thoughts: {
                     evaluation:
                       lastItem.model_output.current_state
@@ -516,23 +510,7 @@ const BrowserAutomationChat = () => {
                                 </Button>
                               </div>
 
-                             {(message.stepData.screenshot_url ||
-                                message.stepData.screenshot) && (
-                                <div className="mb-4 mt-2 max-w-full overflow-hidden rounded-md">
-                                  <Image
-                                    src={
-                                      (message.stepData.screenshot_url ||
-                                        message.stepData.screenshot ||
-                                        "") as string
-                                    }
-                                    alt={`Screenshot of step ${message.stepData.step}`}
-                                    width={700}
-                                    height={400}
-                                    className="max-h-[400px] w-full object-cover"
-                                    unoptimized
-                                  />
-                                </div>
-                              )}
+
 
                               {message.stepData.thoughts && (
                                 <div className="mt-2 max-w-(--breakpoint-sm) space-y-2 rounded-md bg-zinc-900 p-2">

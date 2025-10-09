@@ -128,29 +128,6 @@ export const BrowserSidebar = ({
               </div>
             )}
 
-            {/* Screenshot display */}
-            {(currentStep.stepData?.screenshot_url ||
-              currentStep.stepData?.screenshot) && (
-              <div className="relative overflow-hidden rounded-lg border border-zinc-700">
-                <div className="absolute top-2 right-2 z-10">
-                  <Chip size="sm" color="primary" variant="flat" radius="full">
-                    Screenshot
-                  </Chip>
-                </div>
-                <Image
-                  src={
-                    (currentStep.stepData.screenshot_url ||
-                      currentStep.stepData.screenshot) as string
-                  }
-                  alt={`Screenshot of step ${currentStep.stepData.step}`}
-                  width={800}
-                  height={600}
-                  className="w-full rounded-lg object-cover"
-                  unoptimized
-                />
-              </div>
-            )}
-
             {/* AI thoughts */}
             {currentStep.stepData?.thoughts && (
               <div className="space-y-3 rounded-lg bg-zinc-800 p-4">

@@ -17,8 +17,8 @@ export default function SearchedImageDialog() {
           <div className="flex h-full w-full flex-col gap-4 pt-8">
             <div className="relative h-fit max-h-[70vh] w-full overflow-y-auto rounded-lg">
               <Image
-                src={selectedImage.url}
-                alt={selectedImage.title || "search Result Image"}
+                src={selectedImage}
+                alt="Search result image"
                 width={800}
                 height={1200}
                 className="w-full rounded-lg object-cover"
@@ -26,32 +26,18 @@ export default function SearchedImageDialog() {
             </div>
 
             <div className="flex flex-col gap-2">
-              {selectedImage.title && (
-                //   <div className="text-xl font-medium text-foreground">
-                <a
-                  href={selectedImage.source}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xl font-medium text-foreground transition hover:text-primary"
-                >
-                  {selectedImage.title}
-                </a>
-              )}
-
-              {selectedImage.source && (
-                <div>
-                  <ScrollArea className="max-h-[50px]">
-                    <a
-                      href={selectedImage.source}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-foreground-500 transition hover:text-primary"
-                    >
-                      {selectedImage.source}
-                    </a>
-                  </ScrollArea>
-                </div>
-              )}
+              <div>
+                <ScrollArea className="max-h-[50px]">
+                  <a
+                    href={selectedImage}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-foreground-500 transition hover:text-primary"
+                  >
+                    {selectedImage}
+                  </a>
+                </ScrollArea>
+              </div>
             </div>
           </div>
         )}

@@ -112,6 +112,9 @@ dependencies = [
   "ujson>=5.11.0",
   "uvloop>=0.21.0; sys_platform != 'win32'",
   "mem0ai>=0.1.118",
+  "firecrawl-py>=4.3.6",
+  "firecrawl>=4.3.6",
+  "tavily-python>=0.7.12",
 ]
 
 ## To run the tasks use commands like:
