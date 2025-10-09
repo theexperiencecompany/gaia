@@ -89,6 +89,26 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
     return `${startStr} – ${endStr}`;
   };
 
+  // Check if an event has passed
+  const isEventPassed = (event: GoogleCalendarEvent) => {
+    const now = new Date();
+
+    // For all-day events, check if the date has passed
+    if (event.start.date && !event.start.dateTime) {
+      const eventDate = new Date(event.start.date);
+      eventDate.setHours(23, 59, 59, 999); // End of day
+      return now > eventDate;
+    }
+
+    // For timed events, check if the end time has passed
+    if (event.end.dateTime) {
+      const eventEndTime = new Date(event.end.dateTime);
+      return now > eventEndTime;
+    }
+
+    return false;
+  };
+
   // Format date for display
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -114,7 +134,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
   return (
     <BaseCardView
       title="Upcoming events"
-      icon={<GoogleCalendarIcon className="h-6 w-6 text-zinc-500" />}
+      icon={<GoogleCalendarIcon className="h-5 w-5 text-zinc-500" />}
       isLoading={isLoading}
       error={error}
       isEmpty={!hasEvents}
@@ -143,41 +163,53 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
 
               {/* Right Side - Events (80% width like 4 of 5 columns) */}
               <div className="flex-1 space-y-2">
-                {events.map((event) => (
-                  <div
-                    key={event.id}
-                    className="relative flex cursor-pointer items-start gap-2 rounded-lg p-2 pl-5 transition-colors hover:bg-zinc-700/30"
-                    onClick={() => onEventClick?.(event)}
-                    style={{
-                      backgroundColor: `${getEventColor(event, calendars)}5`,
-                    }}
-                  >
-                    {/* Colored Pill */}
-                    <div className="absolute top-0 left-1 flex h-full items-center">
-                      <div
-                        className="mt-0.5 h-[80%] w-1 flex-shrink-0 rounded-full"
-                        style={{
-                          backgroundColor: getEventColor(event, calendars),
-                        }}
-                      />
-                    </div>
+                {events.map((event) => {
+                  const isPassed = isEventPassed(event);
 
-                    {/* Event Details */}
-                    <div className="min-w-0 flex-1">
-                      {/* Title */}
-                      <div className="text-base leading-tight font-medium text-white">
-                        {event.summary}
+                  return (
+                    <div
+                      key={event.id}
+                      className="relative flex cursor-pointer items-start gap-2 rounded-lg p-2 pl-5 transition-colors hover:bg-zinc-700/30"
+                      onClick={() => onEventClick?.(event)}
+                      style={{
+                        backgroundColor: `${getEventColor(event, calendars)}5`,
+                      }}
+                    >
+                      {/* Colored Pill */}
+                      <div className="absolute top-0 left-1 flex h-full items-center">
+                        <div
+                          className="mt-0.5 h-[80%] w-1 flex-shrink-0 rounded-full"
+                          style={{
+                            backgroundColor: getEventColor(event, calendars),
+                            opacity: isPassed ? 0.5 : 1,
+                          }}
+                        />
                       </div>
 
-                      {/* Time */}
-                      <div className="mt-0.5 text-xs text-zinc-400">
-                        {event.start.dateTime && event.end.dateTime
-                          ? formatTime(event.start.dateTime, event.end.dateTime)
-                          : "All day"}
+                      {/* Event Details */}
+                      <div className="min-w-0 flex-1">
+                        {/* Title */}
+                        <div
+                          className={`text-base leading-tight font-medium ${isPassed ? "text-zinc-500" : "text-white"}`}
+                        >
+                          {event.summary}
+                        </div>
+
+                        {/* Time */}
+                        <div
+                          className={`mt-0.5 text-xs ${isPassed ? "text-zinc-600" : "text-zinc-400"}`}
+                        >
+                          {event.start.dateTime && event.end.dateTime
+                            ? formatTime(
+                                event.start.dateTime,
+                                event.end.dateTime,
+                              )
+                            : "All day"}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ),

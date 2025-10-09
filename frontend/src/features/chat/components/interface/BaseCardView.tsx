@@ -45,7 +45,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
       <div className="flex flex-shrink-0 items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           {icon}
-          <h3 className="font-light text-zinc-400">{title}</h3>
+          <h3 className="text-lg font-light text-zinc-400">{title}</h3>
         </div>
         {path && (
           <Link href={path}>
