@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/modal";
 import { ExternalLink, RefreshCw, ZapIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 
@@ -21,6 +22,10 @@ import { WorkflowListSkeleton } from "./WorkflowSkeletons";
 
 export default function WorkflowPage() {
   const pageRef = useRef(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const workflowId = searchParams.get("id");
+
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
   const {
     isOpen: isEditOpen,
@@ -64,6 +69,17 @@ export default function WorkflowPage() {
     loadCommunityWorkflows();
   }, []);
 
+  // Handle URL-based modal opening
+  useEffect(() => {
+    if (workflowId && workflows.length > 0) {
+      const workflow = workflows.find((w) => w.id === workflowId);
+      if (workflow) {
+        setSelectedWorkflow(workflow);
+        onEditOpen();
+      }
+    }
+  }, [workflowId, workflows, onEditOpen]);
+
   // Handle workflow creation completion
   const handleWorkflowCreated = useCallback(() => {
     refetch(); // Refresh the list to show the new workflow
@@ -99,8 +115,19 @@ export default function WorkflowPage() {
   const handleWorkflowClick = (workflowId: string) => {
     const workflow = workflows.find((w) => w.id === workflowId);
     if (workflow) {
+      // Update URL with workflow ID
+      router.push(`/workflows?id=${workflowId}`, { scroll: false });
       setSelectedWorkflow(workflow);
       onEditOpen();
+    }
+  };
+
+  const handleModalClose = (open: boolean) => {
+    onEditOpenChange();
+    if (!open) {
+      // Clear URL parameters when modal closes
+      router.push("/workflows", { scroll: false });
+      setSelectedWorkflow(null);
     }
   };
 
@@ -302,7 +329,7 @@ export default function WorkflowPage() {
 
       <EditWorkflowModal
         isOpen={isEditOpen}
-        onOpenChange={onEditOpenChange}
+        onOpenChange={handleModalClose}
         onWorkflowUpdated={() => refetch()}
         onWorkflowDeleted={handleWorkflowDeleted}
         onWorkflowListRefresh={refetch}

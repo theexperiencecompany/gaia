@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { X } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { SelectedWorkflowData } from "@/features/chat/hooks/useWorkflowSelection";
 import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflowCard";
@@ -17,10 +18,18 @@ export default function SelectedWorkflowIndicator({
   workflow,
   onRemove,
 }: SelectedWorkflowIndicatorProps) {
+  const router = useRouter();
+
   // Return null if no workflow is selected
   if (!workflow) {
     return null;
   }
+
+  const handleWorkflowClick = () => {
+    if (workflow.id) {
+      router.push(`/workflows/${workflow.id}`);
+    }
+  };
 
   // Create header right content with remove button
   const headerRight = onRemove ? (
@@ -47,8 +56,9 @@ export default function SelectedWorkflowIndicator({
         description={workflow.description}
         steps={workflow.steps}
         headerRight={headerRight}
-        showArrowIcon={false}
+        showArrowIcon={true}
         hideExecutions
+        onClick={handleWorkflowClick}
       />
     </motion.div>
   );
