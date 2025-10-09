@@ -90,7 +90,7 @@ export const EnhancedNotificationCard = ({
   return (
     <div
       className={`group relative w-full rounded-2xl transition-all ${
-        isUnread ? "bg-zinc-800/70" : "bg-zinc-900/40"
+        isUnread ? "bg-zinc-800/70" : "bg-zinc-800/30"
       }`}
     >
       <div className="px-4 py-3.5">
@@ -99,7 +99,9 @@ export const EnhancedNotificationCard = ({
           <div className="min-w-0 flex-1 space-y-1">
             {/* Title with unread indicator */}
             <div className="flex items-center gap-2">
-              <h3 className="text-[15px] leading-tight font-semibold text-white">
+              <h3
+                className={`${isUnread ? "text-white" : "text-zinc-500"} text-[15px] leading-tight font-semibold`}
+              >
                 {notification.content.title}
               </h3>
               {isUnread && (
@@ -108,7 +110,9 @@ export const EnhancedNotificationCard = ({
             </div>
 
             {/* Description */}
-            <p className="mb-0 text-[13px] text-zinc-400">
+            <p
+              className={`mb-0 text-[13px] ${isUnread ? "text-zinc-400" : "text-zinc-600"}`}
+            >
               {notification.content.body}
             </p>
           </div>
@@ -133,7 +137,9 @@ export const EnhancedNotificationCard = ({
           {/* Actions */}
           {notification?.content?.actions &&
             notification?.content?.actions.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
+              <div
+                className={`flex flex-wrap items-center gap-2 ${!isUnread && "opacity-60"}`}
+              >
                 {notification.content.actions.map((action) => {
                   const buttonProps = getActionButtonProps(action);
                   const isLoading =
