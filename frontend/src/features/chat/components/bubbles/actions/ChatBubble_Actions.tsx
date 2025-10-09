@@ -3,7 +3,6 @@ import { useParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { PinIcon, Task01Icon } from "@/components/shared/icons";
-import TextToSpeech from "@/features/audio/components/TextToSpeech";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 

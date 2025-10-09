@@ -122,10 +122,10 @@ export interface EmailTriggerConfig extends BaseTriggerConfig {
   // No filtering fields - triggers on every email
 }
 
-export interface CalendarTriggerConfig extends BaseTriggerConfig {
-  type: "calendar";
-  // Future: calendar-specific fields
-}
+// export interface CalendarTriggerConfig extends BaseTriggerConfig {
+//   type: "calendar";
+//   // Future: calendar-specific fields
+// }
 
 export interface ScheduleTriggerConfig extends BaseTriggerConfig {
   type: "schedule";
@@ -142,9 +142,9 @@ export interface ManualTriggerConfig extends BaseTriggerConfig {
 // Union type for type-safe trigger configurations
 export type TriggerConfig =
   | EmailTriggerConfig
-  | CalendarTriggerConfig
   | ScheduleTriggerConfig
   | ManualTriggerConfig;
+// | CalendarTriggerConfig
 
 // Helper to get trigger types at runtime
 export const TRIGGER_TYPES = Object.keys(TRIGGER_CONFIG) as TriggerType[];

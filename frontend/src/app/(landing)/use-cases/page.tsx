@@ -1,18 +1,16 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 import Spinner from "@/components/ui/shadcn/spinner";
+import FinalSection from "@/features/landing/components/sections/FinalSection";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import {
   CommunityWorkflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
 import CommunityWorkflowCard from "@/features/workflows/components/CommunityWorkflowCard";
-import Image from "next/image";
-import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { SplitTextBlur } from "@/features/landing/components/hero/SplitTextBlur";
-import { MotionContainer } from "@/layouts/MotionContainer";
 
 export default function UseCasesPage() {
   const [communityWorkflows, setCommunityWorkflows] = useState<

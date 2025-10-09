@@ -1,7 +1,6 @@
 // Workflow-related types for comprehensive workflow management
 
 import type {
-  CalendarTriggerConfig,
   EmailTriggerConfig,
   ManualTriggerConfig,
   ScheduleTriggerConfig,
@@ -40,7 +39,6 @@ export interface WorkflowStepType {
 
 // Re-export trigger types for convenience
 export type {
-  CalendarTriggerConfig,
   EmailTriggerConfig,
   ManualTriggerConfig,
   ScheduleTriggerConfig,

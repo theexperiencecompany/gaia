@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Tab, Tabs } from "@heroui/tabs";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -13,7 +14,6 @@ import {
   ModalConfig,
   NotificationStatus,
 } from "@/types/features/notificationTypes";
-import { Button } from "@heroui/button";
 
 export default function NotificationsPage() {
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);

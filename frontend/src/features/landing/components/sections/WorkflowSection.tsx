@@ -3,7 +3,6 @@ import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 import Image from "next/image";
 
 import { BentoItem } from "./TodosBentoContent";
-import { useEffect, useRef } from "react";
 
 const triggers = [
   {

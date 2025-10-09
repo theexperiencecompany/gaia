@@ -49,7 +49,6 @@ import { useWorkflowModalStore } from "../stores/workflowModalStore";
 import { getTriggerEnabledIntegrations } from "../utils/triggerDisplay";
 import { ScheduleBuilder } from "./ScheduleBuilder";
 import WorkflowSteps from "./shared/WorkflowSteps";
-import { Spinner } from "@heroui/react";
 
 interface WorkflowModalProps {
   isOpen: boolean;
@@ -469,11 +468,6 @@ export default function WorkflowModal({
               if (selectedTrigger === "gmail") {
                 setValue("trigger_config", {
                   type: "email",
-                  enabled: true,
-                });
-              } else if (selectedTrigger === "calendar") {
-                setValue("trigger_config", {
-                  type: "calendar",
                   enabled: true,
                 });
               } else {

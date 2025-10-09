@@ -2,7 +2,7 @@ import React from "react";
 
 import Composer from "@/features/chat/components/composer/Composer";
 import StarterText from "@/features/chat/components/interface/StarterText";
-import CardStackContainer from "../CardStackContainer";
+
 import { ChatSuggestions } from "./ChatSuggestions";
 
 interface NewChatSectionProps {
