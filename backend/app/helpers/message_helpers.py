@@ -9,58 +9,108 @@ from app.agents.templates.agent_template import AGENT_PROMPT_TEMPLATE
 from app.config.loggers import llm_logger as logger
 from app.models.message_models import FileData, SelectedWorkflowData
 from app.services.memory_service import memory_service
-from app.services.onboarding_service import get_user_preferences_for_agent
 from app.services.workflow import WorkflowService
+from app.utils.user_preferences_utils import (
+    format_user_preferences_for_agent,
+)
 from langchain_core.messages import SystemMessage
 
 
 async def create_system_message(
     user_id: Optional[str] = None, user_name: Optional[str] = None
 ) -> SystemMessage:
-    """Create system message with current time and user preferences."""
-    formatted_time = datetime.now(timezone.utc).strftime("%A, %B %d, %Y, %H:%M:%S UTC")
-
-    # Include user preferences if available for personalization
-    user_preferences = ""
-    if user_id and (prefs := await get_user_preferences_for_agent(user_id)):
-        user_preferences = f"\n{prefs}\n"
-
+    """Create main system message with user name only."""
     return SystemMessage(
         content=AGENT_PROMPT_TEMPLATE.format(
-            current_datetime=formatted_time,
-            user_name=user_name,
-            user_preferences=user_preferences,
-        )
+            user_name=user_name or "there",
+        ),
+        name="main_agent",
+        additional_kwargs={"visible_to": {"main_agent"}},
     )
 
 
-async def get_memory_message(user_id: str, query: str) -> Optional[SystemMessage]:
-    """Retrieve relevant conversation memories and format as system context."""
+async def get_memory_message(
+    user_id: str,
+    query: str,
+    user_name: Optional[str] = None,
+    user_timezone: Optional[str] = None,
+    user_preferences: Optional[dict] = None,
+) -> SystemMessage:
+    """Create memory system message with user context (preferences, timezone, times) and optional memories.
+
+    This message ALWAYS returns (even if no memories exist) to provide:
+    - User preferences (profession, response style, custom instructions)
+    - User's name
+    - Current UTC time
+    - User's local timezone and time
+    - Conversation memories (if available)
+
+    Args:
+        user_id: User's ID for memory search
+        query: Search query for retrieving relevant memories
+        user_name: User's full name (already available from user dict)
+        user_timezone: User's timezone (already available from user dict)
+        user_preferences: User's onboarding preferences (already available from user dict)
+
+    Returns:
+        SystemMessage with user context and memories
+    """
+    from zoneinfo import ZoneInfo
+
     try:
-        # Search for contextually relevant memories using the query
-        if not (
-            results := await memory_service.search_memories(
-                query=query, user_id=user_id, limit=100
-            )
-        ):
-            return None
+        context_parts = []
 
-        if not (memories := getattr(results, "memories", None)):
-            logger.error("No memories found in search results")
-            return None
+        # Add user name context
+        if user_name:
+            context_parts.append(f"User Name: {user_name}")
 
-        logger.info(f"Memories are found: {memories}")
+        # Add user preferences if available
+        if user_preferences:
+            if formatted_prefs := format_user_preferences_for_agent(user_preferences):
+                context_parts.append(f"\nUser Preferences:\n{formatted_prefs}")
 
-        content = "Based on our previous conversations:\n" + "\n".join(
-            f"- {mem.content}" for mem in memories
-        )
-        logger.info(f"Added {len(memories)} memories to context")
-        logger.info(f"{content=}")
-        return SystemMessage(content=content)
+        # Add time information
+        utc_time = datetime.now(timezone.utc)
+        formatted_utc_time = utc_time.strftime("%A, %B %d, %Y, %H:%M:%S UTC")
+        context_parts.append(f"\nCurrent UTC Time: {formatted_utc_time}")
+
+        # Add user's local timezone and time if available
+        if user_timezone:
+            try:
+                user_tz = ZoneInfo(user_timezone)
+                local_time = datetime.now(user_tz)
+                formatted_local_time = local_time.strftime("%A, %B %d, %Y, %H:%M:%S")
+                context_parts.append(f"User Timezone: {user_timezone}")
+                context_parts.append(f"User Local Time: {formatted_local_time}")
+            except Exception as e:
+                logger.warning(f"Error formatting user local time: {e}")
+
+        # Search for conversation memories
+        memories_section = ""
+        try:
+            if results := await memory_service.search_memories(
+                query=query, user_id=user_id, limit=5
+            ):
+                if memories := getattr(results, "memories", None):
+                    memories_section = (
+                        "\n\nBased on our previous conversations:\n"
+                        + "\n".join(f"- {mem.content}" for mem in memories)
+                    )
+                    logger.info(f"Added {len(memories)} memories to context")
+        except Exception as e:
+            logger.warning(f"Error retrieving memories: {e}")
+
+        # Combine all sections
+        content = "\n".join(context_parts) + memories_section
+        return SystemMessage(content=content, memory_message=True)
 
     except Exception as e:
-        logger.error(f"Error retrieving memories: {e}")
-        return None
+        logger.error(f"Error creating memory message: {e}")
+        # Return minimal context on error
+        utc_time = datetime.now(timezone.utc).strftime("%A, %B %d, %Y, %H:%M:%S UTC")
+        return SystemMessage(
+            content=f"Current UTC Time: {utc_time}", memory_message=True
+        )
 
 
 def format_tool_selection_message(selected_tool: str, existing_content: str) -> str:

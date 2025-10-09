@@ -74,6 +74,7 @@ async def _core_agent_logic(
             user_id=user_id,
             query=request.message,
             user_name=user.get("name"),
+            user_dict=user,
             selected_tool=request.selectedTool,
             selected_workflow=request.selectedWorkflow,
             trigger_context=trigger_context,

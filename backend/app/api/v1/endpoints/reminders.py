@@ -2,10 +2,10 @@
 FastAPI endpoints for reminder management.
 """
 
-from datetime import datetime
 from typing import List, Optional
 
 from app.api.v1.dependencies.oauth_dependencies import (
+    GET_USER_TZ_TYPE,
     get_current_user,
     get_user_timezone,
 )
@@ -32,7 +32,7 @@ router = APIRouter(prefix="/reminders", tags=["reminders"])
 async def create_reminder_endpoint(
     reminder_data: CreateReminderRequest,
     user: dict = Depends(get_current_user),
-    user_time: datetime = Depends(get_user_timezone),
+    tz_info: GET_USER_TZ_TYPE = Depends(get_user_timezone),
 ):
     """
     Create a new reminder.
@@ -55,7 +55,7 @@ async def create_reminder_endpoint(
             )
 
         # Prepare reminder data
-        reminder_data.base_time = user_time
+        reminder_data.base_time = tz_info[1]  # Use user's current time
 
         # Create the reminder
         reminder_id = await reminder_scheduler.create_reminder(

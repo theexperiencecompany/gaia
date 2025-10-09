@@ -7,7 +7,7 @@ the actual time values (not converting them across timezones).
 
 from datetime import datetime, tzinfo
 from datetime import timezone as builtin_timezone
-from typing import Union, Optional
+from typing import Optional, Union
 
 import pytz
 

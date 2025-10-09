@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 import httpx
 import pytz
 from app.api.v1.dependencies.oauth_dependencies import (
+    GET_USER_TZ_TYPE,
     get_current_user,
     get_user_timezone,
 )
@@ -578,7 +579,7 @@ async def update_me(
 async def complete_user_onboarding(
     onboarding_data: OnboardingRequest,
     user: dict = Depends(get_current_user),
-    user_time: datetime = Depends(get_user_timezone),
+    tz_info: GET_USER_TZ_TYPE = Depends(get_user_timezone),
 ):
     """
     Complete user onboarding by storing preferences.
@@ -586,7 +587,7 @@ async def complete_user_onboarding(
     """
     try:
         updated_user = await complete_onboarding(
-            user["user_id"], onboarding_data, user_timezone=user_time
+            user["user_id"], onboarding_data, user_timezone=tz_info[0]
         )
 
         return OnboardingResponse(

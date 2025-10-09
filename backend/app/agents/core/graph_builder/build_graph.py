@@ -49,6 +49,7 @@ async def build_graph(
         pre_model_hooks=[
             create_filter_messages_node(
                 agent_name="main_agent",
+                allow_memory_system_messages=True,
             ),
             trim_messages_node,
         ],
