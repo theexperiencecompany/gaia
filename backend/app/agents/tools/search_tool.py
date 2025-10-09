@@ -49,7 +49,7 @@ async def web_search_tool(
         logger.info(formatted_text)
         writer({"progress": formatted_text})
 
-        # Send search data to frontend via writerz
+        # Send search data to frontend via writer
         writer(
             {
                 "search_results": {
