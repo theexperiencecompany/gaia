@@ -116,9 +116,6 @@ def gmail_fetch_after_hook(
                         "subject": msg.get("subject", ""),
                         "time": msg.get("time", ""),
                         "thread_id": msg.get("threadId", ""),
-                        "is_read": msg.get("isRead", True),
-                        "has_attachment": msg.get("hasAttachment", False),
-                        "labels": msg.get("labels", []),
                     }
                 )
 

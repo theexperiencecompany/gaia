@@ -107,38 +107,20 @@ export default function EmailListCard({
                   onClick={() => handleEmailClick(email)}
                 >
                   <div className="w-40 flex-shrink-0">
-                    <span
-                      className={`block truncate text-sm ${
-                        email.is_read === false
-                          ? "font-bold text-white"
-                          : "font-medium text-zinc-400"
-                      }`}
-                    >
+                    <span className="block truncate text-sm font-medium text-gray-300">
                       {extractSenderName(email.from || "Unknown Sender")}
                     </span>
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <span
-                      className={`block truncate text-sm group-hover:text-gray-100 ${
-                        email.is_read === false
-                          ? "font-bold text-white"
-                          : "text-zinc-400"
-                      }`}
-                    >
+                    <span className="block truncate text-sm text-white group-hover:text-gray-100">
                       {email.subject || "Unknown Subject"}
                     </span>
                   </div>
 
                   {/* Time */}
                   <div className="w-20 flex-shrink-0 text-right">
-                    <span
-                      className={`text-xs ${
-                        email.is_read === false
-                          ? "font-medium text-gray-300"
-                          : "text-zinc-500"
-                      }`}
-                    >
+                    <span className="text-xs text-gray-400">
                       {formatTime(email.time || null)}
                     </span>
                   </div>

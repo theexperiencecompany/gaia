@@ -98,9 +98,6 @@ export type EmailFetchData = {
   subject: string;
   time: string;
   thread_id?: string;
-  is_read?: boolean;
-  has_attachment?: boolean;
-  labels?: string[];
 };
 
 export type EmailThreadData = {
