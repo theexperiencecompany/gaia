@@ -1,10 +1,12 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 
 import { GoogleCalendarIcon } from "@/components";
+import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { CalendarFetchData } from "@/types/features/calendarTypes";
 
 interface CalendarListProps {
   events?: CalendarFetchData[] | null;
+  isCollapsible?: boolean;
 }
 
 function formatTime(time: string | null): string {
@@ -35,19 +37,13 @@ function formatTime(time: string | null): string {
   }
 }
 
-export default function CalendarListCard({ events }: CalendarListProps) {
-  if (!!events && events.length > 0)
-    return (
+export default function CalendarListCard({
+  events,
+  isCollapsible = true,
+}: CalendarListProps) {
+  if (!!events && events.length > 0) {
+    const content = (
       <div className="mt-3 w-full max-w-2xl rounded-3xl bg-zinc-800 p-3 text-white">
-        <div className="flex items-center justify-between px-3 py-1">
-          <div className="flex items-center gap-2">
-            <GoogleCalendarIcon width={20} height={20} />
-            <span className="text-sm font-medium">
-              Fetched {events.length} Event{events.length !== 1 ? "s" : ""}
-            </span>
-          </div>
-        </div>
-
         <ScrollShadow className="mt-2 max-h-[300px] space-y-1 divide-y divide-gray-700">
           {events.map((event, index) => (
             <div
@@ -76,4 +72,16 @@ export default function CalendarListCard({ events }: CalendarListProps) {
         </ScrollShadow>
       </div>
     );
+
+    return (
+      <CollapsibleListWrapper
+        icon={<GoogleCalendarIcon width={20} height={20} />}
+        count={events.length}
+        label="Event"
+        isCollapsible={isCollapsible}
+      >
+        {content}
+      </CollapsibleListWrapper>
+    );
+  }
 }

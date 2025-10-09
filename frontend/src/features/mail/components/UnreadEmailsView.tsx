@@ -51,6 +51,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
         backgroundColor="bg-[#141414]"
         showTitle={false}
         maxHeight=""
+        isCollapsible={false}
       />
     </BaseCardView>
   );
