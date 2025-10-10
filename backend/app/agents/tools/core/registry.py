@@ -132,7 +132,7 @@ class ToolRegistry:
             "search",
             core_tools=[
                 search_tool.web_search_tool,
-                search_tool.deep_research_tool,
+                # search_tool.deep_research_tool,
                 webpage_tool.fetch_webpages,
             ],
         )
