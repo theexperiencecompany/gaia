@@ -139,9 +139,9 @@ async def scrape_url_metadata(url: str) -> dict:
         }
 
     except (httpx.RequestError, httpx.HTTPStatusError) as exc:
-        logger.error(f"Error fetching URL metadata: {exc}")
+        logger.debug(f"Error fetching URL metadata: {exc}")
     except Exception as exc:
-        logger.error(f"Unexpected error: {exc}")
+        logger.debug(f"Unexpected error: {exc}")
 
     return {
         "title": None,

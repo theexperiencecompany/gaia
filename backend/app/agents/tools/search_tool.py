@@ -33,8 +33,8 @@ async def web_search_tool(
 
         writer({"progress": f"Performing web search for '{query_text}'..."})
 
-        # Perform the search with 5 results
-        search_results = await perform_search(query=query_text, count=5)
+        # Perform the search with 10 results
+        search_results = await perform_search(query=query_text, count=10)
 
         web_results = search_results.get("web", [])
         # news_results = search_results.get("news", [])

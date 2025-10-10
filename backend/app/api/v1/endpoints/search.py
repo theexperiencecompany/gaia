@@ -4,11 +4,12 @@ Search routes for the GAIA API.
 This module contains routes related to search functionality and URL metadata fetching for the GAIA API.
 """
 
+import asyncio
 import re
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.decorators import tiered_rate_limit
-from app.models.search_models import URLRequest, URLResponse
+from app.models.search_models import URLRequest, MultiURLResponse
 from app.services.search_service import search_messages
 from app.utils.internet_utils import fetch_url_metadata
 from app.utils.search_utils import perform_search
@@ -87,17 +88,32 @@ async def search_email_endpoint(query: str):
 
 
 @router.post(
-    "/fetch-url-metadata", response_model=URLResponse, status_code=status.HTTP_200_OK
+    "/fetch-url-metadata",
+    response_model=MultiURLResponse,
+    status_code=status.HTTP_200_OK,
 )
 @tiered_rate_limit("web_search")
 async def fetch_url_metadata_endpoint(data: URLRequest):
     """
-    Fetch metadata for a given URL.
+    Fetch metadata for multiple URLs in parallel.
 
     Args:
-        data (URLRequest): The URL request containing the URL to fetch metadata for.
+        data (URLRequest): The URL request containing an array of URLs.
 
     Returns:
-        URLResponse: The metadata of the URL.
+        MultiURLResponse: The metadata for all URLs.
     """
-    return await fetch_url_metadata(data.url)
+    # Process all URLs in parallel
+    tasks = [fetch_url_metadata(url) for url in data.urls]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Build response mapping
+    response_data = {}
+    for url, result in zip(data.urls, results):
+        if isinstance(result, Exception):
+            # Skip failed URLs - they won't be in the response
+            continue
+        else:
+            response_data[url] = result
+
+    return MultiURLResponse(results=response_data)

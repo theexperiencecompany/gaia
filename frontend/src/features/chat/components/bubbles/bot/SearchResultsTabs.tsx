@@ -3,7 +3,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Skeleton } from "@heroui/skeleton";
 import { motion } from "framer-motion";
 import Image from "next/image";
-import { useCallback,useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { NewsIcon } from "@/components/shared/icons";
 import { useImageDialog } from "@/stores/uiStore";
@@ -46,22 +46,79 @@ interface ImageResultsProps {
 
 function ImageResults({ images }: ImageResultsProps) {
   const { openDialog } = useImageDialog();
+  const [validImages, setValidImages] = useState<string[]>([]);
+  const [isValidating, setIsValidating] = useState(true);
+
+  useEffect(() => {
+    const validateImages = async () => {
+      setIsValidating(true);
+
+      // Filter out obviously invalid images first
+      const potentiallyValidImages = images.filter(
+        (imageUrl) => imageUrl && typeof imageUrl === "string",
+      );
+
+      // Test each image by trying to load it
+      const validationPromises = potentiallyValidImages.map(
+        (imageUrl) =>
+          new Promise<string | null>((resolve) => {
+            const img = new window.Image();
+
+            const timeoutId = setTimeout(() => {
+              resolve(null); // Timeout after 5 seconds
+            }, 5000);
+
+            img.onload = () => {
+              clearTimeout(timeoutId);
+              resolve(imageUrl);
+            };
+
+            img.onerror = () => {
+              clearTimeout(timeoutId);
+              resolve(null);
+            };
+
+            img.src = imageUrl;
+          }),
+      );
+
+      try {
+        const results = await Promise.all(validationPromises);
+        const validImageUrls = results.filter(
+          (url): url is string => url !== null,
+        );
+        setValidImages(validImageUrls);
+      } catch (error) {
+        console.error("Error validating images:", error);
+        setValidImages([]);
+      } finally {
+        setIsValidating(false);
+      }
+    };
+
+    if (images && images.length > 0) {
+      validateImages();
+    } else {
+      setValidImages([]);
+      setIsValidating(false);
+    }
+  }, [images]);
+
+  if (validImages.length === 0) {
+    return null;
+  }
 
   return (
     <div className="my-4 flex w-screen max-w-2xl -space-x-15 pr-2">
-      {images.map((imageUrl, index) => {
-        if (!imageUrl || typeof imageUrl !== "string") return null;
-
-        return (
-          <ImageItem
-            key={index}
-            imageUrl={imageUrl}
-            index={index}
-            onImageClick={() => openDialog(imageUrl)}
-            totalImages={images.length}
-          />
-        );
-      })}
+      {validImages.map((imageUrl, index) => (
+        <ImageItem
+          key={imageUrl}
+          imageUrl={imageUrl}
+          index={index}
+          onImageClick={() => openDialog(imageUrl)}
+          totalImages={validImages.length}
+        />
+      ))}
     </div>
   );
 }
@@ -80,25 +137,19 @@ function ImageItem({
   totalImages,
 }: ImageItemProps) {
   const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
 
   const handleLoad = useCallback(() => {
     setIsLoading(false);
   }, []);
 
-  const handleError = useCallback(() => {
-    setIsLoading(false);
-    setHasError(true);
-  }, []);
-
-  if (hasError) {
-    return null;
-  }
-
   return (
     <motion.div
       onClick={onImageClick}
-      className={`group cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-all duration-200 ${(index + 1) % 2 == 0 ? "-rotate-7 hover:-rotate-0" : "rotate-7 hover:rotate-0"}`}
+      className={`group cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-all duration-200 ${
+        (index + 1) % 2 == 0
+          ? "-rotate-7 hover:-rotate-0"
+          : "rotate-7 hover:rotate-0"
+      }`}
       style={{
         zIndex: index,
       }}
@@ -129,9 +180,11 @@ function ImageItem({
         alt={`Search result image ${index + 1}`}
         width={700}
         height={700}
-        className={`aspect-square h-full bg-zinc-800 object-cover transition ${isLoading ? "opacity-0" : "opacity-100"}`}
+        className={`aspect-square h-full bg-zinc-800 object-cover transition ${
+          isLoading ? "opacity-0" : "opacity-100"
+        }`}
         onLoad={handleLoad}
-        onError={handleError}
+        priority={index < 3} // Prioritize first 3 images
       />
     </motion.div>
   );
