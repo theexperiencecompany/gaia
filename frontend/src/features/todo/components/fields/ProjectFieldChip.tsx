@@ -42,21 +42,37 @@ export default function ProjectFieldChip({
       variant={selectedProject ? "primary" : "default"}
       className={className}
     >
-      <div className="p-1">
-        {projects.map((project) => (
-          <div
-            key={project.id}
-            onClick={() => onChange(project.id)}
-            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
-          >
+      {({ onClose }) => (
+        <div className="p-1">
+          {projects.map((project) => (
             <div
-              className="h-3 w-3 flex-shrink-0 rounded-full border-0"
-              style={{ backgroundColor: project.color || "#71717a" }}
-            />
-            <span className="truncate">{project.name}</span>
+              key={project.id}
+              onClick={() => {
+                onChange(project.id);
+                onClose();
+              }}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+            >
+              <div
+                className="h-3 w-3 flex-shrink-0 rounded-full border-0"
+                style={{ backgroundColor: project.color || "#71717a" }}
+              />
+              <span className="truncate">{project.name}</span>
+            </div>
+          ))}
+
+          {/* Hint */}
+          <div className="mt-1 px-3 py-2">
+            <p className="text-xs text-zinc-500">
+              Type{" "}
+              <span className="rounded bg-zinc-800 px-1 font-mono">
+                @{projects[0]?.name || "project"}
+              </span>{" "}
+              in title/description to select
+            </p>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </BaseFieldChip>
   );
 }

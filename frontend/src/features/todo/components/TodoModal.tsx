@@ -13,6 +13,7 @@ import { Plus } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
 import { useUser } from "@/features/auth/hooks/useUser";
+import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useModalForm } from "@/hooks/ui/useModalForm";
 import { Priority, Todo, TodoCreate } from "@/types/features/todoTypes";
@@ -66,6 +67,12 @@ export default function TodoModal({
 
   // Get user's preferred timezone or fallback to browser timezone
   const userTimezone = user?.timezone;
+
+  // Initialize text processor
+  const { processText } = useTextProcessor({
+    projects,
+    userTimezone,
+  });
 
   const initialData = useMemo(() => {
     if (mode === "edit" && todo) {
@@ -173,6 +180,41 @@ export default function TodoModal({
     }));
   };
 
+  const handleTextProcessing = (
+    text: string,
+    field: "title" | "description",
+  ) => {
+    const { cleanText, commands } = processText(text);
+
+    // Only update the field if patterns were found and text changed
+    const hasPatterns = Object.keys(commands).length > 0;
+    if (hasPatterns && cleanText !== text) {
+      updateField(field, cleanText);
+    }
+
+    // Apply commands to update other fields
+    if (commands.project?.id) {
+      updateField("project_id", commands.project.id);
+    }
+
+    if (commands.labels && commands.labels.length > 0) {
+      // Avoid duplicate labels
+      const uniqueLabels = [
+        ...new Set([...formData.labels, ...commands.labels]),
+      ];
+      updateField("labels", uniqueLabels);
+    }
+
+    if (commands.priority) {
+      updateField("priority", commands.priority);
+    }
+
+    if (commands.dueDate) {
+      updateField("due_date", commands.dueDate.date);
+      updateField("due_date_timezone", commands.dueDate.timezone);
+    }
+  };
+
   return (
     <>
       <Button
@@ -200,7 +242,7 @@ export default function TodoModal({
               <ModalBody className="gap-6 pt-6">
                 <div className="flex flex-col">
                   <Input
-                    placeholder="Task title"
+                    placeholder="Title"
                     classNames={{
                       input:
                         "text-2xl font-semibold bg-transparent border-0 text-zinc-100 placeholder:text-zinc-500",
@@ -209,7 +251,11 @@ export default function TodoModal({
                     }}
                     value={formData.title}
                     variant="underlined"
-                    onChange={(e) => updateField("title", e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      updateField("title", value);
+                      handleTextProcessing(value, "title");
+                    }}
                     required
                     autoFocus
                   />
@@ -218,7 +264,11 @@ export default function TodoModal({
                   <Textarea
                     placeholder="Add a description..."
                     value={formData.description || ""}
-                    onChange={(e) => updateField("description", e.target.value)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      updateField("description", value);
+                      handleTextProcessing(value, "description");
+                    }}
                     minRows={1}
                     maxRows={5}
                     variant="underlined"
