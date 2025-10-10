@@ -68,7 +68,9 @@ async def _queue_gmail_processing(user_id: str) -> None:
         job = await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
 
         if job:
-            logger.info(f"Queued Gmail processing for user {user_id} with job ID {job.job_id}")
+            logger.info(
+                f"Queued Gmail processing for user {user_id} with job ID {job.job_id}"
+            )
         else:
             logger.error(f"Failed to queue Gmail processing for user {user_id}")
 

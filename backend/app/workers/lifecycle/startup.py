@@ -4,8 +4,6 @@ ARQ worker startup functionality.
 
 import asyncio
 
-from app.agents.core.graph_builder.build_graph import build_graph
-from app.agents.core.graph_manager import GraphManager
 from app.config.loggers import arq_worker_logger as logger
 from app.core.provider_registration import (
     unified_startup,
