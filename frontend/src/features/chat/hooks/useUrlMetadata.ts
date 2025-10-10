@@ -28,8 +28,8 @@ const isValidHttpUrl = (str: string): boolean => {
 };
 
 // Global batch manager for automatic request batching
-let pendingBatch = new Set<string>();
-let batchResolvers = new Map<
+const pendingBatch = new Set<string>();
+const batchResolvers = new Map<
   string,
   {
     resolve: (data: UrlMetadata) => void;
