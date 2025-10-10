@@ -1,5 +1,5 @@
-import { ReactNode } from "react";
 import { CircleArrowUp, ZapIcon } from "lucide-react";
+import { ReactNode } from "react";
 
 import {
   Brain02Icon,
@@ -9,7 +9,6 @@ import {
   MessageMultiple02Icon,
   NotificationIcon,
   PencilEdit01Icon,
-  PencilEdit02Icon,
   Settings01Icon,
   Target04Icon,
   WhatsappIcon,

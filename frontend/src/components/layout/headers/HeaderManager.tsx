@@ -2,6 +2,7 @@
 
 import { Tooltip } from "@heroui/react";
 import { usePathname } from "next/navigation";
+import { ReactNode } from "react";
 
 import { Button } from "@/components";
 import { useHeader } from "@/hooks/layout/useHeader";
@@ -9,7 +10,6 @@ import { useHeader } from "@/hooks/layout/useHeader";
 import BrowserHeader from "./BrowserHeader";
 import ChatHeader from "./ChatHeader";
 import SettingsHeader from "./SettingsHeader";
-import { ReactNode } from "react";
 
 function getDefaultHeaderForPath(pathname: string) {
   if (pathname.startsWith("/c")) return <ChatHeader />;
