@@ -33,9 +33,6 @@ interface UIState {
 
   // Integrations
   integrationsAccordionExpanded: boolean;
-
-  // Menu
-  menuAccordionExpanded: boolean;
 }
 
 interface UIActions {
@@ -55,9 +52,6 @@ interface UIActions {
 
   // Integrations
   setIntegrationsAccordionExpanded: (expanded: boolean) => void;
-
-  // Menu
-  setMenuAccordionExpanded: (expanded: boolean) => void;
 }
 
 type UIStore = UIState & UIActions;
@@ -70,7 +64,6 @@ const initialState: UIState = {
   mobileSidebarOpen: false,
   sidebarVariant: "default",
   integrationsAccordionExpanded: true,
-  menuAccordionExpanded: true,
 };
 
 export const useUIStore = create<UIStore>()(
@@ -141,10 +134,6 @@ export const useUIStore = create<UIStore>()(
             false,
             "setIntegrationsAccordionExpanded",
           ),
-
-        // Menu actions
-        setMenuAccordionExpanded: (menuAccordionExpanded) =>
-          set({ menuAccordionExpanded }, false, "setMenuAccordionExpanded"),
       }),
       {
         name: "ui-storage",
@@ -152,7 +141,6 @@ export const useUIStore = create<UIStore>()(
           sidebarOpen: state.sidebarOpen,
           sidebarVariant: state.sidebarVariant,
           integrationsAccordionExpanded: state.integrationsAccordionExpanded,
-          menuAccordionExpanded: state.menuAccordionExpanded,
         }),
       },
     ),
@@ -198,13 +186,5 @@ export const useIntegrationsAccordion = () =>
     useShallow((state) => ({
       isExpanded: state.integrationsAccordionExpanded,
       setExpanded: state.setIntegrationsAccordionExpanded,
-    })),
-  );
-
-export const useMenuAccordion = () =>
-  useUIStore(
-    useShallow((state) => ({
-      isExpanded: state.menuAccordionExpanded,
-      setExpanded: state.setMenuAccordionExpanded,
     })),
   );

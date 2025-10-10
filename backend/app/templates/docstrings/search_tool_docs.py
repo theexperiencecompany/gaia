@@ -14,7 +14,7 @@ from various web and news sources. It prioritizes speed and topical variety over
 
 ❌ DO NOT USE FOR:
 - Detailed, in-depth research or full content analysis → Use `deep_research` instead.
-- Clean, readable content from websites using Firecrawl.
+- Visuals or screenshots of websites.
 - Internal knowledge that the assistant should already know.
 - Personal or conversational responses unrelated to external facts.
 
@@ -40,7 +40,7 @@ This tool should only be used when a user specifically requests:
 - A deep dive into a topic
 - Thorough research or full article content
 - Technical documentation or context-rich explanations
-- Clean, structured content from websites
+- Screenshots or visual representations of websites
 
 Do NOT use this tool for:
 - Simple questions or fact lookups
@@ -62,5 +62,5 @@ Args:
     query_text: The search query intended for comprehensive exploration.
 
 Returns:
-    A JSON string with full content, summaries, and structured data for deep understanding.
+    A JSON string with full content, summaries, screenshots, and structured data for deep understanding.
 """

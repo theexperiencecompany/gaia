@@ -9,7 +9,7 @@ from langgraph.config import get_stream_writer
 from app.templates.docstrings.webpage_tool_docs import FETCH_WEBPAGES
 from app.decorators import with_doc, with_rate_limiting
 from app.agents.templates.fetch_template import FETCH_TEMPLATE
-from app.utils.search_utils import fetch_with_firecrawl
+from app.utils.search_utils import perform_fetch
 
 
 @tool
@@ -36,7 +36,7 @@ async def fetch_webpages(
             else:
                 processed_urls.append(url)
 
-        fetch_tasks = [fetch_with_firecrawl(url) for url in processed_urls]
+        fetch_tasks = [perform_fetch(url) for url in processed_urls]
         fetched_pages = await asyncio.gather(*fetch_tasks, return_exceptions=True)
 
         for i, page_content in enumerate(fetched_pages):

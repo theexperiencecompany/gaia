@@ -160,6 +160,26 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
             </div>
           )}
 
+          {result.screenshot_url && (
+            <div className="relative h-[300px] w-full overflow-y-auto rounded-lg">
+              <Image
+                onClick={() => {
+                  if (result.screenshot_url)
+                    openDialog({
+                      url: result.screenshot_url,
+                      title: result.title,
+                      source: result.url,
+                    });
+                }}
+                src={result.screenshot_url}
+                alt={`Screenshot of ${result.title}`}
+                width={800}
+                height={1200}
+                className="w-full cursor-pointer rounded-lg object-cover"
+              />
+            </div>
+          )}
+
           {/* {result.full_content && (
             <div className="mt-2">
               <details className="group">

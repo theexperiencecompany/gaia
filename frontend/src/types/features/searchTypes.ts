@@ -1,35 +1,41 @@
-// Search-related types based on Tavily's API format
+// Search-related types for web search functionality
 
 export type WebResult = {
   title: string;
   url: string;
-  content: string;
-  score: number;
-  raw_content?: string;
-  favicon?: string;
+  snippet: string;
+  source: string;
+  date: string;
+};
+
+export type ImageResult = {
+  title: string;
+  url: string;
+  source: string;
+  thumbnail?: string;
 };
 
 export type NewsResult = {
   title: string;
   url: string;
-  content: string;
-  score: number;
-  raw_content?: string;
-  favicon?: string;
+  snippet: string;
+  source: string;
+  date: string;
 };
 
-// Tavily returns images as simple URL strings
-export type ImageResult = string;
+export type VideoResult = {
+  title: string;
+  url: string;
+  thumbnail: string;
+  source: string;
+};
 
-// Define the overall SearchResults type
+// Define the overall SearchResults type.
 export type SearchResults = {
   web?: WebResult[];
   images?: ImageResult[];
   news?: NewsResult[];
-  answer?: string;
-  query?: string;
-  response_time?: number;
-  request_id?: string;
+  videos?: VideoResult[];
 };
 
 // Enhanced result including full_content and screenshot_url

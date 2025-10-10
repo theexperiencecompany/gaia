@@ -75,13 +75,17 @@ gaia/
   </Step>
 
 <Step title="Configure Environment">
-  See the [Environment Variables](/configuration/environment-variables) guide
-  for details.
+  See the [Environment Variables](/configuration/environment-variables) guide for
+  details.
 </Step>
 
 <Step title="Start All Services">
-  ```bash # Start in detached mode (background) docker compose up -d # Or start
-  with logs visible docker compose up ```
+  ```bash
+  # Start in detached mode (background)
+   docker compose up -d
+  # Or start with logs visible
+   docker compose up
+  ```
 </Step>
 
   <Step title="Verify Deployment">
@@ -97,7 +101,6 @@ gaia/
     - **ChromaDB**: http://localhost:8080
     - **RabbitMQ Management**: http://localhost:15672 (guest/guest)
     - **Mongo Express**: http://localhost:8081 (admin/password)
-
   </Step>
 </Steps>
 
@@ -121,7 +124,6 @@ The Docker Compose setup includes the following services:
       environment:
         - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
     ```
-
   </Accordion>
 
 {" "}
@@ -283,14 +285,22 @@ docker network inspect gaia-dev_gaia_network
 # - gaia-backend → chromadb:8000
 ```
 
+
 ## Next Steps
 
-<CardGroup cols={1}>
+<CardGroup cols={2}>
   <Card
     title="Environment Variables"
     icon="gear"
     href="/configuration/environment-variables"
   >
     Configure your API keys and settings
+  </Card>
+  <Card
+    title="Infisical Setup"
+    icon="shield-check"
+    href="/configuration/infisical-setup"
+  >
+    Secure secret management
   </Card>
 </CardGroup>

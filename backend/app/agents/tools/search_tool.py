@@ -1,6 +1,7 @@
 import asyncio
+import json
 import time
-from typing import Annotated, Dict, Any
+from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -13,7 +14,7 @@ from app.templates.docstrings.search_tool_docs import (
 )
 from app.decorators import with_doc, with_rate_limiting
 from app.utils.internet_utils import perform_deep_research
-from app.utils.search_utils import perform_search
+from app.utils.search_utils import format_results_for_llm, perform_search
 
 
 @tool
@@ -25,7 +26,7 @@ async def web_search_tool(
         "The search query to look up on the web. Be specific and concise for better results.",
     ],
     config: RunnableConfig,
-) -> Dict[str, Any]:
+) -> str:
     start_time = time.time()
 
     try:
@@ -38,13 +39,26 @@ async def web_search_tool(
         search_results = await perform_search(query=query_text, count=5)
 
         web_results = search_results.get("web", [])
-        # news_results = search_results.get("news", [])
+        news_results = search_results.get("news", [])
         image_results = search_results.get("images", [])
         video_results = search_results.get("videos", [])
-        answer = search_results.get("answer", "")
+        formatted_results = ""
+
+        if web_results:
+            formatted_results += (
+                format_results_for_llm(web_results, result_type="Web Results") + "\n\n"
+            )
+
+        if news_results:
+            formatted_results += format_results_for_llm(
+                news_results, result_type="News Results"
+            )
+
+        if not formatted_results.strip():
+            formatted_results = "No relevant search results found for your query."
 
         elapsed_time = time.time() - start_time
-        formatted_text = f"Web search completed in {elapsed_time:.2f} seconds. Found {len(web_results)} web results, len(news_results) news results, {len(image_results)} images, and {len(video_results)} videos."
+        formatted_text = f"Web search completed in {elapsed_time:.2f} seconds. Found {len(web_results)} web results and {len(news_results)} news results."
 
         logger.info(formatted_text)
         writer({"progress": formatted_text})
@@ -54,48 +68,42 @@ async def web_search_tool(
             {
                 "search_results": {
                     "web": web_results,
-                    "news": [],
+                    "news": news_results,
                     "images": image_results,
                     "videos": video_results,
                     "query": query_text,
                     "elapsed_time": elapsed_time,
-                    "answer": answer,
-                    "response_time": search_results.get("response_time", 0),
-                    "request_id": search_results.get("request_id", ""),
                     "result_count": {
                         "web": len(web_results),
-                        # "news": len(news_results),
-                        "images": len(image_results),
-                        "videos": len(video_results),
+                        "news": len(news_results),
                     },
                 }
             }
         )
 
-        # Return the raw search results for the LLM to use
-        return {
-            **search_results,
-            "instructions": "Don't repeat the search results, just summarise them, don't show the images in markdown either. These results will be shown on the frontend in an appropriate manner",
-        }
+        return "Search results sent to frontend"
 
     except (asyncio.TimeoutError, ConnectionError) as e:
         logger.error(f"Network error in web search: {e}", exc_info=True)
-        return {
+        error_response = {
             "formatted_text": "\n\nConnection timed out during web search. Please try again later.",
             "error": str(e),
         }
+        return json.dumps(error_response)
     except ValueError as e:
         logger.error(f"Value error in web search: {e}", exc_info=True)
-        return {
+        error_response = {
             "formatted_text": "\n\nInvalid search parameters. Please try a different query.",
             "error": str(e),
         }
+        return json.dumps(error_response)
     except Exception as e:
         logger.error(f"Unexpected error in web search: {e}", exc_info=True)
-        return {
+        error_response = {
             "formatted_text": "\n\nError performing web search. Please try again later.",
             "error": str(e),
         }
+        return json.dumps(error_response)
 
 
 @tool
@@ -107,7 +115,7 @@ async def deep_research_tool(
         "The search query for in-depth research. Be specific to get thorough and comprehensive results.",
     ],
     config: RunnableConfig,
-) -> Dict[str, Any]:
+) -> str:
     start_time = time.time()
 
     try:
@@ -115,7 +123,7 @@ async def deep_research_tool(
         writer({"progress": f"Performing deep research for '{query_text}'..."})
 
         deep_research_results = await perform_deep_research(
-            query=query_text, max_results=5
+            query=query_text, max_results=5, take_screenshots=True
         )
 
         enhanced_results = deep_research_results.get("enhanced_results", [])
@@ -130,8 +138,12 @@ async def deep_research_tool(
                 snippet = result.get("snippet", "No snippet available")
                 full_content = result.get("full_content", "")
                 fetch_error = result.get("fetch_error", None)
+                screenshot_url = result.get("screenshot_url", None)
                 formatted_results += f"### {i}. {title}\n"
                 formatted_results += f"**URL**: {url}\n\n"
+
+                if screenshot_url:
+                    formatted_results += f"**Screenshot**: ![Screenshot of {title}]({screenshot_url})\n\n"
 
                 if fetch_error:
                     formatted_results += (
@@ -153,24 +165,26 @@ async def deep_research_tool(
         # Send deep research data to frontend via writer
         writer({"deep_research_results": deep_research_results})
 
-        # Return the raw deep research results for the LLM to use
-        return deep_research_results
+        return "Deep research results sent to frontend"
 
     except (asyncio.TimeoutError, ConnectionError) as e:
         logger.error(f"Network error in deep research: {e}", exc_info=True)
-        return {
+        error_response = {
             "formatted_text": "\n\nConnection timed out during deep research, falling back to standard results.",
             "error": str(e),
         }
+        return json.dumps(error_response)
     except ValueError as e:
         logger.error(f"Value error in deep research: {e}", exc_info=True)
-        return {
+        error_response = {
             "formatted_text": "\n\nInvalid search parameters, falling back to standard results.",
             "error": str(e),
         }
+        return json.dumps(error_response)
     except Exception as e:
         logger.error(f"Unexpected error in deep research: {e}", exc_info=True)
-        return {
+        error_response = {
             "formatted_text": "\n\nError performing deep research, falling back to standard results.",
             "error": str(e),
         }
+        return json.dumps(error_response)

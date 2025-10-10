@@ -15,8 +15,7 @@ Infisical is a secure secret management platform that GAIA uses to centrally man
 - **Team collaboration** with shared secret access
 
 <Note>
-  When Infisical is configured, it will **override any local environment
-  variables** with the same names from your Infisical project.
+When Infisical is configured, it will **override any local environment variables** with the same names from your Infisical project.
 </Note>
 
 ## How Infisical Works with GAIA
@@ -53,22 +52,33 @@ Navigate to your project's **Secrets** section and add all your environment vari
 
 <CardGroup cols={2}>
   <Card title="Core Application">
-    ```bash ENV=production DEBUG=false HOST=https://api.heygaia.io
-    FRONTEND_URL=https://heygaia.io ```
+    ```bash
+    ENV=production
+    DEBUG=false
+    HOST=https://api.heygaia.io
+    FRONTEND_URL=https://heygaia.io
+    ```
   </Card>
   <Card title="Database URLs">
-    ```bash POSTGRES_URL=postgresql://user:pass@host:5432/db
+    ```bash
+    POSTGRES_URL=postgresql://user:pass@host:5432/db
     MONGO_DB=mongodb://user:pass@host:27017/gaia
-    REDIS_URL=redis://user:pass@host:6379 ```
+    REDIS_URL=redis://user:pass@host:6379
+    ```
   </Card>
   <Card title="AI API Keys">
-    ```bash OPENAI_API_KEY=sk-your-openai-key GEMINI_API_KEY=your-gemini-key
-    HUGGINGFACE_API_KEY=hf_your-hf-token ```
+    ```bash
+    OPENAI_API_KEY=sk-your-openai-key
+    GEMINI_API_KEY=your-gemini-key
+    HUGGINGFACE_API_KEY=hf_your-hf-token
+    ```
   </Card>
   <Card title="Integration APIs">
-    ```bash GOOGLE_CLIENT_ID=your-google-client-id
-    GOOGLE_CLIENT_SECRET=your-google-secret TAVILY_API_KEY=your-tavily-key
-    FIRECRAWL_API_KEY=your-firecrawl-key ```
+    ```bash
+    GOOGLE_CLIENT_ID=your-google-client-id
+    GOOGLE_CLIENT_SECRET=your-google-secret
+    BING_API_KEY=your-bing-key
+    ```
   </Card>
 </CardGroup>
 
@@ -87,10 +97,7 @@ ENV=development
 ```
 
 <Warning>
-  The `INFISICAL_PROJECT_ID`, `INFISICAL_MACHINE_INDENTITY_CLIENT_ID`, and
-  `INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET` must be set in your local `.env`
-  file - they cannot be stored in Infisical itself since they're needed to
-  authenticate with Infisical.
+The `INFISICAL_PROJECT_ID`, `INFISICAL_MACHINE_INDENTITY_CLIENT_ID`, and `INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET` must be set in your local `.env` file - they cannot be stored in Infisical itself since they're needed to authenticate with Infisical.
 </Warning>
 
 ## Environment Priority
@@ -102,7 +109,6 @@ GAIA loads environment variables in this order (later sources override earlier o
 3. **Infisical secrets** (highest priority)
 
 This means:
-
 - ✅ Infisical secrets will override local `.env` variables
 - ✅ You can use local `.env` for development and Infisical for production
 - ✅ Critical secrets are managed centrally through Infisical
@@ -114,7 +120,6 @@ This means:
 For local development, you can choose between:
 
 **Option A: Use Infisical** (Recommended for teams)
-
 ```bash
 # backend/.env
 ENV=development
@@ -124,7 +129,6 @@ INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET=your-client-secret
 ```
 
 **Option B: Use Local Environment Variables**
-
 ```bash
 # backend/.env
 ENV=development
@@ -154,21 +158,19 @@ INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET=your-prod-client-secret
     **Solution**: Add the `INFISICAL_PROJECT_ID` to your `.env` file. You can find this in your Infisical project settings.
   </Accordion>
 
-{" "}
+  <Accordion title="Authentication failed">
+    **Solution**:
+    - Verify your `INFISICAL_MACHINE_INDENTITY_CLIENT_ID` and `INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET`
+    - Ensure the machine identity has proper permissions
+    - Check that the identity is enabled
+  </Accordion>
 
-<Accordion title="Authentication failed">
-  **Solution**: - Verify your `INFISICAL_MACHINE_INDENTITY_CLIENT_ID` and
-  `INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET` - Ensure the machine identity has
-  proper permissions - Check that the identity is enabled
-</Accordion>
-
-{" "}
-
-<Accordion title="Secrets not loading">
-  **Solution**: - Verify the environment slug matches (development/production) -
-  Check that secrets exist in the correct Infisical project - Ensure the machine
-  identity has read access to secrets
-</Accordion>
+  <Accordion title="Secrets not loading">
+    **Solution**:
+    - Verify the environment slug matches (development/production)
+    - Check that secrets exist in the correct Infisical project
+    - Ensure the machine identity has read access to secrets
+  </Accordion>
 
   <Accordion title="Local variables not being overridden">
     **Solution**: This is expected behavior. Infisical secrets have the highest priority and will override local variables with the same name.
@@ -183,19 +185,23 @@ To debug Infisical integration, check the application logs during startup. The b
 
 <CardGroup cols={2}>
   <Card title="Access Control">
-    - Use separate machine identities for different environments - Grant minimal
-    required permissions - Regularly audit access logs
+    - Use separate machine identities for different environments
+    - Grant minimal required permissions
+    - Regularly audit access logs
   </Card>
   <Card title="Secret Management">
-    - Use different secrets for dev/staging/production - Rotate secrets
-    regularly - Never commit Infisical credentials to version control
+    - Use different secrets for dev/staging/production
+    - Rotate secrets regularly
+    - Never commit Infisical credentials to version control
   </Card>
   <Card title="Environment Separation">
-    - Use separate Infisical projects for each environment - Implement proper
-    CI/CD secret injection - Monitor secret access patterns
+    - Use separate Infisical projects for each environment
+    - Implement proper CI/CD secret injection
+    - Monitor secret access patterns
   </Card>
   <Card title="Backup Strategy">
-    - Export secrets regularly for backup - Document secret recovery procedures
+    - Export secrets regularly for backup
+    - Document secret recovery procedures
     - Have fallback authentication methods
   </Card>
 </CardGroup>
@@ -203,10 +209,7 @@ To debug Infisical integration, check the application logs during startup. The b
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card
-    title="Environment Variables"
-    href="/configuration/environment-variables"
-  >
+  <Card title="Environment Variables" href="/configuration/environment-variables">
     Configure your environment variables and learn about Infisical integration
   </Card>
   <Card title="Docker Setup" href="/self-hosting/docker-setup">
@@ -215,6 +218,5 @@ To debug Infisical integration, check the application logs during startup. The b
 </CardGroup>
 
 <Note>
-  For more detailed Infisical documentation, visit the [official Infisical
-  docs](https://infisical.com/docs).
+For more detailed Infisical documentation, visit the [official Infisical docs](https://infisical.com/docs).
 </Note>

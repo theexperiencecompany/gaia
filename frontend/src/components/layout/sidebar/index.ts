@@ -21,4 +21,3 @@ export * from "./variants/CalendarSidebar";
 export * from "./variants/MailSidebar";
 export * from "./variants/SettingsSidebar";
 export * from "./variants/TodoSidebar";
-export * from "./constants";
