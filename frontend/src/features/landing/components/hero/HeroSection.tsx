@@ -28,8 +28,8 @@ export default function HeroSection() {
 
           <Link href="/blog/public-beta">
             <ShinyText
-              // text={`Public Beta ${isReleaseLoading ? "" : release?.name.replace("-beta", "")}`}
-              text={`New: Here is this feature!`}
+              text={`Public Beta ${isReleaseLoading ? "" : release?.name.replace("-beta", "")}`}
+              // text={`New: Here is this feature!`}
               speed={10}
               className="relative z-10 cursor-pointer rounded-full bg-zinc-900 p-1 px-4 text-sm font-light outline-1 outline-zinc-800 transition-colors hover:bg-zinc-800"
             />

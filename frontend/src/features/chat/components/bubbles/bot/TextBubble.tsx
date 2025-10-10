@@ -1,10 +1,15 @@
 // Utility type: union of all possible tool_name/data pairs
 type ToolDataUnion = {
-  [K in ToolName]: { tool_name: K; data: ToolDataMap[K] }
+  [K in ToolName]: { tool_name: K; data: ToolDataMap[K] };
 }[ToolName];
 
-function getTypedData<K extends ToolName>(entry: ToolDataUnion, toolName: K): ToolDataMap[K] | undefined {
-  return entry.tool_name === toolName ? (entry.data as ToolDataMap[K]) : undefined;
+function getTypedData<K extends ToolName>(
+  entry: ToolDataUnion,
+  toolName: K,
+): ToolDataMap[K] | undefined {
+  return entry.tool_name === toolName
+    ? (entry.data as ToolDataMap[K])
+    : undefined;
 }
 // TextBubble.tsx
 import { Chip } from "@heroui/chip";
@@ -235,10 +240,6 @@ export default function TextBubble({
   isConvoSystemGenerated,
   systemPurpose,
 }: ChatBubbleBotProps) {
-  // Check if we have search results from tool_data for chip display
-  const hasSearchResults = tool_data?.some(
-    (entry) => entry.tool_name === "search_results",
-  );
   const hasDeepResearchResults = tool_data?.some(
     (entry) => entry.tool_name === "deep_research_results",
   );
@@ -286,20 +287,6 @@ export default function TextBubble({
                       className={`imessage-bubble imessage-from-them ${groupedClasses}`}
                     >
                       <div className="flex flex-col gap-3">
-                        {hasSearchResults && index === 0 && (
-                          <Chip
-                            color="primary"
-                            startContent={
-                              <InternetIcon color="#00bbff" height={20} />
-                            }
-                            variant="flat"
-                          >
-                            <div className="flex items-center gap-1 font-medium text-primary">
-                              Live Search Results from the Web
-                            </div>
-                          </Chip>
-                        )}
-
                         {hasDeepResearchResults && index === 0 && (
                           <Chip
                             color="primary"
@@ -344,18 +331,6 @@ export default function TextBubble({
           return (
             <div className="imessage-bubble imessage-from-them">
               <div className="flex flex-col gap-3">
-                {hasSearchResults && (
-                  <Chip
-                    color="primary"
-                    startContent={<InternetIcon color="#00bbff" height={20} />}
-                    variant="flat"
-                  >
-                    <div className="flex items-center gap-1 font-medium text-primary">
-                      Live Search Results from the Web
-                    </div>
-                  </Chip>
-                )}
-
                 {hasDeepResearchResults && (
                   <Chip
                     color="primary"

@@ -102,7 +102,6 @@ Complete Tool List:
 **Web & Search:**
 • fetch_webpages - You will only use this for explicitly mentioned specific URLs
 • web_search_tool - General info and current events
-• deep_research_tool - Multi-source, comprehensive analysis
 
 **Calendar:**
 • fetch_calendar_list - Get user's available calendars (ALWAYS call this first)
@@ -253,7 +252,7 @@ Flow: Analyze intent → Vector search for relevant tools → Execute with param
   4. Execute each tool in sequence
 
   When NOT to Use Search Tools:
-  Don't use web_search_tool/deep_research_tool for: calendar operations, todo/task management, goal tracking, weather, code execution, or image generation. Use specialized tools instead. For provider services (email, notion, twitter, linkedin), use the appropriate handoff tools.
+  Don't use web_search_tool for: calendar operations, todo/task management, goal tracking, weather, code execution, or image generation. Use specialized tools instead. For provider services (email, notion, twitter, linkedin), use the appropriate handoff tools.
 
 2. Tool Selection Principles
    - **Proactive Tool Retrieval**: Always retrieve tools BEFORE you need them. Analyze the full user request and get all necessary tools upfront

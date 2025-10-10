@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import {
   ArrowLeft,
   ArrowRight,
@@ -11,7 +10,6 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import Image from "next/image";
 import { useEffect } from "react";
 
 import { Message } from "@/app/(main)/browser/page";
@@ -125,29 +123,6 @@ export const BrowserSidebar = ({
 
                   <ArrowUpRight className="h-4 w-4" />
                 </Button>
-              </div>
-            )}
-
-            {/* Screenshot display */}
-            {(currentStep.stepData?.screenshot_url ||
-              currentStep.stepData?.screenshot) && (
-              <div className="relative overflow-hidden rounded-lg border border-zinc-700">
-                <div className="absolute top-2 right-2 z-10">
-                  <Chip size="sm" color="primary" variant="flat" radius="full">
-                    Screenshot
-                  </Chip>
-                </div>
-                <Image
-                  src={
-                    (currentStep.stepData.screenshot_url ||
-                      currentStep.stepData.screenshot) as string
-                  }
-                  alt={`Screenshot of step ${currentStep.stepData.step}`}
-                  width={800}
-                  height={600}
-                  className="w-full rounded-lg object-cover"
-                  unoptimized
-                />
               </div>
             )}
 
