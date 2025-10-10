@@ -350,3 +350,23 @@ li {
     width: 95%;
   }
 }
+
+::-webkit-scrollbar {
+  width: 8px;
+  border-radius: 100px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 100px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-zinc-700);
+  border-radius: 100px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-zinc-500);
+  border-radius: 100px;
+}

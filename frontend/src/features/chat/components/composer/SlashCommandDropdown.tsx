@@ -375,7 +375,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                             {formatToolName(match.tool.name)}
                           </span>
                           {selectedCategory === "all" && (
-                            <span className="rounded-full bg-zinc-600 px-2 py-0.5 text-xs text-zinc-200">
+                            <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
                               {formatToolName(match.tool.category)}
                             </span>
                           )}
