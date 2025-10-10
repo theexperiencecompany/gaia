@@ -40,18 +40,22 @@ async def get_memory_message(user_id: str, query: str) -> Optional[SystemMessage
         # Search for contextually relevant memories using the query
         if not (
             results := await memory_service.search_memories(
-                query=query, user_id=user_id, limit=5
+                query=query, user_id=user_id, limit=100
             )
         ):
             return None
 
         if not (memories := getattr(results, "memories", None)):
+            logger.error("No memories found in search results")
             return None
+
+        logger.info(f"Memories are found: {memories}")
 
         content = "Based on our previous conversations:\n" + "\n".join(
             f"- {mem.content}" for mem in memories
         )
         logger.info(f"Added {len(memories)} memories to context")
+        logger.info(f"{content=}")
         return SystemMessage(content=content)
 
     except Exception as e:

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from app.config.loggers import llm_logger as logger
 from app.services.memory_service import memory_service
+from app.agents.templates.mail_templates import GmailMessageParser
 
 
 async def store_user_message_memory(user_id: str, message: str, conversation_id: str):
@@ -66,3 +67,14 @@ async def await_remaining_memory_task(memory_task, memory_yielded: bool):
         except Exception as e:
             logger.error(f"Error awaiting memory task: {e}")
     return None
+
+
+def format_email_for_memory(parser: GmailMessageParser) -> str:
+    """Format email content for Mem0 storage."""
+    sender = parser.sender or "Unknown Sender"
+    subject = parser.subject or "No Subject"
+    content = parser.text_content or "No content available"
+
+    return f"""User received email from {sender} with subject "{subject}".
+
+{content}"""

@@ -82,8 +82,6 @@ async def search_memory(
 @with_doc(GET_ALL_MEMORY)
 async def get_all_memory(
     config: RunnableConfig,
-    page: Annotated[int, "Page number for pagination"] = 1,
-    page_size: Annotated[int, "Number of results per page"] = 10,
 ) -> str:
     if not config:
         return "Error: Configuration required but not provided"
@@ -93,26 +91,16 @@ async def get_all_memory(
     if not user_id:
         return "Error: User ID is required but not found in configuration"
 
-    results = await memory_service.get_all_memories(
-        user_id=user_id, page=page, page_size=page_size
-    )
+    results = await memory_service.get_all_memories(user_id=user_id)
 
     if not results.memories:
         return "No memories found"
 
     # Format the results
-    formatted_results = (
-        f"Showing page {page} of memories (total: {results.total_count}):\n\n"
-    )
+    formatted_results = f"All memories (total: {results.total_count}):\n\n"
 
     for i, memory in enumerate(results.memories, 1):
         formatted_results += f"{i}. {memory.content}\n\n"
-
-    # Add pagination info
-    if results.has_next:
-        formatted_results += (
-            f"\nMore memories available. Use page={page + 1} to see more."
-        )
 
     return formatted_results
 

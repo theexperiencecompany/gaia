@@ -49,7 +49,8 @@ async def construct_langchain_messages(
 
     # Add relevant memories if user context available
     if user_id and query and (memory_msg := await get_memory_message(user_id, query)):
-        # Memory messages should not be filtered out, so we don't set agent name
+        # Set agent name so memory messages pass through filtering and trimming
+        memory_msg.name = "main_agent"
         chain_msgs.append(memory_msg)
 
     # Extract user's latest message content

@@ -101,9 +101,6 @@ class MemorySearchResult(BaseModel):
         default_factory=list, description="List of relationships between entities"
     )
     total_count: int = Field(default=0, description="Total number of matching memories")
-    page: int = Field(default=1, description="Current page number")
-    page_size: int = Field(default=10, description="Number of results per page")
-    has_next: bool = Field(default=False, description="Whether there are more results")
 
 
 class MemoryConfiguration(BaseModel):

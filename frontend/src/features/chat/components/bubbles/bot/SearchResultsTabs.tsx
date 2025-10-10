@@ -1,22 +1,16 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Tab, Tabs } from "@heroui/tabs";
-import { formatDistanceToNow } from "date-fns";
-import { Play } from "lucide-react";
+import { Button } from "@heroui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
+import { Skeleton } from "@heroui/skeleton";
+import { motion } from "framer-motion";
 import Image from "next/image";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import {
-  Image02Icon,
-  InternetIcon,
-  NewsIcon,
-  Video01Icon,
-} from "@/components/shared/icons";
+import { NewsIcon } from "@/components/shared/icons";
 import { useImageDialog } from "@/stores/uiStore";
 import {
   ImageResult,
   NewsResult,
   SearchResults,
-  VideoResult,
   WebResult,
 } from "@/types/features/convoTypes";
 
@@ -27,91 +21,21 @@ interface SearchResultsTabsProps {
 export default function SearchResultsTabs({
   search_results,
 }: SearchResultsTabsProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
-
   return (
     <div className="w-full">
-      <Accordion
-        className="w-full max-w-(--breakpoint-sm) px-0"
-        defaultExpandedKeys={["1"]}
-      >
-        <AccordionItem
-          key="1"
-          aria-label="Search Results"
-          indicator={<></>}
-          title={
-            <div className="h-full w-fit rounded-lg bg-white/10 p-1 px-3 text-sm font-medium transition-all hover:bg-white/20">
-              {isExpanded ? "Hide search Results" : "Show search Results"}
-            </div>
-          }
-          onPress={() => setIsExpanded((prev) => !prev)}
-          className="w-screen max-w-(--breakpoint-sm) px-0"
-          isCompact
-        >
-          <Tabs
-            aria-label="Search Results"
-            color="primary"
-            variant="light"
-            classNames={{ base: "p-0" }}
-          >
-            {search_results.images && search_results.images?.length > 0 && (
-              <Tab
-                key="images"
-                title={
-                  <div className="flex items-center space-x-2">
-                    <Image02Icon color={undefined} />
-                    <span>Images</span>
-                  </div>
-                }
-              >
-                <ImageResults images={search_results.images} />
-              </Tab>
-            )}
+      <div className="space-y-6">
+        {search_results.web && search_results.web?.length > 0 && (
+          <SourcesButton web={search_results.web} />
+        )}
 
-            {search_results.web && search_results.web?.length > 0 && (
-              <Tab
-                key="web"
-                title={
-                  <div className="flex items-center space-x-2">
-                    <InternetIcon color={undefined} />
-                    <span>Web</span>
-                  </div>
-                }
-              >
-                <WebResults web={search_results.web} />
-              </Tab>
-            )}
+        {search_results.images && search_results.images?.length > 0 && (
+          <ImageResults images={search_results.images} />
+        )}
 
-            {search_results.news && search_results.news?.length > 0 && (
-              <Tab
-                key="news"
-                title={
-                  <div className="flex items-center space-x-2">
-                    <NewsIcon color={undefined} />
-                    <span>News</span>
-                  </div>
-                }
-              >
-                <NewsResults news={search_results.news} />
-              </Tab>
-            )}
-
-            {search_results.videos && search_results.videos?.length > 0 && (
-              <Tab
-                key="videos"
-                title={
-                  <div className="flex items-center space-x-2">
-                    <Video01Icon color={undefined} />
-                    <span>Videos</span>
-                  </div>
-                }
-              >
-                <VideoResults videos={search_results.videos} />
-              </Tab>
-            )}
-          </Tabs>
-        </AccordionItem>
-      </Accordion>
+        {search_results.news && search_results.news?.length > 0 && (
+          <NewsResults news={search_results.news} />
+        )}
+      </div>
     </div>
   );
 }
@@ -122,63 +46,187 @@ interface ImageResultsProps {
 
 function ImageResults({ images }: ImageResultsProps) {
   const { openDialog } = useImageDialog();
+  const [validImages, setValidImages] = useState<string[]>([]);
+  const [isValidating, setIsValidating] = useState(true);
+
+  useEffect(() => {
+    const validateImages = async () => {
+      setIsValidating(true);
+
+      // Filter out obviously invalid images first
+      const potentiallyValidImages = images.filter(
+        (imageUrl) => imageUrl && typeof imageUrl === "string",
+      );
+
+      // Test each image by trying to load it
+      const validationPromises = potentiallyValidImages.map(
+        (imageUrl) =>
+          new Promise<string | null>((resolve) => {
+            const img = new window.Image();
+
+            const timeoutId = setTimeout(() => {
+              resolve(null); // Timeout after 5 seconds
+            }, 5000);
+
+            img.onload = () => {
+              clearTimeout(timeoutId);
+              resolve(imageUrl);
+            };
+
+            img.onerror = () => {
+              clearTimeout(timeoutId);
+              resolve(null);
+            };
+
+            img.src = imageUrl;
+          }),
+      );
+
+      try {
+        const results = await Promise.all(validationPromises);
+        const validImageUrls = results.filter(
+          (url): url is string => url !== null,
+        );
+        setValidImages(validImageUrls);
+      } catch (error) {
+        console.error("Error validating images:", error);
+        setValidImages([]);
+      } finally {
+        setIsValidating(false);
+      }
+    };
+
+    if (images && images.length > 0) {
+      validateImages();
+    } else {
+      setValidImages([]);
+      setIsValidating(false);
+    }
+  }, [images]);
+
+  if (validImages.length === 0) {
+    return null;
+  }
 
   return (
-    <div className="grid w-full max-w-(--breakpoint-sm) grid-cols-2 gap-4 pr-2 md:grid-cols-3 lg:grid-cols-4">
-      {images.map((image, index) => (
-        <div
-          key={index}
-          onClick={() => openDialog(image)}
-          className={`cursor-pointer overflow-hidden rounded-lg shadow-lg transition-all duration-300 hover:scale-[1.02] hover:opacity-50 ${
-            index == 0 ? "col-span-2 row-span-2" : ""
-          }`}
-        >
-          <Image
-            src={image.url || "/placeholder.svg"}
-            alt={image.title}
-            width={600}
-            height={600}
-            className="h-full w-full rounded-lg object-cover"
-          />
-        </div>
+    <div className="my-4 flex w-screen max-w-2xl -space-x-15 pr-2">
+      {validImages.map((imageUrl, index) => (
+        <ImageItem
+          key={imageUrl}
+          imageUrl={imageUrl}
+          index={index}
+          onImageClick={() => openDialog(imageUrl)}
+          totalImages={validImages.length}
+        />
       ))}
     </div>
   );
 }
 
-interface VideoResultsProps {
-  videos: VideoResult[];
+interface ImageItemProps {
+  imageUrl: string;
+  index: number;
+  onImageClick: () => void;
+  totalImages: number;
 }
 
-function VideoResults({ videos }: VideoResultsProps) {
+function ImageItem({
+  imageUrl,
+  index,
+  onImageClick,
+  totalImages,
+}: ImageItemProps) {
+  const [isLoading, setIsLoading] = useState(true);
+
+  const handleLoad = useCallback(() => {
+    setIsLoading(false);
+  }, []);
+
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {videos.map((video, index) => (
-        <a
-          key={index}
-          href={video.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group relative flex h-full flex-col rounded-lg bg-zinc-900 p-2 shadow-lg transition hover:bg-zinc-800"
-        >
-          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50 transition group-hover:opacity-0">
-            <Play fill="white" color="white" width={35} height={35} />
-          </div>
-          <Image
-            width={600}
-            height={600}
-            src={video.thumbnail}
-            alt={video.title}
-            className="h-full w-full rounded-lg object-cover"
-          />
-          <p className="relative z-2 mt-1 truncate text-start text-sm text-nowrap">
-            {video.title}
-          </p>
-          <div className="relative z-2 mt-1 w-full truncate text-start text-xs text-nowrap">
-            {video.source}
-          </div>
-        </a>
-      ))}
+    <motion.div
+      onClick={onImageClick}
+      className={`group cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-all duration-200 ${
+        (index + 1) % 2 == 0
+          ? "-rotate-7 hover:-rotate-0"
+          : "rotate-7 hover:rotate-0"
+      }`}
+      style={{
+        zIndex: index,
+      }}
+      initial={{ scale: 0.6, filter: "blur(10px)" }}
+      animate={{ scale: 1, filter: "blur(0px)" }}
+      transition={{
+        delay: index * 0.1,
+        duration: 0.1,
+        ease: [0.19, 1, 0.22, 1],
+        scale: {
+          duration: 0.2,
+        },
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.zIndex = (totalImages + 10).toString();
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.zIndex = index.toString();
+      }}
+    >
+      {isLoading && (
+        <div className="absolute inset-0 z-10">
+          <Skeleton className="aspect-square h-full w-full rounded-2xl" />
+        </div>
+      )}
+      <Image
+        src={imageUrl}
+        alt={`Search result image ${index + 1}`}
+        width={700}
+        height={700}
+        className={`aspect-square h-full bg-zinc-800 object-cover transition ${
+          isLoading ? "opacity-0" : "opacity-100"
+        }`}
+        onLoad={handleLoad}
+        priority={index < 3} // Prioritize first 3 images
+      />
+    </motion.div>
+  );
+}
+
+interface SourcesButtonProps {
+  web: WebResult[];
+}
+
+function SourcesButton({ web }: SourcesButtonProps) {
+  return (
+    <div className="flex justify-start">
+      <Popover placement="top" showArrow disableAnimation backdrop="opaque">
+        <PopoverTrigger>
+          <Button variant="flat" radius="full" size="sm">
+            <div className="flex -space-x-3">
+              {web.slice(0, 4).map((result, index) => (
+                <div
+                  key={index}
+                  className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-700"
+                >
+                  <Image
+                    src={`https://www.google.com/s2/favicons?domain=${new URL(result.url).hostname}&sz=64`}
+                    alt={`${new URL(result.url).hostname} favicon`}
+                    width={16}
+                    height={16}
+                    className="h-full w-full rounded-full"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = "none";
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            <span className="font-medium text-zinc-300">Search Results</span>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="bg-transparent p-0! shadow-none">
+          <WebResults web={web} />
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -209,10 +257,10 @@ function NewsResults({ news }: NewsResultsProps) {
             </h2>
           </div>
           <p className="mb-1 line-clamp-2 text-sm text-foreground-700">
-            {article.snippet}
+            {article.content}
           </p>
           <div className="flex flex-wrap items-center gap-x-4 text-sm text-foreground-500">
-            <span className="flex items-center">{timeAgo(article.date)}</span>
+            <span className="text-xs">Score: {article.score?.toFixed(2)}</span>
           </div>
         </div>
       ))}
@@ -220,48 +268,53 @@ function NewsResults({ news }: NewsResultsProps) {
   );
 }
 
-const timeAgo = (date: string | number | Date) => {
-  return formatDistanceToNow(new Date(date), { addSuffix: true });
-};
-
 interface WebResultsProps {
   web: WebResult[];
 }
 
 function WebResults({ web }: WebResultsProps) {
   return (
-    <div className="space-y-2">
+    <div className="max-h-80 w-full max-w-lg overflow-y-auto rounded-2xl bg-zinc-800/70 backdrop-blur-2xl">
       {web.map((result, index) => (
         <div
+          className="w-full border-b-1 border-b-zinc-700 p-4 pb-3 transition-all hover:bg-white/5"
           key={index}
-          className="rounded-lg bg-zinc-800 p-4 shadow-md transition-all hover:shadow-lg"
         >
-          <h2 className="truncate text-lg font-medium text-primary">
-            <a
-              href={result.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-white"
-            >
-              {result.title}
-            </a>
-          </h2>
-          <p className="mb-1 line-clamp-2 text-sm text-foreground-700">
-            {result.snippet}
-          </p>
-          <div className="flex flex-wrap items-center gap-x-4 text-sm text-foreground-500">
-            <span className="flex items-center">
-              <a
-                href={result.url}
-                className="max-w-xs truncate hover:text-primary hover:underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {new URL(result.url).hostname}
-              </a>
-            </span>
-            {/* <span className="flex items-center">{timeAgo(result.date)}</span> */}
-          </div>
+          <a
+            href={result.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full space-y-1"
+          >
+            <h2 className="truncate text-sm font-medium">{result.title}</h2>
+            <p className="line-clamp-2 text-xs text-foreground-500">
+              {result.content}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-4 text-sm">
+              <span className="flex items-center gap-2">
+                <Image
+                  src={`https://www.google.com/s2/favicons?domain=${new URL(result.url).hostname}&sz=64`}
+                  alt={`${new URL(result.url).hostname} favicon`}
+                  width={16}
+                  height={16}
+                  className="rounded-full"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = "none";
+                  }}
+                />
+                <a
+                  href={result.url}
+                  className="max-w-xs truncate text-xs text-primary hover:underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {new URL(result.url).hostname}
+                </a>
+              </span>
+              {/* <span className="flex items-center">{timeAgo(result.date)}</span> */}
+            </div>
+          </a>
         </div>
       ))}
     </div>

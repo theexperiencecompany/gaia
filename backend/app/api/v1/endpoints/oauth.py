@@ -4,6 +4,7 @@ from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
+import pytz
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone,
@@ -17,6 +18,7 @@ from app.config.oauth_config import (
 )
 from app.config.settings import settings
 from app.config.token_repository import token_repository
+from app.db.mongodb.collections import users_collection
 from app.models.oauth_models import IntegrationConfigResponse
 from app.models.user_models import (
     OnboardingPreferences,
@@ -28,6 +30,7 @@ from app.services.composio.composio_service import (
     COMPOSIO_SOCIAL_CONFIGS,
     get_composio_service,
 )
+from app.utils.redis_utils import RedisPoolManager
 from app.services.oauth_service import store_user_info
 from app.services.onboarding_service import (
     complete_onboarding,
@@ -36,6 +39,7 @@ from app.services.onboarding_service import (
 )
 from app.services.user_service import update_user_profile
 from app.utils.oauth_utils import fetch_user_info_from_google, get_tokens_from_code
+from bson import ObjectId
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -55,6 +59,21 @@ http_async_client = httpx.AsyncClient()
 workos = WorkOSClient(
     api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
 )
+
+
+async def _queue_gmail_processing(user_id: str) -> None:
+    """Queue Gmail email processing as an ARQ background task."""
+    try:
+        pool = await RedisPoolManager.get_pool()
+        job = await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
+
+        if job:
+            logger.info(f"Queued Gmail processing for user {user_id} with job ID {job.job_id}")
+        else:
+            logger.error(f"Failed to queue Gmail processing for user {user_id}")
+
+    except Exception as e:
+        logger.error(f"Error queuing Gmail processing for user {user_id}: {e}")
 
 
 @lru_cache(maxsize=1)
@@ -309,6 +328,11 @@ async def composio_callback(
                 user_id=user_id,
                 triggers=integration_config.associated_triggers,
             )
+
+        # Process Gmail emails to memory if this is a Gmail connection
+        if integration_config.id == "gmail":
+            logger.info(f"Starting Gmail email processing for user {user_id}")
+            background_tasks.add_task(_queue_gmail_processing, user_id)
 
         # Successful connection - redirect to frontend
         logger.info(
@@ -619,9 +643,6 @@ async def update_user_timezone(
     This updates the root-level timezone field for the user.
     """
     try:
-        # Validate timezone
-        import pytz
-
         try:
             pytz.timezone(user_timezone.strip())
         except pytz.UnknownTimeZoneError:
@@ -630,10 +651,6 @@ async def update_user_timezone(
                     status_code=400,
                     detail=f"Invalid timezone: {user_timezone}. Use standard timezone identifiers like 'America/New_York', 'UTC', 'Asia/Kolkata'",
                 )
-
-        # Update timezone at root level directly
-        from app.db.mongodb.collections import users_collection
-        from bson import ObjectId
 
         result = await users_collection.update_one(
             {"_id": ObjectId(user["user_id"])},

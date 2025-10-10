@@ -1,5 +1,6 @@
-import { Button } from "@heroui/button";
 import { motion } from "framer-motion";
+
+import { RaisedButton } from "@/components/ui/shadcn/raised-button";
 
 interface OnboardingCompleteProps {
   onLetsGo: () => void;
@@ -17,14 +18,13 @@ export const OnboardingComplete = ({ onLetsGo }: OnboardingCompleteProps) => {
         delay: 0.2,
       }}
     >
-      <Button
-        onPress={onLetsGo}
-        color="primary"
-        variant="shadow"
-        className="mb-5 font-medium transition-transform! hover:scale-115"
+      <RaisedButton
+        onClick={onLetsGo}
+        color="#00bbff"
+        className="mb-5 rounded-xl font-medium text-black! hover:scale-110"
       >
-        <span className="flex items-center gap-2">Let's Go!</span>
-      </Button>
+        Let's Go!
+      </RaisedButton>
     </motion.div>
   );
 };

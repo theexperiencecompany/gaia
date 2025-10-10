@@ -1,20 +1,21 @@
 import { motion } from "framer-motion";
 
-import {
-  SimpleChatBubbleBot,
-  SimpleChatBubbleUser,
-} from "@/features/landing/components/demo/SimpleChatBubbles";
+import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
+import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 
 import { Message } from "../types";
+import OnboardingIntegrationButtons from "./OnboardingIntegrationButtons";
 
 interface OnboardingMessagesProps {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  isOnboardingComplete?: boolean;
 }
 
 export const OnboardingMessages = ({
   messages,
   messagesEndRef,
+  isOnboardingComplete = false,
 }: OnboardingMessagesProps) => {
   return (
     <>
@@ -31,12 +32,63 @@ export const OnboardingMessages = ({
           }}
         >
           {message.type === "bot" ? (
-            <SimpleChatBubbleBot>{message.content}</SimpleChatBubbleBot>
+            <ChatBubbleBot
+              message_id={""}
+              date={undefined}
+              pinned={undefined}
+              fileIds={undefined}
+              fileData={undefined}
+              selectedTool={undefined}
+              toolCategory={undefined}
+              selectedWorkflow={undefined}
+              isConvoSystemGenerated={undefined}
+              follow_up_actions={undefined}
+              integration_connection_required={undefined}
+              image_data={undefined}
+              memory_data={undefined}
+              setOpenImage={() => {}}
+              setImageData={() => {}}
+              text={message.content}
+              disableActions={true}
+              {...message}
+            >
+              {isOnboardingComplete && index == messages.length - 1 && (
+                <motion.div
+                  className="ml-[43px]"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.5,
+                    ease: "easeOut",
+                    delay: 0.3,
+                  }}
+                >
+                  <OnboardingIntegrationButtons />
+                </motion.div>
+              )}
+            </ChatBubbleBot>
           ) : (
-            <SimpleChatBubbleUser>{message.content}</SimpleChatBubbleUser>
+            <ChatBubbleUser
+              text={message.content}
+              message_id={""}
+              date={undefined}
+              pinned={undefined}
+              fileIds={undefined}
+              fileData={undefined}
+              selectedTool={undefined}
+              toolCategory={undefined}
+              selectedWorkflow={undefined}
+              isConvoSystemGenerated={undefined}
+              follow_up_actions={undefined}
+              integration_connection_required={undefined}
+              image_data={undefined}
+              memory_data={undefined}
+              disableActions={true}
+            />
           )}
         </motion.div>
       ))}
+
       <div ref={messagesEndRef} />
     </>
   );

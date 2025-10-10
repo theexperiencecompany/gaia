@@ -1,9 +1,9 @@
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 from pydantic import BaseModel, HttpUrl
 
 
 class URLRequest(BaseModel):
-    url: str
+    urls: List[str]  # Always accept array of URLs
 
 
 class URLResponse(BaseModel):
@@ -13,6 +13,10 @@ class URLResponse(BaseModel):
     website_name: Union[str, None] = None
     website_image: Union[str, None] = None
     url: HttpUrl
+
+
+class MultiURLResponse(BaseModel):
+    results: Dict[str, URLResponse]  # URL -> metadata mapping
 
 
 class WebResult(BaseModel):

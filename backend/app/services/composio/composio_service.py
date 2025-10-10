@@ -21,7 +21,9 @@ COMPOSIO_SOCIAL_CONFIGS = get_composio_social_configs()
 
 class ComposioService:
     def __init__(self, api_key: str):
-        self.composio = Composio(provider=LangchainProvider(), api_key=api_key)
+        self.composio = Composio(
+            provider=LangchainProvider(), api_key=api_key, timeout=120
+        )
 
     @CacheInvalidator(
         key_patterns=[

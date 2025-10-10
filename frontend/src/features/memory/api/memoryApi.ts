@@ -49,23 +49,9 @@ export interface DeleteResponse {
 }
 
 export const memoryApi = {
-  // Fetch memories with pagination
-  fetchMemories: async (params?: {
-    page?: number;
-    page_size?: number;
-  }): Promise<MemoriesResponse> => {
-    let url = "/memory";
-    if (params) {
-      const searchParams = new URLSearchParams();
-      if (params.page) searchParams.append("page", params.page.toString());
-      if (params.page_size)
-        searchParams.append("page_size", params.page_size.toString());
-      if (searchParams.toString()) {
-        url += `?${searchParams.toString()}`;
-      }
-    }
-
-    return apiService.get<MemoriesResponse>(url, {
+  // Fetch all memories
+  fetchMemories: async (): Promise<MemoriesResponse> => {
+    return apiService.get<MemoriesResponse>("/memory", {
       silent: true, // Don't show toast on fetch
     });
   },

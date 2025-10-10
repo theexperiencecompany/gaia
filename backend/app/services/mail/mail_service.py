@@ -490,10 +490,11 @@ async def search_messages(
 
         if result.get("successful", True):
             # Transform messages if needed
-            messages = result.get("data", {}).get("messages", [])
+            data = result.get("data", {})
+            messages = data.get("messages", [])
             return {
                 "messages": [transform_gmail_message(msg) for msg in messages],
-                "nextPageToken": result.get("nextPageToken"),
+                "nextPageToken": data.get("nextPageToken"),
             }
         else:
             return {"messages": [], "nextPageToken": None}

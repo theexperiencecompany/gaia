@@ -20,8 +20,7 @@ import {
   WhatsappIcon,
 } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
-import { authApi } from "@/features/auth/api/authApi";
-import { useUserActions } from "@/features/auth/hooks/useUser";
+import { useLogout } from "@/features/auth/hooks/useLogout";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
@@ -48,11 +47,11 @@ export default function SettingsMenu({
 }: {
   children?: ReactNode;
 }) {
-  const { clearUser } = useUserActions();
   const router = useRouter();
   const { clearConversations } = useConversationsStore();
   const fetchConversations = useFetchConversations();
   const { updateConvoMessages } = useConversation();
+  const { logout } = useLogout();
 
   const discordLink = getLinkByLabel("Discord");
   const whatsappLink = getLinkByLabel("WhatsApp");
@@ -64,13 +63,11 @@ export default function SettingsMenu({
   // Confirm logout action.
   const handleConfirmLogout = async () => {
     try {
-      await authApi.logout();
-      clearUser();
+      await logout();
     } catch (error) {
       console.error("Error during logout:", error);
     } finally {
       setModalAction(null);
-      router.push("/");
     }
   };
 

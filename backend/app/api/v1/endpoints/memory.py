@@ -19,28 +19,22 @@ router = APIRouter()
 
 @router.get("", response_model=MemorySearchResult)
 async def get_all_memories(
-    page: int = 1,
-    page_size: int = 20,
     user: dict = Depends(get_current_user),
 ):
     """
-    Get all memories for the current user with pagination.
+    Get all memories for the current user.
 
     Args:
-        page: Page number (default: 1)
-        page_size: Number of memories per page (default: 20)
         user: Current authenticated user
 
     Returns:
-        MemorySearchResult with paginated memories
+        MemorySearchResult with all memories
     """
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
-    result = await memory_service.get_all_memories(
-        user_id=user_id, page=page, page_size=page_size
-    )
+    result = await memory_service.get_all_memories(user_id=user_id)
 
     return result
 
@@ -128,14 +122,10 @@ async def clear_all_memories(
     try:
         # Get all memories and delete them one by one
         # (Mem0 doesn't have a bulk delete, so we iterate)
-        all_memories = await memory_service.get_all_memories(
-            user_id=user_id,
-            page=1,
-            page_size=100,  # Get first 100 memories
-        )
+        all_memories = await memory_service.get_all_memories(user_id=user_id)
 
         deleted_count = 0
-        # Create deletion tasks for all memories in the current page
+        # Create deletion tasks for all memories
         deletion_tasks = []
         for memory in all_memories.memories:
             if memory.id:
@@ -147,20 +137,7 @@ async def clear_all_memories(
         # Execute all deletion tasks concurrently and collect results
         if deletion_tasks:
             results = await asyncio.gather(*deletion_tasks)
-            deleted_count += sum(1 for result in results if result)
-
-        # Handle remaining memories if more than 100
-        while all_memories.has_next:
-            all_memories = await memory_service.get_all_memories(
-                user_id=user_id, page=all_memories.page + 1, page_size=100
-            )
-            for memory in all_memories.memories:
-                if memory.id:
-                    success = await memory_service.delete_memory(
-                        memory_id=memory.id, user_id=user_id
-                    )
-                    if success:
-                        deleted_count += 1
+            deleted_count = sum(1 for result in results if result)
 
         return DeleteMemoryResponse(
             success=True, message=f"Cleared {deleted_count} memories successfully"

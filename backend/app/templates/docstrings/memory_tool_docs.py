@@ -32,16 +32,14 @@ Returns:
 """
 
 GET_ALL_MEMORY = """
-Retrieve all memories matching specified criteria, with pagination.
+Retrieve all memories for the user.
 
-This tool returns all stored memories for the user, organized by pages.
-Use it to browse through the knowledge base when you need a comprehensive view.
+This tool returns all stored memories for the user.
+Use it to browse through the complete knowledge base.
 
 Args:
-    page: Page number to retrieve (starting from 1)
-    page_size: Number of results per page
     config: Runtime configuration containing user context
 
 Returns:
-    Formatted string with paginated memory results
+    Formatted string with all memory results
 """

@@ -1,6 +1,5 @@
 import { Button } from "@heroui/button";
 import { Card, CardBody } from "@heroui/card";
-import { Pagination } from "@heroui/pagination";
 import { Tab, Tabs } from "@heroui/tabs";
 import { List, Network, Plus, Trash2 } from "lucide-react";
 import Image from "next/image";
@@ -34,43 +33,34 @@ export default function MemoryManagement({
   const [memories, setMemories] = useState<Memory[]>([]);
   const [relations, setRelations] = useState<MemoryRelation[]>([]);
   const [loading, setLoading] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [isAddMemoryModalOpen, setIsAddMemoryModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState("list");
   const { confirm, confirmationProps } = useConfirmation();
 
-  const fetchMemories = useCallback(
-    async (page: number = 1) => {
-      setLoading(true);
-      try {
-        const response = await memoryApi.fetchMemories({
-          page,
-          page_size: 10,
-        });
+  const fetchMemories = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await memoryApi.fetchMemories();
 
-        setMemories(response.memories || []);
-        setRelations(response.relations || []);
-        setTotalPages(Math.ceil((response.total_count || 0) / 10));
-        if (onFetch) {
-          onFetch(response.memories || []);
-        }
-      } catch (error) {
-        console.error("Error fetching memories:", error);
-        toast.error("Failed to load memories");
-      } finally {
-        setLoading(false);
+      setMemories(response.memories || []);
+      setRelations(response.relations || []);
+      if (onFetch) {
+        onFetch(response.memories || []);
       }
-    },
-    [onFetch],
-  );
+    } catch (error) {
+      console.error("Error fetching memories:", error);
+      toast.error("Failed to load memories");
+    } finally {
+      setLoading(false);
+    }
+  }, [onFetch]);
 
   useEffect(() => {
     if (autoFetch) {
-      fetchMemories(currentPage);
+      fetchMemories();
     }
-  }, [currentPage, autoFetch, fetchMemories]);
+  }, [autoFetch, fetchMemories]);
 
   const handleDeleteMemory = useCallback(
     async (memoryId: string) => {
@@ -80,7 +70,7 @@ export default function MemoryManagement({
 
         if (response.success) {
           toast.success("Memory deleted");
-          fetchMemories(currentPage);
+          fetchMemories();
         } else {
           toast.error(response.message || "Failed to delete memory");
         }
@@ -91,7 +81,7 @@ export default function MemoryManagement({
         setDeletingId(null);
       }
     },
-    [currentPage, fetchMemories],
+    [fetchMemories],
   );
 
   const handleClearAll = useCallback(async () => {
@@ -112,8 +102,6 @@ export default function MemoryManagement({
         toast.success(response.message || "All memories cleared");
         setMemories([]);
         setRelations([]);
-        setCurrentPage(1);
-        setTotalPages(1);
       } else {
         toast.error(response.message || "Failed to clear memories");
       }
@@ -136,11 +124,11 @@ export default function MemoryManagement({
 
       return (
         <div>
-          <Card className="bg-zinc-800">
+          <Card className="bg-zinc-800 shadow-none">
             <CardBody className="flex flex-col gap-1">
               <div className="flex flex-row items-center justify-between">
                 <div className="flex-1">
-                  <p className="text-sm">{memory.content}</p>
+                  <p>{memory.content}</p>
                 </div>
                 <Button
                   isIconOnly
@@ -213,7 +201,7 @@ export default function MemoryManagement({
       <AddMemoryModal
         isOpen={isAddMemoryModalOpen}
         onClose={() => setIsAddMemoryModalOpen(false)}
-        onMemoryAdded={() => fetchMemories(currentPage)}
+        onMemoryAdded={() => fetchMemories()}
       />
 
       {loading ? (
@@ -257,7 +245,7 @@ export default function MemoryManagement({
                 </div>
               }
             >
-              <div className="mt-4 flex-1 space-y-2 overflow-y-auto pr-4">
+              <div className="mt-4 max-h-[60vh] flex-1 space-y-2 overflow-y-auto pr-2">
                 {memories.map((memory) => (
                   <MemoryCard key={memory.id} memory={memory} />
                 ))}
@@ -287,19 +275,6 @@ export default function MemoryManagement({
               </div>
             </Tab>
           </Tabs>
-        </div>
-      )}
-
-      {totalPages > 1 && selectedTab === "list" && (
-        <div className="mt-4 flex justify-center">
-          <Pagination
-            total={totalPages}
-            page={currentPage}
-            onChange={setCurrentPage}
-            size="sm"
-            color="primary"
-            variant="flat"
-          />
         </div>
       )}
 

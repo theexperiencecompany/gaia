@@ -112,6 +112,9 @@ dependencies = [
   "ujson>=5.11.0",
   "uvloop>=0.21.0; sys_platform != 'win32'",
   "mem0ai>=0.1.118",
+  "firecrawl-py>=4.3.6",
+  "firecrawl>=4.3.6",
+  "tavily-python>=0.7.12",
 ]
 
 ## To run the tasks use commands like:
@@ -121,6 +124,7 @@ dependencies = [
 dev = "uv run uvicorn app.main:app --port 8000 --reload --log-level warning"
 start = "uv run fastapi run"
 arq = "uv run arq app.worker.WorkerSettings"
+worker = "task arq"
 lint = "uvx ruff check ."
 "lint.fix" = "uvx ruff check . --fix"
 format = "uvx ruff format ."
@@ -169,7 +173,6 @@ dev = [
 heavy = [
   "langchain",
   "langchain-community",
-  "playwright",
 ]
 
 [[tool.uv.index]]

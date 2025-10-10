@@ -126,7 +126,7 @@ services:
       - ./backend/.env
     environment:
       - WORKER_TYPE=arq_worker
-    command: ["python", "-m", "arq", "app.arq_worker.WorkerSettings"]
+    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     networks:
       - gaia_network

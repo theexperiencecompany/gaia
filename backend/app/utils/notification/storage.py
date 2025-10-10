@@ -129,7 +129,6 @@ class MongoDBNotificationStorage:
         cursor = cursor.sort("created_at", -1).skip(offset).limit(limit)
 
         results = await cursor.to_list(length=limit)
-
         return [NotificationRecord.model_validate(doc) for doc in results]
 
     async def get_notification_count(
