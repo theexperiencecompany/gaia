@@ -148,6 +148,22 @@ export default function DateFieldChip({
               </div>
             </>
           )}
+
+          {/* Hint */}
+          <div className="mt-1 px-3 py-2">
+            <p className="text-xs text-zinc-500">
+              Type{" "}
+              <span className="rounded bg-zinc-800 px-1 font-mono">today</span>,{" "}
+              <span className="rounded bg-zinc-800 px-1 font-mono">
+                tomorrow
+              </span>
+              , or{" "}
+              <span className="rounded bg-zinc-800 px-1 font-mono">
+                in 3 days
+              </span>{" "}
+              in title/description
+            </p>
+          </div>
         </div>
       )}
     </BaseFieldChip>

@@ -42,30 +42,59 @@ export default function PriorityFieldChip({
     >
       {({ onClose }) => (
         <div className="p-1">
-          {priorityOptions.map((option) => (
-            <div
-              key={option.value}
-              onClick={() => {
-                onChange(option.value);
-                onClose();
-              }}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
-            >
-              <Flag
-                size={14}
-                className={
-                  option.value === Priority.HIGH
-                    ? "text-red-400"
-                    : option.value === Priority.MEDIUM
-                      ? "text-yellow-400"
-                      : option.value === Priority.LOW
-                        ? "text-blue-400"
-                        : "text-zinc-500"
-                }
-              />
-              <span>{option.label}</span>
-            </div>
-          ))}
+          {priorityOptions.map((option) => {
+            const shortcut =
+              option.value === Priority.HIGH
+                ? "P1"
+                : option.value === Priority.MEDIUM
+                  ? "P2"
+                  : option.value === Priority.LOW
+                    ? "P3"
+                    : null;
+
+            return (
+              <div
+                key={option.value}
+                onClick={() => {
+                  onChange(option.value);
+                  onClose();
+                }}
+                className="flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+              >
+                <div className="flex items-center gap-2">
+                  <Flag
+                    size={14}
+                    className={
+                      option.value === Priority.HIGH
+                        ? "text-red-400"
+                        : option.value === Priority.MEDIUM
+                          ? "text-yellow-400"
+                          : option.value === Priority.LOW
+                            ? "text-blue-400"
+                            : "text-zinc-500"
+                    }
+                  />
+                  <span>{option.label}</span>
+                </div>
+                {shortcut && (
+                  <span className="font-mono text-xs text-zinc-500">
+                    {shortcut}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Hint */}
+          <div className="mt-1 px-3 py-2">
+            <p className="text-xs text-zinc-500">
+              Type{" "}
+              <span className="rounded bg-zinc-800 px-1 font-mono">p1</span>,{" "}
+              <span className="rounded bg-zinc-800 px-1 font-mono">p2</span>, or{" "}
+              <span className="rounded bg-zinc-800 px-1 font-mono">p3</span> in
+              title/description
+            </p>
+          </div>
         </div>
       )}
     </BaseFieldChip>

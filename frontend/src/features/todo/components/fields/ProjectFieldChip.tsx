@@ -60,6 +60,17 @@ export default function ProjectFieldChip({
               <span className="truncate">{project.name}</span>
             </div>
           ))}
+
+          {/* Hint */}
+          <div className="mt-1 px-3 py-2">
+            <p className="text-xs text-zinc-500">
+              Type{" "}
+              <span className="rounded bg-zinc-800 px-1 font-mono">
+                @{projects[0]?.name || "project"}
+              </span>{" "}
+              in title/description to select
+            </p>
+          </div>
         </div>
       )}
     </BaseFieldChip>
