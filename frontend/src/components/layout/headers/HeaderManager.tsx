@@ -9,6 +9,7 @@ import { useHeader } from "@/hooks/layout/useHeader";
 import BrowserHeader from "./BrowserHeader";
 import ChatHeader from "./ChatHeader";
 import SettingsHeader from "./SettingsHeader";
+import { ReactNode } from "react";
 
 function getDefaultHeaderForPath(pathname: string) {
   if (pathname.startsWith("/c")) return <ChatHeader />;
@@ -26,7 +27,7 @@ export const SidebarHeaderButton = ({
 }: {
   children: React.ReactNode;
   onClick?: () => void;
-  tooltip?: string;
+  tooltip?: ReactNode;
   "aria-label": string;
 }) => {
   const button = (

@@ -6,12 +6,10 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 
 import HeaderManager from "@/components/layout/headers/HeaderManager";
 import Sidebar from "@/components/layout/sidebar/MainSidebar";
-import {
-  SidebarInset,
-  SidebarProvider,
-} from "@/components/ui/shadcn/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/shadcn/sidebar";
 import { TooltipProvider } from "@/components/ui/shadcn/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
+import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
 import { useSidebar as useUIStoreSidebar } from "@/stores/uiStore";
@@ -30,6 +28,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   const isMobile = useIsMobile();
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
 
   // Check if user needs onboarding
   useOnboardingGuard();
@@ -115,6 +114,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             </main>
           </SidebarInset>
         </div>
+
+        {/* Global Command Menu */}
+        <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
       </SidebarProvider>
     </TooltipProvider>
   );
