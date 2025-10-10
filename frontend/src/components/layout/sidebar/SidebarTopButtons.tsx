@@ -7,20 +7,18 @@ import { usePathname } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
 import {
+  CalendarIcon,
+  CheckmarkCircle02Icon,
+  MessageMultiple02Icon,
+  NotificationIcon,
+  Target04Icon,
+} from "@/components/shared/icons";
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/shadcn/accordion";
-
-import {
-  CalendarIcon,
-  CheckmarkCircle02Icon,
-  Menu01Icon,
-  MessageMultiple02Icon,
-  NotificationIcon,
-  Target04Icon,
-} from "@/components/shared/icons";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { useRefreshTrigger } from "@/stores/notificationStore";

@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import {
   ArrowLeft,
   ArrowRight,
@@ -11,7 +10,6 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import Image from "next/image";
 import { useEffect } from "react";
 
 import { Message } from "@/app/(main)/browser/page";

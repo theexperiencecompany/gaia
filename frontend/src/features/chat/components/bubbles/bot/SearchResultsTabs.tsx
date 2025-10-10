@@ -3,7 +3,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Skeleton } from "@heroui/skeleton";
 import { motion } from "framer-motion";
 import Image from "next/image";
-import { useState, useCallback } from "react";
+import { useCallback,useState } from "react";
 
 import { NewsIcon } from "@/components/shared/icons";
 import { useImageDialog } from "@/stores/uiStore";
@@ -223,9 +223,11 @@ function WebResults({ web }: WebResultsProps) {
   return (
     <div className="max-h-80 w-full max-w-lg overflow-y-auto rounded-2xl bg-zinc-800/70 backdrop-blur-2xl">
       {web.map((result, index) => (
-        <div className="w-full border-b-1 border-b-zinc-700 p-4 pb-3 transition-all hover:bg-white/5">
+        <div
+          className="w-full border-b-1 border-b-zinc-700 p-4 pb-3 transition-all hover:bg-white/5"
+          key={index}
+        >
           <a
-            key={index}
             href={result.url}
             target="_blank"
             rel="noopener noreferrer"

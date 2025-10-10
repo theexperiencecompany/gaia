@@ -240,10 +240,6 @@ export default function TextBubble({
   isConvoSystemGenerated,
   systemPurpose,
 }: ChatBubbleBotProps) {
-  // Check if we have search results from tool_data for chip display
-  const hasSearchResults = tool_data?.some(
-    (entry) => entry.tool_name === "search_results",
-  );
   const hasDeepResearchResults = tool_data?.some(
     (entry) => entry.tool_name === "deep_research_results",
   );

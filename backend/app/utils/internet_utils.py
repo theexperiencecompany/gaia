@@ -1,26 +1,14 @@
-import asyncio
 import re
-import time
-from typing import Any, Dict, Optional
 from urllib.parse import urljoin, urlparse
 
 import httpx
 from app.config.loggers import search_logger as logger
-from app.db.mongodb.collections import (
-    search_urls_collection,
-)
+from app.db.mongodb.collections import search_urls_collection
 from app.db.redis import get_cache, set_cache
 from app.db.utils import serialize_document
 from app.models.search_models import URLResponse
-from app.services.search_service import (
-    CACHE_EXPIRY,
-    MAX_CONTENT_LENGTH,
-    MAX_TOTAL_CONTENT,
-)
-from app.utils.search_utils import perform_search
 from bs4 import BeautifulSoup
 from fastapi import HTTPException, status
-from langgraph.config import get_stream_writer
 
 
 def is_valid_url(url: str) -> bool:
@@ -162,138 +150,4 @@ async def scrape_url_metadata(url: str) -> dict:
         "website_name": None,
         "website_image": None,
         "url": url,
-    }
-
-
-async def perform_deep_research(query: str, max_results: int = 3) -> Dict[str, Any]:
-    """
-    Perform a deep research by first searching the web, then concurrently fetching
-    the content of the top results and converting them to markdown.
-
-    Args:
-        query (str): The search query
-        max_results (int): Maximum number of results to process in depth
-
-    Returns:
-        Dict[str, Any]: A dictionary containing search results with fetched content
-    """
-    start_time = time.time()
-    writer = get_stream_writer()
-
-    writer({"progress": "Deep Research: Searching the web..."})
-
-    search_results = await perform_search(query=query, count=5)
-    web_results = search_results.get("web", [])
-
-    if not web_results:
-        logger.info("No web results found for deep research")
-        writer({"progress": "Deep Research: No web results found."})
-        return {"original_search": search_results, "enhanced_results": []}
-
-    # Create a list of URLs to process with domain information for better reporting
-    urls_to_process = []
-    for result in web_results[:max_results]:
-        url = result.get("url")
-        if url and is_valid_url(url):
-            # Extract domain for more readable progress updates
-            domain = urlparse(url).netloc
-            urls_to_process.append((url, domain))
-
-    writer(
-        {
-            "progress": f"Deep Research: Starting concurrent processing of {len(urls_to_process)} URLs..."
-        }
-    )
-
-    # Create a shared counter for tracking progress across async tasks
-    completed_urls = 0
-
-    # Custom wrapper for fetch_and_process_url that updates progress
-    async def fetch_with_progress(url_info):
-        nonlocal completed_urls
-        url, domain = url_info
-
-        writer({"progress": f"Deep Research: Fetching content from {domain}..."})
-        result = await fetch_and_process_url(url)
-
-        # Update progress after each URL is processed
-        completed_urls += 1
-        progress_pct = int((completed_urls / len(urls_to_process)) * 100)
-        writer(
-            {
-                "progress": f"Deep Research: {progress_pct}% complete. Processed {completed_urls}/{len(urls_to_process)} URLs. Completed: {domain}"
-            }
-        )
-
-        return result
-
-    # Use gather to process URLs concurrently with progress updates
-    if urls_to_process:
-        writer(
-            {
-                "progress": f"Deep Research: Processing {len(urls_to_process)} URLs concurrently..."
-            }
-        )
-        fetched_contents = await asyncio.gather(
-            *[fetch_with_progress(url_info) for url_info in urls_to_process]
-        )
-    else:
-        fetched_contents = []
-
-    enhanced_results = []
-    total_content_size = 0
-
-    for i, content_data in enumerate(fetched_contents):
-        # Skip if we've reached content limit or no more results
-        if i >= len(web_results) or total_content_size >= MAX_TOTAL_CONTENT:
-            break
-
-        # Get the corresponding search result
-        result = web_results[i]
-        domain = urlparse(result.get("url", "#")).netloc
-
-        # Check if there was an error during fetching
-        if "error" in content_data:
-            enhanced_result = {
-                **result,
-                "full_content": f"Error fetching content: {content_data['error']}",
-                "fetch_error": content_data["error"],
-            }
-        else:
-            # Get markdown content
-            markdown_content = content_data.get("markdown_content", "")
-
-            # Check if we need to truncate for size limits
-            if total_content_size + len(markdown_content) > MAX_TOTAL_CONTENT:
-                available_space = MAX_TOTAL_CONTENT - total_content_size
-                if available_space > 0:
-                    markdown_content = (
-                        markdown_content[:available_space]
-                        + "...[content truncated for size limits]"
-                    )
-
-            total_content_size += len(markdown_content)
-
-            # Add the content
-            enhanced_result = {
-                **result,
-                "full_content": markdown_content,
-            }
-
-        enhanced_results.append(enhanced_result)
-
-    elapsed_time = time.time() - start_time
-    final_status = f"Deep Research completed in {elapsed_time:.2f} seconds. Processed {len(enhanced_results)} results"
-
-    writer({"progress": final_status})
-    logger.info(final_status)
-
-    return {
-        "original_search": search_results,
-        "enhanced_results": enhanced_results,
-        "metadata": {
-            "total_content_size": total_content_size,
-            "elapsed_time": elapsed_time,
-            "query": query,
-        },
     }

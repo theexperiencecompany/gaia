@@ -1,11 +1,9 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Tab, Tabs } from "@heroui/tabs";
 import { ExternalLinkIcon, LinkIcon, SearchIcon } from "lucide-react";
-import Image from "next/image";
 import { useState } from "react";
 
 import { InternetIcon } from "@/components/shared/icons";
-import { useImageDialog } from "@/stores/uiStore";
 import {
   DeepResearchResults,
   EnhancedWebResult,
@@ -105,8 +103,6 @@ interface EnhancedWebResultsProps {
 }
 
 function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
-  const { openDialog } = useImageDialog();
-
   return (
     <div className="space-y-4">
       {results.map((result, index) => (
@@ -138,7 +134,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
                   try {
                     return new URL(result.url).hostname;
                   } catch {
-                    return result.source;
+                    return result.url;
                   }
                 })()}
               </a>
