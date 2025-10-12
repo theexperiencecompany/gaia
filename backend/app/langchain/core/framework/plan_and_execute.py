@@ -65,7 +65,6 @@ from langchain_core.messages import (
     SystemMessage,
 )
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, MessagesState, StateGraph
@@ -80,45 +79,6 @@ class NodeHandoff(BaseModel):
     name: str = Field(description="The name of the node to hand off to")
     instruction: str = Field(description="The specific instruction for the node")
 
-
-# Orchestrator System Prompt Template
-ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE = PromptTemplate(
-    input_variables=["orchestrator_prompt", "handoff_format"],
-    template="""
-## EXECUTION FLOW
-
-You are part of a multi-agent system with this flow:
-main_agent → YOU (orchestrator) → specialized nodes → YOU → ... → finalizer → main_agent
-
-**You cannot directly communicate with the user.** Your responses go to the finalizer, which compiles results for the main_agent.
-
-## YOUR ROLE
-
-You coordinate operations by either:
-1. **Handling directly** - Use your tools and respond normally
-2. **Delegating to specialized nodes** - Return JSON handoff for domain experts
-
-All nodes are fully agentic and can handle complex, multi-step workflows autonomously.
-
-## HANDOFF MECHANISM
-
-When delegating, respond with ONLY this JSON format:
-{handoff_format}
-
-Give nodes complete instructions - they can handle complexity:
-✅ "Find all unread emails from John about Q4, label them 'Q4-Project', and archive"
-❌ Breaking into 3 separate handoffs
-
-## CONTINUATION
-
-- If you make tool calls, continue your work - you're not done yet
-- If you delegate, the node will complete its task and return control to you
-- Keep coordinating until the user's request is fully satisfied
-- When complete and no more handoffs/tool calls needed, provide your final summary
-
-{orchestrator_prompt}
-""",
-)
 
 # Finalizer Prompt Template
 FINALIZER_HUMAN_PROMPT = """
@@ -151,6 +111,8 @@ NodeHandler = Callable[
     Awaitable[Any],
 ]
 
+handoff_parser = PydanticOutputParser(pydantic_object=NodeHandoff)
+
 
 @dataclass
 class OrchestratorNodeConfig:
@@ -164,7 +126,6 @@ class OrchestratorNodeConfig:
 class OrchestratorSubgraphConfig:
     provider_name: str
     agent_name: str
-    orchestrator_prompt: str
     node_configs: Sequence[OrchestratorNodeConfig]
     finalizer_prompt: str
     orchestrator_tools: Optional[Sequence[BaseTool]] = None
@@ -174,13 +135,11 @@ class OrchestratorSubgraphConfig:
 class OrchestratorGraph:
     """LangGraph-backed orchestrator with dynamic node handoff."""
 
-    _handoff_parser = PydanticOutputParser(pydantic_object=NodeHandoff)
 
     def __init__(
         self,
         provider_name: str,
         agent_name: str,
-        orchestrator_prompt: str,
         *,
         node_configs: Sequence[OrchestratorNodeConfig],
         orchestrator_tools: Optional[Sequence[BaseTool]] = None,
@@ -191,7 +150,6 @@ class OrchestratorGraph:
     ):
         self.provider_name = provider_name
         self.agent_name = agent_name
-        self._orchestrator_prompt = orchestrator_prompt
         self._orchestrator_tools = orchestrator_tools or []
         self._finalizer_prompt = finalizer_prompt
         self.llm = llm or init_llm()
@@ -219,23 +177,6 @@ class OrchestratorGraph:
                 state = result  # type: ignore
 
         messages = state.get("messages", [])
-
-        # Inject system prompt only once at the beginning
-        if not state.get("system_prompt_injected", False):
-            system_content = ORCHESTRATOR_SYSTEM_PROMPT_TEMPLATE.format(
-                orchestrator_prompt=self._orchestrator_prompt,
-                handoff_format=self._handoff_parser.get_format_instructions(),
-            )
-
-            system_message = SystemMessage(
-                content=system_content,
-                additional_kwargs={
-                    "orchestrator_role": "orchestrator_system",
-                    "visible_to": {self.agent_name},
-                },
-            )
-            messages = [system_message] + messages
-            state["system_prompt_injected"] = True
 
         if self._orchestrator_tools:
             bound_llm = self._bind_tools(self.llm, self._orchestrator_tools)
@@ -292,7 +233,7 @@ class OrchestratorGraph:
 
     def _try_parse_handoff(self, content: str) -> Optional[NodeHandoff]:
         try:
-            return self._handoff_parser.parse(content)
+            return handoff_parser.parse(content)
         except Exception:
             return None
 
@@ -632,7 +573,6 @@ def build_orchestrator_subgraph(
     graph = OrchestratorGraph(
         provider_name=config.provider_name,
         agent_name=config.agent_name,
-        orchestrator_prompt=config.orchestrator_prompt,
         node_configs=config.node_configs,
         orchestrator_tools=config.orchestrator_tools,
         llm=config.llm,
