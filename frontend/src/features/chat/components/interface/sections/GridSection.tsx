@@ -54,23 +54,34 @@ export const GridSection = () => {
     }
   };
 
+  // Handle refresh actions
+  const handleEmailRefresh = () => {
+    emailQuery.refetch();
+  };
+
+  const handleCalendarRefresh = () => {
+    calendarQuery.refetch();
+  };
+
   return (
     <div className="relative flex h-fit w-full snap-start flex-col items-center justify-center">
       <div className="mb-20 grid min-h-screen w-full max-w-7xl grid-cols-1 grid-rows-1 gap-8 space-y-14 sm:min-h-[40vh] sm:grid-cols-2 sm:space-y-0">
         <UnreadEmailsView
           emails={emailData}
-          isLoading={isLoading}
+          isLoading={emailLoading}
           error={errors.email}
           isConnected={isGmailConnected}
           onConnect={handleConnect}
+          onRefresh={handleEmailRefresh}
         />
         <UpcomingEventsView
           events={calendarEvents}
-          isLoading={isLoading}
+          isLoading={calendarLoading}
           error={errors.calendar}
           calendars={[]}
           isConnected={isCalendarConnected}
           onConnect={handleConnect}
+          onRefresh={handleCalendarRefresh}
           onEventClick={(_event) => {
             router.push("/calendar");
           }}

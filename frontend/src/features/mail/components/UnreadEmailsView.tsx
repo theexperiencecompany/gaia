@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react";
 import React from "react";
 
 import { Gmail } from "@/components";
@@ -12,6 +13,7 @@ interface UnreadEmailsViewProps {
   // Connection state props
   isConnected?: boolean;
   onConnect?: (integrationId: string) => void;
+  onRefresh?: () => void;
 }
 
 const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
@@ -20,6 +22,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
   error,
   isConnected = true,
   onConnect,
+  onRefresh,
 }) => {
   // Convert EmailData to EmailFetchData format expected by EmailListCard
   const formattedEmails: EmailFetchData[] =
@@ -45,14 +48,21 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
       connectIntegrationId="gmail"
       onConnect={onConnect}
       connectButtonText="Connect Gmail"
+      onRefresh={onRefresh}
     >
-      <EmailListCard
-        emails={formattedEmails}
-        backgroundColor="bg-[#141414]"
-        showTitle={false}
-        maxHeight=""
-        isCollapsible={false}
-      />
+      {isLoading ? (
+        <div className="flex h-full items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+        </div>
+      ) : (
+        <EmailListCard
+          emails={formattedEmails}
+          backgroundColor="bg-[#141414]"
+          showTitle={false}
+          maxHeight=""
+          isCollapsible={false}
+        />
+      )}
     </BaseCardView>
   );
 };

@@ -15,6 +15,7 @@ interface UpcomingEventsViewProps {
   // Connection state props
   isConnected?: boolean;
   onConnect?: (integrationId: string) => void;
+  onRefresh?: () => void;
 }
 
 const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
@@ -25,6 +26,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
   calendars,
   isConnected = true,
   onConnect,
+  onRefresh,
 }) => {
   // Group all events by their date (show all events from API, grouped by day)
   const upcomingEventsByDay = useMemo(() => {
@@ -145,6 +147,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
       onConnect={onConnect}
       connectButtonText="Connect Calendar"
       path="/calendar"
+      onRefresh={onRefresh}
     >
       <div className="space-y-6 p-4">
         {Object.entries(upcomingEventsByDay).map(
