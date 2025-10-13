@@ -8,14 +8,8 @@ import email.policy
 from html import unescape
 from typing import Any, Dict, List, Optional
 
-from app.agents.prompts.mail_prompts import (
-    COMPOSE_EMAIL_SUMMARY,
-    EMAIL_PROCESSING_PLANNER,
-    EMAIL_PROCESSING_REPLANNER,
-)
 from app.config.loggers import app_logger as logger
 from bs4 import BeautifulSoup
-from langchain_core.prompts import PromptTemplate
 
 # ============================================================================
 # GmailMessageParser - Class-based email parsing using email.parser
@@ -138,6 +132,9 @@ class GmailMessageParser:
                 # Handle attachments
                 filename = part_data.get("filename")
                 if filename:
+                    # Remove existing Content-Disposition header if present
+                    if "Content-Disposition" in part:
+                        del part["Content-Disposition"]
                     part.add_header(
                         "Content-Disposition", "attachment", filename=filename
                     )
@@ -517,33 +514,3 @@ def process_list_drafts_response(response: Dict[str, Any]) -> Dict[str, Any]:
 def process_get_thread_response(response: Dict[str, Any]) -> Dict[str, Any]:
     """Process the response from get_email_thread tool to minimize data."""
     return thread_template(response)
-
-
-# Compose email template
-COMPOSE_EMAIL_TEMPLATE = PromptTemplate(
-    input_variables=["subject", "body"],
-    template=COMPOSE_EMAIL_SUMMARY,
-)
-
-# Email processing plan template
-EMAIL_PROCESSING_PLAN_TEMPLATE = PromptTemplate(
-    input_variables=["messages", "format_instructions"],
-    template=EMAIL_PROCESSING_PLANNER,
-)
-
-# Email processing replan template
-EMAIL_PROCESSING_REPLAN_TEMPLATE = PromptTemplate(
-    input_variables=["input", "plan", "past_steps", "format_instructions"],
-    template=EMAIL_PROCESSING_REPLANNER,
-)
-
-MAIL_RECEIVED_USER_MESSAGE_TEMPLATE = PromptTemplate(
-    input_variables=["sender", "subject", "snippet"],
-    template="""📩 New Email Received
-From: {sender}
-Subject: {subject}
-
-📬 Content:
-{snippet}
-""",
-)

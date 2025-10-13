@@ -9,6 +9,7 @@ import { EmailData, EmailFetchData } from "@/types/features/mailTypes";
 interface UnreadEmailsViewProps {
   emails?: EmailData[];
   isLoading: boolean;
+  isFetching?: boolean;
   error?: Error | null;
   // Connection state props
   isConnected?: boolean;
@@ -19,19 +20,27 @@ interface UnreadEmailsViewProps {
 const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
   emails,
   isLoading,
+  isFetching = false,
   error,
   isConnected = true,
   onConnect,
   onRefresh,
 }) => {
   // Convert EmailData to EmailFetchData format expected by EmailListCard
+  // and sort by time (most recent first)
   const formattedEmails: EmailFetchData[] =
-    emails?.map((email: EmailData) => ({
-      from: email.from || "",
-      subject: email.subject || "No Subject",
-      time: email.time || "",
-      thread_id: email.threadId || email.id,
-    })) || [];
+    emails
+      ?.map((email: EmailData) => ({
+        from: email.from || "",
+        subject: email.subject || "No Subject",
+        time: email.time || "",
+        thread_id: email.threadId || email.id,
+      }))
+      .sort((a, b) => {
+        const timeA = new Date(a.time || 0).getTime();
+        const timeB = new Date(b.time || 0).getTime();
+        return timeB - timeA; // Most recent first
+      }) || [];
 
   const isEmpty = !formattedEmails || formattedEmails.length === 0;
 
@@ -40,6 +49,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
       title="Unread emails"
       icon={<Gmail className="h-5 w-5 text-zinc-500" />}
       isLoading={isLoading}
+      isFetching={isFetching}
       error={error?.message}
       isEmpty={isEmpty}
       emptyMessage="No unread emails"

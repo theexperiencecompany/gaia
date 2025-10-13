@@ -8,6 +8,7 @@ interface BaseCardViewProps {
   title: string;
   icon: React.ReactNode;
   isLoading: boolean;
+  isFetching?: boolean;
   error?: string | null;
   isEmpty?: boolean;
   emptyMessage?: string;
@@ -27,6 +28,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
   title,
   icon,
   isLoading,
+  isFetching = false,
   error,
   isEmpty = false,
   emptyMessage = "No data available",
@@ -56,11 +58,11 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                 size="sm"
                 variant="light"
                 onPress={onRefresh}
-                isDisabled={isLoading}
+                isDisabled={isFetching}
                 className="min-w-0 transition-all duration-200 hover:bg-zinc-800"
               >
                 <RefreshCw
-                  className={`h-4 w-4 transition-transform duration-500 ${isLoading ? "animate-spin" : "hover:rotate-180"}`}
+                  className={`h-4 w-4 transition-transform duration-500 ${isFetching ? "animate-spin" : "hover:rotate-180"}`}
                 />
               </Button>
             </Tooltip>

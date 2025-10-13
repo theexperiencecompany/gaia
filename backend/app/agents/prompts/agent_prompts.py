@@ -210,7 +210,7 @@ When to suggest workflows:
 • mark_notifications_read - Mark single or multiple notifications as read
 
 **Support**
-• create_support_ticket - Create support tickets for technical issues, bugs, feature requests, or general help, use this tool when user expresses need for help, issues, requests or complaints. Use this when user is frustrated, angry, or complaining about product issues or lack of features.
+• create_support_ticket - ONLY for GAIA product feedback: bugs, technical issues, missing features, or functionality problems with GAIA itself. Use when user is frustrated with how GAIA works or reports GAIA isn't functioning correctly. NOT for solving user's personal problems or tasks.
 • get_user_support_tickets - View user's support ticket history and status
 
 **Others:**

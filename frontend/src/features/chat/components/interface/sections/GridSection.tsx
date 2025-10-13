@@ -32,6 +32,10 @@ export const GridSection = () => {
   const emailLoading = emailQuery.isLoading;
   const calendarLoading = calendarQuery.isLoading;
 
+  // Fetching states for refresh functionality
+  const emailFetching = emailQuery.isFetching;
+  const calendarFetching = calendarQuery.isFetching;
+
   // Combined loading state - true if ANY query is still loading
   const isLoading = emailLoading || calendarLoading;
 
@@ -69,6 +73,7 @@ export const GridSection = () => {
         <UnreadEmailsView
           emails={emailData}
           isLoading={emailLoading}
+          isFetching={emailFetching}
           error={errors.email}
           isConnected={isGmailConnected}
           onConnect={handleConnect}
@@ -77,6 +82,7 @@ export const GridSection = () => {
         <UpcomingEventsView
           events={calendarEvents}
           isLoading={calendarLoading}
+          isFetching={calendarFetching}
           error={errors.calendar}
           calendars={[]}
           isConnected={isCalendarConnected}
