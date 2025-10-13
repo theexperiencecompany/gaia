@@ -92,7 +92,7 @@ class OrchestratorState(MessagesState, total=False):
     _next_node: Optional[str]
     _node_instruction: Optional[str]
     is_complete: bool
-    system_prompt_injected: bool
+    _orchestrator_iterations: int
 
 
 HookType = Union[
@@ -169,6 +169,21 @@ class OrchestratorGraph:
     async def _orchestrator_step(
         self, state: OrchestratorState, config: RunnableConfig, store: BaseStore
     ) -> OrchestratorState:
+        iterations = state.get("_orchestrator_iterations", 0)
+        if iterations >= 20:
+            error_msg = AIMessage(
+                content="Orchestrator recursion limit reached (20 iterations). Forcing finalization.",
+                additional_kwargs={
+                    "orchestrator_role": "orchestrator",
+                    "visible_to": {self.agent_name},
+                },
+            )
+            state["messages"] = [*state["messages"], error_msg]
+            state["is_complete"] = True
+            return state
+
+        state["_orchestrator_iterations"] = iterations + 1
+
         for hook in self._pre_llm_hooks:
             result = hook(state, config, store)
             if inspect.iscoroutine(result):
@@ -460,7 +475,9 @@ class OrchestratorGraph:
                 RunnableConfig, dict(runtime_config or {})
             )
 
-            invoke_kwargs: Dict[str, Any] = {"config": graph_config}
+            invoke_kwargs: Dict[str, Any] = {
+                "config": {**graph_config, "recursion_limit": 12}
+            }
             if store is not None:
                 invoke_kwargs["store"] = store
 
