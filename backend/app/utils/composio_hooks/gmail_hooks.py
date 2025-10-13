@@ -509,56 +509,6 @@ def gmail_fetch_by_id_after_hook(
         return response["data"]
 
 
-# Removed duplicate after hooks - now handled by gmail_compose_after_hook above
-
-
-@register_after_hook(tools=["GMAIL_SEND_EMAIL"])
-def gmail_send_email_after_hook(
-    tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
-    """Process email send response."""
-    try:
-        writer = get_stream_writer()
-
-        if writer and response["data"].get("successful", True):
-            message_data = response["data"].get("message", {})
-            headers = message_data.get("payload", {}).get("headers", [])
-
-            to_recipients = []
-            subject = ""
-            for header in headers:
-                if header.get("name") == "To":
-                    to_recipients = header.get("value", "").split(", ")
-                elif header.get("name") == "Subject":
-                    subject = header.get("value", "")
-
-            payload = {
-                "email_sent_data": [
-                    {
-                        "message_id": response["data"].get("id", ""),
-                        "message": "Email sent successfully!",
-                        "timestamp": response["data"].get("timestamp", ""),
-                        "recipients": to_recipients,
-                        "subject": subject,
-                    }
-                ]
-            }
-            writer(payload)
-
-        # Keep the response minimal for LLM
-        if "successful" in response["data"] and response["data"]["successful"]:
-            return {
-                "id": response["data"].get("id", ""),
-                "successful": True,
-                "message": "Email sent successfully",
-            }
-        else:
-            return response["data"]
-
-    except Exception as e:
-        logger.error(f"Error in gmail_send_email_after_hook: {e}")
-        return response["data"]
-
 
 @register_after_hook(tools=["GMAIL_SEND_DRAFT"])
 def gmail_send_draft_after_hook(

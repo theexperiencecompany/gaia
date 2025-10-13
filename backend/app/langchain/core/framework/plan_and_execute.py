@@ -357,7 +357,7 @@ class OrchestratorGraph:
         finalizer_content = self._extract_content(response)
 
         finalizer_message = AIMessage(
-            content=finalizer_content,
+            content=f"{self.agent_name}: \n\n{finalizer_content}",
             additional_kwargs={
                 "orchestrator_role": "finalizer",
                 "visible_to": {"main_agent", self.agent_name},
