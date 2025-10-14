@@ -91,74 +91,61 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
 
     tools = []
 
-    try:
-        if "gmail" in enabled_providers:
-            tools.append(
-                create_handoff_tool(
-                    tool_name="call_gmail_agent",
-                    agent_name="gmail_agent",
-                    description=HANDOFF_DESCRIPTION_TEMPLATE.format(
-                        provider_name="Gmail",
-                        domain="email management",
-                        capabilities="composing, sending, reading, organizing emails, managing labels, drafts, attachments, and advanced email workflows",
-                    ),
-                    system_prompt=GMAIL_ORCHESTRATOR_PROMPT,
-                )
+    if "gmail" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_gmail_agent",
+                agent_name="gmail_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Gmail",
+                    domain="email management",
+                    capabilities="composing, sending, reading, organizing emails, managing labels, drafts, attachments, and advanced email workflows",
+                ),
+                system_prompt=GMAIL_ORCHESTRATOR_PROMPT,
             )
-    except Exception as e:
-        print(e)
-        logger.error(f"Error creating Gmail handoff tool: {e}")
+        )
 
-    try:
-        if "notion" in enabled_providers:
-            tools.append(
-                create_handoff_tool(
-                    tool_name="call_notion_agent",
-                    agent_name="notion_agent",
-                    description=HANDOFF_DESCRIPTION_TEMPLATE.format(
-                        provider_name="Notion",
-                        domain="workspace management",
-                        capabilities="creating pages, managing databases, updating content, organizing workspaces, handling properties, and advanced Notion workflows",
-                    ),
-                    system_prompt=NOTION_AGENT_SYSTEM_PROMPT,
-                )
+    if "notion" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_notion_agent",
+                agent_name="notion_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Notion",
+                    domain="workspace management",
+                    capabilities="creating pages, managing databases, updating content, organizing workspaces, handling properties, and advanced Notion workflows",
+                ),
+                system_prompt=NOTION_AGENT_SYSTEM_PROMPT,
             )
-    except Exception as e:
-        logger.error(f"Error creating Notion handoff tool: {e}")
+        )
 
-    try:
-        if "twitter" in enabled_providers:
-            tools.append(
-                create_handoff_tool(
-                    tool_name="call_twitter_agent",
-                    agent_name="twitter_agent",
-                    description=HANDOFF_DESCRIPTION_TEMPLATE.format(
-                        provider_name="Twitter",
-                        domain="social media management",
-                        capabilities="posting tweets, managing threads, engaging with content, analyzing metrics, scheduling posts, and advanced Twitter workflows",
-                    ),
-                    system_prompt=TWITTER_AGENT_SYSTEM_PROMPT,
-                )
+    if "twitter" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_twitter_agent",
+                agent_name="twitter_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Twitter",
+                    domain="social media management",
+                    capabilities="posting tweets, managing threads, engaging with content, analyzing metrics, scheduling posts, and advanced Twitter workflows",
+                ),
+                system_prompt=TWITTER_AGENT_SYSTEM_PROMPT,
             )
-    except Exception as e:
-        logger.error(f"Error creating Twitter handoff tool: {e}")
+        )
 
-    try:
-        if "linkedin" in enabled_providers:
-            tools.append(
-                create_handoff_tool(
-                    tool_name="call_linkedin_agent",
-                    agent_name="linkedin_agent",
-                    description=HANDOFF_DESCRIPTION_TEMPLATE.format(
-                        provider_name="LinkedIn",
-                        domain="professional networking management",
-                        capabilities="creating posts, managing connections, networking outreach, profile updates, content engagement, and advanced LinkedIn workflows",
-                    ),
-                    system_prompt=LINKEDIN_AGENT_SYSTEM_PROMPT,
-                )
+    if "linkedin" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_linkedin_agent",
+                agent_name="linkedin_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="LinkedIn",
+                    domain="professional networking management",
+                    capabilities="creating posts, managing connections, networking outreach, profile updates, content engagement, and advanced LinkedIn workflows",
+                ),
+                system_prompt=LINKEDIN_AGENT_SYSTEM_PROMPT,
             )
-    except Exception as e:
-        logger.error(f"Error creating LinkedIn handoff tool: {e}")
+        )
 
     logger.info(
         f"Created {len(tools)} handoff tools for providers: {enabled_providers}"
