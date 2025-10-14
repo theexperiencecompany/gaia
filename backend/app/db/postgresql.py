@@ -23,7 +23,7 @@ Base = declarative_base()
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,
 )
-def init_postgresql_engine() -> AsyncEngine:
+async def init_postgresql_engine() -> AsyncEngine:
     """
     Initialize PostgreSQL async engine with proper connection pooling.
 
@@ -43,11 +43,14 @@ def init_postgresql_engine() -> AsyncEngine:
         max_overflow=10,
     )
 
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     logger.info("PostgreSQL engine initialized for database")
     return engine
 
 
-def get_postgresql_engine() -> AsyncEngine:
+async def get_postgresql_engine() -> AsyncEngine:
     """
     Get the PostgreSQL engine from lazy provider.
 
@@ -57,7 +60,7 @@ def get_postgresql_engine() -> AsyncEngine:
     Raises:
         RuntimeError: If PostgreSQL engine is not available
     """
-    engine = providers.get("postgresql_engine")
+    engine = await providers.aget("postgresql_engine")
     if engine is None:
         raise RuntimeError("PostgreSQL engine not available")
     return engine
@@ -71,7 +74,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         AsyncSession: SQLAlchemy async session
     """
-    engine = get_postgresql_engine()
+    engine = await get_postgresql_engine()
     async with AsyncSession(engine) as session:
         try:
             yield session
@@ -86,7 +89,7 @@ async def close_postgresql_db() -> None:
     """
     try:
         if providers.is_initialized("postgresql_engine"):
-            engine = get_postgresql_engine()
+            engine = await get_postgresql_engine()
             await engine.dispose()
             logger.info("PostgreSQL connections closed")
     except Exception as e:

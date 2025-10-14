@@ -1,12 +1,12 @@
 from typing import Annotated, List, Optional
 
-from app.config.loggers import common_logger as logger
+from app.agents.prompts.gmail_node_prompts import GMAIL_ORCHESTRATOR_PROMPT
 from app.agents.prompts.subagent_prompts import (
-    GMAIL_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
 )
+from app.config.loggers import common_logger as logger
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.graph import MessagesState
@@ -42,12 +42,21 @@ def create_handoff_tool(
         # Combine task description with conversation summary
         full_context = task_description
 
-        task_description_message = HumanMessage(content=full_context, name=agent_name)
-        system_prompt_message = SystemMessage(content=system_prompt, name=agent_name)
+        task_description_message = HumanMessage(
+            content=full_context,
+            name=agent_name,
+            additional_kwargs={"visible_to": {agent_name}},
+        )
+        system_prompt_message = SystemMessage(
+            content=system_prompt,
+            name=agent_name,
+            additional_kwargs={"visible_to": {agent_name}},
+        )
         tool_message = ToolMessage(
             content=f"Successfully transferred to {agent_name}",
             tool_call_id=tool_call_id,
             name="main_agent",
+            additional_kwargs={"visible_to": {"main_agent"}},
         )
 
         agent_input = {
@@ -76,6 +85,7 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
     Returns:
         List of handoff tools for the enabled provider sub-agent graphs
     """
+
     if enabled_providers is None:
         enabled_providers = ["gmail", "notion", "twitter", "linkedin"]
 
@@ -91,7 +101,7 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
                     domain="email management",
                     capabilities="composing, sending, reading, organizing emails, managing labels, drafts, attachments, and advanced email workflows",
                 ),
-                system_prompt=GMAIL_AGENT_SYSTEM_PROMPT,
+                system_prompt=GMAIL_ORCHESTRATOR_PROMPT,
             )
         )
 

@@ -97,8 +97,8 @@ export default function UseCaseSection({
       : selectedCategory === "all"
         ? useCasesData
         : useCasesData.filter((useCase: UseCase) =>
-            useCase.categories?.includes(selectedCategory),
-          );
+          useCase.categories?.includes(selectedCategory),
+        );
 
   const handleCategoryClick = (category: string) => {
     const wasSelected = selectedCategory === category;

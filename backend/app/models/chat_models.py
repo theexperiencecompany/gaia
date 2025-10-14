@@ -63,6 +63,8 @@ tool_fields = [
     "email_fetch_data",
     "email_thread_data",
     "email_sent_data",
+    "contacts_data",
+    "people_search_data",
     "support_ticket_data",
     "calendar_fetch_data",
     "calendar_list_fetch_data",

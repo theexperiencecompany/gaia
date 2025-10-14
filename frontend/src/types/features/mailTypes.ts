@@ -121,3 +121,17 @@ export type EmailSentData = {
   recipients?: string[];
   subject?: string;
 };
+
+export type ContactData = {
+  name: string;
+  email: string;
+  phone?: string;
+  resource_name: string;
+};
+
+export type PeopleSearchData = {
+  name: string;
+  email: string;
+  phone?: string;
+  resource_name: string;
+};

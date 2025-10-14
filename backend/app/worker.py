@@ -11,10 +11,10 @@ from app.workers.tasks import (
     cleanup_expired_reminders,
     execute_workflow_by_id,
     generate_workflow_steps,
+    process_email_task,
     process_gmail_emails_to_memory,
     process_reminder,
     process_workflow_generation_task,
-    process_email_task,
     store_memories_batch,
 )
 

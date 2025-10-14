@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 import httpx
 import pytz
 from app.api.v1.dependencies.oauth_dependencies import (
+    GET_USER_TZ_TYPE,
     get_current_user,
     get_user_timezone,
 )
@@ -30,7 +31,6 @@ from app.services.composio.composio_service import (
     COMPOSIO_SOCIAL_CONFIGS,
     get_composio_service,
 )
-from app.utils.redis_utils import RedisPoolManager
 from app.services.oauth_service import store_user_info
 from app.services.onboarding_service import (
     complete_onboarding,
@@ -39,6 +39,7 @@ from app.services.onboarding_service import (
 )
 from app.services.user_service import update_user_profile
 from app.utils.oauth_utils import fetch_user_info_from_google, get_tokens_from_code
+from app.utils.redis_utils import RedisPoolManager
 from bson import ObjectId
 from fastapi import (
     APIRouter,
@@ -578,7 +579,7 @@ async def update_me(
 async def complete_user_onboarding(
     onboarding_data: OnboardingRequest,
     user: dict = Depends(get_current_user),
-    user_time: datetime = Depends(get_user_timezone),
+    tz_info: GET_USER_TZ_TYPE = Depends(get_user_timezone),
 ):
     """
     Complete user onboarding by storing preferences.
@@ -586,7 +587,7 @@ async def complete_user_onboarding(
     """
     try:
         updated_user = await complete_onboarding(
-            user["user_id"], onboarding_data, user_timezone=user_time
+            user["user_id"], onboarding_data, user_timezone=tz_info[0]
         )
 
         return OnboardingResponse(

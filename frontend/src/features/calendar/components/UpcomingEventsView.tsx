@@ -10,21 +10,25 @@ interface UpcomingEventsViewProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;
   events: GoogleCalendarEvent[];
   isLoading: boolean;
+  isFetching?: boolean;
   error?: string | null;
   calendars: CalendarItem[];
   // Connection state props
   isConnected?: boolean;
   onConnect?: (integrationId: string) => void;
+  onRefresh?: () => void;
 }
 
 const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
   onEventClick,
   events,
   isLoading,
+  isFetching = false,
   error,
   calendars,
   isConnected = true,
   onConnect,
+  onRefresh,
 }) => {
   // Group all events by their date (show all events from API, grouped by day)
   const upcomingEventsByDay = useMemo(() => {
@@ -136,6 +140,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
       title="Upcoming events"
       icon={<GoogleCalendarIcon className="h-5 w-5 text-zinc-500" />}
       isLoading={isLoading}
+      isFetching={isFetching}
       error={error}
       isEmpty={!hasEvents}
       emptyMessage="No upcoming events"
@@ -145,6 +150,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
       onConnect={onConnect}
       connectButtonText="Connect Calendar"
       path="/calendar"
+      onRefresh={onRefresh}
     >
       <div className="space-y-6 p-4">
         {Object.entries(upcomingEventsByDay).map(

@@ -7,7 +7,7 @@ from typing import List
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
-from app.models.workflow_models import Workflow, TriggerType
+from app.models.workflow_models import TriggerType, Workflow
 
 
 async def find_matching_workflows(user_id: str) -> List[Workflow]:

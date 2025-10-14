@@ -232,6 +232,9 @@ CALENDAR — FETCH EVENTS: This tool is used to fetch calendar events.
 This tool retrieves events from the user's calendar based on optional filters like time range
 and specific calendar selection. It uses the user's access token to securely fetch events.
 
+**DEFAULT BEHAVIOR**: By default, this tool fetches only **future events** (starting from current time).
+To fetch past events, you must explicitly set the time_min parameter to a past date.
+
 Use this tool when a user wants to:
 - View their upcoming events
 - Check their schedule for a specific time period
@@ -241,24 +244,31 @@ Use this tool when a user wants to:
 PARAMETER USAGE GUIDELINES:
 
 TIME FILTERS (time_min, time_max):
-- DEFAULT: Omit both parameters to get upcoming events (system defaults to current time forward)
-- USE time_min WHEN: User specifies "events after [date]", "starting from [date]", or "from [date] onwards"
+- DEFAULT: Omit time_min to get future events only (system defaults to current time forward)
+- USE time_min WHEN: User specifies "events after [date]", "starting from [date]", or wants past events
 - USE time_max WHEN: User specifies "events before [date]", "until [date]", or "up to [date]"
 - USE BOTH WHEN: User specifies a specific date range like "events between [date1] and [date2]"
-- DON'T USE: For general requests like "show my events" or "what's on my calendar"
+- DON'T USE: For general requests like "show my events" or "what's on my calendar" (defaults to future events)
 
 CALENDAR SELECTION (selected_calendars):
 - DEFAULT: Omit to fetch from user's preferred calendars (from their settings)
 - USE WHEN: User specifically mentions calendar names like "events from my work calendar"
 - DON'T USE: For general calendar viewing - let the system use user preferences
 
+LIMIT (limit):
+- DEFAULT: 20 events per calendar
+- USE WHEN: User requests a specific number of events like "show me 10 events" or "next 50 events"
+- RANGE: Can be set from 1 to 250 (Google Calendar API limit)
+- DON'T MODIFY: For general requests - 20 is a good default for most use cases
+
 Args:
-    time_min (str, optional): Start time filter in ISO 8601 format - only use when user specifies a start date
+    time_min (str, optional): Start time filter in ISO 8601 format (defaults to current time for future events only)
     time_max (str, optional): End time filter in ISO 8601 format - only use when user specifies an end date
     selected_calendars (List[str], optional): List of calendar IDs - only use when user specifies particular calendars
+    limit (int, optional): Maximum number of events to return per calendar (default: 20, max: 250)
 
 Returns:
-    str: JSON string containing events data, total count, selected calendars, and pagination token
+    str: JSON string containing filtered events data with only essential fields, total count, selected calendars, and pagination token
 """
 
 SEARCH_CALENDAR_EVENTS = """

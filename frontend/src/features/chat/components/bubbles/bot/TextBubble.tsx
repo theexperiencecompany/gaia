@@ -35,6 +35,7 @@ import {
   DeepResearchResults,
   DocumentData,
   EmailComposeData,
+  EmailSentData,
   EmailThreadData,
   GoalDataMessageType,
   GoogleDocsData,
@@ -47,6 +48,10 @@ import {
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
 import { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
+import {
+  ContactData,
+  PeopleSearchData,
+} from "@/types/features/mailTypes";
 import { EmailFetchData } from "@/types/features/mailTypes";
 import { NotificationRecord } from "@/types/features/notificationTypes";
 import { SupportTicketData } from "@/types/features/supportTypes";
@@ -56,12 +61,15 @@ import { CalendarDeleteSection } from "./CalendarDeleteSection";
 import { CalendarEditSection } from "./CalendarEditSection";
 import CalendarEventSection from "./CalendarEventSection";
 import CodeExecutionSection from "./CodeExecutionSection";
+import ContactListSection from "./ContactListSection";
 import DocumentSection from "./DocumentSection";
 import EmailComposeSection from "./EmailComposeSection";
+import EmailSentSection from "./EmailSentSection";
 import GoalSection from "./goals/GoalSection";
 import { GoalAction } from "./goals/types";
 import GoogleDocsSection from "./GoogleDocsSection";
 import NotificationListSection from "./NotificationListSection";
+import PeopleSearchSection from "./PeopleSearchSection";
 import SupportTicketSection from "./SupportTicketSection";
 import TodoSection from "./TodoSection";
 
@@ -110,6 +118,28 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       key={`tool-email-compose-${index}`}
       email_compose_data={
         (Array.isArray(data) ? data : [data]) as EmailComposeData[]
+      }
+    />
+  ),
+  email_sent_data: (data, index) => (
+    <EmailSentSection
+      key={`tool-email-sent-${index}`}
+      email_sent_data={
+        (Array.isArray(data) ? data : [data]) as EmailSentData[]
+      }
+    />
+  ),
+  contacts_data: (data, index) => (
+    <ContactListSection
+      key={`tool-contacts-${index}`}
+      contacts_data={(Array.isArray(data) ? data : [data]) as ContactData[]}
+    />
+  ),
+  people_search_data: (data, index) => (
+    <PeopleSearchSection
+      key={`tool-people-search-${index}`}
+      people_search_data={
+        (Array.isArray(data) ? data : [data]) as PeopleSearchData[]
       }
     />
   ),
