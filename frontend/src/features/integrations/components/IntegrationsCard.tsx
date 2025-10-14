@@ -2,7 +2,7 @@ import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Chip } from "@heroui/chip";
 import { Selection } from "@heroui/react";
 import Image from "next/image";
-import React, { useEffect } from "react";
+import React from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
@@ -87,7 +87,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   const {
     integrations: _integrations,
     connectIntegration,
-    refreshStatus,
     getSpecialIntegrations,
     getRegularIntegrations,
     isUnifiedIntegrationConnected,
@@ -105,11 +104,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
       keys === "all" || (keys instanceof Set && keys.has("integrations"));
     setExpanded(expanded);
   };
-
-  // Force refresh integration status on mount
-  useEffect(() => {
-    refreshStatus();
-  }, [refreshStatus]);
 
   const handleConnect = async (integrationId: string) => {
     try {

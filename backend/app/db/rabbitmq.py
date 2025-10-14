@@ -2,7 +2,7 @@ from typing import Optional
 
 import aio_pika
 from aio_pika import Message
-from aio_pika.abc import AbstractRobustConnection, AbstractChannel
+from aio_pika.abc import AbstractChannel, AbstractRobustConnection
 from app.config.loggers import app_logger as logger
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers

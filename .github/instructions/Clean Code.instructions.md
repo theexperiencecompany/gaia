@@ -4,7 +4,7 @@ applyTo: “**”
 
 Write clean and minimalistic code. Do not create unnecessary test files, markdown files, or unnecessary files. Prioritize writing clean, modular, and production-level code. Reuse existing logic, paradigms, and abstractions if present. Do not do anything unnecessary or extra. Only add comments that are meaningful and cannot be inferred from the code; explain complex or non-obvious logic clearly.
 Make changes file by file and allow for review of mistakes.
-Make edits in 1 single shot for the file. Do not make multiple edits to the same file.
+Make edits in a single shot per file. Do not make multiple edits to the same file.
 Only implement changes explicitly requested; do not invent changes.
 Provide all edits in a single chunk per file, not in multiple steps.
 Encourage modular design for maintainability and reusability.
@@ -35,4 +35,4 @@ Github Repository: https://github.com/heygaia/gaia
 Use DeepWiki MCP (when available) for understanding the codebase. Use the ask_question tool to clarify doubts. Verify DeepWiki information against the latest codebase.
 Maintain clarity, conciseness, and production-level quality in all code edits.
 
-Don't unnecessary read log files if the user has already told you what to do and has passed you the necessary logs.
+# Don't unnecessary read log files if the user has already told you what to do and has passed you the necessary logs.

@@ -3,6 +3,7 @@ import { Chip } from "@heroui/chip";
 import { Input, Textarea } from "@heroui/input";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
+import DOMPurify from "dompurify";
 import { Plus, X } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -494,7 +495,15 @@ export default function EmailComposeCard({
                 <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
               </Button>
             </div>
-            {editData.body}
+            {emailData.is_html ? (
+              <div
+                dangerouslySetInnerHTML={{
+                  __html: DOMPurify.sanitize(editData.body),
+                }}
+              />
+            ) : (
+              editData.body
+            )}
           </ScrollShadow>
         </div>
         <div className="flex justify-end px-6 pb-5">

@@ -4,31 +4,38 @@ Delete System Messages Node for the conversational graph.
 This module provides functionality to remove system messages from the conversation
 state while preserving all other message types in their original order.
 """
+from typing import Callable, TypeVar
 
 from app.config.loggers import chat_logger as logger
-from app.agents.prompts.agent_prompts import AGENT_SYSTEM_PROMPT
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.graph import MessagesState
 from langgraph.store.base import BaseStore
-from langgraph_bigtool.graph import State
 
+T = TypeVar("T", bound=MessagesState)
 
 def create_filter_messages_node(
     agent_name: str = "main_agent",
     allow_memory_system_messages: bool = False,
-):
+    remove_system_messages: bool = False,
+    version: str = "v1",
+) -> Callable[[T, RunnableConfig, BaseStore], T]:
     """Create a node that filters out system messages from the conversation state.
     Args:
         agent_name: Name of the agent whose system messages should be included.
         allow_empty_agent_name: If True, allows empty agent_name to skip filtering.
             If False, It filters out all the messages having empty names.
+        remove_system_messages: If True, removes all system messages from the conversation.
+            Except those marked as memory messages if allow_memory_system_messages is True.
+            When this is True, make sure to add SystemMessage after this hook is executed if SystemMessage
+            is required for the agent to function properly.
+        version: Filtering version. "v1" uses name-based filtering (backward compatible),
+            "v2" uses visible_to in additional_kwargs for more flexible visibility control.
     Returns:
         A callable node that filters messages in the conversation state.
     """
 
-    async def filter_messages(
-        state: State, config: RunnableConfig, store: BaseStore
-    ) -> State:
+    def filter_messages(state: T, config: RunnableConfig, store: BaseStore) -> T:
         """
         Filters out system messages from the conversation state.
         Args:
@@ -41,12 +48,18 @@ def create_filter_messages_node(
         try:
             allowed_tool_messages_ids = set()
             filtered_messages = []
+            
             # Separate system messages for removal and keep others
             for msg in state["messages"]:
-                msg_names = msg.name.split(",") if msg.name else []
-
-                # Check if message is from the target agent
-                is_from_target_agent = agent_name in msg_names
+                # Version-based filtering logic
+                if version == "v2":
+                    # v2: Use visible_to from additional_kwargs
+                    visible_to = msg.additional_kwargs.get("visible_to", set())
+                    is_from_target_agent = agent_name in visible_to
+                else:
+                    # v1: Use name-based filtering (backward compatible)
+                    msg_names = msg.name.split(",") if msg.name else []
+                    is_from_target_agent = agent_name in msg_names
 
                 # Note: ToolMessage doesn't have 'name' attribute like other messages
                 # So we are allowing all tool messages that are invoked by AI messages
@@ -62,9 +75,11 @@ def create_filter_messages_node(
                 is_allowed_memory_system_message = (
                     allow_memory_system_messages
                     and isinstance(msg, SystemMessage)
-                    and not (
-                        msg.text().strip().startswith(AGENT_SYSTEM_PROMPT[:100].strip())
-                    )
+                    and msg.model_dump().get("memory_message", False)
+                )
+
+                is_system_message = remove_system_messages and isinstance(
+                    msg, SystemMessage
                 )
 
                 # Keep message if it matches either condition
@@ -72,7 +87,7 @@ def create_filter_messages_node(
                     is_from_target_agent
                     or is_allowed_tool_message
                     or is_allowed_memory_system_message
-                ):
+                ) and not is_system_message:
                     filtered_messages.append(msg)
 
                     # If this is an AI message, track its tool call IDs for future tool messages
@@ -80,7 +95,7 @@ def create_filter_messages_node(
                         for tool_call in msg.tool_calls:
                             allowed_tool_messages_ids.add(tool_call.get("id"))
 
-            return {**state, "messages": filtered_messages}
+            return {**state, "messages": filtered_messages}  # type: ignore[return-value]
 
         except Exception as e:
             logger.error(f"Error in delete system messages node: {e}")

@@ -6,8 +6,8 @@ import asyncio
 
 from app.config.loggers import arq_worker_logger as logger
 from app.core.provider_registration import (
-    unified_startup,
     setup_warnings,
+    unified_startup,
 )
 
 # Set up common warning filters

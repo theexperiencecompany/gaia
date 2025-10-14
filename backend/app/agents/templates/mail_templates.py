@@ -8,14 +8,8 @@ import email.policy
 from html import unescape
 from typing import Any, Dict, List, Optional
 
-from app.agents.prompts.mail_prompts import (
-    COMPOSE_EMAIL_SUMMARY,
-    EMAIL_PROCESSING_PLANNER,
-    EMAIL_PROCESSING_REPLANNER,
-)
 from app.config.loggers import app_logger as logger
 from bs4 import BeautifulSoup
-from langchain_core.prompts import PromptTemplate
 
 # ============================================================================
 # GmailMessageParser - Class-based email parsing using email.parser
@@ -138,6 +132,9 @@ class GmailMessageParser:
                 # Handle attachments
                 filename = part_data.get("filename")
                 if filename:
+                    # Remove existing Content-Disposition header if present
+                    if "Content-Disposition" in part:
+                        del part["Content-Disposition"]
                     part.add_header(
                         "Content-Disposition", "attachment", filename=filename
                     )
@@ -363,17 +360,19 @@ def minimal_message_template(
 
     content = parser.content if include_both_formats else None
 
-    body_content = content["text"] if content else parser.text_content
+    body_content = (
+        content["text"] if content else parser.text_content
+    ) or email_data.get("messageText", "")
     labels = parser.labels
 
     result = {
         "id": email_data.get("messageId") or email_data.get("id", ""),
         "threadId": email_data.get("threadId", ""),
-        "from": parser.sender,
-        "to": parser.to,
-        "subject": parser.subject,
+        "from": parser.sender or email_data.get("sender", ""),
+        "to": parser.to or email_data.get("to", ""),
+        "subject": parser.subject or email_data.get("subject", ""),
         "snippet": email_data.get("snippet", ""),
-        "time": parser.date,
+        "time": parser.date or email_data.get("messageTimestamp", ""),
         "isRead": "UNREAD" not in labels,
         "hasAttachment": "HAS_ATTACHMENT" in labels,
         "body": body_content[:100] if short_body else body_content,
@@ -487,7 +486,8 @@ def process_list_messages_response(response: Dict[str, Any]) -> Dict[str, Any]:
 
     if "messages" in response:
         processed_response["messages"] = [
-            minimal_message_template(msg) for msg in response.get("messages", [])
+            minimal_message_template(msg, short_body=False)
+            for msg in response.get("messages", [])
         ]
 
     if "error" in response:
@@ -517,33 +517,3 @@ def process_list_drafts_response(response: Dict[str, Any]) -> Dict[str, Any]:
 def process_get_thread_response(response: Dict[str, Any]) -> Dict[str, Any]:
     """Process the response from get_email_thread tool to minimize data."""
     return thread_template(response)
-
-
-# Compose email template
-COMPOSE_EMAIL_TEMPLATE = PromptTemplate(
-    input_variables=["subject", "body"],
-    template=COMPOSE_EMAIL_SUMMARY,
-)
-
-# Email processing plan template
-EMAIL_PROCESSING_PLAN_TEMPLATE = PromptTemplate(
-    input_variables=["messages", "format_instructions"],
-    template=EMAIL_PROCESSING_PLANNER,
-)
-
-# Email processing replan template
-EMAIL_PROCESSING_REPLAN_TEMPLATE = PromptTemplate(
-    input_variables=["input", "plan", "past_steps", "format_instructions"],
-    template=EMAIL_PROCESSING_REPLANNER,
-)
-
-MAIL_RECEIVED_USER_MESSAGE_TEMPLATE = PromptTemplate(
-    input_variables=["sender", "subject", "snippet"],
-    template="""📩 New Email Received
-From: {sender}
-Subject: {subject}
-
-📬 Content:
-{snippet}
-""",
-)

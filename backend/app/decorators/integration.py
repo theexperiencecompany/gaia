@@ -9,6 +9,7 @@ from typing import Any, Callable, Optional
 
 from app.config.loggers import auth_logger as logger
 from app.utils.integration_checker import check_and_prompt_integration
+from app.utils.oauth_utils import get_tokens_by_user_id
 
 
 def require_integration(tool_category: str, tool_name: Optional[str] = None):
@@ -50,7 +51,9 @@ def require_integration(tool_category: str, tool_name: Optional[str] = None):
 
             # Extract access token from config
             configurable = config.get("configurable", {})
-            access_token = configurable.get("access_token", "")
+            access_token, refresh_token, _ = await get_tokens_by_user_id(
+                configurable.get("user_id")
+            )
 
             if not access_token:
                 logger.warning(

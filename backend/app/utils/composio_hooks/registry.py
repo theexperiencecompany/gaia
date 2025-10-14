@@ -84,17 +84,6 @@ def master_before_execute_hook(
     2. Frontend streaming setup
     3. All registered tool-specific hooks
     """
-    # 1. Extract user_id from RunnableConfig metadata
-    arguments = params.get("arguments", {})
-    if arguments:
-        config = arguments.pop("__runnable_config__", None)
-        if config and isinstance(config, dict):
-            metadata = config.get("metadata", {})
-            if metadata:
-                user_id = metadata.get("user_id")
-                if user_id:
-                    params["user_id"] = user_id
-
     return hook_registry.execute_before_hooks(tool, toolkit, params)
 
 

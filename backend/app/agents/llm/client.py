@@ -8,7 +8,9 @@ from app.constants.llm import (
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from langchain_cerebras import ChatCerebras
-from langchain_core.language_models import LanguageModelLike
+from langchain_core.language_models.chat_models import (
+    BaseChatModel,
+)
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
@@ -27,7 +29,7 @@ PROVIDER_PRIORITY = {
 
 class LLMProvider(TypedDict):
     name: str
-    instance: Any
+    instance: BaseChatModel
 
 
 @lazy_provider(
@@ -83,9 +85,7 @@ def init_gemini_llm():
     )
 
 
-def init_llm(
-    preferred_provider: Optional[str] = None, fallback_enabled: bool = True
-) -> LanguageModelLike:
+def init_llm(preferred_provider: Optional[str] = None, fallback_enabled: bool = True):
     """
     Initialize LLM with configurable alternatives based on provider priority.
 
@@ -202,9 +202,7 @@ def _get_ordered_providers(
     return ordered
 
 
-def _create_configurable_llm(
-    primary: LLMProvider, alternatives: List[LLMProvider]
-) -> Any:
+def _create_configurable_llm(primary: LLMProvider, alternatives: List[LLMProvider]):
     """
     Create a configurable LLM instance with alternatives.
 
@@ -222,9 +220,12 @@ def _create_configurable_llm(
     # Create configurable alternatives mapping
     alternatives_mapping = {alt["name"]: alt["instance"] for alt in alternatives}
 
-    return primary["instance"].configurable_alternatives(
+    primary_instance = primary["instance"]
+
+    return primary_instance.configurable_alternatives(
         ConfigurableField(id="provider"),
         default_key=primary["name"],
+        prefix_keys=False,
         **alternatives_mapping,
     )
 

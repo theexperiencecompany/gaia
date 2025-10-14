@@ -17,6 +17,7 @@ async def construct_langchain_messages(
     currently_uploaded_file_ids: Optional[List[str]] = [],
     user_id: Optional[str] = None,
     user_name: Optional[str] = None,
+    user_dict: Optional[dict] = None,
     query: Optional[str] = None,
     selected_tool: Optional[str] = None,
     selected_workflow: Optional[SelectedWorkflowData] = None,
@@ -34,6 +35,7 @@ async def construct_langchain_messages(
         currently_uploaded_file_ids: IDs of files to include in context
         user_id: For retrieving user preferences and memories
         user_name: Personalization for system prompt
+        user_dict: Complete user dictionary with timezone, preferences, etc. (from auth)
         query: Search query for memory retrieval (typically latest user message)
         selected_tool: Tool chosen via slash command (overrides normal flow)
         selected_workflow: Workflow to execute (overrides everything else)
@@ -42,9 +44,8 @@ async def construct_langchain_messages(
     Returns:
         List of LangChain messages ready for agent processing
     """
-    # Start with system message containing time, preferences, and instructions
+    # Start with system message containing user name and instructions
     system_msg = await create_system_message(user_id, user_name)
-    system_msg.name = "main_agent"
     chain_msgs = [system_msg]
 
     # Add relevant memories if user context available

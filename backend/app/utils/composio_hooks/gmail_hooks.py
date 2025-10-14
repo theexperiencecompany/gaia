@@ -7,13 +7,18 @@ and response processing for raw Gmail API data.
 
 from typing import Any
 
-from app.config.loggers import app_logger as logger
 from app.agents.templates.mail_templates import (
     detailed_message_template,
     draft_template,
     process_get_thread_response,
     process_list_drafts_response,
     process_list_messages_response,
+)
+from app.config.loggers import app_logger as logger
+from app.utils.markdown_utils import (
+    convert_markdown_to_html,
+    convert_markdown_to_plain_text,
+    is_markdown_content,
 )
 from composio.types import ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
@@ -24,7 +29,14 @@ from .registry import register_after_hook, register_before_hook
 # These hooks send progress/streaming data to frontend before tool execution
 
 
-@register_before_hook(tools=["GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"])
+@register_before_hook(
+    tools=[
+        "GMAIL_SEND_EMAIL",
+        "GMAIL_CREATE_EMAIL_DRAFT",
+        "GMAIL_REPLY_TO_THREAD",
+        "GMAIL_FORWARD_MESSAGE",
+    ]
+)
 def gmail_compose_before_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
@@ -33,12 +45,41 @@ def gmail_compose_before_hook(
         writer = get_stream_writer()
         arguments = params.get("arguments", {})
 
-        recipients = [
-            arguments.get("recipient_email", ""),
-            *arguments.get("extra_recipients", []),
-        ]
+        body = arguments.get("body", "")
+        is_html = arguments.get("is_html", False)
 
-        # Build the email compose data with draft_id
+        # Detect and convert markdown content
+        if body and is_markdown_content(body):
+            logger.info(
+                f"Markdown detected in email body for {tool}, converting to {'HTML' if is_html else 'plain text'}"
+            )
+
+            if is_html:
+                # Convert markdown to HTML
+                converted_body = convert_markdown_to_html(body)
+                arguments["body"] = converted_body
+                logger.debug(f"Converted markdown to HTML for {tool}")
+            else:
+                # Convert markdown to plain text
+                converted_body = convert_markdown_to_plain_text(body)
+                arguments["body"] = converted_body
+                logger.debug(f"Converted markdown to plain text for {tool}")
+
+            # Update params with converted body
+            params["arguments"] = arguments
+
+        # Handle different recipient formats based on tool
+        if tool == "GMAIL_FORWARD_MESSAGE":
+            recipients = arguments.get("to_recipients", [])
+            if isinstance(recipients, str):
+                recipients = [recipients]
+        else:
+            recipients = [
+                arguments.get("recipient_email", ""),
+                *arguments.get("extra_recipients", []),
+            ]
+
+        # Build the email compose data
         emails_data = [
             {
                 "to": recipients,
@@ -50,7 +91,8 @@ def gmail_compose_before_hook(
                 "is_html": arguments.get("is_html", False),
             }
         ]
-        # Check if the operation was successful
+
+        # Check if the operation was successful and send appropriate payload
         if tool == "GMAIL_CREATE_EMAIL_DRAFT":
             # Send compose data to frontend with draft_id
             payload = {
@@ -58,7 +100,11 @@ def gmail_compose_before_hook(
             }
             writer(payload)
 
-        elif tool == "GMAIL_SEND_EMAIL":
+        elif tool in [
+            "GMAIL_SEND_EMAIL",
+            "GMAIL_REPLY_TO_THREAD",
+            "GMAIL_FORWARD_MESSAGE",
+        ]:
             # Send email sent data to frontend
             payload = {"email_sent_data": emails_data}
             writer(payload)
@@ -66,7 +112,7 @@ def gmail_compose_before_hook(
         return params
 
     except Exception as e:
-        logger.error(f"Error in gmail_compose_after_hook: {e}")
+        logger.error(f"Error in gmail_compose_before_hook: {e}")
         return params
 
 
@@ -411,11 +457,51 @@ def gmail_get_draft_before_hook(tool: str, toolkit: str, params: Any) -> Any:
         if not writer:
             return params
 
-        payload = {"progress": "Fetching draft..."}
+        payload = {"progress": "Fetching draft details..."}
         writer(payload)
 
     except Exception as e:
         logger.error(f"Error in gmail_get_draft_before_hook: {e}")
+
+    return params
+
+
+@register_before_hook(tools=["GMAIL_GET_CONTACTS"])
+def gmail_get_contacts_before_hook(tool: str, toolkit: str, params: Any) -> Any:
+    """Handle contacts fetching with default page size."""
+    try:
+        arguments = params.get("arguments", {})
+        
+        # Set default page size to 50 if not specified
+        if "page_size" not in arguments or not arguments["page_size"]:
+            arguments["page_size"] = 50
+        
+        params["arguments"] = arguments
+        
+        writer = get_stream_writer()
+        if writer:
+            payload = {"progress": "Fetching contacts..."}
+            writer(payload)
+
+    except Exception as e:
+        logger.error(f"Error in gmail_get_contacts_before_hook: {e}")
+
+    return params
+
+
+@register_before_hook(tools=["GMAIL_SEARCH_PEOPLE"])
+def gmail_search_people_before_hook(tool: str, toolkit: str, params: Any) -> Any:
+    """Handle people search progress."""
+    try:
+        writer = get_stream_writer()
+        if writer:
+            arguments = params.get("arguments", {})
+            query = arguments.get("query", "")
+            payload = {"progress": f"Searching for people matching '{query}'..."}
+            writer(payload)
+
+    except Exception as e:
+        logger.error(f"Error in gmail_search_people_before_hook: {e}")
 
     return params
 
@@ -441,8 +527,6 @@ def gmail_fetch_by_id_after_hook(
         return response["data"]
 
 
-# Removed duplicate after hooks - now handled by gmail_compose_after_hook above
-
 
 @register_after_hook(tools=["GMAIL_SEND_DRAFT"])
 def gmail_send_draft_after_hook(
@@ -457,13 +541,15 @@ def gmail_send_draft_after_hook(
             message_data = response["data"].get("message", {})
 
             payload = {
-                "email_sent_data": {
-                    "message_id": response["data"].get("id", ""),
-                    "message": "Draft sent successfully!",
-                    "timestamp": response["data"].get("timestamp", ""),
-                    "recipients": message_data.get("to", []),
-                    "subject": message_data.get("subject", ""),
-                }
+                "email_sent_data": [
+                    {
+                        "message_id": response["data"].get("id", ""),
+                        "message": "Draft sent successfully!",
+                        "timestamp": response["data"].get("timestamp", ""),
+                        "recipients": message_data.get("to", []),
+                        "subject": message_data.get("subject", ""),
+                    }
+                ]
             }
             writer(payload)
 
@@ -479,4 +565,153 @@ def gmail_send_draft_after_hook(
 
     except Exception as e:
         logger.error(f"Error in gmail_send_draft_after_hook: {e}")
+        return response["data"]
+
+
+@register_after_hook(tools=["GMAIL_GET_CONTACTS"])
+def gmail_get_contacts_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> Any:
+    """Process contacts list response to minimize raw data."""
+    try:
+        writer = get_stream_writer()
+
+        if not response or "error" in response["data"]:
+            return response["data"]
+
+        response_data = response["data"].get("response_data", {})
+        connections = response_data.get("connections", [])
+
+        # Process contacts for frontend display
+        contact_list = []
+        # Process contacts for LLM (minimal data)
+        llm_contacts = []
+
+        for contact in connections:
+            names = contact.get("names", [])
+            email_addresses = contact.get("emailAddresses", [])
+            phone_numbers = contact.get("phoneNumbers", [])
+            
+            primary_name = next((n for n in names if n.get("metadata", {}).get("primary")), names[0] if names else {})
+            display_name = primary_name.get("displayName", "Unknown")
+            
+            primary_email = next((e for e in email_addresses if e.get("metadata", {}).get("primary")), 
+                                 email_addresses[0] if email_addresses else {})
+            email = primary_email.get("value", "")
+            
+            phone = ""
+            if phone_numbers:
+                primary_phone = next((p for p in phone_numbers if p.get("metadata", {}).get("primary")), 
+                                    phone_numbers[0])
+                phone = primary_phone.get("value", "")
+
+            contact_data = {
+                "name": display_name,
+                "email": email,
+                "phone": phone,
+                "resource_name": contact.get("resourceName", ""),
+            }
+            
+            contact_list.append(contact_data)
+            
+            # Minimal data for LLM
+            llm_contact = {"name": display_name}
+            if email:
+                llm_contact["email"] = email
+            if phone:
+                llm_contact["phone"] = phone
+            llm_contacts.append(llm_contact)
+
+        # Send to frontend
+        if writer and contact_list:
+            payload = {
+                "contacts_data": contact_list,
+                "total_count": response_data.get("totalPeople", len(contact_list)),
+                "next_page_token": response_data.get("nextPageToken"),
+            }
+            writer(payload)
+
+        # Return minimal data for LLM
+        return {
+            "contacts": llm_contacts,
+            "total_count": response_data.get("totalPeople", len(llm_contacts)),
+            "has_more": bool(response_data.get("nextPageToken")),
+        }
+
+    except Exception as e:
+        logger.error(f"Error in gmail_get_contacts_after_hook: {e}")
+        return response["data"]
+
+
+@register_after_hook(tools=["GMAIL_SEARCH_PEOPLE"])
+def gmail_search_people_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> Any:
+    """Process people search response to minimize raw data."""
+    try:
+        writer = get_stream_writer()
+
+        if not response or "error" in response["data"]:
+            return response["data"]
+
+        response_data = response["data"].get("response_data", {})
+        results = response_data.get("results", [])
+
+        # Process search results for frontend display
+        people_list = []
+        # Process for LLM (minimal data)
+        llm_people = []
+
+        for result in results:
+            person = result.get("person", {})
+            names = person.get("names", [])
+            email_addresses = person.get("emailAddresses", [])
+            phone_numbers = person.get("phoneNumbers", [])
+            
+            primary_name = next((n for n in names if n.get("metadata", {}).get("primary")), names[0] if names else {})
+            display_name = primary_name.get("displayName", "Unknown")
+            
+            primary_email = next((e for e in email_addresses if e.get("metadata", {}).get("primary")), 
+                                 email_addresses[0] if email_addresses else {})
+            email = primary_email.get("value", "")
+            
+            phone = ""
+            if phone_numbers:
+                primary_phone = next((p for p in phone_numbers if p.get("metadata", {}).get("primary")), 
+                                    phone_numbers[0])
+                phone = primary_phone.get("value", "")
+
+            person_data = {
+                "name": display_name,
+                "email": email,
+                "phone": phone,
+                "resource_name": person.get("resourceName", ""),
+            }
+            
+            people_list.append(person_data)
+            
+            # Minimal data for LLM
+            llm_person = {"name": display_name}
+            if email:
+                llm_person["email"] = email
+            if phone:
+                llm_person["phone"] = phone
+            llm_people.append(llm_person)
+
+        # Send to frontend
+        if writer and people_list:
+            payload = {
+                "people_search_data": people_list,
+                "result_count": len(people_list),
+            }
+            writer(payload)
+
+        # Return minimal data for LLM
+        return {
+            "people": llm_people,
+            "result_count": len(llm_people),
+        }
+
+    except Exception as e:
+        logger.error(f"Error in gmail_search_people_after_hook: {e}")
         return response["data"]

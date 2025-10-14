@@ -4,18 +4,20 @@ Provider-specific sub-agent implementations.
 This module contains the factory methods for creating specialized sub-agent graphs
 for different providers (Gmail, Notion, Twitter, LinkedIn, etc.) with full tool
 registry and retrieval capabilities.
+
+Now supports both legacy subagent architecture and new plan-and-execute subgraphs.
 """
 
 import asyncio
 from typing import Any
 
 from app.agents.prompts.subagent_prompts import (
-    GMAIL_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
 )
 from app.config.loggers import langchain_logger as logger
+from app.langchain.core.subgraphs.gmail_subgraph import create_gmail_subgraph
 from langchain_core.language_models import LanguageModelLike
 
 from .base_subagent import SubAgentFactory
@@ -27,26 +29,19 @@ class ProviderSubAgents:
     @staticmethod
     async def create_gmail_agent(llm: LanguageModelLike):
         """
-        Create a specialized Gmail agent graph using tool registry filtering.
+        Create a clean Gmail agent with simple plan-and-execute flow.
 
         Args:
             llm: Language model to use
-            user_id: Optional user ID for tool context
 
         Returns:
-            Compiled Gmail sub-agent graph
+            Compiled Gmail agent
         """
-        logger.info("Creating Gmail sub-agent graph using gmail_delegated tool space")
+        logger.info("Creating clean Gmail plan-and-execute subgraph")
 
-        # Create the Gmail agent graph using entire tool registry with space filtering
-        gmail_agent = await SubAgentFactory.create_provider_subagent(
-            provider="gmail",
-            llm=llm,
-            tool_space="gmail",
-            name="gmail_agent",
-            prompt=GMAIL_AGENT_SYSTEM_PROMPT,
-        )
+        gmail_agent = await create_gmail_subgraph(llm=llm)
 
+        logger.info("Gmail subgraph created successfully")
         return gmail_agent
 
     @staticmethod

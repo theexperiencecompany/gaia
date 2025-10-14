@@ -11,6 +11,7 @@ import {
   usePendingPrompt,
 } from "@/stores/composerStore";
 
+import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useChatLayout, useScrollBehavior } from "./hooks";
 import { ChatWithMessages, NewChatLayout } from "./layouts";
 import ScrollToBottomButton from "./ScrollToBottomButton";
@@ -20,6 +21,11 @@ const ChatPage = React.memo(function MainChat() {
     useConversation();
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
+
+  // Fetching status on chat-page to resolve caching issues when new integration is connected
+  useFetchIntegrationStatus({
+    refetchOnMount: "always",
+  });
 
   const {
     hasMessages,

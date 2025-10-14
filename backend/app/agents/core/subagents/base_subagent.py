@@ -96,9 +96,7 @@ class SubAgentFactory:
             ],
             end_graph_hooks=[
                 transform_output,
-                create_delete_system_messages_node(
-                    prompt=prompt,
-                ),
+                create_delete_system_messages_node(),
             ],
         )
 
