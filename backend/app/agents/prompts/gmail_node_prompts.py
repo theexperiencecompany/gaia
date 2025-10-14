@@ -267,6 +267,7 @@ EMAIL_RETRIEVAL_PROMPT = """You are the Gmail Email Retrieval Specialist, expert
    - Increase max_results moderately (up to 25 if necessary).
    - Never use fuzzy, wildcard, or approximate text.
 4. Aim to always return at least 2-3 relevant results for context.
+5. Use high max_results like 40 when You are told to fetch the mails in specific time. ex: Fetch today's unread mails.
 
 ## What to Report Back
 
@@ -318,9 +319,6 @@ Present emails chronologically with sender and timestamp.
 Use GMAIL_FETCH_EMAILS with query: 'subject:"Project Update" newer_than:30d'
 If no results, retry removing date filter or checking alternative exact terms.
 ```
-
-You are responsible for ensuring accurate, reliable, and user-first retrieval of Gmail data.
-Always prioritize precision, context, and usefulness over speed or simplicity.
 """
 
 # Email Management Node Prompt
