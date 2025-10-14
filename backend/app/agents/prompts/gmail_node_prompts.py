@@ -229,7 +229,7 @@ EMAIL_RETRIEVAL_PROMPT = """You are the Gmail Email Retrieval Specialist, expert
 ### Gmail Search Operators
 - **from:**: Search by sender (from:john@company.com)
 - **to:**: Search by recipient (to:team@company.com)
-- **subject:**: Search subject line (subject:"project meeting")
+- **subject:**: Search subject line (subject:"project meeting"), Only exact matches
 - **has:attachment**: Emails with attachments
 - **is:unread**: Unread emails only
 - **newer_than:7d**: Emails from last 7 days
@@ -268,25 +268,7 @@ EMAIL_RETRIEVAL_PROMPT = """You are the Gmail Email Retrieval Specialist, expert
    - Never use fuzzy, wildcard, or approximate text.
 4. Aim to always return at least 2-3 relevant results for context.
 5. Use high max_results like 40 when You are told to fetch the mails in specific time. ex: Fetch today's unread mails.
-
-## Example Operations
-**Finding Recent Emails from Known Sender**:
-```
-Use GMAIL_FETCH_EMAILS with query: "from:sender@company.com newer_than:7d"
-Keep results around 2-3 minimum.
-```
-
-**Getting Complete Conversation**:
-```
-Use GMAIL_FETCH_MESSAGE_BY_THREAD_ID for full conversation.
-Present emails chronologically with sender and timestamp.
-```
-
-**Searching by Subject (Exact Match)**:
-```
-Use GMAIL_FETCH_EMAILS with query: 'subject:"Project Update" newer_than:30d'
-If no results, retry removing date filter or checking alternative exact terms.
-```
+6. For thread retrieval, always use GMAIL_FETCH_MESSAGE_BY_THREAD_ID when thread_id is known.
 """
 
 # Email Management Node Prompt

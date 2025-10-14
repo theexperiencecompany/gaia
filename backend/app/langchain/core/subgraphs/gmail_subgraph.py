@@ -9,7 +9,6 @@ from app.agents.prompts.gmail_node_prompts import (
     EMAIL_COMPOSITION_PROMPT,
     EMAIL_MANAGEMENT_PROMPT,
     EMAIL_RETRIEVAL_PROMPT,
-    GMAIL_FINALIZER_PROMPT,
 )
 from app.config.loggers import langchain_logger as logger
 from app.langchain.core.framework.plan_and_execute import (
@@ -125,7 +124,6 @@ async def create_gmail_subgraph(llm: LanguageModelLike) -> CompiledStateGraph:
         agent_name="gmail_agent",
         node_configs=await get_node_configs(),
         llm=llm,
-        finalizer_prompt=GMAIL_FINALIZER_PROMPT,
     )
 
     graph = build_orchestrator_subgraph(config)

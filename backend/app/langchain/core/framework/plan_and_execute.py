@@ -127,7 +127,7 @@ class OrchestratorSubgraphConfig:
     provider_name: str
     agent_name: str
     node_configs: Sequence[OrchestratorNodeConfig]
-    finalizer_prompt: str
+    finalizer_prompt: Optional[str] = None
     orchestrator_tools: Optional[Sequence[BaseTool]] = None
     llm: Optional[LanguageModelLike] = None
 
@@ -144,7 +144,7 @@ class OrchestratorGraph:
         node_configs: Sequence[OrchestratorNodeConfig],
         orchestrator_tools: Optional[Sequence[BaseTool]] = None,
         llm: Optional[LanguageModelLike] = None,
-        finalizer_prompt: str,
+        finalizer_prompt: Optional[str] = None,
         pre_llm_hooks: Optional[Sequence[HookType]] = None,
         end_graph_hooks: Optional[Sequence[HookType]] = None,
     ):
@@ -152,6 +152,7 @@ class OrchestratorGraph:
         self.agent_name = agent_name
         self._orchestrator_tools = orchestrator_tools or []
         self._finalizer_prompt = finalizer_prompt
+        self._has_finalizer = finalizer_prompt is not None
         self.llm = llm or init_llm()
         self._pre_llm_hooks = pre_llm_hooks or []
         self._end_graph_hooks = end_graph_hooks or []
@@ -214,7 +215,11 @@ class OrchestratorGraph:
             response_message.additional_kwargs["visible_to"] = {self.agent_name}
         else:
             response_message.additional_kwargs["orchestrator_role"] = "orchestrator"
-            response_message.additional_kwargs["visible_to"] = {self.agent_name}
+            # If no finalizer, make orchestrator's final response visible to main_agent
+            if self._has_finalizer:
+                response_message.additional_kwargs["visible_to"] = {self.agent_name}
+            else:
+                response_message.additional_kwargs["visible_to"] = {"main_agent", self.agent_name}
 
         state["messages"] = [*state["messages"], response_message]
 
@@ -261,6 +266,9 @@ class OrchestratorGraph:
 
     def _should_continue(self, state: OrchestratorState) -> str:
         if state.get("is_complete", False):
+            # If no finalizer, skip directly to end hooks or END
+            if not self._has_finalizer:
+                return "end"
             return "finalize"
 
         next_node = state.get("_next_node")
@@ -325,6 +333,9 @@ class OrchestratorGraph:
     async def _finalization_step(
         self, state: OrchestratorState, config: RunnableConfig, store: BaseStore
     ) -> OrchestratorState:
+        if not self._has_finalizer or not self._finalizer_prompt:
+            return state
+
         for hook in self._pre_llm_hooks:
             result = hook(state, config, store)
             if inspect.iscoroutine(result):
@@ -373,7 +384,10 @@ class OrchestratorGraph:
     ) -> StateGraph[OrchestratorState, None, OrchestratorState, OrchestratorState]:
         workflow = StateGraph(OrchestratorState)
         workflow.add_node("orchestrator", self._orchestrator_step)
-        workflow.add_node("finalizer", self._finalization_step)
+        
+        # Only add finalizer if prompt is provided
+        if self._has_finalizer:
+            workflow.add_node("finalizer", self._finalization_step)
 
         # Add tools node if orchestrator has tools
         if self._orchestrator_tools:
@@ -406,9 +420,16 @@ class OrchestratorGraph:
         # Build path map for conditional edges
         path_map: Dict[str, str] = {
             "orchestrator": "orchestrator",
-            "finalize": "finalizer",
             **{node_name: node_name for node_name in self._nodes.keys()},
         }
+        if self._has_finalizer:
+            path_map["finalize"] = "finalizer"
+        else:
+            # When no finalizer, "end" goes to hooks or END
+            if self._end_graph_hooks:
+                path_map["end"] = "end_graph_hooks"
+            else:
+                path_map["end"] = END
         if self._orchestrator_tools:
             path_map["tools"] = "tools"
 
@@ -425,11 +446,16 @@ class OrchestratorGraph:
         for node_name in self._nodes.keys():
             workflow.add_edge(node_name, "orchestrator")
 
-        if self._end_graph_hooks:
-            workflow.add_edge("finalizer", "end_graph_hooks")
+        # Connect finalizer to end hooks or END (only if finalizer exists)
+        if self._has_finalizer:
+            if self._end_graph_hooks:
+                workflow.add_edge("finalizer", "end_graph_hooks")
+                workflow.add_edge("end_graph_hooks", END)
+            else:
+                workflow.add_edge("finalizer", END)
+        elif self._end_graph_hooks:
+            # No finalizer but has end hooks - already handled in path_map
             workflow.add_edge("end_graph_hooks", END)
-        else:
-            workflow.add_edge("finalizer", END)
 
         return workflow
 
