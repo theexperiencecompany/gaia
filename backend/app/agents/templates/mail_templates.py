@@ -360,17 +360,19 @@ def minimal_message_template(
 
     content = parser.content if include_both_formats else None
 
-    body_content = content["text"] if content else parser.text_content
+    body_content = (
+        content["text"] if content else parser.text_content
+    ) or email_data.get("messageText", "")
     labels = parser.labels
 
     result = {
         "id": email_data.get("messageId") or email_data.get("id", ""),
         "threadId": email_data.get("threadId", ""),
-        "from": parser.sender,
-        "to": parser.to,
-        "subject": parser.subject,
+        "from": parser.sender or email_data.get("sender", ""),
+        "to": parser.to or email_data.get("to", ""),
+        "subject": parser.subject or email_data.get("subject", ""),
         "snippet": email_data.get("snippet", ""),
-        "time": parser.date,
+        "time": parser.date or email_data.get("messageTimestamp", ""),
         "isRead": "UNREAD" not in labels,
         "hasAttachment": "HAS_ATTACHMENT" in labels,
         "body": body_content[:100] if short_body else body_content,

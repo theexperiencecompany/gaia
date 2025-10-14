@@ -5,7 +5,6 @@ from typing import Sequence
 
 from app.agents.prompts.gmail_node_prompts import (
     ATTACHMENT_HANDLING_PROMPT,
-    COMMUNICATION_PROMPT,
     CONTACT_MANAGEMENT_PROMPT,
     EMAIL_COMPOSITION_PROMPT,
     EMAIL_MANAGEMENT_PROMPT,
@@ -31,7 +30,6 @@ async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
         email_composition_tools,
         email_retrieval_tools,
         email_management_tools,
-        communication_tools,
         contact_management_tools,
         attachment_handling_tools,
     ) = await asyncio.gather(
@@ -42,6 +40,8 @@ async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
                 "GMAIL_SEND_DRAFT",
                 "GMAIL_LIST_DRAFTS",
                 "GMAIL_DELETE_DRAFT",
+                "GMAIL_REPLY_TO_THREAD",
+                "GMAIL_FORWARD_MESSAGE",
             ],
         ),
         composio_service.get_tools_by_name(
@@ -66,14 +66,6 @@ async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
         ),
         composio_service.get_tools_by_name(
             [
-                "GMAIL_REPLY_TO_THREAD",
-                "GMAIL_FORWARD_MESSAGE",
-                "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
-                "GMAIL_LIST_THREADS",
-            ]
-        ),
-        composio_service.get_tools_by_name(
-            [
                 "GMAIL_GET_CONTACTS",
                 "GMAIL_GET_PEOPLE",
                 "GMAIL_GET_PROFILE",
@@ -86,7 +78,7 @@ async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
     return (
         OrchestratorNodeConfig(
             name="email_composition",
-            description="Create, draft, send emails and manage drafts",
+            description="Create, draft, send emails, manage drafts, reply to threads, and forward messages",
             system_prompt=EMAIL_COMPOSITION_PROMPT,
             tools=email_composition_tools,
         ),
@@ -101,12 +93,6 @@ async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
             description="Organize, label, delete, archive emails",
             system_prompt=EMAIL_MANAGEMENT_PROMPT,
             tools=email_management_tools,
-        ),
-        OrchestratorNodeConfig(
-            name="communication",
-            description="Reply to threads, forward messages, manage conversations",
-            system_prompt=COMMUNICATION_PROMPT,
-            tools=communication_tools,
         ),
         OrchestratorNodeConfig(
             name="contact_management",

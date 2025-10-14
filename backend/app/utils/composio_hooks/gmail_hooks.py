@@ -29,7 +29,14 @@ from .registry import register_after_hook, register_before_hook
 # These hooks send progress/streaming data to frontend before tool execution
 
 
-@register_before_hook(tools=["GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"])
+@register_before_hook(
+    tools=[
+        "GMAIL_SEND_EMAIL",
+        "GMAIL_CREATE_EMAIL_DRAFT",
+        "GMAIL_REPLY_TO_THREAD",
+        "GMAIL_FORWARD_MESSAGE",
+    ]
+)
 def gmail_compose_before_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
@@ -61,12 +68,18 @@ def gmail_compose_before_hook(
             # Update params with converted body
             params["arguments"] = arguments
 
-        recipients = [
-            arguments.get("recipient_email", ""),
-            *arguments.get("extra_recipients", []),
-        ]
+        # Handle different recipient formats based on tool
+        if tool == "GMAIL_FORWARD_MESSAGE":
+            recipients = arguments.get("to_recipients", [])
+            if isinstance(recipients, str):
+                recipients = [recipients]
+        else:
+            recipients = [
+                arguments.get("recipient_email", ""),
+                *arguments.get("extra_recipients", []),
+            ]
 
-        # Build the email compose data with draft_id
+        # Build the email compose data
         emails_data = [
             {
                 "to": recipients,
@@ -78,7 +91,8 @@ def gmail_compose_before_hook(
                 "is_html": arguments.get("is_html", False),
             }
         ]
-        # Check if the operation was successful
+
+        # Check if the operation was successful and send appropriate payload
         if tool == "GMAIL_CREATE_EMAIL_DRAFT":
             # Send compose data to frontend with draft_id
             payload = {
@@ -86,7 +100,11 @@ def gmail_compose_before_hook(
             }
             writer(payload)
 
-        elif tool == "GMAIL_SEND_EMAIL":
+        elif tool in [
+            "GMAIL_SEND_EMAIL",
+            "GMAIL_REPLY_TO_THREAD",
+            "GMAIL_FORWARD_MESSAGE",
+        ]:
             # Send email sent data to frontend
             payload = {"email_sent_data": emails_data}
             writer(payload)
