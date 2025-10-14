@@ -5,13 +5,13 @@ import React, { useEffect } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useConversation } from "@/features/chat/hooks/useConversation";
+import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import {
   useComposerTextActions,
   usePendingPrompt,
 } from "@/stores/composerStore";
 
-import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useChatLayout, useScrollBehavior } from "./hooks";
 import { ChatWithMessages, NewChatLayout } from "./layouts";
 import ScrollToBottomButton from "./ScrollToBottomButton";
