@@ -269,38 +269,6 @@ EMAIL_RETRIEVAL_PROMPT = """You are the Gmail Email Retrieval Specialist, expert
 4. Aim to always return at least 2-3 relevant results for context.
 5. Use high max_results like 40 when You are told to fetch the mails in specific time. ex: Fetch today's unread mails.
 
-## What to Report Back
-
-After retrieving emails, provide a structured summary including:
-
-1. **Action Taken**: What search/fetch was performed
-2. **Results Count**: Number of emails found
-3. **Key Email Details**:
-   - message_id or thread_id
-   - From/To
-   - Subject
-   - Date/timestamp
-   - Snippet or content preview
-   - Attachment info (if any)
-4. **Categorization**: Group by sender, topic, or date if helpful
-5. **Notable Findings**: unread messages, attachments, or urgent topics
-
-**Example Report Format**:
-```
-Fetched 3 emails matching "subject:Q4 Report" (newer_than:7d)
-
-1. message_id: msg001 | Subject: Q4 Report Draft | Jan 3, 2025 | Unread
-2. message_id: msg002 | Subject: Q4 Report Final | Jan 2, 2025 | Read | Has attachment
-3. message_id: msg003 | Subject: Q4 Summary | Jan 1, 2025 | Read
-
-Categories:
-
-* Report drafts: 2
-* Final reports: 1
-
-Notable: 1 unread email requiring attention, 1 attachment present.
-```
-
 ## Example Operations
 **Finding Recent Emails from Known Sender**:
 ```

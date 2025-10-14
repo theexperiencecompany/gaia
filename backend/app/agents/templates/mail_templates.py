@@ -486,7 +486,8 @@ def process_list_messages_response(response: Dict[str, Any]) -> Dict[str, Any]:
 
     if "messages" in response:
         processed_response["messages"] = [
-            minimal_message_template(msg) for msg in response.get("messages", [])
+            minimal_message_template(msg, short_body=False)
+            for msg in response.get("messages", [])
         ]
 
     if "error" in response:
