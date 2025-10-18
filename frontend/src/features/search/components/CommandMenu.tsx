@@ -9,12 +9,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { MessageMultiple02Icon } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
-import { chatApi } from "@/features/chat/api/chatApi";
-import { useConversation } from "@/features/chat/hooks/useConversation";
-import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { useConversationsStore } from "@/stores/conversationsStore";
 
 import { ComprehensiveSearchResponse, searchApi } from "../api/searchApi";
 import {
@@ -33,9 +29,6 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   const router = useRouter();
   const { modifierKeyName } = usePlatform();
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
-  const { clearConversations } = useConversationsStore();
-  const fetchConversations = useFetchConversations();
-  const { updateConvoMessages } = useConversation();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -50,11 +43,11 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
 
   // Reset and focus
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 50);
+    } else {
       setSearch("");
       setSearchResults({ conversations: [], messages: [], notes: [] });
-    } else {
-      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
 
@@ -114,25 +107,6 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     router.push("/c");
     onOpenChange(false);
   }, [router, onOpenChange]);
-
-  const handleClearChats = useCallback(async () => {
-    try {
-      router.push("/c");
-      await chatApi.deleteAllConversations();
-      clearConversations();
-      await fetchConversations(1, 20, false);
-      updateConvoMessages([]);
-      onOpenChange(false);
-    } catch (error) {
-      console.error("Error clearing chats:", error);
-    }
-  }, [
-    router,
-    onOpenChange,
-    clearConversations,
-    fetchConversations,
-    updateConvoMessages,
-  ]);
 
   // Build menu items from config
   const buildMenuItem = useCallback(

@@ -37,13 +37,6 @@ export default function LabelsFieldChip({
     onChange(value.filter((label) => label !== labelToRemove));
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleAddLabel();
-    }
-  };
-
   return (
     <BaseFieldChip
       label="Labels"

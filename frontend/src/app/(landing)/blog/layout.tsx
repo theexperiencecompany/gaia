@@ -1,27 +1,22 @@
 import type { Metadata } from "next";
 
-export const metadata: Metadata = {
+import { generatePageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = generatePageMetadata({
   title: "Blog",
   description:
-    "Explore the latest posts from GAIA, the creators of the AI personal assistant",
-
-  openGraph: {
-    title: "Blog",
-    description:
-      "Explore the latest posts from GAIA, the creators of the AI personal assistant",
-    url: "https://heygaia.io/blog",
-    images: ["/images/screenshot.webp"],
-    siteName: "GAIA - Your Personal Assistant",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Blog",
-    description:
-      "Explore the latest posts from GAIA, the creators of the AI personal assistant",
-    images: ["/images/screenshot.webp"],
-  },
-};
+    "Explore the latest insights, updates, and AI productivity tips from GAIA. Learn about AI automation, productivity hacks, feature announcements, and industry trends.",
+  path: "/blog",
+  keywords: [
+    "GAIA Blog",
+    "AI Blog",
+    "Productivity Tips",
+    "AI Automation",
+    "Tech Blog",
+    "AI Assistant Updates",
+    "Productivity Blog",
+  ],
+});
 
 export default function BlogLayout({
   children,
