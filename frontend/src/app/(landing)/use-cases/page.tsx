@@ -56,7 +56,7 @@ export default function UseCasesPage() {
         // disableIntersectionObserver={true}
       >
         <div className="mb-8 text-center">
-          <h1 className="mb-1 text-6xl font-normal tracking-tighter">
+          <h1 className="mb-1 font-serif text-8xl font-normal">
             See what's Possible
           </h1>
           <p className="mx-auto max-w-3xl text-lg text-zinc-300/80">
@@ -68,7 +68,7 @@ export default function UseCasesPage() {
 
         <div id="community-section" className="mt-22 space-y-6">
           <div className="mb-14 text-center">
-            <h1 className="mb-1 text-5xl font-normal tracking-tighter">
+            <h1 className="mb-1 font-serif text-6xl font-normal">
               Published by The Community
             </h1>
             <p className="mx-auto max-w-3xl text-lg text-zinc-300/80">

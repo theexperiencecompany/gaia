@@ -85,7 +85,7 @@ const ListItem = React.forwardRef<
                 {icon}
               </span>
             )}
-            <div className="flex h-full flex-col justify-between leading-none font-normal text-zinc-100">
+            <div className="flex h-full flex-col justify-start gap-1 leading-none font-normal text-zinc-100">
               {title}
 
               {children && (
@@ -105,7 +105,6 @@ const ListItem = React.forwardRef<
     );
   },
 );
-ListItem.displayName = "ListItem";
 
 export function NavbarMenu({ activeMenu, onClose }: NavbarMenuProps) {
   const getDescription = (label: string): string => {

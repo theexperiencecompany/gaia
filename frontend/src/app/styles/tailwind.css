@@ -7,8 +7,8 @@
 
 @theme {
   /* Font Family */
-  --font-family-inter: "var(--font-inter)", sans-serif;
-  --font-family-sans: "var(--font-inter)", system-ui, sans-serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-serif: var(--font-instrument-serif), serif;
 
   /* Colors */
   --color-primary: #00bbff;

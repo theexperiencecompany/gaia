@@ -33,7 +33,7 @@ export default function LargeHeader({
         )}
       </div>
       <h2
-        className={`relative z-2 my-2 flex gap-4 text-4xl font-medium sm:text-6xl ${centered ? "items-center justify-center" : "items-start justify-start"}`}
+        className={`relative z-2 my-2 flex gap-4 text-4xl font-medium sm:text-7xl ${centered ? "items-center justify-center" : "items-start justify-start"} font-serif!`}
       >
         {headingText}
       </h2>

@@ -52,7 +52,7 @@ export function FAQAccordion() {
     <div className="flex h-fit w-full items-center justify-center py-20">
       <div className="w-screen max-w-7xl p-8">
         <div className="mb-10 flex w-full flex-col items-start justify-center gap-3">
-          <span className="text-4xl font-medium">
+          <span className="font-serif text-7xl font-medium">
             Frequently asked questions
           </span>
         </div>

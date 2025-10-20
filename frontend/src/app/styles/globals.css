@@ -3,7 +3,7 @@
   color: #0bf;
 }
 
-:not(body),
+/* :not(body),
 :where([data-sonner-toaster]),
 button,
 div,
@@ -11,13 +11,10 @@ input,
 p,
 span,
 text,
-textarea {
-  font-family: "Inter", sans-serif;
-}
-
+textarea,
 * {
-  font-family: "Inter", sans-serif;
-}
+  font-family: var(--font-sans);
+} */
 
 body,
 html,

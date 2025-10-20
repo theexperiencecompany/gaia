@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import { AuthorTooltip } from "@/features/blog/components/AuthorTooltip";
 import { generateAboutPageSchema, generatePageMetadata } from "@/lib/seo";
 import type { AboutData, Author } from "@/types/api/aboutApiTypes";
+import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Manifesto",
@@ -135,6 +136,9 @@ export default async function About() {
               ))}
             </div>
             <div className="text-foreground-500">— The Founders</div>
+          </div>
+          <div className="flex w-full justify-start">
+            <GetStartedButton text="Get Started" />
           </div>
         </div>
       </div>

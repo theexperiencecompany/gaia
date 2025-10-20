@@ -85,7 +85,7 @@ export default function ChaoticWorkspaceSection() {
     >
       {/* Central Text */}
       <div ref={textRef} className="relative z-10 text-center">
-        <h2 className="text-5xl leading-tight font-semibold text-white md:text-6xl lg:text-7xl">
+        <h2 className="font-serif text-8xl font-light text-white">
           The current way we
           <br />
           work is

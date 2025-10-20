@@ -98,6 +98,7 @@ const SplitTextBlur = ({
             backgroundClip: "inherit",
             paddingBottom: "7px",
           }}
+          className="font-serif"
         >
           {word}
         </motion.span>

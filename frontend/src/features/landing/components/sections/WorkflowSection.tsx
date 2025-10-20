@@ -29,7 +29,7 @@ export default function WorkflowSection() {
       <div className="mb-2 text-xl font-light text-primary sm:text-2xl">
         Your Daily Life, Automated
       </div>
-      <div className="mb-4 text-3xl font-normal sm:mb-5 sm:text-4xl lg:text-5xl">
+      <div className="mb-4 font-serif text-6xl font-normal sm:mb-5">
         Simple workflows to eliminate repetitive tasks
       </div>
 

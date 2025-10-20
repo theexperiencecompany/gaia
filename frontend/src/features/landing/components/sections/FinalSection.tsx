@@ -94,7 +94,7 @@ export default function FinalSection({
         <SplitTextBlur
           text="Your Life, Supercharged by GAIA"
           delay={0}
-          className="z-[10] max-w-(--breakpoint-xl) text-center text-[2.2rem] leading-tight font-medium tracking-tighter sm:text-[3.5rem] sm:leading-none md:text-[4.5rem] lg:text-[5rem]"
+          className="leading-tighter z-[10] max-w-(--breakpoint-xl) text-center text-[2.2rem] font-medium sm:text-8xl sm:leading-none"
         />
 
         <div className="z-[1] mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter text-foreground-600 sm:px-0 sm:text-lg sm:leading-7 md:text-xl">

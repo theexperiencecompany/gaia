@@ -3,6 +3,7 @@ import { AiBrain01Icon } from "@/components";
 import MemoryGraphDemo from "../demo/MemoryGraphDemo";
 import { SimpleChatBubbleUser } from "../demo/SimpleChatBubbles";
 import { BentoItem } from "./TodosBentoContent";
+import LargeHeader from "../shared/LargeHeader";
 
 export default function Personalised() {
   const personalInfo = [
@@ -13,13 +14,13 @@ export default function Personalised() {
 
   return (
     <div className="flex h-screen flex-col items-center justify-center gap-6 px-4 sm:gap-8 sm:px-6 lg:gap-10 lg:px-8">
-      <div className="flex w-full max-w-7xl flex-col justify-center p-4 sm:p-6 lg:p-7">
-        <div className="mb-2 text-center text-xl font-light text-primary sm:text-2xl">
-          Truly Personalised
-        </div>
-        <div className="px-2 text-center text-3xl font-normal sm:text-4xl lg:text-5xl">
-          Finally, AI that feels like it's made for you
-        </div>
+      <div className="flex w-full max-w-7xl flex-col items-center justify-center p-4 sm:p-6 lg:p-7">
+        <LargeHeader
+          centered
+          headingText="Finally, AI that feels like it's made for you"
+          chipText="Truly Personalised"
+        />
+
         <div className="mx-auto grid w-full max-w-4xl grid-cols-1 grid-rows-1 justify-between gap-4 py-6 sm:gap-6 sm:py-8 lg:grid-cols-2 lg:gap-7 lg:py-10">
           <BentoItem
             title="Recall Everything Instantly"

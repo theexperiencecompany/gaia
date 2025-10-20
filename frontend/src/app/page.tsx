@@ -8,9 +8,9 @@ import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import HeroVideoDialog from "@/components/ui/magic-ui/hero-video-dialog";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 
-import LandingLayout from "./(landing)/layout";
-import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
 import CommunitySection from "@/features/landing/components/sections/CommunitySection";
+import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
+import LandingLayout from "./(landing)/layout";
 
 const ChaoticWorkspaceSection = lazy(
   () =>
@@ -92,9 +92,9 @@ export default function LandingPage() {
               <Tired />
             </Suspense>
 
-            <Suspense fallback={<SuspenseLoader />}>
+            {/* <Suspense fallback={<SuspenseLoader />}>
               <ChaoticWorkspaceSection />
-            </Suspense>
+            </Suspense> */}
 
             <Suspense fallback={<SuspenseLoader />}>
               <AllYourTools />
