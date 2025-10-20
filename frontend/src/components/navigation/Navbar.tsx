@@ -30,6 +30,15 @@ export default function Navbar() {
 
   const user = useUser();
 
+  // Define navbar items - can be single links or dropdown menus
+  const navbarItems = [
+    { type: "dropdown", label: "Product", menu: "product" },
+    { type: "dropdown", label: "Resources", menu: "resources" },
+    { type: "link", label: "Pricing", href: "/pricing" },
+    { type: "dropdown", label: "Company", menu: "company" },
+    { type: "dropdown", label: "Socials", menu: "socials" },
+  ] as const;
+
   // Function to control backdrop blur
   const toggleBackdrop = (show: boolean) => {
     const backdrop = document.getElementById("navbar-backdrop");
@@ -124,28 +133,53 @@ export default function Navbar() {
             <MobileMenu />
           ) : (
             <div className="flex items-center gap-1 rounded-lg px-1 py-1">
-              {["product", "resources", "company", "socials"].map((menu) => (
-                <button
-                  key={menu}
-                  className="relative flex h-9 cursor-pointer items-center rounded-xl! px-4 py-2 text-sm text-zinc-400 capitalize transition-colors hover:text-zinc-100"
-                  onMouseEnter={() => handleMouseEnter(menu)}
-                >
-                  {hoveredItem === menu && (
-                    <div className="absolute inset-0 h-full w-full rounded-lg bg-zinc-800 font-medium! transition-all duration-300 ease-out" />
-                  )}
-                  <div className="relative z-10 flex items-center gap-2">
-                    <span>{menu.charAt(0).toUpperCase() + menu.slice(1)}</span>
-                    <ChevronDown
-                      height={17}
-                      width={17}
-                      className={
-                        (hoveredItem === menu ? "rotate-180" : "") +
-                        " transition duration-200"
-                      }
-                    />
-                  </div>
-                </button>
-              ))}
+              {navbarItems.map((item) =>
+                item.type === "link" ? (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm transition-colors hover:bg-zinc-800/40 ${
+                      pathname === item.href
+                        ? "text-primary"
+                        : "text-zinc-400 hover:text-zinc-100"
+                    }`}
+                    onMouseEnter={() => {
+                      setHoveredItem(item.label.toLowerCase());
+                      setActiveDropdown(null);
+                      toggleBackdrop(false);
+                    }}
+                  >
+                    {/* {hoveredItem === item.label.toLowerCase() && (
+                      <div className="absolute inset-0 h-full w-full rounded-lg bg-zinc-800/40 font-medium! transition-all! duration-300 ease-out" />
+                    )} */}
+                    <span className="relative z-10">{item.label}</span>
+                  </Link>
+                ) : (
+                  <button
+                    key={item.menu}
+                    className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-zinc-400 capitalize transition-colors hover:text-zinc-100"
+                    onMouseEnter={() => handleMouseEnter(item.menu)}
+                  >
+                    {hoveredItem === item.menu && (
+                      <div className="absolute inset-0 h-full w-full rounded-xl bg-zinc-800 font-medium! transition-all duration-300 ease-out" />
+                    )}
+                    <div className="relative z-10 flex items-center gap-2">
+                      <span>
+                        {item.label.charAt(0).toUpperCase() +
+                          item.label.slice(1)}
+                      </span>
+                      <ChevronDown
+                        height={17}
+                        width={17}
+                        className={
+                          (hoveredItem === item.menu ? "rotate-180" : "") +
+                          " transition duration-200"
+                        }
+                      />
+                    </div>
+                  </button>
+                ),
+              )}
             </div>
           )}
 
