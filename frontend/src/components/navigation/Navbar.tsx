@@ -75,10 +75,10 @@ export default function Navbar() {
         onMouseLeave={handleNavbarMouseLeave}
       >
         <div
-          className={`navbar_content flex h-14 w-full items-center justify-between border-t border-white/10 px-3 backdrop-blur-xl transition-none ${
+          className={`navbar_content flex h-14 w-full items-center justify-between border-1 border-white/5 px-3 backdrop-blur-xl transition-none ${
             activeDropdown
-              ? "rounded-t-2xl bg-zinc-950"
-              : "rounded-2xl bg-zinc-900/60"
+              ? "rounded-t-2xl border-b-0 bg-zinc-950"
+              : "rounded-2xl bg-zinc-900/30"
           }`}
           // style={activeDropdown ? { backgroundColor: "#08090A" } : {}}
         >
@@ -135,7 +135,14 @@ export default function Navbar() {
                   )}
                   <div className="relative z-10 flex items-center gap-2">
                     <span>{menu.charAt(0).toUpperCase() + menu.slice(1)}</span>
-                    <ChevronDown height={17} width={17} />
+                    <ChevronDown
+                      height={17}
+                      width={17}
+                      className={
+                        (hoveredItem === menu ? "rotate-180" : "") +
+                        " transition duration-200"
+                      }
+                    />
                   </div>
                 </button>
               ))}
@@ -153,7 +160,7 @@ export default function Navbar() {
               >
                 <RaisedButton
                   size={"sm"}
-                  className="group rounded-xl"
+                  className="group rounded-xl border-0!"
                   color="#1c1c1c"
                 >
                   <div className="flex items-center">

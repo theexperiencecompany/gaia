@@ -3,10 +3,11 @@ import Image from "next/image";
 import { Marquee } from "@/components/ui/marquee";
 import { cn } from "@/lib/utils";
 
-import { testimonials } from "../../data/testimonials";
+import { testimonials as initial } from "../../data/testimonials";
 import LargeHeader from "../shared/LargeHeader";
 import SectionLayout from "../shared/SectionLayout";
 
+const testimonials = initial.sort(() => Math.random() - 0.5);
 const firstRow = testimonials.slice(0, testimonials.length / 2);
 const secondRow = testimonials.slice(testimonials.length / 2);
 
@@ -24,28 +25,28 @@ const TestimonialCard = ({
   return (
     <figure
       className={cn(
-        "relative h-full w-100 overflow-hidden rounded-2xl border transition-all",
-        "border-zinc-950 bg-zinc-900 hover:bg-zinc-800",
-        "p-4 sm:p-5 md:p-6",
+        "relative h-full w-100 overflow-hidden rounded-3xl transition-all",
+        "bg-zinc-900 hover:bg-zinc-800",
+        "p-4",
       )}
     >
-      <div className="flex flex-row items-center gap-3 sm:gap-4">
+      <div className="flex flex-row items-center gap-2">
         <Image
-          className="rounded-full bg-white"
+          className="aspect-square rounded-full bg-white"
           width="35"
           height="35"
           alt={`${name} avatar`}
           src={img}
         />
         <div className="flex flex-col">
-          <figcaption className="text-sm font-medium text-white sm:text-base">
+          <figcaption className="text-sm font-normal text-white sm:text-base">
             {name}
           </figcaption>
           <p className="text-xs text-zinc-500 sm:text-sm">{role}</p>
         </div>
       </div>
-      <blockquote className="mt-3 text-sm leading-relaxed text-white/80 sm:mt-4 sm:text-base">
-        "{body}"
+      <blockquote className="mt-2 max-h-26 overflow-y-auto text-sm leading-relaxed text-zinc-300">
+        {body}
       </blockquote>
     </figure>
   );

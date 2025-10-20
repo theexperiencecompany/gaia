@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
 import React from "react";
@@ -54,7 +55,7 @@ const ListItem = React.forwardRef<
         <Component
           ref={ref}
           className={cn(
-            "group relative flex h-full min-h-18 w-full flex-col justify-center overflow-hidden rounded-2xl bg-zinc-800/0 p-3.5 leading-none no-underline outline-1 outline-transparent transition-all duration-150 select-none hover:bg-zinc-800 hover:text-zinc-100 focus:bg-zinc-800 focus:text-zinc-100",
+            "group relative flex h-full min-h-18 w-full flex-col justify-center overflow-hidden rounded-2xl bg-zinc-800/0 p-3.5 leading-none no-underline transition-all duration-150 select-none hover:bg-zinc-800 hover:text-zinc-100 focus:bg-zinc-800 focus:text-zinc-100",
             className,
           )}
           {...linkProps}
@@ -104,14 +105,6 @@ const ListItem = React.forwardRef<
 ListItem.displayName = "ListItem";
 
 export function NavbarMenu({ activeMenu, onClose }: NavbarMenuProps) {
-  const [isVisible, setIsVisible] = React.useState(false);
-
-  React.useEffect(() => {
-    // Trigger animation after mount
-    const timer = setTimeout(() => setIsVisible(true), 10);
-    return () => clearTimeout(timer);
-  }, []);
-
   const getDescription = (label: string): string => {
     return getLinkDescription(label);
   };
@@ -134,10 +127,15 @@ export function NavbarMenu({ activeMenu, onClose }: NavbarMenuProps) {
   const links = getMenuLinks();
 
   return (
-    <div
+    <motion.div
+      initial={{ scaleY: 0.95, opacity: 0 }}
+      animate={{ scaleY: 1, opacity: 1 }}
+      exit={{ scaleY: 0.95, opacity: 0 }}
+      transition={{
+        ease: [0.19, 1, 0.15, 1.01],
+      }}
       className={cn(
-        "absolute top-full left-0 z-40 w-full origin-top overflow-hidden rounded-b-2xl bg-gradient-to-b from-zinc-950 to-zinc-900/30 backdrop-blur-2xl transition-all duration-300 ease-out",
-        isVisible ? "scale-y-100 opacity-100" : "scale-y-95 opacity-0",
+        "absolute top-full left-0 z-40 w-full origin-top overflow-hidden rounded-b-2xl border-1 border-y-0 border-white/5 bg-gradient-to-b from-zinc-950 to-zinc-900/30 backdrop-blur-2xl outline-none",
       )}
     >
       <div className="p-6">
@@ -217,6 +215,6 @@ export function NavbarMenu({ activeMenu, onClose }: NavbarMenuProps) {
           </div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
