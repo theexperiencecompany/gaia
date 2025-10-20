@@ -6,7 +6,7 @@ import LargeHeader from "../shared/LargeHeader";
 export default function Tired() {
   return (
     <div className="relative flex h-screen flex-col items-center justify-center gap-2 p-4 sm:p-6 lg:p-10">
-      <div
+      {/* <div
         className="absolute inset-0 z-0 h-full"
         style={{
           backgroundImage: `
@@ -15,7 +15,8 @@ export default function Tired() {
           radial-gradient(circle at 50% 100%, rgba(0, 187, 255, 0.3) 0%, transparent 70%)
         `,
         }}
-      />
+      /> */}
+
       <LargeHeader
         headingText="Tired of Boring Assistants?"
         subHeadingText="Meet one that actually works."

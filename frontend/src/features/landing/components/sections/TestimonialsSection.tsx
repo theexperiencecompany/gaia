@@ -54,7 +54,7 @@ const TestimonialCard = ({
 
 export default function TestimonialsSection() {
   return (
-    <SectionLayout className="flex h-screen items-center px-4 sm:px-6 lg:px-8">
+    <SectionLayout className="relative flex h-screen items-center px-4 sm:px-6 lg:px-8">
       <div className="flex w-full max-w-7xl flex-col items-center justify-center">
         <LargeHeader
           chipText="Wall of Love"

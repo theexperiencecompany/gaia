@@ -38,17 +38,17 @@ export default function UseCasesPage() {
   }, []);
 
   return (
-    <div className="relative h-fit min-h-screen pt-80" ref={contentRef}>
-      <div className="absolute inset-0 top-0 h-screen w-full">
+    <div className="relative h-fit min-h-screen pt-110" ref={contentRef}>
+      <div className="absolute inset-0 top-0 z-0 h-[70vh] w-[100%]">
         <Image
           src={"/images/wallpapers/meadow.webp"}
-          alt="Wallpaper"
+          alt="GAIA Use-Cases Wallpaper"
           sizes="100vw"
           priority
           fill
-          className="aspect-video object-cover opacity-60"
+          className="aspect-video object-cover object-center opacity-80"
         />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-background via-background to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-background to-transparent" />
       </div>
 
       <div

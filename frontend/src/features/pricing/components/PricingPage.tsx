@@ -16,7 +16,7 @@ export default function PricingPage() {
       <div className="absolute inset-0 top-0 z-0 h-[65vh] w-[102%]">
         <Image
           src={"/images/wallpapers/space.webp"}
-          alt="Wallpaper"
+          alt="GAIA Pricing page Wallpaper"
           sizes="100vw"
           priority
           fill

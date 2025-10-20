@@ -64,7 +64,7 @@ export default function LandingPage() {
           <div className="absolute inset-0 h-screen w-full">
             <Image
               src={"/images/wallpapers/switzerland_night.webp"}
-              alt="Wallpaper"
+              alt="GAIA Hero Section Wallpaper"
               sizes="100vw"
               priority
               fill
@@ -88,17 +88,29 @@ export default function LandingPage() {
             </div>
           </section>
           <div>
-            <Suspense fallback={<SuspenseLoader />}>
-              <Tired />
-            </Suspense>
+            <div className="relative">
+              <Suspense fallback={<SuspenseLoader />}>
+                <Tired />
+              </Suspense>
 
-            {/* <Suspense fallback={<SuspenseLoader />}>
+              {/* <Suspense fallback={<SuspenseLoader />}>
               <ChaoticWorkspaceSection />
-            </Suspense> */}
+              </Suspense> */}
 
-            <Suspense fallback={<SuspenseLoader />}>
-              <AllYourTools />
-            </Suspense>
+              <div
+                className="absolute top-140 z-0 h-[120vh] w-screen blur-lg"
+                style={{
+                  backgroundImage: `
+                      radial-gradient(circle at center, #00bbff80 0%, transparent 70%)
+                    `,
+                  opacity: 0.6,
+                }}
+              />
+
+              <Suspense fallback={<SuspenseLoader />}>
+                <AllYourTools />
+              </Suspense>
+            </div>
 
             <Suspense fallback={<SuspenseLoader />}>
               <WorkflowSection />
@@ -117,15 +129,15 @@ export default function LandingPage() {
             </Suspense>
 
             <Suspense fallback={<SuspenseLoader />}>
-              <CommunitySection />
-            </Suspense>
-
-            <Suspense fallback={<SuspenseLoader />}>
               <OpenSource />
             </Suspense>
 
             <Suspense fallback={<SuspenseLoader />}>
               <FAQAccordion />
+            </Suspense>
+
+            <Suspense fallback={<SuspenseLoader />}>
+              <CommunitySection />
             </Suspense>
 
             <Suspense fallback={<SuspenseLoader />}>

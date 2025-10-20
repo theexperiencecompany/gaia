@@ -118,7 +118,7 @@ export function PricingCard({
       className={`relative w-full overflow-hidden rounded-3xl pt-4 ${className} ${
         type === "main"
           ? "bg-zinc-900 outline-0 outline-primary"
-          : "bg-zinc-900 opacity-80 outline-zinc-800"
+          : "bg-zinc-900 opacity-75 outline-zinc-800"
       } ${
         isCurrentPlan && hasActiveSubscription
           ? "ring-2 ring-green-500 ring-offset-2 ring-offset-zinc-950"
