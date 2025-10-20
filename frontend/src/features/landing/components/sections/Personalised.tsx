@@ -19,6 +19,7 @@ export default function Personalised() {
           centered
           headingText="Finally, AI that feels like it's made for you"
           chipText="Truly Personalised"
+          subHeadingText="Stop repeating yourself. Start building a smarter, personal AI."
         />
 
         <div className="mx-auto grid w-full max-w-4xl grid-cols-1 grid-rows-1 justify-between gap-4 py-6 sm:gap-6 sm:py-8 lg:grid-cols-2 lg:gap-7 lg:py-10">

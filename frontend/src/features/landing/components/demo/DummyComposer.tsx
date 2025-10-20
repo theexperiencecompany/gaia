@@ -40,6 +40,21 @@ const dummyIntegrations = [
     name: "Notion",
     icons: ["/images/icons/notion.webp"],
   },
+  {
+    id: "google-sheets",
+    name: "Google Sheets",
+    icons: ["/images/icons/google_sheets.webp"],
+  },
+  {
+    id: "twitter",
+    name: "Twitter",
+    icons: ["/images/icons/twitter.svg"],
+  },
+  {
+    id: "linkedin",
+    name: "LinkedIn",
+    icons: ["/images/icons/linkedin.svg"],
+  },
 ];
 
 const DummyComposer: React.FC = () => {

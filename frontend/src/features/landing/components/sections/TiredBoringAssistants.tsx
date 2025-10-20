@@ -2,6 +2,7 @@ import Image from "next/image";
 
 import GetStartedButton from "../shared/GetStartedButton";
 import LargeHeader from "../shared/LargeHeader";
+import { Tooltip } from "@heroui/tooltip";
 
 export default function Tired() {
   return (
@@ -18,6 +19,7 @@ export default function Tired() {
       /> */}
 
       <LargeHeader
+        chipText="Not just a chatbot"
         headingText="Tired of Boring Assistants?"
         subHeadingText="Meet one that actually works."
         centered
@@ -64,21 +66,53 @@ export default function Tired() {
       />
 
       <div className="absolute bottom-16 z-[1] flex w-full max-w-xs items-center px-4 sm:bottom-24 sm:max-w-md sm:px-0 lg:bottom-32 lg:max-w-lg">
-        <div className="absolute bottom-8 left-0 -rotate-12 rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-500 sm:bottom-12 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:bottom-16">
-          Personalised
-        </div>
+        <Tooltip
+          content="Truly personal AI: it understands your habits, learns your priorities, and keeps track of everything that matters to you."
+          className="max-w-60 p-2"
+          showArrow
+          placement="bottom-end"
+          offset={-10}
+        >
+          <div className="absolute bottom-8 left-0 -rotate-12 cursor-default rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-400 sm:bottom-12 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:bottom-16">
+            Personalised
+          </div>
+        </Tooltip>
 
-        <div className="absolute right-0 bottom-8 rotate-12 rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-500 sm:bottom-12 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:bottom-16">
-          Proactive
-        </div>
+        <Tooltip
+          content="From upcoming deadlines to important emails, GAIA acts ahead of time so you stay one step ahead."
+          className="max-w-60 p-2"
+          showArrow
+          placement="bottom-start"
+          offset={-10}
+        >
+          <div className="absolute right-0 bottom-8 rotate-12 cursor-default rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-400 sm:bottom-12 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:bottom-16">
+            Proactive
+          </div>
+        </Tooltip>
 
-        <div className="absolute bottom-20 left-6 rotate-12 rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-500 sm:bottom-28 sm:left-8 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:bottom-40 lg:left-10">
-          Automated
-        </div>
+        <Tooltip
+          content="GAIA handles repetitive tasks automatically — scheduling, email triage, and task management — saving you hours every day."
+          className="max-w-60 p-2"
+          showArrow
+          placement="left"
+          offset={-1}
+        >
+          <div className="absolute bottom-20 left-6 rotate-12 cursor-default rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-400 sm:bottom-28 sm:left-8 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:bottom-40 lg:left-10">
+            Automated
+          </div>
+        </Tooltip>
 
-        <div className="absolute right-6 bottom-20 -rotate-12 rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-500 sm:right-8 sm:bottom-28 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:right-10 lg:bottom-40">
-          Integrated
-        </div>
+        <Tooltip
+          content="Everything works together: GAIA keeps your tools synced, your data connected, and your day organized."
+          className="max-w-60 p-2"
+          showArrow
+          placement="right"
+          offset={-1}
+        >
+          <div className="absolute right-6 bottom-20 -rotate-12 cursor-default rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-400 sm:right-8 sm:bottom-28 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:right-10 lg:bottom-40">
+            Integrated
+          </div>
+        </Tooltip>
       </div>
 
       <GetStartedButton text="See GAIA in Action" />
