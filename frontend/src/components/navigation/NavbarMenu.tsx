@@ -78,7 +78,7 @@ const ListItem = React.forwardRef<
             )}
           >
             {icon && (
-              <span className="relative top-[-1px] flex-shrink-0 text-primary transition group-hover:text-zinc-300">
+              <span className="relative top-[-1px] flex-shrink-0 rounded-xl bg-zinc-800/80 p-1.5 text-primary transition group-hover:bg-zinc-700/80 group-hover:text-zinc-300">
                 {icon}
               </span>
             )}

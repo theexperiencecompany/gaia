@@ -5,6 +5,7 @@ import Script from "next/script";
 import { appConfig, connect, footerSections } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { siteConfig } from "@/lib/seo";
+import React, { ReactElement } from "react";
 
 export default function Footer() {
   const user = useUser();
@@ -148,10 +149,18 @@ export default function Footer() {
                 href={link.href}
                 target={link.external ? "_blank" : "_self"}
                 rel={link.external ? "noopener noreferrer" : undefined}
-                className="cursor-pointer text-foreground-400 transition-colors hover:text-foreground"
+                className="cursor-pointer text-foreground-300 transition-colors hover:text-foreground"
                 title={link.description}
               >
-                {link.icon}
+                {React.isValidElement(link.icon)
+                  ? React.cloneElement(
+                      link.icon as React.ReactElement,
+                      {
+                        ...(link.icon.props ?? {}),
+                        color: undefined,
+                      } as any,
+                    )
+                  : link.icon}
               </Link>
             ))}
           </div>

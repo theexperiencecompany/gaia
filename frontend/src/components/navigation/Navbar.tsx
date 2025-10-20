@@ -71,7 +71,7 @@ export default function Navbar() {
   return (
     <div className="fixed top-0 left-0 z-50 w-full px-4 pt-4">
       <div
-        className="relative mx-auto max-w-5xl"
+        className="relative mx-auto max-w-6xl"
         onMouseLeave={handleNavbarMouseLeave}
       >
         <div
