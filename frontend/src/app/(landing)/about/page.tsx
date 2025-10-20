@@ -1,25 +1,27 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 
+import About from "@/features/about/components/About";
 import { generatePageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "About GAIA",
   description:
-    "Learn about GAIA's mission to build a personal AI assistant for everyone. Discover our vision for proactive AI, open-source commitment, and privacy-first approach to productivity.",
+    "Meet the founders behind GAIA and learn why we're building a personal AI assistant that actually does things for you. Discover our vision for a privacy-first, open-source assistant that handles emails, meetings, scheduling, and more—like Jarvis from Iron Man.",
   path: "/about",
   keywords: [
     "About GAIA",
-    "GAIA Manifesto",
-    "AI Assistant Vision",
-    "Open Source AI",
-    "Privacy-First AI",
-    "Founders Story",
-    "GAIA Mission",
-    "Personal Assistant Vision",
+    "GAIA founders",
+    "personal AI assistant",
+    "open source assistant",
+    "privacy-first AI",
+    "AI productivity",
+    "email automation",
+    "meeting scheduler",
+    "Jarvis AI",
+    "General-purpose AI Assistant",
   ],
 });
 
 export default function AboutPage() {
-  redirect("/manifesto");
+  return <About />;
 }
