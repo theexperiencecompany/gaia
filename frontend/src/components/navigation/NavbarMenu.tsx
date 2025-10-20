@@ -74,29 +74,32 @@ const ListItem = React.forwardRef<
           )}
           <div
             className={cn(
-              "flex items-center gap-2",
+              "flex items-start gap-3",
               backgroundImage && "relative z-[2] mt-auto",
             )}
           >
             {icon && (
-              <span className="relative top-[-1px] flex-shrink-0 rounded-xl bg-zinc-800/80 p-1.5 text-primary transition group-hover:bg-zinc-700/80 group-hover:text-zinc-300">
+              <span
+                className={`relative flex min-h-10 min-w-10 items-center justify-center rounded-xl ${backgroundImage ? "bg-white/5 backdrop-blur group-hover:bg-white/10" : "bg-zinc-800/80 group-hover:bg-zinc-700/80"} p-2 text-primary transition group-hover:text-zinc-300`}
+              >
                 {icon}
               </span>
             )}
-            <div className="text-base leading-none font-normal text-zinc-100">
+            <div className="flex h-full flex-col justify-between leading-none font-normal text-zinc-100">
               {title}
+
+              {children && (
+                <p
+                  className={cn(
+                    "line-clamp-2 text-sm leading-tight font-light text-zinc-500",
+                    backgroundImage && "relative z-[2]",
+                  )}
+                >
+                  {children}
+                </p>
+              )}
             </div>
           </div>
-          {children && (
-            <p
-              className={cn(
-                "mt-1 line-clamp-2 text-sm leading-tight font-light text-zinc-400",
-                backgroundImage && "relative z-[2]",
-              )}
-            >
-              {children}
-            </p>
-          )}
         </Component>
       </li>
     );

@@ -9,17 +9,19 @@ import HeroVideoDialog from "@/components/ui/magic-ui/hero-video-dialog";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 
 import LandingLayout from "./(landing)/layout";
+import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
+import CommunitySection from "@/features/landing/components/sections/CommunitySection";
 
 const ChaoticWorkspaceSection = lazy(
   () =>
     import("@/features/landing/components/sections/ChaoticWorkspaceSection"),
 );
 
-const ToolsShowcaseSection = lazy(
+const AllYourTools = lazy(
   () => import("@/features/landing/components/sections/ToolsShowcaseSection"),
 );
 
-const Productivity = lazy(
+const AutomateDailyChaos = lazy(
   () => import("@/features/landing/components/sections/Productivity"),
 );
 const Tired = lazy(
@@ -87,16 +89,26 @@ export default function LandingPage() {
           </section>
           <div>
             <Suspense fallback={<SuspenseLoader />}>
+              <Tired />
+            </Suspense>
+
+            <Suspense fallback={<SuspenseLoader />}>
               <ChaoticWorkspaceSection />
             </Suspense>
 
             <Suspense fallback={<SuspenseLoader />}>
-              <ToolsShowcaseSection />
-              <Productivity />
+              <AllYourTools />
             </Suspense>
 
             <Suspense fallback={<SuspenseLoader />}>
-              <Tired />
+              <WorkflowSection />
+            </Suspense>
+
+            <Suspense fallback={<SuspenseLoader />}>
+              <AutomateDailyChaos />
+            </Suspense>
+
+            <Suspense fallback={<SuspenseLoader />}>
               <Personalised />
             </Suspense>
 
@@ -105,12 +117,19 @@ export default function LandingPage() {
             </Suspense>
 
             <Suspense fallback={<SuspenseLoader />}>
+              <CommunitySection />
+            </Suspense>
+
+            <Suspense fallback={<SuspenseLoader />}>
               <OpenSource />
+            </Suspense>
+
+            <Suspense fallback={<SuspenseLoader />}>
               <FAQAccordion />
             </Suspense>
 
             <Suspense fallback={<SuspenseLoader />}>
-              <FinalSection />
+              <FinalSection showSocials={false} />
             </Suspense>
           </div>
         </div>

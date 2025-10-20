@@ -12,7 +12,7 @@ export default function Personalised() {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center gap-6 px-4 sm:gap-8 sm:px-6 lg:gap-10 lg:px-8">
+    <div className="flex h-screen flex-col items-center justify-center gap-6 px-4 sm:gap-8 sm:px-6 lg:gap-10 lg:px-8">
       <div className="flex w-full max-w-7xl flex-col justify-center p-4 sm:p-6 lg:p-7">
         <div className="mb-2 text-center text-xl font-light text-primary sm:text-2xl">
           Truly Personalised

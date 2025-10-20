@@ -12,7 +12,6 @@ import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
 import dataJson from "@/features/use-cases/constants/data.json";
 
 import LargeHeader from "../shared/LargeHeader";
-import WorkflowSection from "./WorkflowSection";
 
 interface UseCase {
   title: string;
@@ -54,7 +53,7 @@ export default function Productivity() {
 
   return (
     <div className="relative flex flex-col items-center justify-start overflow-hidden px-4 sm:px-6">
-      <div className="relative z-[1] flex w-full max-w-7xl flex-col items-center justify-center p-4 py-20 sm:p-6 sm:py-28 lg:p-7 lg:py-36">
+      <div className="relative z-[1] flex w-full max-w-7xl flex-col items-center justify-center p-4 sm:p-6 lg:p-7">
         <LargeHeader
           centered
           headingText="Automate your daily chaos"
@@ -97,7 +96,6 @@ export default function Productivity() {
           </RaisedButton>
         </Link>
       </div>
-      <WorkflowSection />
     </div>
   );
 }

@@ -11,13 +11,14 @@ import { useUser } from "@/features/auth/hooks/useUser";
 
 // Removed currency import - using USD only
 import { useDodoPayments } from "../hooks/useDodoPayments";
+import { RaisedButton } from "@/components/ui/shadcn/raised-button";
 
 interface PricingCardProps {
   title: string;
   type: "main" | "secondary";
   price: number; // Price in USD cents (already discounted if applicable)
   originalPrice?: number; // Original price before discount (for yearly plans)
-  featurestitle: React.ReactNode;
+  featurestitle?: React.ReactNode;
   features?: string[];
   durationIsMonth: boolean;
   className?: string;
@@ -114,17 +115,23 @@ export function PricingCard({
 
   return (
     <div
-      className={`relative w-full rounded-2xl ${className} ${
+      className={`relative w-full overflow-hidden rounded-3xl pt-4 ${className} ${
         type === "main"
-          ? "bg-zinc-900 outline-2 outline-primary"
-          : "bg-zinc-900"
+          ? "bg-zinc-900 outline-0 outline-primary"
+          : "bg-zinc-900 opacity-80 outline-zinc-800"
       } ${
         isCurrentPlan && hasActiveSubscription
           ? "ring-2 ring-green-500 ring-offset-2 ring-offset-zinc-950"
           : ""
       }`}
     >
-      <div className="flex h-full flex-col gap-4 p-[7%]">
+      {!durationIsMonth && freeMonths > 0 && (
+        <div className="absolute top-0 w-full bg-primary/20 p-1 text-center text-sm font-medium text-primary">
+          Get {freeMonths} month{freeMonths > 1 ? "s" : ""} free!
+        </div>
+      )}
+
+      <div className="flex h-full flex-col gap-4 p-6">
         <div className="flex flex-row items-center justify-between border-none!">
           <div className="flex items-center gap-2">
             <span className="text-2xl">{title}</span>
@@ -140,8 +147,9 @@ export function PricingCard({
           </div>
           {!durationIsMonth && discountPercentage > 0 && !isCurrentPlan && (
             <Chip
-              className="flex items-center gap-[2px] border-none! text-sm"
+              className="flex items-center gap-[2px] border-none! text-sm text-primary"
               color="primary"
+              size="sm"
               variant="flat"
             >
               <span>Save {discountPercentage}%</span>
@@ -162,15 +170,9 @@ export function PricingCard({
             )}
           </div>
 
-          <span className="text-opacity-70 min-h-5 text-sm font-normal text-white">
+          <span className="text-opacity-70 min-h-5 text-sm font-normal text-zinc-400">
             {price > 0 && (durationIsMonth ? "/ per month" : "/ per year")}
           </span>
-
-          {!durationIsMonth && freeMonths > 0 && (
-            <span className="mt-1 text-sm font-normal text-green-400">
-              Get {freeMonths} month{freeMonths > 1 ? "s" : ""} free!
-            </span>
-          )}
         </div>
 
         <div className="mt-1 flex flex-1 flex-col gap-1">
@@ -193,21 +195,21 @@ export function PricingCard({
         </div>
 
         <div className="space-y-3">
-          {/* Show payment error if any */}
           {paymentError && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-3">
               <p className="text-sm text-red-600">{paymentError}</p>
             </div>
           )}
 
-          <Button
-            className="w-full"
+          <RaisedButton
+            className={`w-full ${price === 0 ? "text-zinc-300!" : "text-black!"} `}
             color={
-              isCurrentPlan && hasActiveSubscription ? "success" : "primary"
+              // isCurrentPlan && hasActiveSubscription ? "success" : "primary"
+              price === 0 ? "#3b3b3b" : "#00bbff"
             }
-            variant={type === "main" ? "solid" : "flat"}
-            onPress={handleGetStarted}
-            isLoading={isCreatingSubscription}
+            // variant={type === "main" ? "solid" : "flat"}s
+            onClick={handleGetStarted}
+            // isLoading={isCreatingSubscription}
             disabled={
               isCreatingSubscription || (isCurrentPlan && hasActiveSubscription)
             }
@@ -221,7 +223,7 @@ export function PricingCard({
                   : price === 0
                     ? "Get started"
                     : "Subscribe now"}
-          </Button>
+          </RaisedButton>
         </div>
       </div>
     </div>

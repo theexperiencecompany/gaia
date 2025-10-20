@@ -75,7 +75,7 @@ export default function Navbar() {
         onMouseLeave={handleNavbarMouseLeave}
       >
         <div
-          className={`navbar_content flex h-14 w-full items-center justify-between border-1 border-white/5 px-3 backdrop-blur-xl transition-none ${
+          className={`navbar_content flex h-14 w-full items-center justify-between border-1 border-white/5 px-3 backdrop-blur-md transition-none ${
             activeDropdown
               ? "rounded-t-2xl border-b-0 bg-zinc-950"
               : "rounded-2xl bg-zinc-900/30"

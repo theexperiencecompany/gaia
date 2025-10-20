@@ -7,7 +7,7 @@ export default function Tired() {
   return (
     <div className="relative flex h-screen flex-col items-center justify-center gap-2 p-4 sm:p-6 lg:p-10">
       <div
-        className="absolute inset-0 z-0 h-[90%]"
+        className="absolute inset-0 z-0 h-full"
         style={{
           backgroundImage: `
           radial-gradient(circle at 50% 100%, rgba(0, 187, 255, 0.1) 0%, transparent 60%),
@@ -31,15 +31,17 @@ export default function Tired() {
           className="size-[50px] translate-y-4 -rotate-8 rounded-xl sm:size-[60px] sm:translate-y-6 sm:rounded-2xl lg:size-[65px] lg:translate-y-7"
         />
 
-        <Image
-          src={
-            "https://static.vecteezy.com/system/resources/previews/055/687/055/non_2x/rectangle-gemini-google-icon-symbol-logo-free-png.png"
-          }
-          alt="Gemini Logo"
-          width={70}
-          height={70}
-          className="object-fit size-[60px] rounded-xl sm:size-[70px] sm:rounded-2xl lg:size-[80px]"
-        />
+        <div className="flex size-[60px] items-center justify-center overflow-hidden rounded-xl sm:size-[70px] sm:rounded-3xl lg:size-[80px]">
+          <Image
+            src={
+              "https://static.vecteezy.com/system/resources/previews/055/687/055/non_2x/rectangle-gemini-google-icon-symbol-logo-free-png.png"
+            }
+            alt="Gemini Logo"
+            width={150}
+            className="min-w-[90px]"
+            height={150}
+          />
+        </div>
 
         <Image
           src={

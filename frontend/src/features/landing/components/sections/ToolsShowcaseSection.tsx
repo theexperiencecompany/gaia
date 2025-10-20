@@ -37,7 +37,7 @@ const FloatingIcon = ({
 
 const ToolsShowcaseSection: React.FC = () => {
   return (
-    <SectionLayout className="relative mt-20">
+    <SectionLayout className="relative">
       <div
         className="absolute inset-0 z-[-1] w-full"
         style={{
