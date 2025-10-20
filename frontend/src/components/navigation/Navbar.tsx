@@ -232,7 +232,7 @@ export default function Navbar() {
         {activeDropdown && (
           <NavbarMenu
             activeMenu={activeDropdown}
-            onClose={() => setActiveDropdown(null)}
+            // onClose={() => setActiveDropdown(null)}
           />
         )}
       </div>

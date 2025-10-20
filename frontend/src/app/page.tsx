@@ -7,15 +7,15 @@ import { lazy, Suspense, useEffect } from "react";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import HeroVideoDialog from "@/components/ui/magic-ui/hero-video-dialog";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
-
 import CommunitySection from "@/features/landing/components/sections/CommunitySection";
 import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
+
 import LandingLayout from "./(landing)/layout";
 
-const ChaoticWorkspaceSection = lazy(
-  () =>
-    import("@/features/landing/components/sections/ChaoticWorkspaceSection"),
-);
+// const ChaoticWorkspaceSection = lazy(
+//   () =>
+//     import("@/features/landing/components/sections/ChaoticWorkspaceSection"),
+// );
 
 const AllYourTools = lazy(
   () => import("@/features/landing/components/sections/ToolsShowcaseSection"),

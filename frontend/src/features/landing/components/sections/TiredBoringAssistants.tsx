@@ -1,8 +1,8 @@
+import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
 
 import GetStartedButton from "../shared/GetStartedButton";
 import LargeHeader from "../shared/LargeHeader";
-import { Tooltip } from "@heroui/tooltip";
 
 export default function Tired() {
   return (

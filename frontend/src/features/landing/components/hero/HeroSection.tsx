@@ -1,13 +1,13 @@
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 
+import { Button } from "@/components";
 import ShinyText from "@/components/ui/shadcn/shimmering-chip";
 import { useLatestRelease } from "@/hooks/useLatestRelease";
 import { MotionContainer } from "@/layouts/MotionContainer";
 
 import GetStartedButton from "../shared/GetStartedButton";
 import { SplitTextBlur } from "./SplitTextBlur";
-import { ArrowRight01Icon, Button } from "@/components";
-import { ArrowRight } from "lucide-react";
 
 export default function HeroSection() {
   const { data: release, isLoading: isReleaseLoading } =

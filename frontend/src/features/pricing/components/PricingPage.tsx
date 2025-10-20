@@ -2,14 +2,14 @@
 
 import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
+import Image from "next/image";
 
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import LargeHeader from "@/features/landing/components/shared/LargeHeader";
 import { ComparisonTable } from "@/features/pricing/components/ComparisonTable";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 
 import { FAQAccordion } from "./FAQAccordion";
-import Image from "next/image";
-import LargeHeader from "@/features/landing/components/shared/LargeHeader";
 export default function PricingPage() {
   return (
     <div className="flex min-h-screen w-screen flex-col items-center justify-center pt-[40vh]">

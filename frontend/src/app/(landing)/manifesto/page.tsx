@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
-import { generatePageMetadata } from "@/lib/seo";
 import About from "@/features/about/components/About";
+import { generatePageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Manifesto",

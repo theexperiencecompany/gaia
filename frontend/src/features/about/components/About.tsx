@@ -3,9 +3,9 @@ import { Suspense } from "react";
 import ReactMarkdown from "react-markdown";
 
 import { AuthorTooltip } from "@/features/blog/components/AuthorTooltip";
-import { generateAboutPageSchema, generatePageMetadata } from "@/lib/seo";
-import type { AboutData, Author } from "@/types/api/aboutApiTypes";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
+import { generateAboutPageSchema } from "@/lib/seo";
+import type { AboutData, Author } from "@/types/api/aboutApiTypes";
 
 export default async function About() {
   const aboutPageSchema = generateAboutPageSchema();

@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { SOCIAL_LINKS } from "./FinalSection";
 import React from "react";
+
+import { SOCIAL_LINKS } from "./FinalSection";
 
 export default function CommunitySection() {
   return (
@@ -13,6 +14,7 @@ export default function CommunitySection() {
           ) => {
             return (
               <Link
+                key={index}
                 href={href}
                 aria-label={ariaLabel}
                 className={`flex justify-start p-4 transition ${color} group w-full flex-row items-center gap-4 rounded-3xl bg-zinc-900 hover:bg-zinc-800`}

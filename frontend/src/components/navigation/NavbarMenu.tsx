@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 
 interface NavbarMenuProps {
   activeMenu: string;
-  onClose: () => void;
 }
 
 const ListItem = React.forwardRef<
@@ -106,7 +105,9 @@ const ListItem = React.forwardRef<
   },
 );
 
-export function NavbarMenu({ activeMenu, onClose }: NavbarMenuProps) {
+ListItem.displayName = "ListItem";
+
+export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
   const getDescription = (label: string): string => {
     return getLinkDescription(label);
   };

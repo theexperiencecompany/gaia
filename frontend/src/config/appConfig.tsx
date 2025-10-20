@@ -3,9 +3,7 @@ import { ReactElement } from "react";
 import {
   BookOpen02Icon,
   BubbleConversationChatIcon,
-  Calendar01Icon,
   CreditCardPosIcon,
-  CustomerService01Icon,
   DiscordIcon,
   Github,
   GlobalIcon,

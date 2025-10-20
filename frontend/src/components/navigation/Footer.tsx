@@ -1,11 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import Script from "next/script";
+import React from "react";
 
 import { appConfig, connect, footerSections } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { siteConfig } from "@/lib/seo";
-import React, { ReactElement } from "react";
 
 export default function Footer() {
   const user = useUser();
@@ -154,11 +154,10 @@ export default function Footer() {
               >
                 {React.isValidElement(link.icon)
                   ? React.cloneElement(
-                      link.icon as React.ReactElement,
+                      link.icon as React.ReactElement<{ color?: string }>,
                       {
-                        ...(link.icon.props ?? {}),
                         color: undefined,
-                      } as any,
+                      },
                     )
                   : link.icon}
               </Link>
