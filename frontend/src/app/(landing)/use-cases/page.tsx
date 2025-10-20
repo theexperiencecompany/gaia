@@ -41,7 +41,7 @@ export default function UseCasesPage() {
     <div className="relative h-fit min-h-screen pt-80" ref={contentRef}>
       <div className="absolute inset-0 top-0 h-screen w-full">
         <Image
-          src={"/images/wallpapers/meadow_1.webp"}
+          src={"/images/wallpapers/meadow.webp"}
           alt="Wallpaper"
           sizes="100vw"
           priority

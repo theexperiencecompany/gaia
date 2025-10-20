@@ -26,46 +26,92 @@ const ListItem = React.forwardRef<
     href: string;
     external?: boolean;
     icon?: React.ReactNode;
+    backgroundImage?: string;
+    rowSpan?: number;
   }
->(({ className, title, children, href, external, icon, ...props }, ref) => {
-  const Component = external ? "a" : Link;
-  const linkProps = external
-    ? { href, target: "_blank", rel: "noopener noreferrer" }
-    : { href };
+>(
+  (
+    {
+      className,
+      title,
+      children,
+      href,
+      external,
+      icon,
+      backgroundImage,
+      rowSpan,
+      ...props
+    },
+    ref,
+  ) => {
+    const Component = external ? "a" : Link;
+    const linkProps = external
+      ? { href, target: "_blank", rel: "noopener noreferrer" }
+      : { href };
 
-  return (
-    <li className="list-none">
-      <Component
-        ref={ref}
-        className={cn(
-          "flex h-full min-h-20 w-full flex-col justify-start rounded-xl bg-gradient-to-b outline-zinc-800/50 outline-1 from-zinc-900 to-[#101112] p-4 leading-none no-underline transition-all duration-150 select-none hover:bg-[#191a1b] hover:text-zinc-100 focus:bg-zinc-800 focus:text-zinc-100",
-          className,
-        )}
-        {...linkProps}
-        {...props}
-      >
-        <div className="flex items-center gap-2">
-          {icon && (
-            <span className="flex-shrink-0 text-primary group-hover:text-zinc-300">
-              {icon}
-            </span>
+    return (
+      <li className={cn("list-none", rowSpan === 2 && "row-span-2")}>
+        <Component
+          ref={ref}
+          className={cn(
+            "group relative flex h-full min-h-18 w-full flex-col justify-center overflow-hidden rounded-2xl bg-zinc-800/0 p-3.5 leading-none no-underline outline-1 outline-transparent transition-all duration-150 select-none hover:bg-zinc-800 hover:text-zinc-100 focus:bg-zinc-800 focus:text-zinc-100",
+            className,
           )}
-          <div className="text-base leading-none font-medium text-zinc-100">
-            {title}
+          {...linkProps}
+          {...props}
+        >
+          {backgroundImage && (
+            <>
+              <Image
+                fill={true}
+                src={backgroundImage}
+                alt={title}
+                className="absolute inset-0 z-0 object-cover transition-all group-hover:brightness-60"
+              />
+              <div className="absolute inset-0 z-[1] bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+            </>
+          )}
+          <div
+            className={cn(
+              "flex items-center gap-2",
+              backgroundImage && "relative z-[2] mt-auto",
+            )}
+          >
+            {icon && (
+              <span className="relative top-[-1px] flex-shrink-0 text-primary transition group-hover:text-zinc-300">
+                {icon}
+              </span>
+            )}
+            <div className="text-base leading-none font-normal text-zinc-100">
+              {title}
+            </div>
           </div>
-        </div>
-        {children && (
-          <p className="mt-1 line-clamp-2 text-sm leading-tight text-zinc-400">
-            {children}
-          </p>
-        )}
-      </Component>
-    </li>
-  );
-});
+          {children && (
+            <p
+              className={cn(
+                "mt-1 line-clamp-2 text-sm leading-tight font-light text-zinc-400",
+                backgroundImage && "relative z-[2]",
+              )}
+            >
+              {children}
+            </p>
+          )}
+        </Component>
+      </li>
+    );
+  },
+);
 ListItem.displayName = "ListItem";
 
 export function NavbarMenu({ activeMenu, onClose }: NavbarMenuProps) {
+  const [isVisible, setIsVisible] = React.useState(false);
+
+  React.useEffect(() => {
+    // Trigger animation after mount
+    const timer = setTimeout(() => setIsVisible(true), 10);
+    return () => clearTimeout(timer);
+  }, []);
+
   const getDescription = (label: string): string => {
     return getLinkDescription(label);
   };
@@ -88,30 +134,15 @@ export function NavbarMenu({ activeMenu, onClose }: NavbarMenuProps) {
   const links = getMenuLinks();
 
   return (
-    <div className="animate-in fade-in-0 slide-in-from-top-1 absolute top-full left-0 z-40 w-full rounded-b-2xl border-t-0 border-[#ffffff26] from-[#08090A] to-zinc-900 bg-gradient-to-b shadow-2xl backdrop-blur-xl duration-200">
+    <div
+      className={cn(
+        "absolute top-full left-0 z-40 w-full origin-top overflow-hidden rounded-b-2xl bg-gradient-to-b from-zinc-950 to-zinc-900/30 backdrop-blur-2xl transition-all duration-300 ease-out",
+        isVisible ? "scale-y-100 opacity-100" : "scale-y-95 opacity-0",
+      )}
+    >
       <div className="p-6">
         {activeMenu === "product" && (
-          <div className="grid w-full grid-cols-2 grid-rows-2 gap-4">
-            <div className="row-span-2 md:col-span-1">
-              <Link
-                className="relative flex h-full w-full flex-col justify-end overflow-hidden rounded-2xl border border-zinc-800/50 bg-gradient-to-b from-zinc-900 to-zinc-950 p-3 no-underline transition-all duration-200 outline-none select-none hover:from-zinc-800 hover:to-zinc-900"
-                href="/"
-                onClick={onClose}
-              >
-                <Image
-                  fill={true}
-                  src="/images/logos/logo.webp"
-                  alt="website logo"
-                  className="relative z-0 scale-90 object-contain pb-10 opacity-5 grayscale-100"
-                />
-                <div className="relative z-[1] mt-4 text-lg font-medium text-zinc-100">
-                  GAIA
-                </div>
-                <p className="relative z-[1] text-sm leading-tight text-zinc-400">
-                  Your personal AI assistant
-                </p>
-              </Link>
-            </div>
+          <div className="grid w-full grid-cols-3 grid-rows-2 gap-4">
             {links.map((link) => (
               <ListItem
                 key={link.href}
@@ -119,6 +150,18 @@ export function NavbarMenu({ activeMenu, onClose }: NavbarMenuProps) {
                 title={link.label}
                 external={link.external}
                 icon={link.icon}
+                backgroundImage={
+                  link.label === "Get Started"
+                    ? "/images/wallpapers/surreal.webp"
+                    : link.label === "Use Cases"
+                      ? "/images/wallpapers/meadow.webp"
+                      : undefined
+                }
+                rowSpan={
+                  link.label === "Get Started" || link.label === "Use Cases"
+                    ? 2
+                    : undefined
+                }
               >
                 {getDescription(link.label)}
               </ListItem>

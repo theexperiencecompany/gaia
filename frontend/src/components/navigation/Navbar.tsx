@@ -75,12 +75,12 @@ export default function Navbar() {
         onMouseLeave={handleNavbarMouseLeave}
       >
         <div
-          className={`navbar_content flex h-14 w-full items-center justify-between border-t border-white/10 px-3 backdrop-blur-xl transition-all duration-300 ${
+          className={`navbar_content flex h-14 w-full items-center justify-between border-t border-white/10 px-3 backdrop-blur-xl transition-none ${
             activeDropdown
-              ? "rounded-t-2xl bg-[#08090A]"
+              ? "rounded-t-2xl bg-zinc-950"
               : "rounded-2xl bg-zinc-900/60"
           }`}
-          style={activeDropdown ? { backgroundColor: "#08090A" } : {}}
+          // style={activeDropdown ? { backgroundColor: "#08090A" } : {}}
         >
           <Button
             as={Link}
