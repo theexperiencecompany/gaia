@@ -55,6 +55,7 @@ async def get_events(
     selected_calendars: Optional[List[str]] = Query(None),
     start_date: Optional[str] = None,  # YYYY-MM-DD format
     end_date: Optional[str] = None,  # YYYY-MM-DD format
+    max_results: int = Query(100, ge=1, le=250),  # Allow up to 250 results
     current_user: dict = Depends(require_integration("calendar")),
 ):
     """
@@ -120,6 +121,7 @@ async def get_events(
             selected_calendars=selected_calendars,
             time_min=time_min,
             time_max=time_max,
+            max_results=max_results,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,16 +1,10 @@
 "use client";
 
 import React, { forwardRef } from "react";
+import { Spinner } from "@heroui/react";
 
+import { EventPosition } from "@/features/calendar/hooks/useCalendarEventPositioning";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
-
-interface EventPosition {
-  event: GoogleCalendarEvent;
-  top: number;
-  height: number;
-  left: number;
-  width: number;
-}
 
 interface CalendarGridProps {
   hours: number[];
@@ -80,7 +74,7 @@ export const CalendarGrid = forwardRef<HTMLDivElement, CalendarGridProps>(
             <div className="absolute inset-0 px-2">
               {loading.calendars ? (
                 <div className="flex h-full items-center justify-center">
-                  <div className="text-zinc-500">Loading calendars...</div>
+                  <Spinner size="lg" color="default" />
                 </div>
               ) : error.calendars ? (
                 <div className="flex h-full items-center justify-center">
@@ -104,7 +98,7 @@ export const CalendarGrid = forwardRef<HTMLDivElement, CalendarGridProps>(
                 </div>
               ) : loading.events ? (
                 <div className="flex h-full items-center justify-center">
-                  <div className="text-zinc-500">Loading events...</div>
+                  <Spinner size="lg" color="default" />
                 </div>
               ) : error.events ? (
                 <div className="flex h-full items-center justify-center">
@@ -137,7 +131,7 @@ export const CalendarGrid = forwardRef<HTMLDivElement, CalendarGridProps>(
                   return (
                     <div
                       key={`event-${eventIndex}`}
-                      className="absolute ml-0.5 flex cursor-pointer overflow-hidden rounded-lg text-white backdrop-blur-3xl transition-all duration-200 hover:opacity-80"
+                      className="absolute ml-0.5 flex min-h-fit cursor-pointer overflow-hidden rounded-lg text-white backdrop-blur-3xl transition-all duration-200 hover:opacity-80"
                       style={{
                         top: `${eventPos.top}px`,
                         height: `${eventPos.height}px`,
@@ -149,7 +143,7 @@ export const CalendarGrid = forwardRef<HTMLDivElement, CalendarGridProps>(
                       onClick={() => onEventClick?.(eventPos.event)}
                     >
                       <div
-                        className="relative left-0 h-full max-w-1 min-w-1 rounded-full"
+                        className="relative left-0 h-full min-h-full max-w-1 min-w-1 rounded-full"
                         style={{
                           backgroundColor: eventColor,
                         }}

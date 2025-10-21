@@ -1,5 +1,3 @@
-import { toast } from "sonner";
-
 import { apiService } from "@/lib/api";
 import {
   CalendarEventsResponse,
@@ -34,47 +32,29 @@ export const calendarApi = {
     startDate?: string, // YYYY-MM-DD format
     endDate?: string, // YYYY-MM-DD format
   ): Promise<CalendarEventsResponse> => {
-    try {
-      if (!calendarIds.length) {
-        if (!pageToken) {
-          toast.dismiss("fetching");
-        }
-        toast.error("No calendars selected");
-        return { events: [], nextPageToken: null };
-      } // Only show loading toast for initial fetch (no pageToken)
-      if (!pageToken) {
-        toast.loading("Fetching Events...", { id: "fetching" });
-      }
-
-      // Use the proper multi-calendar endpoint with date range parameters
-      const params = new URLSearchParams();
-      if (pageToken) params.append("page_token", pageToken);
-
-      // Add selected calendars as query parameters
-      calendarIds.forEach((id) => params.append("selected_calendars", id));
-
-      // Use start_date and end_date parameters if provided, otherwise use a default 3-month range
-      if (startDate) {
-        params.append("start_date", startDate);
-      }
-      if (endDate) {
-        params.append("end_date", endDate);
-      }
-
-      const url = `/calendar/events?${params.toString()}`;
-
-      const response = await apiService.get<CalendarEventsResponse>(url, {
-        silent: true,
-      });
-
-      toast.dismiss("fetching");
-      return response;
-    } catch (error) {
-      toast.dismiss("fetching");
-      toast.error("Failed to fetch calendar events");
-      console.error("Error in fetchMultipleCalendarEvents:", error);
-      throw error;
+    if (!calendarIds.length) {
+      return { events: [], nextPageToken: null };
     }
+
+    const params = new URLSearchParams();
+    if (pageToken) params.append("page_token", pageToken);
+
+    params.append("max_results", "100");
+
+    calendarIds.forEach((id) => params.append("selected_calendars", id));
+
+    if (startDate) {
+      params.append("start_date", startDate);
+    }
+    if (endDate) {
+      params.append("end_date", endDate);
+    }
+
+    const url = `/calendar/events?${params.toString()}`;
+
+    return apiService.get<CalendarEventsResponse>(url, {
+      silent: true,
+    });
   },
 
   // Fetch available calendars
