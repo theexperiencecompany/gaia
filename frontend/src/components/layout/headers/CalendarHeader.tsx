@@ -7,20 +7,25 @@ import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import React, { useState } from "react";
 
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
-import { useCalendarNavigation } from "@/features/calendar/hooks/useCalendarNavigation";
-import { useCreateEventAction } from "@/stores/calendarStore";
+import {
+  useCalendarSelectedDate,
+  useHandleDateChange,
+  useGoToPreviousDay,
+  useGoToNextDay,
+  useGoToToday,
+  useCreateEventAction,
+} from "@/stores/calendarStore";
 import { SidebarHeaderButton } from "./HeaderManager";
 import { CalendarAdd01Icon, CalendarIcon } from "@/components/shared";
+import { HeaderTitle } from "./HeaderTitle";
 
 export default function CalendarHeader() {
   const [showMonthYearPicker, setShowMonthYearPicker] = useState(false);
-  const {
-    selectedDate,
-    handleDateChange,
-    goToPreviousDay,
-    goToNextDay,
-    goToToday,
-  } = useCalendarNavigation();
+  const selectedDate = useCalendarSelectedDate();
+  const handleDateChange = useHandleDateChange();
+  const goToPreviousDay = useGoToPreviousDay();
+  const goToNextDay = useGoToNextDay();
+  const goToToday = useGoToToday();
   const createEventAction = useCreateEventAction();
 
   const monthYear = selectedDate.toLocaleDateString("en-US", {
@@ -33,14 +38,14 @@ export default function CalendarHeader() {
     handleDateChange(newDate);
     setShowMonthYearPicker(false);
   };
-
   return (
     <div className="flex w-full items-center justify-between">
-      <div className="flex items-center gap-2 pl-2 text-zinc-500">
-        <CalendarIcon width={20} height={20} color={undefined} />
-        <span>Calendar</span>
-      </div>
-      <div className="flex items-center gap-10">
+      <div className="flex items-center gap-3">
+        <HeaderTitle
+          icon={<CalendarIcon width={20} height={20} color={undefined} />}
+          text="Calendar"
+        />
+
         <Popover
           isOpen={showMonthYearPicker}
           onOpenChange={setShowMonthYearPicker}
@@ -117,8 +122,10 @@ export default function CalendarHeader() {
             </div>
           </PopoverContent>
         </Popover>
+      </div>
 
-        <div className="flex items-center gap-2">
+      <div className="relative flex items-center gap-2">
+        <div className="flex items-center">
           <Button
             isIconOnly
             size="sm"
@@ -127,15 +134,15 @@ export default function CalendarHeader() {
           >
             <ChevronLeft className="h-5 w-5 text-zinc-400" />
           </Button>
-          <Button variant="flat" onPress={goToToday} size="sm">
-            Today
-          </Button>
+
           <Button isIconOnly size="sm" variant="light" onPress={goToNextDay}>
             <ChevronRight className="h-5 w-5 text-zinc-400" />
           </Button>
+          <Button variant="flat" onPress={goToToday} size="sm" className="ml-">
+            Today
+          </Button>
         </div>
-      </div>
-      <div className="relative flex items-center gap-2">
+
         {createEventAction && (
           <SidebarHeaderButton
             aria-label="Create new calendar event"

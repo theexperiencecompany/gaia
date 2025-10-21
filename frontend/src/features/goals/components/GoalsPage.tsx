@@ -132,10 +132,8 @@ export default function GoalsPage() {
           <Button
             className="gap-2 font-semibold"
             color="primary"
-            radius="full"
             onPress={() => setOpenDialog(true)}
           >
-            <Target04Icon height={23} width={23} />
             Create a new Goal
           </Button>
         </div>

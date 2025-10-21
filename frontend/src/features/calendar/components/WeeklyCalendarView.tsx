@@ -6,12 +6,16 @@ import { CalendarGrid } from "@/features/calendar/components/CalendarGrid";
 import { DateStrip } from "@/features/calendar/components/DateStrip";
 import { useCalendarChunks } from "@/features/calendar/hooks/useCalendarChunks";
 import { useCalendarEventPositioning } from "@/features/calendar/hooks/useCalendarEventPositioning";
-import { useCalendarNavigation } from "@/features/calendar/hooks/useCalendarNavigation";
 import { useCalendarScroll } from "@/features/calendar/hooks/useCalendarScroll";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 import { getExtendedDates } from "@/features/calendar/utils/dateRangeUtils";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import {
+  useCalendarSelectedDate,
+  useCalendarCurrentWeek,
+  useHandleDateChange,
+} from "@/stores/calendarStore";
 
 interface WeeklyCalendarViewProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;
@@ -22,14 +26,9 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  const {
-    selectedDate,
-    currentWeek,
-    goToPreviousDay,
-    goToNextDay,
-    goToToday,
-    handleDateChange,
-  } = useCalendarNavigation();
+  const selectedDate = useCalendarSelectedDate();
+  const currentWeek = useCalendarCurrentWeek();
+  const handleDateChange = useHandleDateChange();
 
   const {
     events,

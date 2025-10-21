@@ -19,6 +19,8 @@ interface CalendarState {
   };
   isInitialized: boolean;
   createEventAction: (() => void) | null;
+  selectedDate: Date;
+  currentWeek: Date;
 }
 
 interface CalendarActions {
@@ -34,6 +36,12 @@ interface CalendarActions {
   setInitialized: (initialized: boolean) => void;
   autoSelectPrimaryCalendar: () => void;
   setCreateEventAction: (action: (() => void) | null) => void;
+  setSelectedDate: (date: Date) => void;
+  setCurrentWeek: (date: Date) => void;
+  goToPreviousDay: () => void;
+  goToNextDay: () => void;
+  goToToday: () => void;
+  handleDateChange: (date: Date) => void;
 }
 
 type CalendarStore = CalendarState & CalendarActions;
@@ -53,6 +61,8 @@ const initialState: CalendarState = {
   },
   isInitialized: false,
   createEventAction: null,
+  selectedDate: new Date(),
+  currentWeek: new Date(),
 };
 
 export const useCalendarStore = create<CalendarStore>()(
@@ -162,6 +172,62 @@ export const useCalendarStore = create<CalendarStore>()(
 
         setCreateEventAction: (createEventAction) =>
           set({ createEventAction }, false, "setCreateEventAction"),
+
+        setSelectedDate: (selectedDate) =>
+          set({ selectedDate }, false, "setSelectedDate"),
+
+        setCurrentWeek: (currentWeek) =>
+          set({ currentWeek }, false, "setCurrentWeek"),
+
+        goToPreviousDay: () =>
+          set(
+            (state) => {
+              const newDate = new Date(state.selectedDate);
+              newDate.setDate(newDate.getDate() - 1);
+              return {
+                selectedDate: newDate,
+                currentWeek: newDate,
+              };
+            },
+            false,
+            "goToPreviousDay",
+          ),
+
+        goToNextDay: () =>
+          set(
+            (state) => {
+              const newDate = new Date(state.selectedDate);
+              newDate.setDate(newDate.getDate() + 1);
+              return {
+                selectedDate: newDate,
+                currentWeek: newDate,
+              };
+            },
+            false,
+            "goToNextDay",
+          ),
+
+        goToToday: () => {
+          const today = new Date();
+          set(
+            {
+              selectedDate: today,
+              currentWeek: today,
+            },
+            false,
+            "goToToday",
+          );
+        },
+
+        handleDateChange: (date) =>
+          set(
+            {
+              selectedDate: date,
+              currentWeek: date,
+            },
+            false,
+            "handleDateChange",
+          ),
       }),
       {
         name: "calendar-storage",
@@ -191,3 +257,20 @@ export const useSetCreateEventAction = () =>
   useCalendarStore((state) => state.setCreateEventAction);
 export const useCreateEventAction = () =>
   useCalendarStore((state) => state.createEventAction);
+export const useCalendarSelectedDate = () =>
+  useCalendarStore((state) => state.selectedDate);
+export const useCalendarCurrentWeek = () =>
+  useCalendarStore((state) => state.currentWeek);
+
+// Individual action selectors for stable references
+export const useSetSelectedDate = () =>
+  useCalendarStore((state) => state.setSelectedDate);
+export const useSetCurrentWeek = () =>
+  useCalendarStore((state) => state.setCurrentWeek);
+export const useGoToPreviousDay = () =>
+  useCalendarStore((state) => state.goToPreviousDay);
+export const useGoToNextDay = () =>
+  useCalendarStore((state) => state.goToNextDay);
+export const useGoToToday = () => useCalendarStore((state) => state.goToToday);
+export const useHandleDateChange = () =>
+  useCalendarStore((state) => state.handleDateChange);
