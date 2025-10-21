@@ -1,5 +1,6 @@
 from typing import Annotated, List, Optional
 
+from app.agents.prompts.calendar_node_prompts import CALENDAR_ORCHESTRATOR_PROMPT
 from app.agents.prompts.gmail_node_prompts import GMAIL_ORCHESTRATOR_PROMPT
 from app.agents.prompts.subagent_prompts import (
     LINKEDIN_AGENT_SYSTEM_PROMPT,
@@ -87,7 +88,7 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
     """
 
     if enabled_providers is None:
-        enabled_providers = ["gmail", "notion", "twitter", "linkedin"]
+        enabled_providers = ["gmail", "calendar", "notion", "twitter", "linkedin"]
 
     tools = []
 
@@ -102,6 +103,20 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
                     capabilities="composing, sending, reading, organizing emails, managing labels, drafts, attachments, and advanced email workflows",
                 ),
                 system_prompt=GMAIL_ORCHESTRATOR_PROMPT,
+            )
+        )
+
+    if "calendar" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_calendar_agent",
+                agent_name="calendar_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Google Calendar",
+                    domain="calendar and event management",
+                    capabilities="creating events, scheduling meetings, finding free slots, managing calendars, updating events, checking availability, and advanced calendar workflows",
+                ),
+                system_prompt=CALENDAR_ORCHESTRATOR_PROMPT,
             )
         )
 

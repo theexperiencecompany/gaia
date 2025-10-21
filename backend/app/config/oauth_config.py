@@ -56,19 +56,14 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         description="Schedule and manage your calendar events seamlessly",
         icons=["/images/icons/googlecalendar.webp"],
         category="productivity",
-        provider="google",
-        scopes=[
-            OAuthScope(
-                scope="https://www.googleapis.com/auth/calendar.events",
-                description="Create and manage calendar events",
-            ),
-            OAuthScope(
-                scope="https://www.googleapis.com/auth/calendar.readonly",
-                description="View calendar events",
-            ),
-        ],
+        provider="google_calendar",
+        scopes=[],
         short_name="calendar",
-        managed_by="self",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_R4qoL624RcWC",
+            toolkit="GOOGLECALENDAR",
+        ),
     ),
     OAuthIntegration(
         id="google_docs",

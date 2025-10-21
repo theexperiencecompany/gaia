@@ -4,7 +4,6 @@ from typing import Dict, List, Optional
 
 from app.agents.core.subagents.handoff_tools import get_handoff_tools
 from app.agents.tools import (
-    calendar_tool,
     code_exec_tool,
     document_tool,
     file_tools,
@@ -145,7 +144,9 @@ class ToolRegistry:
 
         add_category(
             "delegation",
-            core_tools=get_handoff_tools(["gmail", "notion", "twitter", "linkedin"]),
+            core_tools=get_handoff_tools(
+                ["gmail", "calendar", "notion", "twitter", "linkedin"]
+            ),
         )
 
         add_category("notifications", tools=[*notification_tool.tools])
@@ -161,11 +162,15 @@ class ToolRegistry:
         add_category("weather", tools=[weather_tool.get_weather])
 
         # Integration-required categories
+        # Calendar now uses Composio GOOGLECALENDAR toolkit with subgraph
+        calendar_tools = await composio_service.get_tools(tool_kit="GOOGLECALENDAR")
         add_category(
             "calendar",
-            tools=calendar_tool.tools,
+            tools=calendar_tools,
             require_integration=True,
             integration_name="google_calendar",
+            is_delegated=True,
+            space="calendar",
         )
 
         add_category(

@@ -7,6 +7,7 @@ Just importing this module will register all hooks automatically.
 
 # Import all hook modules to trigger their decorators
 from . import (
+    calendar_hooks,  # noqa: F401
     gmail_hooks,  # noqa: F401
     user_id_hooks,  # noqa: F401
 )

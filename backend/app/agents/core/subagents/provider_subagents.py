@@ -17,6 +17,7 @@ from app.agents.prompts.subagent_prompts import (
     TWITTER_AGENT_SYSTEM_PROMPT,
 )
 from app.config.loggers import langchain_logger as logger
+from app.langchain.core.subgraphs.calendar_subgraph import create_calendar_subgraph
 from app.langchain.core.subgraphs.gmail_subgraph import create_gmail_subgraph
 from langchain_core.language_models import LanguageModelLike
 
@@ -43,6 +44,24 @@ class ProviderSubAgents:
 
         logger.info("Gmail subgraph created successfully")
         return gmail_agent
+
+    @staticmethod
+    async def create_calendar_agent(llm: LanguageModelLike):
+        """
+        Create a clean Google Calendar agent with plan-and-execute flow.
+
+        Args:
+            llm: Language model to use
+
+        Returns:
+            Compiled Calendar agent
+        """
+        logger.info("Creating Google Calendar plan-and-execute subgraph")
+
+        calendar_agent = await create_calendar_subgraph(llm=llm)
+
+        logger.info("Google Calendar subgraph created successfully")
+        return calendar_agent
 
     @staticmethod
     async def create_notion_agent(llm: LanguageModelLike):
@@ -132,13 +151,15 @@ class ProviderSubAgents:
         """
         results = await asyncio.gather(
             ProviderSubAgents.create_gmail_agent(llm),
+            ProviderSubAgents.create_calendar_agent(llm),
             ProviderSubAgents.create_notion_agent(llm),
             ProviderSubAgents.create_twitter_agent(llm),
             ProviderSubAgents.create_linkedin_agent(llm),
         )
         return {
             "gmail_agent": results[0],
-            "notion_agent": results[1],
-            "twitter_agent": results[2],
-            "linkedin_agent": results[3],
+            "calendar_agent": results[1],
+            "notion_agent": results[2],
+            "twitter_agent": results[3],
+            "linkedin_agent": results[4],
         }
