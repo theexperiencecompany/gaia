@@ -3,15 +3,14 @@
 import React, { useEffect, useMemo, useRef } from "react";
 
 import { CalendarGrid } from "@/features/calendar/components/CalendarGrid";
-import { CalendarHeader } from "@/features/calendar/components/CalendarHeader";
 import { DateStrip } from "@/features/calendar/components/DateStrip";
 import { useCalendarChunks } from "@/features/calendar/hooks/useCalendarChunks";
 import { useCalendarEventPositioning } from "@/features/calendar/hooks/useCalendarEventPositioning";
 import { useCalendarNavigation } from "@/features/calendar/hooks/useCalendarNavigation";
 import { useCalendarScroll } from "@/features/calendar/hooks/useCalendarScroll";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
-import { getEventColor } from "@/features/calendar/utils/eventColors";
 import { getExtendedDates } from "@/features/calendar/utils/dateRangeUtils";
+import { getEventColor } from "@/features/calendar/utils/eventColors";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface WeeklyCalendarViewProps {
@@ -78,14 +77,6 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
   return (
     <div className="flex h-full w-full justify-center p-4 pt-0">
       <div className="flex h-full w-full max-w-2xl flex-col">
-        <CalendarHeader
-          selectedDate={selectedDate}
-          onDateChange={handleDateChange}
-          onPreviousDay={goToPreviousDay}
-          onNextDay={goToNextDay}
-          onToday={goToToday}
-        />
-
         <DateStrip
           dates={extendedDates}
           selectedDate={selectedDate}

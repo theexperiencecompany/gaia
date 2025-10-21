@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import Twemoji from "react-twemoji";
-import { toast } from "sonner";
 
 import {
   Accordion,
@@ -139,12 +138,10 @@ export default function CalendarEventDialog({
         }
         // TODO: Handle recurrence if needed
         await calendarApi.createEventDefault(eventPayload);
-        toast.success("Event created successfully!");
         onOpenChange(false);
       } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Failed to create event";
-        toast.error(errorMessage);
+        // Error toast is handled by calendarApi
+        console.error("Failed to create event:", error);
       }
     };
 

@@ -82,7 +82,6 @@ export const calendarApi = {
       `/calendar/${calendarId}/events`,
       event,
       {
-        successMessage: "Event created successfully",
         errorMessage: "Failed to create event",
       },
     );
@@ -98,7 +97,6 @@ export const calendarApi = {
       `/calendar/${calendarId}/events/${eventId}`,
       event,
       {
-        successMessage: "Event updated successfully",
         errorMessage: "Failed to update event",
       },
     );
@@ -153,7 +151,6 @@ export const calendarApi = {
     event: EventCreatePayload,
   ): Promise<GoogleCalendarEvent> => {
     return apiService.post<GoogleCalendarEvent>("/calendar/event", event, {
-      successMessage: "Event added to calendar!",
       errorMessage: "Failed to add event",
     });
   },

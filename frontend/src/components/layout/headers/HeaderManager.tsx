@@ -8,12 +8,16 @@ import { Button } from "@/components";
 import { useHeader } from "@/hooks/layout/useHeader";
 
 import BrowserHeader from "./BrowserHeader";
+import CalendarHeader from "./CalendarHeader";
 import ChatHeader from "./ChatHeader";
+import GoalsHeader from "./GoalsHeader";
 import SettingsHeader from "./SettingsHeader";
 
 function getDefaultHeaderForPath(pathname: string) {
+  if (pathname.startsWith("/calendar")) return <CalendarHeader />;
   if (pathname.startsWith("/c")) return <ChatHeader />;
   if (pathname.startsWith("/browser")) return <BrowserHeader />;
+  if (pathname.startsWith("/goals")) return <GoalsHeader />;
   if (pathname.startsWith("/settings")) return <SettingsHeader />;
   return null;
 }

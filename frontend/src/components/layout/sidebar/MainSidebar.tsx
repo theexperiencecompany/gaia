@@ -9,7 +9,7 @@ import CalendarSidebar from "@/components/layout/sidebar/variants/CalendarSideba
 import EmailSidebar from "@/components/layout/sidebar/variants/MailSidebar";
 import SettingsSidebar from "@/components/layout/sidebar/variants/SettingsSidebar";
 import TodoSidebar from "@/components/layout/sidebar/variants/TodoSidebar";
-import { PlusSignIcon } from "@/components/shared/icons";
+import { PencilEdit02Icon } from "@/components/shared/icons";
 
 export default function Sidebar() {
   // const [open, setOpen] = useState<boolean>(false);
@@ -34,7 +34,7 @@ export default function Sidebar() {
           className="mb-4 flex justify-start text-sm font-medium text-primary"
           variant="flat"
         >
-          <PlusSignIcon color={undefined} width={18} height={18} />
+          <PencilEdit02Icon color={undefined} width={18} height={18} />
           New Chat
         </Button>
       </div>

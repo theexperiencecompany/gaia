@@ -3,63 +3,59 @@
 import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Select, SelectItem } from "@heroui/select";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import React, { useState } from "react";
 
-interface CalendarHeaderProps {
-  selectedDate: Date;
-  onDateChange: (date: Date) => void;
-  onPreviousDay: () => void;
-  onNextDay: () => void;
-  onToday: () => void;
-}
+import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
+import { useCalendarNavigation } from "@/features/calendar/hooks/useCalendarNavigation";
+import { useCreateEventAction } from "@/stores/calendarStore";
+import { SidebarHeaderButton } from "./HeaderManager";
+import { CalendarAdd01Icon, CalendarIcon } from "@/components/shared";
 
-export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
-  selectedDate,
-  onDateChange,
-  onPreviousDay,
-  onNextDay,
-  onToday,
-}) => {
+export default function CalendarHeader() {
   const [showMonthYearPicker, setShowMonthYearPicker] = useState(false);
+  const {
+    selectedDate,
+    handleDateChange,
+    goToPreviousDay,
+    goToNextDay,
+    goToToday,
+  } = useCalendarNavigation();
+  const createEventAction = useCreateEventAction();
 
-  // Get current month and year for header
   const monthYear = selectedDate.toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
   });
 
-  // Month/Year picker handlers
   const handleMonthYearChange = (month: number, year: number) => {
-    const newDate = new Date(year, month, 1);
-    onDateChange(newDate);
+    const newDate = new Date(year, month, selectedDate.getDate());
+    handleDateChange(newDate);
     setShowMonthYearPicker(false);
   };
 
   return (
-    <div className="flex items-center justify-between p-6 py-4">
-      <h1 className="text-2xl font-semibold text-white">Calendar</h1>
-
-      <div className="relative">
+    <div className="flex w-full items-center justify-between">
+      <div className="flex items-center gap-2 pl-2 text-zinc-500">
+        <CalendarIcon width={20} height={20} color={undefined} />
+        <span>Calendar</span>
+      </div>
+      <div className="flex items-center gap-10">
         <Popover
           isOpen={showMonthYearPicker}
           onOpenChange={setShowMonthYearPicker}
         >
           <PopoverTrigger>
-            <Button
-              variant="flat"
-              className="bg-zinc-800 text-lg font-medium text-zinc-300 hover:bg-zinc-700"
-            >
+            <Button variant="flat" size="sm">
               {monthYear}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="min-w-[280px] p-0">
+          <PopoverContent className="w-fit p-0 px-3">
             <div className="p-4">
               <h3 className="mb-3 text-sm font-medium text-zinc-300">
                 Select Month & Year
               </h3>
 
-              {/* Year selector */}
               <div className="mb-3">
                 <Select
                   label="Year"
@@ -86,7 +82,6 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
                 </Select>
               </div>
 
-              {/* Month grid */}
               <div>
                 <label className="mb-2 block text-xs text-zinc-400">
                   Month
@@ -122,33 +117,37 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
             </div>
           </PopoverContent>
         </Popover>
-      </div>
 
-      <div className="flex items-center gap-3">
-        <Button
-          isIconOnly
-          variant="flat"
-          className="bg-transparent hover:bg-zinc-800"
-          onPress={onPreviousDay}
-        >
-          <ChevronLeft className="h-5 w-5 text-zinc-400" />
-        </Button>
-        <Button
-          variant="flat"
-          className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-          onPress={onToday}
-        >
-          Today
-        </Button>
-        <Button
-          isIconOnly
-          variant="flat"
-          className="bg-transparent hover:bg-zinc-800"
-          onPress={onNextDay}
-        >
-          <ChevronRight className="h-5 w-5 text-zinc-400" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            onPress={goToPreviousDay}
+          >
+            <ChevronLeft className="h-5 w-5 text-zinc-400" />
+          </Button>
+          <Button variant="flat" onPress={goToToday} size="sm">
+            Today
+          </Button>
+          <Button isIconOnly size="sm" variant="light" onPress={goToNextDay}>
+            <ChevronRight className="h-5 w-5 text-zinc-400" />
+          </Button>
+        </div>
+      </div>
+      <div className="relative flex items-center gap-2">
+        {createEventAction && (
+          <SidebarHeaderButton
+            aria-label="Create new calendar event"
+            tooltip="Create new calendar event"
+            onClick={createEventAction}
+          >
+            <CalendarAdd01Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+          </SidebarHeaderButton>
+        )}
+
+        <NotificationCenter />
       </div>
     </div>
   );
-};
+}

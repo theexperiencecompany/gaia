@@ -82,19 +82,19 @@ export const DateStrip: React.FC<DateStripProps> = ({
                 onClick={() => onDateSelect(date)}
                 className={`flex min-w-[60px] flex-col items-center rounded-2xl px-3 py-2 transition-all duration-200 ${
                   isSelected
-                    ? "bg-primary text-white"
+                    ? "bg-primary text-black"
                     : isToday
-                      ? "bg-zinc-700 text-white"
+                      ? "bg-zinc-700/50 text-white"
                       : isWeekend
-                        ? "bg-zinc-900 text-zinc-500 hover:bg-zinc-800"
+                        ? "bg-zinc-800/20 text-zinc-500 hover:bg-zinc-800"
                         : "text-zinc-400 hover:bg-zinc-800"
                 }`}
               >
-                <div className="mb-1 text-xs font-medium">{dayLabel}</div>
+                <div className="text-xs">{dayLabel}</div>
                 <div
                   className={`text-lg font-semibold ${
                     isSelected
-                      ? "text-white"
+                      ? "text-black"
                       : isToday
                         ? "text-white"
                         : isWeekend

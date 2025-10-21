@@ -1,17 +1,15 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
 
-import { PlusSignIcon } from "@/components/shared/icons";
 import Spinner from "@/components/ui/shadcn/spinner";
-import CalendarEventDialog from "@/features/calendar/components/CalendarEventDialog";
+import { CalendarAdd01Icon, PlusSignIcon } from "@/components/shared/icons";
 import CalendarSelector from "@/features/calendar/components/CalendarSelector";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
+import { Button } from "@heroui/button";
 
 export default function CalendarSidebar() {
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState<boolean>(false);
-
+  const router = useRouter();
   const {
     calendars,
     selectedCalendars,
@@ -19,6 +17,11 @@ export default function CalendarSidebar() {
     isInitialized,
     loading,
   } = useSharedCalendar();
+
+  const handleCreateEvent = () => {
+    // Navigate to calendar page which will trigger the event creation
+    router.push("/calendar?create=true");
+  };
 
   if (!isInitialized || loading.calendars) {
     return (
@@ -29,37 +32,29 @@ export default function CalendarSidebar() {
   }
 
   return (
-    <div>
-      <div className="flex w-full justify-center">
-        <Button
-          color="primary"
-          size="sm"
-          fullWidth
-          onPress={() => setIsAddDialogOpen(true)}
-          className="mb-4 flex justify-start text-sm font-medium text-primary"
-          variant="flat"
-        >
-          <PlusSignIcon color={undefined} width={18} height={18} />
-          New Event
-        </Button>
-      </div>
-      <div className="w-full px-2 pt-0 pb-1 text-xs font-medium text-foreground-400">
-        Your Calendars
-      </div>
-      <CalendarSelector
-        calendars={calendars}
-        selectedCalendars={selectedCalendars}
-        onCalendarSelect={handleCalendarSelect}
-      />
+    <div className="flex flex-col gap-3">
+      <Button
+        color="primary"
+        size="sm"
+        fullWidth
+        onPress={handleCreateEvent}
+        className="mb-4 flex justify-start text-sm font-medium text-primary"
+        variant="flat"
+      >
+        <CalendarAdd01Icon color={undefined} width={18} height={18} />
+        New Event
+      </Button>
 
-      {isAddDialogOpen && (
-        <CalendarEventDialog
-          event={null}
-          open={isAddDialogOpen}
-          onOpenChange={setIsAddDialogOpen}
-          mode="create"
+      <div>
+        <div className="w-full px-2 pt-0 pb-1 text-xs font-medium text-foreground-400">
+          Your Calendars
+        </div>
+        <CalendarSelector
+          calendars={calendars}
+          selectedCalendars={selectedCalendars}
+          onCalendarSelect={handleCalendarSelect}
         />
-      )}
+      </div>
     </div>
   );
 }

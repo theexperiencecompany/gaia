@@ -18,6 +18,7 @@ interface CalendarState {
     events: string | null;
   };
   isInitialized: boolean;
+  createEventAction: (() => void) | null;
 }
 
 interface CalendarActions {
@@ -32,6 +33,7 @@ interface CalendarActions {
   clearError: (type: "calendars" | "events") => void;
   setInitialized: (initialized: boolean) => void;
   autoSelectPrimaryCalendar: () => void;
+  setCreateEventAction: (action: (() => void) | null) => void;
 }
 
 type CalendarStore = CalendarState & CalendarActions;
@@ -50,6 +52,7 @@ const initialState: CalendarState = {
     events: null,
   },
   isInitialized: false,
+  createEventAction: null,
 };
 
 export const useCalendarStore = create<CalendarStore>()(
@@ -156,6 +159,9 @@ export const useCalendarStore = create<CalendarStore>()(
             }
           }
         },
+
+        setCreateEventAction: (createEventAction) =>
+          set({ createEventAction }, false, "setCreateEventAction"),
       }),
       {
         name: "calendar-storage",
@@ -181,3 +187,7 @@ export const useCalendarNextPageToken = () =>
   useCalendarStore((state) => state.nextPageToken);
 export const useCalendarInitialized = () =>
   useCalendarStore((state) => state.isInitialized);
+export const useSetCreateEventAction = () =>
+  useCalendarStore((state) => state.setCreateEventAction);
+export const useCreateEventAction = () =>
+  useCalendarStore((state) => state.createEventAction);

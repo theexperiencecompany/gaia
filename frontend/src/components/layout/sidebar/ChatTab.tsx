@@ -12,6 +12,7 @@ import {
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
+import { HeightIcon } from "@radix-ui/react-icons";
 
 const ICON_WIDTH = "19";
 const ICON_SIZE = "w-[17px] min-w-[17px]";
@@ -46,7 +47,11 @@ export const ChatTab: FC<ChatTabProps> = ({
   const iconColor = isActive ? ACTIVE_COLOR : INACTIVE_COLOR;
 
   const getIcon = () => {
-    const iconProps = { color: iconColor, width: ICON_WIDTH };
+    const iconProps = {
+      color: iconColor,
+      width: ICON_WIDTH,
+      style: { minWidth: ICON_WIDTH },
+    };
 
     if (isSystemGenerated) {
       if (systemPurpose === SystemPurpose.EMAIL_PROCESSING)
