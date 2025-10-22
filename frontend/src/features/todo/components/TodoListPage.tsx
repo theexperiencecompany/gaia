@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import Spinner from "@/components/ui/shadcn/spinner";
-import TodoDetailSheet from "@/features/todo/components/TodoDetailSheet";
+import { TodoSidebar } from "@/features/todo/components/TodoSidebar";
 import TodoHeader from "@/features/todo/components/TodoHeader";
 import TodoList from "@/features/todo/components/TodoList";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useUrlTodoSelection } from "@/features/todo/hooks/useUrlTodoSelection";
+import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { Todo, TodoFilters, TodoUpdate } from "@/types/features/todoTypes";
 
 interface TodoListPageProps {
@@ -24,6 +25,8 @@ export default function TodoListPage({
   showCompleted = false,
 }: TodoListPageProps) {
   const { selectedTodoId, selectTodo, clearSelection } = useUrlTodoSelection();
+  const setRightSidebarContent = useRightSidebar((state) => state.setContent);
+  const closeRightSidebar = useRightSidebar((state) => state.close);
 
   const {
     todos: allTodos,
@@ -79,6 +82,40 @@ export default function TodoListPage({
     selectTodo(todo.id);
   };
 
+  // Memoize the close handler
+  const handleClose = useCallback(() => {
+    clearSelection();
+    closeRightSidebar();
+  }, [clearSelection, closeRightSidebar]);
+
+  // Sync todo sidebar with right sidebar
+  useEffect(() => {
+    const selectedTodo = selectedTodoId
+      ? allTodos.find((t: Todo) => t.id === selectedTodoId) || null
+      : null;
+
+    if (selectedTodo) {
+      setRightSidebarContent(
+        <TodoSidebar
+          todo={selectedTodo}
+          onClose={handleClose}
+          onUpdate={handleTodoUpdate}
+          onDelete={handleTodoDelete}
+          projects={projects}
+        />,
+      );
+    } else {
+      setRightSidebarContent(null);
+    }
+  }, [selectedTodoId, allTodos, projects, handleClose, setRightSidebarContent]);
+
+  // Cleanup right sidebar on unmount
+  useEffect(() => {
+    return () => {
+      closeRightSidebar();
+    };
+  }, [closeRightSidebar]);
+
   if (loading && todos.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -103,20 +140,6 @@ export default function TodoListPage({
           onRefresh={refresh}
         />
       </div>
-
-      {/* Todo Detail Sheet */}
-      <TodoDetailSheet
-        todo={
-          selectedTodoId
-            ? allTodos.find((t) => t.id === selectedTodoId) || null
-            : null
-        }
-        isOpen={!!selectedTodoId}
-        onClose={clearSelection}
-        onUpdate={handleTodoUpdate}
-        onDelete={handleTodoDelete}
-        projects={projects}
-      />
     </div>
   );
 }

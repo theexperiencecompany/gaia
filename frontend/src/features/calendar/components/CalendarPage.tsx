@@ -28,8 +28,10 @@ export default function Calendar() {
     startDate,
     endDate,
     isAllDay,
+    selectedCalendarId,
     isSaving,
     setIsAllDay,
+    setSelectedCalendarId,
     handleSummaryChange,
     handleDescriptionChange,
     handleDateChange,
@@ -63,12 +65,14 @@ export default function Calendar() {
           startDate={startDate}
           endDate={endDate}
           isAllDay={isAllDay}
+          selectedCalendarId={selectedCalendarId}
           isSaving={isSaving}
           onSummaryChange={handleSummaryChange}
           onDescriptionChange={handleDescriptionChange}
           onStartDateChange={(value) => handleDateChange("start", value)}
           onEndDateChange={(value) => handleDateChange("end", value)}
           onAllDayChange={setIsAllDay}
+          onCalendarChange={setSelectedCalendarId}
           onCreate={handleCreate}
           onDelete={handleDelete}
           onClose={handleClose}
@@ -86,11 +90,13 @@ export default function Calendar() {
     startDate,
     endDate,
     isAllDay,
+    selectedCalendarId,
     isSaving,
     handleSummaryChange,
     handleDescriptionChange,
     handleDateChange,
     setIsAllDay,
+    setSelectedCalendarId,
     handleCreate,
     handleDelete,
     handleClose,

@@ -99,6 +99,8 @@ export interface GoogleCalendarEvent {
     | "health"
     | "study"
     | "wedding";
+  calendarId?: string;
+  calendarTitle?: string;
 }
 
 export interface GoogleCalendar {
@@ -153,6 +155,7 @@ export interface EventCreatePayload {
   fixedTime?: boolean;
   timezone?: string;
   recurrence?: RecurrenceData;
+  calendar_id?: string;
 }
 
 // Calendar types for conversation messages

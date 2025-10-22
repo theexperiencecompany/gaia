@@ -20,6 +20,7 @@ export const useEventSidebar = ({
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [isAllDay, setIsAllDay] = useState(false);
+  const [selectedCalendarId, setSelectedCalendarId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   const summaryTimeoutRef = useRef<NodeJS.Timeout>();
@@ -32,6 +33,7 @@ export const useEventSidebar = ({
     setStartDate("");
     setEndDate("");
     setIsAllDay(false);
+    setSelectedCalendarId("");
     setSelectedEvent(null);
     setIsCreating(false);
   }, []);
@@ -87,7 +89,7 @@ export const useEventSidebar = ({
       try {
         const updatePayload: Record<string, unknown> = {
           event_id: selectedEvent.id,
-          calendar_id: "primary",
+          calendar_id: selectedEvent.calendarId || "primary",
         };
 
         if (field === "summary") updatePayload.summary = value;
@@ -179,6 +181,7 @@ export const useEventSidebar = ({
           : new Date(startDate).toISOString(),
         end: isAllDay ? endDate.split("T")[0] : new Date(endDate).toISOString(),
         fixedTime: !isAllDay,
+        calendar_id: selectedCalendarId || "primary",
       };
 
       await calendarApi.createEventDefault(payload);
@@ -195,6 +198,7 @@ export const useEventSidebar = ({
     isAllDay,
     startDate,
     endDate,
+    selectedCalendarId,
     onEventUpdate,
     close,
   ]);
@@ -206,7 +210,7 @@ export const useEventSidebar = ({
     try {
       await calendarApi.deleteEventByAgent({
         event_id: selectedEvent.id,
-        calendar_id: "primary",
+        calendar_id: selectedEvent.calendarId || "primary",
         summary: selectedEvent.summary,
       });
       onEventUpdate?.();
@@ -236,8 +240,10 @@ export const useEventSidebar = ({
     startDate,
     endDate,
     isAllDay,
+    selectedCalendarId,
     isSaving,
     setIsAllDay,
+    setSelectedCalendarId,
     handleSummaryChange,
     handleDescriptionChange,
     handleDateChange,

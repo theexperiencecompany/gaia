@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 
 import { Button } from "@heroui/button";
 import { Input, Textarea } from "@heroui/input";
@@ -42,12 +42,14 @@ interface EventSidebarProps {
   startDate: string;
   endDate: string;
   isAllDay: boolean;
+  selectedCalendarId: string;
   isSaving: boolean;
   onSummaryChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
   onStartDateChange: (value: string) => void;
   onEndDateChange: (value: string) => void;
   onAllDayChange: (value: boolean) => void;
+  onCalendarChange: (calendarId: string) => void;
   onCreate: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -62,33 +64,37 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
   startDate,
   endDate,
   isAllDay,
+  selectedCalendarId,
   isSaving,
   onSummaryChange,
   onDescriptionChange,
   onStartDateChange,
   onEndDateChange,
   onAllDayChange,
+  onCalendarChange,
   onCreate,
   onDelete,
   onClose,
 }) => {
   const { calendars } = useCalendarStore();
-  const [selectedCalendarId, setSelectedCalendarId] = useState<string>("");
 
-  // Set default calendar when calendars are loaded
+  // Set default calendar when calendars are loaded and creating
   React.useEffect(() => {
-    if (calendars.length > 0 && !selectedCalendarId) {
+    if (calendars.length > 0 && !selectedCalendarId && isCreating) {
       const primaryCalendar = calendars.find((cal) => cal.primary);
-      setSelectedCalendarId(primaryCalendar?.id || calendars[0].id);
+      onCalendarChange(primaryCalendar?.id || calendars[0].id);
     }
-  }, [calendars, selectedCalendarId]);
+  }, [calendars, selectedCalendarId, isCreating, onCalendarChange]);
 
   // Set calendar from selected event when viewing/editing
   React.useEffect(() => {
-    if (selectedEvent?.iCalUID) {
-      setSelectedCalendarId(selectedEvent.iCalUID);
+    if (
+      selectedEvent?.calendarId &&
+      selectedEvent.calendarId !== selectedCalendarId
+    ) {
+      onCalendarChange(selectedEvent.calendarId);
     }
-  }, [selectedEvent]);
+  }, [selectedEvent, selectedCalendarId, onCalendarChange]);
 
   return (
     <div className="flex h-full flex-col">
@@ -143,7 +149,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                 onSelectionChange={(keys) => {
                   const selected = Array.from(keys)[0] as string;
                   if (selected) {
-                    setSelectedCalendarId(selected);
+                    onCalendarChange(selected);
                   }
                 }}
                 classNames={{
@@ -326,6 +332,9 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
             </Button>
           ) : (
             <>
+              <div className="flex-1 text-center text-sm text-zinc-500">
+                {isSaving ? "Saving changes..." : "Changes saved"}
+              </div>
               <button
                 onClick={onDelete}
                 disabled={isSaving}
@@ -334,9 +343,6 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
               >
                 <Trash2 className="size-4" />
               </button>
-              <div className="flex-1 text-center text-sm text-zinc-500">
-                {isSaving ? "Saving changes..." : "Changes saved"}
-              </div>
             </>
           )}
         </div>
