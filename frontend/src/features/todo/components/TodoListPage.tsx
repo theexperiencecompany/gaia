@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 
 import Spinner from "@/components/ui/shadcn/spinner";
-import { TodoSidebar } from "@/features/todo/components/TodoSidebar";
-import TodoHeader from "@/features/todo/components/TodoHeader";
+import { TodoSidebar } from "@/components/layout/sidebar/right-variants/TodoSidebar";
 import TodoList from "@/features/todo/components/TodoList";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useUrlTodoSelection } from "@/features/todo/hooks/useUrlTodoSelection";
@@ -12,14 +11,12 @@ import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { Todo, TodoFilters, TodoUpdate } from "@/types/features/todoTypes";
 
 interface TodoListPageProps {
-  title: string;
   filters?: TodoFilters;
   filterTodos?: (todos: Todo[]) => Todo[];
   showCompleted?: boolean;
 }
 
 export default function TodoListPage({
-  title,
   filters,
   filterTodos,
   showCompleted = false,
@@ -126,10 +123,6 @@ export default function TodoListPage({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="w-full px-4">
-        <TodoHeader title={title} todoCount={todos.length} />
-      </div>
-
       <div className="w-full flex-1 overflow-y-auto px-4">
         <TodoList
           todos={todos}

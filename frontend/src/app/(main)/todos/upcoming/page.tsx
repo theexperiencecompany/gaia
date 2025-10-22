@@ -18,7 +18,6 @@ export default function UpcomingTodosPage() {
 
   return (
     <TodoListPage
-      title="Upcoming"
       filters={{ due_this_week: true }}
       filterTodos={filterUpcomingTodos}
       showCompleted={false}

@@ -1,18 +1,125 @@
 "use client";
 
+import { usePathname, useSearchParams } from "next/navigation";
+import { useMemo } from "react";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
+
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
-import { Task01Icon } from "@/components/shared/icons";
+import { CheckmarkCircle02Icon } from "@/components/shared/icons";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import TodoModal from "@/features/todo/components/TodoModal";
 import { Tooltip } from "@heroui/react";
+import { useTodoData } from "@/features/todo/hooks/useTodoData";
+import { Priority } from "@/types/features/todoTypes";
 
 export default function TodosHeader() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Get filter parameters
+  const projectId = searchParams.get("project");
+  const priority = searchParams.get("priority");
+  const completedParam = searchParams.get("completed");
+
+  // Build filters based on route and params
+  const filters = useMemo(() => {
+    const urlFilters: any = {};
+
+    if (projectId) {
+      urlFilters.project_id = projectId;
+    }
+
+    if (priority && Object.values(Priority).includes(priority as Priority)) {
+      urlFilters.priority = priority as Priority;
+    }
+
+    if (completedParam !== null) {
+      urlFilters.completed = completedParam === "true";
+    }
+
+    // Handle specific routes
+    if (pathname === "/todos/today") {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      urlFilters.due_date = today.toISOString().split("T")[0];
+    } else if (pathname === "/todos/upcoming") {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      urlFilters.due_date_after = tomorrow.toISOString().split("T")[0];
+    } else if (pathname === "/todos/completed") {
+      urlFilters.completed = true;
+    }
+
+    return urlFilters;
+  }, [pathname, projectId, priority, completedParam]);
+
+  // Get todos to calculate count
+  const { todos, projects, loading } = useTodoData({
+    filters,
+    autoLoad: true,
+  });
+
+  // Determine page title and task count
+  const { pageTitle, taskCount } = useMemo(() => {
+    let title = "Inbox";
+    let count = 0;
+
+    if (pathname === "/todos/today") {
+      title = "Today";
+    } else if (pathname === "/todos/upcoming") {
+      title = "Upcoming";
+    } else if (pathname === "/todos/completed") {
+      title = "Completed";
+      count = todos.length;
+    } else if (pathname.startsWith("/todos/priority/")) {
+      const priorityValue = priority || pathname.split("/").pop();
+      if (priorityValue) {
+        title = `${priorityValue.charAt(0).toUpperCase() + priorityValue.slice(1)} Priority`;
+      }
+    } else if (pathname.startsWith("/todos/label/")) {
+      const labelValue = pathname.split("/").pop();
+      if (labelValue) {
+        title = labelValue.charAt(0).toUpperCase() + labelValue.slice(1);
+      }
+    } else if (projectId || pathname.startsWith("/todos/project/")) {
+      const project = projects.find(
+        (p) => p.id === (projectId || pathname.split("/").pop()),
+      );
+      title = project ? project.name : "Project";
+    }
+
+    // Count incomplete todos unless we're on the completed page
+    count =
+      pathname === "/todos/completed"
+        ? todos.length
+        : todos.filter((t) => !t.completed).length;
+
+    return { pageTitle: title, taskCount: count };
+  }, [pathname, priority, projectId, projects, todos]);
+
   return (
     <div className="flex w-full items-center justify-between">
-      <HeaderTitle
-        icon={<Task01Icon width={20} height={20} color={undefined} />}
-        text="Todos"
-      />
+      <div className="flex items-center gap-2 pl-2 text-zinc-500">
+        <Link href={"/todos"} className="flex items-center gap-2">
+          <CheckmarkCircle02Icon width={20} height={20} color={undefined} />
+          <span>Todos</span>
+        </Link>
+        {pageTitle !== "Inbox" && (
+          <>
+            <ChevronRight width={18} height={17} />
+            <span className="text-zinc-300">{pageTitle}</span>
+          </>
+        )}
+        {!loading && (
+          <>
+            <ChevronRight width={18} height={17} />
+            <span className="text-sm text-zinc-400">
+              {taskCount} {taskCount === 1 ? "task" : "tasks"}
+            </span>
+          </>
+        )}
+      </div>
 
       <div className="relative z-[100] flex items-center">
         <Tooltip content="Create new todo">

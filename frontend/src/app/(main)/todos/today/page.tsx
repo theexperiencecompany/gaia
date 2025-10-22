@@ -19,7 +19,6 @@ export default function TodayTodosPage() {
 
   return (
     <TodoListPage
-      title="Today"
       filters={{ due_today: true }}
       filterTodos={filterTodayTodos}
       showCompleted={false}

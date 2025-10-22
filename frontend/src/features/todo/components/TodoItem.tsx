@@ -65,8 +65,7 @@ export default function TodoItem({
             <Checkbox
               isSelected={todo.completed}
               onChange={handleToggleComplete}
-              size="sm"
-              color="success"
+              color={priorityColors[todo.priority]}
               radius="full"
             />
           </div>

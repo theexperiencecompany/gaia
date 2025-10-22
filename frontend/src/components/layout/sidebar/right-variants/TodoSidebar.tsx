@@ -1,8 +1,9 @@
 "use client";
 
 import { Input, Textarea } from "@heroui/input";
+import { Checkbox } from "@heroui/checkbox";
 import { formatDistanceToNow } from "date-fns";
-import { Check, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,9 +24,9 @@ import {
 } from "@/types/features/todoTypes";
 import type { Workflow } from "@/types/features/workflowTypes";
 
-import SubtaskManager from "./shared/SubtaskManager";
-import TodoFieldsRow from "./shared/TodoFieldsRow";
-import WorkflowSection from "./WorkflowSection";
+import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
+import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
+import WorkflowSection from "@/features/todo/components/WorkflowSection";
 
 interface TodoSidebarProps {
   todo: Todo | null;
@@ -142,17 +143,17 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
       <SidebarContent className="flex-1 overflow-y-auto px-6">
         <div className="space-y-4 pt-4">
           {/* Title and Description Section */}
-          <div className="flex items-start gap-4">
-            <button
-              onClick={handleToggleComplete}
-              className={`mt-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full transition-all duration-200 ${
-                todo.completed
-                  ? "bg-green-500"
-                  : "border border-zinc-500 hover:border-zinc-400 hover:bg-zinc-800"
-              }`}
-            >
-              {todo.completed && <Check className="h-3 w-3 text-white" />}
-            </button>
+          <div className="flex items-start gap-1">
+            <Checkbox
+              isSelected={todo.completed}
+              onValueChange={handleToggleComplete}
+              size="lg"
+              color="success"
+              radius="full"
+              classNames={{
+                wrapper: "mt-1",
+              }}
+            />
             <div className="flex-1 space-y-3">
               {/* Editable Title */}
               {isEditingTitle ? (
@@ -231,17 +232,19 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
               dueDate={todo.due_date}
               dueDateTimezone={todo.due_date_timezone}
               labels={todo.labels}
-              onPriorityChange={(priority) =>
+              onPriorityChange={(priority: Priority) =>
                 handleFieldChange("priority", priority)
               }
-              onProjectChange={(projectId) =>
+              onProjectChange={(projectId: string | undefined) =>
                 handleFieldChange("project_id", projectId)
               }
-              onDateChange={(date, timezone) => {
+              onDateChange={(date: string | undefined, timezone?: string) => {
                 handleFieldChange("due_date", date);
                 if (timezone) handleFieldChange("due_date_timezone", timezone);
               }}
-              onLabelsChange={(labels) => handleFieldChange("labels", labels)}
+              onLabelsChange={(labels: string[]) =>
+                handleFieldChange("labels", labels)
+              }
               userTimezone={userTimezone}
             />
           </div>

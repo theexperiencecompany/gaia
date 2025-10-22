@@ -4,8 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo } from "react";
 
 import Spinner from "@/components/ui/shadcn/spinner";
-import { TodoSidebar } from "@/features/todo/components/TodoSidebar";
-import TodoHeader from "@/features/todo/components/TodoHeader";
+import { TodoSidebar } from "@/components/layout/sidebar/right-variants/TodoSidebar";
 import TodoList from "@/features/todo/components/TodoList";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useUrlTodoSelection } from "@/features/todo/hooks/useUrlTodoSelection";
@@ -131,15 +130,8 @@ export default function TodosPage() {
       </div>
     );
   }
-
-  const incompleteTodos = todos.filter((t: Todo) => !t.completed);
-
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="w-full px-4">
-        <TodoHeader title={getPageTitle()} todoCount={incompleteTodos.length} />
-      </div>
-
       <div className="w-full flex-1 overflow-y-auto px-4">
         <TodoList
           todos={todos}
@@ -152,12 +144,4 @@ export default function TodosPage() {
       </div>
     </div>
   );
-
-  function getPageTitle() {
-    if (projectId) return "Project Tasks";
-    if (priority)
-      return `${priority.charAt(0).toUpperCase() + priority.slice(1)} Priority`;
-    if (completed) return "Completed Tasks";
-    return "Inbox";
-  }
 }

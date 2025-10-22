@@ -23,9 +23,9 @@ export const useEventSidebar = ({
   const [selectedCalendarId, setSelectedCalendarId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const summaryTimeoutRef = useRef<NodeJS.Timeout>();
-  const descriptionTimeoutRef = useRef<NodeJS.Timeout>();
-  const dateTimeoutRef = useRef<NodeJS.Timeout>();
+  const summaryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const descriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const dateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const resetForm = useCallback(() => {
     setSummary("");

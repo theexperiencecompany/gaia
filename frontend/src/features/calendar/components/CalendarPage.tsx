@@ -3,7 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect } from "react";
 
-import { EventSidebar } from "@/features/calendar/components/EventSidebar";
+import { EventSidebar } from "@/components/layout/sidebar/right-variants/EventSidebar";
 import WeeklyCalendarView from "@/features/calendar/components/WeeklyCalendarView";
 import { useEventSidebar } from "@/features/calendar/hooks/useEventSidebar";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";

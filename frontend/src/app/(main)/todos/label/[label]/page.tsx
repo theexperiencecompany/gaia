@@ -15,10 +15,6 @@ export default function LabelTodosPage() {
   };
 
   return (
-    <TodoListPage
-      title={`Label: ${label}`}
-      filterTodos={filterTodosByLabel}
-      showCompleted={false}
-    />
+    <TodoListPage filterTodos={filterTodosByLabel} showCompleted={false} />
   );
 }

@@ -30,8 +30,8 @@ import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 import { useCalendarStore } from "@/stores/calendarStore";
 import { cn } from "@/lib/utils";
 import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
-import { DateTimePicker } from "./DateTimePicker";
-import { DatePickerWithRange } from "./DatePickerWithRange";
+import { DateTimePicker } from "@/features/calendar/components/DateTimePicker";
+import { DatePickerWithRange } from "@/features/calendar/components/DatePickerWithRange";
 
 interface EventSidebarProps {
   isOpen: boolean;
@@ -145,18 +145,20 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
           {calendars.length > 0 && (
             <div className="space-y-3">
               <Select
+                label="Calendar"
                 selectedKeys={selectedCalendarId ? [selectedCalendarId] : []}
+                selectionMode="single"
                 onSelectionChange={(keys) => {
                   const selected = Array.from(keys)[0] as string;
-                  if (selected) {
-                    onCalendarChange(selected);
-                  }
+                  if (selected) onCalendarChange(selected);
                 }}
+                isRequired
                 classNames={{
                   trigger:
                     "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
                   value: "text-zinc-200",
                   popoverContent: "bg-zinc-900 border border-zinc-800",
+                  label: "text-zinc-400",
                 }}
                 startContent={
                   selectedCalendarId && (
@@ -174,6 +176,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                 {calendars.map((cal) => (
                   <SelectItem
                     key={cal.id}
+                    textValue={`${cal.name || cal.summary}${cal.primary ? " (Primary)" : ""}`}
                     startContent={
                       <div
                         className="size-3 rounded-full"
@@ -202,7 +205,10 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                   <DatePickerWithRange
                     from={startDate ? new Date(startDate) : undefined}
                     to={endDate ? new Date(endDate) : undefined}
-                    onDateChange={(from, to) => {
+                    onDateChange={(
+                      from: Date | undefined,
+                      to: Date | undefined,
+                    ) => {
                       if (from) {
                         onStartDateChange(
                           from.toISOString().split("T")[0] + "T00:00",
@@ -223,7 +229,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                     <label className="mb-1 text-xs text-zinc-500">Start</label>
                     <DateTimePicker
                       date={startDate ? new Date(startDate) : undefined}
-                      onDateChange={(date) => {
+                      onDateChange={(date: Date | undefined) => {
                         if (date) {
                           onStartDateChange(date.toISOString().slice(0, 16));
                         }
@@ -240,7 +246,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                     <label className="mb-1 text-xs text-zinc-500">End</label>
                     <DateTimePicker
                       date={endDate ? new Date(endDate) : undefined}
-                      onDateChange={(date) => {
+                      onDateChange={(date: Date | undefined) => {
                         if (date) {
                           onEndDateChange(date.toISOString().slice(0, 16));
                         }
