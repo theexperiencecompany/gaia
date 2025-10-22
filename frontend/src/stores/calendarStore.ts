@@ -28,6 +28,12 @@ interface CalendarActions {
   setSelectedCalendars: (calendarIds: string[]) => void;
   toggleCalendarSelection: (calendarId: string) => void;
   setEvents: (events: GoogleCalendarEvent[], reset?: boolean) => void;
+  addEvent: (event: GoogleCalendarEvent) => void;
+  updateEvent: (
+    eventId: string,
+    updatedEvent: Partial<GoogleCalendarEvent>,
+  ) => void;
+  removeEvent: (eventId: string) => void;
   setNextPageToken: (token: string | null) => void;
   setLoading: (type: "calendars" | "events", loading: boolean) => void;
   setError: (type: "calendars" | "events", error: string | null) => void;
@@ -110,6 +116,42 @@ export const useCalendarStore = create<CalendarStore>()(
             },
             false,
             "setEvents",
+          ),
+
+        addEvent: (event) =>
+          set(
+            (state) => {
+              // Check if event already exists
+              const exists = state.events.some((e) => e.id === event.id);
+              if (exists) {
+                return state;
+              }
+              return {
+                events: [...state.events, event],
+              };
+            },
+            false,
+            "addEvent",
+          ),
+
+        updateEvent: (eventId, updatedEvent) =>
+          set(
+            (state) => ({
+              events: state.events.map((event) =>
+                event.id === eventId ? { ...event, ...updatedEvent } : event,
+              ),
+            }),
+            false,
+            "updateEvent",
+          ),
+
+        removeEvent: (eventId) =>
+          set(
+            (state) => ({
+              events: state.events.filter((event) => event.id !== eventId),
+            }),
+            false,
+            "removeEvent",
           ),
 
         setNextPageToken: (nextPageToken) =>
@@ -274,3 +316,8 @@ export const useGoToNextDay = () =>
 export const useGoToToday = () => useCalendarStore((state) => state.goToToday);
 export const useHandleDateChange = () =>
   useCalendarStore((state) => state.handleDateChange);
+export const useAddEvent = () => useCalendarStore((state) => state.addEvent);
+export const useUpdateEvent = () =>
+  useCalendarStore((state) => state.updateEvent);
+export const useRemoveEvent = () =>
+  useCalendarStore((state) => state.removeEvent);

@@ -13,8 +13,8 @@ import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
 import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
-import { useSidebar as useUIStoreSidebar } from "@/stores/uiStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
+import { useSidebar as useUIStoreSidebar } from "@/stores/uiStore";
 
 const HeaderSidebarTrigger = () => {
   return (

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { forwardRef } from "react";
 import { Spinner } from "@heroui/react";
+import React, { forwardRef } from "react";
 
 import { EventPosition } from "@/features/calendar/hooks/useCalendarEventPositioning";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";

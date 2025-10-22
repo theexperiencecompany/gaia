@@ -10,12 +10,12 @@ import { useCalendarScroll } from "@/features/calendar/hooks/useCalendarScroll";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 import { getExtendedDates } from "@/features/calendar/utils/dateRangeUtils";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 import {
-  useCalendarSelectedDate,
   useCalendarCurrentWeek,
+  useCalendarSelectedDate,
   useHandleDateChange,
 } from "@/stores/calendarStore";
+import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface WeeklyCalendarViewProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;
@@ -75,7 +75,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
 
   return (
     <div className="flex h-full w-full justify-center p-4 pt-4">
-      <div className="flex h-full w-full max-w-2xl flex-col">
+      <div className="flex h-full w-full flex-col px-10">
         <DateStrip
           dates={extendedDates}
           selectedDate={selectedDate}

@@ -454,14 +454,37 @@ async def create_calendar_event(
                     detail="Start and end times are required for time-specific events",
                 )
 
+            # Get timezone from event or use default
+            timezone = getattr(event, "timezone", None) or "UTC"
+
+            # Ensure times have timezone indicator if they don't
+            start_time = event.start
+            end_time = event.end
+
+            if (
+                start_time
+                and not start_time.endswith("Z")
+                and "+" not in start_time
+                and "-" not in start_time[-6:]
+            ):
+                # No timezone info, add Z for UTC
+                start_time = start_time + "Z"
+            if (
+                end_time
+                and not end_time.endswith("Z")
+                and "+" not in end_time
+                and "-" not in end_time[-6:]
+            ):
+                end_time = end_time + "Z"
+
             # The calendar tool has already processed times - use them directly
             event_payload["start"] = {
-                "dateTime": event.start,
-                "timeZone": "UTC",  # Default timezone since times are already processed
+                "dateTime": start_time,
+                "timeZone": timezone,
             }
             event_payload["end"] = {
-                "dateTime": event.end,
-                "timeZone": "UTC",  # Default timezone since times are already processed
+                "dateTime": end_time,
+                "timeZone": timezone,
             }
         except Exception as e:
             raise HTTPException(
@@ -948,14 +971,44 @@ async def update_calendar_event(
                     # Keep existing end time
                     end_time = existing_event.get("end", {}).get("dateTime", "")
 
-                event_payload["start"] = {
-                    "dateTime": start_time,
-                    "timeZone": "UTC",
-                }
-                event_payload["end"] = {
-                    "dateTime": end_time,
-                    "timeZone": "UTC",
-                }
+                # Preserve the timezone from the request or existing event
+                timezone = None
+                if event.timezone:
+                    # Use timezone from the request
+                    timezone = event.timezone
+                elif hasattr(event, "timezone_offset") and event.timezone_offset:
+                    # If timezone_offset is provided, use it (though we prefer full timezone names)
+                    timezone = event.timezone_offset
+                elif existing_event.get("start", {}).get("timeZone"):
+                    # Preserve existing timezone
+                    timezone = existing_event.get("start", {}).get("timeZone")
+
+                # Ensure times have timezone indicator if they don't
+                if (
+                    start_time
+                    and not start_time.endswith("Z")
+                    and "+" not in start_time
+                    and "-" not in start_time[-6:]
+                ):
+                    # No timezone info, add Z for UTC
+                    start_time = start_time + "Z"
+                if (
+                    end_time
+                    and not end_time.endswith("Z")
+                    and "+" not in end_time
+                    and "-" not in end_time[-6:]
+                ):
+                    end_time = end_time + "Z"
+
+                start_payload = {"dateTime": start_time}
+                end_payload = {"dateTime": end_time}
+
+                if timezone:
+                    start_payload["timeZone"] = timezone
+                    end_payload["timeZone"] = timezone
+
+                event_payload["start"] = start_payload
+                event_payload["end"] = end_payload
             except Exception as e:
                 raise HTTPException(
                     status_code=400,
@@ -972,7 +1025,10 @@ async def update_calendar_event(
             response = await client.put(url, headers=headers, json=event_payload)
 
         if response.status_code == 200:
-            return response.json()
+            updated_event = response.json()
+            # Add calendarId to match the format of fetched events
+            updated_event["calendarId"] = calendar_id
+            return updated_event
         elif response.status_code == 404:
             raise HTTPException(
                 status_code=404, detail="Event not found or access denied"

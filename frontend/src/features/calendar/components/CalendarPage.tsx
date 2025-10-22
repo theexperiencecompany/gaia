@@ -6,13 +6,11 @@ import { useCallback, useEffect } from "react";
 import { EventSidebar } from "@/components/layout/sidebar/right-variants/EventSidebar";
 import WeeklyCalendarView from "@/features/calendar/components/WeeklyCalendarView";
 import { useEventSidebar } from "@/features/calendar/hooks/useEventSidebar";
-import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 import { useSetCreateEventAction } from "@/stores/calendarStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function Calendar() {
   const searchParams = useSearchParams();
-  const { loadEvents } = useSharedCalendar();
   const setCreateEventAction = useSetCreateEventAction();
 
   // Use selectors to get only the functions, not subscribe to state changes
@@ -30,8 +28,12 @@ export default function Calendar() {
     isAllDay,
     selectedCalendarId,
     isSaving,
+    recurrenceType,
+    customRecurrenceDays,
     setIsAllDay,
     setSelectedCalendarId,
+    setRecurrenceType,
+    setCustomRecurrenceDays,
     handleSummaryChange,
     handleDescriptionChange,
     handleDateChange,
@@ -42,7 +44,7 @@ export default function Calendar() {
     close,
   } = useEventSidebar({
     onEventUpdate: () => {
-      loadEvents();
+      // Optional: trigger a background refresh without resetting the view
     },
   });
 
@@ -57,7 +59,6 @@ export default function Calendar() {
     if (isOpen) {
       setRightSidebarContent(
         <EventSidebar
-          isOpen={isOpen}
           isCreating={isCreating}
           selectedEvent={selectedEvent}
           summary={summary}
@@ -67,12 +68,16 @@ export default function Calendar() {
           isAllDay={isAllDay}
           selectedCalendarId={selectedCalendarId}
           isSaving={isSaving}
+          recurrenceType={recurrenceType}
+          customRecurrenceDays={customRecurrenceDays}
           onSummaryChange={handleSummaryChange}
           onDescriptionChange={handleDescriptionChange}
           onStartDateChange={(value) => handleDateChange("start", value)}
           onEndDateChange={(value) => handleDateChange("end", value)}
           onAllDayChange={setIsAllDay}
           onCalendarChange={setSelectedCalendarId}
+          onRecurrenceTypeChange={setRecurrenceType}
+          onCustomRecurrenceDaysChange={setCustomRecurrenceDays}
           onCreate={handleCreate}
           onDelete={handleDelete}
         />,
@@ -91,11 +96,15 @@ export default function Calendar() {
     isAllDay,
     selectedCalendarId,
     isSaving,
+    recurrenceType,
+    customRecurrenceDays,
     handleSummaryChange,
     handleDescriptionChange,
     handleDateChange,
     setIsAllDay,
     setSelectedCalendarId,
+    setRecurrenceType,
+    setCustomRecurrenceDays,
     handleCreate,
     handleDelete,
     handleClose,

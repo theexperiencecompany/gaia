@@ -3,20 +3,20 @@
 import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Select, SelectItem } from "@heroui/select";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import React, { useState } from "react";
 
-import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
+import { CalendarAdd01Icon, CalendarIcon } from "@/components/shared";
 import {
   useCalendarSelectedDate,
-  useHandleDateChange,
-  useGoToPreviousDay,
-  useGoToNextDay,
-  useGoToToday,
   useCreateEventAction,
+  useGoToNextDay,
+  useGoToPreviousDay,
+  useGoToToday,
+  useHandleDateChange,
 } from "@/stores/calendarStore";
+
 import { SidebarHeaderButton } from "./HeaderManager";
-import { CalendarAdd01Icon, CalendarIcon } from "@/components/shared";
 import { HeaderTitle } from "./HeaderTitle";
 
 export default function CalendarHeader() {

@@ -12,7 +12,6 @@ import {
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
-import { HeightIcon } from "@radix-ui/react-icons";
 
 const ICON_WIDTH = "19";
 const ICON_SIZE = "w-[17px] min-w-[17px]";

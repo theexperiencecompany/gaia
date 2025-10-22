@@ -22,25 +22,16 @@ export default function NotificationsHeader({
 }: NotificationsHeaderProps) {
   return (
     <div className="flex w-full items-center justify-between">
-      <div className="flex items-center gap-3">
+      <div className="flex w-full items-center justify-between">
         <HeaderTitle
           icon={<NotificationIcon width={20} height={20} color={undefined} />}
           text="Notifications"
         />
 
-        <ChevronRight width={18} height={17} className="text-zinc-500" />
-
         <Tabs
           aria-label="Notifications"
           selectedKey={selectedTab}
           onSelectionChange={(key) => onTabChange(key as string)}
-          size="sm"
-          classNames={{
-            tabList: "bg-transparent gap-1 p-0",
-            cursor: "bg-zinc-800",
-            tab: "data-[hover-unselected=true]:opacity-80",
-            tabContent: "text-zinc-400 group-data-[selected=true]:text-white",
-          }}
         >
           <Tab
             key="unread"

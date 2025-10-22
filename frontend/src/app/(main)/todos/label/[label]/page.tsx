@@ -3,7 +3,6 @@
 import { useParams } from "next/navigation";
 
 import TodoListPage from "@/features/todo/components/TodoListPage";
-import { Todo } from "@/types/features/todoTypes";
 
 export default function LabelTodosPage() {
   const params = useParams();

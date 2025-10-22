@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect } from "react";
 
 import { useTodoStore } from "@/stores/todoStore";
 import { Priority, TodoFilters } from "@/types/features/todoTypes";

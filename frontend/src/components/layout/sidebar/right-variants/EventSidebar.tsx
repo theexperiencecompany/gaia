@@ -1,12 +1,11 @@
 "use client";
 
-import React from "react";
-
 import { Button } from "@heroui/button";
 import { Input, Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Switch } from "@heroui/switch";
 import { ArrowDown, Repeat, Trash2 } from "lucide-react";
+import React from "react";
 
 import { UserCircleIcon } from "@/components/shared/icons";
 import {
@@ -23,7 +22,6 @@ import { useCalendarStore } from "@/stores/calendarStore";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface EventSidebarProps {
-  isOpen: boolean;
   isCreating: boolean;
   selectedEvent: GoogleCalendarEvent | null;
   summary: string;
@@ -33,18 +31,21 @@ interface EventSidebarProps {
   isAllDay: boolean;
   selectedCalendarId: string;
   isSaving: boolean;
+  recurrenceType: string;
+  customRecurrenceDays: string[];
   onSummaryChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
   onStartDateChange: (value: string) => void;
   onEndDateChange: (value: string) => void;
   onAllDayChange: (value: boolean) => void;
   onCalendarChange: (calendarId: string) => void;
+  onRecurrenceTypeChange: (type: string) => void;
+  onCustomRecurrenceDaysChange: (days: string[]) => void;
   onCreate: () => void;
   onDelete: () => void;
 }
 
 export const EventSidebar: React.FC<EventSidebarProps> = ({
-  isOpen,
   isCreating,
   selectedEvent,
   summary,
@@ -54,12 +55,16 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
   isAllDay,
   selectedCalendarId,
   isSaving,
+  recurrenceType,
+  customRecurrenceDays,
   onSummaryChange,
   onDescriptionChange,
   onStartDateChange,
   onEndDateChange,
   onAllDayChange,
   onCalendarChange,
+  onRecurrenceTypeChange,
+  onCustomRecurrenceDaysChange,
   onCreate,
   onDelete,
 }) => {
@@ -244,6 +249,91 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
               <span className="text-sm text-zinc-500">All-day event</span>
             </Switch>
           </div>
+
+          {/* Recurrence Selection (only when creating) */}
+          {isCreating && (
+            <div className="space-y-3">
+              <Select
+                label="Repeat"
+                selectedKeys={recurrenceType ? [recurrenceType] : []}
+                selectionMode="single"
+                onSelectionChange={(keys) => {
+                  const selected = Array.from(keys)[0] as string;
+                  if (selected) onRecurrenceTypeChange(selected);
+                }}
+                classNames={{
+                  trigger:
+                    "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+                  value: "text-zinc-200",
+                  popoverContent: "bg-zinc-900 border border-zinc-800",
+                  label: "text-zinc-400",
+                }}
+                startContent={<Repeat className="size-4 text-zinc-500" />}
+              >
+                <SelectItem key="none" textValue="Does not repeat">
+                  Does not repeat
+                </SelectItem>
+                <SelectItem key="daily" textValue="Daily">
+                  Daily
+                </SelectItem>
+                <SelectItem key="weekdays" textValue="Every weekday (Mon-Fri)">
+                  Every weekday (Mon-Fri)
+                </SelectItem>
+                <SelectItem key="weekly" textValue="Weekly">
+                  Weekly
+                </SelectItem>
+                <SelectItem key="monthly" textValue="Monthly">
+                  Monthly
+                </SelectItem>
+                <SelectItem key="yearly" textValue="Yearly">
+                  Yearly
+                </SelectItem>
+                <SelectItem key="custom" textValue="Custom (select days)">
+                  Custom (select days)
+                </SelectItem>
+              </Select>
+
+              {recurrenceType === "custom" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-400">
+                    Repeat on
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: "S", value: "SU" },
+                      { label: "M", value: "MO" },
+                      { label: "T", value: "TU" },
+                      { label: "W", value: "WE" },
+                      { label: "T", value: "TH" },
+                      { label: "F", value: "FR" },
+                      { label: "S", value: "SA" },
+                    ].map((day) => (
+                      <button
+                        key={day.value}
+                        onClick={() => {
+                          const newDays = customRecurrenceDays.includes(
+                            day.value,
+                          )
+                            ? customRecurrenceDays.filter(
+                                (d) => d !== day.value,
+                              )
+                            : [...customRecurrenceDays, day.value];
+                          onCustomRecurrenceDaysChange(newDays);
+                        }}
+                        className={`flex size-9 items-center justify-center rounded-full text-sm font-medium transition-colors ${
+                          customRecurrenceDays.includes(day.value)
+                            ? "bg-blue-600 text-white"
+                            : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700"
+                        }`}
+                      >
+                        {day.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Recurrence Info (only for existing recurring events) */}
           {!isCreating && selectedEvent?.recurrence && (

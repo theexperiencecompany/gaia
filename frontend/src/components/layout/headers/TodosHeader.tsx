@@ -1,17 +1,15 @@
 "use client";
 
+import { Tooltip } from "@heroui/react";
+import { ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
-import Link from "next/link";
-import { ChevronRight } from "lucide-react";
 
-import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { CheckmarkCircle02Icon } from "@/components/shared/icons";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import TodoModal from "@/features/todo/components/TodoModal";
-import { Tooltip } from "@heroui/react";
 import { useTodoStore } from "@/stores/todoStore";
-import { Priority } from "@/types/features/todoTypes";
 
 export default function TodosHeader() {
   const pathname = usePathname();

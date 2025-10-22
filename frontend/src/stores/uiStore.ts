@@ -174,7 +174,7 @@ export const useImageDialog = () =>
 export const useHeader = () =>
   useUIStore(
     useShallow((state) => ({
-      header: state.header,
+      header: state.header.component,
       setHeader: state.setHeader,
     })),
   );

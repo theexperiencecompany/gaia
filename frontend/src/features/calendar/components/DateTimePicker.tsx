@@ -1,10 +1,8 @@
 "use client";
 
-import * as React from "react";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon } from "lucide-react";
+import * as React from "react";
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/shadcn/button";
 import { Calendar } from "@/components/ui/shadcn/calendar";
 import {
@@ -13,6 +11,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/shadcn/popover";
 import { ScrollArea, ScrollBar } from "@/components/ui/shadcn/scroll-area";
+import { cn } from "@/lib/utils";
 
 interface DateTimePickerProps {
   date?: Date;

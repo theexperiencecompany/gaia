@@ -1,19 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import NotificationsHeader from "@/components/layout/headers/NotificationsHeader";
 import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
 import { NotificationsList } from "@/features/notification/components/NotificationsList";
 import { useAllNotifications } from "@/features/notification/hooks/useAllNotifications";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
+import { useHeader } from "@/hooks/layout/useHeader";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
   ModalConfig,
   NotificationStatus,
 } from "@/types/features/notificationTypes";
-import { useHeader } from "@/hooks/layout/useHeader";
-import NotificationsHeader from "@/components/layout/headers/NotificationsHeader";
 
 export default function NotificationsPage() {
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
@@ -53,24 +53,26 @@ export default function NotificationsPage() {
     }
   };
 
-  const handleBulkMarkAsRead = async (notificationIds: string[]) => {
-    try {
-      if (notificationIds.length == 0)
-        return toast.error("No events to mark as read");
-      await NotificationsAPI.bulkMarkAsRead(notificationIds);
-      // Refresh both lists after marking as read
-      await refetchUnread();
-      await refetchAll();
-    } catch (error) {
-      console.error("Error marking notification as read:", error);
-    }
-  };
+  const handleBulkMarkAsRead = useCallback(
+    async (notificationIds: string[]) => {
+      try {
+        if (notificationIds.length == 0)
+          return toast.error("No events to mark as read");
+        await NotificationsAPI.bulkMarkAsRead(notificationIds);
+        await refetchUnread();
+        await refetchAll();
+      } catch (error) {
+        console.error("Error marking notification as read:", error);
+      }
+    },
+    [refetchUnread, refetchAll],
+  );
 
   // Simple refresh function
-  const refreshNotifications = async () => {
+  const refreshNotifications = useCallback(async () => {
     await refetchAll();
     await refetchUnread();
-  };
+  }, [refetchAll, refetchUnread]);
 
   // Handle modal opening from notification actions
   const handleModalOpen = (config: ModalConfig) => {
@@ -88,6 +90,11 @@ export default function NotificationsPage() {
     refreshNotifications();
   };
 
+  // Memoize the mark all as read handler to prevent recreating it on every render
+  const handleMarkAllAsRead = useCallback(async () => {
+    await handleBulkMarkAsRead(unreadNotifications.map((n) => n.id));
+  }, [unreadNotifications, handleBulkMarkAsRead]);
+
   // Set the header with tab state
   useEffect(() => {
     setHeader(
@@ -95,16 +102,14 @@ export default function NotificationsPage() {
         selectedTab={selectedTab}
         onTabChange={setSelectedTab}
         unreadCount={unreadNotifications.length}
-        onMarkAllAsRead={async () => {
-          await handleBulkMarkAsRead(unreadNotifications.map((n) => n.id));
-        }}
+        onMarkAllAsRead={handleMarkAllAsRead}
       />,
     );
 
     return () => {
       setHeader(null);
     };
-  }, [selectedTab, unreadNotifications.length, setHeader, unreadNotifications]);
+  }, [selectedTab, unreadNotifications.length, handleMarkAllAsRead, setHeader]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#1a1a1a]">

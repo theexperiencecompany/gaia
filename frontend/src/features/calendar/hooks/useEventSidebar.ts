@@ -1,7 +1,48 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { calendarApi } from "@/features/calendar/api/calendarApi";
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import {
+  useAddEvent,
+  useRemoveEvent,
+  useUpdateEvent,
+} from "@/stores/calendarStore";
+import {
+  GoogleCalendarEvent,
+  RecurrenceData,
+} from "@/types/features/calendarTypes";
+
+const getUserTimezone = (): string => {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+};
+
+const buildRecurrencePayload = (
+  type: string,
+  customDays: string[],
+): RecurrenceData | undefined => {
+  if (type === "none") return undefined;
+
+  if (type === "custom" && customDays.length > 0) {
+    return {
+      rrule: {
+        frequency: "WEEKLY",
+        by_day: customDays,
+      },
+    };
+  }
+
+  const recurrenceMap: Record<string, RecurrenceData> = {
+    daily: { rrule: { frequency: "DAILY" } },
+    weekdays: {
+      rrule: { frequency: "WEEKLY", by_day: ["MO", "TU", "WE", "TH", "FR"] },
+    },
+    weekly: { rrule: { frequency: "WEEKLY" } },
+    monthly: { rrule: { frequency: "MONTHLY" } },
+    yearly: { rrule: { frequency: "YEARLY" } },
+  };
+
+  return recurrenceMap[type];
+};
 
 interface UseEventSidebarProps {
   onEventUpdate?: () => void;
@@ -22,6 +63,14 @@ export const useEventSidebar = ({
   const [isAllDay, setIsAllDay] = useState(false);
   const [selectedCalendarId, setSelectedCalendarId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState<string>("none");
+  const [customRecurrenceDays, setCustomRecurrenceDays] = useState<string[]>(
+    [],
+  );
+
+  const updateEventInStore = useUpdateEvent();
+  const removeEventFromStore = useRemoveEvent();
+  const addEventToStore = useAddEvent();
 
   const summaryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const descriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -36,6 +85,8 @@ export const useEventSidebar = ({
     setSelectedCalendarId("");
     setSelectedEvent(null);
     setIsCreating(false);
+    setRecurrenceType("none");
+    setCustomRecurrenceDays([]);
   }, []);
 
   const openForEvent = useCallback((event: GoogleCalendarEvent) => {
@@ -47,12 +98,17 @@ export const useEventSidebar = ({
     const startDateTime = event.start?.dateTime || event.start?.date;
     const endDateTime = event.end?.dateTime || event.end?.date;
 
-    setStartDate(
-      startDateTime ? new Date(startDateTime).toISOString().slice(0, 16) : "",
-    );
-    setEndDate(
-      endDateTime ? new Date(endDateTime).toISOString().slice(0, 16) : "",
-    );
+    // Convert ISO strings to datetime-local format (YYYY-MM-DDTHH:mm)
+    // datetime-local input expects local time, so we parse the ISO string as local
+    if (startDateTime) {
+      const startDate = new Date(startDateTime);
+      setStartDate(startDate.toISOString().slice(0, 16));
+    }
+    if (endDateTime) {
+      const endDate = new Date(endDateTime);
+      setEndDate(endDate.toISOString().slice(0, 16));
+    }
+
     setIsAllDay(!!event.start?.date);
     setIsOpen(true);
   }, []);
@@ -87,30 +143,85 @@ export const useEventSidebar = ({
 
       setIsSaving(true);
       try {
+        const timezone = getUserTimezone();
         const updatePayload: Record<string, unknown> = {
           event_id: selectedEvent.id,
-          calendar_id: selectedEvent.calendarId || "primary",
+          calendar_id:
+            selectedEvent.calendarId || selectedCalendarId || "primary",
         };
 
-        if (field === "summary") updatePayload.summary = value;
-        if (field === "description") updatePayload.description = value;
-        if (field === "start")
-          updatePayload.start = new Date(value as string).toISOString();
-        if (field === "end")
-          updatePayload.end = new Date(value as string).toISOString();
-        if (field === "isAllDay") updatePayload.is_all_day = value;
+        if (field === "summary") {
+          updatePayload.summary = value;
+        } else if (field === "description") {
+          updatePayload.description = value;
+        } else if (field === "start" || field === "end") {
+          // Convert datetime-local to ISO string
+          const isoString = new Date(value as string).toISOString();
+          updatePayload[field] = isoString;
+          updatePayload.timezone = timezone;
+        } else if (field === "isAllDay") {
+          updatePayload.is_all_day = value;
+          if (value) {
+            // For all-day events, send just the date part
+            updatePayload.start = startDate.split("T")[0];
+            updatePayload.end = endDate.split("T")[0];
+          } else {
+            // For timed events, send ISO strings with timezone
+            updatePayload.start = new Date(startDate).toISOString();
+            updatePayload.end = new Date(endDate).toISOString();
+            updatePayload.timezone = timezone;
+          }
+        }
 
-        await calendarApi.updateEventByAgent(
+        // Call the API
+        const updatedEvent = await calendarApi.updateEventByAgent(
           updatePayload as Parameters<typeof calendarApi.updateEventByAgent>[0],
         );
+
+        // Update the event in the store
+        updateEventInStore(selectedEvent.id, updatedEvent);
+
+        // Update local selected event state to reflect changes immediately
+        setSelectedEvent(updatedEvent);
+
+        // Sync local form state with updated event
+        setSummary(updatedEvent.summary || "");
+        setDescription(updatedEvent.description || "");
+
+        const updatedStartDateTime =
+          updatedEvent.start?.dateTime || updatedEvent.start?.date;
+        const updatedEndDateTime =
+          updatedEvent.end?.dateTime || updatedEvent.end?.date;
+
+        if (updatedStartDateTime) {
+          const startDate = new Date(updatedStartDateTime);
+          setStartDate(startDate.toISOString().slice(0, 16));
+        }
+        if (updatedEndDateTime) {
+          const endDate = new Date(updatedEndDateTime);
+          setEndDate(endDate.toISOString().slice(0, 16));
+        }
+        setIsAllDay(!!updatedEvent.start?.date);
+
         onEventUpdate?.();
       } catch (error) {
         console.error("Event update error:", error);
+        const errorMsg =
+          error instanceof Error ? error.message : "Failed to update event";
+        toast.error(errorMsg);
       } finally {
         setIsSaving(false);
       }
     },
-    [selectedEvent, isCreating, onEventUpdate],
+    [
+      selectedEvent,
+      isCreating,
+      selectedCalendarId,
+      startDate,
+      endDate,
+      updateEventInStore,
+      onEventUpdate,
+    ],
   );
 
   const handleSummaryChange = useCallback(
@@ -149,8 +260,23 @@ export const useEventSidebar = ({
 
   const handleDateChange = useCallback(
     (field: "start" | "end", value: string) => {
-      if (field === "start") setStartDate(value);
-      if (field === "end") setEndDate(value);
+      // Update local state first
+      if (field === "start") {
+        setStartDate(value);
+        // Validate that start is before end
+        if (endDate && new Date(value) >= new Date(endDate)) {
+          toast.error("Start time must be before end time");
+          return;
+        }
+      }
+      if (field === "end") {
+        setEndDate(value);
+        // Validate that end is after start
+        if (startDate && new Date(value) <= new Date(startDate)) {
+          toast.error("End time must be after start time");
+          return;
+        }
+      }
 
       if (dateTimeoutRef.current) {
         clearTimeout(dateTimeoutRef.current);
@@ -162,16 +288,139 @@ export const useEventSidebar = ({
         }, 500);
       }
     },
+    [isCreating, startDate, endDate, updateEventField],
+  );
+
+  const handleAllDayChange = useCallback(
+    (value: boolean) => {
+      setIsAllDay(value);
+
+      if (!isCreating) {
+        // Immediately trigger update for all-day toggle
+        updateEventField("isAllDay", value);
+      }
+    },
     [isCreating, updateEventField],
+  );
+
+  const handleCalendarChange = useCallback(
+    async (calendarId: string) => {
+      setSelectedCalendarId(calendarId);
+
+      if (!isCreating && selectedEvent) {
+        const oldCalendarId = selectedEvent.calendarId || "primary";
+
+        if (oldCalendarId === calendarId) {
+          return;
+        }
+
+        setIsSaving(true);
+        try {
+          const timezone = getUserTimezone();
+
+          const createPayload = {
+            summary,
+            description,
+            is_all_day: isAllDay,
+            start: isAllDay
+              ? startDate.split("T")[0]
+              : new Date(startDate).toISOString(),
+            end: isAllDay
+              ? endDate.split("T")[0]
+              : new Date(endDate).toISOString(),
+            fixedTime: !isAllDay,
+            calendar_id: calendarId,
+            timezone,
+          };
+
+          // Create in new calendar first
+          const newEvent = await calendarApi.createEventDefault(createPayload);
+
+          // Delete from old calendar
+          await calendarApi.deleteEventByAgent({
+            event_id: selectedEvent.id,
+            calendar_id: oldCalendarId,
+            summary: selectedEvent.summary,
+          });
+
+          // Update store: remove old event and add new event
+          removeEventFromStore(selectedEvent.id);
+          addEventToStore(newEvent);
+
+          // Update local state with the new event and sync all form fields
+          setSelectedEvent(newEvent);
+          setSelectedCalendarId(newEvent.calendarId || calendarId);
+
+          // Sync form state with the new event
+          setSummary(newEvent.summary || "");
+          setDescription(newEvent.description || "");
+
+          const newStartDateTime =
+            newEvent.start?.dateTime || newEvent.start?.date;
+          const newEndDateTime = newEvent.end?.dateTime || newEvent.end?.date;
+
+          if (newStartDateTime) {
+            const startDate = new Date(newStartDateTime);
+            setStartDate(startDate.toISOString().slice(0, 16));
+          }
+          if (newEndDateTime) {
+            const endDate = new Date(newEndDateTime);
+            setEndDate(endDate.toISOString().slice(0, 16));
+          }
+          setIsAllDay(!!newEvent.start?.date);
+
+          onEventUpdate?.();
+          toast.success("Event moved to new calendar");
+        } catch (error) {
+          console.error("Calendar change error:", error);
+          const errorMsg =
+            error instanceof Error
+              ? error.message
+              : "Failed to move event to new calendar";
+          toast.error(errorMsg);
+          setSelectedCalendarId(selectedEvent.calendarId || "primary");
+        } finally {
+          setIsSaving(false);
+        }
+      }
+    },
+    [
+      isCreating,
+      selectedEvent,
+      summary,
+      description,
+      isAllDay,
+      startDate,
+      endDate,
+      removeEventFromStore,
+      addEventToStore,
+      onEventUpdate,
+    ],
   );
 
   const handleCreate = useCallback(async () => {
     if (!summary.trim()) {
+      toast.error("Event title is required");
+      return;
+    }
+
+    if (new Date(startDate) >= new Date(endDate)) {
+      toast.error("End time must be after start time");
+      return;
+    }
+
+    if (!selectedCalendarId) {
+      toast.error("Please select a calendar");
       return;
     }
 
     setIsSaving(true);
     try {
+      const recurrence = buildRecurrencePayload(
+        recurrenceType,
+        customRecurrenceDays,
+      );
+
       const payload = {
         summary,
         description,
@@ -182,13 +431,17 @@ export const useEventSidebar = ({
         end: isAllDay ? endDate.split("T")[0] : new Date(endDate).toISOString(),
         fixedTime: !isAllDay,
         calendar_id: selectedCalendarId || "primary",
+        timezone: getUserTimezone(),
+        ...(recurrence && { recurrence }),
       };
 
       await calendarApi.createEventDefault(payload);
       onEventUpdate?.();
       close();
+      toast.success("Event created successfully");
     } catch (error) {
       console.error("Event creation error:", error);
+      toast.error("Failed to create event");
     } finally {
       setIsSaving(false);
     }
@@ -199,6 +452,8 @@ export const useEventSidebar = ({
     startDate,
     endDate,
     selectedCalendarId,
+    recurrenceType,
+    customRecurrenceDays,
     onEventUpdate,
     close,
   ]);
@@ -210,9 +465,14 @@ export const useEventSidebar = ({
     try {
       await calendarApi.deleteEventByAgent({
         event_id: selectedEvent.id,
-        calendar_id: selectedEvent.calendarId || "primary",
+        calendar_id:
+          selectedEvent.calendarId || selectedCalendarId || "primary",
         summary: selectedEvent.summary,
       });
+
+      // Remove event from store immediately
+      removeEventFromStore(selectedEvent.id);
+
       onEventUpdate?.();
       close();
     } catch (error) {
@@ -220,7 +480,14 @@ export const useEventSidebar = ({
     } finally {
       setIsSaving(false);
     }
-  }, [selectedEvent, isCreating, onEventUpdate, close]);
+  }, [
+    selectedEvent,
+    isCreating,
+    selectedCalendarId,
+    removeEventFromStore,
+    onEventUpdate,
+    close,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -242,8 +509,12 @@ export const useEventSidebar = ({
     isAllDay,
     selectedCalendarId,
     isSaving,
-    setIsAllDay,
-    setSelectedCalendarId,
+    recurrenceType,
+    customRecurrenceDays,
+    setIsAllDay: handleAllDayChange,
+    setSelectedCalendarId: handleCalendarChange,
+    setRecurrenceType,
+    setCustomRecurrenceDays,
     handleSummaryChange,
     handleDescriptionChange,
     handleDateChange,

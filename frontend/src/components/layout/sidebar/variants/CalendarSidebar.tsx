@@ -1,12 +1,12 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { useRouter } from "next/navigation";
 
+import { CalendarAdd01Icon } from "@/components/shared/icons";
 import Spinner from "@/components/ui/shadcn/spinner";
-import { CalendarAdd01Icon, PlusSignIcon } from "@/components/shared/icons";
 import CalendarSelector from "@/features/calendar/components/CalendarSelector";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
-import { Button } from "@heroui/button";
 
 export default function CalendarSidebar() {
   const router = useRouter();

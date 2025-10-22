@@ -1,15 +1,15 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import { ChatBubbleAddIcon, Target02Icon } from "@/components/shared/icons";
-import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import { goalsApi } from "@/features/goals/api/goalsApi";
+import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import { Goal } from "@/types/api/goalsApiTypes";
-import { ChevronRight } from "lucide-react";
 
 export default function GoalHeader() {
   const params = useParams();

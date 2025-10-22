@@ -13,20 +13,17 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
+import { Tooltip } from "@heroui/tooltip";
 import { DotsVerticalIcon } from "@radix-ui/react-icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import {
-  Calendar01Icon,
   Calendar03Icon,
-  CalendarSimpleIcon,
-  Target04Icon,
 } from "@/components/shared/icons";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { Goal } from "@/types/api/goalsApiTypes";
 import { parseDate2 } from "@/utils";
-import { Tooltip } from "@heroui/tooltip";
 
 export function GoalCard({
   goal,

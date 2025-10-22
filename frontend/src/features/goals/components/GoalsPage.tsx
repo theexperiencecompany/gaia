@@ -5,7 +5,6 @@ import { Chip } from "@heroui/chip";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { Target04Icon } from "@/components/shared/icons";
 import Spinner from "@/components/ui/shadcn/spinner";
 import AddGoalDialog from "@/features/goals/components/AddGoalDialog";
 import { GoalCard } from "@/features/goals/components/GoalCard";
