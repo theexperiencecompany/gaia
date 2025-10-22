@@ -222,7 +222,7 @@ export default function TodoModal({
         color="primary"
         size="sm"
         variant="flat"
-        startContent={<Plus className="h-4 w-4" />}
+        startContent={<Plus className="h-4 w-4 outline-0" />}
         onPress={onOpen}
       >
         {buttonText}

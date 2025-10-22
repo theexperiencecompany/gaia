@@ -31,6 +31,13 @@ const priorityColors = {
   [Priority.NONE]: "default",
 } as const;
 
+const priorityRingColors = {
+  [Priority.HIGH]: "border-danger-500",
+  [Priority.MEDIUM]: "border-warning-500",
+  [Priority.LOW]: "border-primary-500",
+  [Priority.NONE]: "border-zinc-500",
+} as const;
+
 export default function TodoItem({
   todo,
   isSelected,
@@ -59,7 +66,7 @@ export default function TodoItem({
           onClick?.(todo);
         }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex h-full items-center gap-3">
           {/* Complete Checkbox */}
           <div onClick={(e) => e.stopPropagation()}>
             <Checkbox
@@ -67,12 +74,14 @@ export default function TodoItem({
               onChange={handleToggleComplete}
               color={priorityColors[todo.priority]}
               radius="full"
+              classNames={{
+                wrapper: `border-1 ${priorityRingColors[todo.priority]} before:border-0!`,
+                base: "opacity",
+              }}
             />
           </div>
 
-          {/* Main Content */}
           <div className="min-w-0 flex-1">
-            {/* Title and Description */}
             <div>
               <h4
                 className={`text-sm font-medium ${
@@ -82,7 +91,7 @@ export default function TodoItem({
                 {todo.title}
               </h4>
               {todo.description && (
-                <p className="mt-2 text-xs text-foreground-500">
+                <p className="mt-1 text-xs text-foreground-500">
                   {todo.description}
                 </p>
               )}
@@ -92,36 +101,24 @@ export default function TodoItem({
               todo.due_date ||
               todo.labels.length > 0) && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                {/* Priority */}
-                {todo.priority !== Priority.NONE && (
-                  <Chip
-                    size="sm"
-                    variant="flat"
-                    color={priorityColors[todo.priority]}
-                  >
-                    {todo.priority.charAt(0).toUpperCase() +
-                      todo.priority.slice(1)}
-                  </Chip>
-                )}
-
-                {/* Due Date */}
                 {todo.due_date && (
                   <div
                     className={`flex items-center gap-1 text-xs ${
                       isOverdue ? "text-danger" : "text-foreground-500"
                     }`}
                   >
-                    <CalendarIcon className="h-3 w-3" />
+                    <CalendarIcon width={14} height={14} />
                     {format(new Date(todo.due_date), "MMM d")}
                   </div>
                 )}
 
-                {/* Labels */}
-                {todo.labels.map((label) => (
-                  <Chip key={label} size="sm" variant="flat">
-                    {label.charAt(0).toUpperCase() + label.slice(1)}
-                  </Chip>
-                ))}
+                <div className="flex items-center gap-1">
+                  {todo.labels.map((label) => (
+                    <Chip key={label} size="sm" variant="flat">
+                      {label.charAt(0).toUpperCase() + label.slice(1)}
+                    </Chip>
+                  ))}
+                </div>
 
                 {/* Subtasks Count */}
                 {todo.subtasks.length > 0 && (
@@ -135,15 +132,13 @@ export default function TodoItem({
           </div>
 
           {/* Actions Menu */}
-          <div onClick={(e) => e.stopPropagation()}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex h-full justify-start"
+          >
             <Dropdown>
               <DropdownTrigger>
-                <Button
-                  isIconOnly
-                  size="sm"
-                  variant="light"
-                  className="h-6 w-6 min-w-6"
-                >
+                <Button isIconOnly size="sm" variant="light">
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownTrigger>

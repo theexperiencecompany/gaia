@@ -2,8 +2,6 @@
 
 import "@xyflow/react/dist/style.css";
 
-import { Checkbox } from "@heroui/checkbox";
-import { Chip } from "@heroui/chip";
 import {
   ConnectionLineType,
   Edge,
@@ -15,15 +13,16 @@ import {
   ReactFlowProvider,
 } from "@xyflow/react";
 import dagre from "dagre";
-import { Clock, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { useParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { BookIcon1 } from "@/components/shared/icons";
+import { GoalSidebar } from "@/components/layout/sidebar/right-variants/GoalSidebar";
 import { MultiStepLoader } from "@/components/ui/shadcn/multi-step-loader";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { truncateTitle } from "@/lib/utils";
+import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { Goal } from "@/types/api/goalsApiTypes";
 import { EdgeType, GoalData, NodeData } from "@/types/features/goalTypes";
 
@@ -32,12 +31,15 @@ export default function GoalPage() {
   const [loading, setLoading] = useState(true);
   const [nodes, setNodes] = useState<Node<NodeData>[]>([]);
   const [edges, setEdges] = useState<Edge<EdgeType>[]>([]);
-  const [openSidebar, setOpenSidebar] = useState(false);
   const [currentlySelectedNodeId, setCurrentlySelectedNodeId] = useState<
     string | null
   >(null);
   const params = useParams();
   const goalId = typeof params.id === "string" ? params.id : params.id?.[0];
+
+  // Use right sidebar store
+  const setRightSidebarContent = useRightSidebar((state) => state.setContent);
+  const closeRightSidebar = useRightSidebar((state) => state.close);
 
   const CustomNode = React.memo(({ data }: { data: NodeData }) => {
     return (
@@ -47,16 +49,15 @@ export default function GoalPage() {
         <div
           className={`${
             currentlySelectedNodeId === data.id
-              ? "!outline-[#00bbff]! shadow-lg"
+              ? "shadow-lg outline-primary"
               : "outline-zinc-700"
           } ${
             data.isComplete
-              ? "bg-[#00bbff73] line-through outline-[#00bbff30]"
-              : "bg-zinc-800"
-          } flex max-w-[250px] min-w-[250px] flex-row items-center justify-center gap-1 rounded-lg p-4 text-center text-white outline-[3px] transition-all`}
+              ? "bg-primary/20 text-zinc-400 line-through outline-primary/30"
+              : "bg-zinc-800 text-white"
+          } flex max-w-[250px] min-w-[250px] cursor-pointer flex-row items-center justify-center gap-1 rounded-lg p-4 text-center transition-all hover:outline-zinc-600`}
           onClick={() => {
             setCurrentlySelectedNodeId(data.id);
-            setOpenSidebar(true);
           }}
         >
           {data.label}
@@ -125,7 +126,6 @@ export default function GoalPage() {
         setNodes(updatedNodes || []);
         if (updatedNodes && updatedNodes.length > 0) {
           setCurrentlySelectedNodeId(updatedNodes[0]?.id);
-          setOpenSidebar(true);
         }
         setEdges(goal.roadmap.edges || []);
       } else {
@@ -236,6 +236,40 @@ export default function GoalPage() {
     }
   };
 
+  // Sync selected node with right sidebar
+  useEffect(() => {
+    const selectedNode = currentlySelectedNodeId
+      ? nodes.find((node) => node.id === currentlySelectedNodeId)
+      : null;
+
+    if (selectedNode) {
+      setRightSidebarContent(
+        <GoalSidebar
+          node={selectedNode.data}
+          onClose={() => {
+            setCurrentlySelectedNodeId(null);
+            closeRightSidebar();
+          }}
+          onToggleComplete={handleCheckboxClick}
+        />,
+      );
+    } else {
+      setRightSidebarContent(null);
+    }
+  }, [
+    currentlySelectedNodeId,
+    nodes,
+    setRightSidebarContent,
+    closeRightSidebar,
+  ]);
+
+  // Cleanup right sidebar on unmount
+  useEffect(() => {
+    return () => {
+      closeRightSidebar();
+    };
+  }, [closeRightSidebar]);
+
   // Create a memoized header component using useCallback for stability
   const rawTitle = goalData?.roadmap?.title || goalData?.title || "New Goal";
 
@@ -248,121 +282,12 @@ export default function GoalPage() {
       <ReactFlowProvider>
         <div className="relative flex h-full w-full flex-row justify-between">
           <div
-            className={`${
-              openSidebar ? "visible" : "hidden"
-            } fixed right-3 bottom-3 z-10 flex max-w-[350px] flex-col gap-3 rounded-xl bg-zinc-800 p-2 shadow-lg outline-2 outline-zinc-950`}
-          >
-            <div className="space-y-2 p-4">
-              <div className="text-xl font-medium">
-                {currentlySelectedNodeId &&
-                  nodes.find((node) => node.id === currentlySelectedNodeId)
-                    ?.data.label}
-              </div>
-              <div className="text-md -mt-2 pb-4 text-foreground-600">
-                {currentlySelectedNodeId &&
-                  nodes
-                    .find((node) => node.id === currentlySelectedNodeId)
-                    ?.data?.details?.join(", ")}
-              </div>
-              <div className="space-y-4">
-                {currentlySelectedNodeId &&
-                  (() => {
-                    const selectedNode = nodes.find(
-                      (node) => node.id === currentlySelectedNodeId,
-                    );
-                    const estimatedTime = selectedNode?.data?.estimatedTime;
-
-                    return estimatedTime ? (
-                      <Chip
-                        color="primary"
-                        size="lg"
-                        startContent={
-                          <div className="text-md flex items-center gap-1">
-                            <Clock width={18} />
-                            Estimated Time:
-                          </div>
-                        }
-                        variant="flat"
-                      >
-                        <span className="text-md pl-1 text-white">
-                          {estimatedTime}
-                        </span>
-                      </Chip>
-                    ) : null;
-                  })()}
-
-                {currentlySelectedNodeId && (
-                  <Chip
-                    color="success"
-                    size="lg"
-                    startContent={
-                      <Checkbox
-                        isSelected={
-                          nodes.find(
-                            (node) => node.id === currentlySelectedNodeId,
-                          )?.data?.isComplete ?? false
-                        }
-                        onValueChange={handleCheckboxClick}
-                        color="success"
-                        // lineThrough
-                        radius="full"
-                      >
-                        Mark as Complete
-                      </Checkbox>
-                    }
-                    variant="flat"
-                  />
-                )}
-              </div>
-            </div>
-            <div>
-              {currentlySelectedNodeId && (
-                <>
-                  {(() => {
-                    const selectedNode = nodes.find(
-                      (node) => node.id === currentlySelectedNodeId,
-                    );
-
-                    return (
-                      selectedNode?.data?.resources &&
-                      selectedNode?.data?.resources?.length > 0 && (
-                        <div className="bg-opacity-40 rounded-xl bg-black p-5">
-                          <div className="text-md flex items-center gap-2 pb-2 font-medium">
-                            <BookIcon1 width={18} />
-                            Resources
-                          </div>
-                          <div className="text-sm">
-                            {selectedNode.data.resources.map(
-                              (resource, index) => (
-                                <a
-                                  key={index}
-                                  className="underline underline-offset-4 hover:text-[#00bbff]"
-                                  href={`https://www.google.com/search?q=${resource.split(
-                                    "+",
-                                  )}`}
-                                  target="__blank"
-                                >
-                                  <li>{resource}</li>
-                                </a>
-                              ),
-                            )}
-                          </div>
-                        </div>
-                      )
-                    );
-                  })()}
-                </>
-              )}
-            </div>
-          </div>
-
-          <div
             className={`relative flex h-screen w-full min-w-full flex-row flex-wrap items-center justify-center gap-4 pb-8 text-background ${
               loading ? "h-screen" : "h-fit"
             }`}
           >
             {loading ? (
-              <div className="bg-opacity-50 relative flex h-fit w-fit flex-col items-center justify-center gap-10 overflow-hidden rounded-xl bg-black pt-9 pb-0">
+              <div className="relative flex h-fit w-fit flex-col items-center justify-center gap-10 overflow-hidden rounded-xl bg-black/50 pt-9 pb-0">
                 <div className="space-y-2 text-center">
                   <div className="text-xl font-medium text-foreground">
                     Creating your detailed Roadmap.

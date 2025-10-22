@@ -86,7 +86,7 @@ export function DateTimePicker({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto overflow-hidden rounded-2xl border-0 bg-zinc-800 p-1">
+      <PopoverContent className="w-auto overflow-hidden rounded-2xl border-0 bg-zinc-800 p-1 shadow-xl">
         <div className="sm:flex">
           <Calendar
             mode="single"
@@ -94,6 +94,7 @@ export function DateTimePicker({
             onSelect={handleDateSelect}
             initialFocus
             className="bg-zinc-800"
+            disabled={false}
           />
           <div className="flex flex-col divide-y divide-zinc-800 sm:h-[300px] sm:flex-row sm:divide-x sm:divide-y-0">
             <ScrollArea className="w-64 sm:w-auto">

@@ -80,7 +80,7 @@ export const DateStrip: React.FC<DateStripProps> = ({
 
               <button
                 onClick={() => onDateSelect(date)}
-                className={`flex min-w-[60px] flex-col items-center rounded-2xl px-3 py-2 transition-all duration-200 ${
+                className={`flex min-w-[60px] cursor-pointer flex-col items-center rounded-2xl px-3 py-2 transition-all duration-200 ${
                   isSelected
                     ? "bg-primary text-black"
                     : isToday

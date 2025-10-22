@@ -6,10 +6,12 @@ import { useUpcomingEventsQuery } from "@/features/calendar/hooks/useUpcomingEve
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import UnreadEmailsView from "@/features/mail/components/UnreadEmailsView";
 import { useUnreadEmailsQuery } from "@/features/mail/hooks/useUnreadEmailsQuery";
+import { useCalendars } from "@/stores/calendarStore";
 
 export const GridSection = () => {
   const router = useRouter();
   const { getIntegrationStatus, connectIntegration } = useIntegrations();
+  const calendars = useCalendars();
 
   // Check integration connection statuses
   const gmailStatus = getIntegrationStatus("gmail");
@@ -84,7 +86,7 @@ export const GridSection = () => {
           isLoading={calendarLoading}
           isFetching={calendarFetching}
           error={errors.calendar}
-          calendars={[]}
+          calendars={calendars}
           isConnected={isCalendarConnected}
           onConnect={handleConnect}
           onRefresh={handleCalendarRefresh}

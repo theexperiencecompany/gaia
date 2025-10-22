@@ -44,6 +44,7 @@ function Calendar({
           buttonVariants({ variant: "ghost" }),
           "size-8 p-0 font-normal cursor-pointer transition-colors",
           "hover:bg-zinc-700 hover:text-zinc-100",
+          "aria-disabled:cursor-not-allowed aria-disabled:opacity-50",
           props.mode === "single" && "aria-selected:rounded-md",
         ),
         day_range_start:
