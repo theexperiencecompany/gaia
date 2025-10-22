@@ -54,16 +54,11 @@ export default function TodosPage() {
       }
     }
 
-    // Handle completed filter
-    if (completedParam !== null) {
-      urlFilters.completed = completed;
-    } else {
-      // For inbox page, default to showing only incomplete todos
-      urlFilters.completed = false;
-    }
+    // Handle completed filter - always default to false for inbox
+    urlFilters.completed = completedParam === "true" ? true : false;
 
     return urlFilters;
-  }, [projectId, priority, completed, completedParam]);
+  }, [projectId, priority, completedParam]);
 
   const { todos, projects, loading, updateTodo, deleteTodo, refresh } =
     useTodoData({ filters, autoLoad: true });

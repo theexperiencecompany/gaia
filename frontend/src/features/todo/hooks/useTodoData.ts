@@ -29,55 +29,8 @@ export function useTodoData(options: UseTodoDataOptions = {}) {
     refreshAll,
   } = useTodoStore();
 
-  // Filter todos based on provided filters
-  const todos = useMemo(() => {
-    if (!filters) return allTodos;
-
-    return allTodos.filter((todo) => {
-      // Apply completion filter
-      if (
-        filters.completed !== undefined &&
-        todo.completed !== filters.completed
-      ) {
-        return false;
-      }
-
-      // Apply project filter
-      if (filters.project_id && todo.project_id !== filters.project_id) {
-        return false;
-      }
-
-      // Apply priority filter
-      if (filters.priority && todo.priority !== filters.priority) {
-        return false;
-      }
-
-      // Apply due today filter
-      if (filters.due_today) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-
-        if (!todo.due_date) return false;
-        const dueDate = new Date(todo.due_date);
-        return dueDate >= today && dueDate < tomorrow;
-      }
-
-      // Apply due this week filter
-      if (filters.due_this_week) {
-        const today = new Date();
-        const nextWeek = new Date(today);
-        nextWeek.setDate(nextWeek.getDate() + 7);
-
-        if (!todo.due_date) return false;
-        const dueDate = new Date(todo.due_date);
-        return dueDate >= today && dueDate <= nextWeek;
-      }
-
-      return true;
-    });
-  }, [allTodos, filters]);
+  // API handles filtering, so just return allTodos directly
+  const todos = allTodos;
 
   // Load data on mount if autoLoad is enabled
   useEffect(() => {

@@ -10,7 +10,7 @@ export default function UpcomingTodosPage() {
     nextWeek.setDate(nextWeek.getDate() + 7);
 
     return todos.filter((todo) => {
-      if (!todo.due_date || todo.completed) return false;
+      if (!todo.due_date) return false;
       const dueDate = new Date(todo.due_date);
       return dueDate >= today && dueDate <= nextWeek;
     });
@@ -18,9 +18,8 @@ export default function UpcomingTodosPage() {
 
   return (
     <TodoListPage
-      filters={{ due_this_week: true }}
+      filters={{ due_this_week: true, completed: false }}
       filterTodos={filterUpcomingTodos}
-      showCompleted={false}
     />
   );
 }

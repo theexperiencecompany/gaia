@@ -13,13 +13,11 @@ import { Todo, TodoFilters, TodoUpdate } from "@/types/features/todoTypes";
 interface TodoListPageProps {
   filters?: TodoFilters;
   filterTodos?: (todos: Todo[]) => Todo[];
-  showCompleted?: boolean;
 }
 
 export default function TodoListPage({
   filters,
   filterTodos,
-  showCompleted = false,
 }: TodoListPageProps) {
   const { selectedTodoId, selectTodo, clearSelection } = useUrlTodoSelection();
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
@@ -36,20 +34,11 @@ export default function TodoListPage({
 
   // Apply additional client-side filtering if provided
   const todos = useMemo(() => {
-    let filteredTodos = allTodos;
+    // Apply custom filter function if provided (for date range filtering that API doesn't support well)
+    if (filterTodos) return filterTodos(allTodos);
 
-    // Apply custom filter function if provided
-    if (filterTodos) {
-      filteredTodos = filterTodos(filteredTodos);
-    }
-
-    // Filter by completion status unless showCompleted is true
-    if (!showCompleted) {
-      filteredTodos = filteredTodos.filter((todo) => !todo.completed);
-    }
-
-    return filteredTodos;
-  }, [allTodos, filterTodos, showCompleted]);
+    return allTodos;
+  }, [allTodos, filterTodos]);
 
   const handleTodoUpdate = async (todoId: string, updates: TodoUpdate) => {
     try {

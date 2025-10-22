@@ -15,7 +15,5 @@ export default function ProjectTodosPage() {
   //   return projects.find((p) => p.id === projectId);
   // }, [projects, projectId]);
 
-  return (
-    <TodoListPage filters={{ project_id: projectId }} showCompleted={false} />
-  );
+  return <TodoListPage filters={{ project_id: projectId, completed: false }} />;
 }

@@ -9,6 +9,6 @@ import { Priority } from "@/types/features/todoTypes";
 export default function PriorityTodosPage() {
   const params = useParams();
   const priority = params.priority as Priority;
-  const filters = useMemo(() => ({ priority }), [priority]);
-  return <TodoListPage filters={filters} showCompleted={false} />;
+  const filters = useMemo(() => ({ priority, completed: false }), [priority]);
+  return <TodoListPage filters={filters} />;
 }

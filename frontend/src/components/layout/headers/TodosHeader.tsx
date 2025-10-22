@@ -10,55 +10,23 @@ import { CheckmarkCircle02Icon } from "@/components/shared/icons";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import TodoModal from "@/features/todo/components/TodoModal";
 import { Tooltip } from "@heroui/react";
-import { useTodoData } from "@/features/todo/hooks/useTodoData";
+import { useTodoStore } from "@/stores/todoStore";
 import { Priority } from "@/types/features/todoTypes";
 
 export default function TodosHeader() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  // Get data from store instead of making duplicate API call
+  const todos = useTodoStore((state) => state.todos);
+  const projects = useTodoStore((state) => state.projects);
+  const loadCounts = useTodoStore((state) => state.loadCounts);
+  const refreshAll = useTodoStore((state) => state.refreshAll);
+
   // Get filter parameters
   const projectId = searchParams.get("project");
   const priority = searchParams.get("priority");
   const completedParam = searchParams.get("completed");
-
-  // Build filters based on route and params
-  const filters = useMemo(() => {
-    const urlFilters: any = {};
-
-    if (projectId) {
-      urlFilters.project_id = projectId;
-    }
-
-    if (priority && Object.values(Priority).includes(priority as Priority)) {
-      urlFilters.priority = priority as Priority;
-    }
-
-    if (completedParam !== null) {
-      urlFilters.completed = completedParam === "true";
-    }
-
-    // Handle specific routes
-    if (pathname === "/todos/today") {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      urlFilters.due_date = today.toISOString().split("T")[0];
-    } else if (pathname === "/todos/upcoming") {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      urlFilters.due_date_after = tomorrow.toISOString().split("T")[0];
-    } else if (pathname === "/todos/completed") {
-      urlFilters.completed = true;
-    }
-
-    return urlFilters;
-  }, [pathname, projectId, priority, completedParam]);
-
-  // Get todos to calculate count
-  const { todos, projects, loading } = useTodoData({
-    filters,
-    autoLoad: true,
-  });
 
   // Determine page title and task count
   const { pageTitle, taskCount } = useMemo(() => {
@@ -111,14 +79,12 @@ export default function TodosHeader() {
             <span className="text-zinc-300">{pageTitle}</span>
           </>
         )}
-        {!loading && (
-          <>
-            <ChevronRight width={18} height={17} />
-            <span className="text-sm text-zinc-400">
-              {taskCount} {taskCount === 1 ? "task" : "tasks"}
-            </span>
-          </>
-        )}
+        <>
+          <ChevronRight width={18} height={17} />
+          <span className="text-sm text-zinc-400">
+            {taskCount} {taskCount === 1 ? "task" : "tasks"}
+          </span>
+        </>
       </div>
 
       <div className="relative z-[100] flex items-center">
@@ -128,8 +94,8 @@ export default function TodosHeader() {
               mode="add"
               buttonText=""
               buttonClassName="!p-1.5 !m-0 !bg-transparent !min-w-0 hover:!bg-[#00bbff]/20 data-[hover=true]:!bg-[#00bbff]/20 rounded-xl"
-              onSuccess={() => {
-                window.location.reload();
+              onSuccess={async () => {
+                await loadCounts();
               }}
             />
           </div>
