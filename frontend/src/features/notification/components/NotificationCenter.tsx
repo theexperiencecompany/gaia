@@ -61,18 +61,18 @@ export function NotificationCenter({
 
   return (
     <div className={`relative ${className}`}>
-      <Popover backdrop="blur">
+      <Popover>
         <PopoverTrigger>
           <div className="relative">
             <SidebarHeaderButton
               aria-label="Notifications"
               tooltip="Notifications"
             >
-              <NotificationIcon className="group-hover:text-primary min-h-[20px] min-w-[20px] text-zinc-400 transition-all" />
+              <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
             </SidebarHeaderButton>
             {unreadCount > 0 && (
               <div className="absolute -right-1 bottom-3 flex h-full items-center justify-center">
-                <div className="bg-primary flex aspect-square h-4 w-4 items-center justify-center rounded-full text-xs font-medium text-zinc-950">
+                <div className="flex aspect-square h-4 w-4 items-center justify-center rounded-full bg-primary text-xs font-medium text-zinc-950">
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </div>
               </div>
@@ -80,7 +80,7 @@ export function NotificationCenter({
           </div>
         </PopoverTrigger>
 
-        <PopoverContent className="border-1 mr-4 w-96 rounded-2xl border-zinc-700 bg-zinc-800 p-0 shadow-xl">
+        <PopoverContent className="mr-4 w-96 rounded-2xl border-1 border-zinc-700 bg-zinc-800 p-0 shadow-xl">
           <Tabs
             selectedKey={activeTab}
             onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}

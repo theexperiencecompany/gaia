@@ -74,7 +74,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
   };
 
   return (
-    <div className="flex h-full w-full justify-center p-4 pt-0">
+    <div className="flex h-full w-full justify-center p-4 pt-4">
       <div className="flex h-full w-full max-w-2xl flex-col">
         <DateStrip
           dates={extendedDates}

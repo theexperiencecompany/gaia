@@ -152,8 +152,6 @@ export default function CalendarHeader() {
             <CalendarAdd01Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
           </SidebarHeaderButton>
         )}
-
-        <NotificationCenter />
       </div>
     </div>
   );
