@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Tab, Tabs } from "@heroui/tabs";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
@@ -14,9 +12,13 @@ import {
   ModalConfig,
   NotificationStatus,
 } from "@/types/features/notificationTypes";
+import { useHeader } from "@/hooks/layout/useHeader";
+import NotificationsHeader from "@/components/layout/headers/NotificationsHeader";
 
 export default function NotificationsPage() {
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
+  const [selectedTab, setSelectedTab] = useState<string>("unread");
+  const { setHeader } = useHeader();
 
   // Get unread notifications
   const {
@@ -86,77 +88,49 @@ export default function NotificationsPage() {
     refreshNotifications();
   };
 
+  // Set the header with tab state
+  useEffect(() => {
+    setHeader(
+      <NotificationsHeader
+        selectedTab={selectedTab}
+        onTabChange={setSelectedTab}
+        unreadCount={unreadNotifications.length}
+        onMarkAllAsRead={async () => {
+          await handleBulkMarkAsRead(unreadNotifications.map((n) => n.id));
+        }}
+      />,
+    );
+
+    return () => {
+      setHeader(null);
+    };
+  }, [selectedTab, unreadNotifications.length, setHeader, unreadNotifications]);
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#1a1a1a]">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">
-            Notifications
-          </h1>
-          <p className="mt-0.5 text-sm text-zinc-500">
-            Stay updated with your latest activity
-          </p>
-        </div>
-        {unreadNotifications.length > 0 && (
-          <Button
-            size="sm"
-            variant={"flat"}
-            onPress={async () => {
-              await handleBulkMarkAsRead(unreadNotifications.map((n) => n.id));
-            }}
-          >
-            Mark All as Read
-          </Button>
+      <div className="max-h-[calc(100vh-120px)] overflow-y-auto px-6 pt-6">
+        {selectedTab === "unread" ? (
+          <NotificationsList
+            notifications={unreadNotifications}
+            loading={unreadLoading}
+            emptyMessage="No unread notifications"
+            emptyDescription="All caught up! You're up to date with everything."
+            onRefresh={refreshNotifications}
+            onMarkAsRead={handleMarkAsRead}
+            onModalOpen={handleModalOpen}
+          />
+        ) : (
+          <NotificationsList
+            notifications={allNotifications}
+            loading={allLoading}
+            emptyMessage="No notifications yet"
+            emptyDescription="Notifications will appear here when you receive them."
+            onRefresh={refreshNotifications}
+            onMarkAsRead={handleMarkAsRead}
+            onModalOpen={handleModalOpen}
+          />
         )}
       </div>
-
-      <Tabs
-        aria-label="Notifications"
-        fullWidth
-        className="mx-auto mt-3 max-w-3xl"
-      >
-        <Tab
-          key="unread"
-          title={
-            <div className="flex items-center gap-2">
-              <span>Unread</span>
-              {unreadNotifications.length > 0 && (
-                <span className="ml-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-xs font-semibold text-primary">
-                  {unreadNotifications.length > 99
-                    ? "99+"
-                    : unreadNotifications.length}
-                </span>
-              )}
-            </div>
-          }
-        >
-          <div className="max-h-[calc(100vh-200px)] overflow-y-auto">
-            <NotificationsList
-              notifications={unreadNotifications}
-              loading={unreadLoading}
-              emptyMessage="No unread notifications"
-              emptyDescription="All caught up! You're up to date with everything."
-              onRefresh={refreshNotifications}
-              onMarkAsRead={handleMarkAsRead}
-              onModalOpen={handleModalOpen}
-            />
-          </div>
-        </Tab>
-        <Tab key="all" title="All">
-          <div className="max-h-[calc(100vh-200px)] overflow-y-auto">
-            <NotificationsList
-              notifications={allNotifications}
-              loading={allLoading}
-              emptyMessage="No notifications yet"
-              emptyDescription="Notifications will appear here when you receive them."
-              onRefresh={refreshNotifications}
-              onMarkAsRead={handleMarkAsRead}
-              onModalOpen={handleModalOpen}
-            />
-          </div>
-        </Tab>
-      </Tabs>
 
       {modalConfig?.component === "EmailPreviewModal" && modalConfig.props && (
         <EmailPreviewModal

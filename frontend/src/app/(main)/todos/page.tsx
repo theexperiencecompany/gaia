@@ -54,9 +54,12 @@ export default function TodosPage() {
       }
     }
 
-    // Handle completed filter only if explicitly set
+    // Handle completed filter
     if (completedParam !== null) {
       urlFilters.completed = completed;
+    } else {
+      // For inbox page, default to showing only incomplete todos
+      urlFilters.completed = false;
     }
 
     return urlFilters;
@@ -74,6 +77,7 @@ export default function TodosPage() {
     // If the deleted todo was selected (shown in URL), close the detail sheet
     if (selectedTodoId === todoId) {
       clearSelection();
+      closeRightSidebar();
     }
   };
 
@@ -97,7 +101,6 @@ export default function TodosPage() {
       setRightSidebarContent(
         <TodoSidebar
           todo={selectedTodo}
-          onClose={handleClose}
           onUpdate={handleTodoUpdate}
           onDelete={handleTodoDelete}
           projects={projects}

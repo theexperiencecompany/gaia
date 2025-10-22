@@ -246,10 +246,6 @@ export default function GoalPage() {
       setRightSidebarContent(
         <GoalSidebar
           node={selectedNode.data}
-          onClose={() => {
-            setCurrentlySelectedNodeId(null);
-            closeRightSidebar();
-          }}
           onToggleComplete={handleCheckboxClick}
         />,
       );

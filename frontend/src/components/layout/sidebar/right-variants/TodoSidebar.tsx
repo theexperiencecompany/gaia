@@ -7,12 +7,7 @@ import { Trash2 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { Cancel01Icon } from "@/components/shared/icons";
-import {
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-} from "@/components/ui/shadcn/sidebar";
+import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { todoApi } from "@/features/todo/api/todoApi";
 import {
@@ -30,7 +25,6 @@ import WorkflowSection from "@/features/todo/components/WorkflowSection";
 
 interface TodoSidebarProps {
   todo: Todo | null;
-  onClose: () => void;
   onUpdate: (todoId: string, updates: TodoUpdate) => void;
   onDelete: (todoId: string) => void;
   projects: Project[];
@@ -38,7 +32,6 @@ interface TodoSidebarProps {
 
 export const TodoSidebar: React.FC<TodoSidebarProps> = ({
   todo,
-  onClose,
   onUpdate,
   onDelete,
   projects,
@@ -70,7 +63,6 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
   const handleDelete = () => {
     if (!todo) return;
     onDelete(todo.id);
-    onClose();
   };
 
   const handleSubtasksChange = (subtasks: SubTask[]) => {
@@ -130,16 +122,6 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
 
   return (
     <div className="flex h-full flex-col">
-      <SidebarHeader className="flex w-full items-end justify-end px-6 pt-4 pb-0">
-        <button
-          onClick={onClose}
-          className="cursor-pointer rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800/50 hover:text-zinc-200"
-          aria-label="Close"
-        >
-          <Cancel01Icon className="size-4" />
-        </button>
-      </SidebarHeader>
-
       <SidebarContent className="flex-1 overflow-y-auto px-6">
         <div className="space-y-4 pt-4">
           {/* Title and Description Section */}

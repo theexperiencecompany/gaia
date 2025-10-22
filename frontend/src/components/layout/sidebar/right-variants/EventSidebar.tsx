@@ -8,30 +8,19 @@ import { Select, SelectItem } from "@heroui/select";
 import { Switch } from "@heroui/switch";
 import { ArrowDown, Repeat, Trash2 } from "lucide-react";
 
+import { UserCircleIcon } from "@/components/shared/icons";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/shadcn/accordion";
-import {
-  SidebarHeader,
-  SidebarContent,
-  SidebarFooter,
-} from "@/components/ui/shadcn/sidebar";
-import {
-  Calendar01Icon,
-  CalendarIcon,
-  Cancel01Icon,
-  PencilEdit02Icon,
-  UserCircleIcon,
-} from "@/components/shared/icons";
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
-import { useCalendarStore } from "@/stores/calendarStore";
-import { cn } from "@/lib/utils";
-import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
-import { DateTimePicker } from "@/features/calendar/components/DateTimePicker";
+import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
 import { DatePickerWithRange } from "@/features/calendar/components/DatePickerWithRange";
+import { DateTimePicker } from "@/features/calendar/components/DateTimePicker";
+import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
+import { useCalendarStore } from "@/stores/calendarStore";
+import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface EventSidebarProps {
   isOpen: boolean;
@@ -52,7 +41,6 @@ interface EventSidebarProps {
   onCalendarChange: (calendarId: string) => void;
   onCreate: () => void;
   onDelete: () => void;
-  onClose: () => void;
 }
 
 export const EventSidebar: React.FC<EventSidebarProps> = ({
@@ -74,7 +62,6 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
   onCalendarChange,
   onCreate,
   onDelete,
-  onClose,
 }) => {
   const { calendars } = useCalendarStore();
 
@@ -98,16 +85,6 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
 
   return (
     <div className="flex h-full flex-col">
-      <SidebarHeader className="flex w-full items-end justify-end px-6 pt-4 pb-0">
-        <button
-          onClick={onClose}
-          className="cursor-pointer rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800/50 hover:text-zinc-200"
-          aria-label="Close"
-        >
-          <Cancel01Icon className="size-4" />
-        </button>
-      </SidebarHeader>
-
       <SidebarContent className="flex-1 overflow-y-auto px-6">
         <div className="space-y-4 pt-4">
           <div className="space-y-2">

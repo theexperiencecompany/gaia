@@ -5,39 +5,23 @@ import { Chip } from "@heroui/chip";
 import { Clock } from "lucide-react";
 import React from "react";
 
-import { BookIcon1, Cancel01Icon } from "@/components/shared/icons";
-import {
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-} from "@/components/ui/shadcn/sidebar";
+import { BookIcon1 } from "@/components/shared/icons";
+import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
 import { NodeData } from "@/types/features/goalTypes";
 
 interface GoalSidebarProps {
   node: NodeData | null;
-  onClose: () => void;
   onToggleComplete: () => void;
 }
 
 export const GoalSidebar: React.FC<GoalSidebarProps> = ({
   node,
-  onClose,
   onToggleComplete,
 }) => {
   if (!node) return null;
 
   return (
     <div className="flex h-full flex-col">
-      <SidebarHeader className="flex w-full items-end justify-end px-6 pt-4 pb-0">
-        <button
-          onClick={onClose}
-          className="cursor-pointer rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800/50 hover:text-zinc-200"
-          aria-label="Close"
-        >
-          <Cancel01Icon className="size-4" />
-        </button>
-      </SidebarHeader>
-
       <SidebarContent className="flex-1 overflow-y-auto px-6">
         <div className="space-y-4 pt-4">
           {/* Title Section */}

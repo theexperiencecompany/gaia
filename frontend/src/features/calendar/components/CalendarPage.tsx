@@ -75,7 +75,6 @@ export default function Calendar() {
           onCalendarChange={setSelectedCalendarId}
           onCreate={handleCreate}
           onDelete={handleDelete}
-          onClose={handleClose}
         />,
       );
     } else {

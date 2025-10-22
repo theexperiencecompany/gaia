@@ -65,6 +65,7 @@ export default function TodoListPage({
       // If the deleted todo was selected, close the detail sheet
       if (selectedTodoId === todoId) {
         clearSelection();
+        closeRightSidebar();
       }
     } catch (error) {
       console.error("Failed to delete todo:", error);
@@ -95,7 +96,6 @@ export default function TodoListPage({
       setRightSidebarContent(
         <TodoSidebar
           todo={selectedTodo}
-          onClose={handleClose}
           onUpdate={handleTodoUpdate}
           onDelete={handleTodoDelete}
           projects={projects}
