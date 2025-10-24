@@ -22,15 +22,16 @@ import {
   buildEditEventPayload,
 } from "@/utils/calendar/eventPayloadBuilders";
 import { groupEventsByDate } from "@/utils/calendar/eventGrouping";
-import { AnyCalendarEvent } from "@/utils/calendar/eventTypeGuards";
 import {
-  formatDateWithRelative,
-  formatTimeRange,
-} from "@/utils/date/calendarDateUtils";
+  getEventAction,
+  getEventColor,
+  hasEventChanges,
+} from "@/utils/calendar/eventHelpers";
+import { AnyCalendarEvent } from "@/utils/calendar/eventTypeGuards";
+import { formatDateWithRelative } from "@/utils/date/calendarDateUtils";
 
 import { EventCard } from "./CalendarEventCard";
-import { EventActionCard } from "./EventActionCard";
-import { EventDisplayCard } from "./EventDisplayCard";
+import { EventContent } from "./CalendarEventContent";
 
 type ActionType = "add" | "edit" | "delete";
 
@@ -62,6 +63,10 @@ export function CalendarActionListCard(props: CalendarActionListCardProps) {
   const { eventStatuses, setEventStatuses, isConfirmingAll, confirmAll } =
     useCalendarBatchOperations();
 
+  // Get first event to infer action if not explicitly provided
+  const inferredActionType =
+    events.length > 0 ? getEventAction(events[0]) : actionType;
+
   const actionConfig = useMemo(() => {
     const configs = {
       add: {
@@ -90,8 +95,8 @@ export function CalendarActionListCard(props: CalendarActionListCardProps) {
       },
     };
 
-    return configs[actionType];
-  }, [actionType]);
+    return configs[inferredActionType];
+  }, [inferredActionType]);
 
   const eventsByDay = useMemo(
     () => groupEventsByDate(events as AnyCalendarEvent[]),
@@ -102,16 +107,18 @@ export function CalendarActionListCard(props: CalendarActionListCardProps) {
     event: AnyCalendarEvent,
     key: string | number,
   ) => {
+    const action = getEventAction(event);
+
     try {
       setEventStatuses((prev) => ({ ...prev, [key]: "loading" as const }));
 
-      if (actionType === "add") {
+      if (action === "add") {
         await handleAddEvent(event as CalendarEvent, key as number);
-      } else if (actionType === "edit") {
+      } else if (action === "edit") {
         await calendarApi.updateEventByAgent(
           buildEditEventPayload(event as CalendarEditOptions),
         );
-      } else {
+      } else if (action === "delete") {
         await calendarApi.deleteEventByAgent(
           buildDeleteEventPayload(event as CalendarDeleteOptions),
         );
@@ -119,9 +126,9 @@ export function CalendarActionListCard(props: CalendarActionListCardProps) {
 
       setEventStatuses((prev) => ({ ...prev, [key]: "completed" as const }));
     } catch (error) {
-      console.error(`Error performing ${actionType} action:`, error);
+      console.error(`Error performing ${action} action:`, error);
       setEventStatuses((prev) => ({ ...prev, [key]: "idle" as const }));
-      toast.error(`Failed to ${actionType} event`);
+      toast.error(`Failed to ${action} event`);
     }
   };
 
@@ -150,7 +157,7 @@ export function CalendarActionListCard(props: CalendarActionListCardProps) {
   if (!events.length) return null;
 
   return (
-    <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
+    <div className="w-full max-w-sm rounded-3xl bg-zinc-800 p-4 text-white">
       <ScrollShadow className="max-h-[400px] space-y-3">
         {Object.entries(eventsByDay).map(([dateString, dayEvents]) => (
           <div key={dateString} className="space-y-3">
@@ -164,106 +171,60 @@ export function CalendarActionListCard(props: CalendarActionListCardProps) {
             <div className="space-y-2">
               {dayEvents.map(({ event, key }) => {
                 const status = eventStatuses[key] || "idle";
-                const eventColor =
-                  ("background_color" in event
-                    ? event.background_color
-                    : undefined) || "#00bbff";
+                const action = getEventAction(event);
+                const eventColor = getEventColor(event);
+                const showChanges = hasEventChanges(event);
 
-                if (actionType === "edit") {
-                  const editEvent = event as CalendarEditOptions;
-                  const hasChanges =
-                    editEvent.summary !== undefined ||
-                    editEvent.description !== undefined ||
-                    editEvent.start !== undefined ||
-                    editEvent.end !== undefined ||
-                    editEvent.is_all_day !== undefined;
-
+                // Edit events show comparison
+                if (action === "edit" && showChanges) {
                   return (
                     <div key={key} className="space-y-2">
                       {/* Show old event only when not completed */}
                       {status !== "completed" && (
-                        <EventDisplayCard
+                        <EventCard
                           eventColor={eventColor}
                           label="Current Event"
+                          variant="display"
                           opacity={0.6}
                         >
-                          <EventCard actionType="edit" event={editEvent} />
-                        </EventDisplayCard>
+                          <EventContent event={event} showOriginal />
+                        </EventCard>
                       )}
 
-                      {hasChanges && (
-                        <EventActionCard
-                          eventColor={eventColor}
-                          status={status}
-                          label={
-                            status === "completed" ? undefined : "Updated Event"
-                          }
-                          buttonColor={actionConfig.buttonColor}
-                          completedLabel={actionConfig.completedLabel}
-                          icon={actionConfig.icon}
-                          onAction={() => handleAction(event, key)}
-                          isDotted={status !== "completed"}
-                        >
-                          <div className="text-base leading-tight text-white">
-                            {editEvent.summary || editEvent.original_summary}
-                          </div>
-                          {(editEvent.description !== undefined
-                            ? editEvent.description
-                            : editEvent.original_description) && (
-                            <div className="mt-1 text-xs text-zinc-400">
-                              {editEvent.description !== undefined
-                                ? editEvent.description
-                                : editEvent.original_description}
-                            </div>
-                          )}
-                          <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
-                            <span>
-                              {editEvent.start && editEvent.end
-                                ? formatTimeRange(
-                                    editEvent.start,
-                                    editEvent.end,
-                                  )
-                                : editEvent.is_all_day !== undefined &&
-                                    editEvent.is_all_day
-                                  ? "All day"
-                                  : editEvent.original_start?.dateTime &&
-                                      editEvent.original_end?.dateTime
-                                    ? formatTimeRange(
-                                        editEvent.original_start.dateTime,
-                                        editEvent.original_end.dateTime,
-                                      )
-                                    : "All day"}
-                            </span>
-                          </div>
-                        </EventActionCard>
-                      )}
+                      {/* Show new event */}
+                      <EventCard
+                        eventColor={eventColor}
+                        status={status}
+                        label={
+                          status === "completed" ? undefined : "Updated Event"
+                        }
+                        variant="action"
+                        buttonColor={actionConfig.buttonColor}
+                        completedLabel={actionConfig.completedLabel}
+                        icon={actionConfig.icon}
+                        onAction={() => handleAction(event, key)}
+                        isDotted={status !== "completed"}
+                      >
+                        <EventContent event={event} />
+                      </EventCard>
                     </div>
                   );
                 }
 
+                // Add and delete events show single card
                 return (
-                  <EventActionCard
+                  <EventCard
                     key={key}
                     eventColor={eventColor}
                     status={status}
+                    variant="action"
                     buttonColor={actionConfig.buttonColor}
                     completedLabel={actionConfig.completedLabel}
                     icon={actionConfig.icon}
                     onAction={() => handleAction(event, key)}
                   >
-                    {actionType === "add" && (
-                      <EventCard
-                        actionType="add"
-                        event={event as CalendarEvent}
-                      />
-                    )}
-                    {actionType === "delete" && (
-                      <EventCard
-                        actionType="delete"
-                        event={event as CalendarDeleteOptions}
-                      />
-                    )}
-                  </EventActionCard>
+                    <EventContent event={event} />
+                  </EventCard>
                 );
               })}
             </div>
