@@ -23,9 +23,14 @@ import {
 } from "@/utils/calendar/eventPayloadBuilders";
 import { groupEventsByDate } from "@/utils/calendar/eventGrouping";
 import { AnyCalendarEvent } from "@/utils/calendar/eventTypeGuards";
-import { formatDateWithRelative } from "@/utils/date/calendarDateUtils";
+import {
+  formatDateWithRelative,
+  formatTimeRange,
+} from "@/utils/date/calendarDateUtils";
 
 import { EventCard } from "./CalendarEventCard";
+import { EventActionCard } from "./EventActionCard";
+import { EventDisplayCard } from "./EventDisplayCard";
 
 type ActionType = "add" | "edit" | "delete";
 
@@ -144,8 +149,6 @@ export function CalendarActionListCard(props: CalendarActionListCardProps) {
 
   if (!events.length) return null;
 
-  const Icon = actionConfig.icon;
-
   return (
     <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
       <ScrollShadow className="max-h-[400px] space-y-3">
@@ -158,7 +161,6 @@ export function CalendarActionListCard(props: CalendarActionListCardProps) {
               </span>
               <div className="flex-1 border-t border-zinc-700" />
             </div>
-
             <div className="space-y-2">
               {dayEvents.map(({ event, key }) => {
                 const status = eventStatuses[key] || "idle";
@@ -167,67 +169,101 @@ export function CalendarActionListCard(props: CalendarActionListCardProps) {
                     ? event.background_color
                     : undefined) || "#00bbff";
 
+                if (actionType === "edit") {
+                  const editEvent = event as CalendarEditOptions;
+                  const hasChanges =
+                    editEvent.summary !== undefined ||
+                    editEvent.description !== undefined ||
+                    editEvent.start !== undefined ||
+                    editEvent.end !== undefined ||
+                    editEvent.is_all_day !== undefined;
+
+                  return (
+                    <div key={key} className="space-y-2">
+                      {/* Show old event only when not completed */}
+                      {status !== "completed" && (
+                        <EventDisplayCard
+                          eventColor={eventColor}
+                          label="Current Event"
+                          opacity={0.6}
+                        >
+                          <EventCard actionType="edit" event={editEvent} />
+                        </EventDisplayCard>
+                      )}
+
+                      {hasChanges && (
+                        <EventActionCard
+                          eventColor={eventColor}
+                          status={status}
+                          label={
+                            status === "completed" ? undefined : "Updated Event"
+                          }
+                          buttonColor={actionConfig.buttonColor}
+                          completedLabel={actionConfig.completedLabel}
+                          icon={actionConfig.icon}
+                          onAction={() => handleAction(event, key)}
+                          isDotted={status !== "completed"}
+                        >
+                          <div className="text-base leading-tight text-white">
+                            {editEvent.summary || editEvent.original_summary}
+                          </div>
+                          {(editEvent.description !== undefined
+                            ? editEvent.description
+                            : editEvent.original_description) && (
+                            <div className="mt-1 text-xs text-zinc-400">
+                              {editEvent.description !== undefined
+                                ? editEvent.description
+                                : editEvent.original_description}
+                            </div>
+                          )}
+                          <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
+                            <span>
+                              {editEvent.start && editEvent.end
+                                ? formatTimeRange(
+                                    editEvent.start,
+                                    editEvent.end,
+                                  )
+                                : editEvent.is_all_day !== undefined &&
+                                    editEvent.is_all_day
+                                  ? "All day"
+                                  : editEvent.original_start?.dateTime &&
+                                      editEvent.original_end?.dateTime
+                                    ? formatTimeRange(
+                                        editEvent.original_start.dateTime,
+                                        editEvent.original_end.dateTime,
+                                      )
+                                    : "All day"}
+                            </span>
+                          </div>
+                        </EventActionCard>
+                      )}
+                    </div>
+                  );
+                }
+
                 return (
-                  <div
+                  <EventActionCard
                     key={key}
-                    className="relative flex items-start gap-2 rounded-lg p-3 pr-2 pl-5 transition-colors"
-                    style={{
-                      backgroundColor: `${eventColor}20`,
-                      opacity: status === "completed" ? 0.5 : 1,
-                    }}
+                    eventColor={eventColor}
+                    status={status}
+                    buttonColor={actionConfig.buttonColor}
+                    completedLabel={actionConfig.completedLabel}
+                    icon={actionConfig.icon}
+                    onAction={() => handleAction(event, key)}
                   >
-                    <div className="absolute top-0 left-1 flex h-full items-center">
-                      <div
-                        className="h-[80%] w-1 flex-shrink-0 rounded-full"
-                        style={{
-                          backgroundColor: eventColor,
-                        }}
+                    {actionType === "add" && (
+                      <EventCard
+                        actionType="add"
+                        event={event as CalendarEvent}
                       />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      {actionType === "add" && (
-                        <EventCard
-                          actionType="add"
-                          event={event as CalendarEvent}
-                        />
-                      )}
-                      {actionType === "edit" && (
-                        <EventCard
-                          actionType="edit"
-                          event={event as CalendarEditOptions}
-                        />
-                      )}
-                      {actionType === "delete" && (
-                        <EventCard
-                          actionType="delete"
-                          event={event as CalendarDeleteOptions}
-                        />
-                      )}
-                    </div>
-
-                    <Button
-                      color={actionConfig.buttonColor}
-                      size="sm"
-                      isDisabled={status === "completed"}
-                      isLoading={status === "loading"}
-                      onPress={() => handleAction(event, key)}
-                    >
-                      {status === "loading" ? (
-                        "Confirm"
-                      ) : status === "completed" ? (
-                        <>
-                          <Tick02Icon width={18} color={undefined} />
-                          {actionConfig.completedLabel}
-                        </>
-                      ) : (
-                        <>
-                          <Icon width={18} color={undefined} />
-                          Confirm
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                    )}
+                    {actionType === "delete" && (
+                      <EventCard
+                        actionType="delete"
+                        event={event as CalendarDeleteOptions}
+                      />
+                    )}
+                  </EventActionCard>
                 );
               })}
             </div>
