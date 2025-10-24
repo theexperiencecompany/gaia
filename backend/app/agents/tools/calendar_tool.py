@@ -329,6 +329,17 @@ async def fetch_calendar_events(
         if time_min is None:
             time_min = datetime.now(timezone.utc).isoformat()
 
+        # Fetch calendar list to get backgroundColor mapping
+        calendars = await list_calendars(access_token=access_token, short=True)
+        calendar_color_map = {}
+        if calendars and isinstance(calendars, list):
+            for cal in calendars:
+                if isinstance(cal, dict):
+                    calendar_color_map[cal.get("id")] = {
+                        "name": cal.get("summary", "Unknown Calendar"),
+                        "backgroundColor": cal.get("backgroundColor", "#4285F4"),
+                    }
+
         events_data = await get_calendar_events(
             user_id=user_id,
             access_token=access_token,
@@ -342,10 +353,12 @@ async def fetch_calendar_events(
         events = transform_calendar_events(events_data.get("events", []))
         logger.info(f"Fetched and transformed {len(events)} events")
 
-        # Build array of {summary, start_time} for all events
+        # Build array with all necessary fields for frontend
         calendar_fetch_data = []
         for event in events:
             start_time = ""
+            end_time = ""
+
             if event.get("start"):
                 start_obj = event["start"]
                 if start_obj.get("dateTime"):
@@ -353,10 +366,29 @@ async def fetch_calendar_events(
                 elif start_obj.get("date"):
                     start_time = start_obj["date"]
 
+            if event.get("end"):
+                end_obj = event["end"]
+                if end_obj.get("dateTime"):
+                    end_time = end_obj["dateTime"]
+                elif end_obj.get("date"):
+                    end_time = end_obj["date"]
+
+            calendar_id = event.get("calendarId", "")
+            calendar_info = calendar_color_map.get(
+                calendar_id,
+                {
+                    "name": event.get("calendarTitle", "Unknown Calendar"),
+                    "backgroundColor": "#4285F4",
+                },
+            )
+
             calendar_fetch_data.append(
                 {
                     "summary": event.get("summary", "No Title"),
                     "start_time": start_time,
+                    "end_time": end_time,
+                    "calendar_name": calendar_info.get("name", "Unknown Calendar"),
+                    "background_color": calendar_info.get("backgroundColor", "#4285F4"),
                 }
             )
 
@@ -423,10 +455,23 @@ async def search_calendar_events(
             f"Found {len(search_results.get('matching_events', []))} matching events for query: {query}"
         )
 
-        # Build array of {summary, start_time} for search results
+        # Fetch calendar list to get backgroundColor mapping
+        calendars = await list_calendars(access_token=access_token, short=True)
+        calendar_color_map = {}
+        if calendars and isinstance(calendars, list):
+            for cal in calendars:
+                if isinstance(cal, dict):
+                    calendar_color_map[cal.get("id")] = {
+                        "name": cal.get("summary", "Unknown Calendar"),
+                        "backgroundColor": cal.get("backgroundColor", "#4285F4"),
+                    }
+
+        # Build array with all necessary fields for frontend
         calendar_search_data = []
         for event in search_results.get("matching_events", []):
             start_time = ""
+            end_time = ""
+
             if event.get("start"):
                 start_obj = event["start"]
                 if start_obj.get("dateTime"):
@@ -434,10 +479,29 @@ async def search_calendar_events(
                 elif start_obj.get("date"):
                     start_time = start_obj["date"]
 
+            if event.get("end"):
+                end_obj = event["end"]
+                if end_obj.get("dateTime"):
+                    end_time = end_obj["dateTime"]
+                elif end_obj.get("date"):
+                    end_time = end_obj["date"]
+
+            calendar_id = event.get("calendarId", "")
+            calendar_info = calendar_color_map.get(
+                calendar_id,
+                {
+                    "name": event.get("calendarTitle", "Unknown Calendar"),
+                    "backgroundColor": "#4285F4",
+                },
+            )
+
             calendar_search_data.append(
                 {
                     "summary": event.get("summary", "No Title"),
                     "start_time": start_time,
+                    "end_time": end_time,
+                    "calendar_name": calendar_info.get("name", "Unknown Calendar"),
+                    "background_color": calendar_info.get("backgroundColor", "#4285F4"),
                 }
             )
 

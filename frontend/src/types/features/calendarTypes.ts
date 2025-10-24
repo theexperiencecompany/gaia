@@ -209,7 +209,9 @@ export type CalendarEditOptions = {
 export type CalendarFetchData = {
   summary: string;
   start_time: string;
+  end_time: string;
   calendar_name: string;
+  background_color: string;
 };
 
 export type CalendarListFetchData = {

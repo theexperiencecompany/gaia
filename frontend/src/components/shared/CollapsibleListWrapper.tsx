@@ -37,15 +37,16 @@ export default function CollapsibleListWrapper({
       <Accordion
         className="w-full max-w-(--breakpoint-sm) px-0"
         defaultExpandedKeys={defaultExpanded ? ["1"] : []}
+        itemClasses={{ trigger: "cursor-pointer" }}
       >
         <AccordionItem
           key="1"
           aria-label={`${label} List`}
           indicator={<></>}
           title={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 text-sm font-normal text-zinc-400 transition hover:text-white">
               {icon}
-              <div className="h-full w-fit rounded-lg bg-white/10 p-1 px-3 text-sm font-medium transition-all hover:bg-white/20">
+              <div>
                 {isExpanded ? "Hide" : "Show"} {getCountLabel()}
               </div>
             </div>

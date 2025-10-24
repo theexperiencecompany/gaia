@@ -323,7 +323,6 @@ const DayViewCalendar: React.FC<{ addedEvent: Event | null }> = ({
           <div className="w-16 shrink-0 pr-2 text-right">
             {hours.map((hour, index) => (
               <div key={`time-${hour}`} className="flex h-20 items-start">
-                {/* Hide the first label to prevent overlap with the header */}
                 {index > 0 && (
                   <span className="-translate-y-1/2 text-xs text-gray-500">
                     {hour % 12 === 0 ? 12 : hour % 12}{" "}

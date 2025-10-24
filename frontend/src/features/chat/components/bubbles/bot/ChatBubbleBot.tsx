@@ -69,13 +69,22 @@ export default function ChatBubbleBot(
     return <TextBubble {...props} />;
   }, [image_data, props, integration_connection_required]);
 
+  // Check if there's actual content to display
+  const hasContent =
+    image_data ||
+    !!text ||
+    props.integration_connection_required ||
+    (isConvoSystemGenerated &&
+      systemPurpose === SystemPurpose.EMAIL_PROCESSING);
+
+  // Don't render the full bubble structure if only loading with no content
+  // Let ChatRenderer's loading indicator handle it
+  if (loading && !hasContent) {
+    return null;
+  }
+
   return (
-    (loading ||
-      image_data ||
-      !!text ||
-      props.integration_connection_required ||
-      (isConvoSystemGenerated &&
-        systemPurpose === SystemPurpose.EMAIL_PROCESSING)) && (
+    (loading || hasContent) && (
       <div
         id={message_id}
         onMouseOver={handleMouseOver}
