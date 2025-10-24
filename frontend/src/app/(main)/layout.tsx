@@ -14,7 +14,7 @@ import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
-import { useSidebar as useUIStoreSidebar } from "@/stores/uiStore";
+import { useUIStoreSidebar } from "@/stores/uiStore";
 
 const HeaderSidebarTrigger = () => {
   return (

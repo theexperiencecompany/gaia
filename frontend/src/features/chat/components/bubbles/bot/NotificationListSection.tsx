@@ -111,7 +111,7 @@ export default function NotificationListSection({
   }
 
   return (
-    <div className="mx-auto my-3 w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-all duration-300">
+    <div className="mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-all duration-300">
       <Accordion variant="light" defaultExpandedKeys={["notifications"]}>
         <AccordionItem
           key="notifications"

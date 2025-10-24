@@ -4,6 +4,9 @@ from app.api.v1.dependencies.google_scope_dependencies import require_integratio
 from app.config.token_repository import token_repository
 from app.decorators import tiered_rate_limit
 from app.models.calendar_models import (
+    BatchEventCreateRequest,
+    BatchEventDeleteRequest,
+    BatchEventUpdateRequest,
     CalendarPreferencesUpdateRequest,
     EventCreateRequest,
     EventDeleteRequest,
@@ -390,5 +393,155 @@ async def update_event(
         access_token = str(token.get("access_token", ""))
 
         return await update_calendar_event(event, access_token, user_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/calendar/events/batch", summary="Create Multiple Calendar Events")
+@tiered_rate_limit("calendar_management")
+async def create_events_batch(
+    batch_request: BatchEventCreateRequest,
+    current_user: dict = Depends(require_integration("calendar")),
+):
+    """
+    Create multiple calendar events in a batch operation.
+
+    Args:
+        batch_request (BatchEventCreateRequest): The batch event creation request.
+
+    Returns:
+        A dict with successful and failed event creations.
+
+    Raises:
+        HTTPException: If batch creation fails.
+    """
+    try:
+        user_id = current_user.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+
+        token = await token_repository.get_token(
+            str(user_id), "google", renew_if_expired=True
+        )
+        access_token = str(token.get("access_token", ""))
+
+        results = {"successful": [], "failed": []}
+
+        for event in batch_request.events:
+            try:
+                created_event = await calendar_service.create_calendar_event(
+                    event, access_token, user_id
+                )
+                results["successful"].append(created_event)
+            except Exception as e:
+                results["failed"].append(
+                    {
+                        "event": event.summary,
+                        "error": str(e),
+                    }
+                )
+
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/calendar/events/batch", summary="Update Multiple Calendar Events")
+@tiered_rate_limit("calendar_management")
+async def update_events_batch(
+    batch_request: BatchEventUpdateRequest,
+    current_user: dict = Depends(require_integration("calendar")),
+):
+    """
+    Update multiple calendar events in a batch operation.
+
+    Args:
+        batch_request (BatchEventUpdateRequest): The batch event update request.
+
+    Returns:
+        A dict with successful and failed event updates.
+
+    Raises:
+        HTTPException: If batch update fails.
+    """
+    try:
+        user_id = current_user.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+
+        token = await token_repository.get_token(
+            str(user_id), "google", renew_if_expired=True
+        )
+        access_token = str(token.get("access_token", ""))
+
+        results = {"successful": [], "failed": []}
+
+        for event in batch_request.events:
+            try:
+                updated_event = await update_calendar_event(
+                    event, access_token, user_id
+                )
+                results["successful"].append(updated_event)
+            except Exception as e:
+                results["failed"].append(
+                    {
+                        "event_id": event.event_id,
+                        "error": str(e),
+                    }
+                )
+
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/calendar/events/batch", summary="Delete Multiple Calendar Events")
+@tiered_rate_limit("calendar_management")
+async def delete_events_batch(
+    batch_request: BatchEventDeleteRequest,
+    current_user: dict = Depends(require_integration("calendar")),
+):
+    """
+    Delete multiple calendar events in a batch operation.
+
+    Args:
+        batch_request (BatchEventDeleteRequest): The batch event deletion request.
+
+    Returns:
+        A dict with successful and failed event deletions.
+
+    Raises:
+        HTTPException: If batch deletion fails.
+    """
+    try:
+        user_id = current_user.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+
+        token = await token_repository.get_token(
+            str(user_id), "google", renew_if_expired=True
+        )
+        access_token = str(token.get("access_token", ""))
+
+        results = {"successful": [], "failed": []}
+
+        for event in batch_request.events:
+            try:
+                await delete_calendar_event(event, access_token, user_id)
+                results["successful"].append(
+                    {
+                        "event_id": event.event_id,
+                        "calendar_id": event.calendar_id,
+                    }
+                )
+            except Exception as e:
+                results["failed"].append(
+                    {
+                        "event_id": event.event_id,
+                        "error": str(e),
+                    }
+                )
+
+        return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

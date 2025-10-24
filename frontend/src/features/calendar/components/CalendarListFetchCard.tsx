@@ -12,7 +12,7 @@ export default function CalendarListFetchCard({
 }: CalendarListFetchProps) {
   if (!!calendars && calendars.length > 0)
     return (
-      <div className="mt-3 w-full max-w-2xl rounded-3xl bg-zinc-800 p-3 text-white">
+      <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-3 text-white">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-1">
           <div className="flex items-center gap-2">

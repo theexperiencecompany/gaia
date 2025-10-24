@@ -98,6 +98,7 @@ li {
   align-items: flex-start;
   display: flex;
   flex-direction: column;
+  gap: 10px;
 }
 
 .chat_bubble_container.user {

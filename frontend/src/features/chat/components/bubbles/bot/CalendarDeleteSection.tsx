@@ -1,8 +1,8 @@
 import React from "react";
 
-import { CalendarDeleteOptions } from "@/types/features/convoTypes";
+import { CalendarDeleteOptions } from "@/types/features/calendarTypes";
 
-import { CalendarDeleteCard } from "./CalendarDeleteCard";
+import { CalendarActionListCard } from "./CalendarActionListCard";
 
 interface CalendarDeleteSectionProps {
   calendar_delete_options: CalendarDeleteOptions[];
@@ -14,13 +14,9 @@ export function CalendarDeleteSection({
   if (!calendar_delete_options?.length) return null;
 
   return (
-    <div className="w-full space-y-3">
-      {calendar_delete_options.map((deleteOption, index) => (
-        <CalendarDeleteCard
-          key={`${deleteOption.event_id}-${index}`}
-          deleteOption={deleteOption}
-        />
-      ))}
-    </div>
+    <CalendarActionListCard
+      actionType="delete"
+      events={calendar_delete_options}
+    />
   );
 }

@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { GoogleCalendarIcon } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { CalendarFetchData } from "@/types/features/calendarTypes";
+import { groupFetchDataByDate } from "@/utils/calendar/eventGrouping";
 import {
   formatDateWithRelative,
   formatTimeRange,
@@ -22,39 +23,9 @@ export default function CalendarListCard({
 }: CalendarListProps) {
   const router = useRouter();
 
-  // Group events by date
   const eventsByDay = useMemo(() => {
     if (!events) return {};
-
-    const grouped: { [key: string]: CalendarFetchData[] } = {};
-    events.forEach((event) => {
-      // Extract date from start_time
-      let eventDate: string;
-      if (event.start_time.includes("T")) {
-        // DateTime - convert to local YYYY-MM-DD
-        const d = new Date(event.start_time);
-        eventDate = d.toISOString().slice(0, 10);
-      } else {
-        // Date-only format
-        eventDate = event.start_time;
-      }
-
-      if (!grouped[eventDate]) {
-        grouped[eventDate] = [];
-      }
-      grouped[eventDate].push(event);
-    });
-
-    // Sort events within each day
-    Object.values(grouped).forEach((dayEvents) =>
-      dayEvents.sort((a, b) => {
-        const aTime = new Date(a.start_time).getTime();
-        const bTime = new Date(b.start_time).getTime();
-        return aTime - bTime;
-      }),
-    );
-
-    return grouped;
+    return groupFetchDataByDate(events);
   }, [events]);
 
   if (!!events && events.length > 0) {

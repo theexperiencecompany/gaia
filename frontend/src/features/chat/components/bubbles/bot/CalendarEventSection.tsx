@@ -5,7 +5,7 @@ import {
 } from "@/types/features/calendarTypes";
 import { CalendarOptions } from "@/types/features/convoTypes";
 
-import { CalendarEventsList } from "./CalendarEventCard";
+import { CalendarActionListCard } from "./CalendarActionListCard";
 
 export default function CalendarEventSection({
   calendar_options,
@@ -63,5 +63,11 @@ export default function CalendarEventSection({
     },
   );
 
-  return <CalendarEventsList events={calendarEvents} disableAnimation={true} />;
+  return (
+    <CalendarActionListCard
+      actionType="add"
+      events={calendarEvents}
+      isDummy={false}
+    />
+  );
 }

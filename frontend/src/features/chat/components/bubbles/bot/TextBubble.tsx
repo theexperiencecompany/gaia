@@ -48,10 +48,7 @@ import {
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
 import { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
-import {
-  ContactData,
-  PeopleSearchData,
-} from "@/types/features/mailTypes";
+import { ContactData, PeopleSearchData } from "@/types/features/mailTypes";
 import { EmailFetchData } from "@/types/features/mailTypes";
 import { NotificationRecord } from "@/types/features/notificationTypes";
 import { SupportTicketData } from "@/types/features/supportTypes";
@@ -124,9 +121,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   email_sent_data: (data, index) => (
     <EmailSentSection
       key={`tool-email-sent-${index}`}
-      email_sent_data={
-        (Array.isArray(data) ? data : [data]) as EmailSentData[]
-      }
+      email_sent_data={(Array.isArray(data) ? data : [data]) as EmailSentData[]}
     />
   ),
   contacts_data: (data, index) => (

@@ -15,6 +15,18 @@ class EventDeleteRequest(BaseModel):
     summary: Optional[str] = Field(None, title="Event summary for confirmation")
 
 
+class BatchEventCreateRequest(BaseModel):
+    events: List["EventCreateRequest"] = Field(..., title="List of events to create")
+
+
+class BatchEventUpdateRequest(BaseModel):
+    events: List["EventUpdateRequest"] = Field(..., title="List of events to update")
+
+
+class BatchEventDeleteRequest(BaseModel):
+    events: List[EventDeleteRequest] = Field(..., title="List of events to delete")
+
+
 class EventLookupRequest(BaseModel):
     event_id: Optional[str] = Field(None, title="Event ID to lookup")
     calendar_id: Optional[str] = Field(None, title="Calendar ID containing the event")

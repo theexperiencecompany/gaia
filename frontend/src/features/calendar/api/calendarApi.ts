@@ -192,4 +192,66 @@ export const calendarApi = {
       },
     );
   },
+  // Batch operations
+  batchCreateEvents: async (
+    events: EventCreatePayload[],
+  ): Promise<{ successful: GoogleCalendarEvent[]; failed: any[] }> => {
+    return apiService.post<{
+      successful: GoogleCalendarEvent[];
+      failed: any[];
+    }>(
+      "/calendar/events/batch",
+      { events },
+      {
+        successMessage: `Successfully added ${events.length} event${events.length > 1 ? "s" : ""}!`,
+        errorMessage: "Failed to add some events",
+      },
+    );
+  },
+
+  batchUpdateEvents: async (
+    events: Array<{
+      event_id: string;
+      calendar_id: string;
+      summary?: string;
+      description?: string;
+      start?: string;
+      end?: string;
+      is_all_day?: boolean;
+      timezone?: string;
+      original_summary?: string;
+    }>,
+  ): Promise<{ successful: GoogleCalendarEvent[]; failed: any[] }> => {
+    return apiService.put<{ successful: GoogleCalendarEvent[]; failed: any[] }>(
+      "/calendar/events/batch",
+      { events },
+      {
+        successMessage: `Successfully updated ${events.length} event${events.length > 1 ? "s" : ""}!`,
+        errorMessage: "Failed to update some events",
+      },
+    );
+  },
+
+  batchDeleteEvents: async (
+    events: Array<{
+      event_id: string;
+      calendar_id: string;
+      summary?: string;
+    }>,
+  ): Promise<{
+    successful: Array<{ event_id: string; calendar_id: string }>;
+    failed: any[];
+  }> => {
+    return apiService.delete<{
+      successful: Array<{ event_id: string; calendar_id: string }>;
+      failed: any[];
+    }>(
+      "/calendar/events/batch",
+      { events },
+      {
+        successMessage: `Successfully deleted ${events.length} event${events.length > 1 ? "s" : ""}!`,
+        errorMessage: "Failed to delete some events",
+      },
+    );
+  },
 };

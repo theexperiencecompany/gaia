@@ -96,7 +96,7 @@ export default function EmailThreadCard({
 }) {
   return (
     <div
-      className={`mx-auto mb-3 w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-all duration-300`}
+      className={`mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-all duration-300`}
     >
       <Accordion variant="light" defaultExpandedKeys={["email-thread"]}>
         <AccordionItem

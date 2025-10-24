@@ -152,6 +152,22 @@ async def create_calendar_event(
                 # Add optional fields only if they exist
                 if processed_event.calendar_id:
                     event_dict["calendar_id"] = processed_event.calendar_id
+                    # Fetch calendar info to get color
+                    try:
+                        calendar_list = await list_calendars(user_id)
+                        for cal in calendar_list.get("items", []):
+                            if cal.get("id") == processed_event.calendar_id:
+                                event_dict["calendar_name"] = cal.get(
+                                    "summary", "Calendar"
+                                )
+                                event_dict["background_color"] = cal.get(
+                                    "backgroundColor", "#4285F4"
+                                )
+                                break
+                    except Exception as e:
+                        logger.warning(f"Could not fetch calendar color: {e}")
+                        event_dict["background_color"] = "#4285F4"
+
                 if processed_event.recurrence:
                     event_dict["recurrence"] = processed_event.recurrence.model_dump()
 
@@ -218,8 +234,55 @@ async def create_calendar_event(
         # Return the successfully processed events
         writer = get_stream_writer()
 
-        # Send calendar options to frontend via writer
-        writer({"calendar_options": calendar_options, "intent": "calendar"})
+        # Fetch existing events on the same days for context
+        try:
+            tokens = await get_tokens_by_user_id(user_id, "google")
+            access_token = tokens.get("access_token", "")
+
+            # Collect unique dates from the events
+            event_dates = set()
+            for event_option in calendar_options:
+                # Extract date from start time
+                start_time = event_option.get("start", "")
+                if start_time:
+                    if "T" in start_time:
+                        event_date = start_time.split("T")[0]
+                    else:
+                        event_date = start_time
+                    event_dates.add(event_date)
+
+            # Fetch events for each date
+            same_day_events = []
+            for event_date in event_dates:
+                try:
+                    # Create time range for the day
+                    time_min = f"{event_date}T00:00:00Z"
+                    time_max = f"{event_date}T23:59:59Z"
+
+                    events_response = await get_calendar_events(
+                        access_token=access_token,
+                        user_id=user_id,
+                        time_min=time_min,
+                        time_max=time_max,
+                    )
+
+                    if events_response and "events" in events_response:
+                        same_day_events.extend(events_response["events"])
+                except Exception as e:
+                    logger.warning(f"Error fetching events for {event_date}: {str(e)}")
+
+            # Transform and send data
+            writer(
+                {
+                    "calendar_options": calendar_options,
+                    "same_day_events": transform_calendar_events(same_day_events),
+                    "intent": "calendar",
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Error fetching same-day events: {str(e)}")
+            # Still send calendar options even if we can't get same-day events
+            writer({"calendar_options": calendar_options, "intent": "calendar"})
 
         logger.info("Calendar event processing successful")
         logger.info(f"Sent {len(calendar_options)} calendar options to frontend")

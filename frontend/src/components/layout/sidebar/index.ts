@@ -3,18 +3,19 @@
  */
 
 export * from "./ChatOptionsDropdown";
-export * from "./ChatsList";
 export * from "./ChatTab";
+export * from "./ChatsList";
 export * from "./CloseOpenSidebar";
-export * from "./constants";
 export * from "./ContactSupport";
 export * from "./MainSidebar";
-export * from "./right-variants/EventSidebar";
-export * from "./right-variants/TodoSidebar";
 export * from "./RightSidebar";
 export * from "./SidebarTopButtons";
 export * from "./TopWebsiteName";
 export * from "./UserContainer";
+export * from "./constants";
+export * from "./right-variants/EventSidebar";
+export * from "./right-variants/GoalSidebar";
+export * from "./right-variants/TodoSidebar";
 export * from "./variants/BrowserSidebar";
 export * from "./variants/CalendarSidebar";
 export * from "./variants/MailSidebar";

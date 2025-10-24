@@ -171,7 +171,7 @@ export const useImageDialog = () =>
     })),
   );
 
-export const useHeader = () =>
+export const useUIStoreHeader = () =>
   useUIStore(
     useShallow((state) => ({
       header: state.header.component,
@@ -179,7 +179,7 @@ export const useHeader = () =>
     })),
   );
 
-export const useSidebar = () =>
+export const useUIStoreSidebar = () =>
   useUIStore(
     useShallow((state) => ({
       isOpen: state.sidebarOpen,

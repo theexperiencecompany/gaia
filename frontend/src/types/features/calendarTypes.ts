@@ -118,6 +118,8 @@ export interface BaseEvent {
     email?: string;
   };
   calendar_id?: string;
+  calendar_name?: string;
+  background_color?: string;
   is_all_day?: boolean;
   recurrence?: RecurrenceData;
 }
@@ -180,6 +182,8 @@ export type CalendarDeleteOptions = {
   action: "delete";
   event_id: string;
   calendar_id: string;
+  calendar_name?: string;
+  background_color?: string;
   summary: string;
   description?: string;
   start?: CalendarEventDateTime;
@@ -191,6 +195,8 @@ export type CalendarEditOptions = {
   action: "edit";
   event_id: string;
   calendar_id: string;
+  calendar_name?: string;
+  background_color?: string;
   original_summary: string;
   original_description?: string;
   original_start?: CalendarEventDateTime;

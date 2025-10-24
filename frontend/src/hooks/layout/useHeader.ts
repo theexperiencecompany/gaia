@@ -1,5 +1,5 @@
 "use client";
 
-import { useHeader as useHeaderStore } from "@/stores/uiStore";
+import { useUIStoreHeader } from "@/stores/uiStore";
 
-export const useHeader = useHeaderStore;
+export const useHeader = useUIStoreHeader;

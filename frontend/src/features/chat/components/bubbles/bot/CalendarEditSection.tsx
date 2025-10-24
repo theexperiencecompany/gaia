@@ -1,8 +1,8 @@
 import React from "react";
 
-import { CalendarEditOptions } from "@/types/features/convoTypes";
+import { CalendarEditOptions } from "@/types/features/calendarTypes";
 
-import { CalendarEditCard } from "./CalendarEditCard";
+import { CalendarActionListCard } from "./CalendarActionListCard";
 
 interface CalendarEditSectionProps {
   calendar_edit_options: CalendarEditOptions[];
@@ -14,13 +14,6 @@ export function CalendarEditSection({
   if (!calendar_edit_options?.length) return null;
 
   return (
-    <div className="w-full space-y-3">
-      {calendar_edit_options.map((editOption, index) => (
-        <CalendarEditCard
-          key={`${editOption.event_id}-${index}`}
-          editOption={editOption}
-        />
-      ))}
-    </div>
+    <CalendarActionListCard actionType="edit" events={calendar_edit_options} />
   );
 }
