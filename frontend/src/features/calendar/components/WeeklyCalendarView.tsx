@@ -81,12 +81,30 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
   // Calculate dynamic column width based on container size
   useEffect(() => {
     const updateColumnWidth = () => {
-      if (containerRef.current) {
+      if (containerRef.current && scrollContainerRef.current) {
         const containerWidth = containerRef.current.offsetWidth;
         const timeColumnWidth = 80; // w-20
         const availableWidth = containerWidth - timeColumnWidth;
         const calculatedWidth = Math.floor(availableWidth / daysToShow);
-        setColumnWidth(Math.max(calculatedWidth, 120)); // min 120px per column
+        const newColumnWidth = Math.max(calculatedWidth, 120); // min 120px per column
+
+        // Calculate which column is currently at the left edge of the viewport
+        const currentScrollLeft = scrollContainerRef.current.scrollLeft;
+        const currentLeftColumn = Math.floor(currentScrollLeft / columnWidth);
+
+        setColumnWidth(newColumnWidth);
+
+        // After width changes, snap to align columns properly
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            // Snap to the nearest column boundary that fills the viewport
+            const newScrollLeft = currentLeftColumn * newColumnWidth;
+            scrollContainerRef.current.scrollTo({
+              left: newScrollLeft,
+              behavior: "auto",
+            });
+          }
+        });
       }
     };
 
@@ -100,7 +118,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
     return () => {
       resizeObserver.disconnect();
     };
-  }, [daysToShow]);
+  }, [daysToShow, columnWidth]);
 
   // Auto-scroll to selected date when it changes
   useEffect(() => {
