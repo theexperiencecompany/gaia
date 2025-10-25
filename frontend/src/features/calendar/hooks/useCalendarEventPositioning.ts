@@ -10,6 +10,11 @@ export interface EventPosition {
   width: number;
 }
 
+export interface CalendarEventPositions {
+  allDayEvents: GoogleCalendarEvent[];
+  timedEvents: EventPosition[];
+}
+
 const HOUR_HEIGHT = 64; // 64px per hour (h-16 in Tailwind)
 const START_HOUR = 0; // 12AM (midnight)
 const PIXELS_PER_MINUTE = HOUR_HEIGHT / 60;
@@ -20,16 +25,7 @@ const calculateEventPosition = (
   const eventStart = new Date(event.start.dateTime || event.start.date || "");
   const eventEnd = new Date(event.end.dateTime || event.end.date || "");
 
-  // Handle all-day events
-  if (!event.start.dateTime && event.start.date) {
-    return {
-      event,
-      top: 0,
-      height: 48,
-    };
-  }
-
-  // Handle timed events
+  // Handle timed events only (all-day events are handled separately)
   if (event.start.dateTime && event.end.dateTime) {
     const startHour = eventStart.getHours();
     const startMinute = eventStart.getMinutes();
@@ -100,10 +96,11 @@ const calculateOverlaps = (dayEvents: EventPosition[]): void => {
 export const useCalendarEventPositioning = (
   events: GoogleCalendarEvent[],
   selectedDate: Date,
-): EventPosition[] => {
+): CalendarEventPositions => {
   return useMemo(() => {
     const selectedDateStr = selectedDate.toDateString();
-    const dayEvents: EventPosition[] = [];
+    const allDayEvents: GoogleCalendarEvent[] = [];
+    const timedEvents: EventPosition[] = [];
 
     events.forEach((event) => {
       const eventStart = new Date(
@@ -111,19 +108,25 @@ export const useCalendarEventPositioning = (
       );
 
       if (eventStart.toDateString() === selectedDateStr) {
-        const position = calculateEventPosition(event);
-        if (position) {
-          dayEvents.push({
-            ...position,
-            left: 0,
-            width: 100,
-          });
+        // Check if it's an all-day event (has date but no dateTime)
+        if (event.start.date && !event.start.dateTime) {
+          allDayEvents.push(event);
+        } else {
+          // It's a timed event
+          const position = calculateEventPosition(event);
+          if (position) {
+            timedEvents.push({
+              ...position,
+              left: 0,
+              width: 100,
+            });
+          }
         }
       }
     });
 
-    calculateOverlaps(dayEvents);
+    calculateOverlaps(timedEvents);
 
-    return dayEvents;
+    return { allDayEvents, timedEvents };
   }, [selectedDate, events]);
 };

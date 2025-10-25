@@ -1,14 +1,15 @@
 "use client";
 
 import { Spinner } from "@heroui/react";
-import React, { forwardRef } from "react";
+import React, { forwardRef, useMemo, useState } from "react";
+import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 
-import { EventPosition } from "@/features/calendar/hooks/useCalendarEventPositioning";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
-interface CalendarGridProps {
+interface MultiDayCalendarGridProps {
   hours: number[];
-  dayEvents: EventPosition[];
+  dates: Date[];
+  events: GoogleCalendarEvent[];
   loading: {
     calendars: boolean;
     events: boolean;
@@ -18,27 +19,169 @@ interface CalendarGridProps {
     events: string | null;
   };
   selectedCalendars: string[];
-  selectedDate: Date;
   onEventClick?: (event: GoogleCalendarEvent) => void;
   getEventColor: (event: GoogleCalendarEvent) => string;
 }
 
-export const CalendarGrid = forwardRef<HTMLDivElement, CalendarGridProps>(
+const PX_PER_MINUTE = 64 / 60;
+const DAY_START_HOUR = 0;
+
+const timeToMinutes = (time: string): number => {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+};
+
+const getEventPositions = (events: GoogleCalendarEvent[], targetDate: Date) => {
+  const targetDateStr = targetDate.toDateString();
+
+  const allDayEvents = events.filter((event) => {
+    const eventDateStr = event.start.date
+      ? new Date(event.start.date).toDateString()
+      : event.start.dateTime
+        ? new Date(event.start.dateTime).toDateString()
+        : null;
+    return eventDateStr === targetDateStr && event.start.date;
+  });
+
+  const timedEvents = events
+    .filter((event) => {
+      const eventDateStr = event.start.dateTime
+        ? new Date(event.start.dateTime).toDateString()
+        : null;
+      return eventDateStr === targetDateStr && event.start.dateTime;
+    })
+    .map((event) => {
+      const startTime = new Date(event.start.dateTime!);
+      const endTime = new Date(event.end.dateTime!);
+
+      const startMinutes = startTime.getHours() * 60 + startTime.getMinutes();
+      const endMinutes = endTime.getHours() * 60 + endTime.getMinutes();
+
+      const top = (startMinutes - DAY_START_HOUR * 60) * PX_PER_MINUTE;
+      const height = (endMinutes - startMinutes) * PX_PER_MINUTE;
+
+      return {
+        event,
+        top,
+        height,
+        left: 0,
+        width: 100,
+      };
+    });
+
+  return { allDayEvents, timedEvents };
+};
+
+export const CalendarGrid = forwardRef<
+  HTMLDivElement,
+  MultiDayCalendarGridProps
+>(
   (
     {
       hours,
-      dayEvents,
+      dates,
+      events,
       loading,
       error,
       selectedCalendars,
-      selectedDate,
       onEventClick,
       getEventColor,
     },
     ref,
   ) => {
+    const [isAllDayExpanded, setIsAllDayExpanded] = useState(true);
+
+    const daysData = useMemo(
+      () =>
+        dates.map((date) => {
+          const dayEvents = getEventPositions(events, date);
+          return { date, ...dayEvents };
+        }),
+      [dates, events],
+    );
+
+    const hasAnyEvents = daysData.some(
+      (day) => day.allDayEvents.length > 0 || day.timedEvents.length > 0,
+    );
+
+    const hasAnyAllDayEvents = daysData.some(
+      (day) => day.allDayEvents.length > 0,
+    );
+
     return (
-      <div className="flex-1 overflow-y-auto" ref={ref}>
+      <div className="relative flex-1 overflow-y-auto" ref={ref}>
+        {/* All-Day Events Section for all days */}
+        <div className="flex border-b border-zinc-800">
+          {/* All-day label in time column */}
+          <div
+            className="w-20 flex-shrink-0 cursor-pointer border-r border-zinc-800 transition-colors hover:bg-zinc-800/50"
+            onClick={() => setIsAllDayExpanded(!isAllDayExpanded)}
+          >
+            <div className="flex h-full items-center justify-end gap-1 py-3 pr-3">
+              <span className="text-xs font-medium text-zinc-400">All-day</span>
+              {hasAnyAllDayEvents && (
+                <span>
+                  {isAllDayExpanded ? (
+                    <ChevronsDownUp className="h-3 w-3 text-zinc-400" />
+                  ) : (
+                    <ChevronsUpDown className="h-3 w-3 text-zinc-400" />
+                  )}
+                </span>
+              )}
+            </div>
+          </div>
+          {/* All-day events for each day */}
+          <div className="flex flex-1">
+            {daysData.map((day, dayIndex) => (
+              <div
+                key={dayIndex}
+                className="flex-1 border-r border-zinc-800 px-2 py-2 last:border-r-0"
+              >
+                {isAllDayExpanded ? (
+                  day.allDayEvents.length > 0 ? (
+                    <div className="space-y-1">
+                      {day.allDayEvents.map((event, index) => {
+                        const eventColor = getEventColor(event);
+                        return (
+                          <div
+                            key={`allday-${index}`}
+                            className="flex min-h-[32px] cursor-pointer overflow-hidden rounded-lg text-white transition-all duration-200 hover:opacity-80"
+                            style={{
+                              backgroundColor: `${eventColor}40`,
+                            }}
+                            onClick={() => onEventClick?.(event)}
+                          >
+                            <div
+                              className="w-1 rounded-l-lg"
+                              style={{
+                                backgroundColor: eventColor,
+                              }}
+                            />
+                            <div className="flex items-center px-3 py-1.5">
+                              <div className="line-clamp-1 text-xs font-medium">
+                                {event.summary}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="min-h-[32px]" />
+                  )
+                ) : day.allDayEvents.length > 0 ? (
+                  <div className="flex min-h-[32px] items-center text-xs text-zinc-400">
+                    {day.allDayEvents.length} event
+                    {day.allDayEvents.length !== 1 ? "s" : ""}
+                  </div>
+                ) : (
+                  <div className="min-h-[32px]" />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="relative flex">
           {/* Time Labels Column */}
           <div className="w-20 flex-shrink-0 border-r border-zinc-800">
@@ -60,126 +203,133 @@ export const CalendarGrid = forwardRef<HTMLDivElement, CalendarGridProps>(
             ))}
           </div>
 
-          {/* Main Calendar Column */}
-          <div className="relative flex-1">
-            {/* Hour Dividers */}
-            {hours.map((hour) => (
+          {/* Main Calendar Columns for each day */}
+          <div className="relative flex flex-1">
+            {daysData.map((day, dayIndex) => (
               <div
-                key={`divider-${hour}`}
-                className="h-16 border-t border-zinc-800 first:border-t-0"
-              />
-            ))}
+                key={dayIndex}
+                className="relative flex-1 border-r border-zinc-800 last:border-r-0"
+              >
+                {/* Hour Dividers */}
+                {hours.map((hour) => (
+                  <div
+                    key={`divider-${hour}`}
+                    className="h-16 border-t border-zinc-800 first:border-t-0"
+                  />
+                ))}
 
-            {/* Events Container */}
-            <div className="absolute inset-0 px-2">
-              {loading.calendars ? (
-                <div className="flex h-full items-center justify-center">
-                  <Spinner size="lg" color="default" />
-                </div>
-              ) : error.calendars ? (
-                <div className="flex h-full items-center justify-center">
-                  <div className="text-center text-red-500">
-                    <div className="text-lg font-medium">
-                      Error loading calendars
+                {/* Events Container */}
+                <div className="absolute inset-0 px-2">
+                  {loading.calendars ? (
+                    <div className="flex h-full items-center justify-center">
+                      <Spinner size="lg" color="default" />
                     </div>
-                    <div className="mt-1 text-sm">{error.calendars}</div>
-                  </div>
-                </div>
-              ) : selectedCalendars.length === 0 ? (
-                <div className="flex h-full items-center justify-center">
-                  <div className="text-center text-zinc-500">
-                    <div className="text-lg font-medium">
-                      No calendars selected
-                    </div>
-                    <div className="mt-1 text-sm">
-                      Please select a calendar to view events
-                    </div>
-                  </div>
-                </div>
-              ) : loading.events ? (
-                <div className="flex h-full items-center justify-center">
-                  <Spinner size="lg" color="default" />
-                </div>
-              ) : error.events ? (
-                <div className="flex h-full items-center justify-center">
-                  <div className="text-center text-red-500">
-                    <div className="text-lg font-medium">
-                      Error loading events
-                    </div>
-                    <div className="mt-1 text-sm">{error.events}</div>
-                  </div>
-                </div>
-              ) : dayEvents.length === 0 ? (
-                <div className="flex h-full items-center justify-center">
-                  <div className="text-center text-zinc-500">
-                    <div className="text-lg font-medium">
-                      No events scheduled
-                    </div>
-                    <div className="mt-1 text-sm">
-                      for{" "}
-                      {selectedDate.toLocaleDateString("en-US", {
-                        weekday: "long",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                dayEvents.map((eventPos, eventIndex) => {
-                  const eventColor = getEventColor(eventPos.event);
-                  return (
-                    <div
-                      key={`event-${eventIndex}`}
-                      className="absolute ml-0.5 flex min-h-fit cursor-pointer overflow-hidden rounded-lg text-white backdrop-blur-3xl transition-all duration-200 hover:opacity-80"
-                      style={{
-                        top: `${eventPos.top}px`,
-                        height: `${eventPos.height}px`,
-                        left: `${eventPos.left}%`,
-                        width: `${eventPos.width - 1}%`,
-                        // backgroundColor: eventColor,
-                        backgroundColor: `${eventColor}40`,
-                      }}
-                      onClick={() => onEventClick?.(eventPos.event)}
-                    >
-                      <div
-                        className="relative left-0 h-full min-h-full max-w-1 min-w-1 rounded-full"
-                        style={{
-                          backgroundColor: eventColor,
-                        }}
-                      />
-                      <div className="p-3">
-                        <div className="line-clamp-2 text-sm leading-tight font-medium">
-                          {eventPos.event.summary}
+                  ) : error.calendars ? (
+                    <div className="flex h-full items-center justify-center">
+                      <div className="text-center text-red-500">
+                        <div className="text-lg font-medium">
+                          Error loading calendars
                         </div>
-                        {eventPos.event.start.dateTime &&
-                          eventPos.event.end.dateTime && (
-                            <div className="mt-1 text-xs text-white/80">
-                              {new Date(
-                                eventPos.event.start.dateTime,
-                              ).toLocaleTimeString("en-US", {
-                                hour: "numeric",
-                                minute: "2-digit",
-                                hour12: true,
-                              })}{" "}
-                              –{" "}
-                              {new Date(
-                                eventPos.event.end.dateTime,
-                              ).toLocaleTimeString("en-US", {
-                                hour: "numeric",
-                                minute: "2-digit",
-                                hour12: true,
-                              })}
-                            </div>
-                          )}
+                        <div className="mt-1 text-sm">{error.calendars}</div>
                       </div>
                     </div>
-                  );
-                })
-              )}
-            </div>
+                  ) : selectedCalendars.length === 0 ? (
+                    <div className="flex h-full items-center justify-center">
+                      <div className="text-center text-zinc-500">
+                        <div className="text-lg font-medium">
+                          No calendars selected
+                        </div>
+                        <div className="mt-1 text-sm">
+                          Please select a calendar to view events
+                        </div>
+                      </div>
+                    </div>
+                  ) : loading.events ? (
+                    <div className="flex h-full items-center justify-center">
+                      <Spinner size="lg" color="default" />
+                    </div>
+                  ) : error.events ? (
+                    <div className="flex h-full items-center justify-center">
+                      <div className="text-center text-red-500">
+                        <div className="text-lg font-medium">
+                          Error loading events
+                        </div>
+                        <div className="mt-1 text-sm">{error.events}</div>
+                      </div>
+                    </div>
+                  ) : day.timedEvents.length === 0 ? null : (
+                    day.timedEvents.map((eventPos, eventIndex) => {
+                      const eventColor = getEventColor(eventPos.event);
+                      return (
+                        <div
+                          key={`event-${eventIndex}`}
+                          className="absolute ml-0.5 flex min-h-fit cursor-pointer overflow-hidden rounded-lg text-white backdrop-blur-3xl transition-all duration-200 hover:opacity-80"
+                          style={{
+                            top: `${eventPos.top}px`,
+                            height: `${eventPos.height}px`,
+                            left: `${eventPos.left}%`,
+                            width: `${eventPos.width - 1}%`,
+                            backgroundColor: `${eventColor}40`,
+                          }}
+                          onClick={() => onEventClick?.(eventPos.event)}
+                        >
+                          <div
+                            className="relative left-0 h-full min-h-full max-w-1 min-w-1 rounded-full"
+                            style={{
+                              backgroundColor: eventColor,
+                            }}
+                          />
+                          <div className="p-3">
+                            <div className="line-clamp-2 text-xs leading-tight font-medium">
+                              {eventPos.event.summary}
+                            </div>
+                            {eventPos.event.start.dateTime &&
+                              eventPos.event.end.dateTime && (
+                                <div className="mt-1 text-xs text-zinc-400">
+                                  {new Date(
+                                    eventPos.event.start.dateTime,
+                                  ).toLocaleTimeString("en-US", {
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                    hour12: true,
+                                  })}{" "}
+                                  –{" "}
+                                  {new Date(
+                                    eventPos.event.end.dateTime,
+                                  ).toLocaleTimeString("en-US", {
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                    hour12: true,
+                                  })}
+                                </div>
+                              )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
+
+        {/* Show message when no events on any day */}
+        {!loading.calendars &&
+          !loading.events &&
+          !error.calendars &&
+          !error.events &&
+          selectedCalendars.length > 0 &&
+          !hasAnyEvents && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center text-zinc-500">
+                <div className="text-lg font-medium">No events scheduled</div>
+                <div className="mt-1 text-sm">
+                  for the selected day{dates.length > 1 ? "s" : ""}
+                </div>
+              </div>
+            </div>
+          )}
       </div>
     );
   },

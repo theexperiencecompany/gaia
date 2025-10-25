@@ -5,14 +5,13 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { CalendarGrid } from "@/features/calendar/components/CalendarGrid";
 import { DateStrip } from "@/features/calendar/components/DateStrip";
 import { useCalendarChunks } from "@/features/calendar/hooks/useCalendarChunks";
-import { useCalendarEventPositioning } from "@/features/calendar/hooks/useCalendarEventPositioning";
-import { useCalendarScroll } from "@/features/calendar/hooks/useCalendarScroll";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 import { getExtendedDates } from "@/features/calendar/utils/dateRangeUtils";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
 import {
   useCalendarCurrentWeek,
   useCalendarSelectedDate,
+  useDaysToShow,
   useHandleDateChange,
 } from "@/stores/calendarStore";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
@@ -28,6 +27,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
 
   const selectedDate = useCalendarSelectedDate();
   const currentWeek = useCalendarCurrentWeek();
+  const daysToShow = useDaysToShow();
   const handleDateChange = useHandleDateChange();
 
   const {
@@ -55,14 +55,6 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
     loadEvents,
   });
 
-  const dayEvents = useCalendarEventPositioning(events, selectedDate);
-
-  useCalendarScroll({
-    scrollContainerRef,
-    dayEvents,
-    selectedDate,
-  });
-
   useEffect(() => {
     if (!isInitialized && !loading.calendars) {
       loadCalendars();
@@ -73,6 +65,14 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
     return getEventColor(event, calendars);
   };
 
+  const visibleDates = useMemo(() => {
+    const startIndex = extendedDates.findIndex(
+      (date) => date.toDateString() === selectedDate.toDateString(),
+    );
+    if (startIndex === -1) return [selectedDate];
+    return extendedDates.slice(startIndex, startIndex + daysToShow);
+  }, [extendedDates, selectedDate, daysToShow]);
+
   return (
     <div className="flex h-full w-full justify-center p-4 pt-4">
       <div className="flex h-full w-full flex-col px-10">
@@ -80,16 +80,18 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
           dates={extendedDates}
           selectedDate={selectedDate}
           onDateSelect={handleDateChange}
+          daysToShow={daysToShow}
+          visibleDates={visibleDates}
         />
 
         <CalendarGrid
           ref={scrollContainerRef}
           hours={hours}
-          dayEvents={dayEvents}
+          dates={visibleDates}
+          events={events}
           loading={loading}
           error={error}
           selectedCalendars={selectedCalendars}
-          selectedDate={selectedDate}
           onEventClick={onEventClick}
           getEventColor={getEventColorForGrid}
         />

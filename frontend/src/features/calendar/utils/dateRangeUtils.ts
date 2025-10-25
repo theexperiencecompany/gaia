@@ -15,6 +15,24 @@ export const getExtendedDates = (
   });
 };
 
+export const getDatesAroundSelected = (
+  selectedDate: Date,
+  daysToShow: number,
+  weeksBuffer = 2,
+): Date[] => {
+  const startOfWeek = new Date(selectedDate);
+  const day = startOfWeek.getDay();
+  const daysFromMonday = day === 0 ? 6 : day - 1;
+  startOfWeek.setDate(startOfWeek.getDate() - daysFromMonday - weeksBuffer * 7);
+
+  const totalDays = (weeksBuffer * 2 + 1) * 7;
+  return Array.from({ length: totalDays }, (_, i) => {
+    const date = new Date(startOfWeek);
+    date.setDate(startOfWeek.getDate() + i);
+    return date;
+  });
+};
+
 export const getChunkKey = (date: Date): string => {
   const year = date.getFullYear();
   const quarter = Math.floor(date.getMonth() / 3);

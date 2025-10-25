@@ -21,6 +21,7 @@ interface CalendarState {
   createEventAction: (() => void) | null;
   selectedDate: Date;
   currentWeek: Date;
+  daysToShow: number;
 }
 
 interface CalendarActions {
@@ -48,6 +49,7 @@ interface CalendarActions {
   goToNextDay: () => void;
   goToToday: () => void;
   handleDateChange: (date: Date) => void;
+  setDaysToShow: (days: number) => void;
 }
 
 type CalendarStore = CalendarState & CalendarActions;
@@ -69,6 +71,7 @@ const initialState: CalendarState = {
   createEventAction: null,
   selectedDate: new Date(),
   currentWeek: new Date(),
+  daysToShow: 1,
 };
 
 export const useCalendarStore = create<CalendarStore>()(
@@ -270,11 +273,15 @@ export const useCalendarStore = create<CalendarStore>()(
             false,
             "handleDateChange",
           ),
+
+        setDaysToShow: (daysToShow) =>
+          set({ daysToShow }, false, "setDaysToShow"),
       }),
       {
         name: "calendar-storage",
         partialize: (state) => ({
           selectedCalendars: state.selectedCalendars,
+          daysToShow: state.daysToShow,
         }),
       },
     ),
@@ -303,6 +310,8 @@ export const useCalendarSelectedDate = () =>
   useCalendarStore((state) => state.selectedDate);
 export const useCalendarCurrentWeek = () =>
   useCalendarStore((state) => state.currentWeek);
+export const useDaysToShow = () =>
+  useCalendarStore((state) => state.daysToShow);
 
 // Individual action selectors for stable references
 export const useSetSelectedDate = () =>
@@ -321,3 +330,5 @@ export const useUpdateEvent = () =>
   useCalendarStore((state) => state.updateEvent);
 export const useRemoveEvent = () =>
   useCalendarStore((state) => state.removeEvent);
+export const useSetDaysToShow = () =>
+  useCalendarStore((state) => state.setDaysToShow);

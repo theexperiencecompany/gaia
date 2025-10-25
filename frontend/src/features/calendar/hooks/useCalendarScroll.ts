@@ -1,10 +1,10 @@
 import { RefObject, useEffect } from "react";
 
-import { EventPosition } from "@/features/calendar/hooks/useCalendarEventPositioning";
+import { CalendarEventPositions } from "@/features/calendar/hooks/useCalendarEventPositioning";
 
 interface UseCalendarScrollProps {
   scrollContainerRef: RefObject<HTMLDivElement | null>;
-  dayEvents: EventPosition[];
+  dayEvents: CalendarEventPositions;
   selectedDate: Date;
 }
 
@@ -19,8 +19,9 @@ export const useCalendarScroll = ({
     const timeoutId = setTimeout(() => {
       if (!scrollContainerRef.current) return;
 
-      if (dayEvents.length > 0) {
-        const firstEvent = dayEvents.reduce((earliest, current) =>
+      // Scroll to first timed event if it exists
+      if (dayEvents.timedEvents.length > 0) {
+        const firstEvent = dayEvents.timedEvents.reduce((earliest, current) =>
           current.top < earliest.top ? current : earliest,
         );
 
@@ -31,7 +32,8 @@ export const useCalendarScroll = ({
           behavior: "smooth",
         });
       } else {
-        const scrollToHour = 8;
+        // Default to 12 AM if no timed events
+        const scrollToHour = 0;
         const scrollPosition = scrollToHour * 64;
 
         scrollContainerRef.current.scrollTo({
