@@ -21,6 +21,8 @@ interface MultiDayCalendarGridProps {
   selectedCalendars: string[];
   onEventClick?: (event: GoogleCalendarEvent) => void;
   getEventColor: (event: GoogleCalendarEvent) => string;
+  currentTimeTop?: number;
+  currentTimeLabel?: string;
 }
 
 const PX_PER_MINUTE = 64 / 60;
@@ -77,6 +79,8 @@ export const CalendarGrid = forwardRef<
       selectedCalendars,
       onEventClick,
       getEventColor,
+      currentTimeTop,
+      currentTimeLabel,
     },
     ref,
   ) => {
@@ -101,21 +105,38 @@ export const CalendarGrid = forwardRef<
         />
 
         <div className="relative flex">
+          {/* Current Time Line & Label */}
+          {typeof currentTimeTop === "number" && currentTimeLabel && (
+            <>
+              {/* Blue horizontal line across all columns */}
+              <div
+                className="absolute right-0 left-20 z-20 h-[1px] bg-primary/50"
+                style={{ top: `${currentTimeTop}px` }}
+              />
+              {/* Time label in left column */}
+              <div
+                className="absolute z-30 flex w-20 flex-shrink-0 items-center justify-end bg-[#1a1a1a] pr-3 text-xs text-primary"
+                style={{ top: `${currentTimeTop - 8}px` }}
+              >
+                {currentTimeLabel}
+              </div>
+            </>
+          )}
           {/* Time Labels Column */}
           <div className="w-20 flex-shrink-0 border-r border-zinc-800">
             {hours.map((hour) => (
               <div
                 key={hour}
-                className="flex h-16 items-start justify-end pt-2 pr-3"
+                className="items-star=t flex h-16 justify-end pt-2 pr-3"
               >
-                <span className="text-xs font-medium text-zinc-500">
+                <span className="text-xs text-zinc-500">
                   {hour === 0
-                    ? "12AM"
+                    ? "12 AM"
                     : hour === 12
-                      ? "12PM"
+                      ? "12 PM"
                       : hour > 12
-                        ? `${hour - 12}PM`
-                        : `${hour}AM`}
+                        ? `${hour - 12} PM`
+                        : `${hour} AM`}
                 </span>
               </div>
             ))}

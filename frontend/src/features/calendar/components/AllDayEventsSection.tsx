@@ -26,6 +26,12 @@ const getMultiDayEventPositions = (
   const multiDayEvents: MultiDayEventPosition[] = [];
   const processedEventIds = new Set<string>();
 
+  // Create a map of date strings for O(1) lookup
+  const dateMap = new Map<string, number>();
+  dates.forEach((date, index) => {
+    dateMap.set(date.toDateString(), index);
+  });
+
   events.forEach((event) => {
     // Only process all-day events
     if (!event.start.date || !event.end.date || processedEventIds.has(event.id))
@@ -38,39 +44,38 @@ const getMultiDayEventPositions = (
     // So we subtract 1 day to get the actual last day of the event
     eventEnd.setDate(eventEnd.getDate() - 1);
 
-    // Find which days this event spans in our visible dates
-    const startDayIndex = dates.findIndex(
-      (date) => date.toDateString() === eventStart.toDateString(),
-    );
+    const eventStartStr = eventStart.toDateString();
 
-    if (startDayIndex !== -1) {
-      // Calculate how many days this event spans in the visible range
-      let span = 1;
-      const eventEndStr = eventEnd.toDateString();
+    // Find the start index in our visible dates
+    const startDayIndex = dateMap.get(eventStartStr);
 
-      for (let i = startDayIndex + 1; i < dates.length; i++) {
-        const currentDateStr = dates[i].toDateString();
+    // Skip events that don't start in our visible date range
+    if (startDayIndex === undefined) return;
 
-        // Compare using date strings to avoid time component issues
-        if (currentDateStr <= eventEndStr) {
-          span++;
-        } else {
-          break;
-        }
+    // Calculate span by checking each subsequent visible date
+    let span = 1; // The start day itself
+    const eventEndTime = eventEnd.getTime();
+
+    for (let i = startDayIndex + 1; i < dates.length; i++) {
+      const visibleDate = dates[i];
+
+      // Compare timestamps instead of strings to avoid alphabetical comparison issues
+      if (visibleDate.getTime() <= eventEndTime) {
+        span++;
+      } else {
+        break;
       }
-
-      multiDayEvents.push({
-        event,
-        startDayIndex,
-        span,
-        row: 0, // Will be calculated later
-      });
-
-      processedEventIds.add(event.id);
     }
-  });
 
-  // Assign rows to avoid overlaps
+    multiDayEvents.push({
+      event,
+      startDayIndex,
+      span,
+      row: 0,
+    });
+
+    processedEventIds.add(event.id);
+  }); // Assign rows to avoid overlaps using interval scheduling algorithm
   multiDayEvents.sort((a, b) => {
     if (a.startDayIndex !== b.startDayIndex) {
       return a.startDayIndex - b.startDayIndex;
@@ -132,9 +137,9 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
   const hasAnyAllDayEvents = multiDayEvents.length > 0;
 
   return (
-    <div className="border-b border-zinc-800">
+    <div className="sticky top-0 z-[1] border-b border-zinc-800 bg-[#1a1a1a]">
       <div className="flex">
-        {/* Time Label Column - matches the time labels */}
+        {/* Time Label Column */}
         <div
           className="w-20 flex-shrink-0 cursor-pointer border-r border-zinc-800 transition-colors hover:bg-zinc-800/50"
           onClick={() => setIsExpanded(!isExpanded)}
@@ -153,53 +158,48 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
           </div>
         </div>
 
-        {/* All-day events grid */}
-        <div className="relative flex-1">
+        {/* All-day events container */}
+        <div className="flex-1">
           {isExpanded ? (
             multiDayEvents.length > 0 ? (
-              <div>
-                {/* Calculate the number of rows needed */}
+              <div className="px-0.5 py-2">
                 {Array.from(
-                  {
-                    length: Math.max(...multiDayEvents.map((e) => e.row)) + 1,
-                  },
+                  { length: Math.max(...multiDayEvents.map((e) => e.row)) + 1 },
                   (_, rowIndex) => (
                     <div
                       key={`row-${rowIndex}`}
-                      className="relative grid"
+                      className="mb-1 grid last:mb-0"
                       style={{
-                        gridTemplateColumns: `repeat(${dates.length}, 1fr)`,
-                        gap: "0.125rem",
-                        minHeight: "36px",
+                        gridTemplateColumns: `repeat(${dates.length}, minmax(0, 1fr))`,
+                        gap: "2px",
                       }}
                     >
-                      {/* Render events in this row */}
                       {multiDayEvents
                         .filter((eventPos) => eventPos.row === rowIndex)
-                        .map((eventPos, index) => {
+                        .map((eventPos) => {
                           const eventColor = getEventColor(eventPos.event);
                           return (
                             <div
-                              key={`multiday-${eventPos.event.id}-${index}`}
-                              className="px-1"
+                              key={eventPos.event.id}
                               style={{
-                                gridColumn: `${eventPos.startDayIndex + 1} / span ${eventPos.span}`,
+                                gridColumnStart: eventPos.startDayIndex + 1,
+                                gridColumnEnd: `span ${eventPos.span}`,
                               }}
                             >
                               <div
-                                className="flex h-8 cursor-pointer overflow-hidden rounded-lg text-white transition-all duration-200 hover:opacity-80"
+                                className="flex h-7 cursor-pointer items-center overflow-hidden rounded-md text-white transition-opacity hover:opacity-80"
                                 style={{
                                   backgroundColor: `${eventColor}40`,
                                 }}
                                 onClick={() => onEventClick?.(eventPos.event)}
                               >
                                 <div
-                                  className="w-1 flex-shrink-0 rounded-l-lg"
+                                  className="h-full w-1 flex-shrink-0 rounded-l-md"
                                   style={{
                                     backgroundColor: eventColor,
                                   }}
                                 />
-                                <div className="flex flex-1 items-center overflow-hidden px-2 py-1">
+                                <div className="flex-1 overflow-hidden px-2">
                                   <div className="truncate text-xs font-medium">
                                     {eventPos.event.summary}
                                   </div>
@@ -213,15 +213,15 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
                 )}
               </div>
             ) : (
-              <div className="min-h-[32px]" />
+              <div className="py-2" />
             )
           ) : multiDayEvents.length > 0 ? (
-            <div className="flex min-h-[32px] items-center px-2 text-xs text-zinc-400">
+            <div className="flex items-center px-2 py-2 text-xs text-zinc-400">
               {multiDayEvents.length} event
               {multiDayEvents.length !== 1 ? "s" : ""}
             </div>
           ) : (
-            <div className="min-h-[32px]" />
+            <div className="py-2" />
           )}
         </div>
       </div>

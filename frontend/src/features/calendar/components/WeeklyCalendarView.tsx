@@ -74,6 +74,24 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
     return extendedDates.slice(startIndex, startIndex + daysToShow);
   }, [extendedDates, selectedDate, daysToShow]);
 
+  // Current time calculation (updates every minute)
+  const [now, setNow] = React.useState<Date>(new Date());
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(new Date());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const currentTimeLabel = now.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const PX_PER_MINUTE = 64 / 60;
+  const currentTimeTop = (currentHour * 60 + currentMinute) * PX_PER_MINUTE;
+
   return (
     <div className="flex h-full w-full justify-center p-4 pt-4">
       <div className="flex h-full w-full flex-col">
@@ -95,6 +113,8 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
           selectedCalendars={selectedCalendars}
           onEventClick={onEventClick}
           getEventColor={getEventColorForGrid}
+          currentTimeTop={currentTimeTop}
+          currentTimeLabel={currentTimeLabel}
         />
       </div>
     </div>
