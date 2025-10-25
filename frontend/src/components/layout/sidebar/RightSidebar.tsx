@@ -1,9 +1,10 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 
 import { Cancel01Icon } from "@/components/shared/icons";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
+import { Button } from "@heroui/button";
 
 interface RightSidebarProps {
   children: ReactNode;
@@ -12,6 +13,20 @@ interface RightSidebarProps {
 
 export default function RightSidebar({ children, isOpen }: RightSidebarProps) {
   const close = useRightSidebar((state) => state.close);
+
+  // Close sidebar on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        close();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, close]);
 
   return (
     <aside
@@ -24,13 +39,15 @@ export default function RightSidebar({ children, isOpen }: RightSidebarProps) {
     >
       {isOpen && (
         <div className="flex w-full items-end justify-end px-6 pt-4 pb-0">
-          <button
-            onClick={close}
-            className="cursor-pointer rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800/50 hover:text-zinc-200"
+          <Button
+            onPress={close}
+            variant="light"
+            isIconOnly
+            size="sm"
             aria-label="Close"
           >
             <Cancel01Icon className="size-4" />
-          </button>
+          </Button>
         </div>
       )}
       {children}

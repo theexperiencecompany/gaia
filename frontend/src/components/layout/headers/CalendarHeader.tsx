@@ -124,7 +124,8 @@ export default function CalendarHeader() {
           {dayOptions.map((option) => (
             <SelectItem
               key={option.value}
-              value={option.value}
+              aria-label={option.value}
+              textValue={option.value}
               endContent={<Kbd keys={[]}>{option.kbd}</Kbd>}
             >
               {option.label}

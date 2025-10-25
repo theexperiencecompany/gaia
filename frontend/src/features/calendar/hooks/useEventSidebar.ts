@@ -119,11 +119,43 @@ export const useEventSidebar = ({
       setIsCreating(true);
       setIsOpen(true);
 
-      const baseDate = selectedDate || new Date();
-      const now = new Date(baseDate);
-      const roundedMinutes = Math.ceil(now.getMinutes() / 15) * 15;
-      now.setMinutes(roundedMinutes);
-      now.setSeconds(0);
+      let now: Date;
+
+      if (selectedDate && selectedDate instanceof Date) {
+        // Use the selected date but set a reasonable time
+        now = new Date(selectedDate);
+
+        // Validate the date is valid
+        if (isNaN(now.getTime())) {
+          console.error("Invalid selectedDate received, using current date");
+          now = new Date();
+        }
+
+        now.setHours(9); // Default to 9 AM
+        now.setMinutes(0);
+        now.setSeconds(0);
+        now.setMilliseconds(0);
+      } else {
+        // If no date provided, use current time and round to nearest 15 minutes
+        now = new Date();
+        const currentMinutes = now.getMinutes();
+        const roundedMinutes = Math.ceil(currentMinutes / 15) * 15;
+
+        if (roundedMinutes === 60) {
+          now.setHours(now.getHours() + 1);
+          now.setMinutes(0);
+        } else {
+          now.setMinutes(roundedMinutes);
+        }
+        now.setSeconds(0);
+        now.setMilliseconds(0);
+      }
+
+      // Validate that now is a valid date before using it
+      if (isNaN(now.getTime())) {
+        console.error("Invalid date after processing, aborting");
+        return;
+      }
 
       const start = now.toISOString().slice(0, 16);
       const end = new Date(now.getTime() + 60 * 60 * 1000)

@@ -132,10 +132,17 @@ export default function Calendar() {
     }
   }, [searchParams, openForCreate]);
 
+  const handleDateClick = useCallback(
+    (date: Date) => {
+      openForCreate(date);
+    },
+    [openForCreate],
+  );
+
   return (
     <WeeklyCalendarView
       onEventClick={openForEvent}
-      onDateClick={openForCreate}
+      onDateClick={handleDateClick}
     />
   );
 }

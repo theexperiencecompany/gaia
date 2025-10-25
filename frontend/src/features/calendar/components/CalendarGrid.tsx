@@ -1,9 +1,9 @@
 "use client";
 
 import { Spinner } from "@heroui/react";
-import React, { forwardRef, useMemo, useState } from "react";
-import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import React, { forwardRef, useMemo } from "react";
 
+import { AllDayEventsSection } from "@/features/calendar/components/AllDayEventsSection";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface MultiDayCalendarGridProps {
@@ -34,15 +34,6 @@ const timeToMinutes = (time: string): number => {
 const getEventPositions = (events: GoogleCalendarEvent[], targetDate: Date) => {
   const targetDateStr = targetDate.toDateString();
 
-  const allDayEvents = events.filter((event) => {
-    const eventDateStr = event.start.date
-      ? new Date(event.start.date).toDateString()
-      : event.start.dateTime
-        ? new Date(event.start.dateTime).toDateString()
-        : null;
-    return eventDateStr === targetDateStr && event.start.date;
-  });
-
   const timedEvents = events
     .filter((event) => {
       const eventDateStr = event.start.dateTime
@@ -69,7 +60,7 @@ const getEventPositions = (events: GoogleCalendarEvent[], targetDate: Date) => {
       };
     });
 
-  return { allDayEvents, timedEvents };
+  return { timedEvents };
 };
 
 export const CalendarGrid = forwardRef<
@@ -89,8 +80,6 @@ export const CalendarGrid = forwardRef<
     },
     ref,
   ) => {
-    const [isAllDayExpanded, setIsAllDayExpanded] = useState(true);
-
     const daysData = useMemo(
       () =>
         dates.map((date) => {
@@ -100,87 +89,16 @@ export const CalendarGrid = forwardRef<
       [dates, events],
     );
 
-    const hasAnyEvents = daysData.some(
-      (day) => day.allDayEvents.length > 0 || day.timedEvents.length > 0,
-    );
-
-    const hasAnyAllDayEvents = daysData.some(
-      (day) => day.allDayEvents.length > 0,
-    );
+    const hasAnyEvents = daysData.some((day) => day.timedEvents.length > 0);
 
     return (
       <div className="relative flex-1 overflow-y-auto" ref={ref}>
-        {/* All-Day Events Section for all days */}
-        <div className="flex border-b border-zinc-800">
-          {/* All-day label in time column */}
-          <div
-            className="w-20 flex-shrink-0 cursor-pointer border-r border-zinc-800 transition-colors hover:bg-zinc-800/50"
-            onClick={() => setIsAllDayExpanded(!isAllDayExpanded)}
-          >
-            <div className="flex h-full items-center justify-end gap-1 py-3 pr-3">
-              <span className="text-xs font-medium text-zinc-400">All-day</span>
-              {hasAnyAllDayEvents && (
-                <span>
-                  {isAllDayExpanded ? (
-                    <ChevronsDownUp className="h-3 w-3 text-zinc-400" />
-                  ) : (
-                    <ChevronsUpDown className="h-3 w-3 text-zinc-400" />
-                  )}
-                </span>
-              )}
-            </div>
-          </div>
-          {/* All-day events for each day */}
-          <div className="flex flex-1">
-            {daysData.map((day, dayIndex) => (
-              <div
-                key={dayIndex}
-                className="flex-1 border-r border-zinc-800 px-2 py-2 last:border-r-0"
-              >
-                {isAllDayExpanded ? (
-                  day.allDayEvents.length > 0 ? (
-                    <div className="space-y-1">
-                      {day.allDayEvents.map((event, index) => {
-                        const eventColor = getEventColor(event);
-                        return (
-                          <div
-                            key={`allday-${index}`}
-                            className="flex min-h-[32px] cursor-pointer overflow-hidden rounded-lg text-white transition-all duration-200 hover:opacity-80"
-                            style={{
-                              backgroundColor: `${eventColor}40`,
-                            }}
-                            onClick={() => onEventClick?.(event)}
-                          >
-                            <div
-                              className="w-1 rounded-l-lg"
-                              style={{
-                                backgroundColor: eventColor,
-                              }}
-                            />
-                            <div className="flex items-center px-3 py-1.5">
-                              <div className="line-clamp-1 text-xs font-medium">
-                                {event.summary}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="min-h-[32px]" />
-                  )
-                ) : day.allDayEvents.length > 0 ? (
-                  <div className="flex min-h-[32px] items-center text-xs text-zinc-400">
-                    {day.allDayEvents.length} event
-                    {day.allDayEvents.length !== 1 ? "s" : ""}
-                  </div>
-                ) : (
-                  <div className="min-h-[32px]" />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+        <AllDayEventsSection
+          events={events}
+          dates={dates}
+          onEventClick={onEventClick}
+          getEventColor={getEventColor}
+        />
 
         <div className="relative flex">
           {/* Time Labels Column */}
