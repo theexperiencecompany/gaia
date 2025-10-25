@@ -132,5 +132,10 @@ export default function Calendar() {
     }
   }, [searchParams, openForCreate]);
 
-  return <WeeklyCalendarView onEventClick={openForEvent} />;
+  return (
+    <WeeklyCalendarView
+      onEventClick={openForEvent}
+      onDateClick={openForCreate}
+    />
+  );
 }

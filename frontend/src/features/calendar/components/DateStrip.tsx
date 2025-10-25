@@ -5,7 +5,7 @@ import React, { useEffect, useRef } from "react";
 interface DateStripProps {
   dates: Date[];
   selectedDate: Date;
-  onDateSelect: (date: Date) => void;
+  onDateSelect?: (date: Date) => void;
   daysToShow?: number;
   visibleDates?: Date[];
 }
@@ -78,7 +78,7 @@ export const DateStrip: React.FC<DateStripProps> = ({
             return (
               <button
                 key={index}
-                onClick={() => onDateSelect(date)}
+                onClick={() => onDateSelect?.(date)}
                 className={`flex min-h-9 w-[98%] cursor-pointer flex-row items-center justify-center gap-1 rounded-md py-1 font-light transition-all duration-200 ${
                   isToday
                     ? "hover:bg-zinc-700/40"

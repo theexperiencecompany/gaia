@@ -113,24 +113,28 @@ export const useEventSidebar = ({
     setIsOpen(true);
   }, []);
 
-  const openForCreate = useCallback(() => {
-    resetForm();
-    setIsCreating(true);
-    setIsOpen(true);
+  const openForCreate = useCallback(
+    (selectedDate?: Date) => {
+      resetForm();
+      setIsCreating(true);
+      setIsOpen(true);
 
-    const now = new Date();
-    const roundedMinutes = Math.ceil(now.getMinutes() / 15) * 15;
-    now.setMinutes(roundedMinutes);
-    now.setSeconds(0);
+      const baseDate = selectedDate || new Date();
+      const now = new Date(baseDate);
+      const roundedMinutes = Math.ceil(now.getMinutes() / 15) * 15;
+      now.setMinutes(roundedMinutes);
+      now.setSeconds(0);
 
-    const start = now.toISOString().slice(0, 16);
-    const end = new Date(now.getTime() + 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 16);
+      const start = now.toISOString().slice(0, 16);
+      const end = new Date(now.getTime() + 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 16);
 
-    setStartDate(start);
-    setEndDate(end);
-  }, [resetForm]);
+      setStartDate(start);
+      setEndDate(end);
+    },
+    [resetForm],
+  );
 
   const close = useCallback(() => {
     setIsOpen(false);

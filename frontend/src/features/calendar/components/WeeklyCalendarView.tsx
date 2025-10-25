@@ -18,17 +18,18 @@ import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface WeeklyCalendarViewProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;
+  onDateClick?: (date: Date) => void;
 }
 
 const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
   onEventClick,
+  onDateClick,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const selectedDate = useCalendarSelectedDate();
   const currentWeek = useCalendarCurrentWeek();
   const daysToShow = useDaysToShow();
-  const handleDateChange = useHandleDateChange();
 
   const {
     events,
@@ -79,7 +80,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
         <DateStrip
           dates={extendedDates}
           selectedDate={selectedDate}
-          onDateSelect={handleDateChange}
+          onDateSelect={onDateClick}
           daysToShow={daysToShow}
           visibleDates={visibleDates}
         />
