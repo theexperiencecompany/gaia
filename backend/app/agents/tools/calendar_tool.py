@@ -9,15 +9,23 @@ from app.agents.templates.calendar_template import (
     CALENDAR_PROMPT_TEMPLATE,
 )
 from app.config.loggers import chat_logger as logger
-from app.decorators import require_integration, with_doc, with_rate_limiting
+from app.decorators import (
+    require_integration,
+    with_calendar_auth,
+    with_doc,
+    with_rate_limiting,
+)
 from app.models.calendar_models import (
     CalendarEventToolRequest,
     CalendarEventUpdateToolRequest,
     EventLookupRequest,
 )
 from app.services.calendar_service import (
+    enrich_calendar_options_with_metadata,
     find_event_for_action,
+    format_event_for_frontend,
     get_calendar_events,
+    get_calendar_metadata_map,
     list_calendars,
     search_calendar_events_native,
 )
@@ -61,31 +69,9 @@ async def process_single_event(
         if processed_event.calendar_id:
             event_dict["calendar_id"] = processed_event.calendar_id
             try:
-                # Get access token for fetching calendar details
-                access_token, _, token_success = await get_tokens_by_user_id(user_id)
-                if token_success and access_token:
-                    calendar_list: Dict[str, Any] = await list_calendars(access_token)
-                    if calendar_list and "items" in calendar_list:
-                        for cal in calendar_list.get("items", []):
-                            if cal.get("id") == processed_event.calendar_id:
-                                event_dict["calendar_name"] = cal.get(
-                                    "summary", "Calendar"
-                                )
-                                event_dict["background_color"] = cal.get(
-                                    "backgroundColor", "#00bbff"
-                                )
-                                break
-                else:
-                    event_dict["background_color"] = "#00bbff"
-                    event_dict["calendar_name"] = "Calendar"
+                pass
             except Exception as e:
-                logger.warning(f"Could not fetch calendar color: {e}")
-                event_dict["background_color"] = "#00bbff"
-                event_dict["calendar_name"] = "Calendar"
-        else:
-            # Default values when no calendar_id is specified
-            event_dict["background_color"] = "#00bbff"
-            event_dict["calendar_name"] = "Calendar"
+                logger.warning(f"Could not process calendar_id: {e}")
 
         if processed_event.recurrence:
             event_dict["recurrence"] = processed_event.recurrence.model_dump()
@@ -184,116 +170,18 @@ async def create_calendar_event(
 
         writer = get_stream_writer()
 
-        # Fetch same-day events for context
         try:
             access_token, _, token_success = await get_tokens_by_user_id(user_id)
             if not token_success or not access_token:
                 raise Exception("Failed to get valid access token")
 
-            # Fetch calendar list to map colors and names
-            calendar_list = await list_calendars(access_token)
-            calendar_color_map = {}
-            calendar_name_map = {}
-
-            if calendar_list and "items" in calendar_list:
-                for cal in calendar_list.get("items", []):
-                    cal_id = cal.get("id")
-                    if cal_id:
-                        calendar_color_map[cal_id] = cal.get(
-                            "backgroundColor", "#00bbff"
-                        )
-                        calendar_name_map[cal_id] = cal.get("summary", "Calendar")
-
-            # Add background_color and calendar_name to calendar_options
-            for option in calendar_options:
-                calendar_id = option.get("calendar_id", "primary")
-                if calendar_id in calendar_color_map:
-                    option["background_color"] = calendar_color_map[calendar_id]
-                    option["calendar_name"] = calendar_name_map[calendar_id]
-                else:
-                    option["background_color"] = "#00bbff"
-                    option["calendar_name"] = "Calendar"
-
-            # Extract unique dates from events with proper timezone handling
-            event_dates_info = {}  # date_str -> timezone_str
-            for event_option in calendar_options:
-                start_time = event_option.get("start", "")
-                if start_time:
-                    try:
-                        # Parse the ISO format datetime with timezone
-                        # Format: "2025-10-25T22:00:00+05:30"
-                        dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-                        # Get the date in the event's local timezone
-                        date_str = dt.strftime("%Y-%m-%d")
-
-                        # Extract timezone offset from the original string
-                        # We want to query the same date in the user's timezone
-                        if "+" in start_time or "-" in start_time.split("T")[-1]:
-                            # Has explicit timezone offset
-                            tz_part = start_time.split("T")[-1]
-                            # Find the timezone part (after last occurrence of + or -)
-                            for sep in ["+", "-"]:
-                                if sep in tz_part:
-                                    tz_offset = sep + tz_part.split(sep)[-1]
-                                    event_dates_info[date_str] = tz_offset
-                                    break
-                        elif start_time.endswith("Z"):
-                            event_dates_info[date_str] = "+00:00"
-                        else:
-                            # No timezone info, assume UTC
-                            event_dates_info[date_str] = "+00:00"
-                    except Exception as e:
-                        logger.warning(f"Error parsing date {start_time}: {e}")
-                        # Fallback to simple string split
-                        event_date = (
-                            start_time.split("T")[0]
-                            if "T" in start_time
-                            else start_time
-                        )
-                        event_dates_info[event_date] = "+00:00"
-
-            # Fetch events for each date in parallel with proper timezone
-            same_day_events = []
-            fetch_tasks = []
-            for event_date, tz_offset in event_dates_info.items():
-                # Create time boundaries in the user's timezone
-                time_min = f"{event_date}T00:00:00{tz_offset}"
-                time_max = f"{event_date}T23:59:59{tz_offset}"
-                fetch_tasks.append(
-                    get_calendar_events(
-                        access_token=access_token,
-                        user_id=user_id,
-                        time_min=time_min,
-                        time_max=time_max,
-                    )
-                )
-
-            results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, dict) and "events" in result:
-                    same_day_events.extend(result["events"])
-
-            # Add background_color to each same_day_event
-            for event in same_day_events:
-                calendar_id = event.get("calendarId")
-                if calendar_id and calendar_id in calendar_color_map:
-                    event["background_color"] = calendar_color_map[calendar_id]
-                else:
-                    event["background_color"] = "#00bbff"
-
-            # Nest same_day_events in each calendar_option for frontend context
-            for option in calendar_options:
-                option["same_day_events"] = same_day_events
-
-            writer(
-                {
-                    "calendar_options": calendar_options,
-                    "intent": "calendar",
-                }
+            calendar_options = await enrich_calendar_options_with_metadata(
+                calendar_options, access_token, user_id
             )
+
+            writer({"calendar_options": calendar_options, "intent": "calendar"})
         except Exception as e:
-            logger.warning(f"Error fetching same-day events: {str(e)}")
-            # Still send calendar options even if we can't get same-day events
+            logger.warning(f"Error enriching calendar options: {str(e)}")
             writer({"calendar_options": calendar_options, "intent": "calendar"})
 
         logger.info("Calendar event processing successful")
@@ -317,31 +205,17 @@ async def create_calendar_event(
 @with_rate_limiting("calendar_management")
 @with_doc(FETCH_CALENDAR_LIST)
 @require_integration("calendar")
+@with_calendar_auth
 async def fetch_calendar_list(
     config: RunnableConfig,
+    user_id: str,
+    access_token: str,
 ) -> str | dict:
     try:
-        if not config:
-            logger.error("Missing configuration data")
-            return "Unable to access calendar configuration. Please try again."
-
-        user_id = config.get("configurable", {}).get("user_id")
-        if not user_id:
-            logger.error("Missing user_id in config")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
-        # Get tokens from token registry
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error("Failed to get valid tokens from token registry")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
         calendars = await list_calendars(access_token=access_token, short=True)
         if calendars is None:
             logger.error("Unable to fetch calendars - no data returned")
             return "Unable to fetch your calendars. Please ensure your calendar is connected."
-
-        logger.info(f"Fetched {len(calendars)} calendars")
 
         # Build array of {name, id, description} for all calendars
         calendar_list_fetch_data: List[Dict[str, Any]] = []
@@ -375,45 +249,23 @@ async def fetch_calendar_list(
 @with_rate_limiting("calendar_management")
 @with_doc(FETCH_CALENDAR_EVENTS)
 @require_integration("calendar")
+@with_calendar_auth
 async def fetch_calendar_events(
     config: RunnableConfig,
+    user_id: str,
+    access_token: str,
     time_min: Optional[str] = None,
     time_max: Optional[str] = None,
     selected_calendars: Optional[List[str]] = None,
     limit: int = 20,
 ) -> str:
     try:
-        if not config:
-            logger.error("Missing configuration data")
-            return "Unable to access calendar configuration. Please try again."
-
-        user_id = config.get("configurable", {}).get("user_id")
-        if not user_id:
-            logger.error("Missing user_id in config")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
-        # Get tokens from token registry
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error("Failed to get valid tokens from token registry")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
         logger.info(f"Fetching calendar events for user {user_id} with limit {limit}")
 
-        # Set default time_min to current time for future events only
         if time_min is None:
             time_min = datetime.now(timezone.utc).isoformat()
 
-        # Fetch calendar list to get backgroundColor mapping
-        calendars = await list_calendars(access_token=access_token, short=True)
-        calendar_color_map = {}
-        if calendars and isinstance(calendars, list):
-            for cal in calendars:
-                if isinstance(cal, dict):
-                    calendar_color_map[cal.get("id")] = {
-                        "name": cal.get("summary", "Unknown Calendar"),
-                        "backgroundColor": cal.get("backgroundColor", "#00bbff"),
-                    }
+        color_map, name_map = await get_calendar_metadata_map(access_token)
 
         events_data = await get_calendar_events(
             user_id=user_id,
@@ -427,44 +279,9 @@ async def fetch_calendar_events(
         events = events_data.get("events", [])
         logger.info(f"Fetched {len(events)} events")
 
-        # Build array with all necessary fields for frontend
-        calendar_fetch_data = []
-        for event in events:
-            start_time = ""
-            end_time = ""
-
-            if event.get("start"):
-                start_obj = event["start"]
-                if start_obj.get("dateTime"):
-                    start_time = start_obj["dateTime"]
-                elif start_obj.get("date"):
-                    start_time = start_obj["date"]
-
-            if event.get("end"):
-                end_obj = event["end"]
-                if end_obj.get("dateTime"):
-                    end_time = end_obj["dateTime"]
-                elif end_obj.get("date"):
-                    end_time = end_obj["date"]
-
-            calendar_id = event.get("calendarId", "")
-            calendar_info = calendar_color_map.get(
-                calendar_id,
-                {
-                    "name": event.get("calendarTitle", "Unknown Calendar"),
-                    "backgroundColor": "#00bbff",
-                },
-            )
-
-            calendar_fetch_data.append(
-                {
-                    "summary": event.get("summary", "No Title"),
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "calendar_name": calendar_info.get("name", "Unknown Calendar"),
-                    "background_color": calendar_info.get("backgroundColor", "#00bbff"),
-                }
-            )
+        calendar_fetch_data = [
+            format_event_for_frontend(event, color_map, name_map) for event in events
+        ]
 
         writer = get_stream_writer()
         writer({"calendar_fetch_data": calendar_fetch_data})
@@ -488,35 +305,21 @@ async def fetch_calendar_events(
 @with_doc(SEARCH_CALENDAR_EVENTS)
 @with_rate_limiting("calendar_management")
 @require_integration("calendar")
+@with_calendar_auth
 async def search_calendar_events(
     query: str,
     config: RunnableConfig,
+    user_id: str,
+    access_token: str,
     time_min: Optional[str] = None,
     time_max: Optional[str] = None,
 ) -> str:
     try:
-        if not config:
-            logger.error("Missing configuration data")
-            return "Unable to access calendar configuration. Please try again."
-
-        user_id = config.get("configurable", {}).get("user_id")
-        if not user_id:
-            logger.error("Missing user_id in config")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
-        # Get tokens from token registry
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error("Failed to get valid tokens from token registry")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
         logger.info(f"Searching calendar events for query: {query}")
 
-        # Send progress update
         writer = get_stream_writer()
         writer({"progress": f"Searching calendar events for '{query}'..."})
 
-        # Use the new search function with Google Calendar API's native search
         search_results = await search_calendar_events_native(
             query=query,
             access_token=access_token,
@@ -529,57 +332,13 @@ async def search_calendar_events(
             f"Found {len(search_results.get('matching_events', []))} matching events for query: {query}"
         )
 
-        # Fetch calendar list to get backgroundColor mapping
-        calendars = await list_calendars(access_token=access_token, short=True)
-        calendar_color_map = {}
-        if calendars and isinstance(calendars, list):
-            for cal in calendars:
-                if isinstance(cal, dict):
-                    calendar_color_map[cal.get("id")] = {
-                        "name": cal.get("summary", "Unknown Calendar"),
-                        "backgroundColor": cal.get("backgroundColor", "#00bbff"),
-                    }
+        color_map, name_map = await get_calendar_metadata_map(access_token)
 
-        # Build array with all necessary fields for frontend
-        calendar_search_data = []
-        for event in search_results.get("matching_events", []):
-            start_time = ""
-            end_time = ""
+        calendar_search_data = [
+            format_event_for_frontend(event, color_map, name_map)
+            for event in search_results.get("matching_events", [])
+        ]
 
-            if event.get("start"):
-                start_obj = event["start"]
-                if start_obj.get("dateTime"):
-                    start_time = start_obj["dateTime"]
-                elif start_obj.get("date"):
-                    start_time = start_obj["date"]
-
-            if event.get("end"):
-                end_obj = event["end"]
-                if end_obj.get("dateTime"):
-                    end_time = end_obj["dateTime"]
-                elif end_obj.get("date"):
-                    end_time = end_obj["date"]
-
-            calendar_id = event.get("calendarId", "")
-            calendar_info = calendar_color_map.get(
-                calendar_id,
-                {
-                    "name": event.get("calendarTitle", "Unknown Calendar"),
-                    "backgroundColor": "#00bbff",
-                },
-            )
-
-            calendar_search_data.append(
-                {
-                    "summary": event.get("summary", "No Title"),
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "calendar_name": calendar_info.get("name", "Unknown Calendar"),
-                    "background_color": calendar_info.get("backgroundColor", "#00bbff"),
-                }
-            )
-
-        # Send search results to frontend via writer using grouped structure
         writer(
             {
                 "calendar_data": {"calendar_search_results": search_results},
@@ -599,28 +358,15 @@ async def search_calendar_events(
 @with_doc(VIEW_CALENDAR_EVENT)
 @with_rate_limiting("calendar_management")
 @require_integration("calendar")
+@with_calendar_auth
 async def view_calendar_event(
     event_id: str,
     config: RunnableConfig,
+    user_id: str,
+    access_token: str,
     calendar_id: str = "primary",
 ) -> str:
     try:
-        if not config:
-            logger.error("Missing configuration data")
-            return "Unable to access calendar configuration. Please try again."
-
-        user_id = config.get("configurable", {}).get("user_id")
-        if not user_id:
-            logger.error("Missing user_id in config")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
-        # Get tokens from token registry
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error("Failed to get valid tokens from token registry")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
-        # Fetch specific event using Google Calendar API
         url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events/{event_id}"
         headers = {"Authorization": f"Bearer {access_token}"}
 
@@ -654,28 +400,15 @@ async def view_calendar_event(
 @tool()
 @with_rate_limiting("calendar_management")
 @with_doc(DELETE_CALENDAR_EVENT)
+@with_calendar_auth
 async def delete_calendar_event(
     config: RunnableConfig,
+    user_id: str,
+    access_token: str,
     event_lookup_data: EventLookupRequest,
 ) -> str:
     try:
-        if not config:
-            logger.error("Missing configuration data")
-            return "Unable to access calendar configuration. Please try again."
-
-        user_id = config.get("configurable", {}).get("user_id")
-        if not user_id:
-            logger.error("Missing user_id in config")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
-        # Get tokens from token registry
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error("Failed to get valid tokens from token registry")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
         writer = get_stream_writer()
-        # Use service method to find the event for action (delete)
         try:
             target_event = await find_event_for_action(
                 access_token=access_token,
@@ -720,8 +453,11 @@ async def delete_calendar_event(
 @tool()
 @with_rate_limiting("calendar_management")
 @with_doc(docstring=EDIT_CALENDAR_EVENT)
+@with_calendar_auth
 async def edit_calendar_event(
     config: RunnableConfig,
+    user_id: str,
+    access_token: str,
     event_lookup_data: EventLookupRequest,
     summary: Optional[str] = None,
     description: Optional[str] = None,
@@ -737,26 +473,11 @@ async def edit_calendar_event(
     color_id: Optional[str] = None,
 ) -> str:
     try:
-        if not config:
-            logger.error("Missing configuration data")
-            return "Unable to access calendar configuration. Please try again."
-
-        user_id = config.get("configurable", {}).get("user_id")
         user_time_str = config.get("configurable", {}).get("user_time", "")
 
-        # Ensure user_id and user_time are available
-        if not user_id:
-            logger.error("Missing user_id in config")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
         if not user_time_str:
             logger.error("Missing user_time in config")
             return "User time is required for calendar event processing."
-
-        # Get tokens from token registry
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error("Failed to get valid tokens from token registry")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
 
         # Process timezone for start/end times if provided
         processed_start = start

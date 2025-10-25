@@ -154,6 +154,180 @@ async def list_calendars(access_token: str, short=False) -> Optional[Dict[str, A
     return await fetch_calendar_list(access_token, short)
 
 
+async def get_calendar_metadata_map(
+    access_token: str,
+) -> tuple[Dict[str, str], Dict[str, str]]:
+    """
+    Fetch calendar list and return color/name mappings.
+
+    Args:
+        access_token (str): The access token.
+
+    Returns:
+        tuple: (calendar_color_map, calendar_name_map)
+    """
+    calendars = await list_calendars(access_token=access_token, short=True)
+
+    color_map = {}
+    name_map = {}
+
+    if calendars and isinstance(calendars, list):
+        for cal in calendars:
+            if isinstance(cal, dict):
+                cal_id = cal.get("id")
+                if cal_id:
+                    color_map[cal_id] = cal.get("backgroundColor", "#00bbff")
+                    name_map[cal_id] = cal.get("summary", "Calendar")
+
+    return color_map, name_map
+
+
+def format_event_for_frontend(
+    event: Dict[str, Any],
+    calendar_color_map: Dict[str, str],
+    calendar_name_map: Dict[str, str],
+) -> Dict[str, Any]:
+    """
+    Format a calendar event for frontend display.
+
+    Args:
+        event: Raw calendar event from Google API
+        calendar_color_map: Mapping of calendar_id to backgroundColor
+        calendar_name_map: Mapping of calendar_id to calendar name
+
+    Returns:
+        Formatted event dict with essential frontend fields
+    """
+    start_time = ""
+    end_time = ""
+
+    if event.get("start"):
+        start_obj = event["start"]
+        start_time = start_obj.get("dateTime") or start_obj.get("date", "")
+
+    if event.get("end"):
+        end_obj = event["end"]
+        end_time = end_obj.get("dateTime") or end_obj.get("date", "")
+
+    calendar_id = event.get("calendarId", "")
+    calendar_name = calendar_name_map.get(
+        calendar_id, event.get("calendarTitle", "Unknown Calendar")
+    )
+    background_color = calendar_color_map.get(calendar_id, "#00bbff")
+
+    return {
+        "summary": event.get("summary", "No Title"),
+        "start_time": start_time,
+        "end_time": end_time,
+        "calendar_name": calendar_name,
+        "background_color": background_color,
+    }
+
+
+def extract_unique_dates(calendar_options: List[Dict[str, Any]]) -> Dict[str, str]:
+    """
+    Extract unique dates with timezone offsets from calendar options.
+
+    Args:
+        calendar_options: List of calendar event options
+
+    Returns:
+        Dict mapping date strings to timezone offsets (e.g., {"2025-10-25": "+05:30"})
+    """
+    event_dates_info = {}
+    for option in calendar_options:
+        start_time = option.get("start", "")
+        if start_time:
+            try:
+                dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                date_str = dt.strftime("%Y-%m-%d")
+                tz_offset = dt.strftime("%z")
+                if tz_offset:
+                    tz_offset = f"{tz_offset[:3]}:{tz_offset[3:]}"
+                else:
+                    tz_offset = "+00:00"
+                event_dates_info[date_str] = tz_offset
+            except Exception as e:
+                logger.warning(f"Could not parse start time: {start_time}, {e}")
+    return event_dates_info
+
+
+async def fetch_same_day_events(
+    event_dates_info: Dict[str, str],
+    access_token: str,
+    user_id: str,
+) -> List[Dict[str, Any]]:
+    """
+    Fetch events for each unique date in parallel.
+
+    Args:
+        event_dates_info: Dict mapping date strings to timezone offsets
+        access_token: Access token for calendar API
+        user_id: User identifier
+
+    Returns:
+        List of events across all specified dates
+    """
+    fetch_tasks = []
+    for event_date, tz_offset in event_dates_info.items():
+        time_min = f"{event_date}T00:00:00{tz_offset}"
+        time_max = f"{event_date}T23:59:59{tz_offset}"
+        fetch_tasks.append(
+            get_calendar_events(
+                access_token=access_token,
+                user_id=user_id,
+                time_min=time_min,
+                time_max=time_max,
+            )
+        )
+
+    results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+    same_day_events = []
+    for result in results:
+        if isinstance(result, dict) and "events" in result:
+            same_day_events.extend(result["events"])
+
+    return same_day_events
+
+
+async def enrich_calendar_options_with_metadata(
+    calendar_options: List[Dict[str, Any]],
+    access_token: str,
+    user_id: str,
+) -> List[Dict[str, Any]]:
+    """
+    Add calendar colors, names, and same-day events to calendar options.
+
+    Args:
+        calendar_options: List of calendar event options to enrich
+        access_token: Access token for calendar API
+        user_id: User identifier
+
+    Returns:
+        Enriched calendar options with metadata
+    """
+    color_map, name_map = await get_calendar_metadata_map(access_token)
+
+    for option in calendar_options:
+        calendar_id = option.get("calendar_id", "primary")
+        option["background_color"] = color_map.get(calendar_id, "#00bbff")
+        option["calendar_name"] = name_map.get(calendar_id, "Calendar")
+
+    event_dates_info = extract_unique_dates(calendar_options)
+    same_day_events = await fetch_same_day_events(
+        event_dates_info, access_token, user_id
+    )
+
+    for event in same_day_events:
+        calendar_id = event.get("calendarId")
+        event["background_color"] = color_map.get(calendar_id, "#00bbff")
+
+    for option in calendar_options:
+        option["same_day_events"] = same_day_events
+
+    return calendar_options
+
+
 async def get_calendar_events(
     user_id: str,
     access_token: Optional[str] = None,
