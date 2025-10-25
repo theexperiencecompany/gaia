@@ -386,6 +386,9 @@ importers:
       lenis:
         specifier: ^1.3.9
         version: 1.3.11(react@19.1.1)
+      little-date:
+        specifier: ^1.0.0
+        version: 1.0.0
       lucide-react:
         specifier: ^0.483.0
         version: 0.483.0(react@19.1.1)
@@ -6234,6 +6237,10 @@ packages:
     peerDependencies:
       date-fns: ^3.0.0 || ^4.0.0
 
+  date-fns@2.30.0:
+    resolution: {integrity: sha512-fnULvOpxnC5/Vg3NCiWelDsLiUc9bRwAPs/+LfTLNvetFCtCTN+yQz15C/fs4AwX1R9K5GLtLfn8QW+dWisaAw==}
+    engines: {node: '>=0.11'}
+
   date-fns@4.1.0:
     resolution: {integrity: sha512-Ukq0owbQXxa/U3EGtsdVBkR1w7KOQ5gIBqdH2hkvknzZPYvBxb/aa6E8L7tmjFtkwZBu3UXBbjIgPo/Ez4xaNg==}
 
@@ -7431,6 +7438,10 @@ packages:
 
   linkifyjs@4.3.2:
     resolution: {integrity: sha512-NT1CJtq3hHIreOianA8aSXn6Cw0JzYOuDQbOrSPe7gqFnCpKP++MQe3ODgO3oh2GJFORkAAdqredOa60z63GbA==}
+
+  little-date@1.0.0:
+    resolution: {integrity: sha512-41T/ktcwPzxC0OJ8E3wmaK0E1DL/QNR3n30kB9Dw6Ni6Eud24It8LZm70jK8lvDd+Mg+961fzKDcF6SQRL25cQ==}
+    engines: {node: '>=10'}
 
   load-json-file@1.1.0:
     resolution: {integrity: sha512-cy7ZdNRXdablkXYNI049pthVeXFurRyb9+hA/dZzerZ0pGTx42z+y+ssxBaVV2l70t1muq5IdKhn4UtcoGUY9A==}
@@ -17227,6 +17238,10 @@ snapshots:
     dependencies:
       date-fns: 4.1.0
 
+  date-fns@2.30.0:
+    dependencies:
+      '@babel/runtime': 7.28.3
+
   date-fns@4.1.0: {}
 
   dayjs@1.11.18: {}
@@ -18580,6 +18595,10 @@ snapshots:
       uc.micro: 2.1.0
 
   linkifyjs@4.3.2: {}
+
+  little-date@1.0.0:
+    dependencies:
+      date-fns: 2.30.0
 
   load-json-file@1.1.0:
     dependencies:

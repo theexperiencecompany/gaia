@@ -15,8 +15,8 @@ import {
   AccordionTrigger,
 } from "@/components/ui/shadcn/accordion";
 import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
-import { DatePickerWithRange } from "@/features/calendar/components/DatePickerWithRange";
-import { DateTimePicker } from "@/features/calendar/components/DateTimePicker";
+import { DateRangePicker } from "@/components/ui/shadcn/date-range-picker";
+import { DateTimePicker } from "@/components/ui/shadcn/datetime-picker";
 import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
 import { CalendarItem } from "@/types/api/calendarApiTypes";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
@@ -184,7 +184,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                   <label className="mb-2 flex items-center gap-2 text-sm font-medium text-zinc-400">
                     Date Range
                   </label>
-                  <DatePickerWithRange
+                  <DateRangePicker
                     from={startDate ? new Date(startDate) : undefined}
                     to={endDate ? new Date(endDate) : undefined}
                     onDateChange={(
@@ -210,13 +210,14 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                   <div>
                     <label className="mb-1 text-xs text-zinc-500">Start</label>
                     <DateTimePicker
-                      date={startDate ? new Date(startDate) : undefined}
-                      onDateChange={(date: Date | undefined) => {
+                      value={startDate ? new Date(startDate) : undefined}
+                      onChange={(date: Date | undefined) => {
                         if (date) {
                           onStartDateChange(date.toISOString().slice(0, 16));
                         }
                       }}
-                      placeholder="Select start date and time"
+                      use12HourFormat
+                      timePicker={{ hour: true, minute: true, second: false }}
                     />
                   </div>
 
@@ -227,13 +228,14 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                   <div>
                     <label className="mb-1 text-xs text-zinc-500">End</label>
                     <DateTimePicker
-                      date={endDate ? new Date(endDate) : undefined}
-                      onDateChange={(date: Date | undefined) => {
+                      value={endDate ? new Date(endDate) : undefined}
+                      onChange={(date: Date | undefined) => {
                         if (date) {
                           onEndDateChange(date.toISOString().slice(0, 16));
                         }
                       }}
-                      placeholder="Select end date and time"
+                      use12HourFormat
+                      timePicker={{ hour: true, minute: true, second: false }}
                     />
                   </div>
                 </div>

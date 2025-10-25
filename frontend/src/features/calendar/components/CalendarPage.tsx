@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import { EventSidebar } from "@/components/layout/sidebar/right-variants/CalendarRightSidebar";
 import WeeklyCalendarView from "@/features/calendar/components/WeeklyCalendarView";
@@ -18,6 +18,7 @@ export default function Calendar() {
   // Use selectors to get only the functions, not subscribe to state changes
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
   const closeRightSidebar = useRightSidebar((state) => state.close);
+  const openRightSidebar = useRightSidebar((state) => state.open);
 
   const {
     isOpen,
@@ -50,70 +51,85 @@ export default function Calendar() {
     },
   });
 
-  // Memoize the close handler to prevent infinite loops
-  const handleClose = useCallback(() => {
-    close();
-    closeRightSidebar();
-  }, [close, closeRightSidebar]);
+  // Memoize the sidebar content to prevent unnecessary recreations
+  const sidebarContent = useMemo(
+    () => (
+      <EventSidebar
+        isCreating={isCreating}
+        selectedEvent={selectedEvent}
+        summary={summary}
+        description={description}
+        startDate={startDate}
+        endDate={endDate}
+        isAllDay={isAllDay}
+        selectedCalendarId={selectedCalendarId}
+        isSaving={isSaving}
+        recurrenceType={recurrenceType}
+        customRecurrenceDays={customRecurrenceDays}
+        calendars={calendars}
+        onSummaryChange={handleSummaryChange}
+        onDescriptionChange={handleDescriptionChange}
+        onStartDateChange={(value) => handleDateChange("start", value)}
+        onEndDateChange={(value) => handleDateChange("end", value)}
+        onAllDayChange={setIsAllDay}
+        onCalendarChange={setSelectedCalendarId}
+        onRecurrenceTypeChange={setRecurrenceType}
+        onCustomRecurrenceDaysChange={setCustomRecurrenceDays}
+        onCreate={handleCreate}
+        onDelete={handleDelete}
+      />
+    ),
+    [
+      isCreating,
+      selectedEvent,
+      summary,
+      description,
+      startDate,
+      endDate,
+      isAllDay,
+      selectedCalendarId,
+      isSaving,
+      recurrenceType,
+      customRecurrenceDays,
+      calendars,
+      handleSummaryChange,
+      handleDescriptionChange,
+      handleDateChange,
+      setIsAllDay,
+      setSelectedCalendarId,
+      setRecurrenceType,
+      setCustomRecurrenceDays,
+      handleCreate,
+      handleDelete,
+    ],
+  );
 
-  // Sync event sidebar state with right sidebar
+  // Handle opening/closing the right sidebar - only trigger on isOpen changes
   useEffect(() => {
     if (isOpen) {
-      setRightSidebarContent(
-        <EventSidebar
-          isCreating={isCreating}
-          selectedEvent={selectedEvent}
-          summary={summary}
-          description={description}
-          startDate={startDate}
-          endDate={endDate}
-          isAllDay={isAllDay}
-          selectedCalendarId={selectedCalendarId}
-          isSaving={isSaving}
-          recurrenceType={recurrenceType}
-          customRecurrenceDays={customRecurrenceDays}
-          calendars={calendars}
-          onSummaryChange={handleSummaryChange}
-          onDescriptionChange={handleDescriptionChange}
-          onStartDateChange={(value) => handleDateChange("start", value)}
-          onEndDateChange={(value) => handleDateChange("end", value)}
-          onAllDayChange={setIsAllDay}
-          onCalendarChange={setSelectedCalendarId}
-          onRecurrenceTypeChange={setRecurrenceType}
-          onCustomRecurrenceDaysChange={setCustomRecurrenceDays}
-          onCreate={handleCreate}
-          onDelete={handleDelete}
-        />,
-      );
+      setRightSidebarContent(sidebarContent);
+      openRightSidebar();
     } else {
-      setRightSidebarContent(null);
+      closeRightSidebar();
     }
   }, [
     isOpen,
-    isCreating,
-    selectedEvent,
-    summary,
-    description,
-    startDate,
-    endDate,
-    isAllDay,
-    selectedCalendarId,
-    isSaving,
-    recurrenceType,
-    customRecurrenceDays,
-    calendars,
-    handleSummaryChange,
-    handleDescriptionChange,
-    handleDateChange,
-    setIsAllDay,
-    setSelectedCalendarId,
-    setRecurrenceType,
-    setCustomRecurrenceDays,
-    handleCreate,
-    handleDelete,
-    handleClose,
+    sidebarContent,
     setRightSidebarContent,
+    openRightSidebar,
+    closeRightSidebar,
   ]);
+
+  // Sync close action from right sidebar to event sidebar
+  useEffect(() => {
+    const unsubscribe = useRightSidebar.subscribe((state, prevState) => {
+      // If right sidebar was closed externally (e.g., close button), close event sidebar too
+      if (prevState.isOpen && !state.isOpen && isOpen) {
+        close();
+      }
+    });
+    return unsubscribe;
+  }, [isOpen, close]);
 
   // Set the create event action so the header can trigger it
   useEffect(() => {

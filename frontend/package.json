@@ -150,6 +150,7 @@
     "import-in-the-middle": "^1.14.2",
     "input-otp": "^1.4.2",
     "lenis": "^1.3.9",
+    "little-date": "^1.0.0",
     "lucide-react": "^0.483.0",
     "marked": "^15.0.12",
     "mdx": "^0.3.1",

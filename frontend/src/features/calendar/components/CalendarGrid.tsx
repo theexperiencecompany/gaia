@@ -23,15 +23,11 @@ interface MultiDayCalendarGridProps {
   getEventColor: (event: GoogleCalendarEvent) => string;
   currentTimeTop?: number;
   currentTimeLabel?: string;
+  columnWidth: number;
 }
 
 const PX_PER_MINUTE = 64 / 60;
 const DAY_START_HOUR = 0;
-
-const timeToMinutes = (time: string): number => {
-  const [hours, minutes] = time.split(":").map(Number);
-  return hours * 60 + minutes;
-};
 
 const getEventPositions = (events: GoogleCalendarEvent[], targetDate: Date) => {
   const targetDateStr = targetDate.toDateString();
@@ -65,192 +61,208 @@ const getEventPositions = (events: GoogleCalendarEvent[], targetDate: Date) => {
   return { timedEvents };
 };
 
-export const CalendarGrid = forwardRef<
-  HTMLDivElement,
-  MultiDayCalendarGridProps
->(
-  (
-    {
-      hours,
-      dates,
-      events,
-      loading,
-      error,
-      selectedCalendars,
-      onEventClick,
-      getEventColor,
-      currentTimeTop,
-      currentTimeLabel,
-    },
-    ref,
-  ) => {
-    const daysData = useMemo(
-      () =>
-        dates.map((date) => {
-          const dayEvents = getEventPositions(events, date);
-          return { date, ...dayEvents };
-        }),
-      [dates, events],
-    );
+export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
+  hours,
+  dates,
+  events,
+  loading,
+  error,
+  selectedCalendars,
+  onEventClick,
+  getEventColor,
+  currentTimeTop,
+  currentTimeLabel,
+  columnWidth,
+}) => {
+  const daysData = useMemo(
+    () =>
+      dates.map((date) => {
+        const dayEvents = getEventPositions(events, date);
+        return { date, ...dayEvents };
+      }),
+    [dates, events],
+  );
 
-    const hasAnyEvents = daysData.some((day) => day.timedEvents.length > 0);
+  const hasAnyEvents = daysData.some((day) => day.timedEvents.length > 0);
 
-    return (
-      <div className="relative flex-1 overflow-y-auto" ref={ref}>
-        <AllDayEventsSection
-          events={events}
-          dates={dates}
-          onEventClick={onEventClick}
-          getEventColor={getEventColor}
-        />
+  return (
+    <div className="relative flex h-full min-h-0 w-full flex-col">
+      <AllDayEventsSection
+        events={events}
+        dates={dates}
+        onEventClick={onEventClick}
+        getEventColor={getEventColor}
+        columnWidth={columnWidth}
+      />
 
-        <div className="relative flex">
+      <div className="relative flex min-h-0 min-w-fit flex-1">
+        {/* Full-height column borders */}
+        <div
+          className="pointer-events-none absolute top-0 left-20 flex"
+          style={{ height: `${hours.length * 64}px` }}
+        >
+          {daysData.map((day, dayIndex) => (
+            <div
+              key={`border-${dayIndex}`}
+              className="h-full flex-shrink-0 border-r border-zinc-800 last:border-r-0"
+              style={{ width: `${columnWidth}px` }}
+            />
+          ))}
+        </div>
+
+        {/* Current Time Line & Label */}
+        {typeof currentTimeTop === "number" && currentTimeLabel && (
+          <>
+            {/* Blue horizontal line across all columns */}
+            <div
+              className="absolute right-0 left-20 z-[1] h-[1px] bg-primary/50"
+              style={{ top: `${currentTimeTop}px` }}
+            />
+          </>
+        )}
+
+        {/* Time Labels Column */}
+        <div
+          className="sticky left-0 z-[11] w-20 flex-shrink-0 border-r border-zinc-800 bg-[#1a1a1a]"
+          style={{ height: `${hours.length * 64}px` }}
+        >
           {/* Current Time Line & Label */}
           {typeof currentTimeTop === "number" && currentTimeLabel && (
-            <>
-              {/* Blue horizontal line across all columns */}
-              <div
-                className="absolute right-0 left-20 z-20 h-[1px] bg-primary/50"
-                style={{ top: `${currentTimeTop}px` }}
-              />
-              {/* Time label in left column */}
-              <div
-                className="absolute z-30 flex w-20 flex-shrink-0 items-center justify-end bg-[#1a1a1a] pr-3 text-xs text-primary"
-                style={{ top: `${currentTimeTop - 8}px` }}
-              >
-                {currentTimeLabel}
-              </div>
-            </>
+            <div
+              className="absolute left-0 z-[12] flex w-20 flex-shrink-0 items-center justify-end bg-[#1a1a1a] pr-3 text-xs text-primary"
+              style={{ top: `${currentTimeTop - 8}px` }}
+            >
+              {currentTimeLabel}
+            </div>
           )}
-          {/* Time Labels Column */}
-          <div className="w-20 flex-shrink-0 border-r border-zinc-800">
-            {hours.map((hour) => (
-              <div
-                key={hour}
-                className="items-star=t flex h-16 justify-end pt-2 pr-3"
-              >
-                <span className="text-xs text-zinc-500">
-                  {hour === 0
-                    ? "12 AM"
-                    : hour === 12
-                      ? "12 PM"
-                      : hour > 12
-                        ? `${hour - 12} PM`
-                        : `${hour} AM`}
-                </span>
-              </div>
-            ))}
-          </div>
 
-          {/* Main Calendar Columns for each day */}
-          <div className="relative flex flex-1">
-            {daysData.map((day, dayIndex) => (
-              <div
-                key={dayIndex}
-                className="relative flex-1 border-r border-zinc-800 last:border-r-0"
-              >
-                {/* Hour Dividers */}
-                {hours.map((hour) => (
-                  <div
-                    key={`divider-${hour}`}
-                    className="h-16 border-t border-zinc-800 first:border-t-0"
-                  />
-                ))}
+          {hours.map((hour) => (
+            <div
+              key={hour}
+              className="flex h-16 items-start justify-end pt-2 pr-3"
+            >
+              <span className="text-xs text-zinc-500">
+                {hour === 0
+                  ? "12 AM"
+                  : hour === 12
+                    ? "12 PM"
+                    : hour > 12
+                      ? `${hour - 12} PM`
+                      : `${hour} AM`}
+              </span>
+            </div>
+          ))}
+        </div>
 
-                {/* Events Container */}
-                <div className="absolute inset-0 px-2">
-                  {loading.calendars ? (
-                    <div className="flex h-full items-center justify-center">
-                      <Spinner size="lg" color="default" />
+        {/* Main Calendar Columns for each day */}
+        <div className="relative flex flex-1">
+          {daysData.map((day, dayIndex) => (
+            <div
+              key={dayIndex}
+              className="relative flex-shrink-0"
+              style={{ width: `${columnWidth}px` }}
+            >
+              {/* Hour Dividers */}
+              {hours.map((hour) => (
+                <div
+                  key={`divider-${hour}`}
+                  className="h-16 border-t border-zinc-800 first:border-t-0"
+                />
+              ))}
+
+              {/* Events Container */}
+              <div className="absolute inset-0 px-2">
+                {loading.calendars ? (
+                  <div className="flex h-full items-center justify-center">
+                    <Spinner size="lg" color="default" />
+                  </div>
+                ) : error.calendars ? (
+                  <div className="flex h-full items-center justify-center">
+                    <div className="text-center text-red-500">
+                      <div className="text-lg font-medium">
+                        Error loading calendars
+                      </div>
+                      <div className="mt-1 text-sm">{error.calendars}</div>
                     </div>
-                  ) : error.calendars ? (
-                    <div className="flex h-full items-center justify-center">
-                      <div className="text-center text-red-500">
-                        <div className="text-lg font-medium">
-                          Error loading calendars
-                        </div>
-                        <div className="mt-1 text-sm">{error.calendars}</div>
+                  </div>
+                ) : selectedCalendars.length === 0 ? (
+                  <div className="flex h-full items-center justify-center">
+                    <div className="text-center text-zinc-500">
+                      <div className="text-lg font-medium">
+                        No calendars selected
+                      </div>
+                      <div className="mt-1 text-sm">
+                        Please select a calendar to view events
                       </div>
                     </div>
-                  ) : selectedCalendars.length === 0 ? (
-                    <div className="flex h-full items-center justify-center">
-                      <div className="text-center text-zinc-500">
-                        <div className="text-lg font-medium">
-                          No calendars selected
-                        </div>
-                        <div className="mt-1 text-sm">
-                          Please select a calendar to view events
-                        </div>
+                  </div>
+                ) : loading.events ? (
+                  <div className="flex h-full items-center justify-center">
+                    <Spinner size="lg" color="default" />
+                  </div>
+                ) : error.events ? (
+                  <div className="flex h-full items-center justify-center">
+                    <div className="text-center text-red-500">
+                      <div className="text-lg font-medium">
+                        Error loading events
                       </div>
+                      <div className="mt-1 text-sm">{error.events}</div>
                     </div>
-                  ) : loading.events ? (
-                    <div className="flex h-full items-center justify-center">
-                      <Spinner size="lg" color="default" />
-                    </div>
-                  ) : error.events ? (
-                    <div className="flex h-full items-center justify-center">
-                      <div className="text-center text-red-500">
-                        <div className="text-lg font-medium">
-                          Error loading events
-                        </div>
-                        <div className="mt-1 text-sm">{error.events}</div>
-                      </div>
-                    </div>
-                  ) : day.timedEvents.length === 0 ? null : (
-                    day.timedEvents.map((eventPos, eventIndex) => {
-                      const eventColor = getEventColor(eventPos.event);
-                      return (
+                  </div>
+                ) : day.timedEvents.length === 0 ? null : (
+                  day.timedEvents.map((eventPos, eventIndex) => {
+                    const eventColor = getEventColor(eventPos.event);
+                    return (
+                      <div
+                        key={`event-${eventIndex}`}
+                        className="absolute ml-0.5 flex min-h-fit cursor-pointer overflow-hidden rounded-lg text-white backdrop-blur-3xl transition-all duration-200 hover:opacity-80"
+                        style={{
+                          top: `${eventPos.top}px`,
+                          height: `${eventPos.height}px`,
+                          left: `${eventPos.left}%`,
+                          width: `${eventPos.width - 1}%`,
+                          backgroundColor: `${eventColor}40`,
+                        }}
+                        onClick={() => onEventClick?.(eventPos.event)}
+                      >
                         <div
-                          key={`event-${eventIndex}`}
-                          className="absolute ml-0.5 flex min-h-fit cursor-pointer overflow-hidden rounded-lg text-white backdrop-blur-3xl transition-all duration-200 hover:opacity-80"
+                          className="relative left-0 h-full min-h-full max-w-1 min-w-1 rounded-full"
                           style={{
-                            top: `${eventPos.top}px`,
-                            height: `${eventPos.height}px`,
-                            left: `${eventPos.left}%`,
-                            width: `${eventPos.width - 1}%`,
-                            backgroundColor: `${eventColor}40`,
+                            backgroundColor: eventColor,
                           }}
-                          onClick={() => onEventClick?.(eventPos.event)}
-                        >
-                          <div
-                            className="relative left-0 h-full min-h-full max-w-1 min-w-1 rounded-full"
-                            style={{
-                              backgroundColor: eventColor,
-                            }}
-                          />
-                          <div className="p-3">
-                            <div className="line-clamp-2 text-xs leading-tight font-medium">
-                              {eventPos.event.summary}
-                            </div>
-                            {eventPos.event.start.dateTime &&
-                              eventPos.event.end.dateTime && (
-                                <div className="mt-1 text-xs text-zinc-400">
-                                  {new Date(
-                                    eventPos.event.start.dateTime,
-                                  ).toLocaleTimeString("en-US", {
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                    hour12: true,
-                                  })}{" "}
-                                  –{" "}
-                                  {new Date(
-                                    eventPos.event.end.dateTime,
-                                  ).toLocaleTimeString("en-US", {
-                                    hour: "numeric",
-                                    minute: "2-digit",
-                                    hour12: true,
-                                  })}
-                                </div>
-                              )}
+                        />
+                        <div className="p-3">
+                          <div className="line-clamp-2 text-xs leading-tight font-medium">
+                            {eventPos.event.summary}
                           </div>
+                          {eventPos.event.start.dateTime &&
+                            eventPos.event.end.dateTime && (
+                              <div className="mt-1 text-xs text-zinc-400">
+                                {new Date(
+                                  eventPos.event.start.dateTime,
+                                ).toLocaleTimeString("en-US", {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                  hour12: true,
+                                })}{" "}
+                                –{" "}
+                                {new Date(
+                                  eventPos.event.end.dateTime,
+                                ).toLocaleTimeString("en-US", {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                  hour12: true,
+                                })}
+                              </div>
+                            )}
                         </div>
-                      );
-                    })
-                  )}
-                </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
 
         {/* Show message when no events on any day */}
@@ -270,8 +282,6 @@ export const CalendarGrid = forwardRef<
             </div>
           )}
       </div>
-    );
-  },
-);
-
-CalendarGrid.displayName = "CalendarGrid";
+    </div>
+  );
+};

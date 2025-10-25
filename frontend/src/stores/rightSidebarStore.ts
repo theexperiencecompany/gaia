@@ -11,7 +11,7 @@ interface RightSidebarState {
 export const useRightSidebar = create<RightSidebarState>((set) => ({
   content: null,
   isOpen: false,
-  setContent: (content) => set({ content, isOpen: !!content }),
+  setContent: (content) => set({ content }),
   open: () => set({ isOpen: true }),
   close: () => set({ isOpen: false, content: null }),
 }));

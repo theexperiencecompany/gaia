@@ -10,6 +10,7 @@ interface AllDayEventsSectionProps {
   dates: Date[];
   onEventClick?: (event: GoogleCalendarEvent) => void;
   getEventColor: (event: GoogleCalendarEvent) => string;
+  columnWidth: number;
 }
 
 interface MultiDayEventPosition {
@@ -17,6 +18,8 @@ interface MultiDayEventPosition {
   startDayIndex: number;
   span: number;
   row: number;
+  continuesLeft: boolean;
+  continuesRight: boolean;
 }
 
 const getMultiDayEventPositions = (
@@ -26,11 +29,16 @@ const getMultiDayEventPositions = (
   const multiDayEvents: MultiDayEventPosition[] = [];
   const processedEventIds = new Set<string>();
 
+  if (dates.length === 0) return multiDayEvents;
+
   // Create a map of date strings for O(1) lookup
   const dateMap = new Map<string, number>();
   dates.forEach((date, index) => {
     dateMap.set(date.toDateString(), index);
   });
+
+  const firstVisibleDate = dates[0];
+  const lastVisibleDate = dates[dates.length - 1];
 
   events.forEach((event) => {
     // Only process all-day events
@@ -44,23 +52,32 @@ const getMultiDayEventPositions = (
     // So we subtract 1 day to get the actual last day of the event
     eventEnd.setDate(eventEnd.getDate() - 1);
 
-    const eventStartStr = eventStart.toDateString();
+    // Check if event overlaps with visible date range
+    if (eventEnd < firstVisibleDate || eventStart > lastVisibleDate) {
+      return; // Event doesn't overlap with visible range
+    }
 
-    // Find the start index in our visible dates
-    const startDayIndex = dateMap.get(eventStartStr);
+    // Determine if event continues beyond visible range
+    const continuesLeft = eventStart < firstVisibleDate;
+    const continuesRight = eventEnd > lastVisibleDate;
 
-    // Skip events that don't start in our visible date range
+    // Calculate the visible start of the event
+    const visibleStartDate = continuesLeft ? firstVisibleDate : eventStart;
+    const visibleEndDate = continuesRight ? lastVisibleDate : eventEnd;
+
+    const startDayIndex = dateMap.get(visibleStartDate.toDateString());
+
+    // This should always be defined now, but check for safety
     if (startDayIndex === undefined) return;
 
-    // Calculate span by checking each subsequent visible date
-    let span = 1; // The start day itself
-    const eventEndTime = eventEnd.getTime();
+    // Calculate span within visible dates
+    let span = 1;
+    const visibleEndTime = visibleEndDate.getTime();
 
     for (let i = startDayIndex + 1; i < dates.length; i++) {
       const visibleDate = dates[i];
 
-      // Compare timestamps instead of strings to avoid alphabetical comparison issues
-      if (visibleDate.getTime() <= eventEndTime) {
+      if (visibleDate.getTime() <= visibleEndTime) {
         span++;
       } else {
         break;
@@ -72,6 +89,8 @@ const getMultiDayEventPositions = (
       startDayIndex,
       span,
       row: 0,
+      continuesLeft,
+      continuesRight,
     });
 
     processedEventIds.add(event.id);
@@ -126,6 +145,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
   dates,
   onEventClick,
   getEventColor,
+  columnWidth,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -134,97 +154,197 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
     [events, dates],
   );
 
+  // Count events per day for collapsed view
+  const eventCountsByDay = useMemo(() => {
+    const counts = new Array(dates.length).fill(0);
+
+    multiDayEvents.forEach((eventPos) => {
+      // Count this event for each day it spans
+      for (let i = 0; i < eventPos.span; i++) {
+        const dayIndex = eventPos.startDayIndex + i;
+        if (dayIndex < dates.length) {
+          counts[dayIndex]++;
+        }
+      }
+    });
+
+    return counts;
+  }, [multiDayEvents, dates.length]);
+
   const hasAnyAllDayEvents = multiDayEvents.length > 0;
+  const maxRow =
+    multiDayEvents.length > 0
+      ? Math.max(...multiDayEvents.map((e) => e.row)) + 1
+      : 0;
+  const containerHeight = maxRow * 29;
 
   return (
-    <div className="sticky top-0 z-[1] border-b border-zinc-800 bg-[#1a1a1a]">
-      <div className="flex">
-        {/* Time Label Column */}
-        <div
-          className="w-20 flex-shrink-0 cursor-pointer border-r border-zinc-800 transition-colors hover:bg-zinc-800/50"
-          onClick={() => setIsExpanded(!isExpanded)}
-        >
-          <div className="flex h-full items-center justify-end gap-1 py-3 pr-3">
-            <span className="text-xs font-medium text-zinc-400">All-day</span>
-            {hasAnyAllDayEvents && (
-              <span>
-                {isExpanded ? (
-                  <ChevronsDownUp className="h-3 w-3 text-zinc-400" />
-                ) : (
-                  <ChevronsUpDown className="h-3 w-3 text-zinc-400" />
-                )}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* All-day events container */}
-        <div className="flex-1">
-          {isExpanded ? (
-            multiDayEvents.length > 0 ? (
-              <div className="px-0.5 py-2">
-                {Array.from(
-                  { length: Math.max(...multiDayEvents.map((e) => e.row)) + 1 },
-                  (_, rowIndex) => (
-                    <div
-                      key={`row-${rowIndex}`}
-                      className="mb-1 grid last:mb-0"
-                      style={{
-                        gridTemplateColumns: `repeat(${dates.length}, minmax(0, 1fr))`,
-                        gap: "2px",
-                      }}
-                    >
-                      {multiDayEvents
-                        .filter((eventPos) => eventPos.row === rowIndex)
-                        .map((eventPos) => {
-                          const eventColor = getEventColor(eventPos.event);
-                          return (
-                            <div
-                              key={eventPos.event.id}
-                              style={{
-                                gridColumnStart: eventPos.startDayIndex + 1,
-                                gridColumnEnd: `span ${eventPos.span}`,
-                              }}
-                            >
-                              <div
-                                className="flex h-7 cursor-pointer items-center overflow-hidden rounded-md text-white transition-opacity hover:opacity-80"
-                                style={{
-                                  backgroundColor: `${eventColor}40`,
-                                }}
-                                onClick={() => onEventClick?.(eventPos.event)}
-                              >
-                                <div
-                                  className="h-full w-1 flex-shrink-0 rounded-l-md"
-                                  style={{
-                                    backgroundColor: eventColor,
-                                  }}
-                                />
-                                <div className="flex-1 overflow-hidden px-2">
-                                  <div className="truncate text-xs font-medium">
-                                    {eventPos.event.summary}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  ),
-                )}
-              </div>
-            ) : (
-              <div className="py-2" />
-            )
-          ) : multiDayEvents.length > 0 ? (
-            <div className="flex items-center px-2 py-2 text-xs text-zinc-400">
-              {multiDayEvents.length} event
-              {multiDayEvents.length !== 1 ? "s" : ""}
-            </div>
-          ) : (
-            <div className="py-2" />
+    <div className="sticky top-[37px] z-[12] flex min-w-fit flex-shrink-0 border-b border-zinc-800 bg-[#1a1a1a]">
+      {/* Time Label Column */}
+      <div
+        className="sticky left-0 z-[11] w-20 flex-shrink-0 cursor-pointer border-r border-zinc-800 bg-[#1a1a1a] transition-colors hover:bg-zinc-800/50"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex h-full items-center justify-end gap-1 py-3 pr-3">
+          <span className="text-xs font-medium text-zinc-400 select-none">
+            All-day
+          </span>
+          {hasAnyAllDayEvents && (
+            <span>
+              {isExpanded ? (
+                <ChevronsDownUp className="h-3 w-3 text-zinc-400" />
+              ) : (
+                <ChevronsUpDown className="h-3 w-3 text-zinc-400" />
+              )}
+            </span>
           )}
         </div>
       </div>
+
+      {/* All-day events container */}
+      {isExpanded ? (
+        multiDayEvents.length > 0 ? (
+          <div
+            className="relative max-h-28 overflow-x-hidden overflow-y-auto"
+            style={{
+              width: `${dates.length * columnWidth}px`,
+            }}
+          >
+            {/* Inner content container with proper height */}
+            <div
+              className="relative py-2"
+              style={{
+                height: `${containerHeight + 16}px`,
+              }}
+            >
+              {/* Column borders - full height to match scrollable content */}
+              <div className="pointer-events-none absolute inset-0 flex">
+                {dates.map((_, dayIndex) => (
+                  <div
+                    key={`border-${dayIndex}`}
+                    className="flex-shrink-0 border-r border-zinc-800 last:border-r-0"
+                    style={{ width: `${columnWidth}px` }}
+                  />
+                ))}
+              </div>
+
+              {multiDayEvents.map((eventPos) => {
+                const eventColor = getEventColor(eventPos.event);
+                const leftOffset = eventPos.startDayIndex * columnWidth;
+                const width = eventPos.span * columnWidth - 4;
+
+                return (
+                  <div
+                    key={eventPos.event.id}
+                    className="absolute"
+                    style={{
+                      top: `${eventPos.row * 29 + 8}px`,
+                      left: `${leftOffset}px`,
+                      width: `${width}px`,
+                      height: "28px",
+                    }}
+                  >
+                    <div
+                      className="sti flex h-7 cursor-pointer items-center overflow-hidden text-white transition-opacity hover:opacity-80"
+                      style={{
+                        backgroundColor: `${eventColor}40`,
+                        borderTopLeftRadius: eventPos.continuesLeft
+                          ? "0px"
+                          : "6px",
+                        borderBottomLeftRadius: eventPos.continuesLeft
+                          ? "0px"
+                          : "6px",
+                        borderTopRightRadius: eventPos.continuesRight
+                          ? "0px"
+                          : "6px",
+                        borderBottomRightRadius: eventPos.continuesRight
+                          ? "0px"
+                          : "6px",
+                      }}
+                      onClick={() => onEventClick?.(eventPos.event)}
+                    >
+                      <div
+                        className="h-full flex-shrink-0"
+                        style={{
+                          backgroundColor: eventColor,
+                          width: "4px",
+                          borderTopLeftRadius: eventPos.continuesLeft
+                            ? "0px"
+                            : "6px",
+                          borderBottomLeftRadius: eventPos.continuesLeft
+                            ? "0px"
+                            : "6px",
+                        }}
+                      />
+                      <div className="flex flex-1 items-center overflow-hidden px-2">
+                        {eventPos.continuesLeft && (
+                          <span className="mr-1 text-xs opacity-70">←</span>
+                        )}
+                        <div className="flex-1 truncate text-xs font-medium">
+                          {eventPos.event.summary}
+                        </div>
+                        {eventPos.continuesRight && (
+                          <span className="ml-1 text-xs opacity-70">→</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div
+            className="relative py-2"
+            style={{ width: `${dates.length * columnWidth}px` }}
+          >
+            {/* Column borders */}
+            <div className="pointer-events-none absolute inset-0 flex">
+              {dates.map((_, dayIndex) => (
+                <div
+                  key={`border-${dayIndex}`}
+                  className="flex-shrink-0 border-r border-zinc-800 last:border-r-0"
+                  style={{ width: `${columnWidth}px` }}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      ) : multiDayEvents.length > 0 ? (
+        <div
+          className="relative flex"
+          style={{ width: `${dates.length * columnWidth}px` }}
+        >
+          {dates.map((date, index) => {
+            const count = eventCountsByDay[index];
+            return (
+              <div
+                key={index}
+                className="flex flex-shrink-0 items-center justify-center border-r border-zinc-800 px-2 py-2 text-xs text-zinc-400 last:border-r-0"
+                style={{ width: `${columnWidth}px` }}
+              >
+                {count > 0 ? `${count} event${count !== 1 ? "s" : ""}` : ""}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div
+          className="relative py-2"
+          style={{ width: `${dates.length * columnWidth}px` }}
+        >
+          {/* Column borders */}
+          <div className="pointer-events-none absolute inset-0 flex">
+            {dates.map((_, dayIndex) => (
+              <div
+                key={`border-${dayIndex}`}
+                className="flex-shrink-0 border-r border-zinc-800 last:border-r-0"
+                style={{ width: `${columnWidth}px` }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
