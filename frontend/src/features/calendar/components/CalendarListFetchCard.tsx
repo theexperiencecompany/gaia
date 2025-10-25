@@ -38,7 +38,7 @@ export default function CalendarListFetchCard({
                   <div
                     className="h-3 w-3 flex-shrink-0 rounded-full"
                     style={{
-                      backgroundColor: calendar.backgroundColor || "#4285F4",
+                      backgroundColor: calendar.backgroundColor || "#00bbff",
                     }}
                   />
 

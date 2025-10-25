@@ -38,7 +38,6 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
     calendars,
     selectedCalendars,
     isInitialized,
-    loadCalendars,
     loadEvents,
   } = useSharedCalendar();
 
@@ -55,12 +54,6 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
     isInitialized,
     loadEvents,
   });
-
-  useEffect(() => {
-    if (!isInitialized && !loading.calendars) {
-      loadCalendars();
-    }
-  }, [isInitialized, loading.calendars, loadCalendars]);
 
   const getEventColorForGrid = (event: GoogleCalendarEvent) => {
     return getEventColor(event, calendars);

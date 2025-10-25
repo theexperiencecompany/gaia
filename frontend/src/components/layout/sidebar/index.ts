@@ -13,7 +13,7 @@ export * from "./SidebarTopButtons";
 export * from "./TopWebsiteName";
 export * from "./UserContainer";
 export * from "./constants";
-export * from "./right-variants/EventSidebar";
+export * from "./right-variants/CalendarRightSidebar";
 export * from "./right-variants/GoalSidebar";
 export * from "./right-variants/TodoSidebar";
 export * from "./variants/BrowserSidebar";

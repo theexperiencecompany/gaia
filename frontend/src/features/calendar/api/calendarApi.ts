@@ -116,7 +116,7 @@ export const calendarApi = {
     return calendars.map((cal) => ({
       id: cal.id,
       summary: cal.name || cal.summary || "",
-      backgroundColor: cal.backgroundColor || "#4285F4",
+      backgroundColor: cal.backgroundColor || "#00bbff",
       primary: cal.primary || false,
     }));
   },

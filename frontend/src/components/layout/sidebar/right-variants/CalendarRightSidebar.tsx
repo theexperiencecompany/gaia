@@ -18,7 +18,7 @@ import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
 import { DatePickerWithRange } from "@/features/calendar/components/DatePickerWithRange";
 import { DateTimePicker } from "@/features/calendar/components/DateTimePicker";
 import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
-import { useCalendarStore } from "@/stores/calendarStore";
+import { CalendarItem } from "@/types/api/calendarApiTypes";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface EventSidebarProps {
@@ -33,6 +33,7 @@ interface EventSidebarProps {
   isSaving: boolean;
   recurrenceType: string;
   customRecurrenceDays: string[];
+  calendars: CalendarItem[];
   onSummaryChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
   onStartDateChange: (value: string) => void;
@@ -67,9 +68,8 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
   onCustomRecurrenceDaysChange,
   onCreate,
   onDelete,
+  calendars,
 }) => {
-  const { calendars } = useCalendarStore();
-
   // Set default calendar when calendars are loaded and creating
   React.useEffect(() => {
     if (calendars.length > 0 && !selectedCalendarId && isCreating) {
@@ -411,7 +411,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
               <button
                 onClick={onDelete}
                 disabled={isSaving}
-                className="rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-all hover:bg-red-500/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                className="cursor-pointer rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-all hover:bg-red-500/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Delete event"
               >
                 <Trash2 className="size-4" />

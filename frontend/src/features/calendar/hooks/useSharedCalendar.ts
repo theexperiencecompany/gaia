@@ -5,23 +5,27 @@ import { useCallback } from "react";
 import { useCalendarStore } from "@/stores/calendarStore";
 
 import { useCalendarOperations } from "./useCalendarOperations";
+import { useCalendarsQuery } from "./useCalendarsQuery";
 
 export const useSharedCalendar = () => {
   const {
-    calendars,
     selectedCalendars,
     events,
     nextPageToken,
     loading,
     error,
-    isInitialized,
     setSelectedCalendars,
     toggleCalendarSelection,
     resetEvents,
     clearError,
   } = useCalendarStore();
 
-  const { loadCalendars, loadEvents } = useCalendarOperations();
+  const { loadEvents } = useCalendarOperations();
+
+  // Use React Query for calendars with caching
+  const calendarsQuery = useCalendarsQuery();
+  const calendars = calendarsQuery.data ?? [];
+  const isInitialized = calendarsQuery.isFetched;
 
   // Handle calendar selection
   const handleCalendarSelect = useCallback(
@@ -42,16 +46,22 @@ export const useSharedCalendar = () => {
     selectedCalendars,
     events,
     nextPageToken,
-    loading,
-    error,
+    loading: {
+      ...loading,
+      calendars: calendarsQuery.isLoading,
+    },
+    error: {
+      ...error,
+      calendars: calendarsQuery.error?.message ?? null,
+    },
     isInitialized,
 
     // Actions
-    loadCalendars,
     loadEvents,
     clearEvents,
     handleCalendarSelect,
     setSelectedCalendars,
     clearError,
+    refetchCalendars: calendarsQuery.refetch,
   };
 };

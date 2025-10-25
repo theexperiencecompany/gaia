@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -35,53 +36,67 @@ from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
 
-def transform_calendar_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+async def process_single_event(
+    event: CalendarEventToolRequest,
+    user_time_str: str,
+    user_id: str,
+) -> tuple[Dict[str, Any] | None, str | None]:
     """
-    Transform calendar events to essential fields for LLM consumption.
-    Reduces token usage by removing unnecessary metadata.
-
-    Args:
-        events: List of full event objects from Google Calendar API.
+    Process a single calendar event with validation and timezone handling.
 
     Returns:
-        List of events with only essential fields.
+        tuple: (event_dict or None, error_message or None)
     """
-    transformed = []
-    for event in events:
-        transformed_event = {
-            "id": event.get("id"),
-            "summary": event.get("summary"),
-            "start": event.get("start"),
-            "end": event.get("end"),
+    try:
+        processed_event = event.process_times(user_time_str)
+
+        event_dict = {
+            "summary": processed_event.summary,
+            "description": processed_event.description or "",
+            "is_all_day": processed_event.is_all_day,
+            "start": processed_event.start,
+            "end": processed_event.end,
         }
 
-        # Add optional fields only if they exist and are non-empty
-        if event.get("description"):
-            transformed_event["description"] = event["description"]
-        if event.get("location"):
-            transformed_event["location"] = event["location"]
-        if event.get("attendees"):
-            # Simplify attendees to only essential info: email, response status, and organizer flag
-            transformed_event["attendees"] = [
-                {
-                    "email": attendee.get("email"),
-                    "responseStatus": attendee.get("responseStatus"),
-                    "organizer": attendee.get("organizer", False),
-                }
-                for attendee in event["attendees"]
-            ]
-        if event.get("recurrence"):
-            transformed_event["recurrence"] = event["recurrence"]
-        if event.get("status"):
-            transformed_event["status"] = event["status"]
-        if event.get("calendarId"):
-            transformed_event["calendarId"] = event["calendarId"]
-        if event.get("calendarTitle"):
-            transformed_event["calendarTitle"] = event["calendarTitle"]
+        if processed_event.calendar_id:
+            event_dict["calendar_id"] = processed_event.calendar_id
+            try:
+                # Get access token for fetching calendar details
+                access_token, _, token_success = await get_tokens_by_user_id(user_id)
+                if token_success and access_token:
+                    calendar_list: Dict[str, Any] = await list_calendars(access_token)
+                    if calendar_list and "items" in calendar_list:
+                        for cal in calendar_list.get("items", []):
+                            if cal.get("id") == processed_event.calendar_id:
+                                event_dict["calendar_name"] = cal.get(
+                                    "summary", "Calendar"
+                                )
+                                event_dict["background_color"] = cal.get(
+                                    "backgroundColor", "#00bbff"
+                                )
+                                break
+                else:
+                    event_dict["background_color"] = "#00bbff"
+                    event_dict["calendar_name"] = "Calendar"
+            except Exception as e:
+                logger.warning(f"Could not fetch calendar color: {e}")
+                event_dict["background_color"] = "#00bbff"
+                event_dict["calendar_name"] = "Calendar"
+        else:
+            # Default values when no calendar_id is specified
+            event_dict["background_color"] = "#00bbff"
+            event_dict["calendar_name"] = "Calendar"
 
-        transformed.append(transformed_event)
+        if processed_event.recurrence:
+            event_dict["recurrence"] = processed_event.recurrence.model_dump()
 
-    return transformed
+        logger.info(f"Added calendar event: {processed_event.summary}")
+        return event_dict, None
+
+    except Exception as e:
+        error_msg = f"Error processing calendar event: {e}"
+        logger.error(error_msg)
+        return None, error_msg
 
 
 @tool()
@@ -93,7 +108,6 @@ async def create_calendar_event(
     config: RunnableConfig,
 ) -> str:
     try:
-        # Validate non-empty
         if not events_data:
             logger.error("Empty event list provided")
             return json.dumps(
@@ -104,8 +118,17 @@ async def create_calendar_event(
                 }
             )
 
-        # Get user time from config for timezone processing
         configurable = config.get("configurable", {})
+        if not configurable:
+            logger.error("Missing 'configurable' section in config")
+            return json.dumps(
+                {
+                    "error": "Configuration data is missing",
+                    "calendar_options": [],
+                    "prompt": str(CALENDAR_PROMPT_TEMPLATE.invoke({})),
+                }
+            )
+
         user_time_str: str = configurable.get("user_time", "")
         user_id = configurable.get("user_id")
 
@@ -129,57 +152,25 @@ async def create_calendar_event(
                 }
             )
 
+        logger.info(f"Processing {len(events_data)} calendar events")
+
+        # Process all events in parallel
+        results = await asyncio.gather(
+            *[
+                process_single_event(event, user_time_str, user_id)
+                for event in events_data
+            ]
+        )
+
         calendar_options = []
         validation_errors = []
 
-        logger.info(f"Processing {len(events_data)} calendar events")
-
-        # Process each event with validation
-        for event in events_data:
-            try:
-                # Process the event times with timezone handling to convert to service format
-                processed_event = event.process_times(user_time_str)
-
-                # Add the validated and processed event as a proper dict with all required fields
-                event_dict = {
-                    "summary": processed_event.summary,
-                    "description": processed_event.description or "",
-                    "is_all_day": processed_event.is_all_day,
-                    "start": processed_event.start,
-                    "end": processed_event.end,
-                }
-
-                # Add optional fields only if they exist
-                if processed_event.calendar_id:
-                    event_dict["calendar_id"] = processed_event.calendar_id
-                    # Fetch calendar info to get color
-                    try:
-                        calendar_list = await list_calendars(user_id)
-                        for cal in calendar_list.get("items", []):
-                            if cal.get("id") == processed_event.calendar_id:
-                                event_dict["calendar_name"] = cal.get(
-                                    "summary", "Calendar"
-                                )
-                                event_dict["background_color"] = cal.get(
-                                    "backgroundColor", "#4285F4"
-                                )
-                                break
-                    except Exception as e:
-                        logger.warning(f"Could not fetch calendar color: {e}")
-                        event_dict["background_color"] = "#4285F4"
-
-                if processed_event.recurrence:
-                    event_dict["recurrence"] = processed_event.recurrence.model_dump()
-
+        for event_dict, error_msg in results:
+            if event_dict:
                 calendar_options.append(event_dict)
-                logger.info(f"Added calendar event: {processed_event.summary}")
-
-            except Exception as e:
-                error_msg = f"Error processing calendar event: {e}"
-                logger.error(error_msg)
+            if error_msg:
                 validation_errors.append(error_msg)
 
-        # Return validation errors if any
         if validation_errors and not calendar_options:
             logger.error(f"Calendar event validation failed: {validation_errors}")
             return json.dumps(
@@ -191,91 +182,112 @@ async def create_calendar_event(
                 }
             )
 
-        # Validate configurable section exists
-        if not configurable:
-            logger.error("Missing 'configurable' section in config")
-            return json.dumps(
-                {
-                    "error": "Configuration data is missing",
-                    "calendar_options": [],
-                    "prompt": str(CALENDAR_PROMPT_TEMPLATE.invoke({})),
-                }
-            )
-
-        # # If initiated by backend then create notification
-        # if configurable.get("initiator") == "backend":
-        #     user_id = configurable.get("user_id")
-        #     if not user_id:
-        #         logger.error("Missing user_id in configuration")
-        #         return json.dumps(
-        #             {
-        #                 "error": "User ID is required to create calendar notification",
-        #                 "calendar_options": [],
-        #                 "prompt": str(CALENDAR_PROMPT_TEMPLATE.invoke({})),
-        #             }
-        #         )
-
-        #     # Create a notification for the user
-        #     notifications = (
-        #         AIProactiveNotificationSource.create_calendar_event_notification(
-        #             user_id=user_id,
-        #             notification_data=event_list,
-        #         )
-        #     )
-        #     await asyncio.gather(
-        #         *[
-        #             notification_service.create_notification(notification)
-        #             for notification in notifications
-        #         ]
-        #     )
-
-        #     return "Calendar notification created successfully."
-
-        # Return the successfully processed events
         writer = get_stream_writer()
 
-        # Fetch existing events on the same days for context
+        # Fetch same-day events for context
         try:
-            tokens = await get_tokens_by_user_id(user_id, "google")
-            access_token = tokens.get("access_token", "")
+            access_token, _, token_success = await get_tokens_by_user_id(user_id)
+            if not token_success or not access_token:
+                raise Exception("Failed to get valid access token")
 
-            # Collect unique dates from the events
-            event_dates = set()
+            # Fetch calendar list to map colors and names
+            calendar_list = await list_calendars(access_token)
+            calendar_color_map = {}
+            calendar_name_map = {}
+
+            if calendar_list and "items" in calendar_list:
+                for cal in calendar_list.get("items", []):
+                    cal_id = cal.get("id")
+                    if cal_id:
+                        calendar_color_map[cal_id] = cal.get(
+                            "backgroundColor", "#00bbff"
+                        )
+                        calendar_name_map[cal_id] = cal.get("summary", "Calendar")
+
+            # Add background_color and calendar_name to calendar_options
+            for option in calendar_options:
+                calendar_id = option.get("calendar_id", "primary")
+                if calendar_id in calendar_color_map:
+                    option["background_color"] = calendar_color_map[calendar_id]
+                    option["calendar_name"] = calendar_name_map[calendar_id]
+                else:
+                    option["background_color"] = "#00bbff"
+                    option["calendar_name"] = "Calendar"
+
+            # Extract unique dates from events with proper timezone handling
+            event_dates_info = {}  # date_str -> timezone_str
             for event_option in calendar_options:
-                # Extract date from start time
                 start_time = event_option.get("start", "")
                 if start_time:
-                    if "T" in start_time:
-                        event_date = start_time.split("T")[0]
-                    else:
-                        event_date = start_time
-                    event_dates.add(event_date)
+                    try:
+                        # Parse the ISO format datetime with timezone
+                        # Format: "2025-10-25T22:00:00+05:30"
+                        dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                        # Get the date in the event's local timezone
+                        date_str = dt.strftime("%Y-%m-%d")
 
-            # Fetch events for each date
+                        # Extract timezone offset from the original string
+                        # We want to query the same date in the user's timezone
+                        if "+" in start_time or "-" in start_time.split("T")[-1]:
+                            # Has explicit timezone offset
+                            tz_part = start_time.split("T")[-1]
+                            # Find the timezone part (after last occurrence of + or -)
+                            for sep in ["+", "-"]:
+                                if sep in tz_part:
+                                    tz_offset = sep + tz_part.split(sep)[-1]
+                                    event_dates_info[date_str] = tz_offset
+                                    break
+                        elif start_time.endswith("Z"):
+                            event_dates_info[date_str] = "+00:00"
+                        else:
+                            # No timezone info, assume UTC
+                            event_dates_info[date_str] = "+00:00"
+                    except Exception as e:
+                        logger.warning(f"Error parsing date {start_time}: {e}")
+                        # Fallback to simple string split
+                        event_date = (
+                            start_time.split("T")[0]
+                            if "T" in start_time
+                            else start_time
+                        )
+                        event_dates_info[event_date] = "+00:00"
+
+            # Fetch events for each date in parallel with proper timezone
             same_day_events = []
-            for event_date in event_dates:
-                try:
-                    # Create time range for the day
-                    time_min = f"{event_date}T00:00:00Z"
-                    time_max = f"{event_date}T23:59:59Z"
-
-                    events_response = await get_calendar_events(
+            fetch_tasks = []
+            for event_date, tz_offset in event_dates_info.items():
+                # Create time boundaries in the user's timezone
+                time_min = f"{event_date}T00:00:00{tz_offset}"
+                time_max = f"{event_date}T23:59:59{tz_offset}"
+                fetch_tasks.append(
+                    get_calendar_events(
                         access_token=access_token,
                         user_id=user_id,
                         time_min=time_min,
                         time_max=time_max,
                     )
+                )
 
-                    if events_response and "events" in events_response:
-                        same_day_events.extend(events_response["events"])
-                except Exception as e:
-                    logger.warning(f"Error fetching events for {event_date}: {str(e)}")
+            results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, dict) and "events" in result:
+                    same_day_events.extend(result["events"])
 
-            # Transform and send data
+            # Add background_color to each same_day_event
+            for event in same_day_events:
+                calendar_id = event.get("calendarId")
+                if calendar_id and calendar_id in calendar_color_map:
+                    event["background_color"] = calendar_color_map[calendar_id]
+                else:
+                    event["background_color"] = "#00bbff"
+
+            # Nest same_day_events in each calendar_option for frontend context
+            for option in calendar_options:
+                option["same_day_events"] = same_day_events
+
             writer(
                 {
                     "calendar_options": calendar_options,
-                    "same_day_events": transform_calendar_events(same_day_events),
                     "intent": "calendar",
                 }
             )
@@ -400,7 +412,7 @@ async def fetch_calendar_events(
                 if isinstance(cal, dict):
                     calendar_color_map[cal.get("id")] = {
                         "name": cal.get("summary", "Unknown Calendar"),
-                        "backgroundColor": cal.get("backgroundColor", "#4285F4"),
+                        "backgroundColor": cal.get("backgroundColor", "#00bbff"),
                     }
 
         events_data = await get_calendar_events(
@@ -412,9 +424,8 @@ async def fetch_calendar_events(
             max_results=limit,
         )
 
-        # Transform events to reduce token usage
-        events = transform_calendar_events(events_data.get("events", []))
-        logger.info(f"Fetched and transformed {len(events)} events")
+        events = events_data.get("events", [])
+        logger.info(f"Fetched {len(events)} events")
 
         # Build array with all necessary fields for frontend
         calendar_fetch_data = []
@@ -441,7 +452,7 @@ async def fetch_calendar_events(
                 calendar_id,
                 {
                     "name": event.get("calendarTitle", "Unknown Calendar"),
-                    "backgroundColor": "#4285F4",
+                    "backgroundColor": "#00bbff",
                 },
             )
 
@@ -451,7 +462,7 @@ async def fetch_calendar_events(
                     "start_time": start_time,
                     "end_time": end_time,
                     "calendar_name": calendar_info.get("name", "Unknown Calendar"),
-                    "background_color": calendar_info.get("backgroundColor", "#4285F4"),
+                    "background_color": calendar_info.get("backgroundColor", "#00bbff"),
                 }
             )
 
@@ -526,7 +537,7 @@ async def search_calendar_events(
                 if isinstance(cal, dict):
                     calendar_color_map[cal.get("id")] = {
                         "name": cal.get("summary", "Unknown Calendar"),
-                        "backgroundColor": cal.get("backgroundColor", "#4285F4"),
+                        "backgroundColor": cal.get("backgroundColor", "#00bbff"),
                     }
 
         # Build array with all necessary fields for frontend
@@ -554,7 +565,7 @@ async def search_calendar_events(
                 calendar_id,
                 {
                     "name": event.get("calendarTitle", "Unknown Calendar"),
-                    "backgroundColor": "#4285F4",
+                    "backgroundColor": "#00bbff",
                 },
             )
 
@@ -564,7 +575,7 @@ async def search_calendar_events(
                     "start_time": start_time,
                     "end_time": end_time,
                     "calendar_name": calendar_info.get("name", "Unknown Calendar"),
-                    "background_color": calendar_info.get("backgroundColor", "#4285F4"),
+                    "background_color": calendar_info.get("backgroundColor", "#00bbff"),
                 }
             )
 
@@ -881,7 +892,7 @@ async def edit_calendar_event(
 tools = [
     fetch_calendar_list,
     create_calendar_event,
-    # delete_calendar_event,
+    delete_calendar_event,
     edit_calendar_event,
     fetch_calendar_events,
     search_calendar_events,

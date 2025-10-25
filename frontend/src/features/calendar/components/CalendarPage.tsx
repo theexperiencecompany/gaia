@@ -3,15 +3,17 @@
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect } from "react";
 
-import { EventSidebar } from "@/components/layout/sidebar/right-variants/EventSidebar";
+import { EventSidebar } from "@/components/layout/sidebar/right-variants/CalendarRightSidebar";
 import WeeklyCalendarView from "@/features/calendar/components/WeeklyCalendarView";
 import { useEventSidebar } from "@/features/calendar/hooks/useEventSidebar";
+import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 import { useSetCreateEventAction } from "@/stores/calendarStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function Calendar() {
   const searchParams = useSearchParams();
   const setCreateEventAction = useSetCreateEventAction();
+  const { calendars } = useSharedCalendar();
 
   // Use selectors to get only the functions, not subscribe to state changes
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
@@ -70,6 +72,7 @@ export default function Calendar() {
           isSaving={isSaving}
           recurrenceType={recurrenceType}
           customRecurrenceDays={customRecurrenceDays}
+          calendars={calendars}
           onSummaryChange={handleSummaryChange}
           onDescriptionChange={handleDescriptionChange}
           onStartDateChange={(value) => handleDateChange("start", value)}
@@ -98,6 +101,7 @@ export default function Calendar() {
     isSaving,
     recurrenceType,
     customRecurrenceDays,
+    calendars,
     handleSummaryChange,
     handleDescriptionChange,
     handleDateChange,

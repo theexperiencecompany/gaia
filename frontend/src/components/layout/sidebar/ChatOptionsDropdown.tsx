@@ -29,6 +29,7 @@ import {
 import { PencilRenameIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
+import { Kbd } from "@heroui/kbd";
 
 export default function ChatOptionsDropdown({
   buttonHovered,
@@ -236,7 +237,12 @@ export default function ChatOptionsDropdown({
                 <Button variant="light" onPress={closeModal}>
                   Cancel
                 </Button>
-                <Button color="danger" variant="flat" onPress={handleDelete}>
+                <Button
+                  color="danger"
+                  variant="flat"
+                  onPress={handleDelete}
+                  endContent={<Kbd keys={["enter"]} />}
+                >
                   Delete
                 </Button>
               </ModalFooter>

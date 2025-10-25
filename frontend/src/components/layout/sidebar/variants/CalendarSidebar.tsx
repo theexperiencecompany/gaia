@@ -10,20 +10,15 @@ import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 
 export default function CalendarSidebar() {
   const router = useRouter();
-  const {
-    calendars,
-    selectedCalendars,
-    handleCalendarSelect,
-    isInitialized,
-    loading,
-  } = useSharedCalendar();
+  const { calendars, selectedCalendars, handleCalendarSelect, loading } =
+    useSharedCalendar();
 
   const handleCreateEvent = () => {
     // Navigate to calendar page which will trigger the event creation
     router.push("/calendar?create=true");
   };
 
-  if (!isInitialized || loading.calendars) {
+  if (loading.calendars) {
     return (
       <div className="flex h-40 w-full flex-1 items-center justify-center">
         <Spinner />

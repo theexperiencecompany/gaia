@@ -1,11 +1,7 @@
 export { useCalendarBatchOperations } from "./useCalendarBatchOperations";
 export { useCalendarChunks } from "./useCalendarChunks";
-export { useCalendarEventPositioning } from "./useCalendarEventPositioning";
-export { useCalendarNavigation } from "./useCalendarNavigation";
 export { useCalendarOperations } from "./useCalendarOperations";
-export { useCalendarPreferences } from "./useCalendarPreferences";
-export { useCalendarScroll } from "./useCalendarScroll";
-export { useEventGroups } from "./useEventGroups";
+export { useCalendarsQuery } from "./useCalendarsQuery";
 export { useEventSidebar } from "./useEventSidebar";
 export { useSharedCalendar } from "./useSharedCalendar";
 export { useUpcomingEventsQuery } from "./useUpcomingEventsQuery";

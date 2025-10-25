@@ -25,5 +25,5 @@ export const getEventColor = (
   }
 
   // Fallback color
-  return "#3b82f6";
+  return "#00bbff";
 };

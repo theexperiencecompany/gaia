@@ -2,16 +2,15 @@ import { useRouter } from "next/navigation";
 import React from "react";
 
 import UpcomingEventsView from "@/features/calendar/components/UpcomingEventsView";
+import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
 import { useUpcomingEventsQuery } from "@/features/calendar/hooks/useUpcomingEventsQuery";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import UnreadEmailsView from "@/features/mail/components/UnreadEmailsView";
 import { useUnreadEmailsQuery } from "@/features/mail/hooks/useUnreadEmailsQuery";
-import { useCalendars } from "@/stores/calendarStore";
 
 export const GridSection = () => {
   const router = useRouter();
   const { getIntegrationStatus, connectIntegration } = useIntegrations();
-  const calendars = useCalendars();
 
   // Check integration connection statuses
   const gmailStatus = getIntegrationStatus("gmail");
@@ -25,21 +24,26 @@ export const GridSection = () => {
   const calendarQuery = useUpcomingEventsQuery(20, {
     enabled: isCalendarConnected,
   });
+  const calendarsQuery = useCalendarsQuery({
+    enabled: isCalendarConnected,
+  });
 
   // Extract data with fallbacks
   const emailData = emailQuery.data ?? [];
   const calendarEvents = calendarQuery.data ?? [];
+  const calendars = calendarsQuery.data ?? [];
 
   // Individual loading states for granular control
   const emailLoading = emailQuery.isLoading;
   const calendarLoading = calendarQuery.isLoading;
+  const calendarsLoading = calendarsQuery.isLoading;
 
   // Fetching states for refresh functionality
   const emailFetching = emailQuery.isFetching;
   const calendarFetching = calendarQuery.isFetching;
 
   // Combined loading state - true if ANY query is still loading
-  const isLoading = emailLoading || calendarLoading;
+  const isLoading = emailLoading || calendarLoading || calendarsLoading;
 
   // Transform errors to match expected format
   const errors = {

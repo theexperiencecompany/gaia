@@ -5,44 +5,13 @@ import { useCalendarStore } from "@/stores/calendarStore";
 
 export const useCalendarOperations = () => {
   const {
-    setCalendars,
     setEvents,
     setNextPageToken,
     setLoading,
     setError,
     clearError,
-    setInitialized,
-    autoSelectPrimaryCalendar,
     selectedCalendars,
   } = useCalendarStore();
-
-  const loadCalendars = useCallback(async () => {
-    setLoading("calendars", true);
-    clearError("calendars");
-
-    try {
-      const calendars = await calendarApi.fetchCalendars();
-      setCalendars(calendars);
-      setInitialized(true);
-      autoSelectPrimaryCalendar();
-      return calendars;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to fetch calendars";
-      setError("calendars", errorMessage);
-      setInitialized(true);
-      throw error;
-    } finally {
-      setLoading("calendars", false);
-    }
-  }, [
-    setCalendars,
-    setLoading,
-    setError,
-    clearError,
-    setInitialized,
-    autoSelectPrimaryCalendar,
-  ]);
 
   const loadEvents = useCallback(
     async (
@@ -110,7 +79,6 @@ export const useCalendarOperations = () => {
   );
 
   return {
-    loadCalendars,
     loadEvents,
   };
 };
