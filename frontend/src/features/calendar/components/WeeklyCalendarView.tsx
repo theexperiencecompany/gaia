@@ -102,6 +102,36 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
     );
   }, []);
 
+  // Helper function to scroll to a specific date
+  const scrollToDate = useCallback(
+    (targetDate: Date, behavior: ScrollBehavior = "smooth") => {
+      if (!scrollContainerRef.current || columnWidth === 0) return;
+
+      const targetDateStr = targetDate.toISOString().split("T")[0];
+      const dateIndex = extendedDates.findIndex(
+        (date) => date.toISOString().split("T")[0] === targetDateStr,
+      );
+
+      if (dateIndex !== -1) {
+        const scrollContainer = scrollContainerRef.current;
+        const containerWidth = scrollContainer.clientWidth - 80;
+        const visibleColumns = Math.floor(containerWidth / columnWidth);
+
+        // Center the target date in the viewport
+        const targetScroll = Math.max(
+          0,
+          dateIndex * columnWidth - (visibleColumns / 2) * columnWidth,
+        );
+
+        scrollContainer.scrollTo({
+          left: targetScroll,
+          behavior,
+        });
+      }
+    },
+    [extendedDates, columnWidth],
+  );
+
   // Scroll observer and infinite loader
   const scrollMetrics = useHorizontalScrollObserver(
     scrollContainerRef,
@@ -134,25 +164,49 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
     ) {
       const todayIndex = getTodayIndex(extendedDates);
       if (todayIndex !== -1) {
-        const scrollContainer = scrollContainerRef.current;
-        const containerWidth = scrollContainer.clientWidth - 80;
-        const visibleColumns = Math.floor(containerWidth / columnWidth);
-
-        const targetScroll = Math.max(
-          0,
-          todayIndex * columnWidth - (visibleColumns / 2) * columnWidth,
-        );
-
         setTimeout(() => {
-          scrollContainer.scrollTo({
-            left: targetScroll,
-            behavior: "auto",
-          });
+          scrollToDate(new Date(), "auto");
           hasScrolledToTodayRef.current = true;
         }, 100);
       }
     }
-  }, [extendedDates, columnWidth, getTodayIndex]);
+  }, [extendedDates, columnWidth, getTodayIndex, scrollToDate]);
+
+  // Effect 1b: Handle selectedDate changes (chevron buttons, today button)
+  useEffect(() => {
+    // Skip initial load
+    if (!hasScrolledToTodayRef.current) return;
+
+    if (extendedDates.length > 0 && columnWidth > 0) {
+      const selectedDateStr = selectedDate.toISOString().split("T")[0];
+      const dateIndex = extendedDates.findIndex(
+        (date) => date.toISOString().split("T")[0] === selectedDateStr,
+      );
+
+      if (dateIndex !== -1) {
+        // Date is in current range, scroll to it
+        scrollToDate(selectedDate, "smooth");
+      } else {
+        // Date is not in range, need to load it
+        // Reset dates to show a range around the selected date
+        const newDates = getInitialMonthlyDateRange(selectedDate);
+        setExtendedDates(newDates);
+
+        // Load events for this range
+        if (selectedCalendars.length > 0) {
+          const start = newDates[0];
+          const end = newDates[newDates.length - 1];
+          loadEvents(selectedCalendars, true, start, end);
+        }
+
+        // Scroll to the date after dates are updated
+        setTimeout(() => {
+          scrollToDate(selectedDate, "auto");
+        }, 100);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
 
   // Effect 2: Initial fetch of events for 3-month range
   useEffect(() => {

@@ -19,6 +19,12 @@ export default function Calendar() {
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
   const closeRightSidebar = useRightSidebar((state) => state.close);
   const openRightSidebar = useRightSidebar((state) => state.open);
+  const setRightSidebarVariant = useRightSidebar((state) => state.setVariant);
+
+  // Set sidebar to overlay mode to prevent calendar jitter
+  useEffect(() => {
+    setRightSidebarVariant("overlay");
+  }, [setRightSidebarVariant]);
 
   const {
     isOpen,

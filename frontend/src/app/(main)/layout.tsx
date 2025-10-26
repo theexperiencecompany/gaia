@@ -27,8 +27,11 @@ const HeaderSidebarTrigger = () => {
 export default function MainLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { isOpen, isMobileOpen, setOpen, setMobileOpen } = useUIStoreSidebar();
-  const { content: rightSidebarContent, isOpen: rightSidebarOpen } =
-    useRightSidebar();
+  const {
+    content: rightSidebarContent,
+    isOpen: rightSidebarOpen,
+    variant: rightSidebarVariant,
+  } = useRightSidebar();
   const isMobile = useIsMobile();
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
@@ -97,7 +100,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
         defaultOpen={defaultOpen}
       >
         <div
-          className="flex min-h-screen w-full dark"
+          className="relative flex min-h-screen w-full dark"
           style={{ touchAction: "pan-y" }}
           ref={dragRef}
         >
@@ -118,7 +121,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             </main>
           </SidebarInset>
 
-          <RightSidebar isOpen={rightSidebarOpen}>
+          <RightSidebar isOpen={rightSidebarOpen} variant={rightSidebarVariant}>
             {rightSidebarContent}
           </RightSidebar>
         </div>
