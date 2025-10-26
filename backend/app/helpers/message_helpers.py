@@ -107,9 +107,11 @@ async def get_memory_message(
     except Exception as e:
         logger.error(f"Error creating memory message: {e}")
         # Return minimal context on error
-        utc_time = datetime.now(timezone.utc).strftime("%A, %B %d, %Y, %H:%M:%S UTC")
+        utc_time_str = datetime.now(timezone.utc).strftime(
+            "%A, %B %d, %Y, %H:%M:%S UTC"
+        )
         return SystemMessage(
-            content=f"Current UTC Time: {utc_time}", memory_message=True
+            content=f"Current UTC Time: {utc_time_str}", memory_message=True
         )
 
 

@@ -493,13 +493,14 @@ class WorkflowService:
             True if update succeeded, False otherwise
         """
         try:
+            inc_data = {"total_executions": 1}
+            if is_successful:
+                inc_data["successful_executions"] = 1
+
             update_data = {
-                "$inc": {"total_executions": 1},
+                "$inc": inc_data,
                 "$set": {"last_executed_at": datetime.now(timezone.utc)},
             }
-
-            if is_successful:
-                update_data["$inc"]["successful_executions"] = 1
 
             result = await workflows_collection.update_one(
                 {"_id": workflow_id, "user_id": user_id}, update_data

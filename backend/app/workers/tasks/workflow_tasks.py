@@ -319,7 +319,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
         usage_metadata_callback = UsageMetadataCallbackHandler()
 
         # Execute using the same logic as normal chat
-        complete_message, tool_data, token_metadata = await call_agent_silent(
+        complete_message, tool_data = await call_agent_silent(
             request=request,
             conversation_id=conversation["conversation_id"],
             user=user_data,

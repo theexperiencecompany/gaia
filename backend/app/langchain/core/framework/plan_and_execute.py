@@ -86,7 +86,7 @@ You have access to the complete conversation history above, including all tool c
 Please compile this information into a comprehensive summary for the main agent following your specialized instructions."""
 
 
-class OrchestratorState(MessagesState, total=False):
+class OrchestratorState(MessagesState):
     """Simplified state for orchestrator pattern."""
 
     _next_node: Optional[str]
@@ -134,7 +134,6 @@ class OrchestratorSubgraphConfig:
 
 class OrchestratorGraph:
     """LangGraph-backed orchestrator with dynamic node handoff."""
-
 
     def __init__(
         self,
@@ -219,7 +218,10 @@ class OrchestratorGraph:
             if self._has_finalizer:
                 response_message.additional_kwargs["visible_to"] = {self.agent_name}
             else:
-                response_message.additional_kwargs["visible_to"] = {"main_agent", self.agent_name}
+                response_message.additional_kwargs["visible_to"] = {
+                    "main_agent",
+                    self.agent_name,
+                }
 
         state["messages"] = [*state["messages"], response_message]
 
@@ -384,7 +386,7 @@ class OrchestratorGraph:
     ) -> StateGraph[OrchestratorState, None, OrchestratorState, OrchestratorState]:
         workflow = StateGraph(OrchestratorState)
         workflow.add_node("orchestrator", self._orchestrator_step)
-        
+
         # Only add finalizer if prompt is provided
         if self._has_finalizer:
             workflow.add_node("finalizer", self._finalization_step)
@@ -613,6 +615,9 @@ def build_orchestrator_subgraph(
 
     cleanup_hook = _create_cleanup_hook(config.agent_name)
 
+    # Type cast to help mypy understand the hook types
+    pre_hooks: List[HookType] = [filter_node, trim_messages_node]  # type: ignore[list-item]
+
     graph = OrchestratorGraph(
         provider_name=config.provider_name,
         agent_name=config.agent_name,
@@ -620,7 +625,7 @@ def build_orchestrator_subgraph(
         orchestrator_tools=config.orchestrator_tools,
         llm=config.llm,
         finalizer_prompt=config.finalizer_prompt,
-        pre_llm_hooks=[filter_node, trim_messages_node],
+        pre_llm_hooks=pre_hooks,
         end_graph_hooks=[cleanup_hook],
     )
 

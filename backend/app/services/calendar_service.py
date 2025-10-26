@@ -234,8 +234,8 @@ async def get_calendar_metadata_map(
     """
     calendars = await list_calendars(access_token=access_token, short=True)
 
-    color_map = {}
-    name_map = {}
+    color_map: Dict[str, str] = {}
+    name_map: Dict[str, str] = {}
 
     if calendars and isinstance(calendars, list):
         for cal in calendars:
