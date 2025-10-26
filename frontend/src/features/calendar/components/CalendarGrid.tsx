@@ -1,9 +1,13 @@
 "use client";
 
 import { Spinner } from "@heroui/react";
-import React, { forwardRef, useMemo } from "react";
+import React, { useMemo } from "react";
 
 import { AllDayEventsSection } from "@/features/calendar/components/AllDayEventsSection";
+import {
+  CurrentTimeLabel,
+  CurrentTimeLine,
+} from "@/features/calendar/components/CurrentTimeIndicator";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface MultiDayCalendarGridProps {
@@ -21,8 +25,6 @@ interface MultiDayCalendarGridProps {
   selectedCalendars: string[];
   onEventClick?: (event: GoogleCalendarEvent) => void;
   getEventColor: (event: GoogleCalendarEvent) => string;
-  currentTimeTop?: number;
-  currentTimeLabel?: string;
   columnWidth: number;
   isLoadingPast?: boolean;
   isLoadingFuture?: boolean;
@@ -72,8 +74,6 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
   selectedCalendars,
   onEventClick,
   getEventColor,
-  currentTimeTop,
-  currentTimeLabel,
   columnWidth,
   isLoadingPast = false,
   isLoadingFuture = false,
@@ -150,31 +150,16 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
           ))}
         </div>
 
-        {/* Current Time Line & Label */}
-        {typeof currentTimeTop === "number" && currentTimeLabel && (
-          <>
-            {/* Blue horizontal line across all columns */}
-            <div
-              className="absolute right-0 left-20 z-[1] h-[1px] bg-primary/50"
-              style={{ top: `${currentTimeTop}px` }}
-            />
-          </>
-        )}
+        {/* Current Time Line */}
+        <CurrentTimeLine />
 
         {/* Time Labels Column */}
         <div
           className="sticky left-0 z-[11] w-20 flex-shrink-0 border-r border-zinc-800 bg-[#1a1a1a]"
           style={{ height: `${hours.length * 64}px` }}
         >
-          {/* Current Time Line & Label */}
-          {typeof currentTimeTop === "number" && currentTimeLabel && (
-            <div
-              className="absolute left-0 z-[12] flex w-20 flex-shrink-0 items-center justify-end bg-[#1a1a1a] pr-3 text-xs text-primary"
-              style={{ top: `${currentTimeTop - 8}px` }}
-            >
-              {currentTimeLabel}
-            </div>
-          )}
+          {/* Current Time Label */}
+          <CurrentTimeLabel />
 
           {hours.map((hour) => (
             <div

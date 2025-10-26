@@ -21,6 +21,8 @@ interface CalendarState {
   selectedDate: Date;
   currentWeek: Date;
   daysToShow: number;
+  visibleMonth: string;
+  visibleYear: string;
   // Infinite scroll state
   loadedDateRanges: Array<{
     startDate: string; // YYYY-MM-DD
@@ -56,6 +58,7 @@ interface CalendarActions {
   goToToday: () => void;
   handleDateChange: (date: Date) => void;
   setDaysToShow: (days: number) => void;
+  setVisibleMonthYear: (month: string, year: string) => void;
   // Infinite scroll actions
   addLoadedRange: (start: string, end: string, calendars: string[]) => void;
   isDateRangeLoaded: (start: Date, end: Date, calendars: string[]) => boolean;
@@ -83,6 +86,8 @@ const initialState: CalendarState = {
   selectedDate: new Date(),
   currentWeek: new Date(),
   daysToShow: 1,
+  visibleMonth: new Date().toLocaleDateString("en-US", { month: "long" }),
+  visibleYear: new Date().getFullYear().toString(),
   loadedDateRanges: [],
   isLoadingPast: false,
   isLoadingFuture: false,
@@ -355,6 +360,9 @@ export const useCalendarStore = create<CalendarStore>()(
 
         clearLoadedRanges: () =>
           set({ loadedDateRanges: [] }, false, "clearLoadedRanges"),
+
+        setVisibleMonthYear: (visibleMonth, visibleYear) =>
+          set({ visibleMonth, visibleYear }, false, "setVisibleMonthYear"),
       }),
       {
         name: "calendar-storage",
@@ -409,3 +417,9 @@ export const useRemoveEvent = () =>
   useCalendarStore((state) => state.removeEvent);
 export const useSetDaysToShow = () =>
   useCalendarStore((state) => state.setDaysToShow);
+export const useVisibleMonth = () =>
+  useCalendarStore((state) => state.visibleMonth);
+export const useVisibleYear = () =>
+  useCalendarStore((state) => state.visibleYear);
+export const useSetVisibleMonthYear = () =>
+  useCalendarStore((state) => state.setVisibleMonthYear);

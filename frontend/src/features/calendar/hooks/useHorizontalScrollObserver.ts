@@ -10,8 +10,8 @@ export interface ScrollMetrics {
   shouldLoadFuture: boolean;
 }
 
-const LOAD_THRESHOLD_DAYS = 3; // Load when within 3 days of edge
-const DEBOUNCE_MS = 300;
+const LOAD_THRESHOLD_DAYS = 10; // Load when within 10 days (1 week) of edge
+const DEBOUNCE_MS = 150; // Faster response time
 
 export const useHorizontalScrollObserver = (
   scrollRef: RefObject<HTMLDivElement | null>,
@@ -45,12 +45,12 @@ export const useHorizontalScrollObserver = (
     const visibleStartIndex = Math.floor(scrollLeft / columnWidth);
     const visibleEndIndex = Math.ceil((scrollLeft + clientWidth) / columnWidth);
 
-    // Only trigger loading if user has scrolled (not on mount)
+    // Trigger loading when approaching edges (using <= and >= to be more aggressive)
     const shouldLoadPast =
-      hasScrolledRef.current && visibleStartIndex < LOAD_THRESHOLD_DAYS;
+      hasScrolledRef.current && visibleStartIndex <= LOAD_THRESHOLD_DAYS;
     const shouldLoadFuture =
       hasScrolledRef.current &&
-      visibleEndIndex > totalDays - LOAD_THRESHOLD_DAYS;
+      visibleEndIndex >= totalDays - LOAD_THRESHOLD_DAYS;
 
     setMetrics({
       scrollLeft,
