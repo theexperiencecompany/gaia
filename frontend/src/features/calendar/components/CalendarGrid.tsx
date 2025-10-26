@@ -203,6 +203,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
                   style={{
                     width: `${virtualColumn.size}px`,
                     transform: `translateX(${virtualColumn.start}px)`,
+                    scrollSnapAlign: "start",
                   }}
                 />
               ))}
@@ -233,6 +234,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
                     width: `${virtualColumn.size}px`,
                     height: `${hours.length * 64}px`,
                     transform: `translateX(${virtualColumn.start}px)`,
+                    scrollSnapAlign: "start",
                   }}
                 >
                   <div className="relative h-full">

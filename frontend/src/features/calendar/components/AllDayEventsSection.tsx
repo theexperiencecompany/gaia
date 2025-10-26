@@ -240,6 +240,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
                     style={{
                       width: `${virtualColumn.size}px`,
                       transform: `translateX(${virtualColumn.start}px)`,
+                      scrollSnapAlign: "start",
                     }}
                   />
                 ))}
@@ -324,6 +325,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
                   style={{
                     width: `${virtualColumn.size}px`,
                     transform: `translateX(${virtualColumn.start}px)`,
+                    scrollSnapAlign: "start",
                   }}
                 />
               ))}
@@ -345,6 +347,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
                 style={{
                   width: `${virtualColumn.size}px`,
                   transform: `translateX(${virtualColumn.start}px)`,
+                  scrollSnapAlign: "start",
                 }}
               >
                 {count > 0 ? `${count} event${count !== 1 ? "s" : ""}` : ""}
@@ -366,6 +369,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
                 style={{
                   width: `${virtualColumn.size}px`,
                   transform: `translateX(${virtualColumn.start}px)`,
+                  scrollSnapAlign: "start",
                 }}
               />
             ))}

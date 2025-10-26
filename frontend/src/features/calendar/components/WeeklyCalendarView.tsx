@@ -281,6 +281,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
           className="relative flex h-full w-full flex-col overflow-auto"
           style={{
             scrollSnapType: "x proximity",
+            scrollPaddingLeft: "80px",
           }}
         >
           <DateStrip

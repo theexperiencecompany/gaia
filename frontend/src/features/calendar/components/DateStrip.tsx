@@ -77,6 +77,7 @@ export const DateStrip: React.FC<DateStripProps> = ({
                 style={{
                   width: `${virtualColumn.size}px`,
                   transform: `translateX(${virtualColumn.start}px)`,
+                  scrollSnapAlign: "start",
                 }}
               >
                 <div className="text-sm font-light tracking-wide uppercase">
