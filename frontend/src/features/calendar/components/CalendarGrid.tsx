@@ -1,6 +1,7 @@
 "use client";
 
 import { Spinner } from "@heroui/react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import React, { useMemo } from "react";
 
 import { AllDayEventsSection } from "@/features/calendar/components/AllDayEventsSection";
@@ -28,6 +29,7 @@ interface MultiDayCalendarGridProps {
   columnWidth: number;
   isLoadingPast?: boolean;
   isLoadingFuture?: boolean;
+  scrollElementRef?: React.RefObject<HTMLDivElement>;
 }
 
 const PX_PER_MINUTE = 64 / 60;
@@ -77,6 +79,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
   columnWidth,
   isLoadingPast = false,
   isLoadingFuture = false,
+  scrollElementRef,
 }) => {
   const daysData = useMemo(
     () =>
@@ -87,19 +90,33 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
     [dates, events],
   );
 
+  const columnVirtualizer = useVirtualizer({
+    horizontal: true,
+    count: dates.length,
+    getScrollElement: () => scrollElementRef?.current || null,
+    estimateSize: () => columnWidth,
+    overscan: 5,
+  });
+
   const hasAnyEvents = daysData.some((day) => day.timedEvents.length > 0);
+  const totalWidth = columnVirtualizer.getTotalSize();
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-col">
+    <>
       <AllDayEventsSection
         events={events}
         dates={dates}
         onEventClick={onEventClick}
         getEventColor={getEventColor}
         columnWidth={columnWidth}
+        totalWidth={totalWidth}
+        scrollElementRef={scrollElementRef}
       />
 
-      <div className="relative flex min-h-0 min-w-fit flex-1">
+      <div
+        className="relative flex min-h-0 min-w-fit"
+        style={{ height: `${hours.length * 64}px` }}
+      >
         {/* Global loading overlay for initial/main loading */}
         {loading.events && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-900/50">
@@ -136,20 +153,6 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
             </div>
           </div>
         )}
-        {/* Full-height column borders */}
-        <div
-          className="pointer-events-none absolute top-0 left-20 flex"
-          style={{ height: `${hours.length * 64}px` }}
-        >
-          {daysData.map((day, dayIndex) => (
-            <div
-              key={`border-${dayIndex}`}
-              className="h-full flex-shrink-0 border-r border-zinc-800 last:border-r-0"
-              style={{ width: `${columnWidth}px` }}
-            />
-          ))}
-        </div>
-
         {/* Current Time Line */}
         <CurrentTimeLine />
 
@@ -179,101 +182,135 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
           ))}
         </div>
 
-        {/* Main Calendar Columns for each day */}
-        <div className="relative flex flex-1">
-          {/* Loading overlay at left edge */}
-          {isLoadingPast && (
+        {/* Main Calendar Columns - Virtualized */}
+        <div className="relative flex-1">
+          <div
+            className="relative"
+            style={{
+              width: `${columnVirtualizer.getTotalSize()}px`,
+              height: `${hours.length * 64}px`,
+            }}
+          >
+            {/* Full-height column borders for visible items */}
             <div
-              className="absolute top-0 left-0 z-10 flex items-center justify-center bg-zinc-900/50"
-              style={{ width: `${columnWidth}px`, height: "100%" }}
+              className="pointer-events-none absolute top-0 left-0 flex"
+              style={{ height: `${hours.length * 64}px` }}
             >
-              <Spinner size="md" color="primary" />
+              {columnVirtualizer.getVirtualItems().map((virtualColumn) => (
+                <div
+                  key={`border-${virtualColumn.index}`}
+                  className="absolute top-0 h-full flex-shrink-0 border-r border-zinc-800"
+                  style={{
+                    width: `${virtualColumn.size}px`,
+                    transform: `translateX(${virtualColumn.start}px)`,
+                  }}
+                />
+              ))}
             </div>
-          )}
-          {daysData.map((day, dayIndex) => {
-            return (
+
+            {/* Loading overlay at left edge */}
+            {isLoadingPast && (
               <div
-                key={dayIndex}
-                className="relative flex-shrink-0"
-                style={{
-                  width: `${columnWidth}px`,
-                  scrollSnapAlign: "start",
-                }}
+                className="absolute top-0 left-0 z-10 flex items-center justify-center bg-zinc-900/50"
+                style={{ width: `${columnWidth}px`, height: "100%" }}
               >
-                {/* Hour Dividers */}
-                {hours.map((hour) => (
-                  <div
-                    key={`divider-${hour}`}
-                    className="h-16 border-t border-zinc-800 first:border-t-0"
-                  />
-                ))}
-
-                {/* Events Container */}
-                <div className="absolute inset-0 px-2">
-                  {/* Only render events, no per-column loading states */}
-                  {day.timedEvents.map((eventPos, eventIndex) => {
-                    const eventColor = getEventColor(eventPos.event);
-                    return (
-                      <div
-                        key={`event-${eventIndex}`}
-                        className="absolute ml-0.5 flex min-h-fit cursor-pointer overflow-hidden rounded-lg text-white backdrop-blur-3xl transition-all duration-200 hover:opacity-80"
-                        style={{
-                          top: `${eventPos.top}px`,
-                          height: `${eventPos.height}px`,
-                          left: `${eventPos.left}%`,
-                          width: `${eventPos.width - 1}%`,
-                          backgroundColor: `${eventColor}40`,
-                        }}
-                        onClick={() => onEventClick?.(eventPos.event)}
-                      >
-                        <div
-                          className="relative left-0 h-full min-h-full max-w-1 min-w-1 rounded-full"
-                          style={{
-                            backgroundColor: eventColor,
-                          }}
-                        />
-                        <div className="p-3">
-                          <div className="line-clamp-2 text-xs leading-tight font-medium">
-                            {eventPos.event.summary}
-                          </div>
-                          {eventPos.event.start.dateTime &&
-                            eventPos.event.end.dateTime && (
-                              <div className="mt-1 text-xs text-zinc-400">
-                                {new Date(
-                                  eventPos.event.start.dateTime,
-                                ).toLocaleTimeString("en-US", {
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                  hour12: true,
-                                })}{" "}
-                                –{" "}
-                                {new Date(
-                                  eventPos.event.end.dateTime,
-                                ).toLocaleTimeString("en-US", {
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                  hour12: true,
-                                })}
-                              </div>
-                            )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <Spinner size="md" color="primary" />
               </div>
-            );
-          })}
+            )}
 
-          {/* Loading overlay at right edge */}
-          {isLoadingFuture && (
-            <div
-              className="absolute top-0 right-0 z-10 flex items-center justify-center bg-zinc-900/50"
-              style={{ width: `${columnWidth}px`, height: "100%" }}
-            >
-              <Spinner size="md" color="primary" />
-            </div>
-          )}
+            {/* Virtualized Columns */}
+            {columnVirtualizer.getVirtualItems().map((virtualColumn) => {
+              const dayIndex = virtualColumn.index;
+              const day = daysData[dayIndex];
+
+              if (!day) return null;
+
+              return (
+                <div
+                  key={virtualColumn.key}
+                  className="absolute top-0 left-0"
+                  style={{
+                    width: `${virtualColumn.size}px`,
+                    height: `${hours.length * 64}px`,
+                    transform: `translateX(${virtualColumn.start}px)`,
+                  }}
+                >
+                  <div className="relative h-full">
+                    {/* Hour Dividers */}
+                    {hours.map((hour) => (
+                      <div
+                        key={`divider-${hour}`}
+                        className="h-16 border-t border-zinc-800 first:border-t-0"
+                      />
+                    ))}
+
+                    {/* Events Container */}
+                    <div className="absolute inset-0 px-2">
+                      {day.timedEvents.map((eventPos, eventIndex) => {
+                        const eventColor = getEventColor(eventPos.event);
+                        return (
+                          <div
+                            key={`event-${eventIndex}`}
+                            className="absolute ml-0.5 flex min-h-fit cursor-pointer overflow-hidden rounded-lg text-white backdrop-blur-3xl transition-all duration-200 hover:opacity-80"
+                            style={{
+                              top: `${eventPos.top}px`,
+                              height: `${eventPos.height}px`,
+                              left: `${eventPos.left}%`,
+                              width: `${eventPos.width - 1}%`,
+                              backgroundColor: `${eventColor}40`,
+                            }}
+                            onClick={() => onEventClick?.(eventPos.event)}
+                          >
+                            <div
+                              className="relative left-0 h-full min-h-full max-w-1 min-w-1 rounded-full"
+                              style={{
+                                backgroundColor: eventColor,
+                              }}
+                            />
+                            <div className="p-3">
+                              <div className="line-clamp-2 text-xs leading-tight font-medium">
+                                {eventPos.event.summary}
+                              </div>
+                              {eventPos.event.start.dateTime &&
+                                eventPos.event.end.dateTime && (
+                                  <div className="mt-1 text-xs text-zinc-400">
+                                    {new Date(
+                                      eventPos.event.start.dateTime,
+                                    ).toLocaleTimeString("en-US", {
+                                      hour: "numeric",
+                                      minute: "2-digit",
+                                      hour12: true,
+                                    })}{" "}
+                                    –{" "}
+                                    {new Date(
+                                      eventPos.event.end.dateTime,
+                                    ).toLocaleTimeString("en-US", {
+                                      hour: "numeric",
+                                      minute: "2-digit",
+                                      hour12: true,
+                                    })}
+                                  </div>
+                                )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Loading overlay at right edge */}
+            {isLoadingFuture && (
+              <div
+                className="absolute top-0 right-0 z-10 flex items-center justify-center bg-zinc-900/50"
+                style={{ width: `${columnWidth}px`, height: "100%" }}
+              >
+                <Spinner size="md" color="primary" />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Show message when no events on any day */}
@@ -293,6 +330,6 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
             </div>
           )}
       </div>
-    </div>
+    </>
   );
 };

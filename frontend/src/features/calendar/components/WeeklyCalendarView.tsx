@@ -291,6 +291,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
             columnWidth={columnWidth}
             isLoadingPast={isLoadingPast}
             isLoadingFuture={isLoadingFuture}
+            scrollElement={scrollContainerRef.current}
           />
 
           <CalendarGrid
@@ -305,6 +306,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
             columnWidth={columnWidth}
             isLoadingPast={isLoadingPast}
             isLoadingFuture={isLoadingFuture}
+            scrollElementRef={scrollContainerRef}
           />
         </div>
       </div>

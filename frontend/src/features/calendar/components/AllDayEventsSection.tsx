@@ -1,5 +1,6 @@
 "use client";
 
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMemo, useState } from "react";
 import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 
@@ -11,6 +12,8 @@ interface AllDayEventsSectionProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;
   getEventColor: (event: GoogleCalendarEvent) => string;
   columnWidth: number;
+  totalWidth?: number;
+  scrollElementRef?: React.RefObject<HTMLDivElement>;
 }
 
 interface MultiDayEventPosition {
@@ -146,8 +149,19 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
   onEventClick,
   getEventColor,
   columnWidth,
+  totalWidth,
+  scrollElementRef,
 }) => {
+  const calculatedWidth = totalWidth || dates.length * columnWidth;
   const [isExpanded, setIsExpanded] = useState(true);
+
+  const columnVirtualizer = useVirtualizer({
+    horizontal: true,
+    count: dates.length,
+    getScrollElement: () => scrollElementRef?.current || null,
+    estimateSize: () => columnWidth,
+    overscan: 5,
+  });
 
   const multiDayEvents = useMemo(
     () => getMultiDayEventPositions(events, dates),
@@ -207,7 +221,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
           <div
             className="relative max-h-28 overflow-x-hidden overflow-y-auto"
             style={{
-              width: `${dates.length * columnWidth}px`,
+              width: `${calculatedWidth}px`,
             }}
           >
             {/* Inner content container with proper height */}
@@ -219,11 +233,14 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
             >
               {/* Column borders - full height to match scrollable content */}
               <div className="pointer-events-none absolute inset-0 flex">
-                {dates.map((_, dayIndex) => (
+                {columnVirtualizer.getVirtualItems().map((virtualColumn) => (
                   <div
-                    key={`border-${dayIndex}`}
-                    className="flex-shrink-0 border-r border-zinc-800 last:border-r-0"
-                    style={{ width: `${columnWidth}px` }}
+                    key={`border-${virtualColumn.index}`}
+                    className="absolute top-0 h-full flex-shrink-0 border-r border-zinc-800"
+                    style={{
+                      width: `${virtualColumn.size}px`,
+                      transform: `translateX(${virtualColumn.start}px)`,
+                    }}
                   />
                 ))}
               </div>
@@ -296,15 +313,18 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
         ) : (
           <div
             className="relative py-2"
-            style={{ width: `${dates.length * columnWidth}px` }}
+            style={{ width: `${calculatedWidth}px` }}
           >
             {/* Column borders */}
             <div className="pointer-events-none absolute inset-0 flex">
-              {dates.map((_, dayIndex) => (
+              {columnVirtualizer.getVirtualItems().map((virtualColumn) => (
                 <div
-                  key={`border-${dayIndex}`}
-                  className="flex-shrink-0 border-r border-zinc-800 last:border-r-0"
-                  style={{ width: `${columnWidth}px` }}
+                  key={`border-${virtualColumn.index}`}
+                  className="absolute top-0 h-full flex-shrink-0 border-r border-zinc-800"
+                  style={{
+                    width: `${virtualColumn.size}px`,
+                    transform: `translateX(${virtualColumn.start}px)`,
+                  }}
                 />
               ))}
             </div>
@@ -313,15 +333,19 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
       ) : multiDayEvents.length > 0 ? (
         <div
           className="relative flex"
-          style={{ width: `${dates.length * columnWidth}px` }}
+          style={{ width: `${calculatedWidth}px`, height: "40px" }}
         >
-          {dates.map((date, index) => {
+          {columnVirtualizer.getVirtualItems().map((virtualColumn) => {
+            const index = virtualColumn.index;
             const count = eventCountsByDay[index];
             return (
               <div
-                key={index}
-                className="flex flex-shrink-0 items-center justify-center border-r border-zinc-800 px-2 py-2 text-xs text-zinc-400 last:border-r-0"
-                style={{ width: `${columnWidth}px` }}
+                key={virtualColumn.key}
+                className="absolute top-0 left-0 flex flex-shrink-0 items-center justify-center border-r border-zinc-800 px-2 py-2 text-xs text-zinc-400"
+                style={{
+                  width: `${virtualColumn.size}px`,
+                  transform: `translateX(${virtualColumn.start}px)`,
+                }}
               >
                 {count > 0 ? `${count} event${count !== 1 ? "s" : ""}` : ""}
               </div>
@@ -331,15 +355,18 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
       ) : (
         <div
           className="relative py-2"
-          style={{ width: `${dates.length * columnWidth}px` }}
+          style={{ width: `${calculatedWidth}px` }}
         >
           {/* Column borders */}
           <div className="pointer-events-none absolute inset-0 flex">
-            {dates.map((_, dayIndex) => (
+            {columnVirtualizer.getVirtualItems().map((virtualColumn) => (
               <div
-                key={`border-${dayIndex}`}
-                className="flex-shrink-0 border-r border-zinc-800 last:border-r-0"
-                style={{ width: `${columnWidth}px` }}
+                key={`border-${virtualColumn.index}`}
+                className="absolute top-0 h-full flex-shrink-0 border-r border-zinc-800"
+                style={{
+                  width: `${virtualColumn.size}px`,
+                  transform: `translateX(${virtualColumn.start}px)`,
+                }}
               />
             ))}
           </div>
