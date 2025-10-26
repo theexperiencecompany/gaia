@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from app.api.v1.dependencies.google_scope_dependencies import require_integration
@@ -18,8 +19,31 @@ from app.services.calendar_service import (
     update_calendar_event,
 )
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 router = APIRouter()
+
+
+class CalendarEventsQueryRequest(BaseModel):
+    """Request model for querying calendar events via POST to avoid URL length limits."""
+
+    selected_calendars: List[str] = Field(
+        ..., description="List of calendar IDs to fetch events from"
+    )
+    start_date: Optional[str] = Field(
+        None, description="Start date in YYYY-MM-DD format"
+    )
+    end_date: Optional[str] = Field(None, description="End date in YYYY-MM-DD format")
+    fetch_all: bool = Field(
+        True,
+        description="Fetch ALL events in range (true) or limit per calendar (false)",
+    )
+    max_results: Optional[int] = Field(
+        None,
+        ge=1,
+        le=250,
+        description="Max events per calendar (only used if fetch_all=false)",
+    )
 
 
 @router.get("/calendar/list", summary="Get Calendar List")
@@ -52,22 +76,105 @@ async def get_calendar_list(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/calendar/events", summary="Get Events from Selected Calendars")
+@router.post("/calendar/events/query", summary="Query Events from Selected Calendars")
+async def query_events(
+    request: CalendarEventsQueryRequest,
+    current_user: dict = Depends(require_integration("calendar")),
+):
+    """
+    Query events from selected calendars using POST to avoid URL length limits.
+
+    Uses date-based pagination:
+    - Specify start_date and end_date to define the time window
+    - Set fetch_all=True to get ALL events in that window (default, recommended for calendar page)
+    - Or set fetch_all=False and specify max_results to limit events per calendar
+
+    The response includes:
+    - events: List of all events in the range
+    - has_more: Boolean indicating if any calendar was truncated
+    - calendars_truncated: List of calendar IDs that hit the safety limit
+
+    Returns:
+        Events from selected calendars, deduplicated and sorted by start time.
+
+    Raises:
+        HTTPException: If event retrieval fails.
+    """
+    try:
+        user_id = current_user.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+
+        # Convert start_date and end_date to time_min and time_max for Google Calendar API
+        time_min = None
+        time_max = None
+        if request.start_date:
+            try:
+                start_dt = datetime.strptime(request.start_date, "%Y-%m-%d").replace(
+                    tzinfo=timezone.utc
+                )
+                time_min = start_dt.isoformat()
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD"
+                )
+
+        if request.end_date:
+            try:
+                end_dt = datetime.strptime(request.end_date, "%Y-%m-%d").replace(
+                    tzinfo=timezone.utc
+                )
+                # Add 24 hours to include the entire end day
+                end_dt = end_dt + timedelta(days=1)
+                time_max = end_dt.isoformat()
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
+                )
+
+        # Get token from repository
+        token = await token_repository.get_token(
+            str(user_id), "google", renew_if_expired=True
+        )
+        access_token = str(token.get("access_token", ""))
+
+        return await calendar_service.get_calendar_events(
+            user_id=user_id,
+            access_token=access_token,
+            page_token=None,
+            selected_calendars=request.selected_calendars,
+            time_min=time_min,
+            time_max=time_max,
+            max_results=request.max_results,
+            fetch_all=request.fetch_all,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/calendar/events", summary="Get Calendar Events (Simple Queries)")
 async def get_events(
     page_token: Optional[str] = None,
     selected_calendars: Optional[List[str]] = Query(None),
     start_date: Optional[str] = None,  # YYYY-MM-DD format
     end_date: Optional[str] = None,  # YYYY-MM-DD format
-    max_results: int = Query(100, ge=1, le=250),  # Allow up to 250 results
+    max_results: int = Query(100, ge=1, le=250),
+    fetch_all: bool = Query(False, description="Fetch ALL events in date range"),
     current_user: dict = Depends(require_integration("calendar")),
 ):
     """
-    Retrieve events from the user's selected calendars. If no calendars are provided,
-    the primary calendar or stored user preferences are used. Supports pagination via
-    the page_token parameter.
+    Get calendar events using GET - ideal for simple queries with few parameters.
+
+    Use Cases:
+    - Dashboard widgets (upcoming events)
+    - Small date ranges with few calendars
+    - Simple API integrations
+
+    For complex queries with many calendars, use POST /calendar/events/query to avoid
+    URL length limits (2000 char limit).
 
     Returns:
-        A list of events from the selected calendars.
+        Events from selected calendars, deduplicated and sorted by start time.
 
     Raises:
         HTTPException: If event retrieval fails.
@@ -84,8 +191,6 @@ async def get_events(
         if start_date:
             try:
                 # Convert YYYY-MM-DD to start of day in UTC
-                from datetime import datetime, timezone
-
                 start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(
                     tzinfo=timezone.utc
                 )
@@ -98,8 +203,6 @@ async def get_events(
         if end_date:
             try:
                 # Convert YYYY-MM-DD to end of day in UTC
-                from datetime import datetime, timedelta, timezone
-
                 end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(
                     tzinfo=timezone.utc
                 )
@@ -125,6 +228,7 @@ async def get_events(
             time_min=time_min,
             time_max=time_max,
             max_results=max_results,
+            fetch_all=fetch_all,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -165,8 +269,6 @@ async def get_events_by_calendar(
         if start_date:
             try:
                 # Convert YYYY-MM-DD to start of day in UTC
-                from datetime import datetime, timezone
-
                 start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(
                     tzinfo=timezone.utc
                 )
@@ -179,8 +281,6 @@ async def get_events_by_calendar(
         if end_date:
             try:
                 # Convert YYYY-MM-DD to end of day in UTC
-                from datetime import datetime, timedelta, timezone
-
                 end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(
                     tzinfo=timezone.utc
                 )
@@ -241,39 +341,6 @@ async def create_event(
 
         return await calendar_service.create_calendar_event(
             event, access_token, user_id
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/calendar/all/events", summary="Get Events from All Calendars")
-async def get_all_events(
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-    current_user: dict = Depends(require_integration("calendar")),
-):
-    """
-    Retrieve events from every calendar associated with the user concurrently.
-
-    Returns:
-        A comprehensive list of events from all calendars.
-
-    Raises:
-        HTTPException: If event retrieval fails.
-    """
-    try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
-        # Get token from repository
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=True
-        )
-        access_token = str(token.get("access_token", ""))
-
-        return await calendar_service.get_all_calendar_events(
-            access_token, user_id, time_min, time_max
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

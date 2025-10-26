@@ -1,5 +1,6 @@
 "use client";
 
+import { Spinner } from "@heroui/react";
 import React from "react";
 
 interface DateStripProps {
@@ -8,6 +9,8 @@ interface DateStripProps {
   onDateSelect?: (date: Date) => void;
   daysToShow?: number;
   columnWidth: number;
+  isLoadingPast?: boolean;
+  isLoadingFuture?: boolean;
 }
 
 export const DateStrip: React.FC<DateStripProps> = ({
@@ -16,6 +19,8 @@ export const DateStrip: React.FC<DateStripProps> = ({
   onDateSelect,
   daysToShow = 1,
   columnWidth,
+  isLoadingPast = false,
+  isLoadingFuture = false,
 }) => {
   return (
     <div className="sticky top-0 z-[30] flex min-w-fit flex-shrink-0 border-b border-zinc-800 bg-[#1a1a1a]">

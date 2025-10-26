@@ -1,12 +1,23 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { CalendarGrid } from "@/features/calendar/components/CalendarGrid";
 import { DateStrip } from "@/features/calendar/components/DateStrip";
-import { useCalendarChunks } from "@/features/calendar/hooks/useCalendarChunks";
+import { useHorizontalScrollObserver } from "@/features/calendar/hooks/useHorizontalScrollObserver";
+import { useInfiniteCalendarLoader } from "@/features/calendar/hooks/useInfiniteCalendarLoader";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
-import { getExtendedDates } from "@/features/calendar/utils/dateRangeUtils";
+import {
+  generateMonthDates,
+  getInitialMonthlyDateRange,
+  getMonthRange,
+} from "@/features/calendar/utils/dateRangeUtils";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
 import {
   useCalendarCurrentWeek,
@@ -44,21 +55,110 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
 
   const hours = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
 
-  const extendedDates = useMemo(
-    () => getExtendedDates(currentWeek, 2),
-    [currentWeek],
+  // Initialize with current month ± 1 month (3 months total)
+  const [extendedDates, setExtendedDates] = useState<Date[]>(() =>
+    getInitialMonthlyDateRange(currentWeek),
   );
 
-  useCalendarChunks({
-    extendedDates,
-    selectedCalendars,
-    isInitialized,
-    loadEvents,
-  });
+  // Use refs to track first/last dates to avoid dependency issues
+  const firstDateRef = useRef<Date | null>(null);
+  const lastDateRef = useRef<Date | null>(null);
+  const hasInitialFetchedRef = useRef<boolean>(false);
 
-  const getEventColorForGrid = (event: GoogleCalendarEvent) => {
-    return getEventColor(event, calendars);
-  };
+  // Update refs when dates change
+  useEffect(() => {
+    if (extendedDates.length > 0) {
+      firstDateRef.current = extendedDates[0];
+      lastDateRef.current = extendedDates[extendedDates.length - 1];
+    }
+  }, [extendedDates]);
+
+  // Initial fetch: Load events for all 3 displayed months (prev, current, next)
+  useEffect(() => {
+    if (
+      selectedCalendars.length > 0 &&
+      isInitialized &&
+      !hasInitialFetchedRef.current
+    ) {
+      // Generate initial 3-month range
+      const dates = getInitialMonthlyDateRange(currentWeek);
+      const start = dates[0];
+      const end = dates[dates.length - 1];
+
+      loadEvents(selectedCalendars, true, start, end);
+      hasInitialFetchedRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCalendars, isInitialized]);
+
+  // Reset fetch flag when calendar selection changes
+  useEffect(() => {
+    hasInitialFetchedRef.current = false;
+  }, [selectedCalendars]);
+
+  // Scroll observer to detect when to load more
+  const scrollMetrics = useHorizontalScrollObserver(
+    scrollContainerRef,
+    columnWidth,
+    extendedDates,
+  );
+
+  // Infinite loader for bidirectional loading
+  const { loadMorePast, loadMoreFuture, isLoadingPast, isLoadingFuture } =
+    useInfiniteCalendarLoader({
+      scrollMetrics,
+      selectedCalendars,
+      isInitialized,
+    });
+
+  // Load more when scrolling near edges
+  useEffect(() => {
+    if (
+      scrollMetrics.shouldLoadPast &&
+      !isLoadingPast &&
+      firstDateRef.current
+    ) {
+      loadMorePast(firstDateRef.current).then((newDates) => {
+        if (newDates.length > 0) {
+          // Preserve scroll position when prepending dates
+          const scrollContainer = scrollContainerRef.current;
+          const prevScrollLeft = scrollContainer?.scrollLeft || 0;
+
+          setExtendedDates((prev) => {
+            // After state updates, adjust scroll to maintain visual position
+            requestAnimationFrame(() => {
+              if (scrollContainer) {
+                scrollContainer.scrollLeft =
+                  prevScrollLeft + newDates.length * columnWidth;
+              }
+            });
+            return [...newDates, ...prev];
+          });
+        }
+      });
+    }
+  }, [scrollMetrics.shouldLoadPast, isLoadingPast, loadMorePast, columnWidth]);
+
+  useEffect(() => {
+    if (
+      scrollMetrics.shouldLoadFuture &&
+      !isLoadingFuture &&
+      lastDateRef.current
+    ) {
+      loadMoreFuture(lastDateRef.current).then((newDates) => {
+        if (newDates.length > 0) {
+          setExtendedDates((prev) => [...prev, ...newDates]);
+        }
+      });
+    }
+  }, [scrollMetrics.shouldLoadFuture, isLoadingFuture, loadMoreFuture]);
+
+  const getEventColorForGrid = useCallback(
+    (event: GoogleCalendarEvent) => {
+      return getEventColor(event, calendars);
+    },
+    [calendars],
+  );
 
   // Current time calculation (updates every minute)
   const [now, setNow] = React.useState<Date>(new Date());
@@ -88,22 +188,26 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
         const calculatedWidth = Math.floor(availableWidth / daysToShow);
         const newColumnWidth = Math.max(calculatedWidth, 120); // min 120px per column
 
-        // Calculate which column is currently at the left edge of the viewport
-        const currentScrollLeft = scrollContainerRef.current.scrollLeft;
-        const currentLeftColumn = Math.floor(currentScrollLeft / columnWidth);
+        setColumnWidth((prevWidth) => {
+          if (prevWidth === newColumnWidth) return prevWidth;
 
-        setColumnWidth(newColumnWidth);
+          // Calculate which column is currently at the left edge of the viewport
+          const currentScrollLeft = scrollContainerRef.current!.scrollLeft;
+          const currentLeftColumn = Math.floor(currentScrollLeft / prevWidth);
 
-        // After width changes, snap to align columns properly
-        requestAnimationFrame(() => {
-          if (scrollContainerRef.current) {
-            // Snap to the nearest column boundary that fills the viewport
-            const newScrollLeft = currentLeftColumn * newColumnWidth;
-            scrollContainerRef.current.scrollTo({
-              left: newScrollLeft,
-              behavior: "auto",
-            });
-          }
+          // After width changes, snap to align columns properly
+          requestAnimationFrame(() => {
+            if (scrollContainerRef.current) {
+              // Snap to the nearest column boundary that fills the viewport
+              const newScrollLeft = currentLeftColumn * newColumnWidth;
+              scrollContainerRef.current.scrollTo({
+                left: newScrollLeft,
+                behavior: "auto",
+              });
+            }
+          });
+
+          return newColumnWidth;
         });
       }
     };
@@ -118,25 +222,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
     return () => {
       resizeObserver.disconnect();
     };
-  }, [daysToShow, columnWidth]);
-
-  // Auto-scroll to selected date when it changes
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-      const selectedIndex = extendedDates.findIndex(
-        (date) => date.toDateString() === selectedDate.toDateString(),
-      );
-
-      if (selectedIndex !== -1) {
-        const scrollLeft = selectedIndex * columnWidth;
-
-        scrollContainerRef.current.scrollTo({
-          left: scrollLeft,
-          behavior: "smooth",
-        });
-      }
-    }
-  }, [selectedDate, extendedDates]); // Removed columnWidth dependency
+  }, [daysToShow]); // Remove columnWidth from dependencies
 
   return (
     <div className="flex h-full w-full justify-center p-4 pt-4">
@@ -147,6 +233,9 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
         <div
           ref={scrollContainerRef}
           className="relative flex h-full w-full flex-col overflow-auto"
+          style={{
+            scrollSnapType: "x proximity",
+          }}
         >
           <DateStrip
             dates={extendedDates}
@@ -154,6 +243,8 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
             onDateSelect={onDateClick}
             daysToShow={daysToShow}
             columnWidth={columnWidth}
+            isLoadingPast={isLoadingPast}
+            isLoadingFuture={isLoadingFuture}
           />
 
           <CalendarGrid
@@ -168,6 +259,8 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
             currentTimeTop={currentTimeTop}
             currentTimeLabel={currentTimeLabel}
             columnWidth={columnWidth}
+            isLoadingPast={isLoadingPast}
+            isLoadingFuture={isLoadingFuture}
           />
         </div>
       </div>

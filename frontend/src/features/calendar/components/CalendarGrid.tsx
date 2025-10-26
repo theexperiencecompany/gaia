@@ -24,6 +24,8 @@ interface MultiDayCalendarGridProps {
   currentTimeTop?: number;
   currentTimeLabel?: string;
   columnWidth: number;
+  isLoadingPast?: boolean;
+  isLoadingFuture?: boolean;
 }
 
 const PX_PER_MINUTE = 64 / 60;
@@ -73,6 +75,8 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
   currentTimeTop,
   currentTimeLabel,
   columnWidth,
+  isLoadingPast = false,
+  isLoadingFuture = false,
 }) => {
   const daysData = useMemo(
     () =>
@@ -96,6 +100,42 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
       />
 
       <div className="relative flex min-h-0 min-w-fit flex-1">
+        {/* Global loading overlay for initial/main loading */}
+        {loading.events && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-900/50">
+            <Spinner size="lg" color="primary" />
+          </div>
+        )}
+
+        {/* Global error states */}
+        {error.calendars && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-900/80">
+            <div className="text-center text-red-500">
+              <div className="text-lg font-medium">Error loading calendars</div>
+              <div className="mt-1 text-sm">{error.calendars}</div>
+            </div>
+          </div>
+        )}
+
+        {error.events && !loading.events && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-900/80">
+            <div className="text-center text-red-500">
+              <div className="text-lg font-medium">Error loading events</div>
+              <div className="mt-1 text-sm">{error.events}</div>
+            </div>
+          </div>
+        )}
+
+        {selectedCalendars.length === 0 && !loading.calendars && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center">
+            <div className="text-center text-zinc-500">
+              <div className="text-lg font-medium">No calendars selected</div>
+              <div className="mt-1 text-sm">
+                Please select a calendar to view events
+              </div>
+            </div>
+          </div>
+        )}
         {/* Full-height column borders */}
         <div
           className="pointer-events-none absolute top-0 left-20 flex"
@@ -156,61 +196,37 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
 
         {/* Main Calendar Columns for each day */}
         <div className="relative flex flex-1">
-          {daysData.map((day, dayIndex) => (
+          {/* Loading overlay at left edge */}
+          {isLoadingPast && (
             <div
-              key={dayIndex}
-              className="relative flex-shrink-0"
-              style={{ width: `${columnWidth}px` }}
+              className="absolute top-0 left-0 z-10 flex items-center justify-center bg-zinc-900/50"
+              style={{ width: `${columnWidth}px`, height: "100%" }}
             >
-              {/* Hour Dividers */}
-              {hours.map((hour) => (
-                <div
-                  key={`divider-${hour}`}
-                  className="h-16 border-t border-zinc-800 first:border-t-0"
-                />
-              ))}
+              <Spinner size="md" color="primary" />
+            </div>
+          )}
+          {daysData.map((day, dayIndex) => {
+            return (
+              <div
+                key={dayIndex}
+                className="relative flex-shrink-0"
+                style={{
+                  width: `${columnWidth}px`,
+                  scrollSnapAlign: "start",
+                }}
+              >
+                {/* Hour Dividers */}
+                {hours.map((hour) => (
+                  <div
+                    key={`divider-${hour}`}
+                    className="h-16 border-t border-zinc-800 first:border-t-0"
+                  />
+                ))}
 
-              {/* Events Container */}
-              <div className="absolute inset-0 px-2">
-                {loading.calendars ? (
-                  <div className="flex h-full items-center justify-center">
-                    <Spinner size="lg" color="default" />
-                  </div>
-                ) : error.calendars ? (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="text-center text-red-500">
-                      <div className="text-lg font-medium">
-                        Error loading calendars
-                      </div>
-                      <div className="mt-1 text-sm">{error.calendars}</div>
-                    </div>
-                  </div>
-                ) : selectedCalendars.length === 0 ? (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="text-center text-zinc-500">
-                      <div className="text-lg font-medium">
-                        No calendars selected
-                      </div>
-                      <div className="mt-1 text-sm">
-                        Please select a calendar to view events
-                      </div>
-                    </div>
-                  </div>
-                ) : loading.events ? (
-                  <div className="flex h-full items-center justify-center">
-                    <Spinner size="lg" color="default" />
-                  </div>
-                ) : error.events ? (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="text-center text-red-500">
-                      <div className="text-lg font-medium">
-                        Error loading events
-                      </div>
-                      <div className="mt-1 text-sm">{error.events}</div>
-                    </div>
-                  </div>
-                ) : day.timedEvents.length === 0 ? null : (
-                  day.timedEvents.map((eventPos, eventIndex) => {
+                {/* Events Container */}
+                <div className="absolute inset-0 px-2">
+                  {/* Only render events, no per-column loading states */}
+                  {day.timedEvents.map((eventPos, eventIndex) => {
                     const eventColor = getEventColor(eventPos.event);
                     return (
                       <div
@@ -258,11 +274,21 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
                         </div>
                       </div>
                     );
-                  })
-                )}
+                  })}
+                </div>
               </div>
+            );
+          })}
+
+          {/* Loading overlay at right edge */}
+          {isLoadingFuture && (
+            <div
+              className="absolute top-0 right-0 z-10 flex items-center justify-center bg-zinc-900/50"
+              style={{ width: `${columnWidth}px`, height: "100%" }}
+            >
+              <Spinner size="md" color="primary" />
             </div>
-          ))}
+          )}
         </div>
 
         {/* Show message when no events on any day */}

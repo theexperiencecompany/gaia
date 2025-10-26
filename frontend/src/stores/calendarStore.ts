@@ -8,7 +8,6 @@ interface CalendarState {
   calendars: CalendarItem[];
   selectedCalendars: string[];
   events: GoogleCalendarEvent[];
-  nextPageToken: string | null;
   loading: {
     calendars: boolean;
     events: boolean;
@@ -22,6 +21,14 @@ interface CalendarState {
   selectedDate: Date;
   currentWeek: Date;
   daysToShow: number;
+  // Infinite scroll state
+  loadedDateRanges: Array<{
+    startDate: string; // YYYY-MM-DD
+    endDate: string; // YYYY-MM-DD
+    calendars: string[];
+  }>;
+  isLoadingPast: boolean;
+  isLoadingFuture: boolean;
 }
 
 interface CalendarActions {
@@ -35,7 +42,6 @@ interface CalendarActions {
     updatedEvent: Partial<GoogleCalendarEvent>,
   ) => void;
   removeEvent: (eventId: string) => void;
-  setNextPageToken: (token: string | null) => void;
   setLoading: (type: "calendars" | "events", loading: boolean) => void;
   setError: (type: "calendars" | "events", error: string | null) => void;
   resetEvents: () => void;
@@ -50,6 +56,12 @@ interface CalendarActions {
   goToToday: () => void;
   handleDateChange: (date: Date) => void;
   setDaysToShow: (days: number) => void;
+  // Infinite scroll actions
+  addLoadedRange: (start: string, end: string, calendars: string[]) => void;
+  isDateRangeLoaded: (start: Date, end: Date, calendars: string[]) => boolean;
+  setLoadingPast: (loading: boolean) => void;
+  setLoadingFuture: (loading: boolean) => void;
+  clearLoadedRanges: () => void;
 }
 
 type CalendarStore = CalendarState & CalendarActions;
@@ -58,7 +70,6 @@ const initialState: CalendarState = {
   calendars: [],
   selectedCalendars: [],
   events: [],
-  nextPageToken: null,
   loading: {
     calendars: false,
     events: false,
@@ -72,6 +83,9 @@ const initialState: CalendarState = {
   selectedDate: new Date(),
   currentWeek: new Date(),
   daysToShow: 1,
+  loadedDateRanges: [],
+  isLoadingPast: false,
+  isLoadingFuture: false,
 };
 
 export const useCalendarStore = create<CalendarStore>()(
@@ -83,7 +97,17 @@ export const useCalendarStore = create<CalendarStore>()(
         setCalendars: (calendars) => set({ calendars }, false, "setCalendars"),
 
         setSelectedCalendars: (selectedCalendars) =>
-          set({ selectedCalendars }, false, "setSelectedCalendars"),
+          set(
+            {
+              selectedCalendars,
+              // Clear loaded ranges when calendars are set
+              loadedDateRanges: [],
+              // Clear events when calendars are set
+              events: [],
+            },
+            false,
+            "setSelectedCalendars",
+          ),
 
         toggleCalendarSelection: (calendarId) =>
           set(
@@ -94,7 +118,13 @@ export const useCalendarStore = create<CalendarStore>()(
                   ? [...state.selectedCalendars, calendarId]
                   : state.selectedCalendars.filter((id) => id !== calendarId);
 
-              return { selectedCalendars: newSelection };
+              return {
+                selectedCalendars: newSelection,
+                // Clear loaded ranges when calendar selection changes
+                loadedDateRanges: [],
+                // Clear events when calendar selection changes
+                events: [],
+              };
             },
             false,
             "toggleCalendarSelection",
@@ -107,8 +137,10 @@ export const useCalendarStore = create<CalendarStore>()(
                 return { events };
               }
 
-              // Deduplicate events by ID when appending
-              const existingEventIds = new Set(state.events.map((e) => e.id));
+              // Optimized deduplication using Set for O(1) lookup
+              const existingEventIds = new Set(
+                state.events.map((e) => e.id).filter(Boolean),
+              );
               const newUniqueEvents = events.filter(
                 (e) => e.id && !existingEventIds.has(e.id),
               );
@@ -124,11 +156,16 @@ export const useCalendarStore = create<CalendarStore>()(
         addEvent: (event) =>
           set(
             (state) => {
-              // Check if event already exists
-              const exists = state.events.some((e) => e.id === event.id);
-              if (exists) {
+              // Optimized: Check if event already exists using Set for O(1) lookup
+              if (!event.id) {
+                return { events: [...state.events, event] };
+              }
+
+              const eventIds = new Set(state.events.map((e) => e.id));
+              if (eventIds.has(event.id)) {
                 return state;
               }
+
               return {
                 events: [...state.events, event],
               };
@@ -157,9 +194,6 @@ export const useCalendarStore = create<CalendarStore>()(
             "removeEvent",
           ),
 
-        setNextPageToken: (nextPageToken) =>
-          set({ nextPageToken }, false, "setNextPageToken"),
-
         setLoading: (type, loading) =>
           set(
             (state) => ({
@@ -182,7 +216,6 @@ export const useCalendarStore = create<CalendarStore>()(
           set(
             {
               events: [],
-              nextPageToken: null,
               error: { ...get().error, events: null },
             },
             false,
@@ -276,6 +309,52 @@ export const useCalendarStore = create<CalendarStore>()(
 
         setDaysToShow: (daysToShow) =>
           set({ daysToShow }, false, "setDaysToShow"),
+
+        // Infinite scroll actions
+        addLoadedRange: (startDate, endDate, calendars) =>
+          set(
+            (state) => ({
+              loadedDateRanges: [
+                ...state.loadedDateRanges,
+                { startDate, endDate, calendars },
+              ],
+            }),
+            false,
+            "addLoadedRange",
+          ),
+
+        isDateRangeLoaded: (start, end, calendars) => {
+          const state = get();
+          const startStr = start.toISOString().split("T")[0];
+          const endStr = end.toISOString().split("T")[0];
+
+          return state.loadedDateRanges.some((range) => {
+            const rangeStart = new Date(range.startDate);
+            const rangeEnd = new Date(range.endDate);
+            const requestStart = new Date(startStr);
+            const requestEnd = new Date(endStr);
+
+            // Check if the requested range is covered by this loaded range
+            const isCovered =
+              rangeStart <= requestStart && rangeEnd >= requestEnd;
+
+            // Check if calendars match
+            const calendarsMatch =
+              calendars.length === range.calendars.length &&
+              calendars.every((cal) => range.calendars.includes(cal));
+
+            return isCovered && calendarsMatch;
+          });
+        },
+
+        setLoadingPast: (isLoadingPast) =>
+          set({ isLoadingPast }, false, "setLoadingPast"),
+
+        setLoadingFuture: (isLoadingFuture) =>
+          set({ isLoadingFuture }, false, "setLoadingFuture"),
+
+        clearLoadedRanges: () =>
+          set({ loadedDateRanges: [] }, false, "clearLoadedRanges"),
       }),
       {
         name: "calendar-storage",
@@ -298,8 +377,6 @@ export const useCalendarEvents = () =>
 export const useCalendarLoading = () =>
   useCalendarStore((state) => state.loading);
 export const useCalendarError = () => useCalendarStore((state) => state.error);
-export const useCalendarNextPageToken = () =>
-  useCalendarStore((state) => state.nextPageToken);
 export const useCalendarInitialized = () =>
   useCalendarStore((state) => state.isInitialized);
 export const useSetCreateEventAction = () =>

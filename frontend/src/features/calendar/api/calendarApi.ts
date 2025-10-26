@@ -25,36 +25,31 @@ export const calendarApi = {
     });
   },
 
-  // Fetch events from multiple calendars with smart date range
+  // Fetch events from multiple calendars with date-based pagination
+  // Uses POST to avoid URL length limits with many calendars
+  // When fetch_all=true, fetches ALL events in the date range (for calendar page)
   fetchMultipleCalendarEvents: async (
     calendarIds: string[],
-    pageToken?: string | null,
     startDate?: string, // YYYY-MM-DD format
     endDate?: string, // YYYY-MM-DD format
+    fetchAll = true, // Default to true for calendar page - fetches ALL events
   ): Promise<CalendarEventsResponse> => {
     if (!calendarIds.length) {
       return { events: [], nextPageToken: null };
     }
 
-    const params = new URLSearchParams();
-    if (pageToken) params.append("page_token", pageToken);
-
-    params.append("max_results", "100");
-
-    calendarIds.forEach((id) => params.append("selected_calendars", id));
-
-    if (startDate) {
-      params.append("start_date", startDate);
-    }
-    if (endDate) {
-      params.append("end_date", endDate);
-    }
-
-    const url = `/calendar/events?${params.toString()}`;
-
-    return apiService.get<CalendarEventsResponse>(url, {
-      silent: true,
-    });
+    return apiService.post<CalendarEventsResponse>(
+      "/calendar/events/query",
+      {
+        selected_calendars: calendarIds,
+        start_date: startDate,
+        end_date: endDate,
+        fetch_all: fetchAll,
+      },
+      {
+        silent: true,
+      },
+    );
   },
 
   // Fetch available calendars
