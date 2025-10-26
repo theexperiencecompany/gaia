@@ -1,5 +1,6 @@
 "use client";
 
+import { useVirtualizer } from "@tanstack/react-virtual";
 import React, {
   useCallback,
   useEffect,
@@ -76,6 +77,21 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
     },
     [calendars],
   );
+
+  // Create single virtualizer instance for all components to share
+  // Recreate when columnWidth changes to ensure proper column sizing
+  const columnVirtualizer = useVirtualizer({
+    horizontal: true,
+    count: extendedDates.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => columnWidth,
+    overscan: 5,
+  });
+
+  // Notify virtualizer when columnWidth or dates change so it recalculates
+  useEffect(() => {
+    columnVirtualizer.measure();
+  }, [columnWidth, extendedDates.length, columnVirtualizer]);
 
   // Find today's index in the dates array for initial scroll
   const getTodayIndex = useCallback((dates: Date[]) => {
@@ -289,10 +305,9 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
             selectedDate={selectedDate}
             onDateSelect={onDateClick}
             daysToShow={daysToShow}
-            columnWidth={columnWidth}
+            columnVirtualizer={columnVirtualizer}
             isLoadingPast={isLoadingPast}
             isLoadingFuture={isLoadingFuture}
-            scrollElement={scrollContainerRef.current}
           />
 
           <CalendarGrid
@@ -304,7 +319,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
             selectedCalendars={selectedCalendars}
             onEventClick={onEventClick}
             getEventColor={(event) => getEventColor(event, calendars)}
-            columnWidth={columnWidth}
+            columnVirtualizer={columnVirtualizer}
             isLoadingPast={isLoadingPast}
             isLoadingFuture={isLoadingFuture}
             scrollElementRef={scrollContainerRef}

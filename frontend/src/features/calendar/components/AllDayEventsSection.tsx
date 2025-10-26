@@ -1,6 +1,6 @@
 "use client";
 
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { Virtualizer } from "@tanstack/react-virtual";
 import { useMemo, useState } from "react";
 import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 
@@ -11,9 +11,8 @@ interface AllDayEventsSectionProps {
   dates: Date[];
   onEventClick?: (event: GoogleCalendarEvent) => void;
   getEventColor: (event: GoogleCalendarEvent) => string;
-  columnWidth: number;
+  columnVirtualizer: Virtualizer<HTMLDivElement, Element>;
   totalWidth?: number;
-  scrollElementRef?: React.RefObject<HTMLDivElement>;
 }
 
 interface MultiDayEventPosition {
@@ -148,20 +147,14 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
   dates,
   onEventClick,
   getEventColor,
-  columnWidth,
+  columnVirtualizer,
   totalWidth,
-  scrollElementRef,
 }) => {
-  const calculatedWidth = totalWidth || dates.length * columnWidth;
+  const calculatedWidth = totalWidth || columnVirtualizer.getTotalSize();
   const [isExpanded, setIsExpanded] = useState(true);
 
-  const columnVirtualizer = useVirtualizer({
-    horizontal: true,
-    count: dates.length,
-    getScrollElement: () => scrollElementRef?.current || null,
-    estimateSize: () => columnWidth,
-    overscan: 5,
-  });
+  // Get column width from virtualizer (all columns should have same size)
+  const columnWidth = columnVirtualizer.getVirtualItems()[0]?.size || 0;
 
   const multiDayEvents = useMemo(
     () => getMultiDayEventPositions(events, dates),

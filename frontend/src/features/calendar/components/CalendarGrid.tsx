@@ -1,7 +1,7 @@
 "use client";
 
 import { Spinner } from "@heroui/react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { Virtualizer } from "@tanstack/react-virtual";
 import React, { useMemo } from "react";
 
 import { AllDayEventsSection } from "@/features/calendar/components/AllDayEventsSection";
@@ -26,7 +26,7 @@ interface MultiDayCalendarGridProps {
   selectedCalendars: string[];
   onEventClick?: (event: GoogleCalendarEvent) => void;
   getEventColor: (event: GoogleCalendarEvent) => string;
-  columnWidth: number;
+  columnVirtualizer: Virtualizer<HTMLDivElement, Element>;
   isLoadingPast?: boolean;
   isLoadingFuture?: boolean;
   scrollElementRef?: React.RefObject<HTMLDivElement>;
@@ -76,7 +76,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
   selectedCalendars,
   onEventClick,
   getEventColor,
-  columnWidth,
+  columnVirtualizer,
   isLoadingPast = false,
   isLoadingFuture = false,
   scrollElementRef,
@@ -90,14 +90,6 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
     [dates, events],
   );
 
-  const columnVirtualizer = useVirtualizer({
-    horizontal: true,
-    count: dates.length,
-    getScrollElement: () => scrollElementRef?.current || null,
-    estimateSize: () => columnWidth,
-    overscan: 5,
-  });
-
   const hasAnyEvents = daysData.some((day) => day.timedEvents.length > 0);
   const totalWidth = columnVirtualizer.getTotalSize();
 
@@ -108,9 +100,8 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
         dates={dates}
         onEventClick={onEventClick}
         getEventColor={getEventColor}
-        columnWidth={columnWidth}
+        columnVirtualizer={columnVirtualizer}
         totalWidth={totalWidth}
-        scrollElementRef={scrollElementRef}
       />
 
       <div
@@ -210,10 +201,13 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
             </div>
 
             {/* Loading overlay at left edge */}
-            {isLoadingPast && (
+            {isLoadingPast && columnVirtualizer.getVirtualItems()[0] && (
               <div
                 className="absolute top-0 left-0 z-10 flex items-center justify-center bg-zinc-900/50"
-                style={{ width: `${columnWidth}px`, height: "100%" }}
+                style={{
+                  width: `${columnVirtualizer.getVirtualItems()[0].size}px`,
+                  height: "100%",
+                }}
               >
                 <Spinner size="md" color="primary" />
               </div>
@@ -304,10 +298,13 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
             })}
 
             {/* Loading overlay at right edge */}
-            {isLoadingFuture && (
+            {isLoadingFuture && columnVirtualizer.getVirtualItems()[0] && (
               <div
                 className="absolute top-0 right-0 z-10 flex items-center justify-center bg-zinc-900/50"
-                style={{ width: `${columnWidth}px`, height: "100%" }}
+                style={{
+                  width: `${columnVirtualizer.getVirtualItems()[0].size}px`,
+                  height: "100%",
+                }}
               >
                 <Spinner size="md" color="primary" />
               </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { Virtualizer } from "@tanstack/react-virtual";
 import React from "react";
 
 interface DateStripProps {
@@ -8,10 +8,9 @@ interface DateStripProps {
   selectedDate: Date;
   onDateSelect?: (date: Date) => void;
   daysToShow?: number;
-  columnWidth: number;
+  columnVirtualizer: Virtualizer<HTMLDivElement, Element>;
   isLoadingPast?: boolean;
   isLoadingFuture?: boolean;
-  scrollElement?: HTMLDivElement | null;
 }
 
 export const DateStrip: React.FC<DateStripProps> = ({
@@ -19,19 +18,10 @@ export const DateStrip: React.FC<DateStripProps> = ({
   selectedDate,
   onDateSelect,
   daysToShow = 1,
-  columnWidth,
+  columnVirtualizer,
   isLoadingPast = false,
   isLoadingFuture = false,
-  scrollElement,
 }) => {
-  const columnVirtualizer = useVirtualizer({
-    horizontal: true,
-    count: dates.length,
-    getScrollElement: () => scrollElement || null,
-    estimateSize: () => columnWidth,
-    overscan: 5,
-  });
-
   return (
     <div className="sticky top-0 z-[30] flex min-h-9 min-w-fit flex-shrink-0 border-b border-zinc-800 bg-[#1a1a1a]">
       {/* Time Label Column */}

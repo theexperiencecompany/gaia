@@ -34,7 +34,6 @@ export * from "./shadcn/checkbox";
 export * from "./shadcn/collapsible";
 export * from "./shadcn/command";
 export * from "./shadcn/context-menu";
-export * from "./shadcn/date-time-picker";
 export * from "./shadcn/dialog";
 export * from "./shadcn/drawer";
 export * from "./shadcn/dropdown-menu";
