@@ -2,7 +2,6 @@
 
 import { Button } from "@heroui/button";
 import { Tab, Tabs } from "@heroui/tabs";
-import { ChevronRight } from "lucide-react";
 
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { NotificationIcon } from "@/components/shared/icons";

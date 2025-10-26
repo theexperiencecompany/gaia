@@ -86,12 +86,12 @@ export default function CalendarHeader() {
       <div className="flex items-center gap-3">
         <HeaderTitle
           icon={<CalendarIcon width={20} height={20} color={undefined} />}
-          text={`Calendar - ${visibleMonth} ${visibleYear}`}
+          text={`Calendar${visibleMonth && visibleYear ? ` - ${visibleMonth} ${visibleYear}` : ""}`}
         />
 
         <Select
           size="sm"
-          selectedKeys={[daysToShow.toString()]}
+          selectedKeys={daysToShow ? [daysToShow.toString()] : ["1"]}
           onSelectionChange={(keys) => {
             const value = Array.from(keys)[0] as string;
             setDaysToShow(parseInt(value));

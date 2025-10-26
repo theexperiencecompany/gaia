@@ -14,9 +14,9 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/shadcn/accordion";
-import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
 import { DateRangePicker } from "@/components/ui/shadcn/date-range-picker";
 import { DateTimePicker } from "@/components/ui/shadcn/datetime-picker";
+import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
 import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
 import { CalendarItem } from "@/types/api/calendarApiTypes";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";

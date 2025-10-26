@@ -9,7 +9,6 @@ import { EmailFetchData } from "@/types/features/mailTypes";
 interface EmailListProps {
   emails?: EmailFetchData[] | null;
   backgroundColor?: string;
-  showTitle?: boolean;
   maxHeight?: string;
   isCollapsible?: boolean;
 }
@@ -62,7 +61,6 @@ function formatTime(time: string | null): string {
 export default function EmailListCard({
   emails,
   backgroundColor = "bg-zinc-800",
-  showTitle = true,
   maxHeight = "max-h-[300px]",
   isCollapsible = true,
 }: EmailListProps) {

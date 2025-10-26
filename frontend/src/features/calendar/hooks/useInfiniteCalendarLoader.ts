@@ -1,24 +1,21 @@
 import { useCallback, useState } from "react";
 
 import { useCalendarStore } from "@/stores/calendarStore";
+
 import {
   generateMonthDates,
-  getMonthRange,
   getNextMonthRange,
   getPreviousMonthRange,
 } from "../utils/dateRangeUtils";
-import type { ScrollMetrics } from "./useHorizontalScrollObserver";
 import { useCalendarOperations } from "./useCalendarOperations";
 
 // Load entire months instead of fixed day chunks
 interface UseInfiniteCalendarLoaderProps {
-  scrollMetrics: ScrollMetrics;
   selectedCalendars: string[];
   isInitialized: boolean;
 }
 
 export const useInfiniteCalendarLoader = ({
-  scrollMetrics,
   selectedCalendars,
   isInitialized,
 }: UseInfiniteCalendarLoaderProps) => {

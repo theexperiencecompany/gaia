@@ -1,8 +1,7 @@
 import {
-  CalendarDeleteOptions,
   CalendarEditOptions,
-  CalendarEvent,
 } from "@/types/features/calendarTypes";
+
 import { AnyCalendarEvent } from "./eventTypeGuards";
 
 export type EventAction = "add" | "edit" | "delete";

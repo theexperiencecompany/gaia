@@ -3,8 +3,8 @@ import {
   CalendarEditOptions,
   CalendarEvent,
 } from "@/types/features/calendarTypes";
-import { formatTimeRange } from "@/utils/date/calendarDateUtils";
 import { isTimedEvent } from "@/utils/calendar/eventTypeGuards";
+import { formatTimeRange } from "@/utils/date/calendarDateUtils";
 
 type EventData = CalendarEvent | CalendarEditOptions | CalendarDeleteOptions;
 

@@ -29,7 +29,7 @@ interface MultiDayCalendarGridProps {
   columnVirtualizer: Virtualizer<HTMLDivElement, Element>;
   isLoadingPast?: boolean;
   isLoadingFuture?: boolean;
-  scrollElementRef?: React.RefObject<HTMLDivElement>;
+  scrollElementRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const PX_PER_MINUTE = 64 / 60;
@@ -79,7 +79,6 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
   columnVirtualizer,
   isLoadingPast = false,
   isLoadingFuture = false,
-  scrollElementRef,
 }) => {
   const daysData = useMemo(
     () =>

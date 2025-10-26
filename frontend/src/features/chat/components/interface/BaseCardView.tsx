@@ -7,7 +7,6 @@ import React from "react";
 interface BaseCardViewProps {
   title: string;
   icon: React.ReactNode;
-  isLoading: boolean;
   isFetching?: boolean;
   error?: string | null;
   isEmpty?: boolean;
@@ -27,7 +26,6 @@ interface BaseCardViewProps {
 const BaseCardView: React.FC<BaseCardViewProps> = ({
   title,
   icon,
-  isLoading,
   isFetching = false,
   error,
   isEmpty = false,

@@ -89,7 +89,6 @@ export default function WorkflowModal({
     regenerationError,
     isActivated,
     setCreationPhase,
-    setIsGeneratingSteps,
     setIsRegeneratingSteps,
     setIsTogglingActivation,
     setRegenerationError,

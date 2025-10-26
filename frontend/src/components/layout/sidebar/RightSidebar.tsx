@@ -1,10 +1,10 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { ReactNode, useEffect } from "react";
 
 import { Cancel01Icon } from "@/components/shared/icons";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
-import { Button } from "@heroui/button";
 
 interface RightSidebarProps {
   children: ReactNode;

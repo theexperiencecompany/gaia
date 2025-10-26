@@ -17,10 +17,7 @@ export const DateStrip: React.FC<DateStripProps> = ({
   dates,
   selectedDate,
   onDateSelect,
-  daysToShow = 1,
   columnVirtualizer,
-  isLoadingPast = false,
-  isLoadingFuture = false,
 }) => {
   return (
     <div className="sticky top-0 z-[30] flex min-h-9 min-w-fit flex-shrink-0 border-b border-zinc-800 bg-[#1a1a1a]">

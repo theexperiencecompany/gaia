@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 
-import { CommunityWorkflow, workflowApi } from "../api/workflowApi";
+import { CommunityWorkflow } from "../api/workflowApi";
 import BaseWorkflowCard from "./shared/BaseWorkflowCard";
 import {
   CreateWorkflowButton,
@@ -24,7 +24,6 @@ export default function CommunityWorkflowCard({
   onClick,
 }: CommunityWorkflowCardProps) {
   const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
-  const [isUpvoting, setIsUpvoting] = useState(false);
   const [localWorkflow, setLocalWorkflow] = useState(workflow);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -66,61 +65,61 @@ export default function CommunityWorkflowCard({
     }
   };
 
-  const handleUpvoteImmediate = useCallback(async () => {
-    if (isUpvoting) return;
+  // const handleUpvoteImmediate = useCallback(async () => {
+  //   if (isUpvoting) return;
 
-    setIsUpvoting(true);
+  //   setIsUpvoting(true);
 
-    // Store the current state for potential rollback
-    const previousState = {
-      is_upvoted: localWorkflow.is_upvoted,
-      upvotes: localWorkflow.upvotes,
-    };
+  //   // Store the current state for potential rollback
+  //   const previousState = {
+  //     is_upvoted: localWorkflow.is_upvoted,
+  //     upvotes: localWorkflow.upvotes,
+  //   };
 
-    // Optimistic update - predict the action based on current state
-    const predictedAction = localWorkflow.is_upvoted ? "removed" : "added";
+  //   // Optimistic update - predict the action based on current state
+  //   const predictedAction = localWorkflow.is_upvoted ? "removed" : "added";
 
-    // Apply optimistic update immediately
-    setLocalWorkflow((prev: CommunityWorkflow) => ({
-      ...prev,
-      is_upvoted: predictedAction === "added",
-      upvotes:
-        predictedAction === "added" ? prev.upvotes + 1 : prev.upvotes - 1,
-    }));
+  //   // Apply optimistic update immediately
+  //   setLocalWorkflow((prev: CommunityWorkflow) => ({
+  //     ...prev,
+  //     is_upvoted: predictedAction === "added",
+  //     upvotes:
+  //       predictedAction === "added" ? prev.upvotes + 1 : prev.upvotes - 1,
+  //   }));
 
-    try {
-      const result = await workflowApi.upvoteWorkflow(localWorkflow.id);
+  //   try {
+  //     const result = await workflowApi.upvoteWorkflow(localWorkflow.id);
 
-      // Verify optimistic update was correct, if not, apply correct state
-      if (result.action !== predictedAction) {
-        setLocalWorkflow((prev: CommunityWorkflow) => ({
-          ...prev,
-          is_upvoted: result.action === "added",
-          upvotes:
-            result.action === "added"
-              ? previousState.upvotes + 1
-              : previousState.upvotes - 1,
-        }));
-      }
-    } catch (error) {
-      console.error("Error upvoting workflow:", error);
-      toast.error("Failed to update vote. Please try again.");
+  //     // Verify optimistic update was correct, if not, apply correct state
+  //     if (result.action !== predictedAction) {
+  //       setLocalWorkflow((prev: CommunityWorkflow) => ({
+  //         ...prev,
+  //         is_upvoted: result.action === "added",
+  //         upvotes:
+  //           result.action === "added"
+  //             ? previousState.upvotes + 1
+  //             : previousState.upvotes - 1,
+  //       }));
+  //     }
+  //   } catch (error) {
+  //     console.error("Error upvoting workflow:", error);
+  //     toast.error("Failed to update vote. Please try again.");
 
-      // Rollback to previous state on error
-      setLocalWorkflow((prev: CommunityWorkflow) => ({
-        ...prev,
-        is_upvoted: previousState.is_upvoted,
-        upvotes: previousState.upvotes,
-      }));
-    } finally {
-      setIsUpvoting(false);
-    }
-  }, [
-    isUpvoting,
-    localWorkflow.is_upvoted,
-    localWorkflow.upvotes,
-    localWorkflow.id,
-  ]);
+  //     // Rollback to previous state on error
+  //     setLocalWorkflow((prev: CommunityWorkflow) => ({
+  //       ...prev,
+  //       is_upvoted: previousState.is_upvoted,
+  //       upvotes: previousState.upvotes,
+  //     }));
+  //   } finally {
+  //     setIsUpvoting(false);
+  //   }
+  // }, [
+  //   isUpvoting,
+  //   localWorkflow.is_upvoted,
+  //   localWorkflow.upvotes,
+  //   localWorkflow.id,
+  // ]);
 
   // const handleUpvote = useCallback(() => {
   //   // Prevent rapid clicks by checking if already processing

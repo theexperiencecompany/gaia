@@ -35,15 +35,10 @@ export const GridSection = () => {
 
   // Individual loading states for granular control
   const emailLoading = emailQuery.isLoading;
-  const calendarLoading = calendarQuery.isLoading;
-  const calendarsLoading = calendarsQuery.isLoading;
 
   // Fetching states for refresh functionality
   const emailFetching = emailQuery.isFetching;
   const calendarFetching = calendarQuery.isFetching;
-
-  // Combined loading state - true if ANY query is still loading
-  const isLoading = emailLoading || calendarLoading || calendarsLoading;
 
   // Transform errors to match expected format
   const errors = {
@@ -87,7 +82,6 @@ export const GridSection = () => {
         />
         <UpcomingEventsView
           events={calendarEvents}
-          isLoading={calendarLoading}
           isFetching={calendarFetching}
           error={errors.calendar}
           calendars={calendars}

@@ -19,12 +19,10 @@ export default function TodosHeader() {
   const todos = useTodoStore((state) => state.todos);
   const projects = useTodoStore((state) => state.projects);
   const loadCounts = useTodoStore((state) => state.loadCounts);
-  const refreshAll = useTodoStore((state) => state.refreshAll);
 
   // Get filter parameters
   const projectId = searchParams.get("project");
   const priority = searchParams.get("priority");
-  const completedParam = searchParams.get("completed");
 
   // Determine page title and task count
   const { pageTitle, taskCount } = useMemo(() => {

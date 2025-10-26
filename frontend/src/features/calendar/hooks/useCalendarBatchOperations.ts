@@ -7,12 +7,12 @@ import {
   CalendarEditOptions,
   CalendarEvent,
 } from "@/types/features/calendarTypes";
+import { getEventKey } from "@/utils/calendar/eventExtractors";
 import {
   buildBatchAddPayloads,
   buildBatchDeletePayloads,
   buildBatchEditPayloads,
 } from "@/utils/calendar/eventPayloadBuilders";
-import { getEventKey } from "@/utils/calendar/eventExtractors";
 import { AnyCalendarEvent } from "@/utils/calendar/eventTypeGuards";
 
 export type EventStatus = {
@@ -59,9 +59,11 @@ export const useCalendarBatchOperations = () => {
       completedStatuses[eventsToEdit[idx].event_id] = "completed";
     });
 
-    result.failed.forEach((failedItem: { event_id: string }) => {
-      completedStatuses[failedItem.event_id] = "idle";
-    });
+    result.failed.forEach(
+      (failedItem: { event: { event_id: string }; error: string }) => {
+        completedStatuses[failedItem.event.event_id] = "idle";
+      },
+    );
 
     setEventStatuses((prev) => ({ ...prev, ...completedStatuses }));
   };
@@ -76,9 +78,11 @@ export const useCalendarBatchOperations = () => {
       completedStatuses[item.event_id] = "completed";
     });
 
-    result.failed.forEach((failedItem: { event_id: string }) => {
-      completedStatuses[failedItem.event_id] = "idle";
-    });
+    result.failed.forEach(
+      (failedItem: { event: { event_id: string }; error: string }) => {
+        completedStatuses[failedItem.event.event_id] = "idle";
+      },
+    );
 
     setEventStatuses((prev) => ({ ...prev, ...completedStatuses }));
   };

@@ -14,11 +14,7 @@ import { DateStrip } from "@/features/calendar/components/DateStrip";
 import { useHorizontalScrollObserver } from "@/features/calendar/hooks/useHorizontalScrollObserver";
 import { useInfiniteCalendarLoader } from "@/features/calendar/hooks/useInfiniteCalendarLoader";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
-import {
-  generateMonthDates,
-  getInitialMonthlyDateRange,
-  getMonthRange,
-} from "@/features/calendar/utils/dateRangeUtils";
+import { getInitialMonthlyDateRange } from "@/features/calendar/utils/dateRangeUtils";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
 import {
   useCalendarCurrentWeek,
@@ -70,13 +66,6 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
 
   // Memoized values
   const hours = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
-
-  const getEventColorForGrid = useCallback(
-    (event: GoogleCalendarEvent) => {
-      return getEventColor(event, calendars);
-    },
-    [calendars],
-  );
 
   // Create single virtualizer instance for all components to share
   // Recreate when columnWidth changes to ensure proper column sizing
@@ -141,7 +130,6 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
 
   const { loadMorePast, loadMoreFuture, isLoadingPast, isLoadingFuture } =
     useInfiniteCalendarLoader({
-      scrollMetrics,
       selectedCalendars,
       isInitialized,
     });
@@ -376,7 +364,6 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
             columnVirtualizer={columnVirtualizer}
             isLoadingPast={isLoadingPast}
             isLoadingFuture={isLoadingFuture}
-            scrollElementRef={scrollContainerRef}
           />
         </div>
       </div>

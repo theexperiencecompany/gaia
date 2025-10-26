@@ -35,89 +35,45 @@ export default function CalendarEventSection({
 
   const same_day_events = calendar_options[0]?.same_day_events;
 
-  if (!calendar_options.every((option) => option.summary)) {
-    return (
-      <div className="p-3 text-red-500">
-        Error: Could not add Calendar event. Please try again later.
-      </div>
-    );
-  }
+  const calendarEvents: CalendarEvent[] = useMemo(
+    () =>
+      calendar_options.map((option): CalendarEvent => {
+        if (option.start && option.end) {
+          const timedEvent: TimedEvent = {
+            summary: option.summary,
+            description: option.description || "",
+            start: option.start,
+            end: option.end,
+            is_all_day: option.is_all_day || false,
+            recurrence: option.recurrence,
+            calendar_id: option.calendar_id,
+          };
+          return timedEvent;
+        }
 
-  const calendarEvents: CalendarEvent[] = calendar_options.map(
-    (option): CalendarEvent => {
-      if (option.start && option.end) {
-        const timedEvent: TimedEvent = {
+        if (option.start) {
+          const singleTimeEvent: SingleTimeEvent = {
+            summary: option.summary,
+            description: option.description || "",
+            time: option.start,
+            is_all_day: option.is_all_day || true,
+            recurrence: option.recurrence,
+            calendar_id: option.calendar_id,
+          };
+          return singleTimeEvent;
+        }
+
+        const fallbackEvent: SingleTimeEvent = {
           summary: option.summary,
           description: option.description || "",
-          start: option.start,
-          end: option.end,
-          is_all_day: option.is_all_day || false,
+          time: "Time TBD",
+          is_all_day: true,
           recurrence: option.recurrence,
           calendar_id: option.calendar_id,
         };
-        return timedEvent;
-      }
-
-      if (option.start) {
-        const singleTimeEvent: SingleTimeEvent = {
-          summary: option.summary,
-          description: option.description || "",
-          time: option.start,
-          is_all_day: option.is_all_day || true,
-          recurrence: option.recurrence,
-          calendar_id: option.calendar_id,
-        };
-        return singleTimeEvent;
-      }
-
-      const fallbackEvent: SingleTimeEvent = {
-        summary: option.summary,
-        description: option.description || "",
-        time: "Time TBD",
-        is_all_day: true,
-        recurrence: option.recurrence,
-        calendar_id: option.calendar_id,
-      };
-      return fallbackEvent;
-    },
-  );
-
-  const handleAdd = async (event: CalendarEvent, index: number) => {
-    try {
-      setEventStatuses((prev) => ({ ...prev, [index]: "loading" }));
-      await calendarApi.createEventDefault(buildAddEventPayload(event));
-      setEventStatuses((prev) => ({ ...prev, [index]: "completed" }));
-    } catch (error) {
-      console.error("Error adding event:", error);
-      setEventStatuses((prev) => ({ ...prev, [index]: "idle" }));
-      toast.error("Failed to add event");
-    }
-  };
-
-  const handleAddAll = async () => {
-    setIsConfirmingAll(true);
-    const pendingEvents = calendarEvents
-      .map((event, index) => ({ event, index }))
-      .filter(({ index }) => eventStatuses[index] !== "completed");
-
-    try {
-      await Promise.all(
-        pendingEvents.map(({ event, index }) => handleAdd(event, index)),
-      );
-    } catch (error) {
-      console.error("Error adding events:", error);
-      toast.error("Failed to add all events");
-    } finally {
-      setIsConfirmingAll(false);
-    }
-  };
-
-  const allCompleted = calendarEvents.every(
-    (_, index) => eventStatuses[index] === "completed",
-  );
-
-  const hasCompletedEvents = calendarEvents.some(
-    (_, index) => eventStatuses[index] === "completed",
+        return fallbackEvent;
+      }),
+    [calendar_options],
   );
 
   // Group events by date, including same-day events
@@ -160,15 +116,13 @@ export default function CalendarEventSection({
       dayEvents.sort((a, b) => {
         const getTime = (e: CalendarEvent | SameDayEvent) => {
           if ("start" in e && typeof e.start === "object") {
-            return new Date(
-              (e.start as any).dateTime || (e.start as any).date || 0,
-            ).getTime();
+            return new Date(e.start.dateTime || e.start.date || 0).getTime();
           }
           if ("start" in e && typeof e.start === "string") {
             return new Date(e.start).getTime();
           }
           if ("time" in e) {
-            return new Date((e as any).time).getTime();
+            return new Date(e.time).getTime();
           }
           return 0;
         };
@@ -178,6 +132,52 @@ export default function CalendarEventSection({
 
     return grouped;
   }, [calendarEvents, same_day_events]);
+
+  if (!calendar_options.every((option) => option.summary)) {
+    return (
+      <div className="p-3 text-red-500">
+        Error: Could not add Calendar event. Please try again later.
+      </div>
+    );
+  }
+
+  const handleAdd = async (event: CalendarEvent, index: number) => {
+    try {
+      setEventStatuses((prev) => ({ ...prev, [index]: "loading" }));
+      await calendarApi.createEventDefault(buildAddEventPayload(event));
+      setEventStatuses((prev) => ({ ...prev, [index]: "completed" }));
+    } catch (error) {
+      console.error("Error adding event:", error);
+      setEventStatuses((prev) => ({ ...prev, [index]: "idle" }));
+      toast.error("Failed to add event");
+    }
+  };
+
+  const handleAddAll = async () => {
+    setIsConfirmingAll(true);
+    const pendingEvents = calendarEvents
+      .map((event, index) => ({ event, index }))
+      .filter(({ index }) => eventStatuses[index] !== "completed");
+
+    try {
+      await Promise.all(
+        pendingEvents.map(({ event, index }) => handleAdd(event, index)),
+      );
+    } catch (error) {
+      console.error("Error adding events:", error);
+      toast.error("Failed to add all events");
+    } finally {
+      setIsConfirmingAll(false);
+    }
+  };
+
+  const allCompleted = calendarEvents.every(
+    (_, index) => eventStatuses[index] === "completed",
+  );
+
+  const hasCompletedEvents = calendarEvents.some(
+    (_, index) => eventStatuses[index] === "completed",
+  );
 
   const getDisplayTime = (event: CalendarEvent | SameDayEvent): string => {
     if ("start" in event && typeof event.start === "object") {
@@ -194,8 +194,9 @@ export default function CalendarEventSection({
 
     const calEvent = event as CalendarEvent;
     if ("start" in calEvent && "end" in calEvent && calEvent.start) {
-      const startStr = calEvent.start;
-      const endStr = (calEvent as any).end;
+      const timedEvent = calEvent as TimedEvent;
+      const startStr = timedEvent.start;
+      const endStr = timedEvent.end;
       if (startStr?.includes("T") && endStr?.includes("T")) {
         return formatTimeRange(startStr, endStr);
       }
@@ -203,8 +204,9 @@ export default function CalendarEventSection({
     }
 
     if ("time" in calEvent && calEvent.time) {
-      if (calEvent.time.includes("T")) {
-        const date = new Date(calEvent.time);
+      const singleTimeEvent = calEvent as SingleTimeEvent;
+      if (singleTimeEvent.time.includes("T")) {
+        const date = new Date(singleTimeEvent.time);
         return date.toLocaleTimeString("en-US", {
           hour: "numeric",
           minute: "2-digit",

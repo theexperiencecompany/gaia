@@ -6,8 +6,8 @@ import { toast } from "sonner";
 import { PencilEdit02Icon, Tick02Icon } from "@/components/shared/icons";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
 import { CalendarEditOptions } from "@/types/features/calendarTypes";
-import { buildEditEventPayload } from "@/utils/calendar/eventPayloadBuilders";
 import { hasEventChanges } from "@/utils/calendar/eventHelpers";
+import { buildEditEventPayload } from "@/utils/calendar/eventPayloadBuilders";
 import { formatDateWithRelative } from "@/utils/date/calendarDateUtils";
 
 import { EventCard } from "./CalendarEventCard";

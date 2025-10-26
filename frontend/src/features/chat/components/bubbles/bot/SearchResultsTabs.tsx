@@ -47,12 +47,9 @@ interface ImageResultsProps {
 function ImageResults({ images }: ImageResultsProps) {
   const { openDialog } = useImageDialog();
   const [validImages, setValidImages] = useState<string[]>([]);
-  const [isValidating, setIsValidating] = useState(true);
 
   useEffect(() => {
     const validateImages = async () => {
-      setIsValidating(true);
-
       // Filter out obviously invalid images first
       const potentiallyValidImages = images.filter(
         (imageUrl) => imageUrl && typeof imageUrl === "string",
@@ -91,8 +88,6 @@ function ImageResults({ images }: ImageResultsProps) {
       } catch (error) {
         console.error("Error validating images:", error);
         setValidImages([]);
-      } finally {
-        setIsValidating(false);
       }
     };
 
@@ -100,7 +95,6 @@ function ImageResults({ images }: ImageResultsProps) {
       validateImages();
     } else {
       setValidImages([]);
-      setIsValidating(false);
     }
   }, [images]);
 

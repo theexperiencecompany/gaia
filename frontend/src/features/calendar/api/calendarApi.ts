@@ -190,10 +190,13 @@ export const calendarApi = {
   // Batch operations
   batchCreateEvents: async (
     events: EventCreatePayload[],
-  ): Promise<{ successful: GoogleCalendarEvent[]; failed: any[] }> => {
+  ): Promise<{
+    successful: GoogleCalendarEvent[];
+    failed: Array<{ event: EventCreatePayload; error: string }>;
+  }> => {
     return apiService.post<{
       successful: GoogleCalendarEvent[];
-      failed: any[];
+      failed: Array<{ event: EventCreatePayload; error: string }>;
     }>(
       "/calendar/events/batch",
       { events },
@@ -216,8 +219,40 @@ export const calendarApi = {
       timezone?: string;
       original_summary?: string;
     }>,
-  ): Promise<{ successful: GoogleCalendarEvent[]; failed: any[] }> => {
-    return apiService.put<{ successful: GoogleCalendarEvent[]; failed: any[] }>(
+  ): Promise<{
+    successful: GoogleCalendarEvent[];
+    failed: Array<{
+      event: {
+        event_id: string;
+        calendar_id: string;
+        summary?: string;
+        description?: string;
+        start?: string;
+        end?: string;
+        is_all_day?: boolean;
+        timezone?: string;
+        original_summary?: string;
+      };
+      error: string;
+    }>;
+  }> => {
+    return apiService.put<{
+      successful: GoogleCalendarEvent[];
+      failed: Array<{
+        event: {
+          event_id: string;
+          calendar_id: string;
+          summary?: string;
+          description?: string;
+          start?: string;
+          end?: string;
+          is_all_day?: boolean;
+          timezone?: string;
+          original_summary?: string;
+        };
+        error: string;
+      }>;
+    }>(
       "/calendar/events/batch",
       { events },
       {
@@ -235,11 +270,17 @@ export const calendarApi = {
     }>,
   ): Promise<{
     successful: Array<{ event_id: string; calendar_id: string }>;
-    failed: any[];
+    failed: Array<{
+      event: { event_id: string; calendar_id: string; summary?: string };
+      error: string;
+    }>;
   }> => {
     return apiService.delete<{
       successful: Array<{ event_id: string; calendar_id: string }>;
-      failed: any[];
+      failed: Array<{
+        event: { event_id: string; calendar_id: string; summary?: string };
+        error: string;
+      }>;
     }>(
       "/calendar/events/batch",
       { events },

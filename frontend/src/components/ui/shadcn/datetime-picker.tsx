@@ -3,10 +3,9 @@
  */
 "use client";
 
-import * as React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarIcon } from "@radix-ui/react-icons";
 import {
+  addHours,
   endOfDay,
   endOfHour,
   endOfMinute,
@@ -18,13 +17,13 @@ import {
   startOfDay,
   startOfHour,
   startOfMinute,
-  addHours,
   subHours,
 } from "date-fns";
 import { ChevronLeftIcon, ChevronRightIcon, XCircle } from "lucide-react";
+import * as React from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DayPicker, Matcher } from "react-day-picker";
 
-import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/shadcn/button";
 import {
   Popover,
@@ -32,10 +31,11 @@ import {
   PopoverTrigger,
 } from "@/components/ui/shadcn/popover";
 import { ScrollArea } from "@/components/ui/shadcn/scroll-area";
+import { cn } from "@/lib/utils";
 
 export type CalendarProps = Omit<
   React.ComponentProps<typeof DayPicker>,
-  "mode"
+  "mode" | "selected" | "onSelect"
 >;
 
 const AM_VALUE = 0;
@@ -197,9 +197,9 @@ export function DateTimePicker({
             onMonthChange={setMonth}
             disabled={
               [
-                max ? { after: max } : null,
-                min ? { before: min } : null,
-              ].filter(Boolean) as Matcher[]
+                max ? { after: max } : undefined,
+                min ? { before: min } : undefined,
+              ].filter((m) => m !== undefined) as Matcher[]
             }
             classNames={{
               months: "flex flex-col sm:flex-row gap-2",

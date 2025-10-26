@@ -1,8 +1,8 @@
 "use client";
 
 import { Virtualizer } from "@tanstack/react-virtual";
-import { useMemo, useState } from "react";
 import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 

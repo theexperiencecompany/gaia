@@ -8,6 +8,7 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Input } from "@heroui/input";
+import { Kbd } from "@heroui/kbd";
 import {
   Modal,
   ModalBody,
@@ -29,7 +30,6 @@ import {
 import { PencilRenameIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
-import { Kbd } from "@heroui/kbd";
 
 export default function ChatOptionsDropdown({
   buttonHovered,
