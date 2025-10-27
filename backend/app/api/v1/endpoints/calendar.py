@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.api.v1.dependencies.google_scope_dependencies import require_integration
 from app.config.token_repository import token_repository
@@ -492,7 +492,7 @@ async def create_events_batch(
         )
         access_token = str(token.get("access_token", ""))
 
-        results = {"successful": [], "failed": []}
+        results: Dict[str, List[Any]] = {"successful": [], "failed": []}
 
         for event in batch_request.events:
             try:

@@ -21,9 +21,9 @@ export default function Calendar() {
   const openRightSidebar = useRightSidebar((state) => state.open);
   const setRightSidebarVariant = useRightSidebar((state) => state.setVariant);
 
-  // Set sidebar to overlay mode to prevent calendar jitter
+  // Set sidebar to sheet mode to prevent calendar jitter
   useEffect(() => {
-    setRightSidebarVariant("overlay");
+    setRightSidebarVariant("sheet");
   }, [setRightSidebarVariant]);
 
   const {
@@ -114,7 +114,7 @@ export default function Calendar() {
   useEffect(() => {
     if (isOpen) {
       setRightSidebarContent(sidebarContent);
-      openRightSidebar();
+      openRightSidebar("sheet");
     } else {
       closeRightSidebar();
     }
