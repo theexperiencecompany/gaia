@@ -26,6 +26,43 @@ import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { Goal } from "@/types/api/goalsApiTypes";
 import { EdgeType, GoalData, NodeData } from "@/types/features/goalTypes";
 
+// Define CustomNode outside of the component to prevent recreation on every render
+const CustomNode = React.memo(
+  ({
+    data,
+    onNodeClick,
+  }: {
+    data: NodeData;
+    onNodeClick: (id: string) => void;
+  }) => {
+    return (
+      <>
+        <Handle position={Position.Top} type="target" />
+
+        <div
+          className={`flex max-w-[250px] min-w-[250px] cursor-pointer flex-row items-center justify-center gap-1 rounded-lg bg-zinc-800 p-4 text-center text-white outline-[3px] outline-zinc-700 transition-all hover:outline-zinc-600`}
+          style={
+            data.isComplete
+              ? {
+                  backgroundColor: "rgba(0, 187, 255, 0.2)",
+                  color: "rgb(161 161 170)",
+                  textDecoration: "line-through",
+                  outlineColor: "rgba(0, 187, 255, 0.3)",
+                }
+              : undefined
+          }
+          onClick={() => onNodeClick(data.id)}
+        >
+          {data.label}
+        </div>
+
+        <Handle position={Position.Bottom} type="source" />
+      </>
+    );
+  },
+);
+CustomNode.displayName = "CustomNode";
+
 export default function GoalPage() {
   const [goalData, setGoalData] = useState<GoalData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,41 +76,21 @@ export default function GoalPage() {
 
   // Use right sidebar store
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
+  const openRightSidebar = useRightSidebar((state) => state.open);
   const closeRightSidebar = useRightSidebar((state) => state.close);
 
-  const CustomNode = React.memo(({ data }: { data: NodeData }) => {
-    return (
-      <>
-        <Handle position={Position.Top} type="target" />
+  const handleNodeClick = useCallback((nodeId: string) => {
+    setCurrentlySelectedNodeId(nodeId);
+  }, []);
 
-        <div
-          className={`${
-            currentlySelectedNodeId === data.id
-              ? "shadow-lg outline-primary"
-              : "outline-zinc-700"
-          } ${
-            data.isComplete
-              ? "bg-primary/20 text-zinc-400 line-through outline-primary/30"
-              : "bg-zinc-800 text-white"
-          } flex max-w-[250px] min-w-[250px] cursor-pointer flex-row items-center justify-center gap-1 rounded-lg p-4 text-center transition-all hover:outline-zinc-600`}
-          onClick={() => {
-            setCurrentlySelectedNodeId(data.id);
-          }}
-        >
-          {data.label}
-        </div>
-
-        <Handle position={Position.Bottom} type="source" />
-      </>
-    );
-  });
-  CustomNode.displayName = "Custom Node";
-
-  const nodeTypes = useMemo<{ customNode: React.FC<{ data: NodeData }> }>(
+  // Memoize nodeTypes to prevent React Flow warning
+  const nodeTypes = useMemo(
     () => ({
-      customNode: (props) => <CustomNode {...props} />,
+      customNode: (props: { data: NodeData }) => (
+        <CustomNode {...props} onNodeClick={handleNodeClick} />
+      ),
     }),
-    [CustomNode],
+    [handleNodeClick],
   );
 
   const fetchGoalData = useCallback(async () => {
@@ -249,13 +266,15 @@ export default function GoalPage() {
           onToggleComplete={handleCheckboxClick}
         />,
       );
+      openRightSidebar("sidebar");
     } else {
-      setRightSidebarContent(null);
+      closeRightSidebar();
     }
   }, [
     currentlySelectedNodeId,
     nodes,
     setRightSidebarContent,
+    openRightSidebar,
     closeRightSidebar,
   ]);
 

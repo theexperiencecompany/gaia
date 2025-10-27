@@ -1,6 +1,11 @@
 import { create } from "zustand";
 
-export type RightSidebarVariant = "overlay" | "push";
+/**
+ * Right sidebar variants:
+ * - "sheet": Modal overlay that appears on top of content (doesn't shift layout)
+ * - "sidebar": Persistent sidebar that pushes/shifts the main content layout
+ */
+export type RightSidebarVariant = "sheet" | "sidebar";
 
 interface RightSidebarState {
   content: React.ReactNode | null;
@@ -15,7 +20,7 @@ interface RightSidebarState {
 export const useRightSidebar = create<RightSidebarState>((set) => ({
   content: null,
   isOpen: false,
-  variant: "overlay",
+  variant: "sidebar",
   setContent: (content) => set({ content }),
   setVariant: (variant) => set({ variant }),
   open: (variant) =>

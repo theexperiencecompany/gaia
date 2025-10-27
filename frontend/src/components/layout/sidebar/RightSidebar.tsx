@@ -4,18 +4,21 @@ import { Button } from "@heroui/button";
 import { ReactNode, useEffect } from "react";
 
 import { Cancel01Icon } from "@/components/shared/icons";
-import { useRightSidebar } from "@/stores/rightSidebarStore";
+import {
+  RightSidebarVariant,
+  useRightSidebar,
+} from "@/stores/rightSidebarStore";
 
 interface RightSidebarProps {
   children: ReactNode;
   isOpen: boolean;
-  variant?: "overlay" | "push";
+  variant?: RightSidebarVariant;
 }
 
 export default function RightSidebar({
   children,
   isOpen,
-  variant = "overlay",
+  variant = "sheet",
 }: RightSidebarProps) {
   const close = useRightSidebar((state) => state.close);
 
@@ -33,7 +36,7 @@ export default function RightSidebar({
     };
   }, [isOpen, close]);
 
-  if (variant === "push") {
+  if (variant === "sidebar") {
     return (
       <aside
         className="relative flex flex-col border-l border-zinc-800 bg-[#141414] transition-all duration-300 ease-in-out"
@@ -61,6 +64,7 @@ export default function RightSidebar({
     );
   }
 
+  // Sheet variant (overlay)
   return (
     <aside
       className="absolute top-0 right-0 z-50 flex h-full flex-col border-l border-zinc-800 bg-[#141414] shadow-2xl transition-transform duration-300 ease-in-out"
