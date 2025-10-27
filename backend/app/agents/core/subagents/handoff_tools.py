@@ -2,6 +2,7 @@ from typing import Annotated, List, Optional
 
 from app.agents.prompts.gmail_node_prompts import GMAIL_ORCHESTRATOR_PROMPT
 from app.agents.prompts.subagent_prompts import (
+    CALENDAR_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
@@ -80,14 +81,14 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
 
     Args:
         enabled_providers: List of enabled provider names
-                          ('gmail', 'notion', 'twitter', 'linkedin')
+                          ('gmail', 'notion', 'twitter', 'linkedin', 'calendar')
 
     Returns:
         List of handoff tools for the enabled provider sub-agent graphs
     """
 
     if enabled_providers is None:
-        enabled_providers = ["gmail", "notion", "twitter", "linkedin"]
+        enabled_providers = ["gmail", "notion", "twitter", "linkedin", "calendar"]
 
     tools = []
 
@@ -144,6 +145,20 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
                     capabilities="creating posts, managing connections, networking outreach, profile updates, content engagement, and advanced LinkedIn workflows",
                 ),
                 system_prompt=LINKEDIN_AGENT_SYSTEM_PROMPT,
+            )
+        )
+
+    if "calendar" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_calendar_agent",
+                agent_name="calendar_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Calendar",
+                    domain="calendar and event management",
+                    capabilities="creating events, scheduling meetings, managing calendars, searching events, editing appointments, handling recurring events, and comprehensive calendar workflows",
+                ),
+                system_prompt=CALENDAR_AGENT_SYSTEM_PROMPT,
             )
         )
 

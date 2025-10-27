@@ -191,10 +191,11 @@ For specialized provider services, ALWAYS use handoff tools instead of any manua
 • Notion tools (NOTION_*, notion, workspace, page, database) → Use `call_notion_agent`
 • Twitter tools (TWITTER_*, twitter, social, tweet, post) → Use `call_twitter_agent`
 • LinkedIn tools (LINKEDIN_*, linkedin, professional, network) → Use `call_linkedin_agent`
+• Calendar tools (create_calendar_event, fetch_calendar_*, search_calendar_*, edit_calendar_*, delete_calendar_*, view_calendar_*) → Use `call_calendar_agent`
 
 **CRITICAL EXECUTION RULES:**
 1. **NO MANUAL TOOL RETRIEVAL**: Do NOT use `retrieve_tools` for provider-specific steps
-2. **NO DIRECT TOOL EXECUTION**: Do NOT try to execute GMAIL_*, NOTION_*, TWITTER_*, LINKEDIN_* tools directly
+2. **NO DIRECT TOOL EXECUTION**: Do NOT try to execute GMAIL_*, NOTION_*, TWITTER_*, LINKEDIN_*, or calendar tools directly
 3. **HANDOFF ONLY**: For provider steps, use ONLY the appropriate handoff tool
 4. **PASS SPECIFIC TOOL INFO**: When using handoff tools, include the EXACT tool name and step details
 
@@ -204,7 +205,8 @@ For each workflow step:
 - If step involves Notion → `call_notion_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
 - If step involves Twitter → `call_twitter_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
 - If step involves LinkedIn → `call_linkedin_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
-- For general tools (calendar, todos, web search, etc.) → Execute directly
+- If step involves Calendar → `call_calendar_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
+- For general tools (todos, web search, etc.) → Execute directly
 
 **Execution Guidelines:**
 1. Process steps in the exact order shown
@@ -266,10 +268,11 @@ For specialized provider services, ALWAYS use handoff tools instead of any manua
 • Notion tools (NOTION_*, notion, workspace, page, database) → Use `call_notion_agent`
 • Twitter tools (TWITTER_*, twitter, social, tweet, post) → Use `call_twitter_agent`
 • LinkedIn tools (LINKEDIN_*, linkedin, professional, network) → Use `call_linkedin_agent`
+• Calendar tools (create_calendar_event, fetch_calendar_*, search_calendar_*, edit_calendar_*, delete_calendar_*, view_calendar_*) → Use `call_calendar_agent`
 
 **CRITICAL EXECUTION RULES:**
 1. **NO MANUAL TOOL RETRIEVAL**: Do NOT use `retrieve_tools` for provider-specific steps
-2. **NO DIRECT TOOL EXECUTION**: Do NOT try to execute GMAIL_*, NOTION_*, TWITTER_*, LINKEDIN_* tools directly
+2. **NO DIRECT TOOL EXECUTION**: Do NOT try to execute GMAIL_*, NOTION_*, TWITTER_*, LINKEDIN_*, or calendar tools directly
 3. **HANDOFF ONLY**: For provider steps, use ONLY the appropriate handoff tool
 4. **PASS SPECIFIC TOOL INFO**: When using handoff tools, include the EXACT tool name and step details with email context
 
@@ -279,7 +282,8 @@ For each workflow step:
 - If step involves Notion → `call_notion_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
 - If step involves Twitter → `call_twitter_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
 - If step involves LinkedIn → `call_linkedin_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
-- For general tools (calendar, todos, web search, etc.) → Execute directly
+- If step involves Calendar → `call_calendar_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
+- For general tools (todos, web search, etc.) → Execute directly
 
 **Execution Guidelines:**
 1. Process steps in the exact order shown

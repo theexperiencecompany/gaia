@@ -34,14 +34,16 @@ class SubAgentFactory:
         prompt: str,
         llm: LanguageModelLike,
         tool_space: str = "general",
+        retrieve_tools_limit: int = 10,
     ):
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
 
         Args:
-            provider: Provider name (gmail, notion, twitter, linkedin)
+            provider: Provider name (gmail, notion, twitter, linkedin, calendar)
             llm: Language model to use
             tool_space: Tool space to use for retrieval (e.g., "gmail_delegated", "general")
+            retrieve_tools_limit: Maximum number of tools to retrieve with each retrieval
 
         Returns:
             Compiled LangGraph agent with tool registry and retrieval
@@ -75,8 +77,11 @@ class SubAgentFactory:
 
             return state
 
-        # Create agent with entire tool registry and tool retrieval filtering
-        # The retrieve_tools_function will filter tools based on tool_space
+        # Create agent with tool registry and configurable retrieval limit
+        logger.info(
+            f"Creating {provider} sub-agent with retrieve_tools (limit={retrieve_tools_limit})"
+        )
+        
         builder = create_agent(
             llm=llm,
             tool_registry=tool_registry.get_tool_dict(),
@@ -85,7 +90,7 @@ class SubAgentFactory:
                 tool_space=tool_space,
                 include_core_tools=False,  # Provider agents don't need core tools
                 additional_tools=[get_all_memory, search_memory],
-                limit=10,  # Retrieve up to 10 relevant tools
+                limit=retrieve_tools_limit,
             ),
             pre_model_hooks=[
                 create_filter_messages_node(
