@@ -541,7 +541,7 @@ async def update_events_batch(
         )
         access_token = str(token.get("access_token", ""))
 
-        results = {"successful": [], "failed": []}
+        results: dict[str, list] = {"successful": [], "failed": []}
 
         for event in batch_request.events:
             try:
@@ -590,7 +590,7 @@ async def delete_events_batch(
         )
         access_token = str(token.get("access_token", ""))
 
-        results = {"successful": [], "failed": []}
+        results: dict[str, list] = {"successful": [], "failed": []}
 
         for event in batch_request.events:
             try:

@@ -51,4 +51,4 @@ repos:
     rev: v1.4.0
     hooks:
       - id: detect-secrets
-        exclude: ^(mcp\.txt|frontend/pnpm-lock\.yaml|docs/.*)$
+        exclude: ^(mcp\.txt|frontend/pnpm-lock\.yaml|docs/.*|.*\.env\.example)$

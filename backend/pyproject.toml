@@ -115,6 +115,8 @@ dependencies = [
   "firecrawl-py>=4.3.6",
   "firecrawl>=4.3.6",
   "tavily-python>=0.7.12",
+  "types-croniter",
+  "types-python-dateutil",
 ]
 
 ## To run the tasks use commands like:

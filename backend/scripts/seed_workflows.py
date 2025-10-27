@@ -673,7 +673,7 @@ async def seed_workflows(
         print(f"   🌐 Public workflows: {final_public_count}")
 
         # Display workflow statistics
-        categories = {}
+        categories: dict[str, int] = {}
         async for workflow in workflows_collection.find({"is_public": True}):
             # Count by trigger type
             trigger_type = workflow.get("trigger_config", {}).get("type", "unknown")

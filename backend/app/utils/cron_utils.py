@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from croniter import croniter
+from app.config.loggers import app_logger
 
 
 class CronError(Exception):
@@ -75,9 +76,8 @@ def get_next_run_time(
             # Convert to UTC for storage
             return next_time.astimezone(timezone.utc)
 
-        except Exception:
-            # Fallback to UTC if timezone conversion fails
-            pass
+        except Exception as e:
+            app_logger.debug(f"Timezone conversion failed, falling back to UTC: {e}")
 
     # Default UTC calculation
     if base_time is None:

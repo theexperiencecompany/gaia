@@ -34,12 +34,13 @@ async def fetch_calendar_color(calendar_id: str, user_id: str) -> tuple[str, str
 
     try:
         calendar_list = await list_calendars(user_id)
-        for cal in calendar_list.get("items", []):
-            if cal.get("id") == calendar_id:
-                return (
-                    cal.get("summary", "Calendar"),
-                    cal.get("backgroundColor", "#00bbff"),
-                )
+        if calendar_list:
+            for cal in calendar_list.get("items", []):
+                if cal.get("id") == calendar_id:
+                    return (
+                        cal.get("summary", "Calendar"),
+                        cal.get("backgroundColor", "#00bbff"),
+                    )
     except Exception as e:
         logger.warning(f"Could not fetch calendar color: {e}")
 

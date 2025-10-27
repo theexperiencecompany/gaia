@@ -51,7 +51,7 @@ def transform_gmail_message(msg) -> Dict:
     Transform a Gmail/Composio message to a frontend-friendly format.
     Handles both Gmail API and Composio message formats.
     """
-    from dateutil.parser import parse as parse_date
+    from dateutil.parser import parse as parse_date  # type: ignore[import-untyped]
 
     def get_sender(m):
         return m.get("from") or m.get("sender") or ""
