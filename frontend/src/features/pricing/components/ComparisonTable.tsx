@@ -266,7 +266,7 @@ export function ComparisonTable() {
   return (
     <div className="mx-auto w-full max-w-7xl px-6 py-16">
       <div className="mb-12 text-center">
-        <h2 className="mb-4 text-5xl font-semibold">
+        <h2 className="mb-4 font-serif text-6xl font-light">
           See how GAIA stacks up against the competition.
         </h2>
         <p className="text-lg text-gray-400">

@@ -43,11 +43,11 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
 
   // Reset and focus
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 50);
+    } else {
       setSearch("");
       setSearchResults({ conversations: [], messages: [], notes: [] });
-    } else {
-      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
 

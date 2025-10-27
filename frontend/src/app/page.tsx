@@ -7,19 +7,21 @@ import { lazy, Suspense, useEffect } from "react";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import HeroVideoDialog from "@/components/ui/magic-ui/hero-video-dialog";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
+import CommunitySection from "@/features/landing/components/sections/CommunitySection";
+import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
 
 import LandingLayout from "./(landing)/layout";
 
-const ChaoticWorkspaceSection = lazy(
-  () =>
-    import("@/features/landing/components/sections/ChaoticWorkspaceSection"),
-);
+// const ChaoticWorkspaceSection = lazy(
+//   () =>
+//     import("@/features/landing/components/sections/ChaoticWorkspaceSection"),
+// );
 
-const ToolsShowcaseSection = lazy(
+const AllYourTools = lazy(
   () => import("@/features/landing/components/sections/ToolsShowcaseSection"),
 );
 
-const Productivity = lazy(
+const AutomateDailyChaos = lazy(
   () => import("@/features/landing/components/sections/Productivity"),
 );
 const Tired = lazy(
@@ -62,7 +64,7 @@ export default function LandingPage() {
           <div className="absolute inset-0 h-screen w-full">
             <Image
               src={"/images/wallpapers/switzerland_night.webp"}
-              alt="Wallpaper"
+              alt="GAIA Hero Section Wallpaper"
               sizes="100vw"
               priority
               fill
@@ -86,17 +88,39 @@ export default function LandingPage() {
             </div>
           </section>
           <div>
-            <Suspense fallback={<SuspenseLoader />}>
+            <div className="relative">
+              <Suspense fallback={<SuspenseLoader />}>
+                <Tired />
+              </Suspense>
+
+              {/* <Suspense fallback={<SuspenseLoader />}>
               <ChaoticWorkspaceSection />
+              </Suspense> */}
+
+              <div
+                className="absolute top-140 z-0 h-[120vh] w-screen blur-lg"
+                style={{
+                  backgroundImage: `
+                      radial-gradient(circle at center, #00bbff80 0%, transparent 70%)
+                    `,
+                  opacity: 0.6,
+                }}
+              />
+
+              <Suspense fallback={<SuspenseLoader />}>
+                <AllYourTools />
+              </Suspense>
+            </div>
+
+            <Suspense fallback={<SuspenseLoader />}>
+              <WorkflowSection />
             </Suspense>
 
             <Suspense fallback={<SuspenseLoader />}>
-              <ToolsShowcaseSection />
-              <Productivity />
+              <AutomateDailyChaos />
             </Suspense>
 
             <Suspense fallback={<SuspenseLoader />}>
-              <Tired />
               <Personalised />
             </Suspense>
 
@@ -106,11 +130,18 @@ export default function LandingPage() {
 
             <Suspense fallback={<SuspenseLoader />}>
               <OpenSource />
+            </Suspense>
+
+            <Suspense fallback={<SuspenseLoader />}>
               <FAQAccordion />
             </Suspense>
 
             <Suspense fallback={<SuspenseLoader />}>
-              <FinalSection />
+              <CommunitySection />
+            </Suspense>
+
+            <Suspense fallback={<SuspenseLoader />}>
+              <FinalSection showSocials={false} />
             </Suspense>
           </div>
         </div>

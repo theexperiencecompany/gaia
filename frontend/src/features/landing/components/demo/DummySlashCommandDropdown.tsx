@@ -1,41 +1,189 @@
+import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Hash, Search, X } from "lucide-react";
+import Image from "next/image";
 import React, { useMemo, useState } from "react";
 
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
-// Dummy data based on the provided tools
+// Dummy integrations data - all shown as connected
+const dummyIntegrations = [
+  {
+    id: "gmail",
+    name: "Gmail",
+    icons: ["/images/icons/gmail.svg"],
+    status: "connected",
+  },
+  {
+    id: "google_calendar",
+    name: "Google Calendar",
+    icons: ["/images/icons/googlecalendar.webp"],
+    status: "connected",
+  },
+  {
+    id: "google_docs",
+    name: "Google Docs",
+    icons: ["/images/icons/google_docs.webp"],
+    status: "connected",
+  },
+  {
+    id: "google_sheets",
+    name: "Google Sheets",
+    icons: ["/images/icons/google_sheets.webp"],
+    status: "connected",
+  },
+  {
+    id: "notion",
+    name: "Notion",
+    icons: ["/images/icons/notion.webp"],
+    status: "connected",
+  },
+  {
+    id: "twitter",
+    name: "Twitter",
+    icons: ["/images/icons/twitter.webp"],
+    status: "connected",
+  },
+  {
+    id: "linkedin",
+    name: "LinkedIn",
+    icons: ["/images/icons/linkedin.svg"],
+    status: "connected",
+  },
+];
+
+// Dummy Integrations Card Component
+const DummyIntegrationsCard: React.FC = () => {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  return (
+    <div className="mx-2 mb-3 border-b-1 border-zinc-800">
+      <Accordion
+        variant="light"
+        isCompact
+        selectedKeys={isExpanded ? new Set(["integrations"]) : new Set([])}
+        onSelectionChange={(keys) => {
+          const expanded =
+            keys === "all" || (keys instanceof Set && keys.has("integrations"));
+          setIsExpanded(expanded);
+        }}
+        itemClasses={{
+          base: "pb-1",
+          trigger: "cursor-pointer",
+        }}
+      >
+        <AccordionItem
+          key="integrations"
+          title={
+            <div className="flex items-center gap-3 px-1 pt-1">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-normal text-foreground-500">
+                    Integrations
+                  </span>
+                  <span className="text-xs font-light text-zinc-400">
+                    {dummyIntegrations.length}/{dummyIntegrations.length}
+                  </span>
+                </div>
+              </div>
+            </div>
+          }
+        >
+          <div onClick={(e) => e.stopPropagation()}>
+            <div className="grid grid-cols-2 gap-2">
+              {dummyIntegrations.map((integration) => (
+                <div
+                  key={integration.id}
+                  className="flex items-center gap-2 rounded-lg p-2 px-3"
+                >
+                  {/* Icon */}
+                  <div className="flex-shrink-0">
+                    <div className="flex items-center justify-center rounded-lg">
+                      <Image
+                        width={25}
+                        height={25}
+                        src={integration.icons[0]}
+                        alt={integration.name}
+                        className="aspect-square max-w-[25px] min-w-[25px] object-contain"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Name */}
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate text-xs text-zinc-300">
+                      {integration.name}
+                    </span>
+                  </div>
+
+                  {/* Status */}
+                  <div className="flex-shrink-0">
+                    <Chip size="sm" variant="flat" color="success">
+                      Connected
+                    </Chip>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </AccordionItem>
+      </Accordion>
+    </div>
+  );
+};
+
+// Dummy data matching the complete tool registry from backend
 const dummyTools = {
   tools: [
+    // Search tools (core)
     {
-      name: "fetch_gmail_messages",
-      category: "mail",
-      required_integration: "gmail",
+      name: "web_search_tool",
+      category: "search",
+      required_integration: null,
     },
     {
-      name: "search_gmail_messages",
-      category: "mail",
-      required_integration: "gmail",
+      name: "fetch_webpages",
+      category: "search",
+      required_integration: null,
+    },
+    // Documents tools (core)
+    {
+      name: "query_file",
+      category: "documents",
+      required_integration: null,
     },
     {
-      name: "compose_email",
-      category: "mail",
-      required_integration: "gmail",
+      name: "generate_document",
+      category: "documents",
+      required_integration: null,
+    },
+    // Notifications tools
+    {
+      name: "get_notifications",
+      category: "notifications",
+      required_integration: null,
     },
     {
-      name: "get_email_thread",
-      category: "mail",
-      required_integration: "gmail",
+      name: "search_notifications",
+      category: "notifications",
+      required_integration: null,
     },
     {
-      name: "get_mail_contacts",
-      category: "mail",
-      required_integration: "gmail",
+      name: "get_notification_count",
+      category: "notifications",
+      required_integration: null,
     },
+    {
+      name: "mark_notifications_read",
+      category: "notifications",
+      required_integration: null,
+    },
+    // Productivity tools (todos + reminders)
     {
       name: "create_todo",
       category: "productivity",
@@ -171,36 +319,7 @@ const dummyTools = {
       category: "productivity",
       required_integration: null,
     },
-    {
-      name: "fetch_calendar_list",
-      category: "calendar",
-      required_integration: "google_calendar",
-    },
-    {
-      name: "create_calendar_event",
-      category: "calendar",
-      required_integration: "google_calendar",
-    },
-    {
-      name: "edit_calendar_event",
-      category: "calendar",
-      required_integration: "google_calendar",
-    },
-    {
-      name: "fetch_calendar_events",
-      category: "calendar",
-      required_integration: "google_calendar",
-    },
-    {
-      name: "search_calendar_events",
-      category: "calendar",
-      required_integration: "google_calendar",
-    },
-    {
-      name: "view_calendar_event",
-      category: "calendar",
-      required_integration: "google_calendar",
-    },
+    // Goal tracking tools
     {
       name: "create_goal",
       category: "goal_tracking",
@@ -241,6 +360,88 @@ const dummyTools = {
       category: "goal_tracking",
       required_integration: null,
     },
+    // Support tools
+    {
+      name: "create_support_ticket",
+      category: "support",
+      required_integration: null,
+    },
+    // Memory tools
+    {
+      name: "add_memory",
+      category: "memory",
+      required_integration: null,
+    },
+    {
+      name: "search_memory",
+      category: "memory",
+      required_integration: null,
+    },
+    {
+      name: "get_all_memory",
+      category: "memory",
+      required_integration: null,
+    },
+    // Development tools
+    {
+      name: "execute_code",
+      category: "development",
+      required_integration: null,
+    },
+    {
+      name: "create_flowchart",
+      category: "development",
+      required_integration: null,
+    },
+    // Creative tools
+    {
+      name: "generate_image",
+      category: "creative",
+      required_integration: null,
+    },
+    // Weather tools
+    {
+      name: "get_weather",
+      category: "weather",
+      required_integration: null,
+    },
+    // Calendar tools (requires integration)
+    {
+      name: "fetch_calendar_list",
+      category: "calendar",
+      required_integration: "google_calendar",
+    },
+    {
+      name: "create_calendar_event",
+      category: "calendar",
+      required_integration: "google_calendar",
+    },
+    {
+      name: "edit_calendar_event",
+      category: "calendar",
+      required_integration: "google_calendar",
+    },
+    {
+      name: "fetch_calendar_events",
+      category: "calendar",
+      required_integration: "google_calendar",
+    },
+    {
+      name: "search_calendar_events",
+      category: "calendar",
+      required_integration: "google_calendar",
+    },
+    {
+      name: "view_calendar_event",
+      category: "calendar",
+      required_integration: "google_calendar",
+    },
+    {
+      name: "delete_calendar_event",
+      category: "calendar",
+      required_integration: "google_calendar",
+    },
+    // Google Docs tools (requires integration)
     {
       name: "create_google_doc_tool",
       category: "google_docs",
@@ -276,85 +477,115 @@ const dummyTools = {
       category: "google_docs",
       required_integration: "google_docs",
     },
+    // Gmail tools (requires integration - delegated)
     {
-      name: "generate_document",
-      category: "documents",
-      required_integration: null,
+      name: "gmail_search_emails",
+      category: "gmail",
+      required_integration: "gmail",
     },
     {
-      name: "add_memory",
-      category: "memory",
-      required_integration: null,
+      name: "gmail_get_profile",
+      category: "gmail",
+      required_integration: "gmail",
     },
     {
-      name: "search_memory",
-      category: "memory",
-      required_integration: null,
+      name: "gmail_create_email_draft",
+      category: "gmail",
+      required_integration: "gmail",
     },
     {
-      name: "get_all_memory",
-      category: "memory",
-      required_integration: null,
+      name: "gmail_send_email",
+      category: "gmail",
+      required_integration: "gmail",
     },
     {
-      name: "execute_code",
-      category: "development",
-      required_integration: null,
+      name: "gmail_fetch_emails",
+      category: "gmail",
+      required_integration: "gmail",
+    },
+    // Notion tools (requires integration - delegated)
+    {
+      name: "notion_create_page",
+      category: "notion",
+      required_integration: "notion",
     },
     {
-      name: "create_flowchart",
-      category: "development",
-      required_integration: null,
+      name: "notion_get_page",
+      category: "notion",
+      required_integration: "notion",
     },
     {
-      name: "generate_image",
-      category: "creative",
-      required_integration: null,
+      name: "notion_find_page",
+      category: "notion",
+      required_integration: "notion",
     },
     {
-      name: "get_weather",
-      category: "weather",
-      required_integration: null,
+      name: "notion_update_page",
+      category: "notion",
+      required_integration: "notion",
+    },
+    // Twitter tools (requires integration - delegated)
+    {
+      name: "twitter_post_tweet",
+      category: "twitter",
+      required_integration: "twitter",
     },
     {
-      name: "create_support_ticket",
-      category: "support",
-      required_integration: null,
+      name: "twitter_get_user_tweets",
+      category: "twitter",
+      required_integration: "twitter",
     },
     {
-      name: "web_search_tool",
-      category: "search",
-      required_integration: null,
+      name: "twitter_search_tweets",
+      category: "twitter",
+      required_integration: "twitter",
+    },
+    // LinkedIn tools (requires integration - delegated)
+    {
+      name: "linkedin_post_content",
+      category: "linkedin",
+      required_integration: "linkedin",
     },
     {
-      name: "deep_research_tool",
-      category: "search",
-      required_integration: null,
+      name: "linkedin_get_profile",
+      category: "linkedin",
+      required_integration: "linkedin",
+    },
+    // Google Sheets tools (requires integration - delegated)
+    {
+      name: "google_sheets_create_spreadsheet",
+      category: "google_sheets",
+      required_integration: "google_sheets",
     },
     {
-      name: "fetch_webpages",
-      category: "search",
-      required_integration: null,
+      name: "google_sheets_get_values",
+      category: "google_sheets",
+      required_integration: "google_sheets",
     },
     {
-      name: "query_file",
-      category: "documents",
-      required_integration: null,
+      name: "google_sheets_update_values",
+      category: "google_sheets",
+      required_integration: "google_sheets",
     },
   ],
-  total_count: 66,
+  total_count: 109,
   categories: [
     "calendar",
     "creative",
     "development",
     "documents",
+    "gmail",
     "goal_tracking",
     "google_docs",
-    "mail",
+    "google_sheets",
+    "linkedin",
     "memory",
+    "notifications",
+    "notion",
     "productivity",
     "search",
     "support",
+    "twitter",
     "weather",
   ],
 };
@@ -487,6 +718,11 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
           {/* Tool List */}
           <div className="flex-1 overflow-y-auto">
             <div className="py-2">
+              {/* Integrations Card - Only show in "all" category and when not filtering */}
+              {selectedCategory === "all" && !searchQuery.trim() && (
+                <DummyIntegrationsCard />
+              )}
+
               {filteredTools.map((tool) => (
                 <div
                   key={tool.name}

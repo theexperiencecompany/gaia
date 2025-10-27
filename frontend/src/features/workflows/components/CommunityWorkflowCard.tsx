@@ -137,6 +137,7 @@ export default function CommunityWorkflowCard({
   // }, [isUpvoting, handleUpvoteImmediate]);
 
   // Cleanup timeout on unmount
+
   useEffect(() => {
     return () => {
       if (debounceTimeoutRef.current) {

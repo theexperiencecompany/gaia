@@ -30,6 +30,15 @@ export default function Navbar() {
 
   const user = useUser();
 
+  // Define navbar items - can be single links or dropdown menus
+  const navbarItems = [
+    { type: "dropdown", label: "Product", menu: "product" },
+    { type: "dropdown", label: "Resources", menu: "resources" },
+    { type: "link", label: "Pricing", href: "/pricing" },
+    { type: "dropdown", label: "Company", menu: "company" },
+    { type: "dropdown", label: "Socials", menu: "socials" },
+  ] as const;
+
   // Function to control backdrop blur
   const toggleBackdrop = (show: boolean) => {
     const backdrop = document.getElementById("navbar-backdrop");
@@ -71,16 +80,16 @@ export default function Navbar() {
   return (
     <div className="fixed top-0 left-0 z-50 w-full px-4 pt-4">
       <div
-        className="relative mx-auto max-w-5xl"
+        className="relative mx-auto max-w-6xl"
         onMouseLeave={handleNavbarMouseLeave}
       >
         <div
-          className={`navbar_content flex h-14 w-full items-center justify-between border-t border-white/10 px-3 backdrop-blur-xl transition-all duration-300 ${
+          className={`navbar_content flex h-14 w-full items-center justify-between border-1 border-white/5 px-3 backdrop-blur-md transition-none ${
             activeDropdown
-              ? "rounded-t-2xl bg-[#08090A]"
-              : "rounded-2xl bg-zinc-900/60"
+              ? "rounded-t-2xl border-b-0 bg-zinc-950"
+              : "rounded-2xl bg-zinc-900/30"
           }`}
-          style={activeDropdown ? { backgroundColor: "#08090A" } : {}}
+          // style={activeDropdown ? { backgroundColor: "#08090A" } : {}}
         >
           <Button
             as={Link}
@@ -125,21 +134,53 @@ export default function Navbar() {
             <MobileMenu />
           ) : (
             <div className="flex items-center gap-1 rounded-lg px-1 py-1">
-              {["product", "resources", "company", "socials"].map((menu) => (
-                <button
-                  key={menu}
-                  className="relative flex h-9 cursor-pointer items-center rounded-xl! px-4 py-2 text-sm text-zinc-400 capitalize transition-colors hover:text-zinc-100"
-                  onMouseEnter={() => handleMouseEnter(menu)}
-                >
-                  {hoveredItem === menu && (
-                    <div className="absolute inset-0 h-full w-full rounded-lg bg-zinc-800 font-medium! transition-all duration-300 ease-out" />
-                  )}
-                  <div className="relative z-10 flex items-center gap-2">
-                    <span>{menu.charAt(0).toUpperCase() + menu.slice(1)}</span>
-                    <ChevronDown height={17} width={17} />
-                  </div>
-                </button>
-              ))}
+              {navbarItems.map((item) =>
+                item.type === "link" ? (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm transition-colors hover:bg-zinc-800/40 ${
+                      pathname === item.href
+                        ? "text-primary"
+                        : "text-zinc-400 hover:text-zinc-100"
+                    }`}
+                    onMouseEnter={() => {
+                      setHoveredItem(item.label.toLowerCase());
+                      setActiveDropdown(null);
+                      toggleBackdrop(false);
+                    }}
+                  >
+                    {/* {hoveredItem === item.label.toLowerCase() && (
+                      <div className="absolute inset-0 h-full w-full rounded-lg bg-zinc-800/40 font-medium! transition-all! duration-300 ease-out" />
+                    )} */}
+                    <span className="relative z-10">{item.label}</span>
+                  </Link>
+                ) : (
+                  <button
+                    key={item.menu}
+                    className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-zinc-400 capitalize transition-colors hover:text-zinc-100"
+                    onMouseEnter={() => handleMouseEnter(item.menu)}
+                  >
+                    {hoveredItem === item.menu && (
+                      <div className="absolute inset-0 h-full w-full rounded-xl bg-zinc-800 font-medium! transition-all duration-300 ease-out" />
+                    )}
+                    <div className="relative z-10 flex items-center gap-2">
+                      <span>
+                        {item.label.charAt(0).toUpperCase() +
+                          item.label.slice(1)}
+                      </span>
+                      <ChevronDown
+                        height={17}
+                        width={17}
+                        className={
+                          (hoveredItem === item.menu ? "rotate-180" : "") +
+                          " transition duration-200"
+                        }
+                      />
+                    </div>
+                  </button>
+                ),
+              )}
             </div>
           )}
 
@@ -154,7 +195,7 @@ export default function Navbar() {
               >
                 <RaisedButton
                   size={"sm"}
-                  className="group rounded-xl"
+                  className="group rounded-xl border-0!"
                   color="#1c1c1c"
                 >
                   <div className="flex items-center">
@@ -192,7 +233,7 @@ export default function Navbar() {
         {activeDropdown && (
           <NavbarMenu
             activeMenu={activeDropdown}
-            onClose={() => setActiveDropdown(null)}
+            // onClose={() => setActiveDropdown(null)}
           />
         )}
       </div>

@@ -5,14 +5,24 @@ import remarkGfm from "remark-gfm";
 
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
+import { cn } from "@/lib";
 
 export interface MarkdownRendererProps {
   content: string;
+  className?: string;
 }
 
-const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
+const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
+  content,
+  className,
+}) => {
   return (
-    <div className="prose dark:prose-invert text-white   fadein-style max-w-none">
+    <div
+      className={cn(
+        "prose dark:prose-invert fadein-style max-w-none text-white",
+        className,
+      )}
+    >
       <ReactMarkdown
         components={{
           code: ({ className, children, ...props }) => (

@@ -10,10 +10,10 @@ export default function GetStartedButton({
   text?: string;
 }) {
   return (
-    <div className="flex flex-col items-center gap-4">
+    <div className="relative z-[2] flex flex-col items-center gap-4">
       <Link href={"/signup"}>
         <RaisedButton
-          className="rounded-xl text-black! before:rounded-xl hover:scale-110"
+          className="rounded-xl px-8 text-black! before:rounded-xl hover:scale-110"
           color="#00bbff"
         >
           {text}

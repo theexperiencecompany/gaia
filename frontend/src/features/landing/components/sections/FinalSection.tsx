@@ -21,8 +21,11 @@ export const SOCIAL_LINKS = [
       className: "rounded-xl text-black!",
       "aria-label": "Twitter Link Button",
     },
+    username: "@_heygaia",
     icon: <TwitterIcon width={20} height={20} />,
     label: "Twitter",
+    description: "Follow us for updates",
+    color: "#1DA1F2",
   },
   {
     href: "https://whatsapp.heygaia.io",
@@ -34,6 +37,8 @@ export const SOCIAL_LINKS = [
     },
     icon: <WhatsappIcon width={20} height={20} />,
     label: "WhatsApp",
+    description: "Chat with our community",
+    color: "#25D366",
   },
   {
     href: "https://discord.heygaia.io",
@@ -45,6 +50,8 @@ export const SOCIAL_LINKS = [
     },
     icon: <DiscordIcon width={20} height={20} />,
     label: "Discord",
+    description: "Join our community server",
+    color: "#5865f2",
   },
   {
     href: "https://github.com/heygaia/gaia",
@@ -56,10 +63,16 @@ export const SOCIAL_LINKS = [
     },
     icon: <Github width={20} height={20} />,
     label: "GitHub",
+    description: "Star and contribute",
+    color: "#000000",
   },
 ];
 
-export default function FinalSection() {
+export default function FinalSection({
+  showSocials = true,
+}: {
+  showSocials?: boolean;
+}) {
   return (
     <div className="relative z-1 m-0! flex min-h-[90vh] w-screen flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
       <div className="absolute inset-0 h-full w-full">
@@ -75,11 +88,13 @@ export default function FinalSection() {
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-black to-transparent" />
       </div>
 
-      <div className="relative z-2 mb-30 flex h-full flex-col items-center justify-start gap-4 sm:gap-6">
+      <div
+        className={`relative z-2 ${showSocials ? "mb-30" : "mb-10"} flex h-full flex-col items-center justify-start gap-4 sm:gap-6`}
+      >
         <SplitTextBlur
           text="Your Life, Supercharged by GAIA"
           delay={0}
-          className="z-[10] max-w-(--breakpoint-xl) text-center text-[2.2rem] leading-tight font-medium tracking-tighter sm:text-[3.5rem] sm:leading-none md:text-[4.5rem] lg:text-[5rem]"
+          className="leading-tighter z-[10] max-w-(--breakpoint-xl) text-center text-[2.2rem] font-medium sm:text-8xl sm:leading-none"
         />
 
         <div className="z-[1] mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter text-foreground-600 sm:px-0 sm:text-lg sm:leading-7 md:text-xl">
@@ -87,24 +102,30 @@ export default function FinalSection() {
         </div>
         <GetStartedButton />
 
-        <div className="mt-4 flex items-center gap-3 sm:mt-6 sm:gap-2">
-          {SOCIAL_LINKS.map(
-            ({ href, ariaLabel, buttonProps, icon, label }, index) => {
-              const color = `hover:text-[${buttonProps.color}]`;
-              return (
-                <Tooltip content={label} placement="bottom" key={index + href}>
-                  <Link
-                    href={href}
-                    aria-label={ariaLabel}
-                    className={`flex w-10 scale-110 justify-center p-1 transition hover:scale-125 sm:w-10 sm:scale-125 sm:hover:scale-150 ${color}`}
+        {showSocials && (
+          <div className="mt-4 flex items-center gap-3 sm:mt-6 sm:gap-2">
+            {SOCIAL_LINKS.map(
+              ({ href, ariaLabel, buttonProps, icon, label }, index) => {
+                const color = `hover:text-[${buttonProps.color}]`;
+                return (
+                  <Tooltip
+                    content={label}
+                    placement="bottom"
+                    key={index + href}
                   >
-                    {icon}
-                  </Link>
-                </Tooltip>
-              );
-            },
-          )}
-        </div>
+                    <Link
+                      href={href}
+                      aria-label={ariaLabel}
+                      className={`flex w-10 scale-110 justify-center p-1 transition hover:scale-125 sm:w-10 sm:scale-125 sm:hover:scale-150 ${color}`}
+                    >
+                      {icon}
+                    </Link>
+                  </Tooltip>
+                );
+              },
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

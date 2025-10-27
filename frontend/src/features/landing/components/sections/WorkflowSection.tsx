@@ -25,11 +25,11 @@ const triggers = [
 
 export default function WorkflowSection() {
   return (
-    <div className="flex w-full max-w-7xl flex-col justify-center p-4 px-4 sm:p-6 sm:px-6 lg:p-7 lg:px-8">
+    <div className="mx-auto flex h-screen w-full max-w-7xl flex-col justify-center p-4 px-4 sm:p-6 sm:px-6 lg:p-7 lg:px-8">
       <div className="mb-2 text-xl font-light text-primary sm:text-2xl">
         Your Daily Life, Automated
       </div>
-      <div className="mb-4 text-3xl font-normal sm:mb-5 sm:text-4xl lg:text-5xl">
+      <div className="mb-4 font-serif text-6xl font-normal sm:mb-5">
         Simple workflows to eliminate repetitive tasks
       </div>
 

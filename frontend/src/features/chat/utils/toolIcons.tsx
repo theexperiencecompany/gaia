@@ -55,6 +55,12 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
+  google_sheets: {
+    icon: "/images/icons/google_sheets.webp",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
   development: {
     icon: SourceCodeCircleIcon,
     bgColor: "bg-cyan-500/20 backdrop-blur",

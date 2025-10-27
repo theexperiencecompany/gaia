@@ -126,6 +126,7 @@
     "@types/react-window-infinite-loader": "^1.0.9",
     "@types/tinycolor2": "^1.4.6",
     "@use-gesture/react": "^10.3.1",
+    "@vercel/speed-insights": "^1.2.0",
     "@xyflow/react": "^12.8.4",
     "animated-number-react": "^0.1.2",
     "axios": "^1.11.0",
@@ -231,5 +232,5 @@
       "unrs-resolver"
     ]
   },
-  "packageManager": "pnpm@10.15.0"
+  "packageManager": "pnpm@10.18.3"
 }

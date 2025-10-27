@@ -91,11 +91,8 @@ function ImageResults({ images }: ImageResultsProps) {
       }
     };
 
-    if (images && images.length > 0) {
-      validateImages();
-    } else {
-      setValidImages([]);
-    }
+    if (images && images.length > 0) validateImages();
+    else setValidImages([]);
   }, [images]);
 
   if (validImages.length === 0) {

@@ -1,5 +1,7 @@
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 
+import { Button } from "@/components";
 import ShinyText from "@/components/ui/shadcn/shimmering-chip";
 import { useLatestRelease } from "@/hooks/useLatestRelease";
 import { MotionContainer } from "@/layouts/MotionContainer";
@@ -44,13 +46,22 @@ export default function HeroSection() {
           text="Meet the personal assistant you’ve always wanted"
           delay={0}
           staggerDelay={0.15}
-          className="z-[10] max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none font-medium tracking-tighter sm:text-[5rem]"
+          className="z-[10] max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-8xl"
           disableIntersectionObserver
         />
         <div className="mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-lg leading-7 font-light tracking-tighter text-foreground-700 sm:px-0 sm:text-xl">
           Tired of Siri, Google Assistant, and ChatGPT doing nothing useful?
         </div>
-        <GetStartedButton />
+
+        <div className="flex gap-4">
+          <GetStartedButton />
+
+          <Link href={"/manifesto"}>
+            <Button className="rounded-xl bg-black/20 px-8! py-5 text-sm! font-light text-zinc-300 backdrop-blur-2xl! transition-all! duration-200 hover:scale-110 hover:bg-black/40">
+              Read the Manifesto <ArrowRight width={20} height={20} />
+            </Button>
+          </Link>
+        </div>
       </MotionContainer>
     </div>
   );

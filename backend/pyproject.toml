@@ -94,7 +94,7 @@ dependencies = [
   "workos>=5.24.0",
   "asyncpg>=0.30.0",
   "authlib>=1.6.1",
-  "composio>=0.8.7",
+  "composio>=0.8.19",
   "composio-langchain==0.8.0",
   "dodopayments>=1.49.0",
   "langchain-cerebras>=0.5.0",
@@ -113,10 +113,10 @@ dependencies = [
   "uvloop>=0.21.0; sys_platform != 'win32'",
   "mem0ai>=0.1.118",
   "firecrawl-py>=4.3.6",
-  "firecrawl>=4.3.6",
   "tavily-python>=0.7.12",
   "types-croniter",
   "types-python-dateutil",
+  "composio-client>=1.10.0",
 ]
 
 ## To run the tasks use commands like:

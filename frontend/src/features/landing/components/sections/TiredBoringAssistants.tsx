@@ -1,3 +1,4 @@
+import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
 
 import GetStartedButton from "../shared/GetStartedButton";
@@ -6,8 +7,8 @@ import LargeHeader from "../shared/LargeHeader";
 export default function Tired() {
   return (
     <div className="relative flex h-screen flex-col items-center justify-center gap-2 p-4 sm:p-6 lg:p-10">
-      <div
-        className="absolute inset-0 z-0 h-[90%]"
+      {/* <div
+        className="absolute inset-0 z-0 h-full"
         style={{
           backgroundImage: `
           radial-gradient(circle at 50% 100%, rgba(0, 187, 255, 0.1) 0%, transparent 60%),
@@ -15,8 +16,10 @@ export default function Tired() {
           radial-gradient(circle at 50% 100%, rgba(0, 187, 255, 0.3) 0%, transparent 70%)
         `,
         }}
-      />
+      /> */}
+
       <LargeHeader
+        chipText="Not just a chatbot"
         headingText="Tired of Boring Assistants?"
         subHeadingText="Meet one that actually works."
         centered
@@ -31,15 +34,17 @@ export default function Tired() {
           className="size-[50px] translate-y-4 -rotate-8 rounded-xl sm:size-[60px] sm:translate-y-6 sm:rounded-2xl lg:size-[65px] lg:translate-y-7"
         />
 
-        <Image
-          src={
-            "https://static.vecteezy.com/system/resources/previews/055/687/055/non_2x/rectangle-gemini-google-icon-symbol-logo-free-png.png"
-          }
-          alt="Gemini Logo"
-          width={70}
-          height={70}
-          className="object-fit size-[60px] rounded-xl sm:size-[70px] sm:rounded-2xl lg:size-[80px]"
-        />
+        <div className="flex size-[60px] items-center justify-center overflow-hidden rounded-xl sm:size-[70px] sm:rounded-3xl lg:size-[80px]">
+          <Image
+            src={
+              "https://static.vecteezy.com/system/resources/previews/055/687/055/non_2x/rectangle-gemini-google-icon-symbol-logo-free-png.png"
+            }
+            alt="Gemini Logo"
+            width={150}
+            className="min-w-[90px]"
+            height={150}
+          />
+        </div>
 
         <Image
           src={
@@ -61,21 +66,53 @@ export default function Tired() {
       />
 
       <div className="absolute bottom-16 z-[1] flex w-full max-w-xs items-center px-4 sm:bottom-24 sm:max-w-md sm:px-0 lg:bottom-32 lg:max-w-lg">
-        <div className="absolute bottom-8 left-0 -rotate-12 rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-500 sm:bottom-12 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:bottom-16">
-          Personalised
-        </div>
+        <Tooltip
+          content="Truly personal AI: it understands your habits, learns your priorities, and keeps track of everything that matters to you."
+          className="max-w-60 p-2"
+          showArrow
+          placement="bottom-end"
+          offset={-10}
+        >
+          <div className="absolute bottom-8 left-0 -rotate-12 cursor-default rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-400 sm:bottom-12 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:bottom-16">
+            Personalised
+          </div>
+        </Tooltip>
 
-        <div className="absolute right-0 bottom-8 rotate-12 rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-500 sm:bottom-12 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:bottom-16">
-          Proactive
-        </div>
+        <Tooltip
+          content="From upcoming deadlines to important emails, GAIA acts ahead of time so you stay one step ahead."
+          className="max-w-60 p-2"
+          showArrow
+          placement="bottom-start"
+          offset={-10}
+        >
+          <div className="absolute right-0 bottom-8 rotate-12 cursor-default rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-400 sm:bottom-12 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:bottom-16">
+            Proactive
+          </div>
+        </Tooltip>
 
-        <div className="absolute bottom-20 left-6 rotate-12 rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-500 sm:bottom-28 sm:left-8 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:bottom-40 lg:left-10">
-          Automated
-        </div>
+        <Tooltip
+          content="GAIA handles repetitive tasks automatically — scheduling, email triage, and task management — saving you hours every day."
+          className="max-w-60 p-2"
+          showArrow
+          placement="left"
+          offset={-1}
+        >
+          <div className="absolute bottom-20 left-6 rotate-12 cursor-default rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-400 sm:bottom-28 sm:left-8 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:bottom-40 lg:left-10">
+            Automated
+          </div>
+        </Tooltip>
 
-        <div className="absolute right-6 bottom-20 -rotate-12 rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-500 sm:right-8 sm:bottom-28 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:right-10 lg:bottom-40">
-          Integrated
-        </div>
+        <Tooltip
+          content="Everything works together: GAIA keeps your tools synced, your data connected, and your day organized."
+          className="max-w-60 p-2"
+          showArrow
+          placement="right"
+          offset={-1}
+        >
+          <div className="absolute right-6 bottom-20 -rotate-12 cursor-default rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-400 sm:right-8 sm:bottom-28 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm lg:right-10 lg:bottom-40">
+            Integrated
+          </div>
+        </Tooltip>
       </div>
 
       <GetStartedButton text="See GAIA in Action" />

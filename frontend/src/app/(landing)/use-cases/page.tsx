@@ -38,17 +38,17 @@ export default function UseCasesPage() {
   }, []);
 
   return (
-    <div className="relative h-fit min-h-screen pt-80" ref={contentRef}>
-      <div className="absolute inset-0 top-0 h-screen w-full">
+    <div className="relative h-fit min-h-screen pt-110" ref={contentRef}>
+      <div className="absolute inset-0 top-0 z-0 h-[70vh] w-[100%]">
         <Image
-          src={"/images/wallpapers/meadow_1.webp"}
-          alt="Wallpaper"
+          src={"/images/wallpapers/meadow.webp"}
+          alt="GAIA Use-Cases Wallpaper"
           sizes="100vw"
           priority
           fill
-          className="aspect-video object-cover opacity-60"
+          className="aspect-video object-cover object-center opacity-80"
         />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-background via-background to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-background to-transparent" />
       </div>
 
       <div
@@ -56,7 +56,7 @@ export default function UseCasesPage() {
         // disableIntersectionObserver={true}
       >
         <div className="mb-8 text-center">
-          <h1 className="mb-1 text-6xl font-normal tracking-tighter">
+          <h1 className="mb-1 font-serif text-8xl font-normal">
             See what's Possible
           </h1>
           <p className="mx-auto max-w-3xl text-lg text-zinc-300/80">
@@ -68,7 +68,7 @@ export default function UseCasesPage() {
 
         <div id="community-section" className="mt-22 space-y-6">
           <div className="mb-14 text-center">
-            <h1 className="mb-1 text-5xl font-normal tracking-tighter">
+            <h1 className="mb-1 font-serif text-6xl font-normal">
               Published by The Community
             </h1>
             <p className="mx-auto max-w-3xl text-lg text-zinc-300/80">
