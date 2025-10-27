@@ -35,6 +35,8 @@ class SubAgentFactory:
         llm: LanguageModelLike,
         tool_space: str = "general",
         retrieve_tools_limit: int = 10,
+        use_direct_tools: bool = False,
+        disable_retrieve_tools: bool = False,
     ):
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
@@ -51,7 +53,12 @@ class SubAgentFactory:
         from app.agents.tools.core.registry import get_tool_registry
 
         logger.info(
-            f"Creating {provider} sub-agent graph using tool space '{tool_space}' with retrieve tools functionality"
+            f"Creating {provider} sub-agent graph using tool space '{tool_space}' with "
+            + (
+                "direct tools binding"
+                if use_direct_tools
+                else f"retrieve tools (limit={retrieve_tools_limit})"
+            )
         )
 
         store, tool_registry = await asyncio.gather(
@@ -77,33 +84,56 @@ class SubAgentFactory:
 
             return state
 
-        # Create agent with tool registry and configurable retrieval limit
-        logger.info(
-            f"Creating {provider} sub-agent with retrieve_tools (limit={retrieve_tools_limit})"
-        )
-        
-        builder = create_agent(
-            llm=llm,
-            tool_registry=tool_registry.get_tool_dict(),
-            agent_name=name,
-            retrieve_tools_coroutine=get_retrieve_tools_function(
-                tool_space=tool_space,
-                include_core_tools=False,  # Provider agents don't need core tools
-                additional_tools=[get_all_memory, search_memory],
-                limit=retrieve_tools_limit,
-            ),
-            pre_model_hooks=[
+        # Build common kwargs for agent creation
+        common_kwargs = {
+            "llm": llm,
+            "tool_registry": tool_registry.get_tool_dict(),
+            "agent_name": name,
+            "pre_model_hooks": [
                 create_filter_messages_node(
                     agent_name=name,
                     allow_memory_system_messages=True,
                 ),
                 trim_messages_node,
             ],
-            end_graph_hooks=[
+            "end_graph_hooks": [
                 transform_output,
                 create_delete_system_messages_node(),
             ],
-        )
+        }
+
+        if use_direct_tools:
+            # Resolve initial tool IDs from the registry for the given tool_space
+            initial_tool_ids: list[str] = []
+            category = tool_registry.get_category(tool_space)
+            if category is not None:
+                initial_tool_ids.extend([t.name for t in category.tools])
+
+            # Always include memory tools for subagents
+            try:
+                initial_tool_ids.extend([get_all_memory.name, search_memory.name])
+            except Exception:
+                pass
+
+            common_kwargs.update(
+                {
+                    "initial_tool_ids": initial_tool_ids,
+                    "disable_retrieve_tools": disable_retrieve_tools,
+                }
+            )
+        else:
+            common_kwargs.update(
+                {
+                    "retrieve_tools_coroutine": get_retrieve_tools_function(
+                        tool_space=tool_space,
+                        include_core_tools=False,  # Provider agents don't need core tools
+                        additional_tools=[get_all_memory, search_memory],
+                        limit=retrieve_tools_limit,
+                    )
+                }
+            )
+
+        builder = create_agent(**common_kwargs)
 
         subagent_graph = builder.compile(store=store, name=name, checkpointer=False)
 

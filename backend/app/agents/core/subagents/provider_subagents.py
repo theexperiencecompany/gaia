@@ -123,7 +123,10 @@ class ProviderSubAgents:
     @staticmethod
     async def create_calendar_agent(llm: LanguageModelLike):
         """
-        Create a specialized Calendar agent graph using tool registry filtering.
+        Create a specialized Calendar agent with direct tool binding.
+
+        Calendar has only 7 tools, so we bind them all directly instead of using retrieve_tools.
+        This provides better performance and ensures all calendar tools are always available.
 
         Args:
             llm: Language model to use
@@ -131,16 +134,17 @@ class ProviderSubAgents:
         Returns:
             Compiled Calendar sub-agent graph
         """
-        logger.info("Creating Calendar sub-agent graph using calendar tool space")
+        logger.info("Creating Calendar sub-agent graph with direct tool binding")
 
-        # Create the Calendar agent graph with smaller retrieve limit
+        # Create the Calendar agent graph with direct tool binding
         calendar_agent = await SubAgentFactory.create_provider_subagent(
             provider="calendar",
             llm=llm,
             tool_space="calendar",
             name="calendar_agent",
             prompt=CALENDAR_AGENT_SYSTEM_PROMPT,
-            retrieve_tools_limit=5,  # Calendar has only 7 tools
+            use_direct_tools=True,  # Bind all 7 calendar tools directly
+            disable_retrieve_tools=True,  # Disable retrieve_tools functionality
         )
 
         return calendar_agent
