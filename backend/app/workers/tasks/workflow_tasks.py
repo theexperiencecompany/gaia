@@ -348,7 +348,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
             response=complete_message,
             date=datetime.now(timezone.utc).isoformat(),
             message_id=str(uuid4()),
-            metadata=token_metadata,  # Include token usage metadata
+            # metadata=token_metadata,  # Include token usage metadata
             **tool_data,  # Include all captured tool data
         )
         execution_messages.append(bot_message)

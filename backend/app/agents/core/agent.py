@@ -152,7 +152,7 @@ async def call_agent_silent(
     """
     Execute agent in silent mode for background processing.
 
-    Returns a tuple of (complete_message, tool_data_dict, token_metadata).
+    Returns a tuple of (complete_message, tool_data_dict).
     """
     try:
         graph, initial_state, config = await _core_agent_logic(
