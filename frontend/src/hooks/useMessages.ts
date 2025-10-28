@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { chatApi } from "@/features/chat/api/chatApi";
 import { db, type IMessage } from "@/lib/db/chatDb";
@@ -10,15 +10,18 @@ interface MessageMetadata {
   originalMessage?: MessageType;
 }
 
-type ChatStoreState = ReturnType<typeof useChatStore.getState>;
+const EMPTY_ARRAY: IMessage[] = [];
 
 const createMessagesSelector =
   (conversationId?: string) =>
-  (state: ChatStoreState): IMessage[] =>
-    conversationId ? (state.messagesByConversation[conversationId] ?? []) : [];
+  (state: ReturnType<typeof useChatStore.getState>): IMessage[] =>
+    conversationId
+      ? (state.messagesByConversation[conversationId] ?? EMPTY_ARRAY)
+      : EMPTY_ARRAY;
 
-const selectSetMessagesForConversation = (state: ChatStoreState) =>
-  state.setMessagesForConversation;
+const selectSetMessagesForConversation = (
+  state: ReturnType<typeof useChatStore.getState>,
+) => state.setMessagesForConversation;
 
 export const useMessages = (conversationId?: string) => {
   const messages = useChatStore(
@@ -33,6 +36,8 @@ export const useMessages = (conversationId?: string) => {
   const resetConversationMessages = useConversationStore(
     (state) => state.resetMessages,
   );
+
+  const prevMessagesLengthRef = useRef(0);
 
   useEffect(() => {
     if (!conversationId) {
@@ -82,8 +87,13 @@ export const useMessages = (conversationId?: string) => {
   useEffect(() => {
     if (!conversationId) {
       resetConversationMessages();
+      prevMessagesLengthRef.current = 0;
       return;
     }
+
+    if (prevMessagesLengthRef.current === messages.length) return;
+
+    prevMessagesLengthRef.current = messages.length;
 
     if (messages.length === 0) {
       setConversationMessages([]);
@@ -95,7 +105,7 @@ export const useMessages = (conversationId?: string) => {
     );
   }, [
     conversationId,
-    messages,
+    messages.length,
     resetConversationMessages,
     setConversationMessages,
   ]);

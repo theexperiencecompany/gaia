@@ -12,7 +12,7 @@ import { FileData } from "@/types/shared";
 import fetchDate from "@/utils/date/dateUtils";
 
 export const useSendMessage = () => {
-  const { addMessage } = useConversationStore();
+  const addMessage = useConversationStore((state) => state.addMessage);
   const fetchChatStream = useChatStream();
 
   return useCallback(
