@@ -192,7 +192,6 @@ def create_agent(
         response = llm_with_tools.invoke(state["messages"])
 
         # Set the name for the response for filtering
-        response.name = agent_name
         response.additional_kwargs = {"visible_to": {agent_name}}
         return {"messages": [response]}  # type: ignore[return-value]
 
@@ -225,7 +224,6 @@ def create_agent(
         response = await llm_with_tools.ainvoke(state["messages"])
 
         # Set the name for the response for filtering
-        response.name = agent_name
         response.additional_kwargs = {"visible_to": {agent_name}}
         return {"messages": [response]}  # type: ignore[return-value]
 

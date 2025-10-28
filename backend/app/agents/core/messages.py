@@ -45,14 +45,26 @@ async def construct_langchain_messages(
         List of LangChain messages ready for agent processing
     """
     # Start with system message containing user name and instructions
-    system_msg = await create_system_message(user_id, user_name)
+    system_msg = create_system_message(user_id, user_name)
     chain_msgs = [system_msg]
 
     # Add relevant memories if user context available
-    if user_id and query and (memory_msg := await get_memory_message(user_id, query)):
-        # Set agent name so memory messages pass through filtering and trimming
-        memory_msg.name = "main_agent"
-        chain_msgs.append(memory_msg)
+    if user_id and query:
+        user_timezone = user_dict.get("timezone") if user_dict else None
+        user_preferences = (
+            user_dict.get("onboarding", {}).get("preferences") if user_dict else None
+        )
+
+        memory_msg = await get_memory_message(
+            user_id=user_id,
+            query=query,
+            user_name=user_name,
+            user_timezone=user_timezone,
+            user_preferences=user_preferences,
+        )
+
+        if memory_msg:
+            chain_msgs.append(memory_msg)
 
     # Extract user's latest message content
     user_content = (
@@ -81,6 +93,7 @@ async def construct_langchain_messages(
     ):
         content += f"\n\n{files_str}"
 
-    human_msg = HumanMessage(content=content)
-    human_msg.name = "main_agent"
+    human_msg = HumanMessage(
+        content=content, additional_kwargs={"visible_to": {"main_agent"}}
+    )
     return [*chain_msgs, human_msg]

@@ -16,7 +16,7 @@ from app.utils.user_preferences_utils import (
 from langchain_core.messages import SystemMessage
 
 
-async def create_system_message(
+def create_system_message(
     user_id: Optional[str] = None, user_name: Optional[str] = None
 ) -> SystemMessage:
     """Create main system message with user name only."""
@@ -24,7 +24,6 @@ async def create_system_message(
         content=AGENT_PROMPT_TEMPLATE.format(
             user_name=user_name or "there",
         ),
-        name="main_agent",
         additional_kwargs={"visible_to": {"main_agent"}},
     )
 
@@ -102,7 +101,11 @@ async def get_memory_message(
 
         # Combine all sections
         content = "\n".join(context_parts) + memories_section
-        return SystemMessage(content=content, memory_message=True)
+        return SystemMessage(
+            content=content,
+            memory_message=True,
+            additional_kwargs={"visible_to": {"main_agent"}},
+        )
 
     except Exception as e:
         logger.error(f"Error creating memory message: {e}")
@@ -111,7 +114,9 @@ async def get_memory_message(
             "%A, %B %d, %Y, %H:%M:%S UTC"
         )
         return SystemMessage(
-            content=f"Current UTC Time: {utc_time_str}", memory_message=True
+            content=f"Current UTC Time: {utc_time_str}",
+            memory_message=True,
+            additional_kwargs={"visible_to": {"main_agent"}},
         )
 
 

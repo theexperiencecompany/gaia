@@ -72,15 +72,11 @@ class SubAgentFactory:
             last_message = messages[-1]
 
             if isinstance(last_message, AIMessage) and not last_message.tool_calls:
-                # If the last message is an AI message without tool calls, set its name
-                # to include the agent name for filtering
-                # Note: Here we are adding "main_agent" as the agent name
+                # If the last message is an AI message without tool calls, and add
+                # name to visible_to to include the agent name for filtering
+                # Note: Here we are adding "main_agent"
                 # because last AI Message should be accessible by main agent
-                msg_name = (
-                    [] if last_message.name is None else last_message.name.split(",")
-                )
-                msg_name.append("main_agent")
-                last_message.name = ",".join(msg_name)
+                last_message.additional_kwargs["visible_to"].add("main_agent")
 
             return state
 

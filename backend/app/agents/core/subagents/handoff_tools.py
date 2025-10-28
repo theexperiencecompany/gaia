@@ -45,18 +45,15 @@ def create_handoff_tool(
 
         task_description_message = HumanMessage(
             content=full_context,
-            name=agent_name,
             additional_kwargs={"visible_to": {agent_name}},
         )
         system_prompt_message = SystemMessage(
             content=system_prompt,
-            name=agent_name,
             additional_kwargs={"visible_to": {agent_name}},
         )
         tool_message = ToolMessage(
             content=f"Successfully transferred to {agent_name}",
             tool_call_id=tool_call_id,
-            name="main_agent",
             additional_kwargs={"visible_to": {"main_agent"}},
         )
 

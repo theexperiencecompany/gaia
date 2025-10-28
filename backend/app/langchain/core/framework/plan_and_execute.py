@@ -574,15 +574,12 @@ def _create_cleanup_hook(agent_name: str) -> HookType:
                     cleaned_messages.append(msg)
                     continue
 
-                # For remaining orchestrator messages, set name from visible_to
                 if orchestrator_role in ["orchestrator", "node", "finalizer"]:
-                    visible_to = msg.additional_kwargs.get("visible_to", set())
-                    if visible_to:
-                        # Convert set to comma-separated string for name
-                        msg.name = ",".join(sorted(visible_to))
-                    else:
-                        # Fallback to agent_name if visible_to not set
-                        msg.name = agent_name
+                    visible_to = msg.additional_kwargs.get(
+                        "visible_to", set(agent_name)
+                    )
+
+                    msg.additional_kwargs["visible_to"] = visible_to
                     cleaned_messages.append(msg)
 
             return {**state, "messages": cleaned_messages}  # type: ignore[return-value]
@@ -610,7 +607,6 @@ def build_orchestrator_subgraph(
     filter_node = create_filter_messages_node(
         agent_name=config.agent_name,
         allow_memory_system_messages=True,
-        version="v2",
     )
 
     cleanup_hook = _create_cleanup_hook(config.agent_name)
