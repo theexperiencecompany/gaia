@@ -397,7 +397,6 @@ class OrchestratorGraph:
             workflow.add_node("tools", tools_node)
 
         if self._end_graph_hooks:
-
             async def end_hooks_node(
                 state: OrchestratorState, config: RunnableConfig, store: BaseStore
             ) -> OrchestratorState:
@@ -608,11 +607,7 @@ def build_orchestrator_subgraph(
         agent_name=config.agent_name,
         allow_memory_system_messages=True,
     )
-
     cleanup_hook = _create_cleanup_hook(config.agent_name)
-
-    # Type cast to help mypy understand the hook types
-    pre_hooks: List[HookType] = [filter_node, trim_messages_node]  # type: ignore[list-item]
 
     graph = OrchestratorGraph(
         provider_name=config.provider_name,
@@ -621,7 +616,7 @@ def build_orchestrator_subgraph(
         orchestrator_tools=config.orchestrator_tools,
         llm=config.llm,
         finalizer_prompt=config.finalizer_prompt,
-        pre_llm_hooks=pre_hooks,
+        pre_llm_hooks=[filter_node, trim_messages_node],
         end_graph_hooks=[cleanup_hook],
     )
 
