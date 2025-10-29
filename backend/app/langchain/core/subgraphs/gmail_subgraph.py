@@ -130,4 +130,3 @@ async def create_gmail_subgraph(llm: LanguageModelLike) -> CompiledStateGraph:
     logger.info("Gmail subgraph created successfully")
 
     return graph
-

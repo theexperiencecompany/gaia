@@ -471,13 +471,13 @@ def gmail_get_contacts_before_hook(tool: str, toolkit: str, params: Any) -> Any:
     """Handle contacts fetching with default page size."""
     try:
         arguments = params.get("arguments", {})
-        
+
         # Set default page size to 50 if not specified
         if "page_size" not in arguments or not arguments["page_size"]:
             arguments["page_size"] = 50
-        
+
         params["arguments"] = arguments
-        
+
         writer = get_stream_writer()
         if writer:
             payload = {"progress": "Fetching contacts..."}
@@ -525,7 +525,6 @@ def gmail_fetch_by_id_after_hook(
     except Exception as e:
         logger.error(f"Error in gmail_fetch_by_id_after_hook: {e}")
         return response["data"]
-
 
 
 @register_after_hook(tools=["GMAIL_SEND_DRAFT"])
@@ -591,18 +590,25 @@ def gmail_get_contacts_after_hook(
             names = contact.get("names", [])
             email_addresses = contact.get("emailAddresses", [])
             phone_numbers = contact.get("phoneNumbers", [])
-            
-            primary_name = next((n for n in names if n.get("metadata", {}).get("primary")), names[0] if names else {})
+
+            primary_name = next(
+                (n for n in names if n.get("metadata", {}).get("primary")),
+                names[0] if names else {},
+            )
             display_name = primary_name.get("displayName", "Unknown")
-            
-            primary_email = next((e for e in email_addresses if e.get("metadata", {}).get("primary")), 
-                                 email_addresses[0] if email_addresses else {})
+
+            primary_email = next(
+                (e for e in email_addresses if e.get("metadata", {}).get("primary")),
+                email_addresses[0] if email_addresses else {},
+            )
             email = primary_email.get("value", "")
-            
+
             phone = ""
             if phone_numbers:
-                primary_phone = next((p for p in phone_numbers if p.get("metadata", {}).get("primary")), 
-                                    phone_numbers[0])
+                primary_phone = next(
+                    (p for p in phone_numbers if p.get("metadata", {}).get("primary")),
+                    phone_numbers[0],
+                )
                 phone = primary_phone.get("value", "")
 
             contact_data = {
@@ -611,9 +617,9 @@ def gmail_get_contacts_after_hook(
                 "phone": phone,
                 "resource_name": contact.get("resourceName", ""),
             }
-            
+
             contact_list.append(contact_data)
-            
+
             # Minimal data for LLM
             llm_contact = {"name": display_name}
             if email:
@@ -667,18 +673,25 @@ def gmail_search_people_after_hook(
             names = person.get("names", [])
             email_addresses = person.get("emailAddresses", [])
             phone_numbers = person.get("phoneNumbers", [])
-            
-            primary_name = next((n for n in names if n.get("metadata", {}).get("primary")), names[0] if names else {})
+
+            primary_name = next(
+                (n for n in names if n.get("metadata", {}).get("primary")),
+                names[0] if names else {},
+            )
             display_name = primary_name.get("displayName", "Unknown")
-            
-            primary_email = next((e for e in email_addresses if e.get("metadata", {}).get("primary")), 
-                                 email_addresses[0] if email_addresses else {})
+
+            primary_email = next(
+                (e for e in email_addresses if e.get("metadata", {}).get("primary")),
+                email_addresses[0] if email_addresses else {},
+            )
             email = primary_email.get("value", "")
-            
+
             phone = ""
             if phone_numbers:
-                primary_phone = next((p for p in phone_numbers if p.get("metadata", {}).get("primary")), 
-                                    phone_numbers[0])
+                primary_phone = next(
+                    (p for p in phone_numbers if p.get("metadata", {}).get("primary")),
+                    phone_numbers[0],
+                )
                 phone = primary_phone.get("value", "")
 
             person_data = {
@@ -687,9 +700,9 @@ def gmail_search_people_after_hook(
                 "phone": phone,
                 "resource_name": person.get("resourceName", ""),
             }
-            
+
             people_list.append(person_data)
-            
+
             # Minimal data for LLM
             llm_person = {"name": display_name}
             if email:

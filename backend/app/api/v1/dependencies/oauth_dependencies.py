@@ -66,7 +66,9 @@ async def get_current_user_ws(websocket: WebSocket):
 
     return user_info
 
+
 GET_USER_TZ_TYPE = tuple[str, datetime]
+
 
 def get_user_timezone(
     x_timezone: str = Header(

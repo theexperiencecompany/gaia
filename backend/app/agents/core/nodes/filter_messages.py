@@ -4,6 +4,7 @@ Delete System Messages Node for the conversational graph.
 This module provides functionality to remove system messages from the conversation
 state while preserving all other message types in their original order.
 """
+
 from typing import Callable, TypeVar
 
 from app.config.loggers import chat_logger as logger
@@ -13,6 +14,7 @@ from langgraph.graph import MessagesState
 from langgraph.store.base import BaseStore
 
 T = TypeVar("T", bound=MessagesState)
+
 
 def create_filter_messages_node(
     agent_name: str = "main_agent",
@@ -45,7 +47,7 @@ def create_filter_messages_node(
         try:
             allowed_tool_messages_ids = set()
             filtered_messages = []
-            
+
             # Separate system messages for removal and keep others
             for msg in state["messages"]:
                 # Version-based filtering logic
