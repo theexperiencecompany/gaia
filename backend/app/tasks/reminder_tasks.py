@@ -8,7 +8,7 @@ from app.models.reminder_models import (
     ReminderModel,
     StaticReminderPayload,
 )
-from app.services.notification_service import notification_service
+from app.services.notifications.notification_service import notification_service
 from app.utils.notification.sources import AIProactiveNotificationSource
 
 

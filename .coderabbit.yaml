@@ -1,0 +1,11 @@
+# CodeRabbit configuration
+reviews:
+  # Disable the review status message
+  review_status: false
+  
+  # Configure which branches to review
+  branches:
+    - "master"
+
+  # Whether to review draft PRs
+  draft: false

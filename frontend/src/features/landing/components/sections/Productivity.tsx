@@ -12,7 +12,6 @@ import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
 import dataJson from "@/features/use-cases/constants/data.json";
 
 import LargeHeader from "../shared/LargeHeader";
-import WorkflowSection from "./WorkflowSection";
 
 interface UseCase {
   title: string;
@@ -53,46 +52,30 @@ export default function Productivity() {
         );
 
   return (
-    <div className="relative flex flex-col items-center justify-start overflow-hidden">
-      <div className="relative z-[1] flex w-full max-w-7xl flex-col items-center justify-center p-7 py-36">
+    <div className="relative flex flex-col items-center justify-start px-4 sm:px-6">
+      <div
+        className="absolute -top-20 left-0 z-0 h-screen w-screen"
+        style={{
+          backgroundImage: `
+        radial-gradient(
+          circle at top left,
+          #00bbff40,
+          transparent 70%
+        )
+      `,
+          filter: "blur(100px)",
+          backgroundRepeat: "no-repeat",
+        }}
+      />
+
+      <div className="relative z-[1] flex w-full max-w-7xl flex-col items-center justify-center p-4 sm:p-6 lg:p-7">
         <LargeHeader
           centered
           headingText="Automate your daily chaos"
           subHeadingText="Skip the grunt work forever. Create insane workflows."
         />
-        {/* <Tabs
-          // variant="underlined"
-          variant="light"
-          size="lg"
-          color="primary"
-          radius="sm"
-          selectedKey={selectedTab}
-          onSelectionChange={(key) => setSelectedTab(key as string)}
-          className="mt-6 flex w-full justify-center"
-        >
-          <Tab key="email" title="Email">
-            <div className="flex w-screen max-w-6xl items-center justify-center rounded-3xl bg-zinc-900 p-4">
-              <MailAnimationWrapper />
-            </div>
-          </Tab>
-          <Tab key="calendar" title="Calendar">
-            <div className="flex w-screen max-w-6xl items-center justify-center rounded-3xl bg-zinc-900 p-4">
-              <CalendarDemo />
-            </div>
-          </Tab>
-          <Tab key="goals" title="Goals">
-            <div className="flex w-screen max-w-6xl items-center justify-center rounded-3xl bg-zinc-900 p-4">
-              <GoalsStepsContent />
-            </div>
-          </Tab>
-          <Tab key="todos" title="Todos">
-            <div className="flex w-screen max-w-6xl items-center justify-center">
-              <TodosBentoContent />
-            </div>
-          </Tab>
-        </Tabs> */}
 
-        <div className="mt-6 mb-5 flex flex-wrap justify-center gap-2">
+        <div className="mt-4 mb-4 flex flex-wrap justify-center gap-2 sm:mt-5 sm:mb-5 lg:mt-6">
           {allCategories.map((category) => (
             <Chip
               key={category as string}
@@ -107,8 +90,8 @@ export default function Productivity() {
           ))}
         </div>
 
-        <div className="grid max-w-7xl grid-cols-1 grid-rows-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredUseCases.slice(0, 4).map((useCase, index) => (
+        <div className="grid max-w-7xl grid-cols-1 grid-rows-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 lg:gap-6 xl:grid-cols-3">
+          {filteredUseCases.slice(0, 6).map((useCase, index) => (
             <UseCaseCard
               key={useCase.published_id || index}
               title={useCase.title || ""}
@@ -119,7 +102,7 @@ export default function Productivity() {
           ))}
         </div>
 
-        <Link href={"/use-cases"} className="mt-10">
+        <Link href={"/use-cases"} className="mt-6 sm:mt-8 lg:mt-10">
           <RaisedButton
             className="rounded-xl text-black! before:rounded-xl hover:scale-110"
             color="#00bbff"
@@ -128,7 +111,6 @@ export default function Productivity() {
           </RaisedButton>
         </Link>
       </div>
-      <WorkflowSection />
     </div>
   );
 }

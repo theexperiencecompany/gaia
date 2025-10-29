@@ -20,11 +20,7 @@ export default function LargeHeader({
       <div
         className={`flex w-full gap-1 ${centered ? "items-center justify-center" : "items-start justify-start"}`}
       >
-        {chipText && (
-          <Chip variant="flat" color="primary">
-            {chipText}
-          </Chip>
-        )}
+        {chipText && <div className="text-primary uppercase">{chipText}</div>}
 
         {chipText2 && (
           <Chip variant="flat" color="danger">
@@ -33,7 +29,7 @@ export default function LargeHeader({
         )}
       </div>
       <h2
-        className={`relative z-2 my-2 flex gap-4 text-4xl font-semibold sm:text-6xl ${centered ? "items-center justify-center" : "items-start justify-start"}`}
+        className={`relative z-2 my-2 flex gap-4 text-4xl font-medium sm:text-7xl ${centered ? "items-center justify-center" : "items-start justify-start"} font-serif!`}
       >
         {headingText}
       </h2>

@@ -37,14 +37,14 @@ const FloatingIcon = ({
 
 const ToolsShowcaseSection: React.FC = () => {
   return (
-    <SectionLayout className="relative mt-20">
-      <div
+    <SectionLayout className="relative">
+      {/* <div
         className="absolute inset-0 z-[-1] w-full"
         style={{
           background:
             "radial-gradient(125% 150% at 50% 10%, #ffffff00 40%, #ffffff40 100%)",
         }}
-      />
+      /> */}
       <div className="relative h-screen w-full max-w-7xl overflow-hidden">
         <FloatingIcon
           src="/images/icons/notion.webp"

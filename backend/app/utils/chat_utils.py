@@ -1,9 +1,9 @@
 from typing import List, Optional
 
 from app.config.loggers import chat_logger as logger
-from app.langchain.core.state import State
-from app.langchain.llm.chatbot import chatbot
-from app.langchain.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
+from app.agents.core.state import State
+from app.agents.llm.chatbot import chatbot
+from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
 from app.models.message_models import MessageDict, SelectedWorkflowData
 
 # from uuid_extensions import uuid7, uuid7str

@@ -3,7 +3,8 @@ import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { AnimatePresence, motion } from "framer-motion";
 import { Hash, Search, X } from "lucide-react";
-import React, { useEffect, useMemo, useRef,useState } from "react";
+import { usePathname } from "next/navigation";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 import { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -46,6 +47,14 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const pathname = usePathname();
+
+  // Determine max height based on current route
+  const maxHeight = useMemo(() => {
+    // Check if we're on a specific chat page (/c/:id)
+    const isChatIdPage = pathname?.match(/^\/c\/[^\/]+$/) && pathname !== "/c";
+    return isChatIdPage ? "max-h-100" : "max-h-62";
+  }, [pathname]);
 
   // Use external category state if provided, otherwise fall back to internal state
   const [internalSelectedCategory, setInternalSelectedCategory] =
@@ -55,10 +64,10 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   // Focus the dropdown when it becomes visible (only when opened via button)
   useEffect(() => {
     if (isVisible && openedViaButton && dropdownRef.current) {
-      // Small delay to ensure the dropdown is rendered
-      setTimeout(() => {
+      // Use requestAnimationFrame for better performance
+      requestAnimationFrame(() => {
         dropdownRef.current?.focus();
-      }, 100);
+      });
     }
   }, [isVisible, openedViaButton]);
 
@@ -235,12 +244,10 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -8, scale: 0.95 }}
           transition={{
-            type: "spring",
-            damping: 20,
-            stiffness: 300,
-            duration: 0.15,
+            duration: 0.2,
+            ease: [0.19, 1, 0.22, 1],
           }}
-          className="slash-command-dropdown fixed z-[200] overflow-hidden rounded-3xl border-1 border-zinc-700 bg-zinc-900/60 shadow-2xl outline-0! backdrop-blur-2xl active:border-zinc-700"
+          className="slash-command-dropdown fixed z-[200] overflow-hidden rounded-3xl border-1 border-zinc-800 bg-zinc-900/70 outline-0! backdrop-blur-xl active:border-zinc-700"
           style={{
             ...(position.top !== undefined && { top: 0, height: position.top }),
             ...(position.bottom !== undefined && {
@@ -250,7 +257,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
             left: position.left,
             width: position.width,
             transform: "none",
-            boxShadow: "0px -18px 30px 5px rgba(0, 0, 0, 0.5)",
+            boxShadow: "0px -18px 30px 5px rgba(0, 0, 0, 0.2)",
           }}
           onClick={(e) => e.stopPropagation()}
           onKeyDown={handleKeyDown}
@@ -265,7 +272,6 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                   type="text"
                   placeholder="Search tools..."
                   value={searchQuery}
-                  size="sm"
                   radius="full"
                   startContent={<Search size={16} />}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -285,11 +291,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
           )}
 
           {/* Category Tabs */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
-          >
+          <div>
             <ScrollShadow orientation="horizontal" className="overflow-x-auto">
               <div className="flex min-w-max gap-1 px-2 py-2">
                 {/* <div className="grid min-w-max gap-1 px-2 py-2 grid-rows-2 grid-flow"> for 2 rows */}
@@ -302,7 +304,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                     }}
                     className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${
                       selectedCategory === category
-                        ? "bg-zinc-700 text-white"
+                        ? "bg-zinc-700/40 text-white"
                         : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"
                     }`}
                   >
@@ -323,12 +325,12 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                 ))}
               </div>
             </ScrollShadow>
-          </motion.div>
+          </div>
 
           {/* Tool List */}
           <div
             ref={scrollContainerRef}
-            className="relative z-[1] h-fit max-h-72 overflow-y-auto"
+            className={`relative z-[1] h-fit ${maxHeight} overflow-y-auto`}
           >
             <div className="py-2">
               {/* Integrations Card - Only show in "all" category and when not filtering */}
@@ -355,14 +357,12 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                         itemRefs.current.delete(index);
                       }
                     }}
-                    className={`relative mx-2 mb-1 cursor-pointer rounded-xl transition-all duration-150 ${
-                      isSelected
-                        ? "border border-zinc-600 bg-zinc-700/60"
-                        : "border border-transparent hover:bg-white/5"
+                    className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${
+                      isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"
                     }`}
                     onClick={() => onSelect(match)}
                   >
-                    <div className="flex items-center gap-3 p-3">
+                    <div className="flex items-center gap-2 p-2">
                       {/* Icon */}
                       <div className="flex-shrink-0">
                         {getToolCategoryIcon(match.tool.category)}
@@ -375,7 +375,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                             {formatToolName(match.tool.name)}
                           </span>
                           {selectedCategory === "all" && (
-                            <span className="rounded-full bg-zinc-600 px-2 py-0.5 text-xs text-zinc-200">
+                            <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
                               {formatToolName(match.tool.category)}
                             </span>
                           )}

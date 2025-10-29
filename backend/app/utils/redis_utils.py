@@ -23,9 +23,9 @@ class RedisPoolManager:
         if cls._pool is None:
             async with cls._lock:
                 if cls._pool is None:
+                    from app.config.settings import settings
                     from arq import create_pool
                     from arq.connections import RedisSettings
-                    from app.config.settings import settings
 
                     try:
                         redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)

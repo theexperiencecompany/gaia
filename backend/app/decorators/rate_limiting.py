@@ -15,12 +15,12 @@ from fastapi import HTTPException
 from app.config.loggers import app_logger
 from app.config.rate_limits import get_limits_for_plan
 from app.db.redis import redis_cache
-from app.middleware.tiered_rate_limiter import (
+from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
     tiered_limiter,
 )
 from app.models.payment_models import PlanType
-from app.services.payment_service import payment_service
+from app.services.payments.payment_service import payment_service
 
 # Context variables to avoid parameter pollution
 user_context: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
@@ -156,12 +156,23 @@ def with_rate_limiting(
             if isinstance(result, dict):
                 rl_context = rate_limit_context.get()
                 if rl_context:
+                    # Convert UsageInfo objects to dicts for JSON serialization
+                    usage_info_dict = {}
+                    for period, usage_info in rl_context["usage_info"].items():
+                        usage_info_dict[period] = {
+                            "used": usage_info.used,
+                            "limit": usage_info.limit,
+                            "reset_time": usage_info.reset_time.isoformat()
+                            if usage_info.reset_time
+                            else None,
+                        }
+
                     result.setdefault(
                         "_rate_limit_info",
                         {
                             "feature": rl_context["feature_key"],
                             "plan": rl_context["user_plan"],
-                            "usage": rl_context["usage_info"],
+                            "usage": usage_info_dict,
                         },
                     )
 

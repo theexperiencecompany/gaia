@@ -21,7 +21,9 @@ interface BaseFieldChipProps {
     | "danger";
   isActive?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
-  children: React.ReactNode;
+  children:
+    | React.ReactNode
+    | ((props: { onClose: () => void }) => React.ReactNode);
   className?: string;
 }
 
@@ -101,7 +103,11 @@ export default function BaseFieldChip({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="min-w-[200px] rounded-2xl border-zinc-700 bg-zinc-900 p-0 shadow-xl">
-        <div className="w-full">{children}</div>
+        <div className="w-full">
+          {typeof children === "function"
+            ? children({ onClose: () => setIsOpen(false) })
+            : children}
+        </div>
       </PopoverContent>
     </Popover>
   );

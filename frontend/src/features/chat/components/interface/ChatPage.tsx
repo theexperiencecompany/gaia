@@ -4,6 +4,7 @@ import React, { useEffect } from "react";
 
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useConversation } from "@/features/chat/hooks/useConversation";
+import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { useMessages } from "@/hooks/useMessages";
 import {
@@ -16,9 +17,15 @@ import { ChatWithMessages, NewChatLayout } from "./layouts";
 import ScrollToBottomButton from "./ScrollToBottomButton";
 
 const ChatPage = React.memo(function MainChat() {
-  const { convoMessages } = useConversation();
+  const { updateConvoMessages, clearMessages, convoMessages } =
+    useConversation();
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
+
+  // Fetching status on chat-page to resolve caching issues when new integration is connected
+  useFetchIntegrationStatus({
+    refetchOnMount: "always",
+  });
 
   const {
     hasMessages,

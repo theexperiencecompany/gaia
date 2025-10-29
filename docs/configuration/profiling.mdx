@@ -31,8 +31,6 @@ ENABLE_PROFILING=true
 
 # Optional: Configure profiling behavior
 PROFILING_SAMPLE_RATE=0.1          # Profile 10% of requests automatically
-PROFILING_MAX_DEPTH=50             # Maximum call stack depth
-PROFILING_ASYNC_MODE=enabled       # enabled, disabled, strict
 ```
 
 ### Configuration Options
@@ -55,25 +53,6 @@ PROFILING_ASYNC_MODE=enabled       # enabled, disabled, strict
   - `0.1` = Profile 10% of requests (good for development/staging)
   - `1.0` = Profile all requests (only for debugging, high overhead)
 
-#### `PROFILING_MAX_DEPTH`
-
-- **Type**: `integer`
-- **Default**: `50`
-- **Description**: Maximum call stack depth to capture in profiling reports.
-- **Impact**: Higher values provide more detail but increase memory usage and report complexity.
-- **Recommendations**:
-  - Development: `50-100` (detailed debugging)
-  - Production: `30-50` (focused on main bottlenecks)
-
-#### `PROFILING_ASYNC_MODE`
-
-- **Type**: `string`
-- **Default**: `"enabled"`
-- **Options**:
-  - `"enabled"`: Profile async code with thread awareness
-  - `"disabled"`: Don't profile async code specifically
-  - `"strict"`: Strict async profiling (may impact performance)
-- **Description**: Controls how PyInstrument handles async/await code profiling.
 
 ## Usage
 
@@ -112,8 +91,6 @@ When `PROFILING_SAMPLE_RATE > 0`, requests are automatically profiled in the bac
 # .env file for development
 ENABLE_PROFILING=true
 PROFILING_SAMPLE_RATE=0.2          # Profile 20% of requests
-PROFILING_MAX_DEPTH=100            # Deep call stacks for debugging
-PROFILING_ASYNC_MODE=enabled
 ```
 
 ### Production Setup
@@ -122,8 +99,6 @@ PROFILING_ASYNC_MODE=enabled
 # .env file for production
 ENABLE_PROFILING=true
 PROFILING_SAMPLE_RATE=0.01         # Profile only 1% of requests
-PROFILING_MAX_DEPTH=30             # Focused profiling
-PROFILING_ASYNC_MODE=enabled
 ```
 
 ### Profiling API Requests
@@ -156,8 +131,6 @@ curl "http://localhost:8000/api/v1/conversations?profile=true" \
 ### High Performance Impact
 
 1. Reduce `PROFILING_SAMPLE_RATE` (e.g., from `0.1` to `0.01`)
-2. Lower `PROFILING_MAX_DEPTH` (e.g., from `100` to `30`)
-3. Use `PROFILING_ASYNC_MODE=disabled` if async overhead is too high
 
 ---
 

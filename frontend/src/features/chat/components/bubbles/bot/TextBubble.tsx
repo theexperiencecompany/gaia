@@ -1,10 +1,15 @@
 // Utility type: union of all possible tool_name/data pairs
 type ToolDataUnion = {
-  [K in ToolName]: { tool_name: K; data: ToolDataMap[K] }
+  [K in ToolName]: { tool_name: K; data: ToolDataMap[K] };
 }[ToolName];
 
-function getTypedData<K extends ToolName>(entry: ToolDataUnion, toolName: K): ToolDataMap[K] | undefined {
-  return entry.tool_name === toolName ? (entry.data as ToolDataMap[K]) : undefined;
+function getTypedData<K extends ToolName>(
+  entry: ToolDataUnion,
+  toolName: K,
+): ToolDataMap[K] | undefined {
+  return entry.tool_name === toolName
+    ? (entry.data as ToolDataMap[K])
+    : undefined;
 }
 // TextBubble.tsx
 import { Chip } from "@heroui/chip";
@@ -30,6 +35,7 @@ import {
   DeepResearchResults,
   DocumentData,
   EmailComposeData,
+  EmailSentData,
   EmailThreadData,
   GoalDataMessageType,
   GoogleDocsData,
@@ -42,6 +48,10 @@ import {
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
 import { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
+import {
+  ContactData,
+  PeopleSearchData,
+} from "@/types/features/mailTypes";
 import { EmailFetchData } from "@/types/features/mailTypes";
 import { NotificationRecord } from "@/types/features/notificationTypes";
 import { SupportTicketData } from "@/types/features/supportTypes";
@@ -51,12 +61,15 @@ import { CalendarDeleteSection } from "./CalendarDeleteSection";
 import { CalendarEditSection } from "./CalendarEditSection";
 import CalendarEventSection from "./CalendarEventSection";
 import CodeExecutionSection from "./CodeExecutionSection";
+import ContactListSection from "./ContactListSection";
 import DocumentSection from "./DocumentSection";
 import EmailComposeSection from "./EmailComposeSection";
+import EmailSentSection from "./EmailSentSection";
 import GoalSection from "./goals/GoalSection";
 import { GoalAction } from "./goals/types";
 import GoogleDocsSection from "./GoogleDocsSection";
 import NotificationListSection from "./NotificationListSection";
+import PeopleSearchSection from "./PeopleSearchSection";
 import SupportTicketSection from "./SupportTicketSection";
 import TodoSection from "./TodoSection";
 
@@ -105,6 +118,28 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       key={`tool-email-compose-${index}`}
       email_compose_data={
         (Array.isArray(data) ? data : [data]) as EmailComposeData[]
+      }
+    />
+  ),
+  email_sent_data: (data, index) => (
+    <EmailSentSection
+      key={`tool-email-sent-${index}`}
+      email_sent_data={
+        (Array.isArray(data) ? data : [data]) as EmailSentData[]
+      }
+    />
+  ),
+  contacts_data: (data, index) => (
+    <ContactListSection
+      key={`tool-contacts-${index}`}
+      contacts_data={(Array.isArray(data) ? data : [data]) as ContactData[]}
+    />
+  ),
+  people_search_data: (data, index) => (
+    <PeopleSearchSection
+      key={`tool-people-search-${index}`}
+      people_search_data={
+        (Array.isArray(data) ? data : [data]) as PeopleSearchData[]
       }
     />
   ),
@@ -235,10 +270,6 @@ export default function TextBubble({
   isConvoSystemGenerated,
   systemPurpose,
 }: ChatBubbleBotProps) {
-  // Check if we have search results from tool_data for chip display
-  const hasSearchResults = tool_data?.some(
-    (entry) => entry.tool_name === "search_results",
-  );
   const hasDeepResearchResults = tool_data?.some(
     (entry) => entry.tool_name === "deep_research_results",
   );
@@ -286,20 +317,6 @@ export default function TextBubble({
                       className={`imessage-bubble imessage-from-them ${groupedClasses}`}
                     >
                       <div className="flex flex-col gap-3">
-                        {hasSearchResults && index === 0 && (
-                          <Chip
-                            color="primary"
-                            startContent={
-                              <InternetIcon color="#00bbff" height={20} />
-                            }
-                            variant="flat"
-                          >
-                            <div className="flex items-center gap-1 font-medium text-primary">
-                              Live Search Results from the Web
-                            </div>
-                          </Chip>
-                        )}
-
                         {hasDeepResearchResults && index === 0 && (
                           <Chip
                             color="primary"
@@ -344,18 +361,6 @@ export default function TextBubble({
           return (
             <div className="imessage-bubble imessage-from-them">
               <div className="flex flex-col gap-3">
-                {hasSearchResults && (
-                  <Chip
-                    color="primary"
-                    startContent={<InternetIcon color="#00bbff" height={20} />}
-                    variant="flat"
-                  >
-                    <div className="flex items-center gap-1 font-medium text-primary">
-                      Live Search Results from the Web
-                    </div>
-                  </Chip>
-                )}
-
                 {hasDeepResearchResults && (
                   <Chip
                     color="primary"

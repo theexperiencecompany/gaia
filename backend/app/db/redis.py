@@ -1,11 +1,32 @@
+"""
+Redis caching infrastructure with type-safe Pydantic model support.
+
+Features:
+- Type-safe model serialization/deserialization
+- Generic JSON caching for any Python objects
+- TTL support and pattern-based cache invalidation
+- Graceful fallback when Redis is unavailable
+
+Basic Usage:
+    await set_cache("key", data)
+    data = await get_cache("key")
+
+Type-safe Usage:
+    await set_cache("user:123", user_obj, model=User)
+    user = await get_cache("user:123", model=User)  # Returns User instance
+
+Pattern deletion:
+    await delete_cache("user:*")  # Delete all user keys
+"""
+
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 import redis.asyncio as redis
 from app.config.loggers import redis_logger as logger
 from app.config.settings import settings
-from pydantic import BaseModel
+from pydantic import TypeAdapter
 
 ONE_YEAR_TTL = 31_536_000
 ONE_HOUR_TTL = 3600
@@ -13,8 +34,72 @@ CACHE_TTL = ONE_HOUR_TTL  # Default cache TTL for todos
 STATS_CACHE_TTL = 30 * 60  # 30 minutes for stats (increased from 5)
 
 
+def serialize_any(data: Any, model: Optional[type] = None) -> str:
+    """
+    Serialize Python objects to JSON string using Pydantic TypeAdapter.
+
+    Supports type-safe serialization when model is provided, ensuring data
+    conforms to the expected structure before serialization.
+
+    Args:
+        data: Any Python object to serialize (Pydantic models, dicts, lists, etc.)
+        model: Optional Pydantic model class for type-specific serialization
+
+    Returns:
+        JSON string representation of the data
+
+    Examples:
+        # Generic serialization
+        json_str = serialize_any({"name": "John", "age": 30})
+
+        # Type-safe serialization
+        user = User(name="John", email="john@example.com")
+        json_str = serialize_any(user, model=User)
+    """
+    adapter = TypeAdapter(model or Any)
+    return adapter.dump_json(data).decode()
+
+
+def deserialize_any(json_str: str, model: Optional[type] = None) -> Any:
+    """
+    Deserialize JSON string back to Python objects with optional type validation.
+
+    When model is provided, validates the deserialized data against the model
+    schema and returns a properly typed instance. Without model, returns
+    generic Python objects (dict, list, etc.).
+
+    Args:
+        json_str: JSON string to deserialize
+        model: Optional Pydantic model class for type validation
+
+    Returns:
+        Deserialized and optionally validated Python object
+
+    Raises:
+        ValidationError: If data doesn't match the provided model schema
+        ValueError: If JSON string is invalid
+
+    Examples:
+        # Generic deserialization
+        data = deserialize_any('{"name": "John", "age": 30}')
+
+        # Type-safe deserialization
+        user = deserialize_any(json_str, model=User)  # Returns User instance
+    """
+    adapter = TypeAdapter(model or Any)
+    return adapter.validate_json(json_str)
+
+
 class DateTimeEncoder(json.JSONEncoder):
-    """Custom JSON encoder that handles datetime objects."""
+    """
+    Custom JSON encoder for datetime objects.
+
+    Converts datetime objects to ISO 8601 format strings during JSON serialization.
+    Used as fallback for objects that can't be serialized by Pydantic TypeAdapter.
+
+    Note: This is primarily kept for backward compatibility. Pydantic TypeAdapter
+    handles most serialization needs including datetime objects.
+    """
 
     def default(self, o):
         if isinstance(o, datetime):
@@ -37,9 +122,24 @@ class RedisCache:
         else:
             logger.warning("REDIS_URL is not set. Caching will be disabled.")
 
-    async def get(self, key: str):
+    async def get(self, key: str, model: Optional[type] = None):
         """
-        Get a cached value by key.
+        Retrieve cached value by key with optional type validation.
+
+        Args:
+            key: Cache key to retrieve
+            model: Optional Pydantic model for type-safe deserialization
+
+        Returns:
+            Cached value (typed if model provided, generic dict/list otherwise)
+            None if key doesn't exist or Redis unavailable
+
+        Examples:
+            # Generic retrieval
+            data = await cache.get("user:123")
+
+            # Type-safe retrieval
+            user = await cache.get("user:123", model=User)
         """
         if not self.redis:
             logger.warning("Redis is not initialized. Skipping get operation.")
@@ -48,15 +148,31 @@ class RedisCache:
         try:
             value = await self.redis.get(name=key)
             if value:
-                return json.loads(value)
+                # Use TypeAdapter to deserialize any data structure
+                return deserialize_any(value, model)
             return None
         except Exception as e:
             logger.error(f"Error accessing Redis for key {key}: {e}")
             return None
 
-    async def set(self, key: str, value: Any, ttl: int = 3600):
+    async def set(
+        self, key: str, value: Any, ttl: int = 3600, model: Optional[type] = None
+    ):
         """
-        Set a cached value with an optional TTL.
+        Store value in cache with TTL and optional type validation.
+
+        Args:
+            key: Cache key to store under
+            value: Data to cache (any serializable Python object)
+            ttl: Time-to-live in seconds (default: 3600/1 hour)
+            model: Optional Pydantic model for type-safe serialization
+
+        Examples:
+            # Generic caching
+            await cache.set("user:123", {"name": "John"}, ttl=1800)
+
+            # Type-safe caching
+            await cache.set("user:123", user_obj, model=User, ttl=3600)
         """
         if not self.redis:
             logger.warning("Redis is not initialized. Skipping set operation.")
@@ -64,14 +180,9 @@ class RedisCache:
 
         try:
             ttl = ttl or self.default_ttl
-
-            # Handle Pydantic models
-            if isinstance(value, BaseModel):
-                # Use Pydantic's JSON encoder to handle datetime and other special types
-                json_str = value.model_dump_json()
-                await self.redis.setex(key, ttl, json_str)
-            else:
-                await self.redis.setex(key, ttl, json.dumps(value, cls=DateTimeEncoder))
+            # Use TypeAdapter to handle any data structure with Pydantic models
+            json_str = serialize_any(value, model)
+            await self.redis.setex(key, ttl, json_str)
         except Exception as e:
             logger.error(f"Error setting Redis key {key}: {e}")
 
@@ -106,18 +217,39 @@ redis_cache = RedisCache()
 
 
 # Wrappers for RedisCache instance methods
-async def get_cache(key: str):
+async def get_cache(key: str, model: Optional[type] = None):
     """
-    Get a cached value by key.
+    Convenience wrapper for retrieving cached values.
+
+    Args:
+        key: Cache key to retrieve
+        model: Optional Pydantic model for type validation
+
+    Returns:
+        Cached value or None if not found
+
+    Example:
+        user = await get_cache("user:123", model=User)
     """
-    return await redis_cache.get(key)
+    return await redis_cache.get(key, model)
 
 
-async def set_cache(key: str, value: Any, ttl: int = ONE_YEAR_TTL):
+async def set_cache(
+    key: str, value: Any, ttl: int = ONE_YEAR_TTL, model: Optional[type] = None
+):
     """
-    Set a cached value with an optional TTL.
+    Convenience wrapper for storing cached values.
+
+    Args:
+        key: Cache key to store under
+        value: Data to cache
+        ttl: Time-to-live in seconds (default: 1 year)
+        model: Optional Pydantic model for type validation
+
+    Example:
+        await set_cache("user:123", user, ttl=3600, model=User)
     """
-    await redis_cache.set(key, value, ttl)
+    await redis_cache.set(key, value, ttl, model)
 
 
 async def delete_cache(key: str):
@@ -134,7 +266,21 @@ async def delete_cache(key: str):
 
 async def delete_cache_by_pattern(pattern: str):
     """
-    Delete cached keys by pattern.
+    Delete multiple cache keys matching a pattern.
+
+    Uses Redis KEYS command to find matching keys, then deletes each one.
+    Useful for bulk cache invalidation (e.g., clearing all user data).
+
+    Args:
+        pattern: Redis glob pattern (e.g., "user:*", "session:abc*")
+
+    Warning:
+        KEYS command can be slow on large Redis instances. Use sparingly
+        in production or during low-traffic periods.
+
+    Examples:
+        await delete_cache_by_pattern("user:*")  # Delete all user cache
+        await delete_cache_by_pattern("temp:*")  # Delete temporary data
     """
     if not redis_cache.redis:
         logger.warning("Redis is not initialized. Skipping delete operation.")

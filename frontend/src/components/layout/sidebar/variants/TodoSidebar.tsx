@@ -48,12 +48,10 @@ function SidebarSection({
   emptyState,
 }: SidebarSectionProps) {
   return (
-    <div className="pb-3">
+    <div className="pb-1">
       {title && (
         <div className="mb-1 flex items-center justify-between px-1">
-          <span className="text-xs font-medium text-foreground-500">
-            {title}
-          </span>
+          <span className="text-xs text-zinc-500">{title}</span>
           {action}
         </div>
       )}
@@ -75,7 +73,7 @@ function SidebarSection({
             className={`justify-start px-2 text-start text-sm ${
               activeItem === item.href
                 ? "bg-primary/10 text-primary"
-                : "text-foreground-600"
+                : "text-zinc-400"
             }`}
             variant="light"
             radius="sm"
@@ -261,7 +259,7 @@ export default function TodoSidebar() {
             <Spinner />
           </div>
         ) : (
-          <div className="space-y-4 divide-y-1 divide-solid divide-zinc-700">
+          <div className="space-y-4">
             {/* Main Menu */}
             <SidebarSection
               items={mainMenuItems}

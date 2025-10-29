@@ -4,13 +4,11 @@ GAIA API v1 package.
 This package contains the API routes and dependencies for version 1 of the GAIA API.
 """
 
-from app.api.v1.router import (
+from app.api.v1.endpoints import (
     blog,
     calendar,
     chat,
-    composio,
     conversations,
-    feedback,
     file,
     goals,
     image,
@@ -28,8 +26,7 @@ from app.api.v1.router import (
     todos,
     tools,
     usage,
-    waitlist,
-    webhook,
+    webhook_composio,
     websocket,
     workflows,
 )
@@ -37,11 +34,8 @@ from fastapi import APIRouter
 
 router = APIRouter()
 
-router.include_router(composio.router, tags=["composio"])
 router.include_router(chat.router, tags=["Chat"])
 router.include_router(conversations.router, tags=["Conversations"])
-router.include_router(waitlist.router, tags=["Waitlist"])
-router.include_router(feedback.router, tags=["Feedback"])
 router.include_router(image.router, tags=["Image"])
 router.include_router(search.router, tags=["Search"])
 router.include_router(calendar.router, tags=["Calendar"])
@@ -55,7 +49,7 @@ router.include_router(team.router, tags=["Team"])
 router.include_router(file.router, tags=["File"])
 router.include_router(notification.router, tags=["Notification"])
 router.include_router(websocket.router, tags=["WebSocket"])
-router.include_router(webhook.router, tags=["Mail Webhook"])
+router.include_router(webhook_composio.router, tags=["Composio Webhook"])
 router.include_router(todos.router, tags=["Todos"])
 router.include_router(workflows.router, tags=["Workflows"])
 router.include_router(reminders.router, tags=["Reminders"])

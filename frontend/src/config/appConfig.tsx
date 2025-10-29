@@ -4,14 +4,15 @@ import {
   BookOpen02Icon,
   BubbleConversationChatIcon,
   CreditCardPosIcon,
-  CustomerService01Icon,
   DiscordIcon,
   Github,
   GlobalIcon,
+  HeartHandIcon,
   Home01Icon,
   Idea01Icon,
   LinkedinIcon,
   MapsIcon,
+  QuillWrite01Icon,
   TwitterIcon,
   WhatsappIcon,
   YoutubeIcon,
@@ -26,6 +27,7 @@ export interface AppLink {
   guestOnly?: boolean;
   commented?: boolean;
   description?: string;
+  hideFooter?: boolean;
 }
 
 export interface LinkSection {
@@ -37,7 +39,7 @@ export const appConfig = {
   // Site information
   site: {
     name: "GAIA",
-    copyright: "© 2025 GAIA",
+    copyright: "Copyright © 2025 GAIA. All rights reserved.",
     domain: "heygaia.io",
   },
 
@@ -48,7 +50,7 @@ export const appConfig = {
       {
         href: "/",
         label: "Home",
-        icon: <Home01Icon width={19} color={undefined} />,
+        icon: <Home01Icon width={20} height={20} color={undefined} />,
         description: "Return to the home page",
       },
     ] as AppLink[],
@@ -56,53 +58,66 @@ export const appConfig = {
     // Navigation menu sections
     product: [
       {
-        href: "https://gaia.featurebase.app/roadmap",
-        label: "Roadmap",
-        icon: <MapsIcon width={19} color={undefined} />,
-        external: true,
-        description: "See what's coming next",
+        href: "/login",
+        label: "Get Started",
+        icon: (
+          <BubbleConversationChatIcon
+            width={20}
+            height={20}
+            color={undefined}
+          />
+        ),
+        requiresAuth: false,
+        description: "Sign Up / Login to GAIA",
       },
       {
-        href: "https://status.heygaia.io",
-        label: "Status",
-        icon: <GlobalIcon width={19} color={undefined} />,
+        href: "/use-cases",
+        label: "Use Cases",
+        icon: <Idea01Icon width={20} height={20} color={undefined} />,
+        description: "Discover workflows and AI prompts",
+      },
+      {
+        href: "/pricing",
+        label: "Pricing",
+        icon: <CreditCardPosIcon width={20} height={20} color={undefined} />,
+        description: "Choose the perfect plan for your needs",
+      },
+      {
+        href: "https://gaia.featurebase.app/roadmap",
+        label: "Roadmap",
+        icon: <MapsIcon width={20} height={20} color={undefined} />,
         external: true,
-        description: "Check the status of GAIA",
+        description: "See what's coming next",
       },
     ] as AppLink[],
 
     resources: [
       {
-        href: "/use-cases",
-        label: "Use Cases",
-        icon: <Idea01Icon width={19} color={undefined} />,
-        description: "Discover workflows and AI prompts",
-      },
-      {
         href: "/blog",
         label: "Blog",
-        icon: <BookOpen02Icon width={19} color={undefined} />,
+        icon: <QuillWrite01Icon width={20} height={20} color={undefined} />,
         description: "Read the latest updates and insights",
       },
       {
         href: "https://docs.heygaia.io",
-        label: "Docs",
-        icon: <BookOpen02Icon width={19} color={undefined} />,
+        label: "Documentation",
+        icon: <BookOpen02Icon width={20} height={20} color={undefined} />,
         external: true,
         description: "Comprehensive documentation and guides",
       },
       {
-        href: "/pricing",
-        label: "Pricing",
-        icon: <CreditCardPosIcon width={19} color={undefined} />,
-        description: "Choose the perfect plan for your needs",
-      },
-      {
         href: "https://gaia.featurebase.app",
-        label: "Feature Request",
-        icon: <Idea01Icon width={19} color={undefined} />,
+        label: "Request a Feature",
+        icon: <Idea01Icon width={20} height={20} color={undefined} />,
         external: true,
         description: "Request new features and vote on ideas",
+      },
+      {
+        href: "https://status.heygaia.io",
+        label: "Status",
+        icon: <GlobalIcon width={20} height={20} color={undefined} />,
+        external: true,
+        description: "Check the status of GAIA services",
       },
     ] as AppLink[],
 
@@ -110,26 +125,28 @@ export const appConfig = {
       {
         href: "/manifesto",
         label: "Manifesto",
-        icon: <GlobalIcon width={19} color={undefined} />,
+        icon: <GlobalIcon width={20} height={20} color={undefined} />,
         description: "Learn about our mission",
       },
       {
         href: "/contact",
         label: "Contact",
-        icon: <CustomerService01Icon width={19} color={undefined} />,
+        icon: <HeartHandIcon width={20} height={20} color={undefined} />,
         description: "Get in touch with our team",
       },
       {
         href: "/terms",
         label: "Terms",
-        icon: <BookOpen02Icon width={19} color={undefined} />,
+        icon: <BookOpen02Icon width={20} height={20} color={undefined} />,
         description: "Terms of service and usage",
+        hideFooter: true,
       },
       {
         href: "/privacy",
         label: "Privacy",
-        icon: <BookOpen02Icon width={19} color={undefined} />,
+        icon: <BookOpen02Icon width={20} height={20} color={undefined} />,
         description: "Our privacy policy",
+        hideFooter: true,
       },
     ] as AppLink[],
 
@@ -137,42 +154,42 @@ export const appConfig = {
       {
         href: "https://discord.heygaia.io",
         label: "Discord",
-        icon: <DiscordIcon width={19} />,
+        icon: <DiscordIcon width={20} height={20} color="#5865f2" />,
         external: true,
         description: "Join Discord Community",
       },
       {
         href: "https://x.com/_heygaia",
         label: "Twitter (X)",
-        icon: <TwitterIcon width={19} />,
+        icon: <TwitterIcon width={20} height={20} color="#08a0e9" />,
         external: true,
         description: "Follow us for updates",
       },
       {
         href: "https://github.com/heygaia",
         label: "GitHub",
-        icon: <Github width={19} height={19} />,
+        icon: <Github width={20} height={20} color="white" />,
         external: true,
         description: "Check out our open source projects",
       },
       {
         href: "https://whatsapp.heygaia.io",
         label: "WhatsApp",
-        icon: <WhatsappIcon width={19} />,
+        icon: <WhatsappIcon width={20} height={20} color="#25D366" />,
         external: true,
         description: "Join WhatsApp Community",
       },
       {
         href: "https://youtube.com/@heygaia_io",
         label: "YouTube",
-        icon: <YoutubeIcon width={19} />,
+        icon: <YoutubeIcon width={25} height={25} color="#FF0000" />,
         external: true,
         description: "Subscribe to our YouTube Channel",
       },
       {
         href: "https://www.linkedin.com/company/heygaia",
         label: "LinkedIn",
-        icon: <LinkedinIcon width={19} />,
+        icon: <LinkedinIcon width={20} height={20} color="#0077B5" />,
         external: true,
         description: "Follow our LinkedIn Company Page",
       },
@@ -201,10 +218,9 @@ export const appConfig = {
 
   // Footer mapping - references existing link categories
   footerMapping: {
-    "Get Started": ["auth"],
-    Explore: ["resources", "product"],
+    Product: ["product"],
+    Resources: ["resources"],
     Company: ["company"],
-    Connect: ["connect"],
   } as Record<string, string[]>,
 };
 

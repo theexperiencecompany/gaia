@@ -7,6 +7,31 @@ from typing import List, Optional, Union
 from pydantic import BaseModel, Field, model_validator
 
 
+class EmailProcessingResult(BaseModel):
+    """Result of processing a single email."""
+
+    message_id: str = Field(description="Gmail message ID")
+    success: bool = Field(description="Whether processing succeeded")
+    memory_id: Optional[str] = Field(
+        default=None, description="Mem0 memory ID if successful"
+    )
+    error: Optional[str] = Field(default=None, description="Error message if failed")
+
+
+class EmailBatchResult(BaseModel):
+    """Result of processing a batch of emails."""
+
+    total_emails: int = Field(description="Total emails processed")
+    successful_count: int = Field(description="Number of successful memories created")
+    failed_count: int = Field(description="Number of failed email processings")
+    memory_ids: List[str] = Field(
+        default_factory=list, description="List of created memory IDs"
+    )
+    errors: List[str] = Field(
+        default_factory=list, description="List of errors encountered"
+    )
+
+
 class EmailRequest(BaseModel):
     prompt: str
     subject: Optional[str] = None

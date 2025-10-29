@@ -3,7 +3,7 @@
   color: #0bf;
 }
 
-:not(body),
+/* :not(body),
 :where([data-sonner-toaster]),
 button,
 div,
@@ -11,13 +11,10 @@ input,
 p,
 span,
 text,
-textarea {
-  font-family: "Inter", sans-serif;
-}
-
+textarea,
 * {
-  font-family: "Inter", sans-serif;
-}
+  font-family: var(--font-sans);
+} */
 
 body,
 html,
@@ -137,7 +134,6 @@ li {
 /* Bot messages (from-them style) */
 .imessage-from-them {
   background: #27272a;
-  color: black;
   align-self: flex-start;
 }
 
@@ -292,6 +288,43 @@ li {
   }
 }
 
+@keyframes scale-in {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in-blur {
+  0% {
+    transform: scale(0.8);
+    filter: blur(20px);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-scale-in-blur {
+  animation: scale-in-blur 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
 @media only screen and (max-width: 600px) {
   .chat_bubble,
   .chat_bubble.user div {
@@ -313,4 +346,24 @@ li {
   .searchbar {
     width: 95%;
   }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  border-radius: 100px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 100px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-zinc-700);
+  border-radius: 100px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-zinc-500);
+  border-radius: 100px;
 }

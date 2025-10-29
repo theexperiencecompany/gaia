@@ -9,7 +9,7 @@ import cloudinary.uploader
 from fastapi import HTTPException, UploadFile
 
 from app.config.loggers import image_logger as logger
-from app.langchain.prompts.image_prompts import IMAGE_PROMPT_REFINER
+from app.agents.prompts.image_prompts import IMAGE_PROMPT_REFINER
 from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.image_utils import convert_image_to_text, generate_image
 

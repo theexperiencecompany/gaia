@@ -143,8 +143,6 @@ async def create_user_indexes():
             users_collection.create_index("last_inactive_email_sent", sparse=True),
         )
 
-        logger.info("Created user indexes")
-
     except Exception as e:
         logger.error(f"Error creating user indexes: {str(e)}")
         raise
@@ -174,8 +172,6 @@ async def create_conversation_indexes():
                 [("user_id", 1), ("messages.pinned", 1)]
             ),
         )
-
-        logger.info("Created conversation indexes")
 
     except Exception as e:
         logger.error(f"Error creating conversation indexes: {str(e)}")
@@ -217,8 +213,6 @@ async def create_todo_indexes():
             ),
         )
 
-        logger.info("Created todo indexes")
-
     except Exception as e:
         logger.error(f"Error creating todo indexes: {str(e)}")
         raise
@@ -236,8 +230,6 @@ async def create_project_indexes():
             # For project name searches
             projects_collection.create_index([("user_id", 1), ("name", 1)]),
         )
-
-        logger.info("Created project indexes")
 
     except Exception as e:
         logger.error(f"Error creating project indexes: {str(e)}")
@@ -257,8 +249,6 @@ async def create_goal_indexes():
             goals_collection.create_index([("user_id", 1), ("todo_project_id", 1)]),
             goals_collection.create_index([("user_id", 1), ("todo_id", 1)]),
         )
-
-        logger.info("Created goal indexes")
 
     except Exception as e:
         logger.error(f"Error creating goal indexes: {str(e)}")
@@ -282,8 +272,6 @@ async def create_note_indexes():
             notes_collection.create_index([("plaintext", "text"), ("title", "text")]),
         )
 
-        logger.info("Created note indexes")
-
     except Exception as e:
         logger.error(f"Error creating note indexes: {str(e)}")
         raise
@@ -304,8 +292,6 @@ async def create_file_indexes():
             files_collection.create_index([("user_id", 1), ("content_type", 1)]),
         )
 
-        logger.info("Created file indexes")
-
     except Exception as e:
         logger.error(f"Error creating file indexes: {str(e)}")
         raise
@@ -321,8 +307,6 @@ async def create_mail_indexes():
             # For thread-based queries
             mail_collection.create_index([("message_id", 1)]),
         )
-
-        logger.info("Created mail indexes")
 
     except Exception as e:
         logger.error(f"Error creating mail indexes: {str(e)}")
@@ -343,8 +327,6 @@ async def create_calendar_indexes():
                 [("user_id", 1), ("selected_calendars", 1)]
             ),
         )
-
-        logger.info("Created calendar indexes")
 
     except Exception as e:
         logger.error(f"Error creating calendar indexes: {str(e)}")
@@ -377,8 +359,6 @@ async def create_blog_indexes():
             ),
         )
 
-        logger.info("Created blog indexes")
-
     except Exception as e:
         logger.error(f"Error creating blog indexes: {str(e)}")
         raise
@@ -399,8 +379,6 @@ async def create_notification_indexes():
             notifications_collection.create_index([("user_id", 1), ("type", 1)]),
         )
 
-        logger.info("Created notification indexes")
-
     except Exception as e:
         logger.error(f"Error creating notification indexes: {str(e)}")
         raise
@@ -418,7 +396,6 @@ async def create_reminder_indexes():
             reminders_collection.create_index([("status", 1), ("scheduled_at", 1)]),
             reminders_collection.create_index([("user_id", 1), ("type", 1)]),
         )
-        logger.info("Reminder indexes created successfully")
     except Exception as e:
         logger.error(f"Error creating reminder indexes: {e}")
         raise
@@ -496,8 +473,6 @@ async def create_workflow_indexes():
             ),
         )
 
-        logger.info("Created workflow indexes")
-
     except Exception as e:
         logger.error(f"Error creating workflow indexes: {str(e)}")
         raise
@@ -531,8 +506,6 @@ async def create_payment_indexes():
             plans_collection.create_index([("is_active", 1), ("amount", 1)]),
             plans_collection.create_index([("name", 1), ("duration", 1)]),
         )
-
-        logger.info("Created payment indexes")
 
     except Exception as e:
         logger.error(f"Error creating payment indexes: {str(e)}")
@@ -575,8 +548,6 @@ async def create_usage_indexes():
             ),
         )
 
-        logger.info("Created usage indexes with TTL cleanup (90 days)")
-
     except Exception as e:
         logger.error(f"Error creating usage indexes: {str(e)}")
         raise
@@ -614,8 +585,6 @@ async def create_ai_models_indexes():
             ai_models_collection.create_index("model_provider"),
             ai_models_collection.create_index("inference_provider"),
         )
-
-        logger.info("Created AI models indexes")
 
     except Exception as e:
         logger.error(f"Error creating AI models indexes: {str(e)}")

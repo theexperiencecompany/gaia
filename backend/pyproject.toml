@@ -74,7 +74,6 @@ dependencies = [
   "slowapi>=0.1.9",
   "fastapi-mcp>=0.3.3",
   "langgraph-bigtool>=0.0.2",
-  "mem0ai[graph]>=0.1.110",
   "aio-pika>=9.5.5",
   "aiolimiter>=1.2.1",
   "arq>=0.26.0",
@@ -95,7 +94,7 @@ dependencies = [
   "workos>=5.24.0",
   "asyncpg>=0.30.0",
   "authlib>=1.6.1",
-  "composio>=0.8.7",
+  "composio>=0.8.19",
   "composio-langchain==0.8.0",
   "dodopayments>=1.49.0",
   "langchain-cerebras>=0.5.0",
@@ -109,7 +108,13 @@ dependencies = [
   "stackprinter>=0.2.12",
   "loguru>=0.7.3",
   "fastapi-cache2[redis]>=0.1.8",
+  "orjson>=3.11.3",
   "ujson>=5.11.0",
+  "uvloop>=0.21.0; sys_platform != 'win32'",
+  "mem0ai>=0.1.118",
+  "firecrawl-py>=4.3.6",
+  "tavily-python>=0.7.12",
+  "composio-client>=1.10.0",
 ]
 
 ## To run the tasks use commands like:
@@ -118,6 +123,8 @@ dependencies = [
 [tool.taskipy.tasks]
 dev = "uv run uvicorn app.main:app --port 8000 --reload --log-level warning"
 start = "uv run fastapi run"
+arq = "uv run arq app.worker.WorkerSettings"
+worker = "task arq"
 lint = "uvx ruff check ."
 "lint.fix" = "uvx ruff check . --fix"
 format = "uvx ruff format ."
@@ -126,7 +133,7 @@ schema = "uvx schemathesis run http://localhost:8000/openapi.json"
 "schema.write" = "uvx schemathesis run http://localhost:8000/openapi.json --report-junit-path report.xml"
 bandit = "uvx bandit -r app"
 pip_audit = "uvx pip-audit"
-detect_secrets = "uvx detect-secrets scan --all-files > .secrets.baseline"
+detect_secrets = "uvx detect-secrets scan --all-files" # pragma: allowlist secret
 
 [dependency-groups]
 dev = [
@@ -166,7 +173,6 @@ dev = [
 heavy = [
   "langchain",
   "langchain-community",
-  "playwright",
 ]
 
 [[tool.uv.index]]

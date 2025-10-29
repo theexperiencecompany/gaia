@@ -131,6 +131,20 @@ export const useChatStream = () => {
         return data.error;
       }
 
+      // Handle main response completion marker
+      if (data.main_response_complete) {
+        setIsLoading(false); // Stop loading animation immediately
+        resetLoadingText(); // Clear any loading text
+
+        // Update the bot message to stop its individual loading state
+        updateBotMessage({
+          loading: false,
+        });
+
+        // Continue processing the stream for follow-up actions
+        return;
+      }
+
       if (data.progress) {
         // Handle both old format (string) and new format (object with tool info)
         if (typeof data.progress === "string") {
@@ -199,6 +213,8 @@ export const useChatStream = () => {
         loading: false,
       });
 
+      // Only update loading if it hasn't been set to false already
+      // (main_response_complete would have already set it to false)
       setIsLoading(false);
       resetLoadingText();
       streamController.clear();

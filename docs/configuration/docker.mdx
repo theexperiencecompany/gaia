@@ -51,11 +51,6 @@ docker compose --profile backend-only up
 
 ### Worker Services
 
-**worker** - Email and scheduled tasks
-
-- Uses RabbitMQ for message queuing
-- Environment: `WORKER_TYPE=mail_worker`
-
 **arq_worker** - Background job processing
 
 - Uses Redis for task queue

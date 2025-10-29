@@ -10,7 +10,7 @@ def get_worker_type() -> str:
     Get the current worker type from settings.
 
     Returns:
-        'main_app', 'arq_worker', 'mail_worker', or 'unknown'
+        'main_app', 'arq_worker', or 'unknown'
     """
     return settings.WORKER_TYPE
 
@@ -33,16 +33,6 @@ def is_arq_worker() -> bool:
         True if running in ARQ worker, False otherwise
     """
     return get_worker_type() == "arq_worker"
-
-
-def is_mail_worker() -> bool:
-    """
-    Check if running in mail processing worker.
-
-    Returns:
-        True if running in mail worker, False otherwise
-    """
-    return get_worker_type() == "mail_worker"
 
 
 def has_websocket_pool() -> bool:

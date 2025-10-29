@@ -1,18 +1,53 @@
 #!/usr/bin/env python3
 """
-Script to fix subscription data inconsistencies.
-This script will:
-1. Find subscriptions with invalid plan_ids
-2. Either clean them up or update them to valid plan_ids
+Enhanced subscription data fixer for the AI platform.
+
+This script handles:
+- Finding subscriptions with invalid plan_ids (not present in plans collection)
+- Cleaning up (deleting) subscriptions with invalid plan_ids
+- Updating invalid subscriptions to valid plan_ids (GAIA Pro Monthly/Yearly)
+- Displaying plan and subscription details for review
+- Maintaining data integrity and providing detailed logging
+
+IMPORTANT: Run this script from the correct directory!
+
+1. If running locally:
+    cd /path/to/your/gaia/backend
+    python scripts/fix_subscription_data.py
+
+2. If running inside Docker container:
+    cd /app
+    python scripts/fix_subscription_data.py
+
+3. Alternative Docker approach (set PYTHONPATH):
+    PYTHONPATH=/app python scripts/fix_subscription_data.py
+
+4. Run as module (from app directory):
+    python -m scripts.fix_subscription_data
+
+Script options (interactive):
+1. Delete invalid subscriptions (cleanup)
+2. Update invalid subscriptions to GAIA Pro Monthly
+3. Update invalid subscriptions to GAIA Pro Yearly
+4. Show details and exit
 """
 
 import asyncio
+import sys
 from datetime import datetime
-from bson import ObjectId
+from pathlib import Path
 
-from app.db.mongodb.database import init_database
-from app.db.mongodb.collections import subscriptions_collection, plans_collection
-from app.config.loggers import general_logger as logger
+# Add the backend directory to Python path so we can import from app
+backend_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(backend_dir))
+
+from app.config.loggers import general_logger as logger  # noqa: E402
+from app.db.mongodb.collections import (  # noqa: E402
+    plans_collection,
+    subscriptions_collection,
+)
+from app.db.mongodb.mongodb import init_mongodb  # noqa: E402
+from bson import ObjectId  # noqa: E402
 
 
 async def find_invalid_subscriptions():
@@ -20,7 +55,9 @@ async def find_invalid_subscriptions():
     try:
         # Get all active plan IDs
         plans_cursor = plans_collection.find({}, {"_id": 1})
-        valid_plan_ids = set(str(plan["_id"]) async for plan in plans_cursor)
+        valid_plan_ids = set()
+        async for plan in plans_cursor:
+            valid_plan_ids.add(str(plan["_id"]))
 
         print(f"✅ Found {len(valid_plan_ids)} valid plan IDs:")
         for plan_id in valid_plan_ids:
@@ -128,7 +165,7 @@ async def main():
     print("=" * 50)
 
     # Initialize database
-    await init_database()
+    init_mongodb()
 
     # Show available plans
     await show_plans()

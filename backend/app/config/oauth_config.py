@@ -54,9 +54,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         id="google_calendar",
         name="Google Calendar",
         description="Schedule and manage your calendar events seamlessly",
-        icons=[
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Google_Calendar_icon_%282020%29.svg/640px-Google_Calendar_icon_%282020%29.svg.png"
-        ],
+        icons=["/images/icons/googlecalendar.webp"],
         category="productivity",
         provider="google",
         scopes=[
@@ -76,9 +74,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         id="google_docs",
         name="Google Docs",
         description="Create and edit documents with AI assistance",
-        icons=[
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/6/66/Google_Docs_2020_Logo.svg/640px-Google_Docs_2020_Logo.svg.png"
-        ],
+        icons=["/images/icons/google_docs.webp"],
         category="productivity",
         provider="google",
         scopes=[
@@ -94,9 +90,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         id="gmail",
         name="Gmail",
         description="Manage emails, compose messages, and organize your inbox",
-        icons=[
-            "https://upload.wikimedia.org/wikipedia/commons/7/7e/Gmail_icon_%282020%29.svg"
-        ],
+        icons=["/images/icons/gmail.svg"],
         category="communication",
         provider="gmail",
         scopes=[
@@ -108,7 +102,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="gmail",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_Tnn55kCyinEJ", toolkit="GMAIL"
+            auth_config_id="ac_svLPDmjcTVMX", toolkit="GMAIL"
         ),
         associated_triggers=[
             TriggerConfig(
@@ -123,9 +117,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         id="google_drive",
         name="Google Drive",
         description="Access and manage your files in the cloud",
-        icons=[
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Google_Drive_icon_%282020%29.svg/640px-Google_Drive_icon_%282020%29.svg.png"
-        ],
+        icons=["/images/icons/drive.webp"],
         category="storage",
         provider="google",
         scopes=[
@@ -142,9 +134,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         id="notion",
         name="Notion",
         description="Manage pages, databases, and workspace content with AI",
-        icons=[
-            "https://upload.wikimedia.org/wikipedia/commons/4/45/Notion_app_logo.png"
-        ],
+        icons=["/images/icons/notion.webp"],
         category="productivity",
         provider="notion",
         scopes=[],
@@ -159,9 +149,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         id="twitter",
         name="Twitter",
         description="Post tweets, read timelines, and manage your account with AI-powered tools",
-        icons=[
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ce/X_logo_2023.svg/600px-X_logo_2023.svg.png?20250120013756"
-        ],
+        icons=["/images/icons/twitter.webp"],
         category="social",
         provider="twitter",
         scopes=[],
@@ -176,9 +164,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         id="google_sheets",
         name="Google Sheets",
         description="Create, read, and update Google Sheets with AI-powered tools for automation and data management",
-        icons=[
-            "https://upload.wikimedia.org/wikipedia/commons/a/ae/Google_Sheets_2020_Logo.svg"
-        ],
+        icons=["/images/icons/google_sheets.webp"],
         category="productivity",
         provider="google_sheets",
         scopes=[],
@@ -193,9 +179,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         id="linkedin",
         name="LinkedIn",
         description="Share posts, engage with your network, and manage your professional presence using AI-powered tools",
-        icons=[
-            "https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png"
-        ],
+        icons=["/images/icons/linkedin.svg"],
         category="social",
         provider="linkedin",
         scopes=[],

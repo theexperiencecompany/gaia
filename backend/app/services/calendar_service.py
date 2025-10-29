@@ -93,6 +93,7 @@ async def fetch_calendar_events(
     page_token: Optional[str] = None,
     time_min: Optional[str] = None,
     time_max: Optional[str] = None,
+    max_results: int = 20,
 ) -> Dict[str, Any]:
     """
     Fetch events for a specific calendar.
@@ -103,6 +104,7 @@ async def fetch_calendar_events(
         page_token (Optional[str]): Pagination token.
         time_min (Optional[str]): Start time filter.
         time_max (Optional[str]): End time filter.
+        max_results (int): Maximum number of events to return (default: 20).
 
     Returns:
         dict: The events data.
@@ -111,7 +113,7 @@ async def fetch_calendar_events(
     headers = {"Authorization": f"Bearer {access_token}"}
 
     params: Dict[str, Union[str, int, bool]] = {
-        "maxResults": 250,  # Increased to get more events per request
+        "maxResults": max_results,
         "singleEvents": True,
         "orderBy": "startTime",
     }
@@ -159,6 +161,7 @@ async def get_calendar_events(
     selected_calendars: Optional[List[str]] = None,
     time_min: Optional[str] = None,
     time_max: Optional[str] = None,
+    max_results: int = 20,
 ) -> Dict[str, Any]:
     """
     Get events from the user's selected calendars with pagination and preferences.
@@ -171,12 +174,11 @@ async def get_calendar_events(
         selected_calendars (Optional[List[str]]): List of selected calendar IDs.
         time_min (Optional[str]): Start time filter.
         time_max (Optional[str]): End time filter.
+        max_results (int): Maximum number of events to return per calendar (default: 20).
 
     Returns:
         dict: A dictionary containing events, nextPageToken, and the selected calendar IDs.
     """
-    # Don't set any default time filters - let the frontend control the time range
-
     # Get valid access token if not provided
     if not access_token:
         token = await token_repository.get_token(
@@ -229,7 +231,9 @@ async def get_calendar_events(
     # Create tasks for fetching events concurrently.
     token_str = access_token
     tasks = [
-        fetch_calendar_events(cal["id"], token_str, page_token, time_min, time_max)
+        fetch_calendar_events(
+            cal["id"], token_str, page_token, time_min, time_max, max_results
+        )
         for cal in selected_cal_objs
     ]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -284,8 +288,6 @@ async def get_calendar_events_by_id(
     Returns:
         dict: A dictionary containing the events and a nextPageToken if available.
     """
-    # Don't set any default time filters - let the frontend control the time range
-
     events_data = await fetch_calendar_events(
         calendar_id, access_token, page_token, time_min, time_max
     )

@@ -2,10 +2,10 @@
 
 from typing import List
 
+from app.agents.llm.client import init_llm
+from app.agents.prompts.trigger_prompts import generate_trigger_context
+from app.agents.templates.workflow_template import WORKFLOW_GENERATION_TEMPLATE
 from app.config.loggers import general_logger as logger
-from app.langchain.llm.client import init_llm
-from app.langchain.prompts.trigger_prompts import generate_trigger_context
-from app.langchain.templates.workflow_template import WORKFLOW_GENERATION_TEMPLATE
 from app.models.workflow_models import WorkflowStep
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
@@ -30,9 +30,9 @@ class WorkflowGenerationService:
             parser = PydanticOutputParser(pydantic_object=WorkflowPlan)
 
             # Import here to avoid circular dependency at module level
-            from app.langchain.tools.core.registry import (
-                tool_registry,
-            )
+            from app.agents.tools.core.registry import get_tool_registry
+
+            tool_registry = await get_tool_registry()
 
             # Create structured tool information with categories
             tools_with_categories = []
@@ -56,25 +56,27 @@ class WorkflowGenerationService:
             # Initialize LLM
             llm = init_llm()
 
-            # Create chain using the template
-            chain = WORKFLOW_GENERATION_TEMPLATE | llm | parser
-
-            # Generate workflow plan
-            result = await chain.ainvoke(
-                {
-                    "description": description,
-                    "title": title,
-                    "trigger_context": trigger_context,
-                    "tools": "\n".join(tools_with_categories),
-                    "categories": ", ".join(category_names),
-                    "format_instructions": parser.get_format_instructions(),
-                }
+            # Format the prompt using the template
+            formatted_prompt = WORKFLOW_GENERATION_TEMPLATE.format(
+                description=description,
+                title=title,
+                trigger_context=trigger_context,
+                tools="\n".join(tools_with_categories),
+                categories=", ".join(category_names),
+                format_instructions=parser.get_format_instructions(),
             )
+
+            # Generate workflow plan using LLM directly
+            llm_response = await llm.ainvoke(formatted_prompt)
+
+            # Parse the response content - handle different response types
+            response_content = getattr(llm_response, "content", str(llm_response))
+            result = parser.parse(response_content)
 
             # Convert to list of dictionaries for storage
             steps_data = []
             for i, step in enumerate(result.steps, 1):
-                steps_data.append(step.model_dump())
+                steps_data.append(step.model_dump(mode="json"))
 
             logger.info(f"Generated {len(steps_data)} workflow steps for: {title}")
             return steps_data

@@ -1,5 +1,4 @@
 @import "tailwindcss" source("../../../src");
-@import "./globals.css";
 
 /* HeroUI */
 @source '../../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}';
@@ -8,8 +7,8 @@
 
 @theme {
   /* Font Family */
-  --font-family-inter: "var(--font-inter)", sans-serif;
-  --font-family-sans: "var(--font-inter)", system-ui, sans-serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-serif: var(--font-instrument-serif), serif;
 
   /* Colors */
   --color-primary: #00bbff;
@@ -268,6 +267,27 @@
     100% {
       transform: scale(1);
       opacity: 0;
+    }
+  }
+}
+
+@theme inline {
+  --animate-marquee: marquee var(--duration) infinite linear;
+  --animate-marquee-vertical: marquee-vertical var(--duration) linear infinite;
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(calc(-100% - var(--gap)));
+    }
+  }
+  @keyframes marquee-vertical {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(calc(-100% - var(--gap)));
     }
   }
 }

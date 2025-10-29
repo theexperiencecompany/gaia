@@ -180,7 +180,7 @@ export default function ComposerLeft({
           <Button
             size="icon"
             className={cn(
-              "group w- relative h-9 rounded-full border-none bg-zinc-700 p-0 text-zinc-400 hover:bg-zinc-600/90",
+              "group relative flex h-9 w-9 items-center justify-center rounded-full border-none bg-zinc-700 p-0 text-zinc-400 hover:bg-zinc-600/90",
               isLoading ? "cursor-wait!" : "",
               isSlashCommandDropdownOpen &&
                 "border-primary/50 bg-primary/20 text-primary",
@@ -188,7 +188,12 @@ export default function ComposerLeft({
             disabled={isLoading}
             onClick={onOpenSlashCommandDropdown}
           >
-            <ToolIcon className="min-h-[20px] min-w-[20px]" color={undefined} />
+            <ToolIcon
+              className="min-h-[20px] min-w-[20px]"
+              color={undefined}
+              width={30}
+              height={30}
+            />
             {isSlashCommandDropdownOpen && (
               <span
                 className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary transition"

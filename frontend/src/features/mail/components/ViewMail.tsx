@@ -9,6 +9,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import Typography from "@tiptap/extension-typography";
 import Underline from "@tiptap/extension-underline";
 import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 import he from "he";
 import { Reply, ReplyAll, Send, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -202,7 +203,7 @@ export default function ViewEmail({
 
   const editor = useEditor({
     extensions: [
-      // TODO: StarterKit,
+      StarterKit,
       Underline,
       Link,
       Typography,

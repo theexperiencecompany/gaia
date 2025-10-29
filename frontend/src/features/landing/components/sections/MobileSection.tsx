@@ -47,7 +47,7 @@ export default function MobileSection() {
             >
               <div className="flex flex-row items-center gap-4">
                 <Image
-                  src="https://upload.wikimedia.org/wikipedia/commons/3/31/Apple_logo_white.svg"
+                  src="/images/icons/apple.svg"
                   alt="Apple Icon"
                   width={30}
                   height={30}
@@ -70,7 +70,7 @@ export default function MobileSection() {
             >
               <div className="flex flex-row items-center gap-4">
                 <Image
-                  src="https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_Play_2022_icon.svg"
+                  src="/images/icons/google_play.svg"
                   alt="Play Store Icon"
                   width={27}
                   height={27}

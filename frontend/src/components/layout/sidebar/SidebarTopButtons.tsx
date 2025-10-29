@@ -13,10 +13,19 @@ import {
   NotificationIcon,
   Target04Icon,
 } from "@/components/shared/icons";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/shadcn/accordion";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { useRefreshTrigger } from "@/stores/notificationStore";
+import { useMenuAccordion } from "@/stores/uiStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";
+
+import { accordionItemStyles } from "./constants";
 
 export default function SidebarTopButtons() {
   const pathname = usePathname();
@@ -26,6 +35,8 @@ export default function SidebarTopButtons() {
     status: NotificationStatus.DELIVERED,
     limit: 50,
   });
+  const { isExpanded: isMenuExpanded, setExpanded: setMenuExpanded } =
+    useMenuAccordion();
 
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -114,44 +125,63 @@ export default function SidebarTopButtons() {
         </Link>
       )}
 
-      <div className="mb-3 flex flex-col gap-0.5">
-        {buttonData.map(({ route, icon, label }, index) => (
-          <div key={index} className="relative">
-            <Button
-              size="sm"
-              variant="light"
-              color={isRouteActive(route) ? "primary" : "default"}
-              className={`w-full justify-start text-sm ${
-                isRouteActive(route) ? "text-primary" : "text-zinc-400"
-              }`}
-              as={Link}
-              href={route}
-            >
-              <div className="flex w-full items-center gap-2">
-                <div className="flex w-[17px] min-w-[17px] items-center justify-center">
-                  <span className="text-xs">
-                    {React.cloneElement(icon, {
-                      color: isRouteActive(route) ? "#00bbff" : "#9b9b9b",
-                      width: 18,
-                      height: 18,
-                    })}
-                  </span>
-                </div>
-                <span className="w-[calc(100%-45px)] max-w-[200px] truncate text-left">
-                  {label}
-                </span>
+      <div>
+        <Accordion
+          type="multiple"
+          className="w-full p-0"
+          defaultValue={isMenuExpanded ? ["menu"] : []}
+          onValueChange={(value) => {
+            setMenuExpanded(value.includes("menu"));
+          }}
+        >
+          <AccordionItem value="menu" className={accordionItemStyles.item}>
+            <AccordionTrigger className={accordionItemStyles.trigger}>
+              Menu
+            </AccordionTrigger>
+            <AccordionContent className={accordionItemStyles.content}>
+              <div className="flex w-full flex-col gap-0.5">
+                {buttonData.map(({ route, icon, label }, index) => (
+                  <div key={index} className="relative">
+                    <Button
+                      size="sm"
+                      variant="light"
+                      color={isRouteActive(route) ? "primary" : "default"}
+                      className={`w-full justify-start text-sm ${
+                        isRouteActive(route) ? "text-primary" : "text-zinc-400"
+                      }`}
+                      as={Link}
+                      href={route}
+                    >
+                      <div className="flex w-full items-center gap-2">
+                        <div className="flex w-[17px] min-w-[17px] items-center justify-center">
+                          <span className="text-xs">
+                            {React.cloneElement(icon, {
+                              color: isRouteActive(route)
+                                ? "#00bbff"
+                                : "#9b9b9b",
+                              width: 18,
+                              height: 18,
+                            })}
+                          </span>
+                        </div>
+                        <span className="w-[calc(100%-45px)] max-w-[200px] truncate text-left">
+                          {label}
+                        </span>
+                      </div>
+                    </Button>
+                    {route === "/notifications" && unreadCount > 0 && (
+                      <div className="absolute top-0 right-2 flex h-full items-center justify-center">
+                        <div className="flex aspect-square h-4 w-4 items-center justify-center rounded-full bg-primary text-xs font-medium text-zinc-950">
+                          {unreadCount > 99 ? "9+" : unreadCount}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
-            </Button>
-            {/* Show unread badge for notifications */}
-            {route === "/notifications" && unreadCount > 0 && (
-              <div className="absolute top-0 right-2 flex h-full items-center justify-center">
-                <div className="flex aspect-square h-4 w-4 items-center justify-center rounded-full bg-primary text-xs font-medium text-zinc-950">
-                  {unreadCount > 99 ? "9+" : unreadCount}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
 
       {/*

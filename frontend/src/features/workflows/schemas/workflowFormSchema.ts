@@ -4,7 +4,7 @@ import type { Workflow } from "@/types/features/workflowTypes";
 
 // Define the base trigger config schema
 const baseTriggerConfigSchema = z.object({
-  type: z.enum(["manual", "schedule", "email", "calendar"]),
+  type: z.enum(["manual", "schedule", "email"]),
   enabled: z.boolean(),
 });
 
@@ -24,17 +24,11 @@ const emailTriggerConfigSchema = baseTriggerConfigSchema.extend({
   type: z.literal("email"),
 });
 
-const calendarTriggerConfigSchema = baseTriggerConfigSchema.extend({
-  type: z.literal("calendar"),
-  calendar_patterns: z.array(z.string()).optional(),
-});
-
 // Union type for trigger config
 const triggerConfigSchema = z.discriminatedUnion("type", [
   manualTriggerConfigSchema,
   scheduleTriggerConfigSchema,
   emailTriggerConfigSchema,
-  calendarTriggerConfigSchema,
 ]);
 
 // Main workflow form schema
@@ -71,15 +65,9 @@ export const workflowToFormData = (workflow: Workflow): WorkflowFormData => ({
   title: workflow.title,
   description: workflow.description,
   activeTab:
-    workflow.trigger_config.type === "email" ||
-    workflow.trigger_config.type === "calendar"
+    workflow.trigger_config.type === "email"
       ? "trigger"
       : (workflow.trigger_config.type as "manual" | "schedule"),
-  selectedTrigger:
-    workflow.trigger_config.type === "email"
-      ? "gmail"
-      : workflow.trigger_config.type === "calendar"
-        ? "calendar"
-        : "",
+  selectedTrigger: workflow.trigger_config.type === "email" ? "gmail" : "",
   trigger_config: workflow.trigger_config,
 });

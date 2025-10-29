@@ -47,26 +47,73 @@ def get_context_window(
 
 def transform_gmail_message(msg) -> Dict:
     """Transform Gmail API message to frontend-friendly format while keeping all raw data for debugging."""
-    headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+    """
+    Transform a Gmail/Composio message to a frontend-friendly format.
+    Handles both Gmail API and Composio message formats.
+    """
+    from dateutil.parser import parse as parse_date
 
-    timestamp = int(msg.get("internalDate", 0)) / 1000
-    time = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+    def get_sender(m):
+        return m.get("from") or m.get("sender") or ""
 
-    return {
-        **msg,
-        "id": msg.get("id", ""),
-        "threadId": msg.get("threadId", ""),
-        "from": headers.get("From", ""),
-        "to": headers.get("To", ""),
-        "cc": headers.get("Cc", ""),
-        "replyTo": headers.get("Reply-To", ""),
-        "subject": headers.get("Subject", ""),
-        "time": time,
-        "snippet": msg.get("snippet", ""),
-        "body": decode_message_body(msg),
-        "isThread": bool(msg.get("threadId") and len(msg.get("labelIds", [])) > 0),
-        # "raw": msg,
-    }
+    def get_time(m):
+        # Prefer 'date', then 'messageTimestamp', then fallback
+        if m.get("date"):
+            return m["date"]
+        ts = m.get("messageTimestamp")
+        if ts:
+            try:
+                return parse_date(ts).strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                return ts
+        # Gmail API fallback
+        if m.get("internalDate"):
+            try:
+                timestamp = int(m["internalDate"]) / 1000
+                return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                return str(m["internalDate"])
+        return ""
+
+    def transform_composio(m):
+        return {
+            **m,
+            "id": m.get("messageId", ""),
+            "threadId": m.get("threadId", ""),
+            "from": get_sender(m),
+            "to": m.get("to", ""),
+            "cc": m.get("cc", ""),
+            "replyTo": m.get("replyTo", ""),
+            "subject": m.get("subject", ""),
+            "time": get_time(m),
+            "snippet": m.get("snippet", m.get("messageText", "")),
+            "body": m.get("body", m.get("messageText", "")),
+            "isThread": bool(m.get("threadId") and len(m.get("labelIds", [])) > 0),
+        }
+
+    def transform_gmail_api(m):
+        headers = {
+            h["name"]: h["value"] for h in m.get("payload", {}).get("headers", [])
+        }
+        return {
+            **m,
+            "id": m.get("id", ""),
+            "threadId": m.get("threadId", ""),
+            "from": headers.get("From", ""),
+            "to": headers.get("To", ""),
+            "cc": headers.get("Cc", ""),
+            "replyTo": headers.get("Reply-To", ""),
+            "subject": headers.get("Subject", ""),
+            "time": get_time(m),
+            "snippet": m.get("snippet", ""),
+            "body": decode_message_body(m),
+            "isThread": bool(m.get("threadId") and len(m.get("labelIds", [])) > 0),
+        }
+
+    # Detect and transform
+    if "messageId" in msg and "messageText" in msg:
+        return transform_composio(msg)
+    return transform_gmail_api(msg)
 
 
 def decode_message_body(msg):

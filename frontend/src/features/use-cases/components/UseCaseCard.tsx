@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { ArrowUpRight, Plus } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -63,24 +63,21 @@ export default function UseCaseCard({
 
   const isLoading = action_type === "workflow" && isCreatingWorkflow;
   const footerContent = (
-    <div className="flex w-full flex-col gap-3">
+    <div className="mt-1 flex w-full flex-col justify-end gap-3">
       <Button
-        color="default"
+        color="primary"
         size="sm"
-        startContent={
-          !isLoading ? (
-            action_type === "prompt" ? (
-              <ArrowUpRight width={16} height={16} />
-            ) : (
-              <Plus width={16} height={16} />
-            )
-          ) : undefined
+        variant="flat"
+        className="ml-auto w-fit text-primary"
+        endContent={
+          (isLoading ? undefined : action_type === "prompt") && (
+            <ArrowUpRight width={16} height={16} />
+          )
         }
-        className="w-full"
         isLoading={isLoading}
         onPress={handleAction}
       >
-        {action_type === "prompt" ? "Insert Prompt" : "Create Workflow"}
+        {action_type === "prompt" ? "Insert Prompt" : "Create"}
       </Button>
     </div>
   );
@@ -96,6 +93,7 @@ export default function UseCaseCard({
       footerContent={footerContent}
       onClick={isCardClickable ? handleAction : undefined}
       showArrowIcon={false}
+      useBlurEffect={true}
     />
   );
 }

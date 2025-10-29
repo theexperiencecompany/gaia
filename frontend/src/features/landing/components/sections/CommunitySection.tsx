@@ -1,62 +1,46 @@
 import Link from "next/link";
+import React from "react";
 
-import { DiscordIcon, Github, TwitterIcon, WhatsappIcon } from "@/components";
-import { RaisedButton } from "@/components/ui/shadcn/raised-button";
+import { SOCIAL_LINKS } from "./FinalSection";
 
 export default function CommunitySection() {
   return (
-    <div className="flex h-[50vh] flex-col items-center justify-center gap-3 p-20">
-      <div className="relative z-10 text-center text-4xl font-medium sm:text-6xl">
-        Join our Community
-      </div>
-      <div className="relative z-10 max-w-(--breakpoint-md) text-center text-4xl font-light text-foreground-400 sm:text-3xl">
-        Connect with others and stay in the loop
-      </div>
-
-      <div className="mt-2 flex items-center gap-2">
-        <Link
-          href={"https://https://twitter.com/_heygaia"}
-          aria-label="Twitter Link"
-        >
-          <RaisedButton
-            color="#1DA1F2"
-            className="rounded-xl text-black!"
-            size={"icon"}
-            aria-label="Twitter Link Button"
-          >
-            <TwitterIcon width={20} height={20} />
-          </RaisedButton>
-        </Link>
-        <Link href={"https://whatsapp.heygaia.io"} aria-label="WhatsApp Link">
-          <RaisedButton
-            color="#25D366"
-            className="rounded-xl text-black!"
-            size={"icon"}
-            aria-label="WhatsApp Link Button"
-          >
-            <WhatsappIcon width={20} height={20} />
-          </RaisedButton>
-        </Link>
-        <Link href={"https://discord.heygaia.io"} aria-label="Discord Link">
-          <RaisedButton
-            color="#5865f2"
-            className="rounded-xl text-black!"
-            aria-label="Discord Link Button"
-            size={"icon"}
-          >
-            <DiscordIcon width={20} height={20} />
-          </RaisedButton>
-        </Link>
-        <Link href={"https://github.com/heygaia/gaia"} aria-label="GitHub Link">
-          <RaisedButton
-            className="rounded-xl text-black! before:rounded-xl hover:scale-110"
-            color="#a6a6a6"
-            aria-label="GitHub Link Button"
-            size={"icon"}
-          >
-            <Github width={20} height={20} />
-          </RaisedButton>
-        </Link>
+    <div className="flex w-full items-center justify-center gap-5 py-4">
+      <div className="mx-auto grid w-full max-w-7xl grid-cols-4 gap-6">
+        {SOCIAL_LINKS.map(
+          (
+            { href, ariaLabel, icon, label, username, color, description },
+            index,
+          ) => {
+            return (
+              <Link
+                key={index}
+                href={href}
+                aria-label={ariaLabel}
+                className={`flex justify-start p-4 transition ${color} group w-full flex-row items-center gap-4 rounded-3xl bg-zinc-900 hover:bg-zinc-800`}
+              >
+                <div
+                  className="flex items-center justify-center rounded-2xl border-t-1 border-r-1 border-white/30 p-2 transition group-hover:scale-110 group-hover:-rotate-8"
+                  style={{ backgroundColor: color }}
+                >
+                  {icon &&
+                    React.cloneElement(icon, {
+                      className: "",
+                      width: 40,
+                      height: 40,
+                      color: "",
+                    })}
+                </div>
+                <div className="flex flex-col items-start justify-center">
+                  <div className="text-lg font-semibold">
+                    {username || label}
+                  </div>
+                  <div className="text-sm text-zinc-400">{description}</div>
+                </div>
+              </Link>
+            );
+          },
+        )}
       </div>
     </div>
   );

@@ -102,8 +102,8 @@ def create_agent(
     limit: int = 2,
     filter: dict[str, Any] | None = None,
     namespace_prefix: tuple[str, ...] = ("tools",),
-    retrieve_tools_function: Callable | None = None,
-    retrieve_tools_coroutine: Callable | None = None,
+    retrieve_tools_function: Callable[..., list[str]] | None = None,
+    retrieve_tools_coroutine: Callable[..., Awaitable[list[str]]] | None = None,
     context_schema=None,
     agent_name: str = "main_agent",
     sub_agents: dict[str, Union[CompiledStateGraph, RunnableCallable]] = {},
@@ -181,6 +181,7 @@ def create_agent(
 
         # Set the name for the response for filtering
         response.name = agent_name
+        response.additional_kwargs = {"visible_to": {agent_name}}
         return {"messages": [response]}  # type: ignore[return-value]
 
     async def acall_model(
@@ -207,6 +208,7 @@ def create_agent(
 
         # Set the name for the response for filtering
         response.name = agent_name
+        response.additional_kwargs = {"visible_to": {agent_name}}
         return {"messages": [response]}  # type: ignore[return-value]
 
     tool_node = ToolNode(tool for tool in tool_registry.values())  # type: ignore[arg-type]

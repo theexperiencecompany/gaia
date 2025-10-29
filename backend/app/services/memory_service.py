@@ -1,9 +1,11 @@
 """Memory service layer for handling all memory operations."""
 
+from datetime import datetime
+import time
 from typing import Any, Dict, List, Optional
 
+from app.agents.memory.client import memory_client_manager
 from app.config.loggers import llm_logger as logger
-from app.memory.client import memory_client_manager
 from app.models.memory_models import (
     MemoryEntry,
     MemoryRelation,
@@ -167,16 +169,10 @@ class MemoryService:
         Returns:
             List of relationship dictionaries
         """
-        # For Mem0 API v2, relationships are in the 'entities' format
         if isinstance(response, dict):
-            # v2 API returns relationships as 'entities'
-            entities = response.get("entities", [])
-            if entities:
-                return entities
-
-            # Fallback to older formats if needed
             return (
                 response.get("relations", [])
+                or response.get("entities", [])
                 or response.get("relationships", [])
                 or response.get("graph", {}).get("relationships", [])
             )
@@ -261,16 +257,21 @@ class MemoryService:
             return None
 
         try:
+            # Add timestamp to metadata
+            if metadata is None:
+                metadata = {}
+            metadata["timestamp"] = datetime.now().isoformat()
+
             # Store as a simple user message for mem0 to infer memory from
             client = await self._get_client()
             result = await client.add(
                 messages=[{"role": "user", "content": content}],
                 user_id=user_id,
-                metadata=metadata or {},
+                metadata=metadata,
                 infer=True,
                 version="v2",
                 run_id=conversation_id,
-                output_format="v1.1",
+                timestamp=int(time.time()),
             )
 
             self.logger.info(f"Memory stored for user {user_id}")
@@ -286,7 +287,7 @@ class MemoryService:
                 return None
 
             if not results_list:
-                self.logger.warning("No results returned from mem0 add")
+                self.logger.debug("No results returned from mem0 add")
                 return None
 
             # Get the first result (usually only one when adding)
@@ -330,29 +331,35 @@ class MemoryService:
 
         try:
             client = await self._get_client()
-            results = await client.search(
+            response = await client.search(
                 query=query,
-                filters={"AND": [{"user_id": user_id}, {"run_id": "*"}]},
+                user_id=user_id,
                 limit=limit,
                 keyword_search=True,
                 rerank=True,
-                version="v2",
+                output_format="v1.1",
             )
 
-            # Response is a list of memory objects
-            if not isinstance(results, list):
+            # Check if response has graph data
+            memories_list = []
+
+            if isinstance(response, dict):
+                # v1.1 format with potential graph data
+                memories_list = response.get("results", response.get("memories", []))
+            elif isinstance(response, list):
+                # Fallback to simple list format
+                memories_list = response
+            else:
                 self.logger.warning(
-                    f"Unexpected response format from mem0 search: {type(results)}"
+                    f"Unexpected response format from mem0 search: {type(response)}"
                 )
                 return MemorySearchResult()
 
-            memories = self._parse_memory_list(results, user_id)
-
+            # Parse memories and relationships
+            memories = self._parse_memory_list(memories_list, user_id)
             return MemorySearchResult(
                 memories=memories,
                 total_count=len(memories),
-                page=1,
-                page_size=limit,
             )
 
         except Exception as e:
@@ -362,16 +369,12 @@ class MemoryService:
     async def get_all_memories(
         self,
         user_id: Optional[str],
-        page: int = 1,
-        page_size: int = 10,
     ) -> MemorySearchResult:
         """
-        Get all memories for a user with pagination.
+        Get all memories for a user.
 
         Args:
             user_id: User identifier
-            page: Page number
-            page_size: Results per page
 
         Returns:
             MemorySearchResult with user's memories
@@ -382,11 +385,9 @@ class MemoryService:
 
         try:
             client = await self._get_client()
-            # Request with graph enabled to get relationships
             response = await client.get_all(
-                filters={"AND": [{"user_id": user_id}, {"run_id": "*"}]},
-                version="v2",
-                output_format="v1.1",  # Use format that includes graph data
+                user_id=user_id,
+                output_format="v1.1",
             )
 
             # Check if response has graph data
@@ -401,7 +402,7 @@ class MemoryService:
                 # Simple list format
                 memories_list = response
             else:
-                self.logger.warning(
+                self.logger.error(
                     f"Unexpected response format from mem0 get_all: {type(response)}"
                 )
                 return MemorySearchResult()
@@ -410,23 +411,14 @@ class MemoryService:
             memory_entries = self._parse_memory_list(memories_list, user_id)
             relationships = self._parse_relationships(relationships_list)
 
-            # Calculate pagination
-            start_index = (page - 1) * page_size
-            end_index = start_index + page_size
-            paginated_memories = memory_entries[start_index:end_index]
-
             self.logger.info(
                 f"Successfully processed {len(memory_entries)} memories and {len(relationships)} relationships for user {user_id}, "
-                f"returning page {page} ({len(paginated_memories)} items)"
             )
 
             return MemorySearchResult(
-                memories=paginated_memories,
+                memories=memory_entries,
                 relations=relationships,
                 total_count=len(memory_entries),
-                page=page,
-                page_size=page_size,
-                has_next=end_index < len(memory_entries),
             )
 
         except Exception as e:

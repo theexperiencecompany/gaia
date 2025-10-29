@@ -4,7 +4,7 @@ Application factory for the GAIA FastAPI application.
 This module provides functions to create and configure the FastAPI application.
 """
 
-from app.api.v1.router.health import router as health_router
+from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.routes import router as api_router
 from app.config.settings import settings
 from app.core.lifespan import lifespan

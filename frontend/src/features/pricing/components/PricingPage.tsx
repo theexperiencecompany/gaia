@@ -2,25 +2,36 @@
 
 import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
+import Image from "next/image";
 
+import FinalSection from "@/features/landing/components/sections/FinalSection";
+import LargeHeader from "@/features/landing/components/shared/LargeHeader";
+import { ComparisonTable } from "@/features/pricing/components/ComparisonTable";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 
+import { FAQAccordion } from "./FAQAccordion";
 export default function PricingPage() {
   return (
-    <div className="flex min-h-screen w-screen flex-col items-center justify-center py-28">
-      <div className="flex flex-col items-center gap-2">
-        <div className="mb-2 flex w-full flex-col items-center gap-3">
-          <Chip color="primary" size="lg" variant="light">
-            Pricing
-          </Chip>
+    <div className="flex min-h-screen w-screen flex-col items-center justify-center pt-[40vh]">
+      <div className="absolute inset-0 top-0 z-0 h-[65vh] w-[102%]">
+        <Image
+          src={"/images/wallpapers/space.webp"}
+          alt="GAIA Pricing page Wallpaper"
+          sizes="100vw"
+          priority
+          fill
+          className="aspect-video object-cover object-bottom opacity-80"
+        />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-background via-background to-transparent" />
+      </div>
 
-          <span className="w-full px-6 text-center text-5xl font-medium">
-            GAIA - Your Personal AI Assistant
-          </span>
-          <span className="text-md text-center text-foreground-500">
-            Compare plans & features
-          </span>
-        </div>
+      <div className="relative z-[1] flex flex-col items-center gap-2">
+        <LargeHeader
+          centered
+          chipText="Pricing"
+          headingText="Level Up"
+          subHeadingText="Choose the plan that matches your ambition"
+        />
 
         <div className="mt-5 flex w-full flex-col items-center font-medium">
           <Tabs aria-label="Options" radius="full">
@@ -43,7 +54,9 @@ export default function PricingPage() {
           </Tabs>
         </div>
 
-        {/* <FAQAccordion /> */}
+        <ComparisonTable />
+        <FAQAccordion />
+        <FinalSection />
       </div>
     </div>
   );

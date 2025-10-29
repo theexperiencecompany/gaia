@@ -13,7 +13,7 @@ from app.db.chromadb import ChromaClient
 from app.db.mongodb.collections import notes_collection
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.utils import serialize_document
-from app.langchain.prompts.convo_prompts import NOTES_PROMPT
+from app.agents.prompts.convo_prompts import NOTES_PROMPT
 from app.models.notes_models import NoteModel, NoteResponse
 from app.utils.embedding_utils import search_notes_by_similarity
 from app.utils.notes_utils import insert_note

@@ -12,17 +12,18 @@ interface AnimatedSectionProps
   className?: string;
   childClassName?: string; // New prop for span classes
   disableAnimation?: boolean;
+  disableIntersectionObserver?: boolean; // New prop to disable intersection observer
 }
 
 const STATIC_ITEM_VARIANTS = {
   hidden: { opacity: 0, filter: "blur(10px)" },
-  visible: { 
-    opacity: 1, 
+  visible: {
+    opacity: 1,
     filter: "blur(0px)",
     transition: {
       duration: 0.8,
-      ease: "easeOut"
-    }
+      ease: "easeOut",
+    },
   },
 };
 
@@ -36,6 +37,7 @@ const AnimatedSectionComponent = ({
   className = "",
   childClassName = "",
   disableAnimation = false,
+  disableIntersectionObserver = false,
   ...restProps
 }: AnimatedSectionProps) => {
   const ref = useRef<HTMLDivElement>(null);
@@ -57,11 +59,14 @@ const AnimatedSectionComponent = ({
     [staggerDelay, disableAnimation],
   );
 
+  const shouldAnimate =
+    disableAnimation || disableIntersectionObserver || isVisible;
+
   return (
     <motion.div
       ref={ref}
       initial={disableAnimation ? "visible" : "hidden"}
-      animate={disableAnimation || isVisible ? "visible" : "hidden"}
+      animate={shouldAnimate ? "visible" : "hidden"}
       variants={containerVariants}
       className={cn(className)}
       style={{ willChange: "transform, opacity, filter" }}

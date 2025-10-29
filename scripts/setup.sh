@@ -73,6 +73,39 @@ cd frontend
 pnpm install
 cd ..
 
+# --- Payment Setup ---
+echo "💳 Setting up payment plans..."
+cd backend
+if [ -f ".venv/bin/activate" ]; then
+    . .venv/bin/activate
+elif [ -f ".venv/Scripts/activate" ]; then
+    . .venv/Scripts/activate
+fi
+
+# Check if DODO_PAYMENTS_API_KEY is set
+if [ -z "$DODO_PAYMENTS_API_KEY" ]; then
+    echo "⚠️  DODO_PAYMENTS_API_KEY not found in environment variables"
+    echo "   Payment setup will be skipped. Configure your payment API key and run:"
+    echo "   python scripts/payment_setup.py --monthly-product-id <id> --yearly-product-id <id>"
+else
+    echo "   Payment API key found. You can run payment setup manually with:"
+    echo "   python scripts/payment_setup.py --monthly-product-id <id> --yearly-product-id <id>"
+fi
+cd ..
+
+# --- Seed Models ---
+echo "🤖 Seeding AI models..."
+cd backend
+if [ -f ".venv/bin/activate" ]; then
+    . .venv/bin/activate
+elif [ -f ".venv/Scripts/activate" ]; then
+    . .venv/Scripts/activate
+fi
+
+echo "   Running model seeding script..."
+python scripts/seed_models.py --force
+cd ..
+
 # --- Done ---
 echo ""
 echo "Setup complete!"
@@ -87,7 +120,6 @@ echo "   • frontend/.env - Frontend configuration (API URLs, tokens)"
 echo ""
 echo "📚 For detailed setup instructions, visit:"
 echo "   Environment Variables: https://docs.heygaia.io/configuration/environment-variables"
-echo "   Infisical Setup:      https://docs.heygaia.io/configuration/infisical-setup"
 echo ""
 echo "💡 Quick start: At minimum, you'll need to configure:"
 echo "   • OpenAI API key (or other AI model APIs)"

@@ -3,11 +3,10 @@ from typing import Any
 
 import httpx
 import requests
+from app.agents.prompts.image_prompts import IMAGE_CAPTION_FORMATTER
+from app.utils.chat_utils import do_prompt_no_stream
 from fastapi import File, Form, HTTPException, UploadFile
 from PIL import Image
-
-from app.langchain.prompts.image_prompts import IMAGE_CAPTION_FORMATTER
-from app.utils.chat_utils import do_prompt_no_stream
 
 http_async_client = httpx.AsyncClient(timeout=1000)
 
@@ -19,7 +18,6 @@ async def generate_image(imageprompt: str) -> dict[str, str] | bytes:
         response.raise_for_status()
         return response.content
     except requests.exceptions.RequestException as e:
-        print(f"Request error: {e}")
         return {"error": str(e)}
 
 
@@ -35,7 +33,6 @@ def compress_image(image_bytes, sizing=0.4, quality=85):
         resized_image.save(output_io, format="JPEG", optimize=True, quality=quality)
         compressed_image_bytes = output_io.getvalue()
 
-        print({"original": len(image_bytes), "compressed": len(compressed_image_bytes)})
         return compressed_image_bytes
 
     except Exception as e:
@@ -75,5 +72,4 @@ async def convert_image_to_text(
             return response.json()
 
     except httpx.RequestError as e:
-        print(f"HTTPX request error: {e}")
         return {"error": str(e)}

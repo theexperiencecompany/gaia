@@ -182,10 +182,19 @@ class SettingsValidator:
         # Search Services
         self.register_group(
             SettingsGroup(
-                name="Bing Web Search",
-                keys=["BING_API_KEY"],
-                description="Bing web search integration",
-                affected_features="Web search capabilities for retrieving information from the internet",
+                name="Tavily Web Search",
+                keys=["TAVILY_API_KEY"],
+                description="Tavily AI-powered web search integration",
+                affected_features="Web search capabilities, image search, news search, and content extraction from the internet",
+            )
+        )
+
+        self.register_group(
+            SettingsGroup(
+                name="Firecrawl Web Scraping",
+                keys=["FIRECRAWL_API_KEY"],
+                description="Firecrawl web scraping and content extraction service",
+                affected_features="Advanced web content extraction, URL processing, and page scraping with stealth capabilities",
             )
         )
 

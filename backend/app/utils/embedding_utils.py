@@ -33,7 +33,7 @@ async def get_or_compute_embeddings(all_tools, embeddings):
                 # Fallback: use string representation
                 code_source = str(tool)
 
-            code_hash = hashlib.md5(code_source.encode()).hexdigest()
+            code_hash = hashlib.sha256(code_source.encode()).hexdigest()
 
             # Get tool name safely
             tool_name = getattr(tool, "name", getattr(tool, "__name__", str(tool)))
@@ -46,7 +46,7 @@ async def get_or_compute_embeddings(all_tools, embeddings):
     # Generate combined hash for descriptions + code
     combined_description = "||".join(tool_descriptions)
     combined_code_hash = "||".join(tool_hashes)
-    tools_hash = hashlib.md5(
+    tools_hash = hashlib.sha256(
         f"{combined_description}::{combined_code_hash}".encode()
     ).hexdigest()
     cache_key = f"embed:batch:{tools_hash}"

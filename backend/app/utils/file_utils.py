@@ -11,7 +11,7 @@ from typing import List, Union
 from llama_cloud_services import LlamaParse
 from llama_cloud_services.parse.utils import ResultType
 
-import app.langchain.llm.chatbot as chatbot
+from app.agents.llm.client import init_llm
 from app.config.loggers import app_logger as logger
 from app.config.settings import settings
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
@@ -25,8 +25,9 @@ class DocumentProcessor:
         # Initialize LlamaCloud client
         self.parser = LlamaParse(
             result_type=ResultType.MD,
-            api_key=settings.LLAMA_INDEX_KEY,
+            api_key=settings.LLAMA_INDEX_KEY or "",
         )
+        self.llm = init_llm()
 
     async def process_file(
         self, file_content: bytes, content_type: str, filename: str
@@ -78,7 +79,7 @@ class DocumentProcessor:
             base64_image = base64.b64encode(image_data).decode("utf-8")
 
             # Process with vision model
-            response = await chatbot.llm.ainvoke(
+            response = await self.llm.ainvoke(
                 input=[
                     {
                         "role": "user",
@@ -101,7 +102,7 @@ class DocumentProcessor:
                 ],
             )
 
-            description = response.content
+            description = response
             if not isinstance(description, str):
                 description = str(description)
             return description
@@ -143,7 +144,7 @@ class DocumentProcessor:
 
             md_documents = await result.aget_markdown_documents(split_by_page=True)
 
-            summarized_pages = await chatbot.llm.abatch(
+            summarized_pages = await self.llm.abatch(
                 inputs=[
                     [
                         {
@@ -168,7 +169,7 @@ class DocumentProcessor:
                         page_number=i + 1,
                         content=md_documents[i].text,
                     ),
-                    summary=str(summarized_pages[i].content),
+                    summary=str(summarized_pages[i]),
                 )
                 for i in range(len(md_documents))
             ]
@@ -211,7 +212,7 @@ class DocumentProcessor:
     async def _generate_text_summary(self, text: str) -> str:
         """Generate a summary for text content using LlamaCloud."""
         try:
-            response = await chatbot.llm.ainvoke(
+            response = await self.llm.ainvoke(
                 input=[
                     {
                         "role": "system",
@@ -224,7 +225,7 @@ class DocumentProcessor:
                 ],
             )
 
-            return str(response.content)
+            return str(response)
 
         except Exception as e:
             logger.error(f"Failed to generate summary: {str(e)}", exc_info=True)

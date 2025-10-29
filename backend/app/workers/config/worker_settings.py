@@ -18,10 +18,10 @@ class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
 
     # Task functions will be populated from the main worker file
-    functions = []
+    functions: list[Callable[..., Coroutine[Any, Any, str]]] = []
 
     # Cron jobs will be populated from the main worker file
-    cron_jobs = []
+    cron_jobs: list[Any] = []
 
     # Lifecycle functions will be set from the main worker file
     on_startup: Optional[Callable[[dict], Coroutine[Any, Any, None]]] = None

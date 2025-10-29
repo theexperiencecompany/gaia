@@ -17,13 +17,11 @@
     },
     "backend": {
       "release-type": "python",
-      "component": "backend",
-      "changelog-path": "CHANGELOG.md"
+      "component": "backend"
     },
     "frontend": {
       "release-type": "node",
-      "component": "frontend",
-      "changelog-path": "CHANGELOG.md"
+      "component": "frontend"
     }
   }
 }

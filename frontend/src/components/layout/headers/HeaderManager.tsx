@@ -2,6 +2,7 @@
 
 import { Tooltip } from "@heroui/react";
 import { usePathname } from "next/navigation";
+import { ReactNode } from "react";
 
 import { Button } from "@/components";
 import { useHeader } from "@/hooks/layout/useHeader";
@@ -26,7 +27,7 @@ export const SidebarHeaderButton = ({
 }: {
   children: React.ReactNode;
   onClick?: () => void;
-  tooltip?: string;
+  tooltip?: ReactNode;
   "aria-label": string;
 }) => {
   const button = (

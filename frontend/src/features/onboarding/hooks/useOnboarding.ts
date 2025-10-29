@@ -101,24 +101,26 @@ export const useOnboarding = () => {
 
         if (prev.currentQuestionIndex < questions.length - 1) {
           const nextQuestionIndex = prev.currentQuestionIndex + 1;
+          const nextQuestion = questions[nextQuestionIndex];
 
           if (prev.currentQuestionIndex === 0) {
-            const greetingMessage: Message = {
-              id: `greeting-${Date.now()}`,
+            // Combine greeting and next question with NEW_MESSAGE_BREAK
+            const combinedMessage: Message = {
+              id: nextQuestion.id,
               type: "bot",
-              content: `Nice to meet you, ${newResponses.name}! 😊`,
+              content: `Nice to meet you, ${newResponses.name}! 😊<NEW_MESSAGE_BREAK>${nextQuestion.question}`,
             };
-            newState.messages = [...newState.messages, greetingMessage];
+            newState.messages = [...newState.messages, combinedMessage];
+          } else {
+            // For other questions, just add the question normally
+            const botMessage: Message = {
+              id: nextQuestion.id,
+              type: "bot",
+              content: nextQuestion.question,
+            };
+            newState.messages = [...newState.messages, botMessage];
           }
 
-          const nextQuestion = questions[nextQuestionIndex];
-          const botMessage: Message = {
-            id: nextQuestion.id,
-            type: "bot",
-            content: nextQuestion.question,
-          };
-
-          newState.messages = [...newState.messages, botMessage];
           newState.currentQuestionIndex = nextQuestionIndex;
           newState.hasAnsweredCurrentQuestion = false;
         } else {

@@ -96,7 +96,7 @@ export default function WorkflowSection({
       } catch (error) {
         console.error("Failed to check workflow status:", error);
       }
-    }, 3000); // Poll every 3 seconds
+    }, 5000); // Poll every 5 seconds
 
     // Cleanup after 60 seconds to prevent infinite polling
     const timeoutId = setTimeout(() => {

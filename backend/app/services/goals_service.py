@@ -4,14 +4,14 @@ from datetime import datetime
 from app.config.loggers import goals_logger as logger
 from app.db.mongodb.collections import goals_collection
 from app.db.redis import ONE_YEAR_TTL, get_cache, set_cache
-from app.langchain.llm.client import init_llm
-from app.langchain.prompts.goal_prompts import (
+from app.agents.llm.client import init_llm
+from app.agents.prompts.goal_prompts import (
     ROADMAP_GENERATOR,
     ROADMAP_INSTRUCTIONS,
     ROADMAP_JSON_STRUCTURE,
 )
 from app.models.goals_models import GoalCreate, GoalResponse, UpdateNodeRequest
-from app.services.sync_service import (
+from app.services.todos.sync_service import (
     _invalidate_goal_caches,
     create_goal_project_and_todo,
     sync_goal_node_completion,

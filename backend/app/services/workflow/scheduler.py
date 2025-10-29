@@ -9,6 +9,7 @@ from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
 from app.models.scheduler_models import (
     BaseScheduledTask,
+    ScheduleConfig,
     ScheduledTaskStatus,
     TaskExecutionResult,
 )
@@ -86,7 +87,6 @@ class WorkflowScheduler(BaseSchedulerService):
         try:
             # Cast to Workflow since we know it's a workflow
             workflow: Optional[Workflow] = task if isinstance(task, Workflow) else None
-            print(workflow)
             if not workflow:
                 raise ValueError("Task must be a Workflow instance")
 
@@ -100,11 +100,22 @@ class WorkflowScheduler(BaseSchedulerService):
                 raise ValueError("Workflow ID is required for execution")
 
             # Execute the workflow using the chat execution function directly
-            await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
+            execution_messages = await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}
+            )
+
+            # Import here to avoid circular imports
+            from app.workers.tasks.workflow_tasks import (
+                create_workflow_completion_notification,
+            )
+
+            await create_workflow_completion_notification(
+                workflow, execution_messages, workflow.user_id
+            )
 
             return TaskExecutionResult(
                 success=True,
-                message="Workflow executed via scheduler",
+                message=f"Workflow executed via scheduler with {len(execution_messages)} messages",
             )
         except Exception as e:
             logger.error(f"Error executing workflow {task.id}: {e}")
@@ -222,7 +233,7 @@ class WorkflowScheduler(BaseSchedulerService):
             workflow = Workflow(user_id=user_id, **workflow_data)
 
             # Insert into database
-            workflow_dict = workflow.model_dump()
+            workflow_dict = workflow.model_dump(mode="json")
             workflow_dict["_id"] = workflow_dict["id"]
 
             result = await workflows_collection.insert_one(workflow_dict)
@@ -253,3 +264,161 @@ class WorkflowScheduler(BaseSchedulerService):
         except Exception as e:
             logger.error(f"Error creating and scheduling workflow: {e}")
             return None
+
+    async def schedule_workflow_execution(
+        self,
+        workflow_id: str,
+        user_id: str,
+        scheduled_at: datetime,
+        repeat: Optional[str] = None,
+        max_occurrences: Optional[int] = None,
+        stop_after: Optional[datetime] = None,
+    ) -> bool:
+        """
+        Schedule workflow execution using BaseSchedulerService.
+
+        Args:
+            workflow_id: Workflow ID to schedule
+            user_id: User ID (for validation)
+            scheduled_at: When to execute
+            repeat: Cron expression for recurring workflows
+            max_occurrences: Limit number of executions
+            stop_after: Stop executing after this date
+
+        Returns:
+            True if scheduled successfully
+        """
+        try:
+            # Create schedule configuration
+            schedule_config = ScheduleConfig(
+                scheduled_at=scheduled_at,
+                repeat=repeat,
+                max_occurrences=max_occurrences,
+                stop_after=stop_after,
+                base_time=scheduled_at,  # Use scheduled_at as base for timezone calculations
+            )
+
+            # Use the robust BaseSchedulerService scheduling
+            success = await self.schedule_task(workflow_id, schedule_config)
+
+            if success:
+                logger.info(
+                    f"Scheduled workflow {workflow_id} for execution at {scheduled_at}"
+                    + (f" with repeat '{repeat}'" if repeat else "")
+                )
+            else:
+                logger.error(f"Failed to schedule workflow {workflow_id}")
+
+            return success
+
+        except Exception as e:
+            logger.error(f"Error scheduling workflow {workflow_id}: {str(e)}")
+            return False
+
+    async def cancel_scheduled_workflow_execution(self, workflow_id: str) -> bool:
+        """
+        Cancel scheduled workflow execution.
+
+        Args:
+            workflow_id: Workflow ID to cancel
+
+        Returns:
+            True if cancelled successfully
+        """
+        try:
+            # Update workflow status to cancelled in database
+            db_success = await self.update_task_status(
+                workflow_id, ScheduledTaskStatus.CANCELLED
+            )
+
+            # Cancel ARQ job
+            arq_success = await self.cancel_task(workflow_id, "")
+
+            if db_success and arq_success:
+                logger.info(f"Cancelled scheduled execution for workflow {workflow_id}")
+            elif db_success:
+                logger.warning(
+                    f"Cancelled workflow {workflow_id} in DB but ARQ cancellation failed"
+                )
+            else:
+                logger.warning(
+                    f"Could not cancel workflow {workflow_id} - may not exist or already executed"
+                )
+
+            return db_success
+
+        except Exception as e:
+            logger.error(f"Error cancelling workflow {workflow_id}: {str(e)}")
+            return False
+
+    async def reschedule_workflow(
+        self, workflow_id: str, new_scheduled_at: datetime, repeat: Optional[str] = None
+    ) -> bool:
+        """
+        Reschedule an existing workflow.
+
+        Args:
+            workflow_id: Workflow ID to reschedule
+            new_scheduled_at: New execution time
+            repeat: New cron expression (optional)
+
+        Returns:
+            True if rescheduled successfully
+        """
+        try:
+            # Update the workflow's scheduling fields in database
+            update_data = {
+                "scheduled_at": new_scheduled_at,
+                "status": ScheduledTaskStatus.SCHEDULED.value,
+            }
+
+            if repeat is not None:
+                update_data["repeat"] = repeat
+
+            # Update database status
+            db_success = await self.update_task_status(
+                workflow_id, ScheduledTaskStatus.SCHEDULED, update_data
+            )
+
+            if not db_success:
+                logger.error(f"Failed to update workflow {workflow_id} in database")
+                return False
+
+            # Actually reschedule in ARQ queue
+            arq_success = await self.reschedule_task(workflow_id, new_scheduled_at)
+
+            if arq_success:
+                logger.info(
+                    f"Rescheduled workflow {workflow_id} for {new_scheduled_at}"
+                )
+            else:
+                logger.error(
+                    f"Failed to reschedule workflow {workflow_id} in ARQ queue"
+                )
+
+            return arq_success
+
+        except Exception as e:
+            logger.error(f"Error rescheduling workflow {workflow_id}: {str(e)}")
+            return False
+
+    async def get_workflow_status(self, workflow_id: str) -> Optional[str]:
+        """
+        Get the current status of a workflow.
+
+        Args:
+            workflow_id: Workflow ID
+
+        Returns:
+            Status string or None if not found
+        """
+        try:
+            workflow = await self.get_task(workflow_id)
+            return workflow.status.value if workflow else None
+        except Exception as e:
+            logger.error(f"Error getting workflow status for {workflow_id}: {str(e)}")
+            return None
+
+
+# Global instance for backward compatibility
+workflow_scheduler = WorkflowScheduler()

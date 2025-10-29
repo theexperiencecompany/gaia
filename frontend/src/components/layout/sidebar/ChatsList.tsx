@@ -14,15 +14,7 @@ import { useConversations } from "@/hooks/useConversations";
 import type { IConversation } from "@/lib/db/chatDb";
 
 import { ChatTab } from "./ChatTab";
-
-// Reusable accordion item styles
-const accordionItemStyles = {
-  item: "my-1 flex min-h-fit w-full flex-col items-start justify-start overflow-hidden border-none py-1",
-  trigger:
-    "w-full px-2 pt-0 pb-1 text-xs text-foreground-400 hover:no-underline hover:text-foreground-500",
-  content: "w-full p-0!",
-  chatContainer: "flex w-full flex-col",
-};
+import { accordionItemStyles } from "./constants";
 
 const getTimeFrame = (date: Date): string => {
   if (isToday(date)) return "Today";

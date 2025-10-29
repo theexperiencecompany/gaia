@@ -45,13 +45,10 @@ export function PricingCards({ durationIsMonth = false }: PricingCardsProps) {
   // Filter plans by duration (always show free plan)
   const filteredPlans = plans.filter((plan: Plan) => {
     // Always show free plan regardless of selected duration
-    if (plan.amount === 0) {
-      return true;
-    }
+    if (plan.amount === 0) return true;
+
     // For paid plans, filter by duration
-    if (durationIsMonth) {
-      return plan.duration === "monthly";
-    }
+    if (durationIsMonth) return plan.duration === "monthly";
     return plan.duration === "yearly";
   });
 
@@ -88,11 +85,11 @@ export function PricingCards({ durationIsMonth = false }: PricingCardsProps) {
             planId={plan.dodo_product_id} // Use dodo_product_id instead of id
             durationIsMonth={durationIsMonth}
             features={plan.features}
-            featurestitle={
-              <div className="mb-1 flex flex-col border-none!">
-                <span>What's Included?</span>
-              </div>
-            }
+            // featurestitle={
+            //   <div className="mb-1 flex flex-col border-none! text-sm font-light text-zinc-300">
+            //     <span>What's Included?</span>
+            //   </div>
+            // }
             price={priceInUSDCents} // Always in USD cents
             originalPrice={originalPriceInUSDCents}
             title={plan.name}

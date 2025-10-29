@@ -5,7 +5,7 @@ import WorkflowModal from "./WorkflowModal";
 interface CreateWorkflowModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onWorkflowCreated?: (workflowId: string) => void;
+  onWorkflowCreated?: () => void;
   onWorkflowListRefresh?: () => void;
 }
 
@@ -19,7 +19,9 @@ export default function CreateWorkflowModal({
     <WorkflowModal
       isOpen={isOpen}
       onOpenChange={onOpenChange}
-      onWorkflowSaved={onWorkflowCreated}
+      onWorkflowSaved={
+        onWorkflowCreated ? () => onWorkflowCreated() : undefined
+      }
       onWorkflowListRefresh={onWorkflowListRefresh}
       mode="create"
     />

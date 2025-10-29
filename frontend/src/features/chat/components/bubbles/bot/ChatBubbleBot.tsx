@@ -1,6 +1,6 @@
 // ChatBubbleBot.tsx
 import Image from "next/image";
-import { useCallback, useMemo, useRef } from "react";
+import { ReactNode, useCallback, useMemo, useRef } from "react";
 
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import ChatBubble_Actions from "@/features/chat/components/bubbles/actions/ChatBubble_Actions";
@@ -16,7 +16,12 @@ import FollowUpActions from "./FollowUpActions";
 import ImageBubble from "./ImageBubble";
 import TextBubble from "./TextBubble";
 
-export default function ChatBubbleBot(props: ChatBubbleBotProps) {
+export default function ChatBubbleBot(
+  props: ChatBubbleBotProps & {
+    disableActions?: boolean;
+    children?: ReactNode;
+  },
+) {
   const {
     text,
     loading = false,
@@ -31,24 +36,26 @@ export default function ChatBubbleBot(props: ChatBubbleBotProps) {
     integration_connection_required,
     follow_up_actions,
     isLastMessage,
+    disableActions = false,
+    children,
   } = props;
   const { isLoading } = useLoading();
 
   const actionsRef = useRef<HTMLDivElement>(null);
 
   const handleMouseOver = useCallback(() => {
-    if (actionsRef.current) {
+    if (actionsRef.current && !disableActions) {
       actionsRef.current.style.opacity = "1";
       actionsRef.current.style.visibility = "visible";
     }
-  }, []);
+  }, [disableActions]);
 
   const handleMouseOut = useCallback(() => {
-    if (actionsRef.current) {
+    if (actionsRef.current && !disableActions) {
       actionsRef.current.style.opacity = "0";
       actionsRef.current.style.visibility = "hidden";
     }
-  }, []);
+  }, [disableActions]);
 
   const renderedComponent = useMemo(() => {
     // Integration connection prompt takes priority
@@ -112,27 +119,32 @@ export default function ChatBubbleBot(props: ChatBubbleBotProps) {
 
           <div
             ref={actionsRef}
-            className={`absolute -bottom-5 flex flex-col transition-all ${loading ? "opacity-0!" : "opacity-100"}`}
-            style={{ opacity: 0, visibility: "hidden" }}
+            className={`absolute -bottom-5 flex flex-col transition-all ${disableActions ? "hidden" : loading ? "opacity-0!" : "opacity-100"}`}
+            style={{
+              opacity: disableActions ? 1 : 0,
+              visibility: disableActions ? "visible" : "hidden",
+            }}
           >
-            {date && (
-              <span className="text-opacity-40 flex flex-col p-1 py-2 text-xs text-zinc-400 select-text">
+            {date && !disableActions && (
+              <span className="text-opacity-40 flex flex-col p-1 py-2 text-xs text-nowrap text-zinc-400 select-text">
                 {parseDate(date)}
               </span>
             )}
 
-            {image_data ? (
-              <ChatBubble_Actions_Image image_data={image_data} />
-            ) : (
-              <ChatBubble_Actions
-                loading={loading}
-                message_id={message_id}
-                pinned={pinned}
-                text={text}
-              />
-            )}
+            {!disableActions &&
+              (image_data ? (
+                <ChatBubble_Actions_Image image_data={image_data} />
+              ) : (
+                <ChatBubble_Actions
+                  loading={loading}
+                  message_id={message_id}
+                  pinned={pinned}
+                  text={text}
+                />
+              ))}
           </div>
         </div>
+        {children}
       </div>
     )
   );

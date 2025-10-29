@@ -2,17 +2,14 @@
 Team service with Redis caching and proper error handling.
 """
 
-import logging
 from typing import List
 
-from bson import ObjectId
-from fastapi import HTTPException, status
-
+from app.config.loggers import common_logger as logger
 from app.db.mongodb.collections import team_collection
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.models.team_models import TeamMember, TeamMemberCreate, TeamMemberUpdate
-
-logger = logging.getLogger(__name__)
+from bson import ObjectId
+from fastapi import HTTPException, status
 
 # Cache configuration
 CACHE_TTL = 3600  # 1 hour

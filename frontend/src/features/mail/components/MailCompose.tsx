@@ -37,8 +37,6 @@ interface MailComposeProps {
 }
 
 export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
-  console.log("test open");
-
   const user = useUser();
   const { formState, uiState, actions, editor, options } =
     useEmailComposition();

@@ -13,7 +13,7 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationType,
 )
-from app.utils.common_utils import websocket_manager
+from app.core.websocket_manager import websocket_manager
 from app.utils.notification.actions import (
     ActionHandler,
     ApiCallActionHandler,

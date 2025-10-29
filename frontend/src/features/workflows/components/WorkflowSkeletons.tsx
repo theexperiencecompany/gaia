@@ -1,11 +1,19 @@
-import { Skeleton } from "@/components/ui/shadcn/skeleton";
+import { Skeleton } from "@heroui/react";
 
 import BaseWorkflowCard from "./shared/BaseWorkflowCard";
+import { TriggerDisplay } from "./shared/WorkflowCardComponents";
 
 export const WorkflowCardSkeleton = () => {
   return (
-    <Skeleton>
-      <BaseWorkflowCard title="" description="" />
+    <Skeleton className="rounded-2xl">
+      <BaseWorkflowCard
+        title="lorem"
+        description="lorem ipsum lorem ipsum. lorem ipsum lorem ipsum lorem ipsum lorem ipsum "
+        triggerContent={
+          <TriggerDisplay triggerType="manual" triggerLabel="Manual" />
+        }
+        totalExecutions={0}
+      />
     </Skeleton>
   );
 };
@@ -52,8 +60,8 @@ export const WorkflowDetailSkeleton = () => {
 
 export const WorkflowListSkeleton = () => {
   return (
-    <div className="grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {Array.from({ length: 4 }).map((_, i) => (
+    <div className="grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+      {Array.from({ length: 3 }).map((_, i) => (
         <WorkflowCardSkeleton key={i} />
       ))}
     </div>

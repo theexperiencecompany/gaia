@@ -5,9 +5,12 @@ This module provides functions to configure middleware for the FastAPI applicati
 """
 
 from app.config.settings import settings
-from app.decorators import LoggingMiddleware, ProfilingMiddleware
-from app.middleware.auth_middleware import WorkOSAuthMiddleware
-from app.middleware.rate_limiter import limiter
+from app.api.v1.middleware import (
+    LoggingMiddleware,
+    ProfilingMiddleware,
+    WorkOSAuthMiddleware,
+)
+from app.api.v1.middleware.rate_limiter import limiter
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse

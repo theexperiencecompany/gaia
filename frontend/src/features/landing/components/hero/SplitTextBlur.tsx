@@ -15,6 +15,7 @@ interface SplitTextBlurProps {
     mass: number;
   };
   yOffset?: number;
+  disableIntersectionObserver?: boolean;
 }
 
 const SplitTextBlur = ({
@@ -28,6 +29,7 @@ const SplitTextBlur = ({
     mass: 1,
   },
   yOffset = 2,
+  disableIntersectionObserver = false,
 }: SplitTextBlurProps) => {
   const ref = useRef<HTMLDivElement>(null);
   const isVisible = useIntersectionObserver(ref, { threshold: 0.1 });
@@ -39,7 +41,7 @@ const SplitTextBlur = ({
     visible: {
       opacity: 1,
       transition: {
-        delay: delay,
+        delay,
         when: "beforeChildren",
         staggerChildren: staggerDelay,
       },
@@ -65,11 +67,13 @@ const SplitTextBlur = ({
     },
   };
 
+  const shouldAnimate = disableIntersectionObserver || isVisible;
+
   return (
     <motion.div
       ref={ref}
       initial="hidden"
-      animate={isVisible ? "visible" : "hidden"}
+      animate={shouldAnimate ? "visible" : "hidden"}
       variants={containerVariants}
       className={cn(className)}
       style={{
@@ -77,7 +81,7 @@ const SplitTextBlur = ({
         background: "linear-gradient(to bottom, #a3a3a3, #ffffff)",
         WebkitBackgroundClip: "text",
         WebkitTextFillColor: "transparent",
-        backgroundClip: "text"
+        backgroundClip: "text",
       }}
     >
       {words.map((word, index) => (
@@ -92,8 +96,9 @@ const SplitTextBlur = ({
             WebkitBackgroundClip: "inherit",
             WebkitTextFillColor: "inherit",
             backgroundClip: "inherit",
-            paddingBottom: "7px"
+            paddingBottom: "7px",
           }}
+          className="font-serif"
         >
           {word}
         </motion.span>
@@ -102,22 +107,4 @@ const SplitTextBlur = ({
   );
 };
 
-// Usage example with your div
-const HeroText = () => {
-  return (
-    <SplitTextBlur
-      text="Meet the AI assistant that actually works"
-      className="max-w-(--breakpoint-md) py-3 text-center font-inter text-[5.13rem] font-medium sm:text-7xl"
-      delay={1}
-      staggerDelay={0.1}
-      springConfig={{
-        stiffness: 400,
-        damping: 70,
-        mass: 1,
-      }}
-      yOffset={2}
-    />
-  );
-};
-
-export { HeroText, SplitTextBlur };
+export { SplitTextBlur };

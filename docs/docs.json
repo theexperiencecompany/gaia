@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "maple",
+  "theme": "almond",
   "name": "GAIA",
   "colors": {
     "primary": "#00bbff",
@@ -11,18 +11,27 @@
     "indexing": "all",
     "metatags": {
       "og:type": "website",
-      "og:site_name": "GAIA Documentation"
+      "og:site_name": "GAIA Documentation",
+      "og:image": "https://docs.heygaia.io/og-image.jpg",
+      "og:url": "https://docs.heygaia.io",
+      "canonical": "https://docs.heygaia.io",
+      "description": "Documentation for GAIA, the open-source AI assistant.",
+      "twitter:card": "summary_large_image",
+      "twitter:image": "https://docs.heygaia.io/og-image.jpg"
     }
+  },
+  "fonts": {
+    "family": "Inter"
   },
   "favicon": "/logo/logo.png",
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Home",
         "groups": [
           {
             "group": "Get Started",
-            "pages": ["introduction", "quick-start", "resources"]
+            "pages": ["introduction", "quick-start", "resources", "manifesto"]
           },
           {
             "group": "For Developers",
@@ -71,14 +80,20 @@
         "icon": "discord"
       },
       {
-        "label": "Website",
-        "href": "https://heygaia.io",
-        "icon": "globe"
+        "label": "WhatsApp",
+        "href": "https://whatsapp.heygaia.io",
+        "icon": "whatsapp"
+      },
+      {
+        "label": "GitHub",
+        "href": "https://github.com/heygaia/gaia",
+        "icon": "github"
       }
     ],
     "primary": {
-      "type": "github",
-      "href": "https://github.com/heygaia/gaia"
+      "type": "button",
+      "label": "Get Started",
+      "href": "https://heygaia.io"
     }
   },
   "footer": {

@@ -2,9 +2,9 @@ import { Autocomplete, AutocompleteItem } from "@heroui/autocomplete";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Kbd } from "@heroui/kbd";
+import { ArrowUp } from "lucide-react";
 import { useEffect } from "react";
 
-import { SentIcon } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
@@ -117,12 +117,23 @@ export const OnboardingInput = ({
                   !onboardingState.currentInputs.text.trim() ||
                   onboardingState.isProcessing
                 }
-                color="primary"
+                color={
+                  !onboardingState.currentInputs.text.trim() ||
+                  onboardingState.isProcessing
+                    ? "default"
+                    : "primary"
+                }
                 radius="full"
                 aria-label="Send message"
-                className={cn(onboardingState.isProcessing && "cursor-wait")}
+                className={cn(
+                  onboardingState.isProcessing && "cursor-wait",
+                  !onboardingState.currentInputs.text.trim() ||
+                    onboardingState.isProcessing
+                    ? "text-zinc-500"
+                    : "text-black",
+                )}
               >
-                <SentIcon color="black" />
+                <ArrowUp />
               </Button>
             }
           />

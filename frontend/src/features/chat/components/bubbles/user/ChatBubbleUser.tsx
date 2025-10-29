@@ -20,7 +20,8 @@ export default function ChatBubbleUser({
   selectedTool,
   toolCategory,
   selectedWorkflow,
-}: ChatBubbleUserProps) {
+  disableActions = false,
+}: ChatBubbleUserProps & { disableActions?: boolean }) {
   const hasContent =
     !!text || fileData.length > 0 || !!selectedTool || !!selectedWorkflow;
 
@@ -67,14 +68,16 @@ export default function ChatBubbleUser({
           </div>
         )}
 
-        <div className="flex flex-col items-end justify-end opacity-0 transition-all group-hover:opacity-100">
+        <div
+          className={`flex flex-col items-end justify-end transition-all ${disableActions ? "hidden" : "opacity-0 group-hover:opacity-100"}`}
+        >
           {date && (
             <span className="flex flex-col pt-2 text-xs text-zinc-400 select-text">
               {parseDate(date)}
             </span>
           )}
 
-          {text && (
+          {text && !disableActions && (
             <Button
               isIconOnly
               className="h-fit w-fit rounded-md p-0"
@@ -88,7 +91,9 @@ export default function ChatBubbleUser({
         </div>
       </div>
       <div className="min-w-[40px]">
-        <Avatar className="relative bottom-11 rounded-full bg-black">
+        <Avatar
+          className={`relative rounded-full bg-black ${disableActions ? "bottom-0" : "bottom-11"}`}
+        >
           <AvatarImage src={user?.profilePicture} alt="User Avatar" />
           <AvatarFallback>
             <Image

@@ -28,6 +28,7 @@ const nextConfig = {
     return config;
   },
   images: {
+    dangerouslyAllowSVG: true,
     remotePatterns: [
       {
         protocol: "https",

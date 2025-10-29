@@ -37,20 +37,26 @@ export default function DateFieldChip({
 
   const displayValue = value ? formatDisplayDate(value) : undefined;
 
-  const handleDateInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDateInputChange = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    onClose?: () => void,
+  ) => {
     const inputValue = e.target.value;
     if (inputValue) {
       const date = new Date(inputValue);
       onChange(date.toISOString(), userTimezone);
+      onClose?.();
     } else {
       onChange(undefined, undefined);
+      onClose?.();
     }
   };
 
-  const handleQuickDate = (days: number) => {
+  const handleQuickDate = (days: number, onClose?: () => void) => {
     const date = new Date();
     date.setDate(date.getDate() + days);
     onChange(date.toISOString(), userTimezone);
+    onClose?.();
   };
 
   return (
@@ -62,85 +68,104 @@ export default function DateFieldChip({
       variant={value ? "success" : "default"}
       className={className}
     >
-      <div className="p-1">
-        <div className="border-0 bg-zinc-900 p-3">
-          <label
-            htmlFor="due-date-input"
-            className="mb-2 block text-sm text-zinc-300"
-          >
-            Select Date
-          </label>
-          <Input
-            id="due-date-input"
-            type="date"
-            value={value ? value.split("T")[0] : ""}
-            onChange={handleDateInputChange}
-            size="sm"
-            variant="flat"
-            className="w-full"
-            aria-label="Select due date"
-          />
-        </div>
-
-        {/* Quick date options */}
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            handleQuickDate(0);
-          }}
-          className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
-        >
-          <Calendar size={14} />
-          Today
-        </div>
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            handleQuickDate(1);
-          }}
-          className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
-        >
-          <Calendar size={14} />
-          Tomorrow
-        </div>
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            handleQuickDate(3);
-          }}
-          className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
-        >
-          <Calendar size={14} />
-          In 3 days
-        </div>
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            handleQuickDate(7);
-          }}
-          className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
-        >
-          <Calendar size={14} />
-          Next week
-        </div>
-
-        {/* Clear date option */}
-        {value && (
-          <>
-            <div className="my-1 h-px bg-zinc-700" />
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-                onChange(undefined, undefined);
-              }}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
+      {({ onClose }) => (
+        <div className="p-1">
+          <div className="border-0 bg-zinc-900 p-3">
+            <label
+              htmlFor="due-date-input"
+              className="mb-2 block text-sm text-zinc-300"
             >
-              <X size={14} />
-              Clear date
-            </div>
-          </>
-        )}
-      </div>
+              Select Date
+            </label>
+            <Input
+              id="due-date-input"
+              type="date"
+              value={value ? value.split("T")[0] : ""}
+              onChange={(e) => handleDateInputChange(e, onClose)}
+              size="sm"
+              variant="flat"
+              className="w-full"
+              aria-label="Select due date"
+            />
+          </div>
+
+          {/* Quick date options */}
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              handleQuickDate(0, onClose);
+            }}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+          >
+            <Calendar size={14} />
+            Today
+          </div>
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              handleQuickDate(1, onClose);
+            }}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+          >
+            <Calendar size={14} />
+            Tomorrow
+          </div>
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              handleQuickDate(3, onClose);
+            }}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+          >
+            <Calendar size={14} />
+            In 3 days
+          </div>
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              handleQuickDate(7, onClose);
+            }}
+            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+          >
+            <Calendar size={14} />
+            Next week
+          </div>
+
+          {/* Clear date option */}
+          {value && (
+            <>
+              <div className="my-1 h-px bg-zinc-700" />
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChange(undefined, undefined);
+                  onClose();
+                }}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
+              >
+                <X size={14} />
+                Clear date
+              </div>
+            </>
+          )}
+
+          {/* Hint */}
+          <div className="mt-1 px-3 py-2">
+            <p className="text-xs text-zinc-500">
+              Type{" "}
+              <span className="rounded bg-zinc-800 px-1 font-mono">today</span>,{" "}
+              <span className="rounded bg-zinc-800 px-1 font-mono">
+                tomorrow
+              </span>
+              , or{" "}
+              <span className="rounded bg-zinc-800 px-1 font-mono">
+                in 3 days
+              </span>{" "}
+              in title/description
+            </p>
+          </div>
+        </div>
+      )}
     </BaseFieldChip>
   );
 }

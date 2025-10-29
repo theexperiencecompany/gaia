@@ -3,7 +3,6 @@ import { useParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { PinIcon, Task01Icon } from "@/components/shared/icons";
-import TextToSpeech from "@/features/audio/components/TextToSpeech";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 
@@ -76,7 +75,7 @@ export default function ChatBubble_Actions({
             variant="light"
             onPress={copyToClipboard}
           >
-            <Task01Icon className="cursor-pointer" height="22" width="22" />
+            <Task01Icon className="cursor-pointer" height="20" width="20" />
           </Button>
 
           <Button
@@ -92,8 +91,8 @@ export default function ChatBubble_Actions({
               className={`cursor-pointer`}
               color={pinned ? "#00bbff" : "#9b9b9b"}
               fill={pinned ? "#00bbff" : "transparent"}
-              height="22"
-              width="22"
+              height="20"
+              width="20"
             />
           </Button>
           {/*
@@ -112,7 +111,7 @@ export default function ChatBubble_Actions({
             }
           /> */}
 
-          <TextToSpeech text={text} />
+          {/* <TextToSpeech text={text} /> */}
         </div>
       )}
     </>

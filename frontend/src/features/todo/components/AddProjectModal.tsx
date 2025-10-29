@@ -120,11 +120,13 @@ export default function AddProjectModal({
                   </label>
                   <RadioGroup
                     value={formData.color}
+                    color="default"
                     onValueChange={(value) =>
                       setFormData((prev) => ({ ...prev, color: value }))
                     }
                     orientation="horizontal"
-                    className="gap-3"
+                    classNames={{ wrapper: "flex gap-8 p-3" }}
+                    // className="flex flex-wrap items-start gap-10"
                   >
                     {colorOptions.map((option) => (
                       <Radio
@@ -132,10 +134,12 @@ export default function AddProjectModal({
                         value={option.value}
                         className="p-0"
                       >
-                        <div
-                          className="h-8 w-8 rounded-full border-2 border-white shadow-sm"
-                          style={{ backgroundColor: option.value }}
-                        />
+                        <div className="flex h-full w-full items-center">
+                          <div
+                            className="h-7 w-7 rounded-full"
+                            style={{ backgroundColor: option.value }}
+                          />
+                        </div>
                       </Radio>
                     ))}
                   </RadioGroup>

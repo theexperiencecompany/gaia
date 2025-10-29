@@ -4,8 +4,8 @@ from typing import Any, AsyncGenerator, Dict, Optional
 
 from app.config.loggers import chat_logger as logger
 from app.config.model_pricing import calculate_token_cost
-from app.langchain.core.agent import call_agent
-from app.middleware.tiered_rate_limiter import tiered_limiter
+from app.agents.core.agent import call_agent
+from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.models.chat_models import (
     MessageModel,
     ToolDataEntry,
@@ -17,7 +17,7 @@ from app.models.payment_models import PlanType
 from app.services.conversation_service import update_messages
 from app.services.file_service import get_files
 from app.services.model_service import get_user_selected_model
-from app.services.payment_service import payment_service
+from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation
 from fastapi import BackgroundTasks
 from langchain_core.callbacks import UsageMetadataCallbackHandler

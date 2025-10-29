@@ -74,10 +74,10 @@ export default function SettingsSidebar() {
               size="sm"
               variant={isActive ? "flat" : "light"}
               color={isActive ? "primary" : "default"}
-              className={`group ${isActive ? "text-primary" : ""} flex w-full justify-start`}
+              className={`group ${isActive ? "text-primary" : "text-zinc-400"} flex w-full justify-start`}
             >
               <Icon
-                className={`mr-1 h-5 w-5 transition-colors ${isActive ? "text-primary" : "text-foreground-500"}`}
+                className={`mr-1 h-5 w-5 transition-colors ${isActive ? "text-primary" : "text-zinc-400"}`}
               />
               <span className="text-sm">{item.label}</span>
             </Button>

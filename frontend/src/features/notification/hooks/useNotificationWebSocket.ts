@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
+import { useUser } from "@/features/auth/hooks/useUser";
 import {
   NotificationRecord,
   NotificationUpdate,
@@ -24,6 +25,9 @@ interface WebSocketMessage {
 export function useNotificationWebSocket(
   options: UseNotificationWebSocketOptions = {},
 ) {
+  const user = useUser();
+  const isAuthenticated = !!user?.email;
+
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttempts = useRef(0);
@@ -31,6 +35,9 @@ export function useNotificationWebSocket(
   const baseReconnectDelay = 1000; // 1 second
 
   const connect = useCallback(() => {
+    // Don't connect if user is not authenticated
+    if (!isAuthenticated) return;
+
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       return;
     }
@@ -165,7 +172,7 @@ export function useNotificationWebSocket(
         options.onError(error as Error);
       }
     }
-  }, [options]);
+  }, [options, isAuthenticated]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -181,11 +188,13 @@ export function useNotificationWebSocket(
     reconnectAttempts.current = 0;
   }, []);
 
-  // Connect on mount
+  // Connect on mount only if authenticated
   useEffect(() => {
-    connect();
+    if (isAuthenticated) {
+      connect();
+    }
     return disconnect;
-  }, [connect, disconnect]);
+  }, [connect, disconnect, isAuthenticated]);
 
   // Handle page visibility changes to reconnect when page becomes visible
   useEffect(() => {

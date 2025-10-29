@@ -2,14 +2,15 @@
 
 from .generation_service import WorkflowGenerationService
 from .queue_service import WorkflowQueueService
-from .scheduler_service import WorkflowSchedulerService
+from .scheduler import WorkflowScheduler, workflow_scheduler
 from .service import WorkflowService
 from .validators import WorkflowValidator
 
 __all__ = [
     "WorkflowGenerationService",
     "WorkflowQueueService",
-    "WorkflowSchedulerService",
+    "WorkflowScheduler",
+    "workflow_scheduler",
     "WorkflowService",
     "WorkflowValidator",
 ]

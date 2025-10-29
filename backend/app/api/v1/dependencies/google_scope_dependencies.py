@@ -24,7 +24,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import get_integration_by_id, get_short_name_mapping
 from app.config.token_repository import token_repository
-from app.services.composio_service import composio_service
+from app.services.composio.composio_service import get_composio_service
 from fastapi import Depends, HTTPException, status
 
 http_async_client = httpx.AsyncClient(timeout=10.0)
@@ -62,6 +62,8 @@ def require_integration(integration_short_name: str):
         raise ValueError(f"Integration config not found for: {integration_id}")
 
     async def wrapper(user: dict = Depends(get_current_user)):
+        composio_service = get_composio_service()
+
         user_id = user.get("user_id")
         if not user_id:
             raise HTTPException(

@@ -87,9 +87,7 @@ class CommonSettings(BaseAppSettings):
     # Profiling & Performance Monitoring
     # ----------------------------------------------
     ENABLE_PROFILING: bool = False  # Must be explicitly enabled via .env
-    PROFILING_SAMPLE_RATE: float = 1  # 100% of requests by default
-    PROFILING_MAX_DEPTH: int = 20  # Maximum call stack depth
-    PROFILING_ASYNC_MODE: str = "enabled"  # enabled, disabled, strict
+    PROFILING_SAMPLE_RATE: float = 1.0  # 100% of requests by default
 
     # ----------------------------------------------
     # Computed Properties
@@ -157,7 +155,7 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     # External API Integration Keys
     # ----------------------------------------------
-    BING_API_KEY: str
+    TAVILY_API_KEY: str
     LLAMA_INDEX_KEY: str
 
     # AI & Machine Learning
@@ -183,6 +181,7 @@ class ProductionSettings(CommonSettings):
 
     # External Service Integration
     COMPOSIO_KEY: str
+    FIRECRAWL_API_KEY: str
 
     # ----------------------------------------------
     # Webhook Secrets & Security
@@ -247,7 +246,7 @@ class DevelopmentSettings(CommonSettings):
     # External API Integration Keys
     # ----------------------------------------------
     # Search & Data Services
-    BING_API_KEY: Optional[str] = None
+    TAVILY_API_KEY: Optional[str] = None
     LLAMA_INDEX_KEY: Optional[str] = None
 
     # AI & Machine Learning
@@ -274,6 +273,7 @@ class DevelopmentSettings(CommonSettings):
 
     # External Service Integration
     COMPOSIO_KEY: Optional[str] = None
+    FIRECRAWL_API_KEY: Optional[str] = None
 
     # ----------------------------------------------
     # Webhook Secrets & Security

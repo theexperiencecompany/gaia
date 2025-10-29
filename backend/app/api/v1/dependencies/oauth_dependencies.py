@@ -66,12 +66,13 @@ async def get_current_user_ws(websocket: WebSocket):
 
     return user_info
 
+GET_USER_TZ_TYPE = tuple[str, datetime]
 
 def get_user_timezone(
     x_timezone: str = Header(
         default="UTC", alias="x-timezone", description="User's timezone identifier"
     ),
-) -> datetime:
+) -> GET_USER_TZ_TYPE:
     """
     Get the current time in the user's timezone.
     Uses the x-timezone header to determine the user's timezone.
@@ -85,7 +86,7 @@ def get_user_timezone(
     now = datetime.now(user_tz)
 
     logger.debug(f"User timezone: {user_tz}, Current time: {now}")
-    return now
+    return x_timezone, now
 
 
 async def get_user_timezone_from_preferences(

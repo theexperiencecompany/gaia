@@ -23,7 +23,6 @@ import {
   EnhancedWebResult,
   ImageResult,
   NewsResult,
-  VideoResult,
   WebResult,
 } from "./searchTypes";
 
@@ -47,7 +46,6 @@ export type {
   NewsResult,
   SearchResults,
   TodoToolData,
-  VideoResult,
   WeatherData,
   WebResult,
 };

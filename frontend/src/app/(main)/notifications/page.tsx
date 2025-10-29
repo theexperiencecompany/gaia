@@ -1,12 +1,10 @@
 "use client";
 
-import { Badge } from "@heroui/badge";
+import { Button } from "@heroui/button";
 import { Tab, Tabs } from "@heroui/tabs";
-import { Bell, BellRing } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui";
 import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
 import { NotificationsList } from "@/features/notification/components/NotificationsList";
 import { useAllNotifications } from "@/features/notification/hooks/useAllNotifications";
@@ -89,84 +87,77 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="flex w-full flex-col items-center justify-center overflow-y-auto p-5 py-2">
-      <div className="mb-4 flex w-full justify-end">
-        <Button
-          size="sm"
-          onClick={async () => {
-            await handleBulkMarkAsRead(unreadNotifications.map((n) => n.id));
-          }}
-        >
-          Mark All as Read
-        </Button>
+    <div className="flex h-full w-full flex-col overflow-hidden bg-[#1a1a1a]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">
+            Notifications
+          </h1>
+          <p className="mt-0.5 text-sm text-zinc-500">
+            Stay updated with your latest activity
+          </p>
+        </div>
+        {unreadNotifications.length > 0 && (
+          <Button
+            size="sm"
+            variant={"flat"}
+            onPress={async () => {
+              await handleBulkMarkAsRead(unreadNotifications.map((n) => n.id));
+            }}
+          >
+            Mark All as Read
+          </Button>
+        )}
       </div>
+
       <Tabs
         aria-label="Notifications"
-        color="primary"
-        variant="underlined"
-        className="flex w-full justify-center"
-        classNames={{
-          base: "w-full",
-          tabList: "w-full max-w-4xl px-0",
-          panel: "overflow-y-scroll",
-        }}
+        fullWidth
+        className="mx-auto mt-3 max-w-3xl"
       >
         <Tab
           key="unread"
-          className="w-full"
           title={
-            <div className="flex items-center space-x-2">
-              <BellRing className="h-4 w-4" />
+            <div className="flex items-center gap-2">
               <span>Unread</span>
               {unreadNotifications.length > 0 && (
-                <Badge
-                  color="primary"
-                  content={
-                    unreadNotifications.length > 99
-                      ? "99+"
-                      : unreadNotifications.length.toString()
-                  }
-                  size="sm"
-                >
-                  <span />
-                </Badge>
+                <span className="ml-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-xs font-semibold text-primary">
+                  {unreadNotifications.length > 99
+                    ? "99+"
+                    : unreadNotifications.length}
+                </span>
               )}
             </div>
           }
         >
-          <NotificationsList
-            notifications={unreadNotifications}
-            loading={unreadLoading}
-            emptyMessage="No unread notifications"
-            emptyDescription="All caught up! You're up to date with everything."
-            onRefresh={refreshNotifications}
-            onMarkAsRead={handleMarkAsRead}
-            onModalOpen={handleModalOpen}
-          />
+          <div className="max-h-[calc(100vh-200px)] overflow-y-auto">
+            <NotificationsList
+              notifications={unreadNotifications}
+              loading={unreadLoading}
+              emptyMessage="No unread notifications"
+              emptyDescription="All caught up! You're up to date with everything."
+              onRefresh={refreshNotifications}
+              onMarkAsRead={handleMarkAsRead}
+              onModalOpen={handleModalOpen}
+            />
+          </div>
         </Tab>
-        <Tab
-          className="w-full"
-          key="all"
-          title={
-            <div className="flex items-center space-x-2">
-              <Bell className="h-4 w-4" />
-              <span>All</span>
-            </div>
-          }
-        >
-          <NotificationsList
-            notifications={allNotifications}
-            loading={allLoading}
-            emptyMessage="No notifications yet"
-            emptyDescription="Notifications will appear here when you receive them."
-            onRefresh={refreshNotifications}
-            onMarkAsRead={handleMarkAsRead}
-            onModalOpen={handleModalOpen}
-          />
+        <Tab key="all" title="All">
+          <div className="max-h-[calc(100vh-200px)] overflow-y-auto">
+            <NotificationsList
+              notifications={allNotifications}
+              loading={allLoading}
+              emptyMessage="No notifications yet"
+              emptyDescription="Notifications will appear here when you receive them."
+              onRefresh={refreshNotifications}
+              onMarkAsRead={handleMarkAsRead}
+              onModalOpen={handleModalOpen}
+            />
+          </div>
         </Tab>
       </Tabs>
 
-      {/* Email Preview Modal */}
       {modalConfig?.component === "EmailPreviewModal" && modalConfig.props && (
         <EmailPreviewModal
           isOpen={true}

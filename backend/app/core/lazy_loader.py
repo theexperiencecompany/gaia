@@ -73,6 +73,7 @@ class LazyLoader(Generic[T]):
         validate_values_func: Optional[Callable[[List[Any]], bool]] = None,
         is_global_context: bool = False,
         auto_initialize: bool = False,
+        dependencies: Optional[List[str]] = None,
     ):
         """
         Initialize lazy loader.
@@ -95,6 +96,7 @@ class LazyLoader(Generic[T]):
         self.validate_values_func = validate_values_func
         self.is_global_context = is_global_context
         self.auto_initialize = auto_initialize
+        self.dependencies = dependencies or []
 
         # Check if the loader function is async
         self.is_async = inspect.iscoroutinefunction(loader_func)
@@ -182,7 +184,7 @@ class LazyLoader(Generic[T]):
 
     def get(self) -> Optional[T]:
         """Get the provider instance synchronously. Only works for sync loader functions."""
-        if self.is_async:
+        if self.is_async and not self.auto_initialize:
             raise RuntimeError(
                 f"Provider '{self.provider_name}' has an async loader function. Use aget() instead."
             )
@@ -443,6 +445,21 @@ class LazyLoader(Generic[T]):
 
 
 class ProviderRegistry:
+    def _check_cyclic_dependency(self, name: str, visited: Optional[list] = None):
+        """Check for cyclic dependencies starting from provider 'name'. Raises ConfigurationError if a cycle is found."""
+        if visited is None:
+            visited = []
+        if name in visited:
+            cycle_path = visited + [name]
+            raise ConfigurationError(
+                f"Cyclic dependency detected: {' -> '.join(cycle_path)}"
+            )
+        visited.append(name)
+        loader = self._providers.get(name)
+        if loader:
+            for dep in loader.dependencies:
+                self._check_cyclic_dependency(dep, visited.copy())
+
     """
     Registry for managing multiple lazy-loaded providers.
     Provides a centralized way to configure and access providers.
@@ -464,6 +481,7 @@ class ProviderRegistry:
         validate_values_func: Optional[Callable[[List[Any]], bool]] = None,
         is_global_context: bool = False,
         auto_initialize: bool = False,
+        dependencies: Optional[List[str]] = None,
     ) -> LazyLoader[T]:
         """Register a new provider."""
         with self._lock:
@@ -479,6 +497,7 @@ class ProviderRegistry:
                 validate_values_func=validate_values_func,
                 is_global_context=is_global_context,
                 auto_initialize=auto_initialize,
+                dependencies=dependencies,
             )
 
             if auto_initialize:
@@ -489,15 +508,11 @@ class ProviderRegistry:
 
     async def initialize_auto_providers(self):
         """Initialize all providers marked for auto-initialization concurrently."""
-        auto_init_providers = getattr(self, "_auto_init_providers", set())
-
-        if not auto_init_providers:
-            return
 
         async def _init_provider(name: str):
             """Initialize a single provider with error handling."""
             try:
-                await self._providers[name].aget()
+                await self.aget(name)
                 logger.info(f"Auto-initialized provider '{name}'")
             except Exception as e:
                 provider = self._providers[name]
@@ -509,7 +524,7 @@ class ProviderRegistry:
         # Create tasks for all auto-init providers
         tasks = [
             _init_provider(name)
-            for name in auto_init_providers
+            for name in self._auto_init_providers
             if name in self._providers
         ]
 
@@ -522,13 +537,36 @@ class ProviderRegistry:
         """Get a provider instance by name synchronously - only works for sync providers."""
         if name not in self._providers:
             raise KeyError(f"Provider '{name}' not found in registry")
-        return self._providers[name].get()
+        self._check_cyclic_dependency(name)
+        loader = self._providers[name]
+        for dep in loader.dependencies:
+            if dep in self._providers:
+                dep_loader = self._providers[dep]
+                # Skip if dependency is auto-initialized and already initialized
+                if dep in self._auto_init_providers and dep_loader.is_initialized():
+                    continue
+                if not dep_loader.is_initialized():
+                    self.get(dep)
+        return loader.get()
 
     async def aget(self, name: str) -> Optional[Any]:
         """Get a provider instance by name asynchronously - works for both sync and async providers."""
         if name not in self._providers:
             raise KeyError(f"Provider '{name}' not found in registry")
-        return await self._providers[name].aget()
+        self._check_cyclic_dependency(name)
+        loader = self._providers[name]
+        for dep in loader.dependencies:
+            if dep in self._providers:
+                dep_loader = self._providers[dep]
+                # Skip if dependency is auto-initialized and already initialized
+                if dep in self._auto_init_providers and dep_loader.is_initialized():
+                    continue
+                if not dep_loader.is_initialized():
+                    if dep_loader.is_async:
+                        await self.aget(dep)
+                    else:
+                        self.get(dep)
+        return await loader.aget()
 
     def get_loader(self, name: str) -> LazyLoader:
         """Get the loader itself (not the instance)."""
@@ -574,6 +612,7 @@ def lazy_provider(
     validate_values_func: Optional[Callable[[List[Any]], bool]] = None,
     is_global_context: bool = False,
     auto_initialize: bool = False,
+    dependencies: Optional[List[str]] = None,
 ):
     """
     Decorator to register a function as a lazy provider.
@@ -643,6 +682,7 @@ def lazy_provider(
                 validate_values_func=validate_values_func,
                 is_global_context=is_global_context,
                 auto_initialize=auto_initialize,
+                dependencies=dependencies,
             )
 
         return register_provider
