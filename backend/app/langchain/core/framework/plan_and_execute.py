@@ -50,7 +50,7 @@ from typing import (
     cast,
 )
 
-from app.agents.core.nodes import trim_messages_node
+from app.agents.core.nodes.trim_messages_node import trim_messages_node
 from app.agents.core.nodes.filter_messages import create_filter_messages_node
 from app.agents.llm.client import init_llm
 from langchain_core.language_models import LanguageModelLike
@@ -397,6 +397,7 @@ class OrchestratorGraph:
             workflow.add_node("tools", tools_node)
 
         if self._end_graph_hooks:
+
             async def end_hooks_node(
                 state: OrchestratorState, config: RunnableConfig, store: BaseStore
             ) -> OrchestratorState:
@@ -616,7 +617,7 @@ def build_orchestrator_subgraph(
         orchestrator_tools=config.orchestrator_tools,
         llm=config.llm,
         finalizer_prompt=config.finalizer_prompt,
-        pre_llm_hooks=[filter_node, trim_messages_node],
+        pre_llm_hooks=[filter_node, cast(HookType, trim_messages_node)],
         end_graph_hooks=[cleanup_hook],
     )
 
