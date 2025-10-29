@@ -13,7 +13,6 @@ interface TodoListProps {
   onTodoClick?: (todo: Todo) => void;
   onTodoEdit?: (todo: Todo) => void;
   onRefresh?: () => void;
-  showCompleted?: boolean;
 }
 
 export default function TodoList({

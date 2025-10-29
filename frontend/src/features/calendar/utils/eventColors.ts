@@ -6,14 +6,24 @@ export const getEventColor = (
   event: GoogleCalendarEvent,
   calendars: CalendarItem[],
 ) => {
-  // Find the calendar this event belongs to
-  const calendar = calendars.find(
-    (cal) =>
-      // Events don't always have organizer.email matching calendar id,
-      // so we'll use a fallback color scheme
-      event.organizer?.email === cal.id || event.creator?.email === cal.id,
-  );
+  // First priority: use calendarId if available
+  if (event.calendarId) {
+    const calendar = calendars.find((cal) => cal.id === event.calendarId);
+    if (calendar?.backgroundColor) return calendar.backgroundColor;
+  }
 
-  // Use calendar's background color if available, otherwise use a default color
-  return calendar?.backgroundColor || "#00bbff"; // Google blue as fallback
+  // Second priority: find by organizer email
+  if (event.organizer?.email) {
+    const calendar = calendars.find((cal) => cal.id === event.organizer?.email);
+    if (calendar?.backgroundColor) return calendar.backgroundColor;
+  }
+
+  // Third priority: find by creator email
+  if (event.creator?.email) {
+    const calendar = calendars.find((cal) => cal.id === event.creator?.email);
+    if (calendar?.backgroundColor) return calendar.backgroundColor;
+  }
+
+  // Fallback color
+  return "#00bbff";
 };

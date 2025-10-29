@@ -145,7 +145,9 @@ class ToolRegistry:
 
         add_category(
             "delegation",
-            core_tools=get_handoff_tools(["gmail", "notion", "twitter", "linkedin"]),
+            core_tools=get_handoff_tools(
+                ["gmail", "notion", "twitter", "linkedin", "calendar"]
+            ),
         )
 
         add_category("notifications", tools=[*notification_tool.tools])
@@ -166,6 +168,8 @@ class ToolRegistry:
             tools=calendar_tool.tools,
             require_integration=True,
             integration_name="google_calendar",
+            is_delegated=True,
+            space="calendar",
         )
 
         add_category(

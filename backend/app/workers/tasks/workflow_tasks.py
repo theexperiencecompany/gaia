@@ -199,8 +199,8 @@ async def execute_workflow_by_id(
                 await WorkflowService.increment_execution_count(
                     workflow_id, workflow.user_id, is_successful=False
                 )
-            except Exception:
-                pass  # Don't break on stats update failure
+            except Exception as e2:
+                logger.debug(f"Failed to update workflow stats: {e2}")
 
         # Try to store error messages if any were generated
         if execution_messages and workflow:
@@ -208,8 +208,8 @@ async def execute_workflow_by_id(
                 await create_workflow_completion_notification(
                     workflow, execution_messages, workflow.user_id
                 )
-            except Exception:
-                pass  # Already logged in notification function
+            except Exception as e2:
+                logger.debug(f"Failed to create notification: {e2}")
 
         return f"Error executing workflow {workflow_id}: {str(e)}"
 
@@ -319,7 +319,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
         usage_metadata_callback = UsageMetadataCallbackHandler()
 
         # Execute using the same logic as normal chat
-        complete_message, tool_data, token_metadata = await call_agent_silent(
+        complete_message, tool_data = await call_agent_silent(
             request=request,
             conversation_id=conversation["conversation_id"],
             user=user_data,
@@ -348,7 +348,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
             response=complete_message,
             date=datetime.now(timezone.utc).isoformat(),
             message_id=str(uuid4()),
-            metadata=token_metadata,  # Include token usage metadata
+            # metadata=token_metadata,  # Include token usage metadata
             **tool_data,  # Include all captured tool data
         )
         execution_messages.append(bot_message)

@@ -95,7 +95,8 @@ export default function Navbar() {
             as={Link}
             href={"/"}
             variant="light"
-            className="h-10 w-10 px-12!"
+            isIconOnly
+            className="h-10 w-10"
           >
             <Image
               src="/images/logos/logo.webp"
@@ -104,7 +105,7 @@ export default function Navbar() {
               height={25}
               className="min-w-[25px]"
             />
-            <span className="tracking-tigher text-xl font-medium">GAIA</span>
+            {/* <span className="tracking-tigher text-xl font-medium">GAIA</span> */}
           </Button>
 
           <div className="hidden items-center gap-1 sm:flex">

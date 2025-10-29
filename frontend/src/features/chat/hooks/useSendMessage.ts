@@ -5,6 +5,7 @@ import ObjectID from "bson-objectid";
 import { useCallback } from "react";
 
 import { useChatStream } from "@/features/chat/hooks/useChatStream";
+import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import { useConversationStore } from "@/stores/conversationStore";
 import { MessageType } from "@/types/features/convoTypes";
 import { WorkflowData } from "@/types/features/workflowTypes";
@@ -14,6 +15,7 @@ import fetchDate from "@/utils/date/dateUtils";
 export const useSendMessage = () => {
   const addMessage = useConversationStore((state) => state.addMessage);
   const fetchChatStream = useChatStream();
+  const { resetLoadingText } = useLoadingText();
 
   return useCallback(
     async (
@@ -41,6 +43,9 @@ export const useSendMessage = () => {
 
       addMessage(userMessage);
 
+      // Reset loading text when starting a new message to get a fresh thinking message
+      resetLoadingText();
+
       await fetchChatStream(
         inputText,
         [userMessage],
@@ -51,6 +56,6 @@ export const useSendMessage = () => {
         selectedWorkflow,
       );
     },
-    [addMessage, fetchChatStream],
+    [addMessage, fetchChatStream, resetLoadingText],
   );
 };

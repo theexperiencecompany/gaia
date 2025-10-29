@@ -1,5 +1,3 @@
-import { toast } from "sonner";
-
 import { apiService } from "@/lib/api";
 import {
   CalendarEventsResponse,
@@ -27,54 +25,31 @@ export const calendarApi = {
     });
   },
 
-  // Fetch events from multiple calendars with smart date range
+  // Fetch events from multiple calendars with date-based pagination
+  // Uses POST to avoid URL length limits with many calendars
+  // When fetch_all=true, fetches ALL events in the date range (for calendar page)
   fetchMultipleCalendarEvents: async (
     calendarIds: string[],
-    pageToken?: string | null,
     startDate?: string, // YYYY-MM-DD format
     endDate?: string, // YYYY-MM-DD format
+    fetchAll = true, // Default to true for calendar page - fetches ALL events
   ): Promise<CalendarEventsResponse> => {
-    try {
-      if (!calendarIds.length) {
-        if (!pageToken) {
-          toast.dismiss("fetching");
-        }
-        toast.error("No calendars selected");
-        return { events: [], nextPageToken: null };
-      } // Only show loading toast for initial fetch (no pageToken)
-      if (!pageToken) {
-        toast.loading("Fetching Events...", { id: "fetching" });
-      }
-
-      // Use the proper multi-calendar endpoint with date range parameters
-      const params = new URLSearchParams();
-      if (pageToken) params.append("page_token", pageToken);
-
-      // Add selected calendars as query parameters
-      calendarIds.forEach((id) => params.append("selected_calendars", id));
-
-      // Use start_date and end_date parameters if provided, otherwise use a default 3-month range
-      if (startDate) {
-        params.append("start_date", startDate);
-      }
-      if (endDate) {
-        params.append("end_date", endDate);
-      }
-
-      const url = `/calendar/events?${params.toString()}`;
-
-      const response = await apiService.get<CalendarEventsResponse>(url, {
-        silent: true,
-      });
-
-      toast.dismiss("fetching");
-      return response;
-    } catch (error) {
-      toast.dismiss("fetching");
-      toast.error("Failed to fetch calendar events");
-      console.error("Error in fetchMultipleCalendarEvents:", error);
-      throw error;
+    if (!calendarIds.length) {
+      return { events: [], nextPageToken: null };
     }
+
+    return apiService.post<CalendarEventsResponse>(
+      "/calendar/events/query",
+      {
+        selected_calendars: calendarIds,
+        start_date: startDate,
+        end_date: endDate,
+        fetch_all: fetchAll,
+      },
+      {
+        silent: true,
+      },
+    );
   },
 
   // Fetch available calendars
@@ -102,7 +77,6 @@ export const calendarApi = {
       `/calendar/${calendarId}/events`,
       event,
       {
-        successMessage: "Event created successfully",
         errorMessage: "Failed to create event",
       },
     );
@@ -118,7 +92,6 @@ export const calendarApi = {
       `/calendar/${calendarId}/events/${eventId}`,
       event,
       {
-        successMessage: "Event updated successfully",
         errorMessage: "Failed to update event",
       },
     );
@@ -138,7 +111,7 @@ export const calendarApi = {
     return calendars.map((cal) => ({
       id: cal.id,
       summary: cal.name || cal.summary || "",
-      backgroundColor: cal.backgroundColor || "#4285F4",
+      backgroundColor: cal.backgroundColor || "#00bbff",
       primary: cal.primary || false,
     }));
   },
@@ -173,7 +146,6 @@ export const calendarApi = {
     event: EventCreatePayload,
   ): Promise<GoogleCalendarEvent> => {
     return apiService.post<GoogleCalendarEvent>("/calendar/event", event, {
-      successMessage: "Event added to calendar!",
       errorMessage: "Failed to add event",
     });
   },
@@ -212,6 +184,109 @@ export const calendarApi = {
       {
         successMessage: "Event updated successfully!",
         errorMessage: "Failed to update event",
+      },
+    );
+  },
+  // Batch operations
+  batchCreateEvents: async (
+    events: EventCreatePayload[],
+  ): Promise<{
+    successful: GoogleCalendarEvent[];
+    failed: Array<{ event: EventCreatePayload; error: string }>;
+  }> => {
+    return apiService.post<{
+      successful: GoogleCalendarEvent[];
+      failed: Array<{ event: EventCreatePayload; error: string }>;
+    }>(
+      "/calendar/events/batch",
+      { events },
+      {
+        successMessage: `Successfully added ${events.length} event${events.length > 1 ? "s" : ""}!`,
+        errorMessage: "Failed to add some events",
+      },
+    );
+  },
+
+  batchUpdateEvents: async (
+    events: Array<{
+      event_id: string;
+      calendar_id: string;
+      summary?: string;
+      description?: string;
+      start?: string;
+      end?: string;
+      is_all_day?: boolean;
+      timezone?: string;
+      original_summary?: string;
+    }>,
+  ): Promise<{
+    successful: GoogleCalendarEvent[];
+    failed: Array<{
+      event: {
+        event_id: string;
+        calendar_id: string;
+        summary?: string;
+        description?: string;
+        start?: string;
+        end?: string;
+        is_all_day?: boolean;
+        timezone?: string;
+        original_summary?: string;
+      };
+      error: string;
+    }>;
+  }> => {
+    return apiService.put<{
+      successful: GoogleCalendarEvent[];
+      failed: Array<{
+        event: {
+          event_id: string;
+          calendar_id: string;
+          summary?: string;
+          description?: string;
+          start?: string;
+          end?: string;
+          is_all_day?: boolean;
+          timezone?: string;
+          original_summary?: string;
+        };
+        error: string;
+      }>;
+    }>(
+      "/calendar/events/batch",
+      { events },
+      {
+        successMessage: `Successfully updated ${events.length} event${events.length > 1 ? "s" : ""}!`,
+        errorMessage: "Failed to update some events",
+      },
+    );
+  },
+
+  batchDeleteEvents: async (
+    events: Array<{
+      event_id: string;
+      calendar_id: string;
+      summary?: string;
+    }>,
+  ): Promise<{
+    successful: Array<{ event_id: string; calendar_id: string }>;
+    failed: Array<{
+      event: { event_id: string; calendar_id: string; summary?: string };
+      error: string;
+    }>;
+  }> => {
+    return apiService.delete<{
+      successful: Array<{ event_id: string; calendar_id: string }>;
+      failed: Array<{
+        event: { event_id: string; calendar_id: string; summary?: string };
+        error: string;
+      }>;
+    }>(
+      "/calendar/events/batch",
+      { events },
+      {
+        successMessage: `Successfully deleted ${events.length} event${events.length > 1 ? "s" : ""}!`,
+        errorMessage: "Failed to delete some events",
       },
     );
   },

@@ -11,12 +11,11 @@ function getTypedData<K extends ToolName>(
     ? (entry.data as ToolDataMap[K])
     : undefined;
 }
-// TextBubble.tsx
+
 import { Chip } from "@heroui/chip";
 import { AlertTriangleIcon } from "lucide-react";
 import React from "react";
 
-import { InternetIcon } from "@/components/shared/icons";
 import { ToolDataMap, ToolName } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
 import CalendarListFetchCard from "@/features/calendar/components/CalendarListFetchCard";
@@ -50,9 +49,9 @@ import {
 import { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import {
   ContactData,
+  EmailFetchData,
   PeopleSearchData,
 } from "@/types/features/mailTypes";
-import { EmailFetchData } from "@/types/features/mailTypes";
 import { NotificationRecord } from "@/types/features/notificationTypes";
 import { SupportTicketData } from "@/types/features/supportTypes";
 
@@ -124,9 +123,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   email_sent_data: (data, index) => (
     <EmailSentSection
       key={`tool-email-sent-${index}`}
-      email_sent_data={
-        (Array.isArray(data) ? data : [data]) as EmailSentData[]
-      }
+      email_sent_data={(Array.isArray(data) ? data : [data]) as EmailSentData[]}
     />
   ),
   contacts_data: (data, index) => (
@@ -270,19 +267,17 @@ export default function TextBubble({
   isConvoSystemGenerated,
   systemPurpose,
 }: ChatBubbleBotProps) {
-  const hasDeepResearchResults = tool_data?.some(
-    (entry) => entry.tool_name === "deep_research_results",
-  );
-
   return (
     <>
       {/* Unified tool_data rendering via registry */}
       {tool_data?.map((entry, index) => {
         const toolName = entry.tool_name as ToolName;
+
         if (!TOOL_RENDERERS[toolName]) return null;
         // Use type guard to get the correct type for data
         const typedData = getTypedData(entry as ToolDataUnion, toolName);
         if (typedData === undefined) return null;
+
         return (
           <React.Fragment key={`tool-${toolName}-${index}`}>
             {renderTool(toolName, typedData, index)}
@@ -292,19 +287,40 @@ export default function TextBubble({
 
       {shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
         (() => {
-          // Split text content by NEW_MESSAGE_BREAK tokens
           const textParts = splitMessageByBreaks(text?.toString() || "");
+          const hasMultipleParts = textParts.length > 1;
 
-          if (textParts.length > 1) {
-            // Render multiple iMessage-style bubbles for split content
+          const renderBubbleContent = (
+            content: string,
+            showDisclaimer: boolean,
+          ) => (
+            <div className="flex flex-col gap-3">
+              <MarkdownRenderer content={content} />
+              {!!disclaimer && showDisclaimer && (
+                <Chip
+                  className="text-xs font-medium text-warning-500"
+                  color="warning"
+                  size="sm"
+                  startContent={
+                    <AlertTriangleIcon
+                      className="text-warning-500"
+                      height={17}
+                    />
+                  }
+                  variant="flat"
+                >
+                  {disclaimer}
+                </Chip>
+              )}
+            </div>
+          );
+
+          if (hasMultipleParts)
             return (
               <div className="flex flex-col">
                 {textParts.map((part, index) => {
                   const isFirst = index === 0;
                   const isLast = index === textParts.length - 1;
-                  // const isMiddle = !isFirst && !isLast;
-
-                  // iMessage grouped styling classes
                   const groupedClasses = isFirst
                     ? "imessage-grouped-first mb-1.5"
                     : isLast
@@ -316,82 +332,16 @@ export default function TextBubble({
                       key={index}
                       className={`imessage-bubble imessage-from-them ${groupedClasses}`}
                     >
-                      <div className="flex flex-col gap-3">
-                        {hasDeepResearchResults && index === 0 && (
-                          <Chip
-                            color="primary"
-                            startContent={
-                              <InternetIcon color="#00bbff" height={20} />
-                            }
-                            variant="flat"
-                          >
-                            <div className="flex items-center gap-1 font-medium text-primary">
-                              Deep Search Results from the Web
-                            </div>
-                          </Chip>
-                        )}
-
-                        <MarkdownRenderer content={part} />
-
-                        {!!disclaimer && index === textParts.length - 1 && (
-                          <Chip
-                            className="text-xs font-medium text-warning-500"
-                            color="warning"
-                            size="sm"
-                            startContent={
-                              <AlertTriangleIcon
-                                className="text-warning-500"
-                                height={17}
-                              />
-                            }
-                            variant="flat"
-                          >
-                            {disclaimer!}
-                          </Chip>
-                        )}
-                      </div>
+                      {renderBubbleContent(part, isLast)}
                     </div>
                   );
                 })}
               </div>
             );
-          }
 
-          // Single iMessage bubble (normal behavior)
           return (
             <div className="imessage-bubble imessage-from-them">
-              <div className="flex flex-col gap-3">
-                {hasDeepResearchResults && (
-                  <Chip
-                    color="primary"
-                    startContent={<InternetIcon color="#00bbff" height={20} />}
-                    variant="flat"
-                  >
-                    <div className="flex items-center gap-1 font-medium text-primary">
-                      Deep Search Results from the Web
-                    </div>
-                  </Chip>
-                )}
-
-                {!!text && <MarkdownRenderer content={text.toString()} />}
-
-                {!!disclaimer && (
-                  <Chip
-                    className="text-xs font-medium text-warning-500"
-                    color="warning"
-                    size="sm"
-                    startContent={
-                      <AlertTriangleIcon
-                        className="text-warning-500"
-                        height={17}
-                      />
-                    }
-                    variant="flat"
-                  >
-                    {disclaimer!}
-                  </Chip>
-                )}
-              </div>
+              {renderBubbleContent(text?.toString() || "", true)}
             </div>
           );
         })()}

@@ -64,8 +64,8 @@ async def follow_up_actions_node(
         if not messages or len(messages) < 2:
             try:
                 writer({"follow_up_actions": []})
-            except Exception:
-                pass  # Stream closed, ignore
+            except Exception as e:
+                logger.debug(f"Stream closed when sending empty actions: {e}")
             return state
 
         # Set up structured output parsing
@@ -91,23 +91,23 @@ async def follow_up_actions_node(
             logger.error(f"Error parsing follow-up actions: {parse_exc}")
             try:
                 writer({"follow_up_actions": []})
-            except Exception:
-                pass  # Stream closed, ignore
+            except Exception as e:
+                logger.debug(f"Stream closed when sending error actions: {e}")
             return state
 
         # Always stream follow-up actions, even if empty
         try:
             writer({"follow_up_actions": actions.actions if actions.actions else []})
-        except Exception:
-            pass  # Stream closed, ignore
+        except Exception as e:
+            logger.debug(f"Stream closed when sending follow-up actions: {e}")
         return state
 
     except Exception as e:
         logger.error(f"Error in follow-up actions node: {e}")
         try:
             writer({"follow_up_actions": []})
-        except Exception:
-            pass  # Stream closed, client already disconnected
+        except Exception as write_error:
+            logger.debug(f"Stream closed in error handler: {write_error}")
         return state
 
 

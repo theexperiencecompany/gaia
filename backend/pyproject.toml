@@ -114,6 +114,8 @@ dependencies = [
   "mem0ai>=0.1.118",
   "firecrawl-py>=4.3.6",
   "tavily-python>=0.7.12",
+  "types-croniter",
+  "types-python-dateutil",
   "composio-client>=1.10.0",
 ]
 

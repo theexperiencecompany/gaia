@@ -2,7 +2,7 @@ import json
 import os
 import unicodedata
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import html2text
 from app.config.loggers import memory_logger as logger
@@ -44,7 +44,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
     # Fetch emails in batches
     try:
-        all_emails = []
+        all_emails: List[Dict[str, Any]] = []
         page_token = None
         batch_count = 0
 

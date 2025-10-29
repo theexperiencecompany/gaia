@@ -152,8 +152,8 @@ class DodoPaymentService:
                     user_name=user.get("first_name", "User"),
                     user_email=user["email"],
                 )
-        except Exception:
-            pass  # Email failure shouldn't break payment verification
+        except Exception as e:
+            logger.debug(f"Failed to send welcome email: {e}")
 
         return {
             "payment_completed": True,

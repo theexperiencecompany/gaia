@@ -12,6 +12,7 @@ import asyncio
 from typing import Any
 
 from app.agents.prompts.subagent_prompts import (
+    CALENDAR_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
@@ -120,6 +121,35 @@ class ProviderSubAgents:
         return linkedin_agent
 
     @staticmethod
+    async def create_calendar_agent(llm: LanguageModelLike):
+        """
+        Create a specialized Calendar agent with direct tool binding.
+
+        Calendar has only 7 tools, so we bind them all directly instead of using retrieve_tools.
+        This provides better performance and ensures all calendar tools are always available.
+
+        Args:
+            llm: Language model to use
+
+        Returns:
+            Compiled Calendar sub-agent graph
+        """
+        logger.info("Creating Calendar sub-agent graph with direct tool binding")
+
+        # Create the Calendar agent graph with direct tool binding
+        calendar_agent = await SubAgentFactory.create_provider_subagent(
+            provider="calendar",
+            llm=llm,
+            tool_space="calendar",
+            name="calendar_agent",
+            prompt=CALENDAR_AGENT_SYSTEM_PROMPT,
+            use_direct_tools=True,  # Bind all 7 calendar tools directly
+            disable_retrieve_tools=True,  # Disable retrieve_tools functionality
+        )
+
+        return calendar_agent
+
+    @staticmethod
     async def get_all_subagents(llm: LanguageModelLike) -> dict[str, Any]:
         """
         Create all provider-specific sub-agent graphs.
@@ -135,10 +165,12 @@ class ProviderSubAgents:
             ProviderSubAgents.create_notion_agent(llm),
             ProviderSubAgents.create_twitter_agent(llm),
             ProviderSubAgents.create_linkedin_agent(llm),
+            ProviderSubAgents.create_calendar_agent(llm),
         )
         return {
             "gmail_agent": results[0],
             "notion_agent": results[1],
             "twitter_agent": results[2],
             "linkedin_agent": results[3],
+            "calendar_agent": results[4],
         }

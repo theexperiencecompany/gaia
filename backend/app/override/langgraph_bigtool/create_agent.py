@@ -104,6 +104,8 @@ def create_agent(
     namespace_prefix: tuple[str, ...] = ("tools",),
     retrieve_tools_function: Callable[..., list[str]] | None = None,
     retrieve_tools_coroutine: Callable[..., Awaitable[list[str]]] | None = None,
+    initial_tool_ids: list[str] | None = None,
+    disable_retrieve_tools: bool = False,
     context_schema=None,
     agent_name: str = "main_agent",
     sub_agents: dict[str, Union[CompiledStateGraph, RunnableCallable]] = {},
@@ -129,6 +131,12 @@ def create_agent(
         retrieve_tools_coroutine: Optional coroutine to use for retrieving tools. This
             function should return a list of tool IDs. If not specified, uses semantic
             against the Store with limit, filter, and namespace_prefix set above.
+        initial_tool_ids: Optional list of tool IDs to bind directly without using retrieve_tools.
+            If provided, these tools will be bound from the start and no retrieve_tools mechanism
+            will be used. This improves performance by eliminating the tool retrieval step.
+        disable_retrieve_tools: If True, do not bind or use the retrieve_tools mechanism at all.
+            This disables tool retrieval and select_tools path; only initially bound tools and
+            any already-selected tools will be available.
         is_sub_agent: Whether this agent is a sub-agent (affects hook execution).
         pre_model_hooks: Optional list of callables to process state after model calls.
             Hooks are executed in sequence as provided. Each hook has signature:
@@ -137,20 +145,18 @@ def create_agent(
             Hooks are executed in sequence as provided. Each hook has signature:
             (state: State, config: RunnableConfig, store: BaseStore) -> State.
     """
-    if retrieve_tools_function is None and retrieve_tools_coroutine is None:
-        retrieve_tools_function, retrieve_tools_coroutine = get_default_retrieval_tool(
-            namespace_prefix, limit=limit, filter=filter
+    retrieve_tools: StructuredTool | None = None
+    store_arg = None
+    if not disable_retrieve_tools:
+        if retrieve_tools_function is None and retrieve_tools_coroutine is None:
+            retrieve_tools_function, retrieve_tools_coroutine = (
+                get_default_retrieval_tool(namespace_prefix, limit=limit, filter=filter)
+            )
+        retrieve_tools = StructuredTool.from_function(
+            func=retrieve_tools_function, coroutine=retrieve_tools_coroutine
         )
-    retrieve_tools = StructuredTool.from_function(
-        func=retrieve_tools_function, coroutine=retrieve_tools_coroutine
-    )
-    # If needed, get argument name to inject Store
-    store_arg = get_store_arg(retrieve_tools)
-
-    # NOTE: The following functions are copied from langgraph_bigtool library
-    # Type errors and linting warnings in this section are EXPECTED and can be ignored
-    # as they result from copying external library code that may not match our project's
-    # strict typing requirements. The functionality is preserved from the original library.
+        # If needed, get argument name to inject Store
+        store_arg = get_store_arg(retrieve_tools)
 
     def execute_end_graph_hooks(
         state: State, config: RunnableConfig, *, store: BaseStore
@@ -176,11 +182,16 @@ def create_agent(
             }
         )
         selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
-        llm_with_tools = _llm.bind_tools([retrieve_tools, *selected_tools])  # type: ignore[arg-type]
+        initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
+        tools_to_bind: list[Any] = []
+        if retrieve_tools is not None:
+            tools_to_bind.append(retrieve_tools)
+        tools_to_bind.extend(selected_tools)
+        tools_to_bind.extend(initial_tools)
+        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[arg-type]
         response = llm_with_tools.invoke(state["messages"])
 
         # Set the name for the response for filtering
-        response.name = agent_name
         response.additional_kwargs = {"visible_to": {agent_name}}
         return {"messages": [response]}  # type: ignore[return-value]
 
@@ -200,14 +211,19 @@ def create_agent(
         model_name = model_configurations.get("model_name", "gpt-4o-mini")
         provider = model_configurations.get("provider", None)
         selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
+        initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
         _llm = llm.with_config(
             configurable={"model_name": model_name, "provider": provider}
         )
-        llm_with_tools = _llm.bind_tools([retrieve_tools, *selected_tools])  # type: ignore[arg-type]
+        tools_to_bind: list[Any] = []
+        if retrieve_tools is not None:
+            tools_to_bind.append(retrieve_tools)
+        tools_to_bind.extend(selected_tools)
+        tools_to_bind.extend(initial_tools)
+        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[arg-type]
         response = await llm_with_tools.ainvoke(state["messages"])
 
         # Set the name for the response for filtering
-        response.name = agent_name
         response.additional_kwargs = {"visible_to": {agent_name}}
         return {"messages": [response]}  # type: ignore[return-value]
 
@@ -216,6 +232,9 @@ def create_agent(
     def select_tools(
         tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore
     ) -> State:
+        assert retrieve_tools is not None, (
+            "retrieve_tools is disabled and select_tools should not be called"
+        )
         selected_tools = {}
         for tool_call in tool_calls:
             kwargs = {**tool_call["args"]}
@@ -230,6 +249,9 @@ def create_agent(
     async def aselect_tools(
         tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore
     ) -> State:
+        assert retrieve_tools is not None, (
+            "retrieve_tools is disabled and aselect_tools should not be called"
+        )
         selected_tools = {}
         for tool_call in tool_calls:
             kwargs = {**tool_call["args"]}
@@ -249,7 +271,7 @@ def create_agent(
         else:
             destinations = []
             for call in last_message.tool_calls:
-                if call["name"] == retrieve_tools.name:
+                if retrieve_tools is not None and call["name"] == retrieve_tools.name:
                     destinations.append(Send("select_tools", [call]))
                 else:
                     tool_call = tool_node.inject_tool_args(call, state, store)  # type: ignore[arg-type]
@@ -259,25 +281,29 @@ def create_agent(
 
     builder = StateGraph(State, context_schema=context_schema)
 
-    if retrieve_tools_function is not None and retrieve_tools_coroutine is not None:
-        select_tools_node = RunnableCallable(select_tools, aselect_tools)
-    elif retrieve_tools_function is not None and retrieve_tools_coroutine is None:
-        select_tools_node = select_tools
-    elif retrieve_tools_coroutine is not None and retrieve_tools_function is None:
-        select_tools_node = aselect_tools
-    else:
-        raise ValueError(
-            "One of retrieve_tools_function or retrieve_tools_coroutine must be "
-            "provided."
-        )
+    if not disable_retrieve_tools:
+        if retrieve_tools_function is not None and retrieve_tools_coroutine is not None:
+            select_tools_node = RunnableCallable(select_tools, aselect_tools)
+        elif retrieve_tools_function is not None and retrieve_tools_coroutine is None:
+            select_tools_node = select_tools
+        elif retrieve_tools_coroutine is not None and retrieve_tools_function is None:
+            select_tools_node = aselect_tools
+        else:
+            raise ValueError(
+                "One of retrieve_tools_function or retrieve_tools_coroutine must be "
+                "provided."
+            )
 
     builder.set_entry_point("agent")
 
     builder.add_node("agent", RunnableCallable(call_model, acall_model))
-    builder.add_node("select_tools", select_tools_node)  # type: ignore[call-arg]
+    if not disable_retrieve_tools:
+        builder.add_node("select_tools", select_tools_node)  # type: ignore[call-arg]
     builder.add_node("tools", tool_node)
 
-    path_map = ["select_tools", "tools", END]
+    path_map = ["tools", END]
+    if not disable_retrieve_tools:
+        path_map.insert(0, "select_tools")
     if end_graph_hooks:
         builder.add_node("end_graph_hooks", execute_end_graph_hooks)
         builder.add_edge("end_graph_hooks", END)
@@ -319,7 +345,8 @@ def create_agent(
     )
 
     # builder.add_edge("tools", "agent")
-    builder.add_edge("select_tools", "agent")
+    if not disable_retrieve_tools:
+        builder.add_edge("select_tools", "agent")
 
     # Handle sub-agents
     for name, sub_agent in sub_agents.items():

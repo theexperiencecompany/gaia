@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -8,15 +9,23 @@ from app.agents.templates.calendar_template import (
     CALENDAR_PROMPT_TEMPLATE,
 )
 from app.config.loggers import chat_logger as logger
-from app.decorators import require_integration, with_doc, with_rate_limiting
+from app.decorators import (
+    require_integration,
+    with_calendar_auth,
+    with_doc,
+    with_rate_limiting,
+)
 from app.models.calendar_models import (
     CalendarEventToolRequest,
     CalendarEventUpdateToolRequest,
     EventLookupRequest,
 )
 from app.services.calendar_service import (
+    enrich_calendar_options_with_metadata,
     find_event_for_action,
+    format_event_for_frontend,
     get_calendar_events,
+    get_calendar_metadata_map,
     list_calendars,
     search_calendar_events_native,
 )
@@ -35,53 +44,45 @@ from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
 
-def transform_calendar_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+async def process_single_event(
+    event: CalendarEventToolRequest,
+    user_time_str: str,
+    user_id: str,
+) -> tuple[Dict[str, Any] | None, str | None]:
     """
-    Transform calendar events to essential fields for LLM consumption.
-    Reduces token usage by removing unnecessary metadata.
-
-    Args:
-        events: List of full event objects from Google Calendar API.
+    Process a single calendar event with validation and timezone handling.
 
     Returns:
-        List of events with only essential fields.
+        tuple: (event_dict or None, error_message or None)
     """
-    transformed = []
-    for event in events:
-        transformed_event = {
-            "id": event.get("id"),
-            "summary": event.get("summary"),
-            "start": event.get("start"),
-            "end": event.get("end"),
+    try:
+        processed_event = event.process_times(user_time_str)
+
+        event_dict = {
+            "summary": processed_event.summary,
+            "description": processed_event.description or "",
+            "is_all_day": processed_event.is_all_day,
+            "start": processed_event.start,
+            "end": processed_event.end,
         }
 
-        # Add optional fields only if they exist and are non-empty
-        if event.get("description"):
-            transformed_event["description"] = event["description"]
-        if event.get("location"):
-            transformed_event["location"] = event["location"]
-        if event.get("attendees"):
-            # Simplify attendees to only essential info: email, response status, and organizer flag
-            transformed_event["attendees"] = [
-                {
-                    "email": attendee.get("email"),
-                    "responseStatus": attendee.get("responseStatus"),
-                    "organizer": attendee.get("organizer", False),
-                }
-                for attendee in event["attendees"]
-            ]
-        if event.get("recurrence"):
-            transformed_event["recurrence"] = event["recurrence"]
-        if event.get("status"):
-            transformed_event["status"] = event["status"]
-        if event.get("calendarId"):
-            transformed_event["calendarId"] = event["calendarId"]
-        if event.get("calendarTitle"):
-            transformed_event["calendarTitle"] = event["calendarTitle"]
+        if processed_event.calendar_id:
+            event_dict["calendar_id"] = processed_event.calendar_id
+            try:
+                pass
+            except Exception as e:
+                logger.warning(f"Could not process calendar_id: {e}")
 
-        transformed.append(transformed_event)
+        if processed_event.recurrence:
+            event_dict["recurrence"] = processed_event.recurrence.model_dump()
 
-    return transformed
+        logger.info(f"Added calendar event: {processed_event.summary}")
+        return event_dict, None
+
+    except Exception as e:
+        error_msg = f"Error processing calendar event: {e}"
+        logger.error(error_msg)
+        return None, error_msg
 
 
 @tool()
@@ -93,7 +94,6 @@ async def create_calendar_event(
     config: RunnableConfig,
 ) -> str:
     try:
-        # Validate non-empty
         if not events_data:
             logger.error("Empty event list provided")
             return json.dumps(
@@ -104,8 +104,17 @@ async def create_calendar_event(
                 }
             )
 
-        # Get user time from config for timezone processing
         configurable = config.get("configurable", {})
+        if not configurable:
+            logger.error("Missing 'configurable' section in config")
+            return json.dumps(
+                {
+                    "error": "Configuration data is missing",
+                    "calendar_options": [],
+                    "prompt": str(CALENDAR_PROMPT_TEMPLATE.invoke({})),
+                }
+            )
+
         user_time_str: str = configurable.get("user_time", "")
         user_id = configurable.get("user_id")
 
@@ -129,41 +138,25 @@ async def create_calendar_event(
                 }
             )
 
+        logger.info(f"Processing {len(events_data)} calendar events")
+
+        # Process all events in parallel
+        results = await asyncio.gather(
+            *[
+                process_single_event(event, user_time_str, user_id)
+                for event in events_data
+            ]
+        )
+
         calendar_options = []
         validation_errors = []
 
-        logger.info(f"Processing {len(events_data)} calendar events")
-
-        # Process each event with validation
-        for event in events_data:
-            try:
-                # Process the event times with timezone handling to convert to service format
-                processed_event = event.process_times(user_time_str)
-
-                # Add the validated and processed event as a proper dict with all required fields
-                event_dict = {
-                    "summary": processed_event.summary,
-                    "description": processed_event.description or "",
-                    "is_all_day": processed_event.is_all_day,
-                    "start": processed_event.start,
-                    "end": processed_event.end,
-                }
-
-                # Add optional fields only if they exist
-                if processed_event.calendar_id:
-                    event_dict["calendar_id"] = processed_event.calendar_id
-                if processed_event.recurrence:
-                    event_dict["recurrence"] = processed_event.recurrence.model_dump()
-
+        for event_dict, error_msg in results:
+            if event_dict:
                 calendar_options.append(event_dict)
-                logger.info(f"Added calendar event: {processed_event.summary}")
-
-            except Exception as e:
-                error_msg = f"Error processing calendar event: {e}"
-                logger.error(error_msg)
+            if error_msg:
                 validation_errors.append(error_msg)
 
-        # Return validation errors if any
         if validation_errors and not calendar_options:
             logger.error(f"Calendar event validation failed: {validation_errors}")
             return json.dumps(
@@ -175,51 +168,21 @@ async def create_calendar_event(
                 }
             )
 
-        # Validate configurable section exists
-        if not configurable:
-            logger.error("Missing 'configurable' section in config")
-            return json.dumps(
-                {
-                    "error": "Configuration data is missing",
-                    "calendar_options": [],
-                    "prompt": str(CALENDAR_PROMPT_TEMPLATE.invoke({})),
-                }
-            )
-
-        # # If initiated by backend then create notification
-        # if configurable.get("initiator") == "backend":
-        #     user_id = configurable.get("user_id")
-        #     if not user_id:
-        #         logger.error("Missing user_id in configuration")
-        #         return json.dumps(
-        #             {
-        #                 "error": "User ID is required to create calendar notification",
-        #                 "calendar_options": [],
-        #                 "prompt": str(CALENDAR_PROMPT_TEMPLATE.invoke({})),
-        #             }
-        #         )
-
-        #     # Create a notification for the user
-        #     notifications = (
-        #         AIProactiveNotificationSource.create_calendar_event_notification(
-        #             user_id=user_id,
-        #             notification_data=event_list,
-        #         )
-        #     )
-        #     await asyncio.gather(
-        #         *[
-        #             notification_service.create_notification(notification)
-        #             for notification in notifications
-        #         ]
-        #     )
-
-        #     return "Calendar notification created successfully."
-
-        # Return the successfully processed events
         writer = get_stream_writer()
 
-        # Send calendar options to frontend via writer
-        writer({"calendar_options": calendar_options, "intent": "calendar"})
+        try:
+            access_token, _, token_success = await get_tokens_by_user_id(user_id)
+            if not token_success or not access_token:
+                raise Exception("Failed to get valid access token")
+
+            calendar_options = await enrich_calendar_options_with_metadata(
+                calendar_options, access_token, user_id
+            )
+
+            writer({"calendar_options": calendar_options, "intent": "calendar"})
+        except Exception as e:
+            logger.warning(f"Error enriching calendar options: {str(e)}")
+            writer({"calendar_options": calendar_options, "intent": "calendar"})
 
         logger.info("Calendar event processing successful")
         logger.info(f"Sent {len(calendar_options)} calendar options to frontend")
@@ -242,31 +205,17 @@ async def create_calendar_event(
 @with_rate_limiting("calendar_management")
 @with_doc(FETCH_CALENDAR_LIST)
 @require_integration("calendar")
+@with_calendar_auth
 async def fetch_calendar_list(
     config: RunnableConfig,
+    user_id: str,
+    access_token: str,
 ) -> str | dict:
     try:
-        if not config:
-            logger.error("Missing configuration data")
-            return "Unable to access calendar configuration. Please try again."
-
-        user_id = config.get("configurable", {}).get("user_id")
-        if not user_id:
-            logger.error("Missing user_id in config")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
-        # Get tokens from token registry
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error("Failed to get valid tokens from token registry")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
         calendars = await list_calendars(access_token=access_token, short=True)
         if calendars is None:
             logger.error("Unable to fetch calendars - no data returned")
             return "Unable to fetch your calendars. Please ensure your calendar is connected."
-
-        logger.info(f"Fetched {len(calendars)} calendars")
 
         # Build array of {name, id, description} for all calendars
         calendar_list_fetch_data: List[Dict[str, Any]] = []
@@ -300,34 +249,23 @@ async def fetch_calendar_list(
 @with_rate_limiting("calendar_management")
 @with_doc(FETCH_CALENDAR_EVENTS)
 @require_integration("calendar")
+@with_calendar_auth
 async def fetch_calendar_events(
     config: RunnableConfig,
+    user_id: str,
+    access_token: str,
     time_min: Optional[str] = None,
     time_max: Optional[str] = None,
     selected_calendars: Optional[List[str]] = None,
     limit: int = 20,
 ) -> str:
     try:
-        if not config:
-            logger.error("Missing configuration data")
-            return "Unable to access calendar configuration. Please try again."
-
-        user_id = config.get("configurable", {}).get("user_id")
-        if not user_id:
-            logger.error("Missing user_id in config")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
-        # Get tokens from token registry
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error("Failed to get valid tokens from token registry")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
         logger.info(f"Fetching calendar events for user {user_id} with limit {limit}")
 
-        # Set default time_min to current time for future events only
         if time_min is None:
             time_min = datetime.now(timezone.utc).isoformat()
+
+        color_map, name_map = await get_calendar_metadata_map(access_token)
 
         events_data = await get_calendar_events(
             user_id=user_id,
@@ -338,27 +276,12 @@ async def fetch_calendar_events(
             max_results=limit,
         )
 
-        # Transform events to reduce token usage
-        events = transform_calendar_events(events_data.get("events", []))
-        logger.info(f"Fetched and transformed {len(events)} events")
+        events = events_data.get("events", [])
+        logger.info(f"Fetched {len(events)} events")
 
-        # Build array of {summary, start_time} for all events
-        calendar_fetch_data = []
-        for event in events:
-            start_time = ""
-            if event.get("start"):
-                start_obj = event["start"]
-                if start_obj.get("dateTime"):
-                    start_time = start_obj["dateTime"]
-                elif start_obj.get("date"):
-                    start_time = start_obj["date"]
-
-            calendar_fetch_data.append(
-                {
-                    "summary": event.get("summary", "No Title"),
-                    "start_time": start_time,
-                }
-            )
+        calendar_fetch_data = [
+            format_event_for_frontend(event, color_map, name_map) for event in events
+        ]
 
         writer = get_stream_writer()
         writer({"calendar_fetch_data": calendar_fetch_data})
@@ -382,35 +305,21 @@ async def fetch_calendar_events(
 @with_doc(SEARCH_CALENDAR_EVENTS)
 @with_rate_limiting("calendar_management")
 @require_integration("calendar")
+@with_calendar_auth
 async def search_calendar_events(
     query: str,
     config: RunnableConfig,
+    user_id: str,
+    access_token: str,
     time_min: Optional[str] = None,
     time_max: Optional[str] = None,
 ) -> str:
     try:
-        if not config:
-            logger.error("Missing configuration data")
-            return "Unable to access calendar configuration. Please try again."
-
-        user_id = config.get("configurable", {}).get("user_id")
-        if not user_id:
-            logger.error("Missing user_id in config")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
-        # Get tokens from token registry
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error("Failed to get valid tokens from token registry")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
         logger.info(f"Searching calendar events for query: {query}")
 
-        # Send progress update
         writer = get_stream_writer()
         writer({"progress": f"Searching calendar events for '{query}'..."})
 
-        # Use the new search function with Google Calendar API's native search
         search_results = await search_calendar_events_native(
             query=query,
             access_token=access_token,
@@ -423,25 +332,13 @@ async def search_calendar_events(
             f"Found {len(search_results.get('matching_events', []))} matching events for query: {query}"
         )
 
-        # Build array of {summary, start_time} for search results
-        calendar_search_data = []
-        for event in search_results.get("matching_events", []):
-            start_time = ""
-            if event.get("start"):
-                start_obj = event["start"]
-                if start_obj.get("dateTime"):
-                    start_time = start_obj["dateTime"]
-                elif start_obj.get("date"):
-                    start_time = start_obj["date"]
+        color_map, name_map = await get_calendar_metadata_map(access_token)
 
-            calendar_search_data.append(
-                {
-                    "summary": event.get("summary", "No Title"),
-                    "start_time": start_time,
-                }
-            )
+        calendar_search_data = [
+            format_event_for_frontend(event, color_map, name_map)
+            for event in search_results.get("matching_events", [])
+        ]
 
-        # Send search results to frontend via writer using grouped structure
         writer(
             {
                 "calendar_data": {"calendar_search_results": search_results},
@@ -461,28 +358,15 @@ async def search_calendar_events(
 @with_doc(VIEW_CALENDAR_EVENT)
 @with_rate_limiting("calendar_management")
 @require_integration("calendar")
+@with_calendar_auth
 async def view_calendar_event(
     event_id: str,
     config: RunnableConfig,
+    user_id: str,
+    access_token: str,
     calendar_id: str = "primary",
 ) -> str:
     try:
-        if not config:
-            logger.error("Missing configuration data")
-            return "Unable to access calendar configuration. Please try again."
-
-        user_id = config.get("configurable", {}).get("user_id")
-        if not user_id:
-            logger.error("Missing user_id in config")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
-        # Get tokens from token registry
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error("Failed to get valid tokens from token registry")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
-        # Fetch specific event using Google Calendar API
         url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events/{event_id}"
         headers = {"Authorization": f"Bearer {access_token}"}
 
@@ -516,28 +400,15 @@ async def view_calendar_event(
 @tool()
 @with_rate_limiting("calendar_management")
 @with_doc(DELETE_CALENDAR_EVENT)
+@with_calendar_auth
 async def delete_calendar_event(
     config: RunnableConfig,
+    user_id: str,
+    access_token: str,
     event_lookup_data: EventLookupRequest,
 ) -> str:
     try:
-        if not config:
-            logger.error("Missing configuration data")
-            return "Unable to access calendar configuration. Please try again."
-
-        user_id = config.get("configurable", {}).get("user_id")
-        if not user_id:
-            logger.error("Missing user_id in config")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
-        # Get tokens from token registry
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error("Failed to get valid tokens from token registry")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
-
         writer = get_stream_writer()
-        # Use service method to find the event for action (delete)
         try:
             target_event = await find_event_for_action(
                 access_token=access_token,
@@ -582,8 +453,11 @@ async def delete_calendar_event(
 @tool()
 @with_rate_limiting("calendar_management")
 @with_doc(docstring=EDIT_CALENDAR_EVENT)
+@with_calendar_auth
 async def edit_calendar_event(
     config: RunnableConfig,
+    user_id: str,
+    access_token: str,
     event_lookup_data: EventLookupRequest,
     summary: Optional[str] = None,
     description: Optional[str] = None,
@@ -599,26 +473,11 @@ async def edit_calendar_event(
     color_id: Optional[str] = None,
 ) -> str:
     try:
-        if not config:
-            logger.error("Missing configuration data")
-            return "Unable to access calendar configuration. Please try again."
-
-        user_id = config.get("configurable", {}).get("user_id")
         user_time_str = config.get("configurable", {}).get("user_time", "")
 
-        # Ensure user_id and user_time are available
-        if not user_id:
-            logger.error("Missing user_id in config")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
         if not user_time_str:
             logger.error("Missing user_time in config")
             return "User time is required for calendar event processing."
-
-        # Get tokens from token registry
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error("Failed to get valid tokens from token registry")
-            return "Unable to access your calendar. Please ensure you're logged in with calendar permissions."
 
         # Process timezone for start/end times if provided
         processed_start = start
@@ -754,7 +613,7 @@ async def edit_calendar_event(
 tools = [
     fetch_calendar_list,
     create_calendar_event,
-    # delete_calendar_event,
+    delete_calendar_event,
     edit_calendar_event,
     fetch_calendar_events,
     search_calendar_events,

@@ -16,7 +16,7 @@ from app.utils.user_preferences_utils import (
 from langchain_core.messages import SystemMessage
 
 
-async def create_system_message(
+def create_system_message(
     user_id: Optional[str] = None, user_name: Optional[str] = None
 ) -> SystemMessage:
     """Create main system message with user name only."""
@@ -24,7 +24,6 @@ async def create_system_message(
         content=AGENT_PROMPT_TEMPLATE.format(
             user_name=user_name or "there",
         ),
-        name="main_agent",
         additional_kwargs={"visible_to": {"main_agent"}},
     )
 
@@ -102,28 +101,42 @@ async def get_memory_message(
 
         # Combine all sections
         content = "\n".join(context_parts) + memories_section
-        return SystemMessage(content=content, memory_message=True)
+        return SystemMessage(
+            content=content,
+            memory_message=True,
+            additional_kwargs={"visible_to": {"main_agent"}},
+        )
 
     except Exception as e:
         logger.error(f"Error creating memory message: {e}")
         # Return minimal context on error
-        utc_time = datetime.now(timezone.utc).strftime("%A, %B %d, %Y, %H:%M:%S UTC")
+        utc_time_str = datetime.now(timezone.utc).strftime(
+            "%A, %B %d, %Y, %H:%M:%S UTC"
+        )
         return SystemMessage(
-            content=f"Current UTC Time: {utc_time}", memory_message=True
+            content=f"Current UTC Time: {utc_time_str}",
+            memory_message=True,
+            additional_kwargs={"visible_to": {"main_agent"}},
         )
 
 
 def format_tool_selection_message(selected_tool: str, existing_content: str) -> str:
     """Format tool selection message, handling both standalone and combined requests."""
     tool_name = selected_tool.replace("_", " ").title()
-    base_instruction = f"The user has selected the {selected_tool} tool and wants you to execute it immediately."
+    retrieval_instruction = f"FIRST, call retrieve_tools with exact_tool_names=['{selected_tool}'] to make the tool available, THEN execute it."
 
     # If user provided content, append tool instruction to their message
     if existing_content:
-        return f"{existing_content}\n\n**TOOL SELECTION:** The user has specifically selected the '{tool_name}' tool and wants you to execute it to handle their request above. {base_instruction} Follow your system prompt instructions for provider-specific tools and use appropriate handoff tools when needed. Do not ask for additional information - execute the selected functionality now."
+        return f"""{existing_content}
+
+**TOOL SELECTION:** The user has specifically selected the '{tool_name}' tool (exact name: {selected_tool}) to handle their request above.
+
+{retrieval_instruction} Do not use semantic search queries - use the exact tool name provided. Follow your system prompt instructions for provider-specific tools and use appropriate handoff tools when needed. Do not ask for additional information - execute the selected functionality now."""
 
     # Pure tool execution without user message
-    return f"**TOOL EXECUTION REQUEST:** The user has selected the '{tool_name}' tool and wants you to execute it immediately. {base_instruction} Follow your system prompt instructions for provider-specific tools and use appropriate handoff tools when needed. Do not ask for additional information or clarification - proceed with executing the selected tool functionality right away."
+    return f"""**TOOL EXECUTION REQUEST:** The user has selected the '{tool_name}' tool (exact name: {selected_tool}) and wants you to execute it immediately.
+
+{retrieval_instruction} Do not use semantic search queries - use the exact tool name provided. Follow your system prompt instructions for provider-specific tools and use appropriate handoff tools when needed. Do not ask for additional information or clarification - proceed with executing the selected tool functionality right away."""
 
 
 async def format_workflow_execution_message(

@@ -1,113 +1,86 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import { Virtualizer } from "@tanstack/react-virtual";
+import React from "react";
 
 interface DateStripProps {
   dates: Date[];
   selectedDate: Date;
-  onDateSelect: (date: Date) => void;
+  onDateSelect?: (date: Date) => void;
+  daysToShow?: number;
+  columnVirtualizer: Virtualizer<HTMLDivElement, Element>;
+  isLoadingPast?: boolean;
+  isLoadingFuture?: boolean;
 }
 
 export const DateStrip: React.FC<DateStripProps> = ({
   dates,
   selectedDate,
   onDateSelect,
+  columnVirtualizer,
 }) => {
-  const dateStripRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll date strip to center the selected date
-  useEffect(() => {
-    if (dateStripRef.current) {
-      const selectedIndex = dates.findIndex(
-        (date) => date.toDateString() === selectedDate.toDateString(),
-      );
-
-      if (selectedIndex !== -1) {
-        const container = dateStripRef.current;
-        const buttons = container.querySelectorAll("button");
-
-        if (buttons[selectedIndex]) {
-          const selectedButton = buttons[selectedIndex];
-          const containerRect = container.getBoundingClientRect();
-          const buttonRect = selectedButton.getBoundingClientRect();
-
-          // Calculate the position to center the button
-          const scrollLeft = container.scrollLeft;
-          const buttonCenter =
-            buttonRect.left -
-            containerRect.left +
-            scrollLeft +
-            buttonRect.width / 2;
-          const containerCenter = containerRect.width / 2;
-          const targetScrollLeft = buttonCenter - containerCenter;
-
-          container.scrollTo({
-            left: Math.max(0, targetScrollLeft),
-            behavior: "smooth",
-          });
-        }
-      }
-    }
-  }, [selectedDate, dates]);
-
   return (
-    <div className="border-b border-zinc-800 pb-2">
-      <div
-        ref={dateStripRef}
-        className="flex gap-2 overflow-x-auto px-4"
-        style={{
-          scrollbarWidth: "none",
-          msOverflowStyle: "none",
-        }}
-      >
-        {dates.map((date, index) => {
-          const isSelected =
-            date.toDateString() === selectedDate.toDateString();
-          const isToday = date.toDateString() === new Date().toDateString();
-          const isWeekend = date.getDay() === 0 || date.getDay() === 6; // Sunday or Saturday
-          const isFirstDayOfWeek = date.getDay() === 1; // Monday
-          const dayLabel = date
-            .toLocaleDateString("en-US", { weekday: "short" })
-            .toUpperCase();
-          const dayNumber = date.getDate();
+    <div className="sticky top-0 z-[30] flex min-h-9 min-w-fit flex-shrink-0 border-b border-zinc-800 bg-[#1a1a1a]">
+      {/* Time Label Column */}
+      <div className="sticky left-0 z-[11] w-20 flex-shrink-0 border-r border-zinc-800 bg-[#1a1a1a]" />
 
-          return (
-            <div key={index} className="flex items-center">
-              {/* Week separator line - show before each Monday (except the first one) */}
-              {isFirstDayOfWeek && index > 0 && (
-                <div className="mr-2 h-12 w-px flex-shrink-0 bg-zinc-700" />
-              )}
+      {/* Date Headers - Virtualized */}
+      <div className="relative min-h-9 flex-1 overflow-hidden">
+        <div
+          className="relative"
+          style={{
+            width: `${columnVirtualizer.getTotalSize()}px`,
+            minHeight: "36px",
+          }}
+        >
+          {columnVirtualizer.getVirtualItems().map((virtualColumn) => {
+            const index = virtualColumn.index;
+            const date = dates[index];
 
+            if (!date) return null;
+
+            const isSelected =
+              date.toDateString() === selectedDate.toDateString();
+            const isToday = date.toDateString() === new Date().toDateString();
+            const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+            const dayLabel = date
+              .toLocaleDateString("en-US", { weekday: "short" })
+              .toUpperCase();
+            const dayNumber = date.getDate();
+
+            return (
               <button
-                onClick={() => onDateSelect(date)}
-                className={`flex min-w-[60px] flex-col items-center rounded-2xl px-3 py-2 transition-all duration-200 ${
-                  isSelected
-                    ? "bg-primary text-white"
-                    : isToday
-                      ? "bg-zinc-700 text-white"
+                key={virtualColumn.key}
+                onClick={() => onDateSelect?.(date)}
+                className={`absolute top-0 left-0 flex min-h-9 flex-shrink-0 cursor-pointer flex-row items-center justify-center gap-1 border-r border-zinc-800 py-1 font-light transition-all duration-200 ${
+                  isToday
+                    ? "hover:bg-zinc-700/40"
+                    : isSelected
+                      ? "bg-zinc-800 text-white hover:bg-zinc-700/40"
                       : isWeekend
-                        ? "bg-zinc-900 text-zinc-500 hover:bg-zinc-800"
-                        : "text-zinc-400 hover:bg-zinc-800"
+                        ? "hover:bg-zinc- bg-zinc-900 text-zinc-400"
+                        : "bg-[#1a1a1a] text-zinc-400 hover:bg-zinc-800"
                 }`}
+                style={{
+                  width: `${virtualColumn.size}px`,
+                  transform: `translateX(${virtualColumn.start}px)`,
+                  scrollSnapAlign: "start",
+                }}
               >
-                <div className="mb-1 text-xs font-medium">{dayLabel}</div>
+                <div className="text-sm font-light tracking-wide uppercase">
+                  {dayLabel}
+                </div>
                 <div
-                  className={`text-lg font-semibold ${
-                    isSelected
-                      ? "text-white"
-                      : isToday
-                        ? "text-white"
-                        : isWeekend
-                          ? "text-zinc-400"
-                          : "text-zinc-300"
+                  className={`rounded-lg text-sm font-medium ${
+                    isToday ? "bg-primary p-1 px-2 text-black" : ""
                   }`}
                 >
                   {dayNumber}
                 </div>
               </button>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

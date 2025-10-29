@@ -11,11 +11,11 @@ interface EmailSentCardProps {
 export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
   const formatTime = (timestamp?: string) => {
     if (!timestamp) return "Just now";
-    
+
     const date = new Date(timestamp);
     const now = new Date();
     const diffInSeconds = (now.getTime() - date.getTime()) / 1000;
-    
+
     if (diffInSeconds < 60) return "Just now";
     if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
     return date.toLocaleTimeString("en-US", {
@@ -26,7 +26,7 @@ export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
   };
 
   return (
-    <div className="mx-auto my-3 w-full max-w-2xl rounded-2xl border border-green-700/30 bg-green-900/20 p-4 text-white">
+    <div className="mx-auto w-full max-w-2xl rounded-2xl border border-green-700/30 bg-green-900/20 p-4 text-white">
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">

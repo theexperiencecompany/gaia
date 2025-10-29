@@ -188,8 +188,8 @@ async def process_email_task(ctx: dict, user_id: str, email_data: dict) -> str:
                                 {"_id": workflow.id, "user_id": user_id},
                                 {"$inc": {"total_executions": 1}},
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Failed to update workflow stats: {e}")
 
                     except Exception as workflow_error:
                         logger.error(
@@ -208,8 +208,8 @@ async def process_email_task(ctx: dict, user_id: str, email_data: dict) -> str:
                                 {"_id": workflow.id, "user_id": user_id},
                                 {"$inc": {"total_executions": 1}},
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Failed to update workflow stats: {e}")
         successful_executions = len(
             [w for w in workflow_executions if w["status"] == "success"]
         )

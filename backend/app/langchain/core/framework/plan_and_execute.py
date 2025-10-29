@@ -50,7 +50,7 @@ from typing import (
     cast,
 )
 
-from app.agents.core.nodes import trim_messages_node
+from app.agents.core.nodes.trim_messages_node import trim_messages_node
 from app.agents.core.nodes.filter_messages import create_filter_messages_node
 from app.agents.llm.client import init_llm
 from langchain_core.language_models import LanguageModelLike
@@ -86,7 +86,7 @@ You have access to the complete conversation history above, including all tool c
 Please compile this information into a comprehensive summary for the main agent following your specialized instructions."""
 
 
-class OrchestratorState(MessagesState, total=False):
+class OrchestratorState(MessagesState):
     """Simplified state for orchestrator pattern."""
 
     _next_node: Optional[str]
@@ -134,7 +134,6 @@ class OrchestratorSubgraphConfig:
 
 class OrchestratorGraph:
     """LangGraph-backed orchestrator with dynamic node handoff."""
-
 
     def __init__(
         self,
@@ -219,7 +218,10 @@ class OrchestratorGraph:
             if self._has_finalizer:
                 response_message.additional_kwargs["visible_to"] = {self.agent_name}
             else:
-                response_message.additional_kwargs["visible_to"] = {"main_agent", self.agent_name}
+                response_message.additional_kwargs["visible_to"] = {
+                    "main_agent",
+                    self.agent_name,
+                }
 
         state["messages"] = [*state["messages"], response_message]
 
@@ -384,7 +386,7 @@ class OrchestratorGraph:
     ) -> StateGraph[OrchestratorState, None, OrchestratorState, OrchestratorState]:
         workflow = StateGraph(OrchestratorState)
         workflow.add_node("orchestrator", self._orchestrator_step)
-        
+
         # Only add finalizer if prompt is provided
         if self._has_finalizer:
             workflow.add_node("finalizer", self._finalization_step)
@@ -572,15 +574,12 @@ def _create_cleanup_hook(agent_name: str) -> HookType:
                     cleaned_messages.append(msg)
                     continue
 
-                # For remaining orchestrator messages, set name from visible_to
                 if orchestrator_role in ["orchestrator", "node", "finalizer"]:
-                    visible_to = msg.additional_kwargs.get("visible_to", set())
-                    if visible_to:
-                        # Convert set to comma-separated string for name
-                        msg.name = ",".join(sorted(visible_to))
-                    else:
-                        # Fallback to agent_name if visible_to not set
-                        msg.name = agent_name
+                    visible_to = msg.additional_kwargs.get(
+                        "visible_to", set(agent_name)
+                    )
+
+                    msg.additional_kwargs["visible_to"] = visible_to
                     cleaned_messages.append(msg)
 
             return {**state, "messages": cleaned_messages}  # type: ignore[return-value]
@@ -608,9 +607,7 @@ def build_orchestrator_subgraph(
     filter_node = create_filter_messages_node(
         agent_name=config.agent_name,
         allow_memory_system_messages=True,
-        version="v2",
     )
-
     cleanup_hook = _create_cleanup_hook(config.agent_name)
 
     graph = OrchestratorGraph(
@@ -620,7 +617,7 @@ def build_orchestrator_subgraph(
         orchestrator_tools=config.orchestrator_tools,
         llm=config.llm,
         finalizer_prompt=config.finalizer_prompt,
-        pre_llm_hooks=[filter_node, trim_messages_node],
+        pre_llm_hooks=[filter_node, cast(HookType, trim_messages_node)],
         end_graph_hooks=[cleanup_hook],
     )
 

@@ -50,7 +50,7 @@ li {
   display: flex;
   flex-direction: column;
   height: fit-content;
-  max-width: 40vw;
+  max-width: 80%;
   padding: 7px 15px;
   user-select: auto;
   width: fit-content;
@@ -95,6 +95,7 @@ li {
   align-items: flex-start;
   display: flex;
   flex-direction: column;
+  gap: 10px;
 }
 
 .chat_bubble_container.user {
@@ -103,11 +104,11 @@ li {
 
 /* iMessage-style chat bubbles */
 .imessage-bubble {
-  max-width: 40vw;
   word-wrap: break-word;
   line-height: 24px;
   position: relative;
   padding: 8px 20px;
+  max-width: 60vw;
   border-radius: 20px;
 }
 

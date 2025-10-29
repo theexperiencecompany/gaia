@@ -15,6 +15,18 @@ class EventDeleteRequest(BaseModel):
     summary: Optional[str] = Field(None, title="Event summary for confirmation")
 
 
+class BatchEventCreateRequest(BaseModel):
+    events: List["EventCreateRequest"] = Field(..., title="List of events to create")
+
+
+class BatchEventUpdateRequest(BaseModel):
+    events: List["EventUpdateRequest"] = Field(..., title="List of events to update")
+
+
+class BatchEventDeleteRequest(BaseModel):
+    events: List[EventDeleteRequest] = Field(..., title="List of events to delete")
+
+
 class EventLookupRequest(BaseModel):
     event_id: Optional[str] = Field(None, title="Event ID to lookup")
     calendar_id: Optional[str] = Field(None, title="Calendar ID containing the event")
@@ -266,6 +278,9 @@ class EventUpdateRequest(BaseModel):
     start: Optional[str] = Field(None, title="Updated start time in ISO 8601 format")
     end: Optional[str] = Field(None, title="Updated end time in ISO 8601 format")
     is_all_day: Optional[bool] = Field(None, title="Updated all-day status")
+    timezone: Optional[str] = Field(
+        None, title="Timezone for the event (e.g., 'America/Los_Angeles', 'UTC')"
+    )
     timezone_offset: Optional[str] = Field(
         None, title="Updated timezone offset in (+|-)HH:MM format"
     )
@@ -478,6 +493,9 @@ class EventCreateRequest(BaseCalendarEvent):
     # Direct time fields for service operations
     start: str = Field(..., title="Start time in ISO format or date for all-day events")
     end: str = Field(..., title="End time in ISO format or date for all-day events")
+    timezone: Optional[str] = Field(
+        None, title="Timezone for the event (e.g., 'America/Los_Angeles', 'UTC')"
+    )
 
     # Validate that start and end times are in ISO format or date format
     @field_validator("start", "end")

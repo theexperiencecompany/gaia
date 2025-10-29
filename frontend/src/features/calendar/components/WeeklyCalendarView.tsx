@@ -1,5 +1,6 @@
 "use client";
 
+import { useVirtualizer } from "@tanstack/react-virtual";
 import React, {
   useCallback,
   useEffect,
@@ -9,59 +10,50 @@ import React, {
 } from "react";
 
 import { CalendarGrid } from "@/features/calendar/components/CalendarGrid";
-import { CalendarHeader } from "@/features/calendar/components/CalendarHeader";
 import { DateStrip } from "@/features/calendar/components/DateStrip";
+import { useHorizontalScrollObserver } from "@/features/calendar/hooks/useHorizontalScrollObserver";
+import { useInfiniteCalendarLoader } from "@/features/calendar/hooks/useInfiniteCalendarLoader";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
+import { getInitialMonthlyDateRange } from "@/features/calendar/utils/dateRangeUtils";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
+import {
+  useCalendarCurrentWeek,
+  useCalendarSelectedDate,
+  useDaysToShow,
+  useSetVisibleMonthYear,
+} from "@/stores/calendarStore";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
-
-interface EventPosition {
-  event: GoogleCalendarEvent;
-  top: number;
-  height: number;
-  left: number;
-  width: number;
-}
 
 interface WeeklyCalendarViewProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;
+  onDateClick?: (date: Date) => void;
 }
 
 const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
   onEventClick,
+  onDateClick,
 }) => {
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [currentWeek, setCurrentWeek] = useState(new Date());
-  const [fetchedChunks, setFetchedChunks] = useState<Set<string>>(new Set());
+  // Refs
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const firstDateRef = useRef<Date | null>(null);
+  const lastDateRef = useRef<Date | null>(null);
+  const hasInitialFetchedRef = useRef<boolean>(false);
+  const hasScrolledToTodayRef = useRef<boolean>(false);
 
-  // Helper function to get chunk key for a date (YYYY-MM format for quarterly chunks)
-  const getChunkKey = (date: Date): string => {
-    const year = date.getFullYear();
-    const quarter = Math.floor(date.getMonth() / 3);
-    return `${year}-Q${quarter + 1}`;
-  };
+  // State
+  const [columnWidth, setColumnWidth] = useState(150);
+  const [extendedDates, setExtendedDates] = useState<Date[]>(() =>
+    getInitialMonthlyDateRange(new Date()),
+  );
 
-  // Helper function to get chunk start/end dates
-  const getChunkDates = (chunkKey: string): { start: Date; end: Date } => {
-    const [year, quarter] = chunkKey.split("-");
-    const quarterNum = parseInt(quarter.replace("Q", "")) - 1;
+  // Store selectors
+  const selectedDate = useCalendarSelectedDate();
+  const currentWeek = useCalendarCurrentWeek();
+  const daysToShow = useDaysToShow();
+  const setVisibleMonthYear = useSetVisibleMonthYear();
 
-    const start = new Date(parseInt(year), quarterNum * 3, 1);
-    const end = new Date(parseInt(year), (quarterNum + 1) * 3, 0, 23, 59, 59);
-
-    return { start, end };
-  };
-
-  // Get required chunks for the current extended date range - memoized to prevent infinite loops
-  const getRequiredChunks = useCallback((dates: Date[]): string[] => {
-    const chunks = new Set<string>();
-    dates.forEach((date) => {
-      chunks.add(getChunkKey(date));
-    });
-    return Array.from(chunks);
-  }, []);
-
+  // Hooks
   const {
     events,
     loading,
@@ -69,292 +61,311 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
     calendars,
     selectedCalendars,
     isInitialized,
-    loadCalendars,
     loadEvents,
   } = useSharedCalendar();
 
-  // Generate hours from 12AM to 11PM for a full day view (24 hours)
-  const hours = useMemo(() => {
-    return Array.from({ length: 24 }, (_, i) => i); // 12AM to 11PM (0-23)
+  // Memoized values
+  const hours = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
+
+  // Create single virtualizer instance for all components to share
+  // Recreate when columnWidth changes to ensure proper column sizing
+  const columnVirtualizer = useVirtualizer({
+    horizontal: true,
+    count: extendedDates.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => columnWidth,
+    overscan: 5,
+  });
+
+  // Notify virtualizer when columnWidth or dates change so it recalculates
+  useEffect(() => {
+    columnVirtualizer.measure();
+  }, [columnWidth, extendedDates.length, columnVirtualizer]);
+
+  // Find today's index in the dates array for initial scroll
+  const getTodayIndex = useCallback((dates: Date[]) => {
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
+    return dates.findIndex(
+      (date) => date.toISOString().split("T")[0] === todayStr,
+    );
   }, []);
 
-  // Get extended date range for horizontal scrolling (show 2 weeks before and after)
-  const extendedDates = useMemo(() => {
-    const startOfWeek = new Date(currentWeek);
-    const day = startOfWeek.getDay();
-    // Adjust to start from Monday (day 1) instead of Sunday (day 0)
-    const daysFromMonday = day === 0 ? 6 : day - 1;
-    startOfWeek.setDate(startOfWeek.getDate() - daysFromMonday - 14); // Go 2 weeks before Monday
+  // Helper function to scroll to a specific date
+  const scrollToDate = useCallback(
+    (targetDate: Date, behavior: ScrollBehavior = "smooth") => {
+      if (!scrollContainerRef.current || columnWidth === 0) return;
 
-    return Array.from({ length: 35 }, (_, i) => {
-      const date = new Date(startOfWeek);
-      date.setDate(startOfWeek.getDate() + i);
-      return date;
+      const targetDateStr = targetDate.toISOString().split("T")[0];
+      const dateIndex = extendedDates.findIndex(
+        (date) => date.toISOString().split("T")[0] === targetDateStr,
+      );
+
+      if (dateIndex !== -1) {
+        const scrollContainer = scrollContainerRef.current;
+        const containerWidth = scrollContainer.clientWidth - 80;
+        const visibleColumns = Math.floor(containerWidth / columnWidth);
+
+        // Center the target date in the viewport
+        const targetScroll = Math.max(
+          0,
+          dateIndex * columnWidth - (visibleColumns / 2) * columnWidth,
+        );
+
+        scrollContainer.scrollTo({
+          left: targetScroll,
+          behavior,
+        });
+      }
+    },
+    [extendedDates, columnWidth],
+  );
+
+  // Scroll observer and infinite loader
+  const scrollMetrics = useHorizontalScrollObserver(
+    scrollContainerRef,
+    columnWidth,
+    extendedDates,
+  );
+
+  const { loadMorePast, loadMoreFuture, isLoadingPast, isLoadingFuture } =
+    useInfiniteCalendarLoader({
+      selectedCalendars,
+      isInitialized,
     });
-  }, [currentWeek]);
 
-  // Initialize calendars on mount
+  // Update date refs when dates change
   useEffect(() => {
-    if (!isInitialized && !loading.calendars) {
-      loadCalendars();
+    if (extendedDates.length > 0) {
+      firstDateRef.current = extendedDates[0];
+      lastDateRef.current = extendedDates[extendedDates.length - 1];
     }
-  }, [isInitialized, loading.calendars, loadCalendars]);
+  }, [extendedDates]);
 
-  // Fetch events when selected calendars change, when calendars are first loaded, or when new chunks are needed
+  // Effect 1: Scroll to today on initial load
+  useEffect(() => {
+    if (
+      !hasScrolledToTodayRef.current &&
+      extendedDates.length > 0 &&
+      scrollContainerRef.current &&
+      columnWidth > 0
+    ) {
+      const todayIndex = getTodayIndex(extendedDates);
+      if (todayIndex !== -1) {
+        setTimeout(() => {
+          scrollToDate(new Date(), "auto");
+          hasScrolledToTodayRef.current = true;
+        }, 100);
+      }
+    }
+  }, [extendedDates, columnWidth, getTodayIndex, scrollToDate]);
+
+  // Effect 1b: Handle selectedDate changes (chevron buttons, today button)
+  useEffect(() => {
+    // Skip initial load
+    if (!hasScrolledToTodayRef.current) return;
+
+    if (extendedDates.length > 0 && columnWidth > 0) {
+      const selectedDateStr = selectedDate.toISOString().split("T")[0];
+      const dateIndex = extendedDates.findIndex(
+        (date) => date.toISOString().split("T")[0] === selectedDateStr,
+      );
+
+      if (dateIndex !== -1) {
+        // Date is in current range, scroll to it
+        scrollToDate(selectedDate, "smooth");
+      } else {
+        // Date is not in range, need to load it
+        // Reset dates to show a range around the selected date
+        const newDates = getInitialMonthlyDateRange(selectedDate);
+        setExtendedDates(newDates);
+
+        // Load events for this range
+        if (selectedCalendars.length > 0) {
+          const start = newDates[0];
+          const end = newDates[newDates.length - 1];
+          loadEvents(selectedCalendars, true, start, end);
+        }
+
+        // Scroll to the date after dates are updated
+        setTimeout(() => {
+          scrollToDate(selectedDate, "auto");
+        }, 100);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
+
+  // Effect 2: Initial fetch of events for 3-month range
   useEffect(() => {
     if (
       selectedCalendars.length > 0 &&
       isInitialized &&
-      extendedDates.length > 0
+      !hasInitialFetchedRef.current
     ) {
-      const requiredChunks = getRequiredChunks(extendedDates);
-      const missingChunks = requiredChunks.filter(
-        (chunk) => !fetchedChunks.has(chunk),
+      const dates = getInitialMonthlyDateRange(currentWeek);
+      const start = dates[0];
+      const end = dates[dates.length - 1];
+
+      loadEvents(selectedCalendars, true, start, end);
+      hasInitialFetchedRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCalendars, isInitialized]);
+
+  // Effect 3: Reset fetch flag when calendars change
+  useEffect(() => {
+    hasInitialFetchedRef.current = false;
+  }, [selectedCalendars]);
+
+  // Effect 4: Load more past events when scrolling backwards
+  useEffect(() => {
+    if (
+      scrollMetrics.shouldLoadPast &&
+      !isLoadingPast &&
+      firstDateRef.current
+    ) {
+      loadMorePast(firstDateRef.current).then((newDates) => {
+        if (newDates.length > 0) {
+          const scrollContainer = scrollContainerRef.current;
+          const prevScrollLeft = scrollContainer?.scrollLeft || 0;
+
+          setExtendedDates((prev) => {
+            requestAnimationFrame(() => {
+              if (scrollContainer) {
+                scrollContainer.scrollLeft =
+                  prevScrollLeft + newDates.length * columnWidth;
+              }
+            });
+            return [...newDates, ...prev];
+          });
+        }
+      });
+    }
+  }, [scrollMetrics.shouldLoadPast, isLoadingPast, loadMorePast, columnWidth]);
+
+  // Effect 5: Load more future events when scrolling forwards
+  useEffect(() => {
+    if (
+      scrollMetrics.shouldLoadFuture &&
+      !isLoadingFuture &&
+      lastDateRef.current
+    ) {
+      loadMoreFuture(lastDateRef.current).then((newDates) => {
+        if (newDates.length > 0) {
+          setExtendedDates((prev) => [...prev, ...newDates]);
+        }
+      });
+    }
+  }, [scrollMetrics.shouldLoadFuture, isLoadingFuture, loadMoreFuture]);
+
+  // Effect 6: Update visible month/year based on scroll position
+  useEffect(() => {
+    if (extendedDates.length > 0 && scrollMetrics.visibleStartIndex >= 0) {
+      const visibleDateIndex = Math.min(
+        scrollMetrics.visibleStartIndex + Math.floor(daysToShow / 2),
+        extendedDates.length - 1,
       );
+      const visibleDate = extendedDates[visibleDateIndex];
 
-      if (missingChunks.length > 0) {
-        // Fetch all missing chunks in parallel
-        const fetchPromises = missingChunks.map(async (chunkKey) => {
-          const { start, end } = getChunkDates(chunkKey);
-
-          try {
-            await loadEvents(
-              null,
-              selectedCalendars,
-              false, // Always append for chunked fetching
-              start,
-              end,
-            );
-
-            // Mark chunk as fetched
-            setFetchedChunks((prev) => new Set([...prev, chunkKey]));
-          } catch (error) {
-            console.error(`Failed to fetch chunk ${chunkKey}:`, error);
-          }
+      if (visibleDate) {
+        const month = visibleDate.toLocaleDateString("en-US", {
+          month: "long",
         });
-
-        // Execute all chunk fetches
-        Promise.all(fetchPromises);
+        const year = visibleDate.getFullYear().toString();
+        setVisibleMonthYear(month, year);
       }
     }
   }, [
-    selectedCalendars,
-    isInitialized,
+    scrollMetrics.visibleStartIndex,
     extendedDates,
-    fetchedChunks,
-    loadEvents,
-    getRequiredChunks,
+    daysToShow,
+    setVisibleMonthYear,
   ]);
 
-  // Reset fetched chunks when selected calendars change
+  // Effect 7: Calculate dynamic column width based on container size
   useEffect(() => {
-    setFetchedChunks(new Set());
-    // Clear existing events when calendars change
-    if (selectedCalendars.length > 0) {
-      loadEvents(null, selectedCalendars, true); // Reset events for new calendars
-    }
-  }, [selectedCalendars, loadEvents]);
+    const updateColumnWidth = () => {
+      if (containerRef.current && scrollContainerRef.current) {
+        const containerWidth = containerRef.current.offsetWidth;
+        const timeColumnWidth = 80; // w-20
+        const availableWidth = containerWidth - timeColumnWidth;
+        const calculatedWidth = Math.floor(availableWidth / daysToShow);
+        const newColumnWidth = Math.max(calculatedWidth, 120); // min 120px per column
 
-  // Wrapper function to maintain compatibility with CalendarGrid
-  const getEventColorForGrid = (event: GoogleCalendarEvent) => {
-    return getEventColor(event, calendars);
-  };
+        setColumnWidth((prevWidth) => {
+          if (prevWidth === newColumnWidth) return prevWidth;
 
-  // Filter events for the selected day only and calculate positions
-  const dayEvents = useMemo(() => {
-    // Constants for positioning
-    const HOUR_HEIGHT = 64; // 64px per hour (h-16 in Tailwind)
-    const START_HOUR = 0; // 12AM (midnight)
-    const PIXELS_PER_MINUTE = HOUR_HEIGHT / 60;
+          // Calculate which column is currently at the left edge of the viewport
+          const currentScrollLeft = scrollContainerRef.current!.scrollLeft;
+          const currentLeftColumn = Math.floor(currentScrollLeft / prevWidth);
 
-    const selectedDateStr = selectedDate.toDateString();
-    const dayEvents: EventPosition[] = [];
-
-    events.forEach((event) => {
-      const eventStart = new Date(
-        event.start.dateTime || event.start.date || "",
-      );
-      const eventEnd = new Date(event.end.dateTime || event.end.date || "");
-
-      // Check if event is on selected day
-      if (
-        eventStart.toDateString() === selectedDateStr &&
-        event.start.dateTime &&
-        event.end.dateTime
-      ) {
-        const startHour = eventStart.getHours();
-        const startMinute = eventStart.getMinutes();
-        const endHour = eventEnd.getHours();
-        const endMinute = eventEnd.getMinutes();
-
-        // Show events for all hours (0-23)
-        if (startHour >= START_HOUR && startHour <= 23) {
-          const top =
-            ((startHour - START_HOUR) * 60 + startMinute) * PIXELS_PER_MINUTE;
-          const height = Math.max(
-            ((endHour - startHour) * 60 + (endMinute - startMinute)) *
-              PIXELS_PER_MINUTE,
-            50,
-          );
-
-          dayEvents.push({
-            event,
-            top,
-            height,
-            left: 0,
-            width: 100,
+          // After width changes, snap to align columns properly
+          requestAnimationFrame(() => {
+            if (scrollContainerRef.current) {
+              // Snap to the nearest column boundary that fills the viewport
+              const newScrollLeft = currentLeftColumn * newColumnWidth;
+              scrollContainerRef.current.scrollTo({
+                left: newScrollLeft,
+                behavior: "auto",
+              });
+            }
           });
-        }
-      }
-    });
 
-    // Handle overlaps
-    if (dayEvents.length > 1) {
-      const sortedEvents = dayEvents.sort((a, b) => a.top - b.top);
-      const overlapGroups: EventPosition[][] = [];
-
-      sortedEvents.forEach((event) => {
-        // Find all groups this event overlaps with
-        const overlappingGroups = overlapGroups.filter((group) =>
-          group.some(
-            (existingEvent) =>
-              event.top < existingEvent.top + existingEvent.height &&
-              event.top + event.height > existingEvent.top,
-          ),
-        );
-
-        if (overlappingGroups.length === 0) {
-          overlapGroups.push([event]);
-        } else if (overlappingGroups.length === 1) {
-          overlappingGroups[0].push(event);
-        } else {
-          // Merge overlapping groups
-          const mergedGroup = [event];
-          overlappingGroups.forEach((group) => {
-            mergedGroup.push(...group);
-            const index = overlapGroups.indexOf(group);
-            overlapGroups.splice(index, 1);
-          });
-          overlapGroups.push(mergedGroup);
-        }
-      });
-
-      // Calculate positions for each group
-      overlapGroups.forEach((group) => {
-        const groupSize = group.length;
-        const columnWidth = 100 / groupSize;
-
-        group.forEach((event, index) => {
-          event.left = index * columnWidth;
-          event.width = columnWidth - 1; // Small gap between events
-        });
-      });
-    }
-
-    return dayEvents;
-  }, [selectedDate, events]);
-
-  // Helper function to scroll to the first event of the day
-  const scrollToFirstEvent = (events: EventPosition[]) => {
-    if (scrollContainerRef.current && events.length > 0) {
-      // Find the earliest event
-      const firstEvent = events.reduce((earliest, current) =>
-        current.top < earliest.top ? current : earliest,
-      );
-
-      // Scroll to show the first event with some padding above
-      const scrollPosition = Math.max(0, firstEvent.top - 100); // 100px padding above the event
-
-      scrollContainerRef.current.scrollTo({
-        top: scrollPosition,
-        behavior: "smooth",
-      });
-    }
-  };
-
-  // Navigation handlers
-  const goToPreviousDay = () => {
-    const newSelectedDate = new Date(selectedDate);
-    newSelectedDate.setDate(selectedDate.getDate() - 1);
-    setSelectedDate(newSelectedDate);
-
-    // Update current week if we've moved to a different week
-    const weekOfNewDate = new Date(newSelectedDate);
-    setCurrentWeek(weekOfNewDate);
-  };
-
-  const goToNextDay = () => {
-    const newSelectedDate = new Date(selectedDate);
-    newSelectedDate.setDate(selectedDate.getDate() + 1);
-    setSelectedDate(newSelectedDate);
-
-    // Update current week if we've moved to a different week
-    const weekOfNewDate = new Date(newSelectedDate);
-    setCurrentWeek(weekOfNewDate);
-  };
-
-  const goToToday = () => {
-    const today = new Date();
-    setCurrentWeek(today);
-    setSelectedDate(today);
-  };
-
-  // Auto-scroll to first event when date changes (left/right navigation)
-  useEffect(() => {
-    if (dayEvents.length > 0) {
-      // Small delay to ensure the view has updated
-      const timeoutId = setTimeout(() => {
-        scrollToFirstEvent(dayEvents);
-      }, 100);
-
-      return () => clearTimeout(timeoutId);
-    } else {
-      // If no events, scroll to 8AM
-      if (scrollContainerRef.current) {
-        const scrollToHour = 8;
-        const scrollPosition = scrollToHour * 64; // 64px per hour (h-16)
-        scrollContainerRef.current.scrollTo({
-          top: scrollPosition,
-          behavior: "smooth",
+          return newColumnWidth;
         });
       }
-    }
-  }, [selectedDate, dayEvents]);
+    };
 
-  // Handler for date changes from header
-  const handleDateChange = (date: Date) => {
-    setSelectedDate(date);
-    setCurrentWeek(date);
-  };
+    updateColumnWidth();
+
+    const resizeObserver = new ResizeObserver(updateColumnWidth);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    return () => resizeObserver.disconnect();
+  }, [daysToShow]);
 
   return (
-    <div className="flex h-full w-full justify-center p-4 pt-0">
-      <div className="flex h-full w-full max-w-2xl flex-col">
-        <CalendarHeader
-          selectedDate={selectedDate}
-          onDateChange={handleDateChange}
-          onPreviousDay={goToPreviousDay}
-          onNextDay={goToNextDay}
-          onToday={goToToday}
-        />
-
-        <DateStrip
-          dates={extendedDates}
-          selectedDate={selectedDate}
-          onDateSelect={setSelectedDate}
-        />
-
-        <CalendarGrid
+    <div className="flex h-full w-full justify-center p-4 pt-4">
+      <div
+        ref={containerRef}
+        className="flex h-full w-full flex-col overflow-hidden"
+      >
+        <div
           ref={scrollContainerRef}
-          hours={hours}
-          dayEvents={dayEvents}
-          loading={loading}
-          error={error}
-          selectedCalendars={selectedCalendars}
-          selectedDate={selectedDate}
-          onEventClick={onEventClick}
-          getEventColor={getEventColorForGrid}
-        />
+          data-calendar-scroll
+          className="relative flex h-full w-full flex-col overflow-auto"
+          style={{
+            scrollSnapType: "x proximity",
+            scrollPaddingLeft: "80px",
+          }}
+        >
+          <DateStrip
+            dates={extendedDates}
+            selectedDate={selectedDate}
+            onDateSelect={onDateClick}
+            daysToShow={daysToShow}
+            columnVirtualizer={columnVirtualizer}
+            isLoadingPast={isLoadingPast}
+            isLoadingFuture={isLoadingFuture}
+          />
+
+          <CalendarGrid
+            hours={hours}
+            dates={extendedDates}
+            events={events}
+            loading={loading}
+            error={error}
+            selectedCalendars={selectedCalendars}
+            onEventClick={onEventClick}
+            getEventColor={(event) => getEventColor(event, calendars)}
+            columnVirtualizer={columnVirtualizer}
+            isLoadingPast={isLoadingPast}
+            isLoadingFuture={isLoadingFuture}
+          />
+        </div>
       </div>
     </div>
   );

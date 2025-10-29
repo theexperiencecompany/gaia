@@ -328,6 +328,5 @@ async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) 
                 credits_used=total_credits,
             )
 
-    except Exception:
-        # Silent failure - this is a background task
-        pass
+    except Exception as e:
+        logger.debug(f"Background task failed during deduction: {e}")

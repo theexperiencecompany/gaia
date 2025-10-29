@@ -13,11 +13,14 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
+import { Tooltip } from "@heroui/tooltip";
 import { DotsVerticalIcon } from "@radix-ui/react-icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { CalendarSimpleIcon, Target04Icon } from "@/components/shared/icons";
+import {
+  Calendar03Icon,
+} from "@/components/shared/icons";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { Goal } from "@/types/api/goalsApiTypes";
 import { parseDate2 } from "@/utils";
@@ -83,10 +86,10 @@ export function GoalCard({
           </ModalFooter>
         </ModalContent>
       </Modal>
-      <div className="group bg-opacity-50 flex w-full flex-col rounded-xl bg-zinc-800 p-4">
-        <div className="relative flex w-full items-center gap-2 text-base font-medium">
-          <Target04Icon height={18} width={18} color="#9b9b9b" />
-          <span className="w-[85%] truncate">
+
+      <div className="group bg-opacity-50 flex w-full flex-col rounded-2xl bg-zinc-800 p-4">
+        <div className="relative flex w-full items-center gap-2">
+          <span className="w-[90%] truncate">
             {goal?.roadmap?.title || goal.title}
           </span>
 
@@ -97,7 +100,7 @@ export function GoalCard({
               }}
             >
               <DropdownTrigger>
-                <Button isIconOnly variant="flat">
+                <Button isIconOnly variant="flat" size="sm">
                   <DotsVerticalIcon />
                 </Button>
               </DropdownTrigger>
@@ -115,52 +118,54 @@ export function GoalCard({
           </div>
         </div>
 
-        <Chip
-          className="mt-2"
-          color={
-            !goal.roadmap?.nodes?.length || !goal.roadmap?.edges?.length
-              ? "warning"
-              : (goal.progress || 0) === 100
-                ? "success"
-                : (goal.progress || 0) > 0
-                  ? "primary"
-                  : "warning"
-          }
-          size="sm"
-          variant="flat"
-        >
-          {!goal.roadmap?.nodes?.length || !goal.roadmap?.edges?.length
-            ? "Not Started"
-            : (goal.progress || 0) === 100
-              ? "Completed"
-              : (goal.progress || 0) > 0
-                ? "In Progress"
-                : "Not Started"}
-        </Chip>
-
         <div className="my-3 flex items-center justify-between gap-2">
           <div className="relative h-3 w-[100%] rounded-full">
             <div
-              className={`absolute top-0 left-0 h-3 rounded-full bg-primary`}
+              className={`absolute top-0 left-0 z-[2] h-3 rounded-full bg-primary`}
               style={{ width: `${goal?.progress || 0}%` }}
             />
 
             <div
-              className={`absolute top-0 left-0 h-3 w-full rounded-full bg-black/70`}
+              className={`absolute top-0 left-0 h-3 w-full rounded-full bg-zinc-900`}
             />
           </div>
           <span className="text-xs">{goal?.progress || 0}%</span>
         </div>
-        <div className="flex items-center justify-between">
-          <div className="mt-2 flex items-center gap-1 text-sm text-foreground-500">
-            <CalendarSimpleIcon width={20} />
-            {parseDate2(goal?.created_at || new Date().toISOString())}
-          </div>
+
+        <div className="flex cursor-default items-center justify-start gap-3">
+          <Chip
+            color={
+              !goal.roadmap?.nodes?.length || !goal.roadmap?.edges?.length
+                ? "warning"
+                : (goal.progress || 0) === 100
+                  ? "success"
+                  : (goal.progress || 0) > 0
+                    ? "primary"
+                    : "warning"
+            }
+            size="sm"
+            variant="flat"
+          >
+            {!goal.roadmap?.nodes?.length || !goal.roadmap?.edges?.length
+              ? "Not Started"
+              : (goal.progress || 0) === 100
+                ? "Completed"
+                : (goal.progress || 0) > 0
+                  ? "In Progress"
+                  : "Not Started"}
+          </Chip>
+
+          <Tooltip content="Created on" size="sm" showArrow placement="bottom">
+            <div className="flex cursor-default items-center gap-1 text-xs text-zinc-500">
+              <Calendar03Icon width={16} color={undefined} />
+              {parseDate2(goal?.created_at || new Date().toISOString())}
+            </div>
+          </Tooltip>
+
           <Button
             color="primary"
             size="sm"
-            variant="flat"
-            className="text-primary"
+            className="ml-auto font-medium"
             onPress={() => router.push(`/goals/${goal.id}`)}
           >
             View Goal

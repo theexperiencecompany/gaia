@@ -5,57 +5,58 @@ import { useCalendarStore } from "@/stores/calendarStore";
 
 export const useCalendarOperations = () => {
   const {
-    setCalendars,
     setEvents,
-    setNextPageToken,
     setLoading,
     setError,
     clearError,
-    setInitialized,
-    autoSelectPrimaryCalendar,
     selectedCalendars,
+    addLoadedRange,
+    isDateRangeLoaded,
+    setLoadingPast,
+    setLoadingFuture,
   } = useCalendarStore();
-
-  const loadCalendars = useCallback(async () => {
-    setLoading("calendars", true);
-    clearError("calendars");
-
-    try {
-      const calendars = await calendarApi.fetchCalendars();
-      setCalendars(calendars);
-      setInitialized(true);
-      autoSelectPrimaryCalendar();
-      return calendars;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to fetch calendars";
-      setError("calendars", errorMessage);
-      setInitialized(true);
-      throw error;
-    } finally {
-      setLoading("calendars", false);
-    }
-  }, [
-    setCalendars,
-    setLoading,
-    setError,
-    clearError,
-    setInitialized,
-    autoSelectPrimaryCalendar,
-  ]);
 
   const loadEvents = useCallback(
     async (
-      pageToken?: string | null,
       calendarIds?: string[],
       reset = false,
       customStartDate?: Date,
       customEndDate?: Date,
+      direction?: "past" | "future",
     ) => {
       const calendarsToUse = calendarIds || selectedCalendars;
       if (calendarsToUse.length === 0) return;
 
-      setLoading("events", true);
+      // Format dates as YYYY-MM-DD for comparison
+      const formatDateForComparison = (date: Date) =>
+        date.toISOString().split("T")[0];
+
+      // Check if this range is already loaded (only for specific ranges)
+      if (
+        customStartDate &&
+        customEndDate &&
+        !reset &&
+        isDateRangeLoaded(customStartDate, customEndDate, calendarsToUse)
+      ) {
+        console.log(
+          "Range already loaded:",
+          formatDateForComparison(customStartDate),
+          "to",
+          formatDateForComparison(customEndDate),
+        );
+        return;
+      }
+
+      // Set appropriate loading state based on direction
+      if (direction === "past") {
+        setLoadingPast(true);
+      } else if (direction === "future") {
+        setLoadingFuture(true);
+      } else {
+        // General events loading (initial fetch)
+        setLoading("events", true);
+      }
+
       clearError("events");
 
       try {
@@ -83,12 +84,30 @@ export const useCalendarOperations = () => {
 
         const response = await calendarApi.fetchMultipleCalendarEvents(
           calendarsToUse,
-          pageToken,
           formatDate(startDate),
           formatDate(endDate),
+          true, // fetch_all = true for calendar page
         );
+
         setEvents(response.events, reset);
-        setNextPageToken(response.nextPageToken);
+
+        // Log if any calendars were truncated (hit safety limit)
+        if (response.has_more && response.calendars_truncated?.length) {
+          console.warn(
+            `Some calendars hit event limits:`,
+            response.calendars_truncated,
+          );
+        }
+
+        // Track loaded range
+        if (customStartDate && customEndDate) {
+          addLoadedRange(
+            formatDate(customStartDate),
+            formatDate(customEndDate),
+            calendarsToUse,
+          );
+        }
+
         return response;
       } catch (error) {
         const errorMessage =
@@ -96,7 +115,14 @@ export const useCalendarOperations = () => {
         setError("events", errorMessage);
         throw error;
       } finally {
-        setLoading("events", false);
+        // Clear appropriate loading state
+        if (direction === "past") {
+          setLoadingPast(false);
+        } else if (direction === "future") {
+          setLoadingFuture(false);
+        } else {
+          setLoading("events", false);
+        }
       }
     },
     [
@@ -105,12 +131,14 @@ export const useCalendarOperations = () => {
       setError,
       clearError,
       setEvents,
-      setNextPageToken,
+      addLoadedRange,
+      isDateRangeLoaded,
+      setLoadingPast,
+      setLoadingFuture,
     ],
   );
 
   return {
-    loadCalendars,
     loadEvents,
   };
 };

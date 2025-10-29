@@ -137,6 +137,72 @@ async def fetch_calendar_events(
         raise HTTPException(status_code=500, detail=f"HTTP request failed: {e}")
 
 
+async def fetch_all_calendar_events(
+    calendar_id: str,
+    access_token: str,
+    time_min: Optional[str] = None,
+    time_max: Optional[str] = None,
+    max_per_page: int = 250,  # Google's max per request
+) -> Dict[str, Any]:
+    """
+    Fetch ALL events from a calendar within a date range by internally handling pagination.
+    This is useful for calendar page views where you want to show all events in a month/range.
+
+    Args:
+        calendar_id (str): Calendar identifier.
+        access_token (str): Access token.
+        time_min (Optional[str]): Start time filter.
+        time_max (Optional[str]): End time filter.
+        max_per_page (int): Events per API request (max 250 per Google's limits).
+
+    Returns:
+        dict: Combined events data with 'items' array and 'truncated' boolean.
+    """
+    all_items = []
+    next_page_token = None
+    page_count = 0
+    max_pages = 20  # Safety limit: 20 pages * 250 events = 5000 events max
+
+    while page_count < max_pages:
+        page_data = await fetch_calendar_events(
+            calendar_id=calendar_id,
+            access_token=access_token,
+            page_token=next_page_token,
+            time_min=time_min,
+            time_max=time_max,
+            max_results=max_per_page,
+        )
+
+        items = page_data.get("items", [])
+        all_items.extend(items)
+
+        next_page_token = page_data.get("nextPageToken")
+        page_count += 1
+
+        # Stop if no more pages
+        if not next_page_token:
+            break
+
+        # Log if we're fetching many pages
+        if page_count > 5:
+            logger.info(
+                f"Calendar {calendar_id} has many events - fetched {len(all_items)} so far, page {page_count}"
+            )
+
+    # Check if we hit the safety limit
+    truncated = page_count >= max_pages and next_page_token is not None
+    if truncated:
+        logger.warning(
+            f"Calendar {calendar_id} truncated at {len(all_items)} events (hit max pages limit)"
+        )
+
+    return {
+        "items": all_items,
+        "truncated": truncated,
+        "total_fetched": len(all_items),
+    }
+
+
 async def list_calendars(access_token: str, short=False) -> Optional[Dict[str, Any]]:
     """
     Retrieve the user's calendar list. If the access token is invalid,
@@ -154,6 +220,180 @@ async def list_calendars(access_token: str, short=False) -> Optional[Dict[str, A
     return await fetch_calendar_list(access_token, short)
 
 
+async def get_calendar_metadata_map(
+    access_token: str,
+) -> tuple[Dict[str, str], Dict[str, str]]:
+    """
+    Fetch calendar list and return color/name mappings.
+
+    Args:
+        access_token (str): The access token.
+
+    Returns:
+        tuple: (calendar_color_map, calendar_name_map)
+    """
+    calendars = await list_calendars(access_token=access_token, short=True)
+
+    color_map: Dict[str, str] = {}
+    name_map: Dict[str, str] = {}
+
+    if calendars and isinstance(calendars, list):
+        for cal in calendars:
+            if isinstance(cal, dict):
+                cal_id = cal.get("id")
+                if cal_id:
+                    color_map[cal_id] = cal.get("backgroundColor", "#00bbff")
+                    name_map[cal_id] = cal.get("summary", "Calendar")
+
+    return color_map, name_map
+
+
+def format_event_for_frontend(
+    event: Dict[str, Any],
+    calendar_color_map: Dict[str, str],
+    calendar_name_map: Dict[str, str],
+) -> Dict[str, Any]:
+    """
+    Format a calendar event for frontend display.
+
+    Args:
+        event: Raw calendar event from Google API
+        calendar_color_map: Mapping of calendar_id to backgroundColor
+        calendar_name_map: Mapping of calendar_id to calendar name
+
+    Returns:
+        Formatted event dict with essential frontend fields
+    """
+    start_time = ""
+    end_time = ""
+
+    if event.get("start"):
+        start_obj = event["start"]
+        start_time = start_obj.get("dateTime") or start_obj.get("date", "")
+
+    if event.get("end"):
+        end_obj = event["end"]
+        end_time = end_obj.get("dateTime") or end_obj.get("date", "")
+
+    calendar_id = event.get("calendarId", "")
+    calendar_name = calendar_name_map.get(
+        calendar_id, event.get("calendarTitle", "Unknown Calendar")
+    )
+    background_color = calendar_color_map.get(calendar_id, "#00bbff")
+
+    return {
+        "summary": event.get("summary", "No Title"),
+        "start_time": start_time,
+        "end_time": end_time,
+        "calendar_name": calendar_name,
+        "background_color": background_color,
+    }
+
+
+def extract_unique_dates(calendar_options: List[Dict[str, Any]]) -> Dict[str, str]:
+    """
+    Extract unique dates with timezone offsets from calendar options.
+
+    Args:
+        calendar_options: List of calendar event options
+
+    Returns:
+        Dict mapping date strings to timezone offsets (e.g., {"2025-10-25": "+05:30"})
+    """
+    event_dates_info = {}
+    for option in calendar_options:
+        start_time = option.get("start", "")
+        if start_time:
+            try:
+                dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                date_str = dt.strftime("%Y-%m-%d")
+                tz_offset = dt.strftime("%z")
+                if tz_offset:
+                    tz_offset = f"{tz_offset[:3]}:{tz_offset[3:]}"
+                else:
+                    tz_offset = "+00:00"
+                event_dates_info[date_str] = tz_offset
+            except Exception as e:
+                logger.warning(f"Could not parse start time: {start_time}, {e}")
+    return event_dates_info
+
+
+async def fetch_same_day_events(
+    event_dates_info: Dict[str, str],
+    access_token: str,
+    user_id: str,
+) -> List[Dict[str, Any]]:
+    """
+    Fetch events for each unique date in parallel.
+
+    Args:
+        event_dates_info: Dict mapping date strings to timezone offsets
+        access_token: Access token for calendar API
+        user_id: User identifier
+
+    Returns:
+        List of events across all specified dates
+    """
+    fetch_tasks = []
+    for event_date, tz_offset in event_dates_info.items():
+        time_min = f"{event_date}T00:00:00{tz_offset}"
+        time_max = f"{event_date}T23:59:59{tz_offset}"
+        fetch_tasks.append(
+            get_calendar_events(
+                access_token=access_token,
+                user_id=user_id,
+                time_min=time_min,
+                time_max=time_max,
+            )
+        )
+
+    results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+    same_day_events = []
+    for result in results:
+        if isinstance(result, dict) and "events" in result:
+            same_day_events.extend(result["events"])
+
+    return same_day_events
+
+
+async def enrich_calendar_options_with_metadata(
+    calendar_options: List[Dict[str, Any]],
+    access_token: str,
+    user_id: str,
+) -> List[Dict[str, Any]]:
+    """
+    Add calendar colors, names, and same-day events to calendar options.
+
+    Args:
+        calendar_options: List of calendar event options to enrich
+        access_token: Access token for calendar API
+        user_id: User identifier
+
+    Returns:
+        Enriched calendar options with metadata
+    """
+    color_map, name_map = await get_calendar_metadata_map(access_token)
+
+    for option in calendar_options:
+        calendar_id = option.get("calendar_id", "primary")
+        option["background_color"] = color_map.get(calendar_id, "#00bbff")
+        option["calendar_name"] = name_map.get(calendar_id, "Calendar")
+
+    event_dates_info = extract_unique_dates(calendar_options)
+    same_day_events = await fetch_same_day_events(
+        event_dates_info, access_token, user_id
+    )
+
+    for event in same_day_events:
+        calendar_id = event.get("calendarId")
+        event["background_color"] = color_map.get(calendar_id, "#00bbff")
+
+    for option in calendar_options:
+        option["same_day_events"] = same_day_events
+
+    return calendar_options
+
+
 async def get_calendar_events(
     user_id: str,
     access_token: Optional[str] = None,
@@ -161,23 +401,29 @@ async def get_calendar_events(
     selected_calendars: Optional[List[str]] = None,
     time_min: Optional[str] = None,
     time_max: Optional[str] = None,
-    max_results: int = 20,
+    max_results: Optional[int] = 20,
+    fetch_all: bool = False,
 ) -> Dict[str, Any]:
     """
-    Get events from the user's selected calendars with pagination and preferences.
+    Get events from the user's selected calendars with date-based pagination.
     Uses token repository to manage access tokens.
 
     Args:
         user_id (str): User identifier.
         access_token (Optional[str]): Optional access token (if not provided, will fetch from repository).
-        page_token (Optional[str]): Pagination token.
+        page_token (Optional[str]): Pagination token (ignored for multiple calendars).
         selected_calendars (Optional[List[str]]): List of selected calendar IDs.
-        time_min (Optional[str]): Start time filter.
-        time_max (Optional[str]): End time filter.
-        max_results (int): Maximum number of events to return per calendar (default: 20).
+        time_min (Optional[str]): Start time filter (ISO format).
+        time_max (Optional[str]): End time filter (ISO format).
+        max_results (Optional[int]): Maximum events per calendar. If None/0, fetches all. (default: 20).
+        fetch_all (bool): If True, fetches ALL events in date range by internally handling pagination.
 
     Returns:
-        dict: A dictionary containing events, nextPageToken, and the selected calendar IDs.
+        dict: A dictionary containing:
+            - events: List of events
+            - selectedCalendars: List of calendar IDs
+            - has_more: Boolean indicating if any calendar was truncated
+            - calendars_truncated: List of calendar IDs that hit limits
     """
     # Get valid access token if not provided
     if not access_token:
@@ -228,18 +474,34 @@ async def get_calendar_events(
         cal for cal in calendars if cal["id"] in user_selected_calendars
     ]
 
-    # Create tasks for fetching events concurrently.
+    # Determine fetch strategy based on parameters
+    # If fetch_all=True or max_results is None/0, fetch ALL events in date range
+    # Otherwise, fetch up to max_results per calendar
     token_str = access_token
-    tasks = [
-        fetch_calendar_events(
-            cal["id"], token_str, page_token, time_min, time_max, max_results
+
+    if fetch_all or not max_results:
+        # Full fetch mode: Get ALL events in date range for each calendar
+        logger.info(
+            f"Fetching ALL events for {len(selected_cal_objs)} calendars in date range"
         )
-        for cal in selected_cal_objs
-    ]
+        tasks = [
+            fetch_all_calendar_events(cal["id"], token_str, time_min, time_max)
+            for cal in selected_cal_objs
+        ]
+    else:
+        # Limited fetch mode: Get up to max_results per calendar
+        tasks = [
+            fetch_calendar_events(
+                cal["id"], token_str, None, time_min, time_max, max_results
+            )
+            for cal in selected_cal_objs
+        ]
+
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     all_events = []
-    next_page_token = None
+    seen_event_ids = set()  # Track unique event IDs for deduplication
+    calendars_truncated = []  # Track which calendars hit limits
 
     # Process results from all tasks.
     for cal, result in zip(selected_cal_objs, results):
@@ -251,19 +513,42 @@ async def get_calendar_events(
         result_dict = cast(Dict[str, Any], result)
 
         events = result_dict.get("items", [])
+
+        # Track if this calendar was truncated
+        if result_dict.get("truncated", False):
+            calendars_truncated.append(cal["id"])
+            logger.warning(
+                f"Calendar {cal['id']} ({cal.get('summary', 'Unknown')}) was truncated"
+            )
+
         for event in events:
+            # Deduplicate events by ID (important for shared calendars)
+            event_id = event.get("id")
+            if event_id and event_id in seen_event_ids:
+                continue
+            if event_id:
+                seen_event_ids.add(event_id)
+
             event["calendarId"] = cal["id"]
             event["calendarTitle"] = cal.get("summary", "")
         all_events.extend(filter_events(events))
 
-        # Use the first encountered nextPageToken (or handle it as needed)
-        if not next_page_token and result_dict.get("nextPageToken"):
-            next_page_token = result_dict["nextPageToken"]
+    # Sort all events by start time for consistent ordering
+    all_events.sort(
+        key=lambda e: e.get("start", {}).get("dateTime")
+        or e.get("start", {}).get("date")
+        or ""
+    )
+
+    logger.info(
+        f"Fetched {len(all_events)} total events from {len(selected_cal_objs)} calendars"
+    )
 
     return {
         "events": all_events,
-        "nextPageToken": next_page_token,
         "selectedCalendars": user_selected_calendars,
+        "has_more": len(calendars_truncated) > 0,  # True if any calendar hit limits
+        "calendars_truncated": calendars_truncated,  # List of calendar IDs that were truncated
     }
 
 
@@ -329,59 +614,6 @@ async def find_event_for_action(
         if response.status_code == 200:
             return response.json()
         return None
-
-
-async def get_all_calendar_events(
-    access_token: str,
-    user_id: Optional[str] = None,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Fetch events from all calendars associated with the user concurrently.
-
-    Args:
-        access_token (str): Access token.
-        user_id (Optional[str]): User ID for token refresh if needed.
-        time_min (Optional[str]): Start time filter.
-        time_max (Optional[str]): End time filter.
-
-    Returns:
-        dict: A mapping of calendar IDs to their respective events.
-    """
-    calendar_list_data = await fetch_calendar_list(access_token)
-    valid_token = access_token
-
-    calendars = calendar_list_data.get("items", [])
-    if not calendars:
-        return {"calendars": {}}
-    if not time_min:
-        time_min = datetime.now(timezone.utc).isoformat()
-
-    # Create tasks for each calendar - use coroutines directly rather than decorated functions
-    async def get_events_for_calendar(cal_id: str):
-        return await get_calendar_events_by_id(
-            calendar_id=cal_id,
-            access_token=str(valid_token),
-            time_min=time_min,
-            time_max=time_max,
-        )
-
-    tasks = {
-        cal["id"]: asyncio.create_task(get_events_for_calendar(cal["id"]))
-        for cal in calendars
-        if "id" in cal
-    }
-
-    events_by_calendar = {}
-    for cal_id, task in tasks.items():
-        try:
-            result = await task
-            events_by_calendar[cal_id] = result
-        except Exception as e:
-            events_by_calendar[cal_id] = {"error": str(e)}
-
-    return {"calendars": events_by_calendar}
 
 
 async def create_calendar_event(
@@ -454,14 +686,37 @@ async def create_calendar_event(
                     detail="Start and end times are required for time-specific events",
                 )
 
+            # Get timezone from event or use default
+            timezone = getattr(event, "timezone", None) or "UTC"
+
+            # Ensure times have timezone indicator if they don't
+            start_time = event.start
+            end_time = event.end
+
+            if (
+                start_time
+                and not start_time.endswith("Z")
+                and "+" not in start_time
+                and "-" not in start_time[-6:]
+            ):
+                # No timezone info, add Z for UTC
+                start_time = start_time + "Z"
+            if (
+                end_time
+                and not end_time.endswith("Z")
+                and "+" not in end_time
+                and "-" not in end_time[-6:]
+            ):
+                end_time = end_time + "Z"
+
             # The calendar tool has already processed times - use them directly
             event_payload["start"] = {
-                "dateTime": event.start,
-                "timeZone": "UTC",  # Default timezone since times are already processed
+                "dateTime": start_time,
+                "timeZone": timezone,
             }
             event_payload["end"] = {
-                "dateTime": event.end,
-                "timeZone": "UTC",  # Default timezone since times are already processed
+                "dateTime": end_time,
+                "timeZone": timezone,
             }
         except Exception as e:
             raise HTTPException(
@@ -948,14 +1203,44 @@ async def update_calendar_event(
                     # Keep existing end time
                     end_time = existing_event.get("end", {}).get("dateTime", "")
 
-                event_payload["start"] = {
-                    "dateTime": start_time,
-                    "timeZone": "UTC",
-                }
-                event_payload["end"] = {
-                    "dateTime": end_time,
-                    "timeZone": "UTC",
-                }
+                # Preserve the timezone from the request or existing event
+                timezone = None
+                if event.timezone:
+                    # Use timezone from the request
+                    timezone = event.timezone
+                elif hasattr(event, "timezone_offset") and event.timezone_offset:
+                    # If timezone_offset is provided, use it (though we prefer full timezone names)
+                    timezone = event.timezone_offset
+                elif existing_event.get("start", {}).get("timeZone"):
+                    # Preserve existing timezone
+                    timezone = existing_event.get("start", {}).get("timeZone")
+
+                # Ensure times have timezone indicator if they don't
+                if (
+                    start_time
+                    and not start_time.endswith("Z")
+                    and "+" not in start_time
+                    and "-" not in start_time[-6:]
+                ):
+                    # No timezone info, add Z for UTC
+                    start_time = start_time + "Z"
+                if (
+                    end_time
+                    and not end_time.endswith("Z")
+                    and "+" not in end_time
+                    and "-" not in end_time[-6:]
+                ):
+                    end_time = end_time + "Z"
+
+                start_payload = {"dateTime": start_time}
+                end_payload = {"dateTime": end_time}
+
+                if timezone:
+                    start_payload["timeZone"] = timezone
+                    end_payload["timeZone"] = timezone
+
+                event_payload["start"] = start_payload
+                event_payload["end"] = end_payload
             except Exception as e:
                 raise HTTPException(
                     status_code=400,
@@ -972,7 +1257,10 @@ async def update_calendar_event(
             response = await client.put(url, headers=headers, json=event_payload)
 
         if response.status_code == 200:
-            return response.json()
+            updated_event = response.json()
+            # Add calendarId to match the format of fetched events
+            updated_event["calendarId"] = calendar_id
+            return updated_event
         elif response.status_code == 404:
             raise HTTPException(
                 status_code=404, detail="Event not found or access denied"

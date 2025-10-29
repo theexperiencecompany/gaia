@@ -8,6 +8,7 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Input } from "@heroui/input";
+import { Kbd } from "@heroui/kbd";
 import {
   Modal,
   ModalBody,
@@ -238,7 +239,12 @@ export default function ChatOptionsDropdown({
                 <Button variant="light" onPress={closeModal}>
                   Cancel
                 </Button>
-                <Button color="danger" variant="flat" onPress={handleDelete}>
+                <Button
+                  color="danger"
+                  variant="flat"
+                  onPress={handleDelete}
+                  endContent={<Kbd keys={["enter"]} />}
+                >
                   Delete
                 </Button>
               </ModalFooter>

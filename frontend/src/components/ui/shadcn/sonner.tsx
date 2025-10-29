@@ -12,7 +12,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       className="toaster group"
       expand={true}
       closeButton
-      visibleToasts={3}
+      visibleToasts={1}
       style={
         {
           "--normal-bg": "var(--popover)",

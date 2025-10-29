@@ -48,7 +48,6 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
     <BaseCardView
       title="Unread emails"
       icon={<Gmail className="h-5 w-5 text-zinc-500" />}
-      isLoading={isLoading}
       isFetching={isFetching}
       error={error?.message}
       isEmpty={isEmpty}
@@ -68,7 +67,6 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
         <EmailListCard
           emails={formattedEmails}
           backgroundColor="bg-[#141414]"
-          showTitle={false}
           maxHeight=""
           isCollapsible={false}
         />

@@ -228,7 +228,7 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
         for plan_item in plans_data:
             try:
                 plan_name = plan_item["name"]
-                plan_duration = plan_item["duration"]
+                plan_duration: str = plan_item["duration"]
                 dodo_product_id = plan_item["dodo_product_id"]
 
                 print(f"⚙️  Processing: {plan_name} ({plan_duration.capitalize()})")
@@ -278,14 +278,14 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
                     print("   ✅ Created new plan")
 
                 print(
-                    f"   💰 Amount: ${plan_item['amount'] / 100:.2f} {plan_item['currency']}"
+                    f"   💰 Amount: ${int(plan_item['amount']) / 100:.2f} {plan_item['currency']}"
                 )
                 print(f"   📅 Duration: {plan_duration.capitalize()}")
                 print(f"   👥 Max Users: {plan_item['max_users']}")
                 print(
                     f"   🏷️  Dodo Product ID: {dodo_product_id or 'Free Plan (No Product ID)'}"
                 )
-                print(f"   🎯 Features: {len(plan_item['features'])} features")
+                print(f"   🎯 Features: {len(list(plan_item['features']))} features")
                 print()
 
             except Exception as e:
