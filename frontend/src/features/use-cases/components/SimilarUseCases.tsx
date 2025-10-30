@@ -1,10 +1,9 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useRef } from "react";
 
-import UseCaseCard from "./UseCaseCard";
 import { UseCase, useCasesData } from "../constants/dummy-data";
+import UseCaseCard from "./UseCaseCard";
 
 interface SimilarUseCasesProps {
   currentSlug: string;
@@ -42,16 +41,6 @@ export default function SimilarUseCases({
   };
 
   const similarUseCases = getSimilarUseCases();
-
-  const scroll = (direction: "left" | "right") => {
-    if (scrollContainerRef.current) {
-      const scrollAmount = 400;
-      scrollContainerRef.current.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth",
-      });
-    }
-  };
 
   if (similarUseCases.length === 0) return null;
 

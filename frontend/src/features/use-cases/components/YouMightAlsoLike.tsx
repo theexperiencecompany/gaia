@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import {
-  useCasesData,
   type UseCase,
+  useCasesData,
 } from "@/features/use-cases/constants/dummy-data";
 import {
   CommunityWorkflow,

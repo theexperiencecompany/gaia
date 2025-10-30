@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import FinalSection from "@/features/landing/components/sections/FinalSection";
 import UseCaseDetailClient from "@/features/use-cases/components/UseCaseDetailClient";
-import YouMightAlsoLike from "@/features/use-cases/components/YouMightAlsoLike";
 import {
-  useCasesData,
   type UseCase,
+  useCasesData,
 } from "@/features/use-cases/constants/dummy-data";
 import { Workflow, workflowApi } from "@/features/workflows/api/workflowApi";
 import {
@@ -136,8 +134,6 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
     ? generateUseCaseStructuredData(useCase)
     : null;
 
-  const currentSlug = useCase?.slug || communityWorkflow?.id || slug;
-
   return (
     <>
       {structuredData && (
@@ -151,8 +147,6 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
         communityWorkflow={communityWorkflow}
         slug={slug}
       />
-      <YouMightAlsoLike currentSlug={currentSlug} />
-      <FinalSection />
     </>
   );
 }

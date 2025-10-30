@@ -6,14 +6,11 @@ import { ExternalLink, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 
-import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 
 import { CommunityWorkflow, Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
-import { useWorkflowCreation } from "../hooks/useWorkflowCreation";
 import CommunityWorkflowCard from "./CommunityWorkflowCard";
 import CreateWorkflowModal from "./CreateWorkflowModal";
 import EditWorkflowModal from "./EditWorkflowModal";
@@ -38,8 +35,6 @@ export default function WorkflowPage() {
   );
 
   const { workflows, isLoading, error, refetch } = useWorkflows();
-  const { createWorkflow } = useWorkflowCreation();
-  const { selectWorkflow } = useWorkflowSelection();
   const [communityWorkflows, setCommunityWorkflows] = useState<
     CommunityWorkflow[]
   >([]);

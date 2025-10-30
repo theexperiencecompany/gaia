@@ -47,8 +47,9 @@ export const useSendMessage = () => {
       const composerState = useComposerStore.getState();
       const workflowState = useWorkflowSelectionStore.getState();
 
-  const files = overrides?.files ?? composerState.uploadedFileData;
-  const normalizedFiles = (files ?? []) as typeof composerState.uploadedFileData;
+      const files = overrides?.files ?? composerState.uploadedFileData;
+      const normalizedFiles = (files ??
+        []) as typeof composerState.uploadedFileData;
       const selectedTool =
         overrides?.selectedTool ?? composerState.selectedTool ?? null;
       const selectedToolCategory =
@@ -68,8 +69,8 @@ export const useSendMessage = () => {
         response: trimmedContent,
         date: isoTimestamp,
         message_id: tempMessageId,
-  fileIds: normalizedFiles.map((file) => file.fileId),
-  fileData: normalizedFiles,
+        fileIds: normalizedFiles.map((file) => file.fileId),
+        fileData: normalizedFiles,
         selectedTool: selectedTool ?? undefined,
         toolCategory: selectedToolCategory ?? undefined,
         selectedWorkflow: selectedWorkflow ?? undefined,
@@ -165,7 +166,7 @@ export const useSendMessage = () => {
           selectedToolCategory,
           selectedWorkflow,
         );
-      } catch (error) {
+      } catch {
         const failedMessage: IMessage = {
           ...finalMessage,
           status: "failed",

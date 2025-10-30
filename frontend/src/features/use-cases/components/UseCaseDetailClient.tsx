@@ -2,10 +2,12 @@
 
 import { Avatar } from "@heroui/avatar";
 import { Clock, Play, User } from "lucide-react";
+import Image from "next/image";
 import { useState } from "react";
 
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import FinalSection from "@/features/landing/components/sections/FinalSection";
 import MetaInfoCard from "@/features/use-cases/components/MetaInfoCard";
 import ToolsList from "@/features/use-cases/components/ToolsList";
 import UseCaseDetailLayout from "@/features/use-cases/components/UseCaseDetailLayout";
@@ -17,6 +19,8 @@ import { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplay } from "@/features/workflows/utils/triggerDisplay";
+
+import YouMightAlsoLike from "./YouMightAlsoLike";
 
 interface UseCaseDetailClientProps {
   useCase: UseCase | null;
@@ -143,87 +147,95 @@ export default function UseCaseDetailClient({
     : communityWorkflow?.steps;
 
   return (
-    <UseCaseDetailLayout
-      breadcrumbs={breadcrumbs}
-      title={title}
-      description={useCase ? description : undefined}
-      slug={currentSlug}
-      isCreating={isCreating}
-      onCreateWorkflow={handleCreateWorkflow}
-      metaInfo={
-        <>
-          {/* Creator - only for community workflows */}
-          {showCreator && (
-            <MetaInfoCard
-              icon={
-                <Avatar
-                  src={creatorAvatar}
-                  name={creatorName}
-                  size="sm"
-                  fallback={
-                    <User className="h-4 w-4 text-primary-foreground" />
-                  }
-                />
-              }
-              label="Created by"
-              value={creatorName}
-            />
-          )}
-
-          {/* Tools */}
-          {tools && tools.length > 0 && <ToolsList tools={tools} />}
-
-          {/* Run Count */}
-          <MetaInfoCard
-            icon={<Play className="h-5 w-5 text-zinc-400" />}
-            label="Ran"
-            value={runCountText}
-          />
-
-          {/* Trigger */}
-          {shouldShowTrigger && triggerInfo && (
-            <MetaInfoCard
-              icon={
-                triggerInfo.icon ? (
-                  <img
-                    src={triggerInfo.icon}
-                    alt="Trigger"
-                    className="h-5 w-5 object-contain"
+    <>
+      <UseCaseDetailLayout
+        breadcrumbs={breadcrumbs}
+        title={title}
+        description={useCase ? description : undefined}
+        slug={currentSlug}
+        isCreating={isCreating}
+        onCreateWorkflow={handleCreateWorkflow}
+        metaInfo={
+          <>
+            {/* Creator - only for community workflows */}
+            {showCreator && (
+              <MetaInfoCard
+                icon={
+                  <Avatar
+                    src={creatorAvatar}
+                    name={creatorName}
+                    size="sm"
+                    fallback={
+                      <User className="h-4 w-4 text-primary-foreground" />
+                    }
                   />
-                ) : (
-                  <Clock className="h-5 w-5 text-zinc-400" />
-                )
-              }
-              label="Trigger"
-              value={<span className="capitalize">{triggerInfo.label}</span>}
+                }
+                label="Created by"
+                value={creatorName}
+              />
+            )}
+
+            {/* Tools */}
+            {tools && tools.length > 0 && <ToolsList tools={tools} />}
+
+            {/* Run Count */}
+            <MetaInfoCard
+              icon={<Play className="h-5 w-5 text-zinc-400" />}
+              label="Ran"
+              value={runCountText}
             />
-          )}
-        </>
-      }
-      detailedContent={
-        <>
-          {useCase?.detailed_description && (
-            <p className="leading-relaxed text-zinc-400">
-              {useCase.detailed_description}
-            </p>
-          )}
-          {communityWorkflow && (
-            <div className="text-zinc-400">{communityWorkflow.description}</div>
-          )}
-        </>
-      }
-      steps={
-        steps && steps.length > 0 ? (
-          <div className="w-[400px] flex-shrink-0">
-            <div className="sticky top-8 rounded-3xl bg-zinc-900 px-6 pt-4 pb-2">
-              <div className="text-sm font-medium text-zinc-500">
-                Workflow Steps:
+
+            {/* Trigger */}
+            {shouldShowTrigger && triggerInfo && (
+              <MetaInfoCard
+                icon={
+                  triggerInfo.icon ? (
+                    <Image
+                      src={triggerInfo.icon}
+                      alt="Trigger"
+                      width={20}
+                      height={20}
+                      className="h-5 w-5 object-contain"
+                    />
+                  ) : (
+                    <Clock className="h-5 w-5 text-zinc-400" />
+                  )
+                }
+                label="Trigger"
+                value={<span className="capitalize">{triggerInfo.label}</span>}
+              />
+            )}
+          </>
+        }
+        detailedContent={
+          <>
+            {useCase?.detailed_description && (
+              <p className="leading-relaxed text-zinc-400">
+                {useCase.detailed_description}
+              </p>
+            )}
+            {communityWorkflow && (
+              <div className="text-zinc-400">
+                {communityWorkflow.description}
               </div>
-              <WorkflowSteps steps={stepsFormatted || []} size="large" />
+            )}
+          </>
+        }
+        steps={
+          steps && steps.length > 0 ? (
+            <div className="w-[400px] flex-shrink-0">
+              <div className="sticky top-8 rounded-3xl bg-zinc-900 px-6 pt-4 pb-2">
+                <div className="text-sm font-medium text-zinc-500">
+                  Workflow Steps:
+                </div>
+                <WorkflowSteps steps={stepsFormatted || []} size="large" />
+              </div>
             </div>
-          </div>
-        ) : undefined
-      }
-    />
+          ) : undefined
+        }
+      />
+      <YouMightAlsoLike currentSlug={currentSlug} />
+      <FinalSection />
+    </>
   );
 }

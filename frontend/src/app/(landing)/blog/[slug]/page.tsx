@@ -1,3 +1,4 @@
+import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import type { Metadata } from "next";
 import Image from "next/image";
 
@@ -8,7 +9,6 @@ import {
   generateBlogMetadata,
   generateBlogStructuredData,
 } from "@/utils/seoUtils";
-import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 
 interface PageProps {
   params: Promise<{ slug: string }>;

@@ -1,4 +1,5 @@
 import { memo } from "react";
+
 import Spinner from "../ui/shadcn/spinner";
 
 // Lightweight CSS-only loader to reduce JS execution time

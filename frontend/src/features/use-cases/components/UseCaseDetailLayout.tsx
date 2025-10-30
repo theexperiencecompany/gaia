@@ -1,11 +1,10 @@
+import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import { ReactNode } from "react";
 
 import { RaisedButton } from "@/components";
 
-import ShareButton from "./ShareButton";
-import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import PublishWorkflowCTA from "./PublishWorkflowCTA";
-import FinalSection from "@/features/landing/components/sections/FinalSection";
+import ShareButton from "./ShareButton";
 
 interface UseCaseDetailLayoutProps {
   breadcrumbs: Array<{ label: string; href?: string }>;
