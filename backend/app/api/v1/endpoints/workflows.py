@@ -334,7 +334,6 @@ async def unpublish_workflow(
             {"_id": workflow_id},
             {
                 "$set": {"is_public": False, "updated_at": datetime.now(timezone.utc)},
-                "$unset": {"upvotes": "", "upvoted_by": ""},
             },
         )
 
@@ -360,10 +359,10 @@ async def get_public_workflows(
 ):
     """Get public workflows from the community marketplace."""
     try:
-        # Get public workflows sorted by upvotes
+        # Get public workflows sorted by creation date
         pipeline = [
             {"$match": {"is_public": True}},
-            {"$sort": {"upvotes": -1, "created_at": -1}},
+            {"$sort": {"created_at": -1}},
             {"$skip": offset},
             {"$limit": limit},
             {
@@ -400,8 +399,6 @@ async def get_public_workflows(
                             },
                         }
                     },
-                    "upvotes": 1,
-                    "upvoted_by": 1,
                     "created_at": 1,
                     "created_by": 1,
                     "creator_info": 1,
@@ -425,17 +422,11 @@ async def get_public_workflows(
                 else {}
             )
 
-            # Check if current user has upvoted this workflow
-            upvoted_by = workflow.get("upvoted_by", [])
-            is_upvoted = current_user_id in upvoted_by
-
             formatted_workflow = {
                 "id": workflow["_id"],
                 "title": workflow["title"],
                 "description": workflow["description"],
                 "steps": workflow.get("steps", []),
-                "upvotes": workflow.get("upvotes", 0),
-                "is_upvoted": is_upvoted,
                 "created_at": workflow["created_at"],
                 "creator": {
                     "id": workflow.get("created_by"),
@@ -454,78 +445,6 @@ async def get_public_workflows(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch public workflows",
-        )
-
-
-@router.post("/workflows/{workflow_id}/upvote")
-@tiered_rate_limit("workflow_operations")
-async def upvote_workflow(
-    workflow_id: str,
-    user: dict = Depends(get_current_user),
-):
-    """Upvote a community workflow."""
-    try:
-        # Check if workflow exists and is public
-        workflow = await workflows_collection.find_one(
-            {"_id": workflow_id, "is_public": True}
-        )
-
-        if not workflow:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Public workflow not found",
-            )
-
-        user_id = user["user_id"]
-
-        # Use atomic operations to prevent race conditions
-        # Try to add upvote first (most common case)
-        add_result = await workflows_collection.update_one(
-            {
-                "_id": workflow_id,
-                "is_public": True,
-                "upvoted_by": {"$ne": user_id},  # Only if user hasn't upvoted
-            },
-            {
-                "$push": {"upvoted_by": user_id},
-                "$inc": {"upvotes": 1},
-                "$set": {"updated_at": datetime.now(timezone.utc)},
-            },
-        )
-
-        if add_result.modified_count > 0:
-            return {"message": "Upvote added successfully", "action": "added"}
-
-        # If add failed, try to remove upvote (user already upvoted)
-        remove_result = await workflows_collection.update_one(
-            {
-                "_id": workflow_id,
-                "is_public": True,
-                "upvoted_by": user_id,  # Only if user has upvoted
-            },
-            {
-                "$pull": {"upvoted_by": user_id},
-                "$inc": {"upvotes": -1},
-                "$set": {"updated_at": datetime.now(timezone.utc)},
-            },
-        )
-
-        if remove_result.modified_count > 0:
-            return {"message": "Upvote removed successfully", "action": "removed"}
-
-        # Neither add nor remove worked - workflow might not exist or be private
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Workflow not found or not accessible",
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error upvoting workflow {workflow_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to upvote workflow",
         )
 
 
@@ -606,100 +525,4 @@ async def delete_workflow(workflow_id: str, user: dict = Depends(get_current_use
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete workflow",
-        )
-
-
-@router.post("/workflows/validate-upvotes")
-@tiered_rate_limit("workflow_operations")
-async def validate_upvote_data(user: dict = Depends(get_current_user)):
-    """Validate and fix upvote data consistency across all workflows."""
-    try:
-        # Only allow admins or system users to run this validation
-        # You might want to add proper admin role checking here
-
-        inconsistent_workflows = []
-        fixed_count = 0
-
-        # Find all public workflows
-        async for workflow in workflows_collection.find({"is_public": True}):
-            upvoted_by = workflow.get("upvoted_by", [])
-            upvotes_count = workflow.get("upvotes", 0)
-            actual_count = len(upvoted_by)
-
-            # Check for inconsistency
-            if upvotes_count != actual_count:
-                inconsistent_workflows.append(
-                    {
-                        "workflow_id": workflow["_id"],
-                        "stored_count": upvotes_count,
-                        "actual_count": actual_count,
-                        "difference": actual_count - upvotes_count,
-                    }
-                )
-
-                # Fix the inconsistency
-                await workflows_collection.update_one(
-                    {"_id": workflow["_id"]},
-                    {
-                        "$set": {
-                            "upvotes": actual_count,
-                            "updated_at": datetime.now(timezone.utc),
-                        }
-                    },
-                )
-                fixed_count += 1
-
-        return {
-            "message": f"Validation complete. Fixed {fixed_count} inconsistent workflows.",
-            "inconsistencies_found": len(inconsistent_workflows),
-            "details": inconsistent_workflows,
-        }
-
-    except Exception as e:
-        logger.error(f"Error validating upvote data: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to validate upvote data",
-        )
-
-
-@router.get("/workflows/{workflow_id}/upvote-status")
-async def get_workflow_upvote_status(
-    workflow_id: str, user: dict = Depends(get_current_user)
-):
-    """Check upvote status and data consistency for a specific workflow."""
-    try:
-        workflow = await workflows_collection.find_one(
-            {"_id": workflow_id, "is_public": True}
-        )
-
-        if not workflow:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Public workflow not found",
-            )
-
-        upvoted_by = workflow.get("upvoted_by", [])
-        upvotes_count = workflow.get("upvotes", 0)
-        actual_count = len(upvoted_by)
-        user_id = user["user_id"]
-
-        return {
-            "workflow_id": workflow_id,
-            "upvotes_stored": upvotes_count,
-            "upvotes_actual": actual_count,
-            "is_consistent": upvotes_count == actual_count,
-            "user_has_upvoted": user_id in upvoted_by,
-            "total_unique_upvoters": actual_count,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(
-            f"Error checking upvote status for workflow {workflow_id}: {str(e)}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to check upvote status",
         )

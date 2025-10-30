@@ -97,8 +97,8 @@ export default function UseCaseSection({
       : selectedCategory === "all"
         ? useCasesData
         : useCasesData.filter((useCase: UseCase) =>
-          useCase.categories?.includes(selectedCategory),
-        );
+            useCase.categories?.includes(selectedCategory),
+          );
 
   const handleCategoryClick = (category: string) => {
     const wasSelected = selectedCategory === category;
@@ -168,7 +168,7 @@ export default function UseCaseSection({
   }, []);
 
   return (
-    <div className="w-full max-w-7xl" ref={dummySectionRef}>
+    <div className="mx-auto w-full max-w-7xl" ref={dummySectionRef}>
       <div className="mb-6 flex flex-wrap justify-center gap-2">
         {allCategories.map((category) => (
           <Chip
@@ -222,6 +222,7 @@ export default function UseCaseSection({
                       action_type={useCase.action_type || "prompt"}
                       integrations={useCase.integrations || []}
                       prompt={useCase.prompt}
+                      slug={useCase.slug}
                     />
                   </motion.div>
                 ))}

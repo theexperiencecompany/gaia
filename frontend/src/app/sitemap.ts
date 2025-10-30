@@ -1,10 +1,11 @@
 import { MetadataRoute } from "next";
 
 import { blogApi } from "@/features/blog/api/blogApi";
+import { useCasesData } from "@/features/use-cases/constants/dummy-data";
 
 /**
  * Generate dynamic sitemap for GAIA
- * This includes all static pages and dynamically fetched blog posts
+ * This includes all static pages, blog posts, and use cases
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = "https://heygaia.io";
@@ -51,7 +52,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: `${baseUrl}/use-cases`,
       lastModified: new Date(),
       changeFrequency: "weekly",
-      priority: 0.8,
+      priority: 0.9,
     },
     {
       url: `${baseUrl}/login`,
@@ -93,5 +94,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     console.error("Error fetching blogs for sitemap:", error);
   }
 
-  return [...staticPages, ...blogPages];
+  // Generate use case pages
+  const useCasePages: MetadataRoute.Sitemap = useCasesData.map((useCase) => ({
+    url: `${baseUrl}/use-cases/${useCase.slug}`,
+    lastModified: new Date(),
+    changeFrequency: "weekly" as const,
+    priority: useCase.categories.includes("featured") ? 0.8 : 0.7,
+  }));
+
+  return [...staticPages, ...blogPages, ...useCasePages];
 }

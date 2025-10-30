@@ -213,18 +213,4 @@ export const workflowApi = {
       },
     );
   },
-
-  // Upvote/downvote a community workflow
-  upvoteWorkflow: async (
-    workflowId: string,
-  ): Promise<{ message: string; action: string }> => {
-    return apiService.post<{ message: string; action: string }>(
-      `/workflows/${workflowId}/upvote`,
-      {},
-      {
-        silent: true, // Disable generic toast - component will handle success messages
-        errorMessage: "Failed to update vote",
-      },
-    );
-  },
 };

@@ -368,3 +368,12 @@ li {
   background: var(--color-zinc-500);
   border-radius: 100px;
 }
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

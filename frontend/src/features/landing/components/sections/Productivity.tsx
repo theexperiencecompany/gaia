@@ -98,6 +98,8 @@ export default function Productivity() {
               description={useCase.description || ""}
               action_type={useCase.action_type || "prompt"}
               integrations={useCase.integrations || []}
+              prompt={useCase.prompt}
+              slug={useCase.slug}
             />
           ))}
         </div>

@@ -1,10 +1,12 @@
 "use client";
 
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import Spinner from "@/components/ui/shadcn/spinner";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import PublishWorkflowCTA from "@/features/use-cases/components/PublishWorkflowCTA";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import {
   CommunityWorkflow,
@@ -17,6 +19,7 @@ export default function UseCasesPage() {
     CommunityWorkflow[]
   >([]);
   const contentRef = useRef(null);
+  const router = useRouter();
 
   const [isLoadingCommunity, setIsLoadingCommunity] = useState(false);
 
@@ -51,10 +54,7 @@ export default function UseCasesPage() {
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-background to-transparent" />
       </div>
 
-      <div
-        className="relative z-[1] container mx-auto px-6 pb-8"
-        // disableIntersectionObserver={true}
-      >
+      <div className="relative z-[1] container mx-auto pb-8">
         <div className="mb-8 text-center">
           <h1 className="mb-1 font-serif text-8xl font-normal">
             See what's Possible
@@ -81,20 +81,27 @@ export default function UseCasesPage() {
             </div>
           ) : communityWorkflows.length === 0 ? (
             <div className="flex h-48 items-center justify-center">
-              <div className="text-lg text-foreground-500">
+              <div className="text-foreground-500">
                 No community workflows available yet
               </div>
             </div>
           ) : (
             <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
               {communityWorkflows.map((workflow) => (
-                <CommunityWorkflowCard key={workflow.id} workflow={workflow} />
+                <CommunityWorkflowCard
+                  key={workflow.id}
+                  workflow={workflow}
+                  onClick={() => {
+                    router.push(`/use-cases/${workflow.id}`);
+                  }}
+                />
               ))}
             </div>
           )}
         </div>
       </div>
 
+      <PublishWorkflowCTA />
       <FinalSection />
     </div>
   );

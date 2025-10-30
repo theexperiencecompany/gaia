@@ -28,6 +28,7 @@
     "tabs": [
       {
         "tab": "Home",
+        "icon": "home",
         "groups": [
           {
             "group": "Get Started",
@@ -63,6 +64,16 @@
               "developers/extra/add-env-vars",
               "developers/extra/lazy-loading"
             ]
+          }
+        ]
+      },
+      {
+        "tab": "Guides",
+        "icon": "book-open",
+        "groups": [
+          {
+            "group": "Guides",
+            "pages": ["guides/create-public-workflow"]
           }
         ]
       }
