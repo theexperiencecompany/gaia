@@ -99,7 +99,7 @@ export default function Productivity() {
               action_type={useCase.action_type || "prompt"}
               integrations={useCase.integrations || []}
               prompt={useCase.prompt}
-              slug={useCase.slug}
+              slug={`/use-cases/${useCase.published_id}`}
             />
           ))}
         </div>

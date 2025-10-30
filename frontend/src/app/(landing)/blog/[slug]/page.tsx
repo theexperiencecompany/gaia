@@ -1,13 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-} from "@/components/ui/shadcn/breadcrumb";
 import { blogApi } from "@/features/blog/api/blogApi";
 import BlogMetadata from "@/features/blog/components/BlogMetadata";
 import MarkdownWrapper from "@/features/blog/components/MarkdownWrapper";
@@ -15,6 +8,7 @@ import {
   generateBlogMetadata,
   generateBlogStructuredData,
 } from "@/utils/seoUtils";
+import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -62,17 +56,10 @@ export default async function BlogPostPage({ params }: PageProps) {
           <div className="mx-auto w-full px-5 sm:p-0">
             <div className="mb-8 flex flex-col items-center">
               <div className="mb-5 flex w-full justify-center text-foreground-400">
-                <Breadcrumb>
-                  <BreadcrumbList>
-                    <BreadcrumbItem>
-                      <BreadcrumbLink href="/blog">Blog</BreadcrumbLink>
-                    </BreadcrumbItem>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>
-                      <BreadcrumbLink>{blog.category}</BreadcrumbLink>
-                    </BreadcrumbItem>
-                  </BreadcrumbList>
-                </Breadcrumb>
+                <Breadcrumbs>
+                  <BreadcrumbItem href="/blog">Blog</BreadcrumbItem>
+                  <BreadcrumbItem>{blog.category}</BreadcrumbItem>
+                </Breadcrumbs>
               </div>
 
               <h1 className="text-center text-4xl font-medium tracking-tight sm:text-5xl">

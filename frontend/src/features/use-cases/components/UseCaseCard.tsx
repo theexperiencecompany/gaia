@@ -43,10 +43,7 @@ export default function UseCaseCard({
   };
 
   // Action handler for the action button
-  const handleAction = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
+  const handleAction = async () => {
     if (action_type === "prompt") {
       if (prompt) appendToInput(prompt);
     } else {

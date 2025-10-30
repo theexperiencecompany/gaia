@@ -171,7 +171,6 @@ export function generateUseCaseStructuredData(useCase: UseCase) {
     structuredData.author = {
       "@type": "Person",
       name: useCase.creator.name,
-      ...(useCase.creator.role && { jobTitle: useCase.creator.role }),
     };
   }
 
