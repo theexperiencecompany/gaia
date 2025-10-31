@@ -30,6 +30,7 @@ from app.api.v1.endpoints import (
     websocket,
     workflows,
 )
+from app.api.v1.router import mcp
 from fastapi import APIRouter
 
 router = APIRouter()
@@ -43,6 +44,7 @@ router.include_router(notes.router, tags=["Notes/Memories"])
 router.include_router(memory.router, tags=["Memory"], prefix="/memory")
 router.include_router(goals.router, tags=["Goals"])
 router.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
+router.include_router(mcp.router, prefix="/mcp", tags=["MCP"])
 router.include_router(mail.router, tags=["Mail"])
 router.include_router(blog.router, tags=["Blog"])
 router.include_router(team.router, tags=["Team"])

@@ -150,12 +150,15 @@ class ProviderSubAgents:
         return calendar_agent
 
     @staticmethod
-    async def get_all_subagents(llm: LanguageModelLike) -> dict[str, Any]:
+    async def get_all_subagents(
+        llm: LanguageModelLike, user_id: str | None = None
+    ) -> dict[str, Any]:
         """
-        Create all provider-specific sub-agent graphs.
+        Create all provider-specific sub-agent graphs, including MCP servers if user_id provided.
 
         Args:
             llm: Language model to use
+            user_id: Optional user ID for MCP server subagents
 
         Returns:
             Dictionary of compiled sub-agent graphs
@@ -167,10 +170,13 @@ class ProviderSubAgents:
             ProviderSubAgents.create_linkedin_agent(llm),
             ProviderSubAgents.create_calendar_agent(llm),
         )
-        return {
+
+        subagents = {
             "gmail_agent": results[0],
             "notion_agent": results[1],
             "twitter_agent": results[2],
             "linkedin_agent": results[3],
             "calendar_agent": results[4],
         }
+
+        return subagents

@@ -13,7 +13,7 @@ from app.agents.core.nodes import (
 from app.agents.core.nodes.filter_messages import create_filter_messages_node
 from app.agents.core.subagents.provider_subagents import ProviderSubAgents
 from app.agents.llm.client import init_llm
-from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
 from app.config.loggers import app_logger as logger
@@ -23,10 +23,39 @@ from langchain_core.language_models import LanguageModelLike
 from langgraph.checkpoint.memory import InMemorySaver
 
 
+async def _initialize_mcp_tools(user_id: str, tool_registry: ToolRegistry) -> None:
+    """
+    Initialize MCP tools for a user by discovering and registering them.
+
+    Args:
+        user_id: User identifier
+        tool_registry: Tool registry instance
+    """
+    try:
+        from app.services.mcp import get_mcp_service
+
+        mcp_service = get_mcp_service()
+
+        # Get all tools from user's MCP servers
+        tools_by_server = await mcp_service.get_user_tools(user_id)
+
+        # Register tools with the registry
+        for server_name, tools in tools_by_server.items():
+            if tools:
+                await tool_registry.register_mcp_tools(server_name, tools, user_id)
+                logger.info(
+                    f"Registered {len(tools)} tools from MCP server '{server_name}'"
+                )
+
+    except Exception as e:
+        logger.error(f"Failed to initialize MCP tools for user {user_id}: {e}")
+
+
 @asynccontextmanager
 async def build_graph(
     chat_llm: Optional[LanguageModelLike] = None,
     in_memory_checkpointer: bool = False,
+    user_id: Optional[str] = None,
 ):
     """Construct and compile the state graph with integrated sub-agent graphs."""
     # Get default LLM if none provided
@@ -36,8 +65,13 @@ async def build_graph(
     tool_registry, store, sub_agents = await asyncio.gather(
         get_tool_registry(),
         get_tools_store(),
-        ProviderSubAgents.get_all_subagents(chat_llm),
+        ProviderSubAgents.get_all_subagents(chat_llm, user_id=user_id),
     )
+
+    # Initialize MCP tools for user if user_id provided
+    if user_id:
+        await _initialize_mcp_tools(user_id, tool_registry)
+        await tool_registry.add_mcp_handoff_tools(user_id)
 
     # Create main agent with custom tool retrieval logic
     builder = create_agent(
