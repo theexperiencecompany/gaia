@@ -6,6 +6,7 @@ import Image from "next/image";
 import React, { useState } from "react";
 
 import { useMCPServers } from "../hooks/useMCPServers";
+import { useIntegrations } from "../hooks/useIntegrations";
 import { MCPServerTemplate } from "../api/mcpApi";
 import { MCPServerDialog } from "./MCPServerDialog";
 
@@ -75,6 +76,7 @@ const MCPTemplateItem: React.FC<{
 export const MCPServersCard: React.FC<MCPServersCardProps> = ({ onClose }) => {
   const { templates, servers, isLoading, createServer, refreshServers } =
     useMCPServers();
+  const { integrations } = useIntegrations();
   const [isExpanded, setExpanded] = useState(false);
   const [selectedTemplate, setSelectedTemplate] =
     useState<MCPServerTemplate | null>(null);
@@ -107,17 +109,26 @@ export const MCPServersCard: React.FC<MCPServersCardProps> = ({ onClose }) => {
   };
 
   // Check if a template is already configured
-  const isTemplateConfigured = (templateId: string) => {
+  const isTemplateConfigured = (template: MCPServerTemplate) => {
+    // If OAuth-based, check if OAuth integration is connected
+    if (template.oauth_integration_id) {
+      const oauthIntegration = integrations?.find(
+        (i) => i.id === template.oauth_integration_id,
+      );
+      return oauthIntegration?.connected || false;
+    }
+
+    // Otherwise check if server exists
     return servers.some(
       (server) =>
-        server.name.toLowerCase().includes(templateId.toLowerCase()) ||
-        server.description.toLowerCase().includes(templateId.toLowerCase()),
+        server.name.toLowerCase().includes(template.id.toLowerCase()) ||
+        server.description.toLowerCase().includes(template.id.toLowerCase()),
     );
   };
 
   const connectedCount = servers.filter((s) => s.enabled).length;
 
-  if (isLoading) {
+  if (isLoading || templates.length === 0) {
     return null;
   }
 
@@ -157,7 +168,7 @@ export const MCPServersCard: React.FC<MCPServersCardProps> = ({ onClose }) => {
                   <MCPTemplateItem
                     key={template.id}
                     template={template}
-                    isConfigured={isTemplateConfigured(template.id)}
+                    isConfigured={isTemplateConfigured(template)}
                     onConfigure={handleConfigure}
                   />
                 ))}

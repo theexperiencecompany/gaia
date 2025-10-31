@@ -39,13 +39,19 @@ class MCPAuthConfig(BaseModel):
 
     auth_type: MCPAuthType = MCPAuthType.NONE
     bearer_token: Optional[str] = None
-    oauth_client_id: Optional[str] = None
-    oauth_client_secret: Optional[str] = None
-    oauth_auth_url: Optional[str] = None
-    oauth_token_url: Optional[str] = None
-    oauth_scopes: Optional[List[str]] = None
+
+    # OAuth 2.0 - mcp-use will handle discovery and token storage
+    oauth_integration_id: Optional[str] = None  # Link to existing OAuth integration
+    oauth_client_id: Optional[str] = None  # Optional: pre-registered client
+    oauth_client_secret: Optional[str] = None  # Optional: for confidential clients
+    oauth_scope: Optional[str] = None  # Optional: override default scopes
+    oauth_callback_port: Optional[int] = None  # Optional: custom port (default 8080)
+
+    # Basic auth
     basic_username: Optional[str] = None
     basic_password: Optional[str] = None
+
+    # Custom headers
     custom_headers: Optional[Dict[str, str]] = None
 
 
@@ -98,7 +104,15 @@ class MCPServerConfig(BaseModel):
     )
 
     def to_mcp_use_config(self) -> Dict[str, Any]:
-        """Convert to mcp-use library configuration format."""
+        """Convert to mcp-use library configuration format.
+
+        mcp-use will handle:
+        - OAuth metadata discovery via /.well-known/oauth-authorization-server
+        - Dynamic Client Registration (DCR) if no client_id provided
+        - Token storage in ~/.mcp_use/tokens
+        - OAuth callback server on localhost
+        - Token refresh automatically
+        """
         config: Dict[str, Any] = {}
 
         if self.server_type == MCPServerType.STDIO and self.stdio_config:
@@ -114,15 +128,33 @@ class MCPServerConfig(BaseModel):
                 if self.http_config.headers:
                     config["headers"] = self.http_config.headers
 
-            # Add authentication
+            # Add authentication - mcp-use handles the OAuth flow
             if self.auth_config.auth_type == MCPAuthType.BEARER:
+                # Simple bearer token - pass as string
                 config["auth"] = self.auth_config.bearer_token
+
             elif self.auth_config.auth_type == MCPAuthType.OAUTH2:
-                config["auth"] = {
-                    "client_id": self.auth_config.oauth_client_id,
-                    "client_secret": self.auth_config.oauth_client_secret,
-                }
+                # OAuth 2.0 - pass as dict, mcp-use's OAuth class handles everything
+                auth_config = {}
+
+                # Optional: pre-registered client credentials
+                if self.auth_config.oauth_client_id:
+                    auth_config["client_id"] = self.auth_config.oauth_client_id
+                if self.auth_config.oauth_client_secret:
+                    auth_config["client_secret"] = self.auth_config.oauth_client_secret
+
+                # Optional: custom scope
+                if self.auth_config.oauth_scope:
+                    auth_config["scope"] = self.auth_config.oauth_scope
+
+                # Optional: custom callback port
+                if self.auth_config.oauth_callback_port:
+                    auth_config["callback_port"] = self.auth_config.oauth_callback_port
+
+                config["auth"] = auth_config
+
             elif self.auth_config.auth_type == MCPAuthType.CUSTOM:
+                # Custom headers - merge with existing headers
                 if self.auth_config.custom_headers:
                     config.setdefault("headers", {}).update(
                         self.auth_config.custom_headers

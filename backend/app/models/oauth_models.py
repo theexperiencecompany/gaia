@@ -97,6 +97,8 @@ class OAuthIntegration(BaseModel):
     associated_triggers: List[
         TriggerConfig
     ] = []  # Triggers associated with this integration
+    # MCP Server link - if this OAuth integration powers an MCP server
+    mcp_server_id: Optional[str] = None  # Links to MCPServerTemplate.id
 
 
 class IntegrationConfigResponse(BaseModel):

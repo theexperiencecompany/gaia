@@ -8,7 +8,7 @@ export interface MCPServerTemplate {
   server_url?: string;
   setup_instructions: string;
   requires_auth: boolean;
-  auth_type?: string;
+  oauth_integration_id?: string; // If set, use OAuth instead of manual token
   documentation_url: string;
   icon_url: string;
 }

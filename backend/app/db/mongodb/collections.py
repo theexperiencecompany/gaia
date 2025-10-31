@@ -76,6 +76,7 @@ _COLLECTION_MAPPINGS = {
     "plans_collection": "subscription_plans",
     "usage_snapshots_collection": "usage_snapshots",
     "ai_models_collection": "ai_models",
+    "mcp_servers_collection": "mcp_servers",  # MCP server configs + metadata
 }
 
 

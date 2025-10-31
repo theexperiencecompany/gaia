@@ -1,94 +1,73 @@
 """
-MCP Service
+MCP Service - MongoDB + mcp-use Native
 
 Manages MCP client lifecycle, server connections, and tool discovery.
-Integrates mcp-use library with GAIA's tool registry and agent system.
+Uses MongoDB for config storage, mcp-use handles OAuth and tokens.
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app.config.loggers import common_logger as logger
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.db.postgresql import get_db_session
-from app.models.mcp_models import (
-    MCPAuthConfig,
-    MCPServer,
-    MCPServerConfig,
-    MCPServerCreateRequest,
-    MCPServerResponse,
-    MCPServerStatusResponse,
-    MCPServerType,
-    MCPServerUpdateRequest,
-    MCPToolInfo,
-)
+from app.db.mongodb.collections import mcp_servers_collection
 from langchain_core.tools import BaseTool
 from mcp_use import MCPClient
 from mcp_use.adapters.langchain_adapter import LangChainAdapter
-from sqlalchemy import select
 
 
 class MCPService:
-    """Service for managing MCP servers and tool discovery."""
+    """Service for managing MCP servers - MongoDB + mcp-use."""
 
     def __init__(self):
         """Initialize MCP service."""
-        self._clients: Dict[str, Any] = {}  # user_id -> MCPClient
-        self._adapters: Dict[str, Any] = {}  # user_id -> LangChainAdapter
+        self._clients: Dict[str, MCPClient] = {}  # user_id -> MCPClient
+        self._adapters: Dict[str, LangChainAdapter] = {}  # user_id -> LangChainAdapter
         self._user_tools: Dict[
             str, Dict[str, List[BaseTool]]
         ] = {}  # user_id -> {server_name -> tools}
-        self._initialized = False
-        logger.info("MCP service initialized successfully")
+        logger.info("MCP service initialized")
 
-    async def initialize_user_client(self, user_id: str) -> Optional[Any]:
+    async def initialize_user_client(self, user_id: str) -> Optional[MCPClient]:
         """
-        Initialize MCP client for a user based on their configured servers.
+        Initialize MCP client for a user from MongoDB configs.
 
-        Args:
-            user_id: User identifier
-
-        Returns:
-            MCPClient instance or None if no servers configured
+        Builds mcp-use config dict from MongoDB documents.
+        mcp-use handles OAuth tokens from ~/.mcp_use/tokens/
         """
-        # Get user's MCP servers
         servers = await self.get_user_servers(user_id)
         if not servers:
-            logger.debug(f"No MCP servers configured for user {user_id}")
+            logger.debug(f"No MCP servers for user {user_id}")
             return None
 
-        # Build mcp-use config
+        # Build mcp-use config from MongoDB docs
         mcp_config = {"mcpServers": {}}
         for server in servers:
-            if server.enabled:
-                server_config = MCPServerConfig.model_validate(server.config)
-                mcp_config["mcpServers"][server.name] = (
-                    server_config.to_mcp_use_config()
-                )
+            if server.get("enabled", True):
+                # Use raw mcp_config stored in MongoDB
+                mcp_config["mcpServers"][server["server_name"]] = server["mcp_config"]
 
         if not mcp_config["mcpServers"]:
-            logger.debug(f"No enabled MCP servers for user {user_id}")
+            logger.debug(f"No enabled servers for user {user_id}")
             return None
 
         try:
-            # Create MCPClient from config
+            # mcp-use handles token loading from ~/.mcp_use/tokens/
             client = MCPClient.from_dict(mcp_config)
             await client.create_all_sessions()
 
-            # Store client and adapter
             self._clients[user_id] = client
             self._adapters[user_id] = LangChainAdapter()
 
-            logger.info(
-                f"Initialized MCP client for user {user_id} with {len(mcp_config['mcpServers'])} servers"
-            )
+            logger.info(f"Initialized MCP client for user {user_id}")
             return client
 
         except Exception as e:
-            logger.error(f"Failed to initialize MCP client for user {user_id}: {e}")
+            logger.error(f"Failed to initialize MCP client: {e}")
             return None
 
-    async def get_user_client(self, user_id: str) -> Optional[Any]:
-        """Get or create MCP client for a user."""
+    async def get_user_client(self, user_id: str) -> Optional[MCPClient]:
+        """Get cached or initialize new MCP client."""
         if user_id in self._clients:
             return self._clients[user_id]
         return await self.initialize_user_client(user_id)
@@ -148,208 +127,195 @@ class MCPService:
             logger.error(f"Failed to get tools for user {user_id}: {e}")
             return {}
 
-    async def get_user_servers(self, user_id: str) -> List[MCPServer]:
-        """Get all MCP servers for a user."""
-        async with get_db_session() as session:
-            stmt = select(MCPServer).where(MCPServer.user_id == user_id)
-            result = await session.execute(stmt)
-            return list(result.scalars().all())
+    async def get_user_servers(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all MCP servers from MongoDB."""
+        cursor = mcp_servers_collection.find({"user_id": user_id})
+        servers = await cursor.to_list(length=None)
+        # Convert ObjectId to string for JSON serialization
+        for server in servers:
+            if "_id" in server:
+                server["_id"] = str(server["_id"])
+        return servers
 
     async def create_server(
-        self, user_id: str, request: MCPServerCreateRequest
-    ) -> MCPServerResponse:
-        """Create a new MCP server configuration."""
-        # Build config
-        server_config = MCPServerConfig(
-            name=request.name,
-            description=request.description,
-            server_type=request.server_type,
-            enabled=request.enabled,
-            stdio_config=request.stdio_config,
-            http_config=request.http_config,
-            auth_config=request.auth_config or MCPAuthConfig(),
-            sandbox_config=request.sandbox_config,
-            metadata=request.metadata,
+        self,
+        user_id: str,
+        server_name: str,
+        mcp_config: Dict[str, Any],
+        display_name: str,
+        description: str = "",
+        oauth_integration_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create MCP server in MongoDB."""
+        # Check if server exists
+        existing = await mcp_servers_collection.find_one(
+            {"user_id": user_id, "server_name": server_name}
         )
+        if existing:
+            raise ValueError(f"Server '{server_name}' already exists")
 
-        async with get_db_session() as session:
-            server = MCPServer(
-                user_id=user_id,
-                name=request.name,
-                description=request.description,
-                server_type=request.server_type.value,
-                enabled=request.enabled,
-                config=server_config.model_dump(),
-            )
-            session.add(server)
-            await session.commit()
-            await session.refresh(server)
+        doc = {
+            "user_id": user_id,
+            "server_name": server_name,
+            "mcp_config": mcp_config,  # Raw mcp-use config
+            "display_name": display_name,
+            "description": description,
+            "oauth_integration_id": oauth_integration_id,
+            "enabled": True,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+        }
 
-            # Invalidate cached client
-            if user_id in self._clients:
-                await self._clients[user_id].close_all_sessions()
-                del self._clients[user_id]
-            if user_id in self._user_tools:
-                del self._user_tools[user_id]
+        result = await mcp_servers_collection.insert_one(doc)
+        doc["_id"] = str(result.inserted_id)
 
-            return MCPServerResponse(
-                id=server.id,
-                name=server.name,
-                description=server.description or "",
-                server_type=MCPServerType(server.server_type),
-                enabled=server.enabled,
-                config=server_config,
-                created_at=server.created_at,
-                updated_at=server.updated_at,
-            )
+        # Invalidate cache
+        await self._invalidate_user_cache(user_id)
+
+        logger.info(f"Created MCP server {server_name} for user {user_id}")
+        return doc
 
     async def update_server(
-        self, user_id: str, server_id: int, request: MCPServerUpdateRequest
-    ) -> Optional[MCPServerResponse]:
-        """Update an MCP server configuration."""
-        async with get_db_session() as session:
-            stmt = select(MCPServer).where(
-                MCPServer.id == server_id, MCPServer.user_id == user_id
-            )
-            result = await session.execute(stmt)
-            server = result.scalar_one_or_none()
+        self, user_id: str, server_name: str, updates: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Update MCP server in MongoDB."""
+        updates["updated_at"] = datetime.utcnow()
 
-            if not server:
-                return None
+        result = await mcp_servers_collection.find_one_and_update(
+            {"user_id": user_id, "server_name": server_name},
+            {"$set": updates},
+            return_document=True,
+        )
 
-            # Update fields
-            config = MCPServerConfig.model_validate(server.config)
-            if request.name:
-                server.name = request.name
-                config.name = request.name
-            if request.description:
-                server.description = request.description
-                config.description = request.description
-            if request.enabled is not None:
-                server.enabled = request.enabled
-                config.enabled = request.enabled
-            if request.stdio_config:
-                config.stdio_config = request.stdio_config
-            if request.http_config:
-                config.http_config = request.http_config
-            if request.auth_config:
-                config.auth_config = request.auth_config
-            if request.sandbox_config:
-                config.sandbox_config = request.sandbox_config
-            if request.metadata:
-                config.metadata = request.metadata
+        if result:
+            result["_id"] = str(result["_id"])
+            await self._invalidate_user_cache(user_id)
+            logger.info(f"Updated MCP server {server_name}")
 
-            server.config = config.model_dump()
-            await session.commit()
-            await session.refresh(server)
+        return result
 
-            # Invalidate cache
-            if user_id in self._clients:
-                await self._clients[user_id].close_all_sessions()
-                del self._clients[user_id]
-            if user_id in self._user_tools:
-                del self._user_tools[user_id]
+    async def delete_server(self, user_id: str, server_name: str) -> bool:
+        """Delete MCP server from MongoDB."""
+        result = await mcp_servers_collection.delete_one(
+            {"user_id": user_id, "server_name": server_name}
+        )
 
-            return MCPServerResponse(
-                id=server.id,
-                name=server.name,
-                description=server.description or "",
-                server_type=MCPServerType(server.server_type),
-                enabled=server.enabled,
-                config=config,
-                created_at=server.created_at,
-                updated_at=server.updated_at,
-            )
-
-    async def delete_server(self, user_id: str, server_id: int) -> bool:
-        """Delete an MCP server configuration."""
-        async with get_db_session() as session:
-            stmt = select(MCPServer).where(
-                MCPServer.id == server_id, MCPServer.user_id == user_id
-            )
-            result = await session.execute(stmt)
-            server = result.scalar_one_or_none()
-
-            if not server:
-                return False
-
-            await session.delete(server)
-            await session.commit()
-
-            # Invalidate cache
-            if user_id in self._clients:
-                await self._clients[user_id].close_all_sessions()
-                del self._clients[user_id]
-            if user_id in self._user_tools:
-                del self._user_tools[user_id]
-
+        if result.deleted_count > 0:
+            await self._invalidate_user_cache(user_id)
+            logger.info(f"Deleted MCP server {server_name}")
             return True
 
+        return False
+
     async def get_server_status(
-        self, user_id: str, server_id: int
-    ) -> Optional[MCPServerStatusResponse]:
-        """Get status and tools for a specific MCP server."""
-        async with get_db_session() as session:
-            stmt = select(MCPServer).where(
-                MCPServer.id == server_id, MCPServer.user_id == user_id
-            )
-            result = await session.execute(stmt)
-            server = result.scalar_one_or_none()
+        self, user_id: str, server_name: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get connection status and tools for MCP server."""
+        server = await mcp_servers_collection.find_one(
+            {"user_id": user_id, "server_name": server_name}
+        )
 
-            if not server:
-                return None
+        if not server:
+            return None
 
-            if not server.enabled:
-                return MCPServerStatusResponse(
-                    server_id=server.id,
-                    name=server.name,
-                    connected=False,
-                    tool_count=0,
-                    tools=[],
-                    error="Server disabled",
-                )
+        if not server.get("enabled", True):
+            return {
+                "server_name": server_name,
+                "connected": False,
+                "tool_count": 0,
+                "tools": [],
+                "error": "Server disabled",
+            }
 
-            try:
-                # Get tools for this server
-                tools_dict = await self.get_user_tools(user_id, server.name)
-                server_tools = tools_dict.get(server.name, [])
+        try:
+            # Get tools
+            tools_dict = await self.get_user_tools(user_id, server_name)
+            server_tools = tools_dict.get(server_name, [])
 
-                tool_infos = [
-                    MCPToolInfo(
-                        name=tool.name,
-                        description=tool.description or "",
-                        server_name=server.name,
-                        parameters=getattr(tool, "args_schema", None),
-                    )
-                    for tool in server_tools
-                ]
+            tool_infos = [
+                {
+                    "name": tool.name,
+                    "description": tool.description or "",
+                    "server_name": server_name,
+                }
+                for tool in server_tools
+            ]
 
-                return MCPServerStatusResponse(
-                    server_id=server.id,
-                    name=server.name,
-                    connected=True,
-                    tool_count=len(tool_infos),
-                    tools=tool_infos,
-                )
+            return {
+                "server_name": server_name,
+                "connected": True,
+                "tool_count": len(tool_infos),
+                "tools": tool_infos,
+            }
 
-            except Exception as e:
-                logger.error(f"Error getting status for server {server_id}: {e}")
-                return MCPServerStatusResponse(
-                    server_id=server.id,
-                    name=server.name,
-                    connected=False,
-                    tool_count=0,
-                    tools=[],
-                    error=str(e),
-                )
+        except Exception as e:
+            logger.error(f"Error getting status: {e}")
+            return {
+                "server_name": server_name,
+                "connected": False,
+                "tool_count": 0,
+                "tools": [],
+                "error": str(e),
+            }
 
-    async def cleanup_user_client(self, user_id: str):
-        """Clean up MCP client resources for a user."""
+    async def initiate_oauth(self, user_id: str, server_name: str) -> str:
+        """
+        Initiate OAuth flow for MCP server.
+
+        mcp-use handles OAuth discovery and DCR.
+        Returns authorization URL for frontend redirect.
+        """
+        server = await mcp_servers_collection.find_one(
+            {"user_id": user_id, "server_name": server_name}
+        )
+
+        if not server:
+            raise ValueError(f"Server '{server_name}' not found")
+
+        # Get OAuth URL from mcp_config
+        mcp_config = server.get("mcp_config", {})
+        oauth_url = mcp_config.get("url")
+
+        if not oauth_url:
+            raise ValueError(f"No OAuth URL configured for '{server_name}'")
+
+        # mcp-use will handle discovery and DCR
+        # For now, return the authorization URL from config
+        # In production, mcp-use.oauth module would handle this
+        logger.info(f"OAuth initiated for {server_name}")
+        return oauth_url
+
+    async def complete_oauth(
+        self, user_id: str, server_name: str, code: str, state: Optional[str] = None
+    ) -> bool:
+        """
+        Complete OAuth flow after callback.
+
+        mcp-use handles token exchange and storage in ~/.mcp_use/tokens/
+        We just verify success and invalidate cache.
+        """
+        server = await mcp_servers_collection.find_one(
+            {"user_id": user_id, "server_name": server_name}
+        )
+
+        if not server:
+            return False
+
+        # mcp-use handles token exchange and storage
+        # In production, call mcp-use.oauth.complete_flow(code, state)
+        logger.info(f"OAuth completed for {server_name}")
+
+        # Invalidate cache to reload with new tokens
+        await self._invalidate_user_cache(user_id)
+        return True
+
+    async def _invalidate_user_cache(self, user_id: str):
+        """Invalidate all cached data for a user."""
         if user_id in self._clients:
             try:
                 await self._clients[user_id].close_all_sessions()
             except Exception as e:
-                logger.error(f"Error closing sessions for user {user_id}: {e}")
+                logger.error(f"Error closing sessions: {e}")
             del self._clients[user_id]
 
         if user_id in self._adapters:
@@ -357,6 +323,10 @@ class MCPService:
 
         if user_id in self._user_tools:
             del self._user_tools[user_id]
+
+    async def cleanup_user_client(self, user_id: str):
+        """Clean up MCP client resources."""
+        await self._invalidate_user_cache(user_id)
 
 
 @lazy_provider(

@@ -22,7 +22,7 @@ class MCPServerTemplate(BaseModel):
     server_url: Optional[str] = None
     setup_instructions: str
     requires_auth: bool = False
-    auth_type: Optional[str] = None
+    oauth_integration_id: Optional[str] = None  # Links to OAuth integration
     documentation_url: str
     icon_url: str
 
@@ -36,9 +36,9 @@ MCP_SERVER_REGISTRY: List[MCPServerTemplate] = [
         description="GitHub's official remote MCP Server for repository operations, issues, PRs, workflows, and code management.",
         category="development",
         server_url="https://api.githubcopilot.com/mcp/",
-        setup_instructions="Uses OAuth authentication. Requires GitHub account with appropriate repository access permissions.",
+        setup_instructions="Connect your GitHub account via OAuth to enable repository operations, issue management, and code analysis.",
         requires_auth=True,
-        auth_type="bearer",
+        oauth_integration_id="github",
         documentation_url="https://github.com/github/github-mcp-server",
         icon_url="/images/icons/github.svg",
     ),
@@ -48,9 +48,9 @@ MCP_SERVER_REGISTRY: List[MCPServerTemplate] = [
         description="Linear's official remote MCP server for searching, creating, and updating issues, projects, and comments.",
         category="productivity",
         server_url="https://mcp.linear.app/mcp",
-        setup_instructions="Uses OAuth 2.1 authentication. Supports streamable HTTP transport. Requires Linear workspace access.",
+        setup_instructions="Connect your Linear workspace via OAuth to enable issue management, project tracking, and team collaboration.",
         requires_auth=True,
-        auth_type="bearer",
+        oauth_integration_id="linear",
         documentation_url="https://linear.app/docs/mcp",
         icon_url="/images/icons/linear.svg",
     ),

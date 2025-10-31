@@ -54,7 +54,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse, RedirectResponse
 from workos import WorkOSClient
 
-router = APIRouter()
+router = APIRouter(prefix="/oauth")
 http_async_client = httpx.AsyncClient()
 
 workos = WorkOSClient(
