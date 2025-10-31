@@ -9,6 +9,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app.config.loggers import common_logger as logger
+from app.config.oauth_config import get_integration_by_id
+from app.config.token_repository import token_repository
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.mongodb.collections import mcp_servers_collection
 from langchain_core.tools import BaseTool
@@ -260,11 +262,12 @@ class MCPService:
 
     async def initiate_oauth(self, user_id: str, server_name: str) -> str:
         """
-        Initiate OAuth flow for MCP server.
+        Initiate OAuth flow for MCP server using existing OAuth integration.
 
-        mcp-use handles OAuth discovery and DCR.
-        Returns authorization URL for frontend redirect.
+        Returns authorization URL that redirects through our OAuth flow.
+        After OAuth completes, user is redirected back to MCP callback.
         """
+        
         server = await mcp_servers_collection.find_one(
             {"user_id": user_id, "server_name": server_name}
         )
@@ -272,27 +275,34 @@ class MCPService:
         if not server:
             raise ValueError(f"Server '{server_name}' not found")
 
-        # Get OAuth URL from mcp_config
-        mcp_config = server.get("mcp_config", {})
-        oauth_url = mcp_config.get("url")
+        # Get OAuth integration ID
+        oauth_integration_id = server.get("oauth_integration_id")
+        if not oauth_integration_id:
+            raise ValueError(f"No OAuth integration configured for '{server_name}'")
 
-        if not oauth_url:
-            raise ValueError(f"No OAuth URL configured for '{server_name}'")
+        # Get OAuth integration config
+        integration = get_integration_by_id(oauth_integration_id)
+        if not integration:
+            raise ValueError(f"OAuth integration '{oauth_integration_id}' not found")
 
-        # mcp-use will handle discovery and DCR
-        # For now, return the authorization URL from config
-        # In production, mcp-use.oauth module would handle this
-        logger.info(f"OAuth initiated for {server_name}")
-        return oauth_url
+        # Build authorization URL using existing OAuth flow
+        # The OAuth callback will store tokens in PostgreSQL
+        # Then redirect to /api/v1/mcp/oauth/{server_name}/callback
+        redirect_path = f"/api/v1/mcp/oauth/{server_name}/callback"
+        auth_url = f"/api/v1/oauth/{oauth_integration_id}/authorize?redirect_path={redirect_path}"
+        
+        logger.info(f"OAuth initiated for {server_name} using {oauth_integration_id}")
+        return auth_url
 
     async def complete_oauth(
-        self, user_id: str, server_name: str, code: str, state: Optional[str] = None
+        self, user_id: str, server_name: str
     ) -> bool:
         """
         Complete OAuth flow after callback.
 
-        mcp-use handles token exchange and storage in ~/.mcp_use/tokens/
-        We just verify success and invalidate cache.
+        The OAuth tokens are stored in PostgreSQL by the OAuth callback handler.
+        mcp-use will read tokens from token_repository when initializing MCPClient.
+        We just need to invalidate cache to reload client with new tokens.
         """
         server = await mcp_servers_collection.find_one(
             {"user_id": user_id, "server_name": server_name}
@@ -301,9 +311,16 @@ class MCPService:
         if not server:
             return False
 
-        # mcp-use handles token exchange and storage
-        # In production, call mcp-use.oauth.complete_flow(code, state)
-        logger.info(f"OAuth completed for {server_name}")
+        # Verify OAuth token exists
+        oauth_integration_id = server.get("oauth_integration_id")
+        if oauth_integration_id:
+            try:
+                # Check if token exists (will raise HTTPException if not)
+                await token_repository.get_token(user_id, oauth_integration_id)
+                logger.info(f"OAuth completed successfully for {server_name}")
+            except Exception as e:
+                logger.error(f"OAuth token not found for {server_name}: {e}")
+                return False
 
         # Invalidate cache to reload with new tokens
         await self._invalidate_user_cache(user_id)

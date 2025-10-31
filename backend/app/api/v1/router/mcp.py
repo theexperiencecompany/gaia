@@ -14,6 +14,8 @@ from app.config.mcp_registry import (
     get_mcp_templates,
     get_mcp_templates_by_category,
 )
+from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.token_repository import token_repository
 from app.models.mcp_models import (
     MCPServerCreateRequest,
     MCPServerListResponse,
@@ -52,8 +54,6 @@ async def get_mcp_servers_status(
     user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Get connection status for all MCP server templates."""
-    from app.config.oauth_config import OAUTH_INTEGRATIONS
-    from app.config.token_repository import token_repository
 
     user_id = user.get("user_id")
     if not user_id:
@@ -409,15 +409,14 @@ async def mcp_oauth_authorize(
 @router.get("/oauth/{server_name}/callback")
 async def mcp_oauth_callback(
     server_name: str,
-    code: str,
-    state: str | None = None,
     user: dict = Depends(get_current_user),
 ) -> RedirectResponse:
     """
-    Handle OAuth callback from MCP server.
+    Handle OAuth callback for MCP server.
 
-    mcp-use handles token exchange and storage automatically.
-    Redirects to frontend with success/error status.
+    This is called after the main OAuth flow completes.
+    The OAuth tokens are already stored by the OAuth callback handler.
+    We just verify and redirect to frontend.
     """
     user_id = user.get("user_id")
     if not user_id:
@@ -431,20 +430,14 @@ async def mcp_oauth_callback(
         success = await mcp_service.complete_oauth(
             user_id=str(user_id),
             server_name=server_name,
-            code=code,
-            state=state,
         )
 
         if not success:
             logger.error(f"OAuth callback failed for {server_name}")
-            return RedirectResponse(
-                url=f"/settings/integrations?mcp_oauth=failed&server={server_name}"
-            )
+            return RedirectResponse(url=f"/integrations?mcp_oauth_error={server_name}")
 
         logger.info(f"Completed OAuth for {server_name}, user {user_id}")
-        return RedirectResponse(
-            url=f"/settings/integrations?mcp_oauth=success&server={server_name}"
-        )
+        return RedirectResponse(url=f"/integrations?mcp_oauth_success={server_name}")
 
     except Exception as e:
         logger.error(f"Failed to complete OAuth for {server_name}: {e}")

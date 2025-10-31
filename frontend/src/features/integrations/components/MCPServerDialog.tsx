@@ -42,18 +42,92 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
     : null;
   const isOAuthConnected = oauthIntegration?.status === "connected";
 
-  const handleOAuthConnect = () => {
-    if (template.oauth_integration_id) {
-      connectIntegration(template.oauth_integration_id);
+  const handleOAuthConnect = async () => {
+    if (!template.oauth_integration_id) {
+      setError("OAuth integration ID not configured");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // First, check if we need to create the MCP server config
+      // or if we just need to connect OAuth
+      const serverConfig = await createServer({
+        server_name: template.id,
+        mcp_config: {
+          url: template.server_url,
+          auth: {
+            type: "oauth",
+            oauth_integration_id: template.oauth_integration_id,
+          },
+        },
+        display_name: template.name,
+        description: template.description,
+        oauth_integration_id: template.oauth_integration_id,
+      });
+
+      // Now initiate the OAuth flow using the MCP OAuth endpoint
+      const response = await fetch(
+        `/api/v1/mcp/oauth/${template.id}/authorize`,
+        {
+          credentials: "include",
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to initiate OAuth flow");
+      }
+
+      const data = await response.json();
+      if (data.authorization_url) {
+        // Redirect to OAuth provider
+        window.location.href = data.authorization_url;
+      } else {
+        throw new Error("No authorization URL returned");
+      }
+    } catch (err: any) {
+      // If server already exists, just try to connect OAuth
+      if (err.message?.includes("already exists")) {
+        try {
+          const response = await fetch(
+            `/api/v1/mcp/oauth/${template.id}/authorize`,
+            {
+              credentials: "include",
+            },
+          );
+
+          if (!response.ok) {
+            throw new Error("Failed to initiate OAuth flow");
+          }
+
+          const data = await response.json();
+          if (data.authorization_url) {
+            window.location.href = data.authorization_url;
+          } else {
+            throw new Error("No authorization URL returned");
+          }
+        } catch (oauthErr: any) {
+          setError(
+            oauthErr.message ||
+              "Failed to connect OAuth. Please try again.",
+          );
+          setIsLoading(false);
+        }
+      } else {
+        setError(err.message || "Failed to configure MCP server");
+        setIsLoading(false);
+      }
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // If OAuth-based and not connected, redirect to OAuth
+    // If OAuth-based and not connected, initiate OAuth flow
     if (usesOAuth && !isOAuthConnected) {
-      handleOAuthConnect();
+      await handleOAuthConnect();
       return;
     }
 
@@ -72,11 +146,18 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
           type: "oauth",
           oauth_integration_id: template.oauth_integration_id,
         };
-      } else if (template.requires_auth && bearerToken) {
-        mcpConfig.auth = {
-          type: "bearer",
-          token: bearerToken,
-        };
+      } else if (template.requires_auth) {
+        if (template.auth_type === "bearer" && bearerToken) {
+          mcpConfig.auth = {
+            type: "bearer",
+            token: bearerToken,
+          };
+        } else if (template.auth_type === "api_key" && apiKey) {
+          mcpConfig.auth = {
+            type: "api_key",
+            key: apiKey,
+          };
+        }
       }
 
       await createServer({
@@ -155,19 +236,41 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
 
               {/* Authentication (only for non-OAuth) */}
               {!usesOAuth && template.requires_auth && (
-                <Input
-                  label={
-                    template.auth_type === "bearer"
-                      ? "Bearer Token / API Key"
-                      : "API Key"
-                  }
-                  placeholder="Enter your API key or token"
-                  value={bearerToken}
-                  onChange={(e) => setBearerToken(e.target.value)}
-                  isRequired
-                  variant="bordered"
-                  type="password"
-                />
+                <>
+                  {template.auth_type === "bearer" && (
+                    <Input
+                      label="Bearer Token"
+                      placeholder="Enter your bearer token"
+                      value={bearerToken}
+                      onChange={(e) => setBearerToken(e.target.value)}
+                      isRequired
+                      variant="bordered"
+                      type="password"
+                    />
+                  )}
+                  {template.auth_type === "api_key" && (
+                    <Input
+                      label="API Key"
+                      placeholder="Enter your API key"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      isRequired
+                      variant="bordered"
+                      type="password"
+                    />
+                  )}
+                  {!template.auth_type && (
+                    <Input
+                      label="API Key / Token"
+                      placeholder="Enter your API key or token"
+                      value={bearerToken}
+                      onChange={(e) => setBearerToken(e.target.value)}
+                      isRequired
+                      variant="bordered"
+                      type="password"
+                    />
+                  )}
+                </>
               )}
 
               {/* Error Display */}
@@ -194,7 +297,11 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
               isDisabled={
                 isLoading ||
                 (!usesOAuth && template.server_url && !serverUrl) ||
-                (!usesOAuth && template.requires_auth && !bearerToken)
+                (!usesOAuth &&
+                  template.requires_auth &&
+                  ((template.auth_type === "bearer" && !bearerToken) ||
+                    (template.auth_type === "api_key" && !apiKey) ||
+                    (!template.auth_type && !bearerToken)))
               }
             >
               {usesOAuth && !isOAuthConnected
