@@ -57,24 +57,6 @@ class MCPSubAgentFactory:
             get_tools_store(), get_tool_registry()
         )
 
-        # System prompt for MCP agent
-        system_prompt = f"""You are a specialized agent for the {server_name} MCP server.
-
-Description: {description}
-
-Your capabilities:
-- Execute tools from the {server_name} MCP server
-- Access memory tools to remember information across conversations
-- Use retrieve_tools to discover available tools from this server
-
-When using retrieve_tools:
-1. Use exact tool names if you know them from the system prompt
-2. Use semantic queries like "{server_name} [action]" to discover tools
-3. Be persistent - try different query variations if needed
-
-Your goal is to help users accomplish tasks using the {server_name} server's capabilities.
-Provide clear, helpful responses and explain what you're doing."""
-
         def transform_output(
             state: State, config: RunnableConfig, store: BaseStore
         ) -> State:
@@ -139,7 +121,7 @@ Provide clear, helpful responses and explain what you're doing."""
 
         mcp_service = get_mcp_service()
 
-        # Get user's MCP servers
+        # Get user's MCP servers from MongoDB
         servers = await mcp_service.get_user_servers(user_id)
 
         if not servers:
@@ -151,15 +133,25 @@ Provide clear, helpful responses and explain what you're doing."""
         agent_names = []
 
         for server in servers:
-            if server.enabled:
+            if server.get("enabled", True):
+                server_name = server.get("server_name")
+                if not server_name:
+                    logger.warning(
+                        f"Skipping server with missing server_name: {server}"
+                    )
+                    continue
+
+                display_name = server.get("display_name", server_name)
+                description = server.get("description", f"{display_name} MCP Server")
+
                 tasks.append(
                     MCPSubAgentFactory.create_mcp_subagent(
-                        server_name=server.name,
-                        description=server.description or "MCP Server",
+                        server_name=server_name,
+                        description=description,
                         llm=llm,
                     )
                 )
-                agent_names.append(f"mcp_{server.name}_agent")
+                agent_names.append(f"mcp_{server_name}_agent")
 
         if not tasks:
             return {}

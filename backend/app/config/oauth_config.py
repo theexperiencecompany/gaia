@@ -87,48 +87,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         managed_by="self",
     ),
     OAuthIntegration(
-        id="github",
-        name="GitHub",
-        description="GitHub's official integration for repository operations, issues, PRs, and code management",
-        icons=["/images/icons/github.svg"],
-        category="development",
-        provider="github",
-        scopes=[
-            OAuthScope(
-                scope="repo",
-                description="Full control of private repositories",
-            ),
-            OAuthScope(
-                scope="read:user",
-                description="Read user profile data",
-            ),
-        ],
-        short_name="github",
-        managed_by="self",
-        mcp_server_id="github",
-    ),
-    OAuthIntegration(
-        id="linear",
-        name="Linear",
-        description="Linear's official integration for issues, projects, and team management",
-        icons=["/images/icons/linear.svg"],
-        category="productivity",
-        provider="linear",
-        scopes=[
-            OAuthScope(
-                scope="read",
-                description="Read access to your Linear data",
-            ),
-            OAuthScope(
-                scope="write",
-                description="Create and update issues and projects",
-            ),
-        ],
-        short_name="linear",
-        managed_by="self",
-        mcp_server_id="linear",
-    ),
-    OAuthIntegration(
         id="gmail",
         name="Gmail",
         description="Manage emails, compose messages, and organize your inbox",

@@ -174,13 +174,23 @@ class ProviderSubAgents:
 
             mcp_agents = {}
             for server in servers:
-                if server.enabled:
-                    agent_name = f"mcp_{server.name}_agent"
+                if server.get("enabled", True):
+                    server_name = server.get("server_name")
+                    if not server_name:
+                        logger.warning(f"Skipping server with missing server_name: {server}")
+                        continue
+                        
+                    display_name = server.get("display_name", server_name)
+                    description = server.get(
+                        "description", f"{display_name} MCP server"
+                    )
+
+                    agent_name = f"mcp_{server_name}_agent"
                     logger.info(f"Creating MCP subagent: {agent_name}")
 
                     agent = await MCPSubAgentFactory.create_mcp_subagent(
-                        server_name=server.name,
-                        description=server.description or f"{server.name} MCP server",
+                        server_name=server_name,
+                        description=description,
                         llm=llm,
                     )
                     mcp_agents[agent_name] = agent

@@ -1,16 +1,16 @@
-import {
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-} from "@heroui/modal";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import React, { useState, useEffect } from "react";
+import {
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+} from "@heroui/modal";
+import React, { useState } from "react";
 import { MCPServerTemplate } from "../api/mcpApi";
-import { useMCPServers } from "../hooks/useMCPServers";
 import { useIntegrations } from "../hooks/useIntegrations";
+import { useMCPServers } from "../hooks/useMCPServers";
 
 interface MCPServerDialogProps {
   isOpen: boolean;
@@ -26,7 +26,7 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
   onSuccess,
 }) => {
   const { createServer } = useMCPServers();
-  const { integrations, login } = useIntegrations();
+  const { integrations, connectIntegration } = useIntegrations();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,11 +40,11 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
   const oauthIntegration = usesOAuth
     ? integrations?.find((i) => i.id === template.oauth_integration_id)
     : null;
-  const isOAuthConnected = oauthIntegration?.connected || false;
+  const isOAuthConnected = oauthIntegration?.status === "connected";
 
   const handleOAuthConnect = () => {
     if (template.oauth_integration_id) {
-      login(template.oauth_integration_id);
+      connectIntegration(template.oauth_integration_id);
     }
   };
 
@@ -61,39 +61,34 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
     setError(null);
 
     try {
-      const authConfig: any = {
-        auth_type: usesOAuth
-          ? "oauth"
-          : template.requires_auth
-            ? template.auth_type || "bearer"
-            : "none",
+      // Build mcp-use config format
+      const mcpConfig: any = {
+        url: serverUrl || template.server_url,
       };
 
-      if (usesOAuth) {
-        authConfig.oauth_integration_id = template.oauth_integration_id;
+      // Add auth if required
+      if (usesOAuth && template.oauth_integration_id) {
+        mcpConfig.auth = {
+          type: "oauth",
+          oauth_integration_id: template.oauth_integration_id,
+        };
       } else if (template.requires_auth && bearerToken) {
-        if (template.auth_type === "bearer") {
-          authConfig.bearer_token = bearerToken;
-        } else if (template.auth_type === "basic") {
-          authConfig.bearer_token = bearerToken;
-        }
+        mcpConfig.auth = {
+          type: "bearer",
+          token: bearerToken,
+        };
       }
 
       await createServer({
-        name: template.name,
+        server_name: template.id,
+        mcp_config: mcpConfig,
+        display_name: template.name,
         description: template.description,
-        server_type: template.server_url ? "http" : "stdio",
-        enabled: true,
-        http_config: template.server_url
-          ? {
-              url: serverUrl,
-              timeout: 30,
-            }
-          : undefined,
-        auth_config: authConfig,
+        oauth_integration_id: template.oauth_integration_id,
       });
 
       onSuccess?.();
+      onClose();
     } catch (err: any) {
       setError(err.message || "Failed to configure MCP server");
     } finally {

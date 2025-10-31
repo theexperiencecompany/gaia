@@ -22,6 +22,7 @@ class MCPServerTemplate(BaseModel):
     server_url: Optional[str] = None
     setup_instructions: str
     requires_auth: bool = False
+    auth_type: Optional[str] = None  # 'oauth', 'bearer', 'api_key', or None
     oauth_integration_id: Optional[str] = None  # Links to OAuth integration
     documentation_url: str
     icon_url: str
@@ -38,9 +39,10 @@ MCP_SERVER_REGISTRY: List[MCPServerTemplate] = [
         server_url="https://api.githubcopilot.com/mcp/",
         setup_instructions="Connect your GitHub account via OAuth to enable repository operations, issue management, and code analysis.",
         requires_auth=True,
+        auth_type="oauth",
         oauth_integration_id="github",
         documentation_url="https://github.com/github/github-mcp-server",
-        icon_url="/images/icons/github.svg",
+        icon_url="/images/icons/github.png",
     ),
     MCPServerTemplate(
         id="linear",
@@ -50,9 +52,10 @@ MCP_SERVER_REGISTRY: List[MCPServerTemplate] = [
         server_url="https://mcp.linear.app/mcp",
         setup_instructions="Connect your Linear workspace via OAuth to enable issue management, project tracking, and team collaboration.",
         requires_auth=True,
+        auth_type="oauth",
         oauth_integration_id="linear",
         documentation_url="https://linear.app/docs/mcp",
-        icon_url="/images/icons/linear.svg",
+        icon_url="/images/icons/linear.png",
     ),
 ]
 

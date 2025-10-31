@@ -14,8 +14,14 @@ from app.config.mcp_registry import (
     get_mcp_templates,
     get_mcp_templates_by_category,
 )
+from app.models.mcp_models import (
+    MCPServerCreateRequest,
+    MCPServerListResponse,
+    MCPServerStatusResponse,
+    MCPServerUpdateRequest,
+)
 from app.services.mcp import get_mcp_service
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
@@ -38,6 +44,88 @@ async def list_mcp_templates(category: str | None = None):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve MCP templates",
+        )
+
+
+@router.get("/status")
+async def get_mcp_servers_status(
+    user: dict = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Get connection status for all MCP server templates."""
+    from app.config.oauth_config import OAUTH_INTEGRATIONS
+    from app.config.token_repository import token_repository
+
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User ID not found",
+        )
+
+    try:
+        mcp_service = get_mcp_service()
+        templates = get_mcp_templates()
+        user_servers = await mcp_service.get_user_servers(str(user_id))
+
+        # Map server_name to server doc
+        servers_map = {s["server_name"]: s for s in user_servers}
+
+        statuses = []
+        for template in templates:
+            # Check if user has this server configured
+            user_server = servers_map.get(template.id)
+            is_configured = user_server is not None
+            is_enabled = user_server.get("enabled", False) if user_server else False
+
+            # Check OAuth connection status
+            is_oauth_connected = False
+            if template.oauth_integration_id:
+                # Find the OAuth integration
+                oauth_integration = next(
+                    (
+                        i
+                        for i in OAUTH_INTEGRATIONS
+                        if i.id == template.oauth_integration_id
+                    ),
+                    None,
+                )
+
+                if oauth_integration:
+                    # Check if OAuth token exists
+                    try:
+                        token = await token_repository.get_token(
+                            str(user_id),
+                            oauth_integration.provider,
+                            renew_if_expired=False,
+                        )
+                        is_oauth_connected = token is not None
+                    except Exception:
+                        is_oauth_connected = False
+
+            statuses.append(
+                {
+                    "template_id": template.id,
+                    "name": template.name,
+                    "icon_url": template.icon_url,
+                    "category": template.category,
+                    "requires_auth": template.requires_auth,
+                    "oauth_integration_id": template.oauth_integration_id,
+                    "is_configured": is_configured,
+                    "is_enabled": is_enabled,
+                    "is_oauth_connected": is_oauth_connected,
+                    "connected": is_configured
+                    and is_enabled
+                    and (not template.requires_auth or is_oauth_connected),
+                }
+            )
+
+        return {"servers": statuses, "total": len(statuses)}
+
+    except Exception as e:
+        logger.error(f"Failed to get MCP server status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve MCP server status",
         )
 
 
@@ -64,10 +152,10 @@ async def get_mcp_template(template_id: str):
         )
 
 
-@router.get("/servers")
+@router.get("/servers", response_model=MCPServerListResponse)
 async def list_mcp_servers(
     user: dict = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> MCPServerListResponse:
     """List all MCP servers for the current user."""
     user_id = user.get("user_id")
     if not user_id:
@@ -80,7 +168,7 @@ async def list_mcp_servers(
         mcp_service = get_mcp_service()
         servers = await mcp_service.get_user_servers(str(user_id))
 
-        return {"servers": servers, "total": len(servers)}
+        return MCPServerListResponse(servers=servers, total=len(servers))
 
     except Exception as e:
         logger.error(f"Failed to list MCP servers: {e}")
@@ -92,21 +180,10 @@ async def list_mcp_servers(
 
 @router.post("/servers", status_code=status.HTTP_201_CREATED)
 async def create_mcp_server(
-    request: Dict[str, Any] = Body(...),
+    request: MCPServerCreateRequest,
     user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """
-    Create a new MCP server configuration.
-
-    Request body:
-    {
-        "server_name": "github",
-        "mcp_config": {"url": "...", "auth": {...}},
-        "display_name": "GitHub",
-        "description": "GitHub MCP Server",
-        "oauth_integration_id": "github"
-    }
-    """
+    """Create a new MCP server configuration."""
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(
@@ -114,21 +191,15 @@ async def create_mcp_server(
             detail="User ID not found",
         )
 
-    if "server_name" not in request or "mcp_config" not in request:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="server_name and mcp_config are required",
-        )
-
     try:
         mcp_service = get_mcp_service()
         server = await mcp_service.create_server(
             user_id=str(user_id),
-            server_name=request["server_name"],
-            mcp_config=request["mcp_config"],
-            display_name=request.get("display_name", request["server_name"]),
-            description=request.get("description", ""),
-            oauth_integration_id=request.get("oauth_integration_id"),
+            server_name=request.server_name,
+            mcp_config=request.mcp_config,
+            display_name=request.display_name,
+            description=request.description or "",
+            oauth_integration_id=request.oauth_integration_id,
         )
 
         logger.info(f"Created MCP server '{server['server_name']}' for user {user_id}")
@@ -186,7 +257,7 @@ async def get_mcp_server(
 @router.put("/servers/{server_name}")
 async def update_mcp_server(
     server_name: str,
-    updates: Dict[str, Any] = Body(...),
+    request: MCPServerUpdateRequest,
     user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Update an MCP server configuration."""
@@ -198,6 +269,9 @@ async def update_mcp_server(
         )
 
     try:
+        # Convert Pydantic model to dict, excluding None values
+        updates = request.model_dump(exclude_none=True)
+
         mcp_service = get_mcp_service()
         server = await mcp_service.update_server(str(user_id), server_name, updates)
 
@@ -255,11 +329,11 @@ async def delete_mcp_server(
         )
 
 
-@router.get("/servers/{server_name}/status")
+@router.get("/servers/{server_name}/status", response_model=MCPServerStatusResponse)
 async def get_mcp_server_status(
     server_name: str,
     user: dict = Depends(get_current_user),
-) -> Dict[str, Any]:
+) -> MCPServerStatusResponse:
     """Get connection status and available tools for an MCP server."""
     user_id = user.get("user_id")
     if not user_id:
@@ -278,7 +352,7 @@ async def get_mcp_server_status(
                 detail=f"Server '{server_name}' not found",
             )
 
-        return status_response
+        return MCPServerStatusResponse(**status_response)
 
     except HTTPException:
         raise

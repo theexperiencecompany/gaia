@@ -8,45 +8,49 @@ export interface MCPServerTemplate {
   server_url?: string;
   setup_instructions: string;
   requires_auth: boolean;
+  auth_type?: "oauth" | "bearer" | "api_key"; // Authentication type
   oauth_integration_id?: string; // If set, use OAuth instead of manual token
   documentation_url: string;
   icon_url: string;
 }
 
 export interface MCPServer {
-  id: number;
-  name: string;
+  _id: string;
+  user_id: string;
+  server_name: string;
+  display_name: string;
   description: string;
-  server_type: "stdio" | "http" | "sse";
+  mcp_config: Record<string, any>;
+  oauth_integration_id?: string;
   enabled: boolean;
   created_at: string;
   updated_at: string;
 }
 
-export interface MCPServerCreateRequest {
+export interface MCPServerStatusSummary {
+  template_id: string;
   name: string;
-  description: string;
-  server_type: "stdio" | "http" | "sse";
-  enabled?: boolean;
-  http_config?: {
-    url: string;
-    headers?: Record<string, string>;
-    timeout?: number;
-  };
-  auth_config?: {
-    auth_type: "none" | "bearer" | "oauth2" | "basic" | "custom";
-    bearer_token?: string;
-    oauth_client_id?: string;
-    oauth_client_secret?: string;
-    basic_username?: string;
-    basic_password?: string;
-    custom_headers?: Record<string, string>;
-  };
+  icon_url: string;
+  category: string;
+  requires_auth: boolean;
+  auth_type?: "oauth" | "bearer" | "api_key";
+  oauth_integration_id?: string;
+  is_configured: boolean;
+  is_enabled: boolean;
+  is_oauth_connected: boolean;
+  connected: boolean;
+}
+
+export interface MCPServerCreateRequest {
+  server_name: string;
+  mcp_config: Record<string, any>; // Raw mcp-use config
+  display_name: string;
+  description?: string;
+  oauth_integration_id?: string;
 }
 
 export interface MCPServerStatus {
-  server_id: number;
-  name: string;
+  server_name: string;
   connected: boolean;
   tool_count: number;
   tools: Array<{
@@ -69,6 +73,19 @@ export const mcpApi = {
     } catch (error) {
       console.error("Failed to get MCP templates:", error);
       // Return empty array as fallback
+      return [];
+    }
+  },
+
+  /**
+   * Get MCP server status for all templates
+   */
+  getMCPServersStatus: async (): Promise<MCPServerStatusSummary[]> => {
+    try {
+      const response = await apiService.get("/mcp/status");
+      return (response as { servers: MCPServerStatusSummary[] }).servers;
+    } catch (error) {
+      console.error("Failed to get MCP servers status:", error);
       return [];
     }
   },
@@ -104,12 +121,12 @@ export const mcpApi = {
   /**
    * Get MCP server details
    */
-  getMCPServer: async (serverId: number): Promise<MCPServer> => {
+  getMCPServer: async (serverName: string): Promise<MCPServer> => {
     try {
-      const response = await apiService.get(`/mcp/servers/${serverId}`);
+      const response = await apiService.get(`/mcp/servers/${serverName}`);
       return response as MCPServer;
     } catch (error) {
-      console.error(`Failed to get MCP server ${serverId}:`, error);
+      console.error(`Failed to get MCP server ${serverName}:`, error);
       throw error;
     }
   },
@@ -118,17 +135,17 @@ export const mcpApi = {
    * Update MCP server
    */
   updateMCPServer: async (
-    serverId: number,
+    serverName: string,
     updates: Partial<MCPServerCreateRequest>,
   ): Promise<MCPServer> => {
     try {
       const response = await apiService.put(
-        `/mcp/servers/${serverId}`,
+        `/mcp/servers/${serverName}`,
         updates,
       );
       return response as MCPServer;
     } catch (error) {
-      console.error(`Failed to update MCP server ${serverId}:`, error);
+      console.error(`Failed to update MCP server ${serverName}:`, error);
       throw error;
     }
   },
@@ -136,11 +153,11 @@ export const mcpApi = {
   /**
    * Delete MCP server
    */
-  deleteMCPServer: async (serverId: number): Promise<void> => {
+  deleteMCPServer: async (serverName: string): Promise<void> => {
     try {
-      await apiService.delete(`/mcp/servers/${serverId}`);
+      await apiService.delete(`/mcp/servers/${serverName}`);
     } catch (error) {
-      console.error(`Failed to delete MCP server ${serverId}:`, error);
+      console.error(`Failed to delete MCP server ${serverName}:`, error);
       throw error;
     }
   },
@@ -148,12 +165,31 @@ export const mcpApi = {
   /**
    * Get MCP server connection status
    */
-  getMCPServerStatus: async (serverId: number): Promise<MCPServerStatus> => {
+  getMCPServerStatus: async (serverName: string): Promise<MCPServerStatus> => {
     try {
-      const response = await apiService.get(`/mcp/servers/${serverId}/status`);
+      const response = await apiService.get(
+        `/mcp/servers/${serverName}/status`,
+      );
       return response as MCPServerStatus;
     } catch (error) {
-      console.error(`Failed to get MCP server status ${serverId}:`, error);
+      console.error(`Failed to get MCP server status ${serverName}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Initiate OAuth for MCP server
+   */
+  initiateOAuth: async (
+    serverName: string,
+  ): Promise<{ authorization_url: string }> => {
+    try {
+      const response = await apiService.get(
+        `/mcp/oauth/${serverName}/authorize`,
+      );
+      return response as { authorization_url: string };
+    } catch (error) {
+      console.error(`Failed to initiate OAuth for ${serverName}:`, error);
       throw error;
     }
   },

@@ -1,290 +1,75 @@
 """
-MCP (Model Context Protocol) Server Models
+MCP (Model Context Protocol) Server Models - MongoDB + mcp-use
 
-Models for managing MCP server configurations, authentication, and state.
+Minimal models for MCP server configurations.
+Uses MongoDB for storage, mcp-use handles OAuth and tokens.
 """
 
 from datetime import datetime
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from app.db.postgresql import Base
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.sql import func
-
-
-class MCPServerType(str, Enum):
-    """Type of MCP server connection."""
-
-    STDIO = "stdio"  # Local process via stdin/stdout
-    HTTP = "http"  # HTTP/HTTPS connection
-    SSE = "sse"  # Server-Sent Events
-
-
-class MCPAuthType(str, Enum):
-    """Authentication type for MCP servers."""
-
-    NONE = "none"  # No authentication
-    BEARER = "bearer"  # Bearer token
-    OAUTH2 = "oauth2"  # OAuth 2.0
-    BASIC = "basic"  # Basic auth
-    DIGEST = "digest"  # Digest auth
-    CUSTOM = "custom"  # Custom auth headers
-
-
-class MCPAuthConfig(BaseModel):
-    """Authentication configuration for MCP servers."""
-
-    auth_type: MCPAuthType = MCPAuthType.NONE
-    bearer_token: Optional[str] = None
-
-    # OAuth 2.0 - mcp-use will handle discovery and token storage
-    oauth_integration_id: Optional[str] = None  # Link to existing OAuth integration
-    oauth_client_id: Optional[str] = None  # Optional: pre-registered client
-    oauth_client_secret: Optional[str] = None  # Optional: for confidential clients
-    oauth_scope: Optional[str] = None  # Optional: override default scopes
-    oauth_callback_port: Optional[int] = None  # Optional: custom port (default 8080)
-
-    # Basic auth
-    basic_username: Optional[str] = None
-    basic_password: Optional[str] = None
-
-    # Custom headers
-    custom_headers: Optional[Dict[str, str]] = None
-
-
-class MCPStdioConfig(BaseModel):
-    """Configuration for STDIO-based MCP servers."""
-
-    command: str = Field(..., description="Command to execute")
-    args: Optional[List[str]] = Field(default=None, description="Command arguments")
-    env: Optional[Dict[str, str]] = Field(
-        default=None, description="Environment variables"
-    )
-    cwd: Optional[str] = Field(default=None, description="Working directory")
-
-
-class MCPHttpConfig(BaseModel):
-    """Configuration for HTTP/SSE-based MCP servers."""
-
-    url: str = Field(..., description="Server URL")
-    headers: Optional[Dict[str, str]] = Field(
-        default=None, description="Custom HTTP headers"
-    )
-    timeout: int = Field(default=30, description="Request timeout in seconds")
-
-
-class MCPSandboxConfig(BaseModel):
-    """Configuration for sandboxed MCP server execution."""
-
-    enabled: bool = False
-    api_key: Optional[str] = None
-    template_id: str = "base"
-    supergateway_command: str = "npx -y supergateway"
-
-
-class MCPServerConfig(BaseModel):
-    """Complete configuration for an MCP server."""
-
-    id: Optional[str] = None
-    name: str = Field(..., description="Display name for the server")
-    description: str = Field(..., description="Description of server capabilities")
-    server_type: MCPServerType = Field(..., description="Type of server connection")
-    enabled: bool = Field(default=True, description="Whether server is active")
-    stdio_config: Optional[MCPStdioConfig] = None
-    http_config: Optional[MCPHttpConfig] = None
-    auth_config: MCPAuthConfig = Field(
-        default_factory=lambda: MCPAuthConfig(auth_type=MCPAuthType.NONE)
-    )
-    sandbox_config: Optional[MCPSandboxConfig] = None
-    metadata: Optional[Dict[str, Any]] = Field(
-        default=None, description="Additional metadata"
-    )
-
-    def to_mcp_use_config(self) -> Dict[str, Any]:
-        """Convert to mcp-use library configuration format.
-
-        mcp-use will handle:
-        - OAuth metadata discovery via /.well-known/oauth-authorization-server
-        - Dynamic Client Registration (DCR) if no client_id provided
-        - Token storage in ~/.mcp_use/tokens
-        - OAuth callback server on localhost
-        - Token refresh automatically
-        """
-        config: Dict[str, Any] = {}
-
-        if self.server_type == MCPServerType.STDIO and self.stdio_config:
-            config["command"] = self.stdio_config.command
-            if self.stdio_config.args:
-                config["args"] = self.stdio_config.args
-            if self.stdio_config.env:
-                config["env"] = self.stdio_config.env
-
-        elif self.server_type in [MCPServerType.HTTP, MCPServerType.SSE]:
-            if self.http_config:
-                config["url"] = self.http_config.url
-                if self.http_config.headers:
-                    config["headers"] = self.http_config.headers
-
-            # Add authentication - mcp-use handles the OAuth flow
-            if self.auth_config.auth_type == MCPAuthType.BEARER:
-                # Simple bearer token - pass as string
-                config["auth"] = self.auth_config.bearer_token
-
-            elif self.auth_config.auth_type == MCPAuthType.OAUTH2:
-                # OAuth 2.0 - pass as dict, mcp-use's OAuth class handles everything
-                auth_config = {}
-
-                # Optional: pre-registered client credentials
-                if self.auth_config.oauth_client_id:
-                    auth_config["client_id"] = self.auth_config.oauth_client_id
-                if self.auth_config.oauth_client_secret:
-                    auth_config["client_secret"] = self.auth_config.oauth_client_secret
-
-                # Optional: custom scope
-                if self.auth_config.oauth_scope:
-                    auth_config["scope"] = self.auth_config.oauth_scope
-
-                # Optional: custom callback port
-                if self.auth_config.oauth_callback_port:
-                    auth_config["callback_port"] = self.auth_config.oauth_callback_port
-
-                config["auth"] = auth_config
-
-            elif self.auth_config.auth_type == MCPAuthType.CUSTOM:
-                # Custom headers - merge with existing headers
-                if self.auth_config.custom_headers:
-                    config.setdefault("headers", {}).update(
-                        self.auth_config.custom_headers
-                    )
-
-        return config
-
-
-class MCPServer(Base):
-    """SQLAlchemy model for MCP server configurations."""
-
-    __tablename__ = "mcp_servers"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=True)
-    server_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    config: Mapped[dict] = mapped_column(
-        JSON,
-        nullable=False,
-        comment="JSON serialized server configuration (without sensitive data)",
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-
-class MCPCredential(Base):
-    """SQLAlchemy model for MCP server credentials (stored securely in PostgreSQL)."""
-
-    __tablename__ = "mcp_credentials"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    server_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    auth_type: Mapped[str] = mapped_column(String(50), nullable=False)
-
-    # Credentials (encrypted at rest by PostgreSQL)
-    bearer_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    oauth_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    oauth_refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    oauth_client_id: Mapped[str | None] = mapped_column(Text, nullable=True)
-    oauth_client_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
-    basic_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    basic_password: Mapped[str | None] = mapped_column(Text, nullable=True)
-    custom_headers: Mapped[str | None] = mapped_column(
-        Text, nullable=True, comment="JSON serialized custom headers"
-    )
-
-    # Token metadata
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    scopes: Mapped[str | None] = mapped_column(
-        Text, nullable=True, comment="Space-separated OAuth scopes"
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
 
 
 class MCPServerCreateRequest(BaseModel):
-    """Request model for creating a new MCP server."""
+    """Request model for creating MCP server - MongoDB format."""
 
-    name: str
-    description: str
-    server_type: MCPServerType
-    enabled: bool = True
-    stdio_config: Optional[MCPStdioConfig] = None
-    http_config: Optional[MCPHttpConfig] = None
-    auth_config: Optional[MCPAuthConfig] = None
-    sandbox_config: Optional[MCPSandboxConfig] = None
-    metadata: Optional[Dict[str, Any]] = None
+    server_name: str = Field(
+        ..., description="Unique server identifier (e.g., 'github', 'linear')"
+    )
+    display_name: str = Field(..., description="Human-readable name")
+    description: Optional[str] = Field(
+        None, description="Description of server capabilities"
+    )
+    mcp_config: Dict[str, Any] = Field(
+        ..., description="Raw mcp-use configuration dict"
+    )
+    oauth_integration_id: Optional[str] = Field(
+        None, description="OAuth integration ID if using OAuth"
+    )
+    enabled: bool = Field(True, description="Whether server is active")
 
 
 class MCPServerUpdateRequest(BaseModel):
-    """Request model for updating an MCP server."""
+    """Request model for updating MCP server."""
 
-    name: Optional[str] = None
+    display_name: Optional[str] = None
     description: Optional[str] = None
+    mcp_config: Optional[Dict[str, Any]] = None
+    oauth_integration_id: Optional[str] = None
     enabled: Optional[bool] = None
-    stdio_config: Optional[MCPStdioConfig] = None
-    http_config: Optional[MCPHttpConfig] = None
-    auth_config: Optional[MCPAuthConfig] = None
-    sandbox_config: Optional[MCPSandboxConfig] = None
-    metadata: Optional[Dict[str, Any]] = None
 
 
 class MCPServerResponse(BaseModel):
-    """Response model for MCP server."""
+    """Response model for MCP server from MongoDB."""
 
-    id: int
-    name: str
-    description: str
-    server_type: MCPServerType
+    id: str = Field(..., alias="_id", description="MongoDB document ID")
+    user_id: str
+    server_name: str
+    display_name: str
+    description: Optional[str] = None
+    mcp_config: Dict[str, Any]
+    oauth_integration_id: Optional[str] = None
     enabled: bool
-    config: MCPServerConfig
     created_at: datetime
     updated_at: datetime
+
+    class Config:
+        populate_by_name = True
 
 
 class MCPServerListResponse(BaseModel):
     """Response model for listing MCP servers."""
 
-    servers: List[MCPServerResponse]
+    servers: list[Dict[str, Any]]
     total: int
-
-
-class MCPToolInfo(BaseModel):
-    """Information about a tool from an MCP server."""
-
-    name: str
-    description: str
-    server_name: str
-    parameters: Optional[Dict[str, Any]] = None
 
 
 class MCPServerStatusResponse(BaseModel):
     """Status response for an MCP server connection."""
 
-    server_id: int
-    name: str
+    server_name: str
     connected: bool
     tool_count: int
-    tools: List[MCPToolInfo]
+    tools: list[Dict[str, Any]]
     error: Optional[str] = None
