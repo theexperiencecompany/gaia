@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import UseCaseDetailClient from "@/features/use-cases/components/UseCaseDetailClient";
+import JsonLd from "@/components/seo/JsonLd";
+import UseCaseDetailClient from "@/app/(landing)/use-cases/[slug]/client";
 import {
   type UseCase,
   useCasesData,
@@ -136,12 +137,7 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
 
   return (
     <>
-      {structuredData && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
-        />
-      )}
+      {structuredData && <JsonLd data={structuredData} />}
       <UseCaseDetailClient
         useCase={useCase}
         communityWorkflow={communityWorkflow}

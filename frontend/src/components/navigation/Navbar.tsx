@@ -70,6 +70,13 @@ export default function Navbar() {
     }
   };
 
+  // Close menu on route change
+  useEffect(() => {
+    setActiveDropdown(null);
+    setHoveredItem(null);
+    toggleBackdrop(false);
+  }, [pathname]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {

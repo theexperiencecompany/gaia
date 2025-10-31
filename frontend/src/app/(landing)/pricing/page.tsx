@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import JsonLd from "@/components/seo/JsonLd";
 import PricingPage from "@/features/pricing/components/PricingPage";
 import { generatePageMetadata, generateProductSchema } from "@/lib/seo";
 
@@ -20,15 +21,14 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
+export const revalidate = 86400; // Revalidate every 24 hours
+
 export default function Pricing() {
   const productSchema = generateProductSchema();
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
-      />
+      <JsonLd data={productSchema} />
       <PricingPage />
     </>
   );

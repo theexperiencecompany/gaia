@@ -1,8 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
-import Script from "next/script";
 import React from "react";
 
+import JsonLd from "@/components/seo/JsonLd";
 import { appConfig, connect, footerSections } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { siteConfig } from "@/lib/seo";
@@ -68,12 +68,7 @@ export default function Footer() {
 
   return (
     <>
-      {/* JSON-LD for Footer Navigation */}
-      <Script
-        id="footer-navigation-schema"
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(navigationSchema) }}
-      />
+      <JsonLd data={navigationSchema} />
       <div className="relative z-[1] m-0! flex flex-col items-center gap-6 overflow-hidden p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5">
         <div className="flex h-fit w-screen items-center justify-center px-2 sm:px-4">
           <div className="grid w-full max-w-5xl grid-cols-4 gap-6 sm:gap-8">

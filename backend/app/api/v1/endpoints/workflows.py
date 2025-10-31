@@ -355,7 +355,6 @@ async def unpublish_workflow(
 async def get_public_workflows(
     limit: int = 20,
     offset: int = 0,
-    user: dict = Depends(get_current_user),
 ):
     """Get public workflows from the community marketplace."""
     try:
@@ -413,7 +412,6 @@ async def get_public_workflows(
 
         # Format workflows with creator info
         formatted_workflows = []
-        current_user_id = user["user_id"]
 
         for workflow in workflows:
             creator_info = (
