@@ -16,6 +16,7 @@ import httpx
 from app.config.loggers import token_repository_logger as logger
 from app.config.settings import settings
 from app.db.postgresql import get_db_session
+from app.models.mcp_models import MCPAuthType, MCPCredential
 from app.models.oauth_models import OAuthToken
 from authlib.integrations.starlette_client import OAuth
 from authlib.oauth2.rfc6749 import OAuth2Token
@@ -599,6 +600,190 @@ class TokenRepository:
                 return refreshed_token
 
             return oauth_token
+
+    # MCP Credential Management Methods
+
+    async def store_mcp_credential(
+        self,
+        user_id: str,
+        server_id: int,
+        auth_type: str,
+        credential_data: Dict[str, Any],
+    ) -> bool:
+        """
+        Store MCP server credentials securely in PostgreSQL.
+
+        Args:
+            user_id: User ID
+            server_id: MCP server ID
+            auth_type: Type of authentication
+            credential_data: Credential data to store
+
+        Returns:
+            True if successful
+        """
+        async with get_db_session() as session:
+            # Check if credential already exists
+            stmt = select(MCPCredential).where(
+                MCPCredential.user_id == user_id,
+                MCPCredential.server_id == server_id,
+            )
+            result = await session.execute(stmt)
+            existing_credential = result.scalar_one_or_none()
+
+            if existing_credential:
+                # Update existing credential
+                update_stmt = (
+                    update(MCPCredential)
+                    .where(MCPCredential.id == existing_credential.id)
+                    .values(
+                        auth_type=auth_type,
+                        bearer_token=credential_data.get("bearer_token"),
+                        oauth_access_token=credential_data.get("oauth_access_token"),
+                        oauth_refresh_token=credential_data.get("oauth_refresh_token"),
+                        oauth_client_id=credential_data.get("oauth_client_id"),
+                        oauth_client_secret=credential_data.get("oauth_client_secret"),
+                        basic_username=credential_data.get("basic_username"),
+                        basic_password=credential_data.get("basic_password"),
+                        custom_headers=json.dumps(credential_data.get("custom_headers"))
+                        if credential_data.get("custom_headers")
+                        else None,
+                        expires_at=credential_data.get("expires_at"),
+                        scopes=credential_data.get("scopes"),
+                        updated_at=datetime.now(),
+                    )
+                )
+                await session.execute(update_stmt)
+            else:
+                # Create new credential
+                new_credential = MCPCredential(
+                    user_id=user_id,
+                    server_id=server_id,
+                    auth_type=auth_type,
+                    bearer_token=credential_data.get("bearer_token"),
+                    oauth_access_token=credential_data.get("oauth_access_token"),
+                    oauth_refresh_token=credential_data.get("oauth_refresh_token"),
+                    oauth_client_id=credential_data.get("oauth_client_id"),
+                    oauth_client_secret=credential_data.get("oauth_client_secret"),
+                    basic_username=credential_data.get("basic_username"),
+                    basic_password=credential_data.get("basic_password"),
+                    custom_headers=json.dumps(credential_data.get("custom_headers"))
+                    if credential_data.get("custom_headers")
+                    else None,
+                    expires_at=credential_data.get("expires_at"),
+                    scopes=credential_data.get("scopes"),
+                )
+                session.add(new_credential)
+
+            await session.commit()
+            logger.info(
+                f"Stored MCP credentials for user {user_id}, server {server_id}"
+            )
+            return True
+
+    async def get_mcp_credential(
+        self, user_id: str, server_id: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve MCP server credentials from PostgreSQL.
+
+        Args:
+            user_id: User ID
+            server_id: MCP server ID
+
+        Returns:
+            Dictionary with credential data or None if not found
+        """
+        async with get_db_session() as session:
+            stmt = select(MCPCredential).where(
+                MCPCredential.user_id == user_id,
+                MCPCredential.server_id == server_id,
+            )
+            result = await session.execute(stmt)
+            credential = result.scalar_one_or_none()
+
+            if not credential:
+                return None
+
+            return {
+                "auth_type": credential.auth_type,
+                "bearer_token": credential.bearer_token,
+                "oauth_access_token": credential.oauth_access_token,
+                "oauth_refresh_token": credential.oauth_refresh_token,
+                "oauth_client_id": credential.oauth_client_id,
+                "oauth_client_secret": credential.oauth_client_secret,
+                "basic_username": credential.basic_username,
+                "basic_password": credential.basic_password,
+                "custom_headers": json.loads(credential.custom_headers)
+                if credential.custom_headers
+                else None,
+                "expires_at": credential.expires_at,
+                "scopes": credential.scopes,
+            }
+
+    async def delete_mcp_credential(self, user_id: str, server_id: int) -> bool:
+        """
+        Delete MCP server credentials.
+
+        Args:
+            user_id: User ID
+            server_id: MCP server ID
+
+        Returns:
+            True if successful
+        """
+        async with get_db_session() as session:
+            stmt = select(MCPCredential).where(
+                MCPCredential.user_id == user_id,
+                MCPCredential.server_id == server_id,
+            )
+            result = await session.execute(stmt)
+            credential = result.scalar_one_or_none()
+
+            if not credential:
+                return False
+
+            await session.delete(credential)
+            await session.commit()
+            logger.info(
+                f"Deleted MCP credentials for user {user_id}, server {server_id}"
+            )
+            return True
+
+    async def refresh_mcp_oauth_token(
+        self, user_id: str, server_id: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Refresh OAuth token for MCP server.
+
+        Args:
+            user_id: User ID
+            server_id: MCP server ID
+
+        Returns:
+            Updated credential data or None if refresh failed
+        """
+        credential = await self.get_mcp_credential(user_id, server_id)
+        if not credential or credential["auth_type"] != MCPAuthType.OAUTH2.value:
+            logger.warning(
+                f"Cannot refresh MCP token: Invalid credential for server {server_id}"
+            )
+            return None
+
+        refresh_token = credential.get("oauth_refresh_token")
+        if not refresh_token:
+            logger.warning(
+                f"Cannot refresh MCP token: No refresh token for server {server_id}"
+            )
+            return None
+
+        # TODO: Implement OAuth refresh logic based on server's OAuth provider
+        # For now, this is a placeholder that would need to be implemented
+        # based on the specific OAuth provider being used
+        logger.warning(
+            f"MCP OAuth token refresh not yet implemented for server {server_id}"
+        )
+        return None
 
 
 # Singleton instance
