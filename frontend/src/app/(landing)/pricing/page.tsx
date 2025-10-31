@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
+import { Plan } from "@/features/pricing/api/pricingApi";
 import PricingPage from "@/features/pricing/components/PricingPage";
 import { getPlansServer } from "@/features/pricing/lib/serverPricingApi";
 import { generatePageMetadata, generateProductSchema } from "@/lib/seo";
-import { Plan } from "@/features/pricing/api/pricingApi";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Pricing",
