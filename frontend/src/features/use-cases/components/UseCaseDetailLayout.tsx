@@ -33,7 +33,7 @@ export default function UseCaseDetailLayout({
   similarContent,
 }: UseCaseDetailLayoutProps) {
   return (
-    <div className="flex min-h-screen w-screen justify-center overflow-y-auto bg-gradient-to-b from-zinc-950 to-black pt-34 pb-20">
+    <div className="flex min-h-screen w-screen justify-center overflow-y-auto pt-34 pb-20">
       <div className="container mx-auto w-full max-w-7xl space-y-5">
         <div className="mb-3 text-sm text-zinc-500">
           <Breadcrumbs>
