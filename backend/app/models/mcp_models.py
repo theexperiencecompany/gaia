@@ -6,7 +6,7 @@ Models for managing MCP server configurations, authentication, and state.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 
 from app.db.postgresql import Base
 from pydantic import BaseModel, Field
