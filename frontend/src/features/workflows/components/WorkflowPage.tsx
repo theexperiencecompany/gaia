@@ -6,14 +6,11 @@ import { ExternalLink, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 
-import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 
 import { CommunityWorkflow, Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
-import { useWorkflowCreation } from "../hooks/useWorkflowCreation";
 import CommunityWorkflowCard from "./CommunityWorkflowCard";
 import CreateWorkflowModal from "./CreateWorkflowModal";
 import EditWorkflowModal from "./EditWorkflowModal";
@@ -38,8 +35,6 @@ export default function WorkflowPage() {
   );
 
   const { workflows, isLoading, error, refetch } = useWorkflows();
-  const { createWorkflow } = useWorkflowCreation();
-  const { selectWorkflow } = useWorkflowSelection();
   const [communityWorkflows, setCommunityWorkflows] = useState<
     CommunityWorkflow[]
   >([]);
@@ -132,34 +127,8 @@ export default function WorkflowPage() {
   };
 
   const handleCommunityWorkflowClick = async (workflowId: string) => {
-    const communityWorkflow = communityWorkflows.find(
-      (w) => w.id === workflowId,
-    );
-    if (communityWorkflow) {
-      const toastId = toast.loading("Creating workflow...");
-
-      try {
-        const workflowRequest = {
-          title: communityWorkflow.title,
-          description: communityWorkflow.description,
-          trigger_config: {
-            type: "manual" as const,
-            enabled: true,
-          },
-          generate_immediately: true,
-        };
-
-        const result = await createWorkflow(workflowRequest);
-
-        if (result.success && result.workflow) {
-          toast.success("Workflow created successfully!", { id: toastId });
-          selectWorkflow(result.workflow, { autoSend: false });
-        }
-      } catch (error) {
-        toast.error("Error creating workflow", { id: toastId });
-        console.error("Workflow creation error:", error);
-      }
-    }
+    // Navigate to use-cases detail page for community workflows
+    router.push(`/use-cases/${workflowId}`);
   };
 
   const renderWorkflowsGrid = () => {
@@ -197,7 +166,7 @@ export default function WorkflowPage() {
     }
 
     return (
-      <div className="grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
         {workflows.map((workflow) => (
           <WorkflowCard
             key={workflow.id}
@@ -246,7 +215,7 @@ export default function WorkflowPage() {
     }
 
     return (
-      <div className="grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
         {communityWorkflows.map((workflow: CommunityWorkflow) => (
           <CommunityWorkflowCard
             key={workflow.id}

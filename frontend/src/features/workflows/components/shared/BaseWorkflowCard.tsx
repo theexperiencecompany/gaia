@@ -83,7 +83,7 @@ export default function BaseWorkflowCard({
         });
         return IconComponent ? (
           <div
-            key={category}
+            key={`${category}-${index}`}
             className="relative flex items-center justify-center"
             style={{
               rotate:
@@ -103,7 +103,12 @@ export default function BaseWorkflowCard({
 
     if (validIcons.length === 0 && categories.length > 0) {
       validIcons.push(
-        <ToolsIcon width={25} height={25} className="text-foreground-400" />,
+        <ToolsIcon
+          key="default-tools-icon"
+          width={25}
+          height={25}
+          className="text-foreground-400"
+        />,
       );
     }
 

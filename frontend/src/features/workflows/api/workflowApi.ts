@@ -214,17 +214,10 @@ export const workflowApi = {
     );
   },
 
-  // Upvote/downvote a community workflow
-  upvoteWorkflow: async (
-    workflowId: string,
-  ): Promise<{ message: string; action: string }> => {
-    return apiService.post<{ message: string; action: string }>(
-      `/workflows/${workflowId}/upvote`,
-      {},
-      {
-        silent: true, // Disable generic toast - component will handle success messages
-        errorMessage: "Failed to update vote",
-      },
-    );
+  // Get a public workflow without authentication (for server-side rendering)
+  getPublicWorkflow: async (workflowId: string): Promise<WorkflowResponse> => {
+    return apiService.get<WorkflowResponse>(`/workflows/public/${workflowId}`, {
+      errorMessage: "Failed to fetch public workflow",
+    });
   },
 };

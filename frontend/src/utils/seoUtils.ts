@@ -1,6 +1,16 @@
 import { Metadata } from "next";
+import type {
+  Article,
+  HowTo,
+  HowToStep,
+  ImageObject,
+  Organization,
+  Person,
+  WithContext,
+} from "schema-dts";
 
 import { BlogPost } from "@/features/blog/api/blogApi";
+import { UseCase } from "@/features/use-cases/constants/dummy-data";
 
 /**
  * Extracts description from markdown content for meta descriptions
@@ -74,7 +84,9 @@ export function generateBlogMetadata(blog: BlogPost): Metadata {
 /**
  * Generates JSON-LD structured data for a blog post
  */
-export function generateBlogStructuredData(blog: BlogPost) {
+export function generateBlogStructuredData(
+  blog: BlogPost,
+): WithContext<Article> {
   return {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
@@ -82,19 +94,126 @@ export function generateBlogStructuredData(blog: BlogPost) {
     description: extractDescription(blog.content),
     image: blog.image || "/images/screenshot.webp",
     author:
-      blog.author_details?.map((author) => ({
-        "@type": "Person",
-        name: author.name,
-        jobTitle: author.role,
-      })) || blog.authors.map((name) => ({ "@type": "Person", name })),
+      blog.author_details?.map(
+        (author): Person => ({
+          "@type": "Person",
+          name: author.name,
+          jobTitle: author.role,
+        }),
+      ) || blog.authors.map((name): Person => ({ "@type": "Person", name })),
     publisher: {
       "@type": "Organization",
       name: "GAIA",
-      logo: { "@type": "ImageObject", url: "https://heygaia.io/logo.png" },
-    },
+      logo: {
+        "@type": "ImageObject",
+        url: "https://heygaia.io/logo.png",
+      } as ImageObject,
+    } as Organization,
     datePublished: blog.date,
     url: `https://heygaia.io/blog/${blog.slug}`,
     articleSection: blog.category,
     inLanguage: "en-US",
   };
+}
+
+/**
+ * Generates metadata for a use case page
+ */
+export function generateUseCaseMetadata(useCase: UseCase): Metadata {
+  const description = useCase.detailed_description || useCase.description || "";
+  const canonicalUrl = `https://heygaia.io/use-cases/${useCase.slug}`;
+  const imageUrl = "/images/screenshot.webp";
+
+  const title = `${useCase.title} - GAIA Use Case`;
+  const keywords = [
+    useCase.title,
+    ...useCase.categories,
+    ...useCase.integrations,
+    "AI automation",
+    "workflow automation",
+    "GAIA",
+  ].join(", ");
+
+  return {
+    title,
+    description,
+    keywords,
+    authors: useCase.creator
+      ? [{ name: useCase.creator.name }]
+      : [{ name: "GAIA Team" }],
+
+    openGraph: {
+      title,
+      description,
+      url: canonicalUrl,
+      siteName: "GAIA - AI Personal Assistant",
+      images: [{ url: imageUrl, width: 1200, height: 630, alt: useCase.title }],
+      type: "article",
+    },
+
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [imageUrl],
+      site: "@heygaia",
+    },
+
+    alternates: { canonical: canonicalUrl },
+    robots: { index: true, follow: true },
+  };
+}
+
+/**
+ * Generates JSON-LD structured data for a use case page
+ */
+export function generateUseCaseStructuredData(
+  useCase: UseCase,
+): WithContext<HowTo> {
+  const structuredData: WithContext<HowTo> = {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    name: useCase.title,
+    description: useCase.detailed_description || useCase.description,
+    image: "/images/screenshot.webp",
+    publisher: {
+      "@type": "Organization",
+      name: "GAIA",
+      logo: {
+        "@type": "ImageObject",
+        url: "https://heygaia.io/logo.png",
+      } as ImageObject,
+    } as Organization,
+    url: `https://heygaia.io/use-cases/${useCase.slug}`,
+    inLanguage: "en-US",
+  };
+
+  if (useCase.creator) {
+    structuredData.author = {
+      "@type": "Person",
+      name: useCase.creator.name,
+    } as Person;
+  }
+
+  if (useCase.steps && useCase.steps.length > 0) {
+    structuredData.step = useCase.steps.map(
+      (step, index): HowToStep => ({
+        "@type": "HowToStep",
+        position: index + 1,
+        name: step.title,
+        text: step.description,
+        ...(step.details && { description: step.details }),
+      }),
+    );
+  }
+
+  if (useCase.tools && useCase.tools.length > 0) {
+    structuredData.tool = useCase.tools.map((tool) => ({
+      "@type": "HowToTool",
+      name: tool.name,
+      description: tool.description,
+    }));
+  }
+
+  return structuredData;
 }

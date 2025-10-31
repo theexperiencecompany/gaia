@@ -37,6 +37,8 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
+export const revalidate = 3600; // Revalidate every hour
+
 // Helper function to convert BlogPost to Blog format
 function convertBlogPost(blog: BlogPost): Blog {
   return {
