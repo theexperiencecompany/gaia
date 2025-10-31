@@ -491,6 +491,7 @@ export default function WorkflowModal({
             {triggerOptions.map((trigger) => (
               <SelectItem
                 key={trigger.id}
+                textValue={trigger.name}
                 startContent={
                   <Image
                     src={trigger.icon}
@@ -978,6 +979,7 @@ export default function WorkflowModal({
                                   {regenerationReasons.map((reason) => (
                                     <DropdownItem
                                       key={reason.key}
+                                      textValue={reason.label}
                                       description={reason.description}
                                     >
                                       {reason.label}

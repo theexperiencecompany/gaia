@@ -234,7 +234,6 @@ export default function UseCaseDetailClient({
           ) : undefined
         }
       />
-      <YouMightAlsoLike currentSlug={currentSlug} />
       <FinalSection />
     </>
   );

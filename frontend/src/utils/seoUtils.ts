@@ -1,4 +1,13 @@
 import { Metadata } from "next";
+import type {
+  Article,
+  HowTo,
+  HowToStep,
+  ImageObject,
+  Organization,
+  Person,
+  WithContext,
+} from "schema-dts";
 
 import { BlogPost } from "@/features/blog/api/blogApi";
 import { UseCase } from "@/features/use-cases/constants/dummy-data";
@@ -75,7 +84,9 @@ export function generateBlogMetadata(blog: BlogPost): Metadata {
 /**
  * Generates JSON-LD structured data for a blog post
  */
-export function generateBlogStructuredData(blog: BlogPost) {
+export function generateBlogStructuredData(
+  blog: BlogPost,
+): WithContext<Article> {
   return {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
@@ -83,16 +94,21 @@ export function generateBlogStructuredData(blog: BlogPost) {
     description: extractDescription(blog.content),
     image: blog.image || "/images/screenshot.webp",
     author:
-      blog.author_details?.map((author) => ({
-        "@type": "Person",
-        name: author.name,
-        jobTitle: author.role,
-      })) || blog.authors.map((name) => ({ "@type": "Person", name })),
+      blog.author_details?.map(
+        (author): Person => ({
+          "@type": "Person",
+          name: author.name,
+          jobTitle: author.role,
+        }),
+      ) || blog.authors.map((name): Person => ({ "@type": "Person", name })),
     publisher: {
       "@type": "Organization",
       name: "GAIA",
-      logo: { "@type": "ImageObject", url: "https://heygaia.io/logo.png" },
-    },
+      logo: {
+        "@type": "ImageObject",
+        url: "https://heygaia.io/logo.png",
+      } as ImageObject,
+    } as Organization,
     datePublished: blog.date,
     url: `https://heygaia.io/blog/${blog.slug}`,
     articleSection: blog.category,
@@ -151,8 +167,10 @@ export function generateUseCaseMetadata(useCase: UseCase): Metadata {
 /**
  * Generates JSON-LD structured data for a use case page
  */
-export function generateUseCaseStructuredData(useCase: UseCase) {
-  const structuredData: Record<string, unknown> = {
+export function generateUseCaseStructuredData(
+  useCase: UseCase,
+): WithContext<HowTo> {
+  const structuredData: WithContext<HowTo> = {
     "@context": "https://schema.org",
     "@type": "HowTo",
     name: useCase.title,
@@ -161,8 +179,11 @@ export function generateUseCaseStructuredData(useCase: UseCase) {
     publisher: {
       "@type": "Organization",
       name: "GAIA",
-      logo: { "@type": "ImageObject", url: "https://heygaia.io/logo.png" },
-    },
+      logo: {
+        "@type": "ImageObject",
+        url: "https://heygaia.io/logo.png",
+      } as ImageObject,
+    } as Organization,
     url: `https://heygaia.io/use-cases/${useCase.slug}`,
     inLanguage: "en-US",
   };
@@ -171,17 +192,19 @@ export function generateUseCaseStructuredData(useCase: UseCase) {
     structuredData.author = {
       "@type": "Person",
       name: useCase.creator.name,
-    };
+    } as Person;
   }
 
   if (useCase.steps && useCase.steps.length > 0) {
-    structuredData.step = useCase.steps.map((step, index) => ({
-      "@type": "HowToStep",
-      position: index + 1,
-      name: step.title,
-      text: step.description,
-      ...(step.details && { description: step.details }),
-    }));
+    structuredData.step = useCase.steps.map(
+      (step, index): HowToStep => ({
+        "@type": "HowToStep",
+        position: index + 1,
+        name: step.title,
+        text: step.description,
+        ...(step.details && { description: step.details }),
+      }),
+    );
   }
 
   if (useCase.tools && useCase.tools.length > 0) {

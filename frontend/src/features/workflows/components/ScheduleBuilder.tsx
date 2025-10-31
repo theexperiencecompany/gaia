@@ -1,7 +1,7 @@
 import { Input } from "@heroui/input";
 import { Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
-import { useEffect,useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   buildCronExpression,
@@ -162,9 +162,15 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
           }
           className="min-w-26"
         >
-          <SelectItem key="every">Every</SelectItem>
-          <SelectItem key="once">Once</SelectItem>
-          <SelectItem key="custom">Custom</SelectItem>
+          <SelectItem key="every" textValue="Every">
+            Every
+          </SelectItem>
+          <SelectItem key="once" textValue="Once">
+            Once
+          </SelectItem>
+          <SelectItem key="custom" textValue="Custom">
+            Custom
+          </SelectItem>
         </Select>
 
         {simpleSchedule.frequency !== "custom" && (
@@ -180,9 +186,15 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
               }
               className="min-w-26"
             >
-              <SelectItem key="day">Day</SelectItem>
-              <SelectItem key="week">Week</SelectItem>
-              <SelectItem key="month">Month</SelectItem>
+              <SelectItem key="day" textValue="Day">
+                Day
+              </SelectItem>
+              <SelectItem key="week" textValue="Week">
+                Week
+              </SelectItem>
+              <SelectItem key="month" textValue="Month">
+                Month
+              </SelectItem>
             </Select>
 
             {simpleSchedule.interval === "week" && (
@@ -198,13 +210,27 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
                   }
                   className="min-w-32"
                 >
-                  <SelectItem key="1">Monday</SelectItem>
-                  <SelectItem key="2">Tuesday</SelectItem>
-                  <SelectItem key="3">Wednesday</SelectItem>
-                  <SelectItem key="4">Thursday</SelectItem>
-                  <SelectItem key="5">Friday</SelectItem>
-                  <SelectItem key="6">Saturday</SelectItem>
-                  <SelectItem key="0">Sunday</SelectItem>
+                  <SelectItem key="1" textValue="Monday">
+                    Monday
+                  </SelectItem>
+                  <SelectItem key="2" textValue="Tuesday">
+                    Tuesday
+                  </SelectItem>
+                  <SelectItem key="3" textValue="Wednesday">
+                    Wednesday
+                  </SelectItem>
+                  <SelectItem key="4" textValue="Thursday">
+                    Thursday
+                  </SelectItem>
+                  <SelectItem key="5" textValue="Friday">
+                    Friday
+                  </SelectItem>
+                  <SelectItem key="6" textValue="Saturday">
+                    Saturday
+                  </SelectItem>
+                  <SelectItem key="0" textValue="Sunday">
+                    Sunday
+                  </SelectItem>
                 </Select>
               </>
             )}
@@ -228,7 +254,12 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
                   placeholder="Day"
                 >
                   {Array.from({ length: 31 }, (_, i) => (
-                    <SelectItem key={(i + 1).toString()}>{i + 1}</SelectItem>
+                    <SelectItem
+                      key={(i + 1).toString()}
+                      textValue={(i + 1).toString()}
+                    >
+                      {i + 1}
+                    </SelectItem>
                   ))}
                 </Select>
               </>

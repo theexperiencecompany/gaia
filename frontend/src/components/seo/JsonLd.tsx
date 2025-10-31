@@ -1,5 +1,7 @@
+import type { Thing, WithContext } from "schema-dts";
+
 interface JsonLdProps {
-  data: Record<string, unknown> | Record<string, unknown>[];
+  data: WithContext<Thing> | WithContext<Thing>[];
 }
 
 /**

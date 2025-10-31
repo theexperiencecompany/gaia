@@ -13,10 +13,10 @@ export default function PublishWorkflowCTA() {
           </p>
           <a
             href={
-              typeof window !== "undefined" &&
+              (typeof window !== "undefined" &&
               window.location.hostname === "localhost"
                 ? "http://localhost:3001"
-                : "https://docs.heygaia.io/guides/create-public-workflow"
+                : "https://docs.heygaia.io") + "/guides/create-public-workflow"
             }
             target="_blank"
             rel="noopener noreferrer"

@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
 import PricingPage from "@/features/pricing/components/PricingPage";
+import { getPlansServer } from "@/features/pricing/lib/serverPricingApi";
 import { generatePageMetadata, generateProductSchema } from "@/lib/seo";
+import { Plan } from "@/features/pricing/api/pricingApi";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Pricing",
@@ -21,15 +23,24 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-export const revalidate = 86400; // Revalidate every 24 hours
+export const revalidate = 86400; // Revalidate every 24 hours (ISR)
 
-export default function Pricing() {
+export default async function Pricing() {
   const productSchema = generateProductSchema();
+
+  // Fetch plans data server-side for SSR + ISR
+  let initialPlans: Plan[] = [];
+  try {
+    initialPlans = await getPlansServer();
+  } catch (error) {
+    console.error("Failed to fetch plans server-side:", error);
+    // Component will fallback to client-side fetching
+  }
 
   return (
     <>
       <JsonLd data={productSchema} />
-      <PricingPage />
+      <PricingPage initialPlans={initialPlans} />
     </>
   );
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import LandingPageClient from "@/app/client";
+import LandingPageClient from "@/app/(landing)/client";
 import JsonLd from "@/components/seo/JsonLd";
 import {
   generateOrganizationSchema,

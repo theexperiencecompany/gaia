@@ -2,6 +2,7 @@
 
 import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import Image from "next/image";
+import type { Article, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
 import BlogMetadata from "@/features/blog/components/BlogMetadata";
@@ -11,7 +12,7 @@ import { BlogPost } from "@/features/blog/api/blogApi";
 
 interface BlogPostClientProps {
   blog: BlogPost;
-  structuredData: Record<string, unknown> | Record<string, unknown>[];
+  structuredData: WithContext<Article>;
 }
 
 export default function BlogPostClient({

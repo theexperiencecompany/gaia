@@ -28,6 +28,8 @@ from app.models.workflow_models import (
 )
 from app.services.workflow import WorkflowService
 from fastapi import APIRouter, Depends, HTTPException, status
+from app.utils.workflow_utils import transform_workflow_document
+from app.models.workflow_models import Workflow
 
 router = APIRouter()
 
@@ -358,91 +360,45 @@ async def get_public_workflows(
 ):
     """Get public workflows from the community marketplace."""
     try:
-        # Get public workflows sorted by creation date
-        pipeline = [
-            {"$match": {"is_public": True}},
-            {"$sort": {"created_at": -1}},
-            {"$skip": offset},
-            {"$limit": limit},
-            {
-                "$lookup": {
-                    "from": "users",
-                    "let": {"creator_id": "$created_by"},
-                    "pipeline": [
-                        {
-                            "$match": {
-                                "$expr": {
-                                    "$eq": ["$_id", {"$toObjectId": "$$creator_id"}]
-                                }
-                            }
-                        },
-                        {"$project": {"name": 1, "email": 1, "picture": 1, "_id": 0}},
-                    ],
-                    "as": "creator_info",
-                }
-            },
-            {
-                "$project": {
-                    "_id": 1,
-                    "title": 1,
-                    "description": 1,
-                    "steps": {
-                        "$map": {
-                            "input": "$steps",
-                            "as": "step",
-                            "in": {
-                                "title": "$$step.title",
-                                "tool_name": "$$step.tool_name",
-                                "tool_category": "$$step.tool_category",
-                                "description": "$$step.description",
-                            },
-                        }
-                    },
-                    "created_at": 1,
-                    "created_by": 1,
-                    "creator_info": 1,
-                }
-            },
-        ]
-
-        workflows = await workflows_collection.aggregate(pipeline).to_list(length=limit)
-
-        # Get total count
-        total = await workflows_collection.count_documents({"is_public": True})
-
-        # Format workflows with creator info
-        formatted_workflows = []
-
-        for workflow in workflows:
-            creator_info = (
-                workflow.get("creator_info", [{}])[0]
-                if workflow.get("creator_info")
-                else {}
-            )
-
-            formatted_workflow = {
-                "id": workflow["_id"],
-                "title": workflow["title"],
-                "description": workflow["description"],
-                "steps": workflow.get("steps", []),
-                "created_at": workflow["created_at"],
-                "creator": {
-                    "id": workflow.get("created_by"),
-                    "name": creator_info.get("name", "Unknown"),
-                    "avatar": creator_info.get(
-                        "picture"
-                    ),  # Use 'picture' field from user model
-                },
-            }
-            formatted_workflows.append(formatted_workflow)
-
-        return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
-
+        return await WorkflowService.get_community_workflows(
+            limit=limit, offset=offset, user_id=None
+        )
     except Exception as e:
         logger.error(f"Error fetching public workflows: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch public workflows",
+        )
+
+
+@router.get("/workflows/public/{workflow_id}", response_model=WorkflowResponse)
+async def get_public_workflow(workflow_id: str):
+    """Get a public workflow by ID without authentication."""
+    try:
+        workflow_doc = await workflows_collection.find_one(
+            {"_id": workflow_id, "is_public": True}
+        )
+
+        if not workflow_doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Public workflow not found",
+            )
+
+        transformed_doc = transform_workflow_document(workflow_doc)
+        workflow = Workflow(**transformed_doc)
+
+        return WorkflowResponse(
+            workflow=workflow, message="Workflow retrieved successfully"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting public workflow {workflow_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get workflow",
         )
 
 

@@ -5,6 +5,7 @@ import { RaisedButton } from "@/components";
 
 import PublishWorkflowCTA from "./PublishWorkflowCTA";
 import ShareButton from "./ShareButton";
+import YouMightAlsoLike from "./YouMightAlsoLike";
 
 interface UseCaseDetailLayoutProps {
   breadcrumbs: Array<{ label: string; href?: string }>;
@@ -67,7 +68,7 @@ export default function UseCaseDetailLayout({
           </div>
         </div>
 
-        <div className="flex min-h-[50vh] gap-8">
+        <div className="flex min-h-[40vh] gap-8">
           <div className="flex-1 space-y-4">
             <div className="flex flex-wrap items-start gap-2">{metaInfo}</div>
 
@@ -78,6 +79,8 @@ export default function UseCaseDetailLayout({
         </div>
 
         {similarContent}
+
+        <YouMightAlsoLike currentSlug={slug} />
 
         <PublishWorkflowCTA />
       </div>

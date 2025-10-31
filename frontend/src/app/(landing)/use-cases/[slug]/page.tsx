@@ -40,7 +40,7 @@ export async function generateMetadata({
 
   // If not found in static data, try API as community workflow
   try {
-    const response = await workflowApi.getWorkflow(slug);
+    const response = await workflowApi.getPublicWorkflow(slug);
     const workflow = response.workflow;
 
     // Convert workflow to use case format for metadata generation
@@ -89,7 +89,7 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
   } else {
     // If not found in static data, try API as community workflow
     try {
-      const response = await workflowApi.getWorkflow(slug);
+      const response = await workflowApi.getPublicWorkflow(slug);
       const workflow = response.workflow;
 
       // If it's a public workflow, try to get it from community endpoint to get creator info

@@ -59,9 +59,9 @@ export default function YouMightAlsoLike({
   if (items.length === 0) return null;
 
   return (
-    <>
+    <div className="mx-auto max-w-7xl">
       <div className="my-20 border-[1px] border-t border-zinc-900" />
-      <div className="space-y-6">
+      <div className="mx-auto space-y-6">
         <h2 className="mx-auto text-center font-serif text-6xl font-normal text-foreground">
           You might also like
         </h2>
@@ -91,6 +91,6 @@ export default function YouMightAlsoLike({
           })}
         </div>
       </div>
-    </>
+    </div>
   );
 }

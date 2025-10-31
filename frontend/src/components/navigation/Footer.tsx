@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import React from "react";
+import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
 import { appConfig, connect, footerSections } from "@/config/appConfig";
@@ -11,8 +12,7 @@ export default function Footer() {
   const user = useUser();
   const isAuthenticated = user?.email;
 
-  // Generate SiteNavigationElement schema for footer links
-  const navigationSchema = {
+  const navigationSchema: WithContext<SiteNavigationElement> = {
     "@context": "https://schema.org",
     "@type": "SiteNavigationElement",
     name: "Footer Navigation",
@@ -22,12 +22,14 @@ export default function Footer() {
         .filter(
           (link) => !link.external && !link.hideFooter && !link.requiresAuth,
         )
-        .map((link) => ({
-          "@type": "WebPage",
-          name: link.label,
-          url: `${siteConfig.url}${link.href}`,
-          description: link.description,
-        })),
+        .map(
+          (link): WebPage => ({
+            "@type": "WebPage",
+            name: link.label,
+            url: `${siteConfig.url}${link.href}`,
+            description: link.description,
+          }),
+        ),
     ),
   };
 

@@ -213,4 +213,11 @@ export const workflowApi = {
       },
     );
   },
+
+  // Get a public workflow without authentication (for server-side rendering)
+  getPublicWorkflow: async (workflowId: string): Promise<WorkflowResponse> => {
+    return apiService.get<WorkflowResponse>(`/workflows/public/${workflowId}`, {
+      errorMessage: "Failed to fetch public workflow",
+    });
+  },
 };
