@@ -233,7 +233,7 @@ export const IntegrationsSettings: React.FC = () => {
   const isTemplateConfigured = (templateId: string) => {
     return mcpServers.some(
       (server) =>
-        server.name.toLowerCase().includes(templateId.toLowerCase()) ||
+        server.display_name.toLowerCase().includes(templateId.toLowerCase()) ||
         server.description.toLowerCase().includes(templateId.toLowerCase()),
     );
   };

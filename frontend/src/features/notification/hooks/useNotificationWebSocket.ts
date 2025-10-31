@@ -161,6 +161,7 @@ export function useNotificationWebSocket(
       };
 
       ws.onerror = (error) => {
+        console.log(error);
         console.error("WebSocket connection error:", error);
         if (options.onError) {
           options.onError(new Error("WebSocket connection failed"));
