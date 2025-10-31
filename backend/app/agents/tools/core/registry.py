@@ -96,6 +96,7 @@ class ToolRegistry:
 
     def __init__(self):
         self._categories: Dict[str, ToolCategory] = {}
+        self._mcp_categories: Dict[str, str] = {}  # tool_name -> mcp_server_name
 
     async def setup(self):
         await self._initialize_categories()
@@ -263,6 +264,104 @@ class ToolRegistry:
         """Get list of all tool names including delegated ones."""
         tools = self.get_all_tools_for_search()
         return [tool.name for tool in tools]
+
+    async def add_mcp_handoff_tools(self, user_id: str) -> None:
+        """
+        Add MCP handoff tools to the delegation category.
+
+        Args:
+            user_id: User identifier
+        """
+        from app.agents.core.subagents.handoff_tools import get_mcp_handoff_tools
+        from app.config.loggers import common_logger as logger
+
+        try:
+            mcp_handoff_tools = await get_mcp_handoff_tools(user_id)
+
+            if mcp_handoff_tools:
+                delegation_category = self._categories.get("delegation")
+                if delegation_category:
+                    delegation_category.add_tools(mcp_handoff_tools, is_core=True)
+                    logger.info(
+                        f"Added {len(mcp_handoff_tools)} MCP handoff tools to delegation category"
+                    )
+
+        except Exception as e:
+            logger.error(f"Failed to add MCP handoff tools: {e}")
+
+    async def register_mcp_tools(
+        self, server_name: str, tools: List[BaseTool], user_id: Optional[str] = None
+    ) -> None:
+        """
+        Register tools from an MCP server dynamically.
+
+        Args:
+            server_name: Name of the MCP server
+            tools: List of tools from the MCP server
+            user_id: Optional user ID for user-specific tool registration
+        """
+        from app.config.loggers import common_logger as logger
+
+        category_name = f"mcp_{server_name}"
+
+        # Create or update MCP server category
+        if category_name not in self._categories:
+            logger.info(f"Creating new MCP category: {category_name}")
+            category = ToolCategory(
+                name=category_name,
+                space=f"mcp_{server_name}",
+                require_integration=False,
+                integration_name=None,
+                is_delegated=True,  # MCP servers are delegated to subagents
+            )
+            self._categories[category_name] = category
+        else:
+            category = self._categories[category_name]
+
+        # Add tools to category
+        for tool in tools:
+            category.add_tool(tool, is_core=False)
+            self._mcp_categories[tool.name] = server_name
+
+        logger.info(
+            f"Registered {len(tools)} tools from MCP server '{server_name}' in category '{category_name}'"
+        )
+
+    async def unregister_mcp_server(self, server_name: str) -> None:
+        """
+        Unregister all tools from an MCP server.
+
+        Args:
+            server_name: Name of the MCP server to unregister
+        """
+        from app.config.loggers import common_logger as logger
+
+        category_name = f"mcp_{server_name}"
+
+        if category_name in self._categories:
+            del self._categories[category_name]
+            logger.info(f"Unregistered MCP server category: {category_name}")
+
+        # Clean up tool mappings
+        tools_to_remove = [
+            tool_name
+            for tool_name, srv_name in self._mcp_categories.items()
+            if srv_name == server_name
+        ]
+        for tool_name in tools_to_remove:
+            del self._mcp_categories[tool_name]
+
+    def get_mcp_server_for_tool(self, tool_name: str) -> Optional[str]:
+        """
+        Get the MCP server name for a specific tool.
+
+        Args:
+            tool_name: Name of the tool
+
+        Returns:
+            MCP server name or None if not an MCP tool
+        """
+        return self._mcp_categories.get(tool_name)
 
 
 async def get_tool_registry() -> ToolRegistry:
