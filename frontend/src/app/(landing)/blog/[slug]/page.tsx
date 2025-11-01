@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
-import { blogApi } from "@/features/blog/api/blogApi";
 import BlogPostClient from "@/app/(landing)/blog/client";
+import { blogApi } from "@/features/blog/api/blogApi";
 import {
   generateBlogMetadata,
   generateBlogStructuredData,

@@ -5,10 +5,9 @@ import Image from "next/image";
 import type { Article, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
+import { BlogPost } from "@/features/blog/api/blogApi";
 import BlogMetadata from "@/features/blog/components/BlogMetadata";
 import MarkdownWrapper from "@/features/blog/components/MarkdownWrapper";
-
-import { BlogPost } from "@/features/blog/api/blogApi";
 
 interface BlogPostClientProps {
   blog: BlogPost;

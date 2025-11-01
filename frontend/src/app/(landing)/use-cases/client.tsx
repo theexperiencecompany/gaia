@@ -4,10 +4,10 @@ import { useRouter } from "next/navigation";
 import { useRef } from "react";
 
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import PublishWorkflowCTA from "@/features/use-cases/components/PublishWorkflowCTA";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import { CommunityWorkflow } from "@/features/workflows/api/workflowApi";
 import CommunityWorkflowCard from "@/features/workflows/components/CommunityWorkflowCard";
-import PublishWorkflowCTA from "@/features/use-cases/components/PublishWorkflowCTA";
 
 interface UseCasesPageClientProps {
   communityWorkflows: CommunityWorkflow[];

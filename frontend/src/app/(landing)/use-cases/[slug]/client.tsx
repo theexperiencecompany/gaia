@@ -20,8 +20,6 @@ import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps"
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplay } from "@/features/workflows/utils/triggerDisplay";
 
-import YouMightAlsoLike from "@/features/use-cases/components/YouMightAlsoLike";
-
 interface UseCaseDetailClientProps {
   useCase: UseCase | null;
   communityWorkflow: Workflow | null;
