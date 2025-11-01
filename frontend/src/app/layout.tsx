@@ -2,6 +2,7 @@ import "./styles/tailwind.css";
 import "./styles/globals.css";
 
 import { Databuddy } from "@databuddy/sdk/react";
+import { Analytics as VercelAnalytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
@@ -17,10 +18,24 @@ import {
 
 import { defaultFont, getAllFontVariables } from "./fonts";
 
+// Dynamically determine the base URL based on environment
+const getMetadataBase = () => {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return new URL(process.env.NEXT_PUBLIC_APP_URL);
+  }
+
+  if (process.env.VERCEL_URL) {
+    return new URL(`https://${process.env.VERCEL_URL}`);
+  }
+
+  // Fallback to production URL
+  return new URL(siteConfig.url);
+};
+
 export const metadata: Metadata = {
-  metadataBase: new URL(siteConfig.url),
+  metadataBase: getMetadataBase(),
   title: {
-    default: "GAIA - Your Personal AI Assistant",
+    default: siteConfig.fullName,
     template: "%s | GAIA",
   },
   description: siteConfig.description,
@@ -55,26 +70,34 @@ export const metadata: Metadata = {
     "productivity assistant",
   ],
   openGraph: {
-    title: "GAIA - Your Personal AI Assistant",
+    title: siteConfig.fullName,
     siteName: siteConfig.fullName,
     url: siteConfig.url,
     type: "website",
     description: siteConfig.description,
     images: [
       {
-        url: siteConfig.ogImage,
+        url: `${siteConfig.url}${siteConfig.ogImage}`,
         width: 1200,
         height: 630,
         alt: "GAIA - Personal AI Assistant",
+        type: "image/webp",
       },
     ],
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "GAIA - Your Personal AI Assistant",
+    title: siteConfig.fullName,
     description: siteConfig.description,
-    images: [siteConfig.ogImage],
+    images: [
+      {
+        url: `${siteConfig.url}${siteConfig.ogImage}`,
+        width: 1200,
+        height: 630,
+        alt: "GAIA - Personal AI Assistant",
+      },
+    ],
     creator: "@trygaia",
     site: "@trygaia",
   },
@@ -128,14 +151,12 @@ export default function RootLayout({
           href="https://databuddy.cc"
           crossOrigin="anonymous"
         />
-        {/* Preload critical hero image to improve LCP - reduce 1,160ms load delay */}
         <link
           rel="preload"
           as="image"
-          href="/images/hero.webp?q=80"
+          href="/images/wallpapers/switzerland_night.webp"
           fetchPriority="high"
         />
-
         {/* <link rel="preconnect" href="https://i.ytimg.com" /> */}
       </head>
       <body className={`dark ${defaultFont.className}`}>
@@ -153,17 +174,8 @@ export default function RootLayout({
           {JSON.stringify(generateWebSiteSchema())}
         </Script>
 
-        {/* Defer all analytics to improve LCP and reduce unused JS */}
-        <Script
-          src="https://analytics.heygaia.io/api/script.js"
-          data-site-id="1"
-          strategy="afterInteractive"
-          data-session-replay="true"
-        />
-
-        <Suspense fallback={<></>}>
-          <AnalyticsLayout />
-        </Suspense>
+        <VercelAnalytics />
+        <AnalyticsLayout />
 
         {process.env.NEXT_PUBLIC_DATABUDDY_CLIENT_ID && (
           <Suspense fallback={<></>}>

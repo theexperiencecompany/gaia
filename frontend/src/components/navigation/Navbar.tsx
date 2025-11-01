@@ -111,7 +111,7 @@ export default function Navbar() {
               src="/images/logos/text_w_logo_white.webp"
               alt="GAIA Logo"
               width={100}
-              height={100}
+              height={30}
               className="object-contain"
             />
             {/* <span className="tracking-tigher text-xl font-medium">GAIA</span> */}

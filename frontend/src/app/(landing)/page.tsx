@@ -9,9 +9,7 @@ import {
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "GAIA - General-purpose AI Assistant",
-  description:
-    "GAIA is your personal AI assistant designed to boost productivity. Automate tasks, manage emails, schedule meetings, track goals, and handle your daily workflow with intelligent automation.",
+  title: "GAIA",
   path: "/",
   keywords: [
     "personal AI assistant",

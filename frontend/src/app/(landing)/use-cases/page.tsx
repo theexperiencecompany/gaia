@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 
 import UseCasesPageClient from "@/app/(landing)/use-cases/client";
@@ -5,6 +6,24 @@ import {
   CommunityWorkflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
+import { generatePageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = generatePageMetadata({
+  title: "Use Cases & Workflows",
+  description:
+    "Explore powerful workflows and use cases for GAIA. Discover how others are using AI to automate tasks, manage emails, schedule meetings, and boost productivity with community-built workflows.",
+  path: "/use-cases",
+  keywords: [
+    "GAIA workflows",
+    "AI automation workflows",
+    "productivity workflows",
+    "use cases",
+    "automation examples",
+    "community workflows",
+    "workflow templates",
+    "AI task automation",
+  ],
+});
 
 export const revalidate = 3600; // Revalidate every hour
 

@@ -45,8 +45,8 @@ export function extractDescription(
  */
 export function generateBlogMetadata(blog: BlogPost): Metadata {
   const description = extractDescription(blog.content);
-  const canonicalUrl = `https://heygaia.io/blog/${blog.slug}`;
-  const imageUrl = blog.image || "og-image.webp";
+  const canonicalUrl = `/blog/${blog.slug}`;
+  const imageUrl = blog.image || "/og-image.webp";
 
   return {
     title: blog.title,
@@ -60,7 +60,15 @@ export function generateBlogMetadata(blog: BlogPost): Metadata {
       description,
       url: canonicalUrl,
       siteName: "GAIA - AI Personal Assistant",
-      images: [{ url: imageUrl, width: 1200, height: 630, alt: blog.title }],
+      images: [
+        {
+          url: imageUrl,
+          width: 1200,
+          height: 630,
+          alt: blog.title,
+          type: "image/webp",
+        },
+      ],
       type: "article",
       publishedTime: blog.date,
       authors:
@@ -72,8 +80,16 @@ export function generateBlogMetadata(blog: BlogPost): Metadata {
       card: "summary_large_image",
       title: blog.title,
       description,
-      images: [imageUrl],
-      site: "@heygaia",
+      images: [
+        {
+          url: imageUrl,
+          width: 1200,
+          height: 630,
+          alt: blog.title,
+        },
+      ],
+      site: "@trygaia",
+      creator: "@trygaia",
     },
 
     alternates: { canonical: canonicalUrl },
@@ -92,7 +108,7 @@ export function generateBlogStructuredData(
     "@type": "BlogPosting",
     headline: blog.title,
     description: extractDescription(blog.content),
-    image: blog.image || "og-image.webp",
+    image: blog.image || "/og-image.webp",
     author:
       blog.author_details?.map(
         (author): Person => ({
@@ -106,11 +122,11 @@ export function generateBlogStructuredData(
       name: "GAIA",
       logo: {
         "@type": "ImageObject",
-        url: "https://heygaia.io/logo.png",
+        url: "/images/logos/logo.webp",
       } as ImageObject,
     } as Organization,
     datePublished: blog.date,
-    url: `https://heygaia.io/blog/${blog.slug}`,
+    url: `/blog/${blog.slug}`,
     articleSection: blog.category,
     inLanguage: "en-US",
   };
@@ -121,8 +137,7 @@ export function generateBlogStructuredData(
  */
 export function generateUseCaseMetadata(useCase: UseCase): Metadata {
   const description = useCase.detailed_description || useCase.description || "";
-  const canonicalUrl = `https://heygaia.io/use-cases/${useCase.slug}`;
-  const imageUrl = "/images/screenshot.webp";
+  const canonicalUrl = `/use-cases/${useCase.slug}`;
 
   const title = `${useCase.title} - GAIA Use Case`;
   const keywords = [
@@ -146,19 +161,7 @@ export function generateUseCaseMetadata(useCase: UseCase): Metadata {
       title,
       description,
       url: canonicalUrl,
-      siteName: "GAIA - AI Personal Assistant",
-      images: [{ url: imageUrl, width: 1200, height: 630, alt: useCase.title }],
-      type: "article",
     },
-
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: [imageUrl],
-      site: "@heygaia",
-    },
-
     alternates: { canonical: canonicalUrl },
     robots: { index: true, follow: true },
   };
@@ -175,16 +178,16 @@ export function generateUseCaseStructuredData(
     "@type": "HowTo",
     name: useCase.title,
     description: useCase.detailed_description || useCase.description,
-    image: "/images/screenshot.webp",
+    image: "/og-image.webp",
     publisher: {
       "@type": "Organization",
       name: "GAIA",
       logo: {
         "@type": "ImageObject",
-        url: "https://heygaia.io/logo.png",
+        url: "/images/logos/logo.webp",
       } as ImageObject,
     } as Organization,
-    url: `https://heygaia.io/use-cases/${useCase.slug}`,
+    url: `/use-cases/${useCase.slug}`,
     inLanguage: "en-US",
   };
 

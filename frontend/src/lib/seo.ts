@@ -25,9 +25,9 @@ import type {
 // Site-wide SEO Configuration
 export const siteConfig = {
   name: "GAIA",
-  fullName: "GAIA - General-purpose AI Assistant",
+  fullName: "GAIA - Your Personal AI Assistant",
   description:
-    "GAIA is your personal AI assistant designed to boost productivity. Automate tasks, manage emails, schedule meetings, track goals, and handle your daily workflow with intelligent automation.",
+    "GAIA is your open-source personal AI assistant to proactively manage your email, calendar, todos, workflows and all your digital tools to boost productivity.",
   url: "https://heygaia.io",
   ogImage: "/og-image.webp",
   links: {
@@ -75,7 +75,8 @@ export const commonKeywords = [
  */
 export function getCanonicalUrl(path: string): string {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `${siteConfig.url}${cleanPath}`;
+  // Return relative URL - metadataBase in layout will handle absolute URL
+  return cleanPath;
 }
 
 /**
@@ -83,7 +84,7 @@ export function getCanonicalUrl(path: string): string {
  */
 export interface PageMetadataOptions {
   title: string;
-  description: string;
+  description?: string;
   path: string;
   keywords?: string[];
   image?: string;
@@ -97,7 +98,7 @@ export interface PageMetadataOptions {
 
 export function generatePageMetadata({
   title,
-  description,
+  description = siteConfig.description,
   path,
   keywords = [],
   image = siteConfig.ogImage,
@@ -109,12 +110,29 @@ export function generatePageMetadata({
   section,
 }: PageMetadataOptions): Metadata {
   const url = getCanonicalUrl(path);
-  const fullTitle =
-    title === siteConfig.name ? title : `${title} | ${siteConfig.name}`;
+
+  // For homepage, use absolute title to prevent template from adding suffix
+  // For other pages, use simple title string to let template add "| GAIA"
+  const isHomepage = path === "/" || title === siteConfig.name;
+  const pageTitle = isHomepage ? { absolute: siteConfig.fullName } : title;
+
+  // Full title for OpenGraph (always includes suffix for non-homepage)
+  const fullTitle = isHomepage
+    ? siteConfig.fullName
+    : `${title} | ${siteConfig.name}`;
+
   const allKeywords = [...commonKeywords, ...keywords];
 
+  // Image URL: Return relative path or absolute URL
+  // Next.js metadataBase will resolve relative URLs automatically
+  const imageUrl = image.startsWith("http")
+    ? image
+    : image.startsWith("/")
+      ? image
+      : `/${image}`;
+
   const metadata: Metadata = {
-    title,
+    title: pageTitle,
     description,
     keywords: allKeywords,
     alternates: {
@@ -127,10 +145,11 @@ export function generatePageMetadata({
       siteName: siteConfig.fullName,
       images: [
         {
-          url: image,
+          url: imageUrl,
           width: 1200,
           height: 630,
           alt: `${title} - ${siteConfig.name}`,
+          type: "image/webp",
         },
       ],
       locale: "en_US",
@@ -140,7 +159,14 @@ export function generatePageMetadata({
       card: "summary_large_image",
       title: fullTitle,
       description,
-      images: [image],
+      images: [
+        {
+          url: imageUrl,
+          width: 1200,
+          height: 630,
+          alt: `${title} - ${siteConfig.name}`,
+        },
+      ],
       creator: "@trygaia",
       site: "@trygaia",
     },
