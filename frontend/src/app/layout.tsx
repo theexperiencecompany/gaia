@@ -75,8 +75,8 @@ export const metadata: Metadata = {
     title: "GAIA - Your Personal AI Assistant",
     description: siteConfig.description,
     images: [siteConfig.ogImage],
-    creator: "@_heygaia",
-    site: "@_heygaia",
+    creator: "@trygaia",
+    site: "@trygaia",
   },
   other: {
     "msapplication-TileColor": "#00bbff",

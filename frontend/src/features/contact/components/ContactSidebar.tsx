@@ -36,7 +36,7 @@ const socialLinks = [
   },
   {
     ariaLabel: "Twitter",
-    href: "https://x.com/_heygaia",
+    href: "https://x.com/trygaia",
     Icon: TwitterIcon,
   },
   {

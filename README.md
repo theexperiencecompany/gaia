@@ -9,7 +9,7 @@
 [![stars](https://img.shields.io/github/stars/heygaia/gaia)](https://github.com/heygaia/gaia/stargazers) [![stars](https://img.shields.io/github/forks/heygaia/gaia)](https://github.com/heygaia/gaia/forks) [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v3/monitor/1zjmp.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
 
 [![contributors](https://img.shields.io/github/contributors/heygaia/gaia)](https://github.com/heygaia/gaia/graphs/contributors) [![open issues](https://img.shields.io/github/issues/heygaia/gaia)](https://github.com/heygaia/gaia/issues/) ![last update](https://img.shields.io/github/commit-activity/m/heygaia/gaia) [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/heygaia/gaia) [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Strict-red.svg)](https://polyformproject.org/licenses/noncommercial-1.0.0/)
-[![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![Twitter Follow](https://img.shields.io/twitter/follow/_heygaia?style=social)](https://x.com/intent/user?screen_name=_heygaia) [![Whatsapp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io)
+[![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![Twitter Follow](https://img.shields.io/twitter/follow/trygaia?style=social)](https://x.com/intent/user?screen_name=trygaia) [![Whatsapp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io)
 
 </div>
 
@@ -40,7 +40,7 @@ Our comprehensive documentation is available at [docs.heygaia.io](https://docs.h
 Join our growing community of users and contributors:
 
 - <img src="https://cdn.simpleicons.org/discord/5865F2" alt="Discord" width="16" /> &nbsp;**[Discord](https://discord.heygaia.io)** — Chat with the team and other users.
-- <img src="https://cdn.simpleicons.org/x/ffffff" alt="Twitter" width="16" /> &nbsp;**[Twitter](https://twitter.com/_heygaia)** — Get the latest news and updates.
+- <img src="https://cdn.simpleicons.org/x/ffffff" alt="Twitter" width="16" /> &nbsp;**[Twitter](https://twitter.com/trygaia)** — Get the latest news and updates.
 - <img src="https://cdn.simpleicons.org/whatsapp/25D366" alt="WhatsApp" width="16" /> &nbsp;**[WhatsApp](https://whatsapp.heygaia.io)** — Get direct support from our team.
 
 ## Contributing
@@ -98,8 +98,8 @@ Feel free to contact the team at contact@heygaia.io or aryan@heygaia.io for any 
     <a href="https://whatsapp.heygaia.io">
       <img src="https://img.shields.io/badge/-WhatsApp-25D366?style=flat&logo=whatsapp&logoColor=white" alt="WhatsApp" />
     </a>
-    <a href="https://twitter.com/_heygaia">
-      <img src="https://img.shields.io/twitter/follow/_heygaia?style=social" alt="Twitter" />
+    <a href="https://twitter.com/trygaia">
+      <img src="https://img.shields.io/twitter/follow/trygaia?style=social" alt="Twitter" />
     </a>
   </p>
   <a href="https://heygaia.io">heygaia.io</a> • <a href="https://docs.heygaia.io">Documentation</a> • <a href="https://heygaia.io/contact">Contact Us</a>

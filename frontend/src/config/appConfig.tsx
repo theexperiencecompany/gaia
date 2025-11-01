@@ -159,7 +159,7 @@ export const appConfig = {
         description: "Join Discord Community",
       },
       {
-        href: "https://x.com/_heygaia",
+        href: "https://x.com/trygaia",
         label: "Twitter (X)",
         icon: <TwitterIcon width={20} height={20} color="#08a0e9" />,
         external: true,
