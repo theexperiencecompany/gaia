@@ -6,12 +6,12 @@ import { usePathname } from "next/navigation";
 import { Suspense } from "react";
 
 import ChatsList from "@/components/layout/sidebar/ChatsList";
-import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import CalendarSidebar from "@/components/layout/sidebar/variants/CalendarSidebar";
 import EmailSidebar from "@/components/layout/sidebar/variants/MailSidebar";
 import SettingsSidebar from "@/components/layout/sidebar/variants/SettingsSidebar";
 import TodoSidebar from "@/components/layout/sidebar/variants/TodoSidebar";
 import { PencilEdit02Icon } from "@/components/shared/icons";
+import SuspenseLoader from "@/components/shared/SuspenseLoader";
 
 export default function Sidebar() {
   // const [open, setOpen] = useState<boolean>(false);
