@@ -205,13 +205,6 @@ class Workflow(BaseScheduledTask):
         default=None,
         description="User ID of the original creator (for public workflows)",
     )
-    upvotes: int = Field(
-        default=0, description="Number of upvotes from community users"
-    )
-    upvoted_by: List[str] = Field(
-        default_factory=list,
-        description="List of user IDs who have upvoted this workflow",
-    )
 
     # Execution tracking
     current_step_index: int = Field(
@@ -370,12 +363,6 @@ class UnpublishWorkflowRequest(BaseModel):
     """Request model for unpublishing a workflow from the community."""
 
     workflow_id: str = Field(description="ID of the workflow to unpublish")
-
-
-class UpvoteWorkflowRequest(BaseModel):
-    """Request model for upvoting a community workflow."""
-
-    workflow_id: str = Field(description="ID of the workflow to upvote")
 
 
 class PublicWorkflowsResponse(BaseModel):

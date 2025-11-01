@@ -1,13 +1,35 @@
 import type { Metadata } from "next";
+import type {
+  AboutPage,
+  Answer,
+  Article,
+  BreadcrumbList,
+  ContactPage,
+  ContactPoint,
+  FAQPage,
+  HowTo,
+  HowToStep,
+  ImageObject,
+  ItemList,
+  ListItem,
+  Offer,
+  Organization,
+  Person,
+  Question,
+  SoftwareApplication,
+  WebPage,
+  WebSite,
+  WithContext,
+} from "schema-dts";
 
 // Site-wide SEO Configuration
 export const siteConfig = {
   name: "GAIA",
-  fullName: "GAIA - General-purpose AI Assistant",
+  fullName: "GAIA - Your Personal AI Assistant",
   description:
-    "GAIA is your personal AI assistant designed to boost productivity. Automate tasks, manage emails, schedule meetings, track goals, and handle your daily workflow with intelligent automation.",
+    "GAIA is your open-source personal AI assistant to proactively manage your email, calendar, todos, workflows and all your digital tools to boost productivity.",
   url: "https://heygaia.io",
-  ogImage: "/images/screenshot.webp",
+  ogImage: "/og-image.webp",
   links: {
     twitter: "https://x.com/trygaia",
     github: "https://github.com/heygaia",
@@ -53,7 +75,8 @@ export const commonKeywords = [
  */
 export function getCanonicalUrl(path: string): string {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `${siteConfig.url}${cleanPath}`;
+  // Return relative URL - metadataBase in layout will handle absolute URL
+  return cleanPath;
 }
 
 /**
@@ -61,7 +84,7 @@ export function getCanonicalUrl(path: string): string {
  */
 export interface PageMetadataOptions {
   title: string;
-  description: string;
+  description?: string;
   path: string;
   keywords?: string[];
   image?: string;
@@ -75,7 +98,7 @@ export interface PageMetadataOptions {
 
 export function generatePageMetadata({
   title,
-  description,
+  description = siteConfig.description,
   path,
   keywords = [],
   image = siteConfig.ogImage,
@@ -87,12 +110,29 @@ export function generatePageMetadata({
   section,
 }: PageMetadataOptions): Metadata {
   const url = getCanonicalUrl(path);
-  const fullTitle =
-    title === siteConfig.name ? title : `${title} | ${siteConfig.name}`;
+
+  // For homepage, use absolute title to prevent template from adding suffix
+  // For other pages, use simple title string to let template add "| GAIA"
+  const isHomepage = path === "/" || title === siteConfig.name;
+  const pageTitle = isHomepage ? { absolute: siteConfig.fullName } : title;
+
+  // Full title for OpenGraph (always includes suffix for non-homepage)
+  const fullTitle = isHomepage
+    ? siteConfig.fullName
+    : `${title} | ${siteConfig.name}`;
+
   const allKeywords = [...commonKeywords, ...keywords];
 
+  // Image URL: Return relative path or absolute URL
+  // Next.js metadataBase will resolve relative URLs automatically
+  const imageUrl = image.startsWith("http")
+    ? image
+    : image.startsWith("/")
+      ? image
+      : `/${image}`;
+
   const metadata: Metadata = {
-    title,
+    title: pageTitle,
     description,
     keywords: allKeywords,
     alternates: {
@@ -105,10 +145,11 @@ export function generatePageMetadata({
       siteName: siteConfig.fullName,
       images: [
         {
-          url: image,
+          url: imageUrl,
           width: 1200,
           height: 630,
           alt: `${title} - ${siteConfig.name}`,
+          type: "image/webp",
         },
       ],
       locale: "en_US",
@@ -118,7 +159,14 @@ export function generatePageMetadata({
       card: "summary_large_image",
       title: fullTitle,
       description,
-      images: [image],
+      images: [
+        {
+          url: imageUrl,
+          width: 1200,
+          height: 630,
+          alt: `${title} - ${siteConfig.name}`,
+        },
+      ],
       creator: "@trygaia",
       site: "@trygaia",
     },
@@ -150,7 +198,7 @@ export function generatePageMetadata({
 /**
  * Generate Organization structured data (JSON-LD)
  */
-export function generateOrganizationSchema() {
+export function generateOrganizationSchema(): WithContext<Organization> {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -160,12 +208,14 @@ export function generateOrganizationSchema() {
     logo: `${siteConfig.url}/images/logos/logo.webp`,
     description: siteConfig.description,
     foundingDate: "2024",
-    founders: siteConfig.founders.map((founder) => ({
-      "@type": "Person",
-      name: founder.name,
-      jobTitle: founder.role,
-      sameAs: [founder.twitter, founder.linkedin].filter(Boolean),
-    })),
+    founders: siteConfig.founders.map(
+      (founder): Person => ({
+        "@type": "Person",
+        name: founder.name,
+        jobTitle: founder.role,
+        sameAs: [founder.twitter, founder.linkedin].filter(Boolean),
+      }),
+    ),
     sameAs: [
       siteConfig.links.twitter,
       siteConfig.links.github,
@@ -183,7 +233,7 @@ export function generateOrganizationSchema() {
 /**
  * Generate WebSite structured data (JSON-LD)
  */
-export function generateWebSiteSchema() {
+export function generateWebSiteSchema(): WithContext<WebSite> {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
@@ -202,8 +252,8 @@ export function generateWebPageSchema(
   description: string,
   url: string,
   breadcrumbs?: Array<{ name: string; url: string }>,
-) {
-  const schema: Record<string, unknown> = {
+): WithContext<WebPage> {
+  const schema: WithContext<WebPage> = {
     "@context": "https://schema.org",
     "@type": "WebPage",
     name: title,
@@ -219,12 +269,14 @@ export function generateWebPageSchema(
   if (breadcrumbs && breadcrumbs.length > 0) {
     schema.breadcrumb = {
       "@type": "BreadcrumbList",
-      itemListElement: breadcrumbs.map((crumb, index) => ({
-        "@type": "ListItem",
-        position: index + 1,
-        name: crumb.name,
-        item: crumb.url,
-      })),
+      itemListElement: breadcrumbs.map(
+        (crumb, index): ListItem => ({
+          "@type": "ListItem",
+          position: index + 1,
+          name: crumb.name,
+          item: crumb.url,
+        }),
+      ),
     };
   }
 
@@ -236,16 +288,18 @@ export function generateWebPageSchema(
  */
 export function generateBreadcrumbSchema(
   items: Array<{ name: string; url: string }>,
-) {
+): WithContext<BreadcrumbList> {
   return {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
-    itemListElement: items.map((item, index) => ({
-      "@type": "ListItem",
-      position: index + 1,
-      name: item.name,
-      item: getCanonicalUrl(item.url),
-    })),
+    itemListElement: items.map(
+      (item, index): ListItem => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: item.name,
+        item: getCanonicalUrl(item.url),
+      }),
+    ),
   };
 }
 
@@ -254,25 +308,27 @@ export function generateBreadcrumbSchema(
  */
 export function generateFAQSchema(
   faqs: Array<{ question: string; answer: string }>,
-) {
+): WithContext<FAQPage> {
   return {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    mainEntity: faqs.map((faq) => ({
-      "@type": "Question",
-      name: faq.question,
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: faq.answer,
-      },
-    })),
+    mainEntity: faqs.map(
+      (faq): Question => ({
+        "@type": "Question",
+        name: faq.question,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: faq.answer,
+        } as Answer,
+      }),
+    ),
   };
 }
 
 /**
  * Generate Product/SoftwareApplication structured data (JSON-LD)
  */
-export function generateProductSchema() {
+export function generateProductSchema(): WithContext<SoftwareApplication> {
   return {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
@@ -285,12 +341,12 @@ export function generateProductSchema() {
       price: "0",
       priceCurrency: "USD",
       availability: "https://schema.org/InStock",
-    },
+    } as Offer,
     author: {
       "@type": "Organization",
       name: siteConfig.name,
       url: siteConfig.url,
-    },
+    } as Organization,
   };
 }
 
@@ -306,7 +362,7 @@ export function generateArticleSchema(
   modifiedDate: string,
   authors: Array<{ name: string; url?: string }>,
   category?: string,
-) {
+): WithContext<Article> {
   return {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
@@ -316,23 +372,25 @@ export function generateArticleSchema(
     url,
     datePublished: publishedDate,
     dateModified: modifiedDate,
-    author: authors.map((author) => ({
-      "@type": "Person",
-      name: author.name,
-      url: author.url,
-    })),
+    author: authors.map(
+      (author): Person => ({
+        "@type": "Person",
+        name: author.name,
+        url: author.url,
+      }),
+    ),
     publisher: {
       "@type": "Organization",
       name: siteConfig.name,
       logo: {
         "@type": "ImageObject",
         url: `${siteConfig.url}/images/logos/logo.webp`,
-      },
-    },
+      } as ImageObject,
+    } as Organization,
     mainEntityOfPage: {
       "@type": "WebPage",
       "@id": url,
-    },
+    } as WebPage,
     ...(category && { articleSection: category }),
   };
 }
@@ -344,21 +402,23 @@ export function generateHowToSchema(
   name: string,
   description: string,
   steps: Array<{ name: string; text: string; image?: string }>,
-) {
+): WithContext<HowTo> {
   return {
     "@context": "https://schema.org",
     "@type": "HowTo",
     name,
     description,
-    step: steps.map((step, index) => ({
-      "@type": "HowToStep",
-      position: index + 1,
-      name: step.name,
-      text: step.text,
-      ...(step.image && {
-        image: step.image,
+    step: steps.map(
+      (step, index): HowToStep => ({
+        "@type": "HowToStep",
+        position: index + 1,
+        name: step.name,
+        text: step.text,
+        ...(step.image && {
+          image: step.image,
+        }),
       }),
-    })),
+    ),
   };
 }
 
@@ -368,27 +428,29 @@ export function generateHowToSchema(
 export function generateItemListSchema(
   items: Array<{ name: string; url: string; description?: string }>,
   listType: "BlogPosting" | "Article" | "Product" = "BlogPosting",
-) {
+): WithContext<ItemList> {
   return {
     "@context": "https://schema.org",
     "@type": "ItemList",
-    itemListElement: items.map((item, index) => ({
-      "@type": "ListItem",
-      position: index + 1,
-      item: {
-        "@type": listType,
-        name: item.name,
-        url: item.url,
-        ...(item.description && { description: item.description }),
-      },
-    })),
+    itemListElement: items.map(
+      (item, index): ListItem => ({
+        "@type": "ListItem",
+        position: index + 1,
+        item: {
+          "@type": listType,
+          name: item.name,
+          url: item.url,
+          ...(item.description && { description: item.description }),
+        },
+      }),
+    ),
   };
 }
 
 /**
  * Generate ContactPage structured data (JSON-LD)
  */
-export function generateContactPageSchema() {
+export function generateContactPageSchema(): WithContext<ContactPage> {
   return {
     "@context": "https://schema.org",
     "@type": "ContactPage",
@@ -404,15 +466,15 @@ export function generateContactPageSchema() {
         contactType: "Customer Support",
         url: `${siteConfig.url}/contact`,
         availableLanguage: ["English"],
-      },
-    },
+      } as ContactPoint,
+    } as Organization,
   };
 }
 
 /**
  * Generate AboutPage structured data (JSON-LD)
  */
-export function generateAboutPageSchema() {
+export function generateAboutPageSchema(): WithContext<AboutPage> {
   return {
     "@context": "https://schema.org",
     "@type": "AboutPage",
@@ -424,11 +486,13 @@ export function generateAboutPageSchema() {
       name: siteConfig.name,
       description: siteConfig.description,
       url: siteConfig.url,
-      founders: siteConfig.founders.map((founder) => ({
-        "@type": "Person",
-        name: founder.name,
-        jobTitle: founder.role,
-      })),
-    },
+      founders: siteConfig.founders.map(
+        (founder): Person => ({
+          "@type": "Person",
+          name: founder.name,
+          jobTitle: founder.role,
+        }),
+      ),
+    } as Organization,
   };
 }

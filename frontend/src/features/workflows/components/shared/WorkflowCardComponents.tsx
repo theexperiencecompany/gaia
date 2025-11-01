@@ -7,6 +7,7 @@ import { Clock, Mail, Play, User } from "lucide-react";
 import Image from "next/image";
 
 import { CursorMagicSelection03Icon } from "@/components";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { formatRunCount } from "@/utils/formatters";
 
 import { Workflow } from "../../api/workflowApi";
@@ -61,6 +62,18 @@ export function TriggerIcon({
     );
   }
 
+  // Use getToolCategoryIcon for integration-based triggers like gmail
+  const categoryIcon = getToolCategoryIcon(triggerType, {
+    width: size,
+    height: size,
+    showBackground: false,
+  });
+
+  if (categoryIcon) {
+    return <div className="flex items-center">{categoryIcon}</div>;
+  }
+
+  // Fallback icons for basic trigger types
   switch (triggerType) {
     case "schedule":
       return <Clock width={size} height={size} />;

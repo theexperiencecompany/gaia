@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 
 import { Plan, pricingApi } from "../api/pricingApi";
 
-export const usePricing = () => {
+export const usePricing = (initialPlans: Plan[] = []) => {
   const [error, setError] = useState<string | null>(null);
 
   // Get all plans
@@ -17,6 +17,7 @@ export const usePricing = () => {
     queryKey: ["plans"],
     queryFn: () => pricingApi.getPlans(),
     staleTime: 5 * 60 * 1000, // 5 minutes
+    initialData: initialPlans.length > 0 ? initialPlans : undefined,
   });
 
   // Get user subscription status

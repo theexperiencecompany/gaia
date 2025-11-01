@@ -87,7 +87,6 @@ def get_public_workflows_configuration(user_id: str = "system") -> List[Dict[str
                 "cron_expression": "0 8 * * 1-5",  # 8 AM on weekdays
                 "timezone": "UTC",
             },
-            "upvotes": 15,
             "total_executions": 45,
             "successful_executions": 42,
         },
@@ -132,7 +131,6 @@ def get_public_workflows_configuration(user_id: str = "system") -> List[Dict[str
                 "cron_expression": "0 18 * * 5",  # 6 PM on Fridays
                 "timezone": "UTC",
             },
-            "upvotes": 23,
             "total_executions": 67,
             "successful_executions": 61,
         },
@@ -178,7 +176,6 @@ def get_public_workflows_configuration(user_id: str = "system") -> List[Dict[str
                 },
             ],
             "trigger_config": {"type": "manual", "enabled": True},
-            "upvotes": 31,
             "total_executions": 89,
             "successful_executions": 84,
         },
@@ -223,9 +220,8 @@ def get_public_workflows_configuration(user_id: str = "system") -> List[Dict[str
                 "cron_expression": "0 7 * * 1-5",  # 7 AM on weekdays
                 "timezone": "UTC",
             },
-            "upvotes": 19,
-            "total_executions": 156,
-            "successful_executions": 142,
+            "total_executions": 63,
+            "successful_executions": 60,
         },
         # Content Creation
         {
@@ -271,11 +267,10 @@ def get_public_workflows_configuration(user_id: str = "system") -> List[Dict[str
                 "cron_expression": "0 9 * * 1",  # 9 AM on Mondays
                 "timezone": "UTC",
             },
-            "upvotes": 27,
-            "total_executions": 73,
-            "successful_executions": 68,
+            "total_executions": 72,
+            "successful_executions": 69,
         },
-        # Project Management
+        # Email Management
         {
             "title": "Project Status Update",
             "description": "Gather project updates, create status reports, and plan next steps",
@@ -316,7 +311,6 @@ def get_public_workflows_configuration(user_id: str = "system") -> List[Dict[str
                 "cron_expression": "0 16 * * 3",  # 4 PM on Wednesdays
                 "timezone": "UTC",
             },
-            "upvotes": 21,
             "total_executions": 94,
             "successful_executions": 89,
         },
@@ -364,7 +358,6 @@ def get_public_workflows_configuration(user_id: str = "system") -> List[Dict[str
                 "cron_expression": "0 10 * * 1-5",  # 10 AM on weekdays
                 "timezone": "UTC",
             },
-            "upvotes": 18,
             "total_executions": 134,
             "successful_executions": 127,
         },
@@ -409,7 +402,6 @@ def get_public_workflows_configuration(user_id: str = "system") -> List[Dict[str
                 "cron_expression": "0 19 * * 0",  # 7 PM on Sundays
                 "timezone": "UTC",
             },
-            "upvotes": 12,
             "total_executions": 38,
             "successful_executions": 35,
         },
@@ -457,7 +449,6 @@ def get_public_workflows_configuration(user_id: str = "system") -> List[Dict[str
                 "cron_expression": "0 20 28-31 * *",  # 8 PM on last days of month
                 "timezone": "UTC",
             },
-            "upvotes": 16,
             "total_executions": 29,
             "successful_executions": 27,
         },
@@ -500,9 +491,8 @@ def get_public_workflows_configuration(user_id: str = "system") -> List[Dict[str
                 },
             ],
             "trigger_config": {"type": "manual", "enabled": True},
-            "upvotes": 25,
-            "total_executions": 47,
-            "successful_executions": 44,
+            "total_executions": 28,
+            "successful_executions": 26,
         },
     ]
 
@@ -533,7 +523,6 @@ def create_workflow_from_config(config: Dict[str, Any]) -> Workflow:
         activated=config.get("activated", True),
         is_public=config.get("is_public", False),
         created_by=config.get("created_by", config["user_id"]),
-        upvotes=config.get("upvotes", 0),
         total_executions=config.get("total_executions", 0),
         successful_executions=config.get("successful_executions", 0),
         created_at=datetime.now(timezone.utc),
@@ -611,7 +600,6 @@ async def seed_workflows(
         )
         print(f"       ⚡ {trigger_desc}")
         print(f"       🔧 {len(config['steps'])} steps")
-        print(f"       👍 {config.get('upvotes', 0)} upvotes")
 
     if dry_run:
         print("\n🔍 DRY RUN - No changes will be applied.")

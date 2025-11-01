@@ -1,5 +1,7 @@
 import { memo } from "react";
 
+import Spinner from "../ui/shadcn/spinner";
+
 // Lightweight CSS-only loader to reduce JS execution time
 const SuspenseLoader = memo(function SuspenseLoader({
   fullHeight = false,
@@ -14,11 +16,7 @@ const SuspenseLoader = memo(function SuspenseLoader({
         fullWidth ? "w-screen" : "w-full"
       } flex items-center justify-center p-3`}
     >
-      <div
-        className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-600 border-t-white"
-        role="status"
-        aria-label="Loading content"
-      />
+      <Spinner />
     </div>
   );
 });
