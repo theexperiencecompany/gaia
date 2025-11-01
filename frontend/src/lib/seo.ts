@@ -9,7 +9,7 @@ export const siteConfig = {
   url: "https://heygaia.io",
   ogImage: "/images/screenshot.webp",
   links: {
-    twitter: "https://x.com/_heygaia",
+    twitter: "https://x.com/trygaia",
     github: "https://github.com/heygaia",
     discord: "https://discord.heygaia.io",
     linkedin: "https://www.linkedin.com/company/heygaia",
@@ -119,8 +119,8 @@ export function generatePageMetadata({
       title: fullTitle,
       description,
       images: [image],
-      creator: "@_heygaia",
-      site: "@_heygaia",
+      creator: "@trygaia",
+      site: "@trygaia",
     },
   };
 
