@@ -102,15 +102,17 @@ export default function Navbar() {
             as={Link}
             href={"/"}
             variant="light"
-            isIconOnly
-            className="h-10 w-10"
+            className="px-2"
+            // isIconOnly
+            // className="h-10 w-10"
           >
             <Image
-              src="/images/logos/logo.webp"
+              // src="/images/logos/logo.webp"
+              src="/images/logos/text_w_logo_white.webp"
               alt="GAIA Logo"
-              width={25}
-              height={25}
-              className="min-w-[25px]"
+              width={100}
+              height={100}
+              className="object-contain"
             />
             {/* <span className="tracking-tigher text-xl font-medium">GAIA</span> */}
           </Button>

@@ -88,14 +88,13 @@ export default function Footer() {
               <div className="mt-2 flex flex-col items-start px-2 text-xl font-medium text-white sm:px-3 sm:text-2xl">
                 <Link href={"/"}>
                   <Image
-                    src="/images/logos/logo.webp"
+                    src="/images/logos/text_w_logo_white.webp"
                     alt="GAIA Logo"
-                    width={45}
+                    width={150}
                     height={45}
                   />
                 </Link>
-                <div className="mt-2">GAIA</div>
-                <div className="text-sm font-light text-foreground-400">
+                <div className="mt-2 text-sm font-light text-foreground-400">
                   {randomTagline}
                 </div>
               </div>
