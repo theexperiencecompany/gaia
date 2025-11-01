@@ -46,7 +46,7 @@ export function extractDescription(
 export function generateBlogMetadata(blog: BlogPost): Metadata {
   const description = extractDescription(blog.content);
   const canonicalUrl = `https://heygaia.io/blog/${blog.slug}`;
-  const imageUrl = blog.image || "/images/screenshot.webp";
+  const imageUrl = blog.image || "og-image.webp";
 
   return {
     title: blog.title,
@@ -92,7 +92,7 @@ export function generateBlogStructuredData(
     "@type": "BlogPosting",
     headline: blog.title,
     description: extractDescription(blog.content),
-    image: blog.image || "/images/screenshot.webp",
+    image: blog.image || "og-image.webp",
     author:
       blog.author_details?.map(
         (author): Person => ({

@@ -13,14 +13,14 @@ export const metadata: Metadata = {
     type: "website",
     description:
       "Start a new conversation with GAIA, your AI assistant designed to help with tasks, answer questions, and boost productivity.",
-    images: ["/images/screenshot.webp"],
+    images: ["og-image.webp"],
   },
   twitter: {
     card: "summary_large_image",
     title: "New chat",
     description:
       "Start a new conversation with GAIA, your AI assistant designed to help with tasks, answer questions, and boost productivity.",
-    images: ["/images/screenshot.webp"],
+    images: ["og-image.webp"],
   },
   keywords: [
     "GAIA",
