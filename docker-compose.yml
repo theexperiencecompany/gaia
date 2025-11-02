@@ -8,19 +8,7 @@ services:
     build: ./backend
     image: gaia
     working_dir: /app
-    command:
-      [
-        "python",
-        "-m",
-        "uvicorn",
-        "app.main:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "80",
-        "--reload",
-        "--no-access-log",
-      ]
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80", "--reload", "--no-access-log"]
     environment:
       DEBUG: 1
       PYTHONUNBUFFERED: 1
@@ -69,8 +57,7 @@ services:
       - "8080:8000"
     restart: on-failure
     healthcheck:
-      test:
-        ["CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000"]
+      test: ["CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000"]
       interval: 10s
       timeout: 10s
       retries: 5
@@ -192,12 +179,44 @@ services:
     networks:
       - gaia_network
 
+  # Voice Agent Worker
+  voice-agent-worker:
+    container_name: voice-agent-worker
+    profiles: ["", "backend-only"]
+    build:
+      context: .                                  # project root (so backend/.env & backend/voice_agent files are available)
+      dockerfile: backend/voice_agent/Dockerfile
+    working_dir: /app
+    user: "appuser"
+    # default command: can be "dev" for local/hot-reload or "start" for production
+    command: >
+      uv run -m src.voice_agent start
+    environment:
+      PYTHONUNBUFFERED: 1
+      FORCE_COLOR: 1
+      WORKER_TYPE: voice_agent_worker
+      # HF hub flags to permit model downloads (if needed)
+      HF_HUB_OFFLINE: "0"
+      LOCAL_FILES_ONLY: "0"
+      HF_HUB_ENABLE_HF_TRANSFER: "1"
+    env_file:
+      - ./backend/.env
+    # DEV: bind mount only if you want local code edits inside container (comment out for pure-image runs)
+    # volumes:
+    #   - ./backend/voice_agent:/app
+    volumes:
+      - livekit_models:/home/appuser/.cache/huggingface # Persist Hugging Face models between runs
+    restart: on-failure
+    networks:
+      - gaia_network
+
 volumes:
   chroma_data:
   pgdata:
   redis_data:
   mongo_data:
   rabbitmq_data:
+  livekit_models:
 
 networks:
   gaia_network:

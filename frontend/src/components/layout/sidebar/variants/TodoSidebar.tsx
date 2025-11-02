@@ -20,9 +20,11 @@ import TodoModal from "@/features/todo/components/TodoModal";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { Priority } from "@/types/features/todoTypes";
 
+import type React from "react";
+
 type MenuItem = {
   label: string;
-  icon: React.ElementType;
+  icon: React.ElementType | (() => React.JSX.Element);
   href: string;
   count?: number;
 };
@@ -61,7 +63,7 @@ function SidebarSection({
             key={item.href}
             fullWidth
             startContent={
-              <item.icon className="w-[20px] text-foreground-500" />
+              typeof item.icon === "function" ? <item.icon /> : null
             }
             endContent={
               item.count !== undefined && (

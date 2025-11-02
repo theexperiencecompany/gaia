@@ -165,7 +165,6 @@ class ProductionSettings(CommonSettings):
 
     # Media & Content Processing
     ASSEMBLYAI_API_KEY: str
-    DEEPGRAM_API_KEY: str
 
     # Weather Services
     OPENWEATHER_API_KEY: str
@@ -182,6 +181,17 @@ class ProductionSettings(CommonSettings):
     # External Service Integration
     COMPOSIO_KEY: str
     FIRECRAWL_API_KEY: str
+
+    # LIVEKIT Configuration
+    LIVEKIT_URL: str
+    LIVEKIT_API_KEY: str
+    LIVEKIT_API_SECRET: str
+    AGENT_SECRET: str
+    DEEPGRAM_API_KEY: str
+    ELEVENLABS_API_KEY: str
+    ELEVENLABS_TTS_MODEL: str
+    GAIA_BACKEND_URL: str
+    ELEVENLABS_VOICE_ID: str
 
     # ----------------------------------------------
     # Webhook Secrets & Security
@@ -257,7 +267,6 @@ class DevelopmentSettings(CommonSettings):
 
     # Media & Content Processing
     ASSEMBLYAI_API_KEY: Optional[str] = None
-    DEEPGRAM_API_KEY: Optional[str] = None
 
     # Weather Services
     OPENWEATHER_API_KEY: Optional[str] = None
@@ -280,6 +289,17 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     COMPOSIO_WEBHOOK_SECRET: Optional[str] = None
     DODO_WEBHOOK_PAYMENTS_SECRET: Optional[str] = None
+
+    # LIVEKIT Configuration
+    LIVEKIT_URL: Optional[str] = None
+    LIVEKIT_API_KEY: Optional[str] = None
+    LIVEKIT_API_SECRET: Optional[str] = None
+    AGENT_SECRET: Optional[str] = None
+    DEEPGRAM_API_KEY: Optional[str] = None
+    ELEVENLABS_API_KEY: Optional[str] = None
+    ELEVENLABS_TTS_MODEL: Optional[str] = None
+    GAIA_BACKEND_URL: Optional[str] = "http://host.docker.internal:8000"
+    ELEVENLABS_VOICE_ID: Optional[str] = None
 
     # ----------------------------------------------
     # Content Management
@@ -324,6 +344,21 @@ class DevelopmentSettings(CommonSettings):
     )
 
 
+_infisical_secrets_loaded = False
+
+
+def _ensure_infisical_loaded():
+    """Ensure Infisical secrets are loaded exactly once."""
+    global _infisical_secrets_loaded
+    if not _infisical_secrets_loaded:
+        infisical_start = time.time()
+        inject_infisical_secrets()
+        logger.info(
+            f"Infisical secrets loaded in {(time.time() - infisical_start):.3f}s"
+        )
+        _infisical_secrets_loaded = True
+
+
 @lru_cache(maxsize=1)
 def get_settings():
     """
@@ -334,10 +369,7 @@ def get_settings():
     """
     logger.info("Starting settings initialization...")
 
-    # Load environment variables from Infisical
-    infisical_start = time.time()
-    inject_infisical_secrets()
-    logger.info(f"Infisical secrets loaded in {(time.time() - infisical_start):.3f}s")
+    _ensure_infisical_loaded()
 
     env = os.getenv("ENV", "production")
 

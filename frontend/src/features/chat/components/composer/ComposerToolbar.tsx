@@ -14,6 +14,7 @@ interface SearchbarToolbarProps {
   selectedTool?: string | null;
   onToggleSlashCommandDropdown?: () => void;
   isSlashCommandDropdownOpen?: boolean;
+  voiceModeActive: () => void;
 }
 
 const ComposerToolbar: React.FC<SearchbarToolbarProps> = ({
@@ -25,6 +26,7 @@ const ComposerToolbar: React.FC<SearchbarToolbarProps> = ({
   selectedTool,
   onToggleSlashCommandDropdown,
   isSlashCommandDropdownOpen,
+  voiceModeActive,
 }) => {
   return (
     <div className="flex items-center justify-between px-2 pt-1">
@@ -42,6 +44,7 @@ const ComposerToolbar: React.FC<SearchbarToolbarProps> = ({
           handleFormSubmit={handleFormSubmit}
           searchbarText={searchbarText}
           selectedTool={selectedTool}
+          setvoiceModeActive={voiceModeActive}
         />
       </div>
     </div>

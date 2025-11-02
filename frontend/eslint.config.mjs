@@ -52,8 +52,8 @@ export default [
       "unused-imports/no-unused-imports": "error",
       "react/no-unescaped-entities": "off",
       "import/order": "off",
-      "simple-import-sort/imports": "warn",
-      "simple-import-sort/exports": "warn",
+      "simple-import-sort/imports": "off", // Turn off import sorting warnings
+      "simple-import-sort/exports": "off", // Turn off export sorting warnings
       "@typescript-eslint/no-unused-vars": [
         "warn",
         {

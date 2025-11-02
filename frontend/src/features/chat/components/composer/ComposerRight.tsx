@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
-import { ArrowUp, Square } from "lucide-react";
+import { ArrowUp, AudioLines, Square } from "lucide-react";
 
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
@@ -10,15 +10,18 @@ interface RightSideProps {
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
   searchbarText: string;
   selectedTool?: string | null;
+  setvoiceModeActive: () => void;
 }
 
 export default function RightSide({
   handleFormSubmit,
   searchbarText,
   selectedTool,
+  setvoiceModeActive,
 }: RightSideProps) {
   const { isLoading, stopStream } = useLoading();
   const { selectedWorkflow } = useWorkflowSelection();
+
   const hasText = searchbarText.trim().length > 0;
   const hasSelectedTool = selectedTool != null;
   const hasSelectedWorkflow = selectedWorkflow != null;
@@ -33,7 +36,6 @@ export default function RightSide({
     }
 
     if (hasSelectedTool && !hasText) {
-      // Format tool name to be more readable
       const formattedToolName = selectedTool
         ?.split("_")
         .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -62,8 +64,22 @@ export default function RightSide({
   };
 
   return (
-    <div className="ml-2 flex items-center gap-1">
-      <Tooltip content={getTooltipContent()} placement="right" showArrow>
+    <div className="ml-2 flex items-center gap-2">
+      <Tooltip content="Voice Mode" placement="left" color="primary" showArrow>
+        <Button
+          isIconOnly
+          aria-label="Voice Mode"
+          className="h-9 min-h-9 w-9 max-w-9 min-w-9"
+          color="default"
+          radius="full"
+          type="button"
+          onPress={() => setvoiceModeActive()}
+        >
+          <AudioLines />
+        </Button>
+      </Tooltip>
+
+      <Tooltip content={getTooltipContent()} placement="right"  color={isLoading ? "danger" : "primary"} showArrow>
         <Button
           isIconOnly
           aria-label={isLoading ? "Stop generation" : "Send message"}

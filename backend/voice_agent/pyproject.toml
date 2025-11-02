@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voice-agent-worker"
+version = "1.0.0"
+description = "Voice AI agent for the GAIA app"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+dependencies = [
+    "livekit==1.0.12",
+    "livekit-agents[turn-detector,silero,deepgram]~=1.2",
+    "livekit-plugins-noise-cancellation~=0.2",
+    "livekit-plugins-elevenlabs~=1.2",
+    "python-dotenv",
+    "aiohttp",
+    "pydantic-settings>=2.11.0",
+    "infisicalsdk>=1.0.7",
+    "stackprinter>=0.2.12",
+    "pydantic>=2.11.9",
+    "loguru>=0.7.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "B", "A", "C4", "UP", "SIM", "RUF"]
+ignore = ["E501"]  # Line too long (handled by formatter)
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

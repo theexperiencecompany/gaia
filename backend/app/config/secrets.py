@@ -11,6 +11,7 @@ Local environment variables take precedence over Infisical secrets.
 
 import os
 import time
+from functools import lru_cache
 
 from app.config.loggers import app_logger as logger
 from app.utils.exceptions import InfisicalConfigError
@@ -20,9 +21,33 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+_infisical_initialized = False
+
+
+@lru_cache(maxsize=1)
+def _get_infisical_client():
+    """Get or create a cached Infisical client instance."""
+    CLIENT_ID = os.getenv("INFISICAL_MACHINE_INDENTITY_CLIENT_ID")
+    CLIENT_SECRET = os.getenv("INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET")
+
+    client = InfisicalSDKClient(
+        host="https://app.infisical.com",
+        cache_ttl=3600,
+    )
+    client.auth.universal_auth.login(
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET,
+    )
+    return client
+
 
 def inject_infisical_secrets():
-    INFISICAL_TOKEN = os.getenv("INFISICAL_TOKEN")
+    """Inject all Infisical secrets into environment variables once."""
+    global _infisical_initialized
+
+    if _infisical_initialized:
+        return
+
     INFISICAL_PROJECT_ID = os.getenv("INFISICAL_PROJECT_ID")
     ENV = os.getenv("ENV", "production")
     CLIENT_ID = os.getenv("INFISICAL_MACHINE_INDENTITY_CLIENT_ID")
@@ -31,7 +56,6 @@ def inject_infisical_secrets():
     is_production = ENV == "production"
 
     missing_configs = [
-        (INFISICAL_TOKEN, "INFISICAL_TOKEN"),
         (INFISICAL_PROJECT_ID, "INFISICAL_PROJECT_ID"),
         (CLIENT_ID, "INFISICAL_MACHINE_INDENTITY_CLIENT_ID"),
         (CLIENT_SECRET, "INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET"),
@@ -52,41 +76,24 @@ def inject_infisical_secrets():
         start_time = time.time()
         logger.info("Connecting to Infisical...")
 
-        client = InfisicalSDKClient(
-            host="https://app.infisical.com",
-            cache_ttl=3600,
-        )
-        client.auth.universal_auth.login(
-            client_id=CLIENT_ID,
-            client_secret=CLIENT_SECRET,
-        )
+        client = _get_infisical_client()
         logger.info(
             f"Infisical authentication completed in {time.time() - start_time:.3f}s"
         )
 
         secrets_start = time.time()
         secrets = client.secrets.list_secrets(
-            # The unique identifier for your Infisical project
             project_id=INFISICAL_PROJECT_ID,
-            # Environment name (e.g., "development", "production")
             environment_slug=ENV,
-            # Root path for secrets in the project
-            # nosec B322 - Bandit in pre-commit flags as unsafe.
-            secret_path="/",
-            # Resolves any referenced secrets (e.g., ${SECRET})
+            secret_path="/",  # noqa: S105
             expand_secret_references=True,
-            view_secret_value=True,  # Returns decrypted secret values, not just keys
-            recursive=False,  # Does not fetch secrets from nested paths
-            include_imports=True,  # Includes secrets imported from other projects/paths
+            view_secret_value=True,
+            recursive=False,
+            include_imports=True,
         )
         logger.info(f"Infisical secrets fetched in {time.time() - secrets_start:.3f}s")
 
         injection_start = time.time()
-
-        # Inject secrets from Infisical into environment variables
-        # !IMPORTANT: Local environment variables take precedence over Infisical secrets.
-        # This allows overriding Infisical values with local .env files or manually set variables.
-        # Only sets the secret if it's not already present in the environment.
         for secret in secrets.secrets:
             if os.environ.get(secret.secretKey) is None:
                 os.environ[secret.secretKey] = secret.secretValue
@@ -94,6 +101,7 @@ def inject_infisical_secrets():
         logger.info(
             f"Secrets injected into environment in {time.time() - injection_start:.3f}s"
         )
+        _infisical_initialized = True
 
     except Exception as e:
         raise InfisicalConfigError(

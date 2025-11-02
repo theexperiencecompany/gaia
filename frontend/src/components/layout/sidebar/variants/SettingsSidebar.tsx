@@ -14,7 +14,7 @@ import {
 
 type MenuItem = {
   label: string;
-  icon: React.ElementType;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement> & { className?: string }>;
   href: string;
 };
 

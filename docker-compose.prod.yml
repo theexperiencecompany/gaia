@@ -131,6 +131,35 @@ services:
     networks:
       - gaia_network
 
+# Voice Agent Worker
+# voice-agent-worker:
+#   container_name: voice-agent-worker
+#   image: ghcr.io/heygaia/voice-agent-worker:latest
+#   profiles: ["", "backend-only"]
+#   working_dir: /app
+#   user: "appuser"
+#   command: >
+#     uv run -m src.voice_agent start
+#   environment:
+#     PYTHONUNBUFFERED: 1
+#     FORCE_COLOR: 1
+#     WORKER_TYPE: voice_agent_worker
+#     HF_HUB_OFFLINE: "1"
+#     HF_HUB_ENABLE_HF_TRANSFER: "1"
+#     HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+#     # Set this to true if you want to skip re-downloading models at container startup
+#     SKIP_MODEL_DOWNLOAD: "true"
+#   env_file:
+#     - ./backend/.env
+#   volumes:
+#     - livekit_models:/home/appuser/.cache/huggingface
+#   restart: always
+#   depends_on:
+#     gaia-backend:
+#       condition: service_healthy
+#   networks:
+#     - gaia_network
+
 volumes:
   chroma_data:
   pgdata:

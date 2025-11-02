@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 
+import { VoiceApp } from "@/features/chat/components/composer/VoiceModeOverlay";
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations";
@@ -17,6 +18,7 @@ import { ChatWithMessages, NewChatLayout } from "./layouts";
 import ScrollToBottomButton from "./ScrollToBottomButton";
 
 const ChatPage = React.memo(function MainChat() {
+  const [voiceModeActive, setVoiceModeActive] = useState(false);
   const { updateConvoMessages, clearMessages, convoMessages } =
     useConversation();
   const pendingPrompt = usePendingPrompt();
@@ -84,7 +86,9 @@ const ChatPage = React.memo(function MainChat() {
     <div className="flex h-full flex-col">
       <FileDropModal isDragging={isDragging} />
 
-      {hasMessages ? (
+      {voiceModeActive ? (
+        <VoiceApp onEndCall={() => setVoiceModeActive(false)} />
+      ) : hasMessages ? (
         <>
           <ChatWithMessages
             scrollContainerRef={scrollContainerRef}
@@ -92,6 +96,7 @@ const ChatPage = React.memo(function MainChat() {
             handleScroll={handleScroll}
             dragHandlers={dragHandlers}
             composerProps={composerProps}
+            voiceModeActive={() => setVoiceModeActive(true)}
           />
           <ScrollToBottomButton
             onScrollToBottom={scrollToBottom}
@@ -107,6 +112,7 @@ const ChatPage = React.memo(function MainChat() {
             handleScroll={handleScroll}
             dragHandlers={dragHandlers}
             composerProps={composerProps}
+            voiceModeActive={() => setVoiceModeActive(true)}
           />
           <ScrollToBottomButton
             onScrollToBottom={scrollToBottom}

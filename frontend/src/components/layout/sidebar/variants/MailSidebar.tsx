@@ -8,7 +8,7 @@ import MailCompose from "@/features/mail/components/MailCompose";
 
 type MailItem = {
   label: string;
-  icon: React.ElementType;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
 };
 
 const mailItems: MailItem[] = [
@@ -22,13 +22,13 @@ const mailItems: MailItem[] = [
 
 type MailButtonProps = {
   label: string;
-  Icon: React.ElementType;
+  Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
 };
 
 function MailButton({ label, Icon }: MailButtonProps) {
   return (
     <Button
-      startContent={<Icon color={undefined} width={21} height={21} />}
+      startContent={<Icon width={21} height={21} />}
       variant="light"
       radius="sm"
       size="sm"
@@ -67,7 +67,7 @@ export default function EmailSidebar() {
             onPress={() => setOpen(true)}
             variant="flat"
           >
-            <QuillWrite01Icon color={undefined} width={18} height={18} />
+            <QuillWrite01Icon width={18} height={18} />
             Compose Email
           </Button>
         </div>

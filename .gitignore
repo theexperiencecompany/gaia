@@ -10,7 +10,6 @@ api/.env
 *.pyc
 .vercel
 .DS_Store
-uv.lock
 
 venv/
 .venv/
@@ -28,7 +27,6 @@ venv/
 .idea
 
 
-uv.lock
 
 .terraform/
 .terraform
@@ -92,5 +90,8 @@ dist/
 .pnpm-store/
 
 .vscode/settings.json
+
+uv.lock
+!backend/voice_agent/uv.lock
 .cursor
 .hypothesis

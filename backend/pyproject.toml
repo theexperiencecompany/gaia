@@ -7,13 +7,13 @@ requires-python = ">=3.11"
 
 dependencies = [
   "langgraph-checkpoint-postgres>=2.0.21",
+  "python-jose",
   "pyppeteer>=0.0.25",
   "assemblyai>=0.37.0",
   "beautifulsoup4==4.12.3",
   "browser-use>=0.1.40",
   "bs4==0.0.2",
   "cloudinary==1.41.0",
-  "deepgram-sdk>=3.10.0",
   "docx2txt>=0.9",
   "fastapi[standard]==0.115.6",
   "google-api-core==2.24.0",
@@ -110,6 +110,7 @@ dependencies = [
   "fastapi-cache2[redis]>=0.1.8",
   "orjson>=3.11.3",
   "ujson>=5.11.0",
+  "livekit-api",
   "uvloop>=0.21.0; sys_platform != 'win32'",
   "mem0ai>=0.1.118",
   "firecrawl-py>=4.3.6",

@@ -22,10 +22,15 @@ import {
   ChatBubbleBotProps,
   SetImageDataType,
 } from "@/types/features/chatBubbleTypes";
-import { MessageType } from "@/types/features/convoTypes";
+import type { MessageType } from '@/types/features/convoTypes';
 
-export default function ChatRenderer() {
-  const { convoMessages } = useConversation();
+interface ChatRendererProps {
+  convoMessages?: MessageType[];
+}
+
+export default function ChatRenderer({ convoMessages: propConvoMessages }: ChatRendererProps) {
+  const { convoMessages: storeConvoMessages } = useConversation();
+  const convoMessages = propConvoMessages ?? storeConvoMessages;
   const { conversations } = useConversationList();
   const [openGeneratedImage, setOpenGeneratedImage] = useState<boolean>(false);
   const [openMemoryModal, setOpenMemoryModal] = useState<boolean>(false);

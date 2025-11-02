@@ -15,6 +15,8 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 from workos import AsyncWorkOSClient
+from app.api.v1.middleware.agent_auth import verify_agent_token
+from bson import ObjectId
 
 
 class WorkOSAuthMiddleware(BaseHTTPMiddleware):
@@ -48,6 +50,8 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/oauth/logout",
             "/health",
         ]
+        # agent only paths
+        self.agent_only_paths = ["/api/v1/chat-stream"]
         # Cache expiry time
         self.user_cache_expiry = 3600  # 1 hour
 
@@ -94,6 +98,39 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             except Exception as e:
                 logger.error(f"Authentication middleware error: {e}")
                 # Don't block request on auth failures - routes can handle this
+        if (
+            not request.state.authenticated
+            and request.url.path in self.agent_only_paths
+        ):
+            auth_header = request.headers.get("Authorization")
+            agent_info = None
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ", 1)[1]
+                agent_info = verify_agent_token(token)
+            if agent_info:
+                # fetch user from db
+                user_id = agent_info["user_id"]
+                # Ensure user_id is an ObjectId
+                if not isinstance(user_id, ObjectId):
+                    try:
+                        user_id = ObjectId(user_id)
+                    except Exception as e:
+                        logger.error(f"Invalid user_id format: {user_id} - {e}")
+                        user_data = None
+                    else:
+                        user_data = await users_collection.find_one({"_id": user_id})
+                else:
+                    user_data = await users_collection.find_one({"_id": user_id})
+                if user_data:
+                    request.state.user = {
+                        "user_id": str(user_data.get("_id")),
+                        "email": user_data.get("email"),
+                        "name": user_data.get("name"),
+                        "picture": user_data.get("picture"),
+                        "auth_provider": "workos",
+                        "impersonated": True,
+                    }
+                    request.state.authenticated = True
 
         # Process the request
         response = await call_next(request)
