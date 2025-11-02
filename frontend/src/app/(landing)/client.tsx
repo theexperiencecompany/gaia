@@ -1,6 +1,5 @@
 "use client";
 
-import { ReactLenis } from "lenis/react";
 import Image from "next/image";
 import { lazy, Suspense, useEffect } from "react";
 

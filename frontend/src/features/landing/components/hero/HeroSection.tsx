@@ -1,7 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 
-import { Button, Github } from "@/components";
+import { Github } from "@/components";
 import ShinyText from "@/components/ui/shadcn/shimmering-chip";
 import { useLatestRelease } from "@/hooks/useLatestRelease";
 import { MotionContainer } from "@/layouts/MotionContainer";
