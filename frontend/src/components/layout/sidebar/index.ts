@@ -14,7 +14,6 @@ export * from "./right-variants/GoalSidebar";
 export * from "./right-variants/TodoSidebar";
 export * from "./RightSidebar";
 export * from "./SidebarTopButtons";
-export * from "./TopWebsiteName";
 export * from "./UserContainer";
 export * from "./variants/BrowserSidebar";
 export * from "./variants/CalendarSidebar";

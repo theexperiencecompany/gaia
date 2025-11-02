@@ -23,17 +23,17 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
   });
 
   return (
-    <Suspense fallback={<SuspenseLoader fullHeight fullWidth />}>
-      <HeroUIProvider>
-        <QueryProvider>
+    <HeroUIProvider>
+      <QueryProvider>
+        <Suspense fallback={<SuspenseLoader />}>
           <GlobalAuth />
-          <GlobalInterceptor />
-          {/* <HydrationManager /> */}
-          <LoginModal />
-          <Toaster closeButton richColors position="top-right" theme="dark" />
-          {children}
-        </QueryProvider>
-      </HeroUIProvider>
-    </Suspense>
+        </Suspense>
+        <GlobalInterceptor />
+        {/* <HydrationManager /> */}
+        <LoginModal />
+        <Toaster closeButton richColors position="top-right" theme="dark" />
+        {children}
+      </QueryProvider>
+    </HeroUIProvider>
   );
 }

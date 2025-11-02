@@ -9,8 +9,8 @@ export default function Spinner({
       <Image
         alt="GAIA Logo"
         src={"/images/logos/logo.webp"}
-        width={25}
-        height={25}
+        width={30}
+        height={30}
         className={`animate-spin`}
       />
     );

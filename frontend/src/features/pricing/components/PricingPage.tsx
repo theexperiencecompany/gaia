@@ -9,8 +9,14 @@ import LargeHeader from "@/features/landing/components/shared/LargeHeader";
 import { ComparisonTable } from "@/features/pricing/components/ComparisonTable";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 
+import type { Plan } from "../api/pricingApi";
 import { FAQAccordion } from "./FAQAccordion";
-export default function PricingPage() {
+
+interface PricingPageProps {
+  initialPlans?: Plan[];
+}
+
+export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
   return (
     <div className="flex min-h-screen w-screen flex-col items-center justify-center pt-[40vh]">
       <div className="absolute inset-0 top-0 z-0 h-[65vh] w-[102%]">
@@ -36,7 +42,7 @@ export default function PricingPage() {
         <div className="mt-5 flex w-full flex-col items-center font-medium">
           <Tabs aria-label="Options" radius="full">
             <Tab key="monthly" title="Monthly">
-              <PricingCards durationIsMonth />
+              <PricingCards durationIsMonth initialPlans={initialPlans} />
             </Tab>
             <Tab
               key="yearly"
@@ -49,7 +55,7 @@ export default function PricingPage() {
                 </div>
               }
             >
-              <PricingCards />
+              <PricingCards initialPlans={initialPlans} />
             </Tab>
           </Tabs>
         </div>

@@ -27,8 +27,9 @@ const ShinyText = ({
       >
         {text.includes("New: ") ? (
           <>
-            <span className="text-white">🎉 New:</span>
-            {text.replace("New:", "")}
+            <span className="text-white">New: </span>
+            {text.replace("New: ", "")}
+            <span className="text-white"> 🎉</span>
           </>
         ) : (
           text

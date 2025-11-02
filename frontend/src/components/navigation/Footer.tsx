@@ -1,8 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
-import Script from "next/script";
 import React from "react";
+import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
 
+import JsonLd from "@/components/seo/JsonLd";
 import { appConfig, connect, footerSections } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { siteConfig } from "@/lib/seo";
@@ -11,8 +12,7 @@ export default function Footer() {
   const user = useUser();
   const isAuthenticated = user?.email;
 
-  // Generate SiteNavigationElement schema for footer links
-  const navigationSchema = {
+  const navigationSchema: WithContext<SiteNavigationElement> = {
     "@context": "https://schema.org",
     "@type": "SiteNavigationElement",
     name: "Footer Navigation",
@@ -22,12 +22,14 @@ export default function Footer() {
         .filter(
           (link) => !link.external && !link.hideFooter && !link.requiresAuth,
         )
-        .map((link) => ({
-          "@type": "WebPage",
-          name: link.label,
-          url: `${siteConfig.url}${link.href}`,
-          description: link.description,
-        })),
+        .map(
+          (link): WebPage => ({
+            "@type": "WebPage",
+            name: link.label,
+            url: `${siteConfig.url}${link.href}`,
+            description: link.description,
+          }),
+        ),
     ),
   };
 
@@ -68,12 +70,7 @@ export default function Footer() {
 
   return (
     <>
-      {/* JSON-LD for Footer Navigation */}
-      <Script
-        id="footer-navigation-schema"
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(navigationSchema) }}
-      />
+      <JsonLd data={navigationSchema} />
       <div className="relative z-[1] m-0! flex flex-col items-center gap-6 overflow-hidden p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5">
         <div className="flex h-fit w-screen items-center justify-center px-2 sm:px-4">
           <div className="grid w-full max-w-5xl grid-cols-4 gap-6 sm:gap-8">
@@ -89,16 +86,26 @@ export default function Footer() {
                 />
               </div>
               <div className="mt-2 flex flex-col items-start px-2 text-xl font-medium text-white sm:px-3 sm:text-2xl">
-                <Link href={"/"}>
+                {/* <Link href={"/"}>
                   <Image
-                    src="/images/logos/logo.webp"
+                    src="/images/logos/text_w_logo_white.webp"
                     alt="GAIA Logo"
-                    width={45}
+                    width={150}
                     height={45}
                   />
+                </Link> */}
+
+                <Link href={"https://twitter.com/madebyexp"}>
+                  <Image
+                    src="/images/logos/the_experience_company_white.webp"
+                    className="my-5"
+                    alt="The Experience Company Logo"
+                    width={700}
+                    height={100}
+                  />
                 </Link>
-                <div className="mt-2">GAIA</div>
-                <div className="text-sm font-light text-foreground-400">
+
+                <div className="mt-2 text-sm font-light text-foreground-400">
                   {randomTagline}
                 </div>
               </div>

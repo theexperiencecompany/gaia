@@ -2,6 +2,7 @@ import Image from "next/image";
 import { Suspense } from "react";
 import ReactMarkdown from "react-markdown";
 
+import JsonLd from "@/components/seo/JsonLd";
 import { AuthorTooltip } from "@/features/blog/components/AuthorTooltip";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
 import { generateAboutPageSchema } from "@/lib/seo";
@@ -34,10 +35,7 @@ export default async function About() {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutPageSchema) }}
-      />
+      <JsonLd data={aboutPageSchema} />
       <div className="flex min-h-screen w-screen justify-center bg-black px-6 py-28">
         <div className="fixed top-0 left-0 z-[0] flex h-screen w-full items-center justify-center opacity-5">
           <Image
@@ -50,10 +48,17 @@ export default async function About() {
 
         <div className="relative max-w-(--breakpoint-lg) space-y-8">
           <Suspense fallback={<div>Loading...</div>}>
-            <div className="flex w-full justify-center">
+            <div className="flex w-full justify-center gap-10">
               <Image
                 src="/images/logos/logo.webp"
                 alt="GAIA Logo"
+                width={80}
+                height={80}
+              />
+
+              <Image
+                src="/images/logos/experience_logo.svg"
+                alt="The Experience Company Logo"
                 width={80}
                 height={80}
               />
@@ -117,7 +122,9 @@ export default async function About() {
                 />
               ))}
             </div>
-            <div className="text-foreground-500">— The Founders</div>
+            <div className="text-foreground-500">
+              — Founders, The Experience Company
+            </div>
           </div>
           <div className="flex w-full justify-start">
             <GetStartedButton text="Get Started" />

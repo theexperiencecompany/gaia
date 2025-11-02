@@ -76,6 +76,7 @@ export function FAQAccordion() {
           variant="light"
           className="cursor-pointer p-0!"
           itemClasses={{ titleWrapper: "cursor-pointer" }}
+          defaultSelectedKeys={["0"]}
         >
           {faqItems.map((item, index) => (
             <AccordionItem
