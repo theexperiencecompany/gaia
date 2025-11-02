@@ -1,0 +1,20 @@
+---
+title: "name"
+date: "2025-12-01"
+authors:
+  - name: "Aryan Randeriya"
+    role: "Founder & CEO"
+    avatar: "https://github.com/aryanranderiya.png"
+    linkedin: "https://linkedin.com/in/aryanranderiya"
+    twitter: "https://twitter.com/aryanranderiya"
+    github: "https://github.com/aryanranderiya"
+  - name: "Dhruv Maradiya"
+    role: "Founder & CTO"
+    avatar: "https://github.com/dhruv-maradiya.png"
+    linkedin: "https://linkedin.com/in/dhruvmaradiya"
+    twitter: "https://twitter.com/dhruvmaradiya"
+    github: "https://github.com/dhruv-maradiya"
+category: "Product"
+image: "/images/blog/image.webp"
+slug: "slug"
+---
