@@ -1,6 +1,8 @@
 import { Metadata } from "next";
 
-import { BlogPost } from "@/features/blog/api/blogApi";
+// Commented out - Old API-based BlogPost type
+// import { BlogPost } from "@/features/blog/api/blogApi";
+import { BlogPost } from "@/lib/blog";
 
 /**
  * Extracts description from markdown content for meta descriptions
@@ -41,9 +43,7 @@ export function generateBlogMetadata(blog: BlogPost): Metadata {
   return {
     title: blog.title,
     description,
-    authors:
-      blog.author_details?.map((author) => ({ name: author.name })) ||
-      blog.authors.map((name) => ({ name })),
+    authors: blog.authors.map((author) => ({ name: author.name })),
 
     openGraph: {
       title: blog.title,
@@ -53,8 +53,7 @@ export function generateBlogMetadata(blog: BlogPost): Metadata {
       images: [{ url: imageUrl, width: 1200, height: 630, alt: blog.title }],
       type: "article",
       publishedTime: blog.date,
-      authors:
-        blog.author_details?.map((author) => author.name) || blog.authors,
+      authors: blog.authors.map((author) => author.name),
       section: blog.category,
     },
 
@@ -81,12 +80,11 @@ export function generateBlogStructuredData(blog: BlogPost) {
     headline: blog.title,
     description: extractDescription(blog.content),
     image: blog.image || "/images/screenshot.webp",
-    author:
-      blog.author_details?.map((author) => ({
-        "@type": "Person",
-        name: author.name,
-        jobTitle: author.role,
-      })) || blog.authors.map((name) => ({ "@type": "Person", name })),
+    author: blog.authors.map((author) => ({
+      "@type": "Person",
+      name: author.name,
+      jobTitle: author.role,
+    })),
     publisher: {
       "@type": "Organization",
       name: "GAIA",

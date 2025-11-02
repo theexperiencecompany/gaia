@@ -1,6 +1,8 @@
 import { MetadataRoute } from "next";
 
-import { blogApi } from "@/features/blog/api/blogApi";
+// Commented out - Old API-based blog fetching
+// import { blogApi } from "@/features/blog/api/blogApi";
+import { getAllBlogPosts } from "@/lib/blog";
 
 /**
  * Generate dynamic sitemap for GAIA
@@ -79,10 +81,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  // Fetch blog posts dynamically
+  // Fetch blog posts dynamically from markdown files
   let blogPages: MetadataRoute.Sitemap = [];
   try {
-    const blogs = await blogApi.getBlogs(false);
+    // Read blogs from markdown files instead of API
+    const blogs = getAllBlogPosts(false);
+    // Commented out - Old API-based blog fetching
+    // const blogs = await blogApi.getBlogs(false);
     blogPages = blogs.map((blog) => ({
       url: `${baseUrl}/blog/${blog.slug}`,
       lastModified: new Date(blog.date),
