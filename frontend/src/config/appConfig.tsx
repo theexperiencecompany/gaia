@@ -83,7 +83,7 @@ export const appConfig = {
         description: "Choose the perfect plan for your needs",
       },
       {
-        href: "https://gaia.featurebase.app/roadmap",
+        href: "/roadmap",
         label: "Roadmap",
         icon: <MapsIcon width={20} height={20} color={undefined} />,
         external: true,
@@ -99,21 +99,21 @@ export const appConfig = {
         description: "Read the latest updates and insights",
       },
       {
-        href: "https://docs.heygaia.io",
+        href: "/docs",
         label: "Documentation",
         icon: <BookOpen02Icon width={20} height={20} color={undefined} />,
         external: true,
         description: "Comprehensive documentation and guides",
       },
       {
-        href: "https://gaia.featurebase.app",
+        href: "/request-feature",
         label: "Request a Feature",
         icon: <Idea01Icon width={20} height={20} color={undefined} />,
         external: true,
         description: "Request new features and vote on ideas",
       },
       {
-        href: "https://status.heygaia.io",
+        href: "/status",
         label: "Status",
         icon: <GlobalIcon width={20} height={20} color={undefined} />,
         external: true,
@@ -152,7 +152,7 @@ export const appConfig = {
 
     connect: [
       {
-        href: "https://discord.heygaia.io",
+        href: "/discord",
         label: "Discord",
         icon: <DiscordIcon width={20} height={20} color="#5865f2" />,
         external: true,
@@ -173,7 +173,7 @@ export const appConfig = {
         description: "Check out our open source projects",
       },
       {
-        href: "https://whatsapp.heygaia.io",
+        href: "/whatsapp",
         label: "WhatsApp",
         icon: <WhatsappIcon width={20} height={20} color="#25D366" />,
         external: true,

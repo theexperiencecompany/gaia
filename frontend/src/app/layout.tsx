@@ -35,8 +35,8 @@ const getMetadataBase = () => {
 export const metadata: Metadata = {
   metadataBase: getMetadataBase(),
   title: {
-    default: siteConfig.fullName,
-    template: "%s | GAIA",
+    default: siteConfig.name,
+    template: `%s | ${siteConfig.short_name}`,
   },
   description: siteConfig.description,
   icons: {
@@ -49,7 +49,7 @@ export const metadata: Metadata = {
   },
   manifest: "/site.webmanifest",
   keywords: [
-    "GAIA",
+    siteConfig.short_name,
     "Personal AI Assistant",
     "AI",
     "ai assistant",
@@ -70,8 +70,8 @@ export const metadata: Metadata = {
     "productivity assistant",
   ],
   openGraph: {
-    title: siteConfig.fullName,
-    siteName: siteConfig.fullName,
+    title: siteConfig.name,
+    siteName: siteConfig.name,
     url: siteConfig.url,
     type: "website",
     description: siteConfig.description,
@@ -88,7 +88,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: siteConfig.fullName,
+    title: siteConfig.name,
     description: siteConfig.description,
     images: [
       {
@@ -112,8 +112,8 @@ export const metadata: Metadata = {
       url: founder.linkedin,
     })),
   ],
-  creator: "GAIA",
-  publisher: "GAIA",
+  creator: siteConfig.short_name,
+  publisher: siteConfig.short_name,
   robots: {
     index: true,
     follow: true,

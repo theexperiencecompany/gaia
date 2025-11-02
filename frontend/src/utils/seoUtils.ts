@@ -11,6 +11,7 @@ import type {
 
 import { BlogPost } from "@/features/blog/api/blogApi";
 import { UseCase } from "@/features/use-cases/constants/dummy-data";
+import { siteConfig } from "@/lib/seo";
 
 /**
  * Extracts description from markdown content for meta descriptions
@@ -59,7 +60,7 @@ export function generateBlogMetadata(blog: BlogPost): Metadata {
       title: blog.title,
       description,
       url: canonicalUrl,
-      siteName: "GAIA - AI Personal Assistant",
+      siteName: siteConfig.name,
       images: [
         {
           url: imageUrl,
@@ -139,14 +140,14 @@ export function generateUseCaseMetadata(useCase: UseCase): Metadata {
   const description = useCase.detailed_description || useCase.description || "";
   const canonicalUrl = `/use-cases/${useCase.slug}`;
 
-  const title = `${useCase.title} - GAIA Use Case`;
+  const title = `${useCase.title} - ${siteConfig.short_name} Use Case`;
   const keywords = [
     useCase.title,
     ...useCase.categories,
     ...useCase.integrations,
     "AI automation",
     "workflow automation",
-    "GAIA",
+    siteConfig.short_name,
   ].join(", ");
 
   return {
@@ -155,7 +156,7 @@ export function generateUseCaseMetadata(useCase: UseCase): Metadata {
     keywords,
     authors: useCase.creator
       ? [{ name: useCase.creator.name }]
-      : [{ name: "GAIA Team" }],
+      : [{ name: `${siteConfig.short_name} Team` }],
 
     openGraph: {
       title,
@@ -181,7 +182,7 @@ export function generateUseCaseStructuredData(
     image: "/og-image.webp",
     publisher: {
       "@type": "Organization",
-      name: "GAIA",
+      name: siteConfig.short_name,
       logo: {
         "@type": "ImageObject",
         url: "/images/logos/logo.webp",

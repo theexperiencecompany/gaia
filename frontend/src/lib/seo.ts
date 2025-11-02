@@ -24,8 +24,9 @@ import type {
 
 // Site-wide SEO Configuration
 export const siteConfig = {
-  name: "GAIA",
-  fullName: "GAIA - Your Personal AI Assistant",
+  short_name: "GAIA",
+  name: "GAIA - Your Personal AI Assistant",
+  fullName: "GAIA - Your Personal AI Assistant from The Experience Company",
   description:
     "GAIA is your open-source personal AI assistant to proactively manage your email, calendar, todos, workflows and all your digital tools to boost productivity.",
   url: "https://heygaia.io",
@@ -114,12 +115,12 @@ export function generatePageMetadata({
   // For homepage, use absolute title to prevent template from adding suffix
   // For other pages, use simple title string to let template add "| GAIA"
   const isHomepage = path === "/" || title === siteConfig.name;
-  const pageTitle = isHomepage ? { absolute: siteConfig.fullName } : title;
+  const pageTitle = isHomepage ? { absolute: siteConfig.name } : title;
 
   // Full title for OpenGraph (always includes suffix for non-homepage)
   const fullTitle = isHomepage
     ? siteConfig.fullName
-    : `${title} | ${siteConfig.name}`;
+    : `${title} | ${siteConfig.short_name}`;
 
   const allKeywords = [...commonKeywords, ...keywords];
 
@@ -148,7 +149,7 @@ export function generatePageMetadata({
           url: imageUrl,
           width: 1200,
           height: 630,
-          alt: `${title} - ${siteConfig.name}`,
+          alt: `${title} - ${siteConfig.short_name}`,
           type: "image/webp",
         },
       ],
@@ -164,7 +165,7 @@ export function generatePageMetadata({
           url: imageUrl,
           width: 1200,
           height: 630,
-          alt: `${title} - ${siteConfig.name}`,
+          alt: `${title} - ${siteConfig.short_name}`,
         },
       ],
       creator: "@trygaia",
@@ -202,7 +203,7 @@ export function generateOrganizationSchema(): WithContext<Organization> {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
-    name: siteConfig.name,
+    name: siteConfig.short_name,
     alternateName: "General-purpose AI Assistant",
     url: siteConfig.url,
     logo: `${siteConfig.url}/images/logos/logo.webp`,
@@ -237,8 +238,8 @@ export function generateWebSiteSchema(): WithContext<WebSite> {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
-    name: siteConfig.name,
-    alternateName: siteConfig.fullName,
+    name: siteConfig.short_name,
+    alternateName: siteConfig.name,
     url: siteConfig.url,
     description: siteConfig.description,
   };
@@ -262,7 +263,7 @@ export function generateWebPageSchema(
     isPartOf: {
       "@type": "WebSite",
       url: siteConfig.url,
-      name: siteConfig.name,
+      name: siteConfig.short_name,
     },
   };
 
@@ -332,7 +333,7 @@ export function generateProductSchema(): WithContext<SoftwareApplication> {
   return {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: siteConfig.name,
+    name: siteConfig.short_name,
     applicationCategory: "ProductivityApplication",
     operatingSystem: "Web, Windows, macOS, Linux",
     description: siteConfig.description,
@@ -344,7 +345,7 @@ export function generateProductSchema(): WithContext<SoftwareApplication> {
     } as Offer,
     author: {
       "@type": "Organization",
-      name: siteConfig.name,
+      name: siteConfig.short_name,
       url: siteConfig.url,
     } as Organization,
   };
@@ -381,7 +382,7 @@ export function generateArticleSchema(
     ),
     publisher: {
       "@type": "Organization",
-      name: siteConfig.name,
+      name: siteConfig.short_name,
       logo: {
         "@type": "ImageObject",
         url: `${siteConfig.url}/images/logos/logo.webp`,
@@ -459,7 +460,7 @@ export function generateContactPageSchema(): WithContext<ContactPage> {
     url: `${siteConfig.url}/contact`,
     mainEntity: {
       "@type": "Organization",
-      name: siteConfig.name,
+      name: siteConfig.short_name,
       url: siteConfig.url,
       contactPoint: {
         "@type": "ContactPoint",
@@ -483,7 +484,7 @@ export function generateAboutPageSchema(): WithContext<AboutPage> {
     url: `${siteConfig.url}/manifesto`,
     mainEntity: {
       "@type": "Organization",
-      name: siteConfig.name,
+      name: siteConfig.short_name,
       description: siteConfig.description,
       url: siteConfig.url,
       founders: siteConfig.founders.map(

@@ -86,14 +86,25 @@ export default function Footer() {
                 />
               </div>
               <div className="mt-2 flex flex-col items-start px-2 text-xl font-medium text-white sm:px-3 sm:text-2xl">
-                <Link href={"/"}>
+                {/* <Link href={"/"}>
                   <Image
                     src="/images/logos/text_w_logo_white.webp"
                     alt="GAIA Logo"
                     width={150}
                     height={45}
                   />
+                </Link> */}
+
+                <Link href={"https://twitter.com/madebyexp"}>
+                  <Image
+                    src="/images/logos/the_experience_company_white.webp"
+                    className="my-5"
+                    alt="The Experience Company Logo"
+                    width={700}
+                    height={100}
+                  />
                 </Link>
+
                 <div className="mt-2 text-sm font-light text-foreground-400">
                   {randomTagline}
                 </div>

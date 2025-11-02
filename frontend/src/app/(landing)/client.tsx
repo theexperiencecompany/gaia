@@ -54,89 +54,89 @@ export default function LandingPageClient() {
   }, []);
 
   return (
-    <ReactLenis root>
-      <>
-        <div className="relative overflow-hidden">
-          <div className="absolute inset-0 h-screen w-full">
-            <Image
-              src={"/images/wallpapers/switzerland_night.webp"}
-              alt="GAIA Hero Section Wallpaper"
-              sizes="100vw"
-              priority
-              fill
-              className="aspect-video object-cover opacity-90"
+    // <ReactLenis root>
+    <>
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 h-screen w-full">
+          <Image
+            src={"/images/wallpapers/switzerland_night.webp"}
+            alt="GAIA Hero Section Wallpaper"
+            sizes="100vw"
+            priority
+            fill
+            className="aspect-video object-cover opacity-90"
+          />
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30vh] bg-gradient-to-b from-background to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-gradient-to-t from-background via-background to-transparent" />
+        </div>
+
+        <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
+          <HeroSection />
+          <div className="mx-auto mt-8 flex w-full max-w-screen-xl items-center justify-center px-4 sm:px-6">
+            <HeroVideoDialog
+              className="block w-full rounded-3xl"
+              animationStyle="from-center"
+              videoSrc="https://www.youtube.com/embed/K-ZbxMHxReM?si=U9Caazt9Ondagnr8"
+              thumbnailSrc="https://img.youtube.com/vi/K-ZbxMHxReM/maxresdefault.jpg"
+              thumbnailAlt="Hero Section Video"
             />
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30vh] bg-gradient-to-b from-background to-transparent" />
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-gradient-to-t from-background via-background to-transparent" />
           </div>
+        </section>
+        <div>
+          <div className="relative">
+            <Suspense fallback={<SuspenseLoader />}>
+              <Tired />
+            </Suspense>
 
-          <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
-            <HeroSection />
-            <div className="mx-auto mt-8 flex w-full max-w-screen-xl items-center justify-center px-4 sm:px-6">
-              <HeroVideoDialog
-                className="block w-full rounded-3xl"
-                animationStyle="from-center"
-                videoSrc="https://www.youtube.com/embed/K-ZbxMHxReM?si=U9Caazt9Ondagnr8"
-                thumbnailSrc="https://img.youtube.com/vi/K-ZbxMHxReM/maxresdefault.jpg"
-                thumbnailAlt="Hero Section Video"
-              />
-            </div>
-          </section>
-          <div>
-            <div className="relative">
-              <Suspense fallback={<SuspenseLoader />}>
-                <Tired />
-              </Suspense>
-
-              <div
-                className="absolute top-140 z-0 h-[120vh] w-screen blur-lg"
-                style={{
-                  backgroundImage: `
+            <div
+              className="absolute top-140 z-0 h-[120vh] w-screen blur-lg"
+              style={{
+                backgroundImage: `
                       radial-gradient(circle at center, #00bbff80 0%, transparent 70%)
                     `,
-                  opacity: 0.6,
-                }}
-              />
-
-              <Suspense fallback={<SuspenseLoader />}>
-                <AllYourTools />
-              </Suspense>
-            </div>
+                opacity: 0.6,
+              }}
+            />
 
             <Suspense fallback={<SuspenseLoader />}>
-              <WorkflowSection />
-            </Suspense>
-
-            <Suspense fallback={<SuspenseLoader />}>
-              <AutomateDailyChaos />
-            </Suspense>
-
-            <Suspense fallback={<SuspenseLoader />}>
-              <Personalised />
-            </Suspense>
-
-            <Suspense fallback={<SuspenseLoader />}>
-              <TestimonialsSection />
-            </Suspense>
-
-            <Suspense fallback={<SuspenseLoader />}>
-              <OpenSource />
-            </Suspense>
-
-            <Suspense fallback={<SuspenseLoader />}>
-              <FAQAccordion />
-            </Suspense>
-
-            <Suspense fallback={<SuspenseLoader />}>
-              <CommunitySection />
-            </Suspense>
-
-            <Suspense fallback={<SuspenseLoader />}>
-              <FinalSection showSocials={false} />
+              <AllYourTools />
             </Suspense>
           </div>
+
+          <Suspense fallback={<SuspenseLoader />}>
+            <WorkflowSection />
+          </Suspense>
+
+          <Suspense fallback={<SuspenseLoader />}>
+            <AutomateDailyChaos />
+          </Suspense>
+
+          <Suspense fallback={<SuspenseLoader />}>
+            <Personalised />
+          </Suspense>
+
+          <Suspense fallback={<SuspenseLoader />}>
+            <TestimonialsSection />
+          </Suspense>
+
+          <Suspense fallback={<SuspenseLoader />}>
+            <OpenSource />
+          </Suspense>
+
+          <Suspense fallback={<SuspenseLoader />}>
+            <FAQAccordion />
+          </Suspense>
+
+          <Suspense fallback={<SuspenseLoader />}>
+            <CommunitySection />
+          </Suspense>
+
+          <Suspense fallback={<SuspenseLoader />}>
+            <FinalSection showSocials={false} />
+          </Suspense>
         </div>
-      </>
-    </ReactLenis>
+      </div>
+    </>
+    // </ReactLenis>
   );
 }

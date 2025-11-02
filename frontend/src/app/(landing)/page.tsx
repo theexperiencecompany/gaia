@@ -6,10 +6,11 @@ import {
   generateOrganizationSchema,
   generatePageMetadata,
   generateWebSiteSchema,
+  siteConfig,
 } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "GAIA",
+  title: siteConfig.name,
   path: "/",
   keywords: [
     "personal AI assistant",
