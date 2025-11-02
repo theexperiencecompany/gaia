@@ -8,16 +8,26 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from "@/components/ui/shadcn/breadcrumb";
-import { blogApi } from "@/features/blog/api/blogApi";
+// Commented out API-based blog fetching
+// import { blogApi } from "@/features/blog/api/blogApi";
 import BlogMetadata from "@/features/blog/components/BlogMetadata";
 import MarkdownWrapper from "@/features/blog/components/MarkdownWrapper";
-import {
-  generateBlogMetadata,
-  generateBlogStructuredData,
-} from "@/utils/seoUtils";
+import { getAllBlogSlugs, getBlogPost } from "@/lib/blog";
+// Commented out - Old API-based SEO utils
+// import {
+//   generateBlogMetadata,
+//   generateBlogStructuredData,
+// } from "@/utils/seoUtils";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
+}
+
+export async function generateStaticParams() {
+  const slugs = getAllBlogSlugs();
+  return slugs.map((slug) => ({
+    slug,
+  }));
 }
 
 export async function generateMetadata({
@@ -26,8 +36,31 @@ export async function generateMetadata({
   const { slug } = await params;
 
   try {
-    const blog = await blogApi.getBlog(slug);
-    return generateBlogMetadata(blog);
+    // Read blog post from markdown file
+    const blog = getBlogPost(slug);
+    if (!blog) {
+      return {
+        title: "Blog Post Not Found",
+        description: "The requested blog post could not be found.",
+      };
+    }
+
+    // Generate metadata from the blog post
+    return {
+      title: blog.title,
+      description: blog.content.slice(0, 160),
+      openGraph: {
+        title: blog.title,
+        description: blog.content.slice(0, 160),
+        images: [blog.image],
+        type: "article",
+        publishedTime: blog.date,
+      },
+    };
+
+    // Commented out - Old API-based metadata generation
+    // const blog = await blogApi.getBlog(slug);
+    // return generateBlogMetadata(blog);
   } catch {
     return {
       title: "Blog Post Not Found",
@@ -40,7 +73,8 @@ export default async function BlogPostPage({ params }: PageProps) {
   const { slug } = await params;
 
   try {
-    const blog = await blogApi.getBlog(slug);
+    // Read blog post from markdown file
+    const blog = getBlogPost(slug);
 
     if (!blog) {
       return (
@@ -50,7 +84,22 @@ export default async function BlogPostPage({ params }: PageProps) {
       );
     }
 
-    const structuredData = generateBlogStructuredData(blog);
+    // Generate structured data for SEO
+    const structuredData = {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      headline: blog.title,
+      image: blog.image,
+      datePublished: blog.date,
+      author: blog.authors.map((author) => ({
+        "@type": "Person",
+        name: author.name,
+      })),
+    };
+
+    // Commented out - Old API-based blog fetching
+    // const blog = await blogApi.getBlog(slug);
+    // const structuredData = generateBlogStructuredData(blog);
 
     return (
       <>
@@ -92,17 +141,17 @@ export default async function BlogPostPage({ params }: PageProps) {
               </div>
 
               <BlogMetadata
-                authors={blog.author_details}
+                authors={blog.authors}
                 date={blog.date}
                 className="mb-10"
               />
 
               <div className="prose prose-lg dark:prose-invert max-w-2xl text-foreground-600">
-                <MarkdownWrapper content={blog.content.toString()} />
+                <MarkdownWrapper content={blog.content} />
               </div>
 
               <BlogMetadata
-                authors={blog.author_details}
+                authors={blog.authors}
                 date={blog.date}
                 className="my-10 w-full max-w-3xl border-t-1 border-gray-700 py-10"
               />
