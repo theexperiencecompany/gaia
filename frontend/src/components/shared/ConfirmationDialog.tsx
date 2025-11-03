@@ -10,6 +10,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/shadcn/alert-dialog";
 import { Button } from "@heroui/button";
+import { Kbd } from "@heroui/kbd";
+import { useEffect } from "react";
 
 interface ConfirmationDialogProps {
   isOpen: boolean;
@@ -32,6 +34,23 @@ export function ConfirmationDialog({
   onConfirm,
   onCancel,
 }: ConfirmationDialogProps) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        onConfirm();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onConfirm, onCancel]);
+
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
       <AlertDialogContent>
@@ -44,12 +63,14 @@ export function ConfirmationDialog({
             variant="flat"
             onPress={onCancel}
             className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+            endContent={<Kbd keys={["escape"]} />}
           >
             {cancelText}
           </Button>
           <Button
             color={variant === "destructive" ? "danger" : "primary"}
             onPress={onConfirm}
+            endContent={<Kbd keys={["enter"]} />}
           >
             {confirmText}
           </Button>
