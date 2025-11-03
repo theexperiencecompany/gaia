@@ -3,14 +3,13 @@
 import {
   AlertDialog,
   AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/shadcn/alert-dialog";
-import { Button } from "@/components/ui/shadcn/button";
+import { Button } from "@heroui/button";
 
 interface ConfirmationDialogProps {
   isOpen: boolean;
@@ -41,15 +40,19 @@ export function ConfirmationDialog({
           <AlertDialogDescription>{message}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel}>{cancelText}</AlertDialogCancel>
-          <AlertDialogAction asChild>
-            <Button
-              variant={variant === "destructive" ? "destructive" : "default"}
-              onClick={onConfirm}
-            >
-              {confirmText}
-            </Button>
-          </AlertDialogAction>
+          <Button
+            variant="flat"
+            onPress={onCancel}
+            className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+          >
+            {cancelText}
+          </Button>
+          <Button
+            color={variant === "destructive" ? "danger" : "primary"}
+            onPress={onConfirm}
+          >
+            {confirmText}
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

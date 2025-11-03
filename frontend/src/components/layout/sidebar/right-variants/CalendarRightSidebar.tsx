@@ -7,6 +7,7 @@ import { Switch } from "@heroui/switch";
 import { ArrowDown, Repeat, Trash2 } from "lucide-react";
 import React from "react";
 
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { UserCircleIcon } from "@/components/shared/icons";
 import {
   Accordion,
@@ -14,10 +15,13 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/shadcn/accordion";
-import { DateRangePicker } from "@/components/ui/shadcn/date-range-picker";
-import { DateTimePicker } from "@/components/ui/shadcn/datetime-picker";
 import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
+import {
+  NaturalLanguageDateInput,
+  NaturalLanguageDateRangeInput,
+} from "@/features/calendar/components/NaturalLanguageDateInput";
 import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
+import { useConfirmation } from "@/hooks/useConfirmation";
 import { CalendarItem } from "@/types/api/calendarApiTypes";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
@@ -70,6 +74,42 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
   onDelete,
   calendars,
 }) => {
+  const { confirm, confirmationProps } = useConfirmation();
+
+  // Handle Delete key press when event is selected
+  React.useEffect(() => {
+    if (!selectedEvent || isCreating) return;
+
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      // Check if Delete or Backspace key is pressed
+      // Only trigger if not focused on an input element
+      const target = e.target as HTMLElement;
+      const isInputElement =
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable;
+
+      if ((e.key === "Delete" || e.key === "Backspace") && !isInputElement) {
+        e.preventDefault();
+
+        const confirmed = await confirm({
+          title: "Delete Event",
+          message: `Are you sure you want to delete "${summary}"? This action cannot be undone.`,
+          confirmText: "Delete",
+          cancelText: "Cancel",
+          variant: "destructive",
+        });
+
+        if (confirmed) {
+          onDelete();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedEvent, isCreating, confirm, summary, onDelete]);
+
   // Set default calendar when calendars are loaded and creating
   React.useEffect(() => {
     if (calendars.length > 0 && !selectedCalendarId && isCreating) {
@@ -123,133 +163,50 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
             />
           </div>
 
-          {/* Calendar Selection */}
-          {calendars.length > 0 && (
-            <div className="space-y-3">
-              <Select
-                label="Calendar"
-                selectedKeys={selectedCalendarId ? [selectedCalendarId] : []}
-                selectionMode="single"
-                onSelectionChange={(keys) => {
-                  const selected = Array.from(keys)[0] as string;
-                  if (selected) onCalendarChange(selected);
-                }}
-                isRequired
-                classNames={{
-                  trigger:
-                    "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-                  value: "text-zinc-200",
-                  popoverContent: "bg-zinc-900 border border-zinc-800",
-                  label: "text-zinc-400",
-                }}
-                startContent={
-                  selectedCalendarId && (
-                    <div
-                      className="size-3 rounded-full"
-                      style={{
-                        backgroundColor:
-                          calendars.find((cal) => cal.id === selectedCalendarId)
-                            ?.backgroundColor || "#3b82f6",
-                      }}
-                    />
-                  )
-                }
-              >
-                {calendars.map((cal) => (
-                  <SelectItem
-                    key={cal.id}
-                    textValue={`${cal.name || cal.summary}${cal.primary ? " (Primary)" : ""}`}
-                    startContent={
-                      <div
-                        className="size-3 rounded-full"
-                        style={{
-                          backgroundColor: cal.backgroundColor || "#3b82f6",
-                        }}
-                      />
-                    }
-                  >
-                    {cal.name || cal.summary}
-                    {cal.primary ? " (Primary)" : ""}
-                  </SelectItem>
-                ))}
-              </Select>
-            </div>
-          )}
+          {/* All-day Toggle */}
+          <Switch
+            isSelected={isAllDay}
+            onValueChange={onAllDayChange}
+            size="sm"
+            color="primary"
+          >
+            <span className="text-sm text-zinc-500">All-day event</span>
+          </Switch>
 
           {/* Date & Time Section */}
-          <div className="space-y-4">
-            <div className="space-y-3">
-              {isAllDay ? (
-                <div>
-                  <label className="mb-2 flex items-center gap-2 text-sm font-medium text-zinc-400">
-                    Date Range
-                  </label>
-                  <DateRangePicker
-                    from={startDate ? new Date(startDate) : undefined}
-                    to={endDate ? new Date(endDate) : undefined}
-                    onDateChange={(
-                      from: Date | undefined,
-                      to: Date | undefined,
-                    ) => {
-                      if (from) {
-                        onStartDateChange(
-                          from.toISOString().split("T")[0] + "T00:00",
-                        );
-                      }
-                      if (to) {
-                        onEndDateChange(
-                          to.toISOString().split("T")[0] + "T23:59",
-                        );
-                      }
-                    }}
-                    placeholder="Select date range"
-                  />
-                </div>
-              ) : (
-                <div>
-                  <div>
-                    <label className="mb-1 text-xs text-zinc-500">Start</label>
-                    <DateTimePicker
-                      value={startDate ? new Date(startDate) : undefined}
-                      onChange={(date: Date | undefined) => {
-                        if (date) {
-                          onStartDateChange(date.toISOString().slice(0, 16));
-                        }
-                      }}
-                      use12HourFormat
-                      timePicker={{ hour: true, minute: true, second: false }}
-                    />
-                  </div>
+          <div className="mt-4 mb-10 space-y-3">
+            {isAllDay ? (
+              <NaturalLanguageDateRangeInput
+                label="Date Range"
+                startValue={startDate}
+                endValue={endDate}
+                onStartChange={onStartDateChange}
+                onEndChange={onEndDateChange}
+                placeholder="Tomorrow, next week, Dec 25 to Dec 31..."
+              />
+            ) : (
+              <>
+                <NaturalLanguageDateInput
+                  label="Start"
+                  value={startDate}
+                  onChange={onStartDateChange}
+                  placeholder="Tomorrow at 3pm..."
+                  isAllDay={false}
+                />
 
-                  <div className="mt-3 -mb-2 flex w-full justify-center text-zinc-500">
-                    <ArrowDown width={19} height={19} />
-                  </div>
+                {/* <div className="-mb-2 flex w-full justify-center text-zinc-500">
+                  <ArrowDown width={19} height={19} />
+                </div> */}
 
-                  <div>
-                    <label className="mb-1 text-xs text-zinc-500">End</label>
-                    <DateTimePicker
-                      value={endDate ? new Date(endDate) : undefined}
-                      onChange={(date: Date | undefined) => {
-                        if (date) {
-                          onEndDateChange(date.toISOString().slice(0, 16));
-                        }
-                      }}
-                      use12HourFormat
-                      timePicker={{ hour: true, minute: true, second: false }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <Switch
-              isSelected={isAllDay}
-              onValueChange={onAllDayChange}
-              size="sm"
-              color="primary"
-            >
-              <span className="text-sm text-zinc-500">All-day event</span>
-            </Switch>
+                <NaturalLanguageDateInput
+                  label="End"
+                  value={endDate}
+                  onChange={onEndDateChange}
+                  placeholder="In 2 hours, 5pm, tomorrow..."
+                  isAllDay={false}
+                />
+              </>
+            )}
           </div>
 
           {/* Recurrence Selection (only when creating) */}
@@ -337,6 +294,59 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
             </div>
           )}
 
+          {/* Calendar Selection */}
+          {calendars.length > 0 && (
+            <div className="space-y-3">
+              <Select
+                label="Calendar"
+                selectedKeys={selectedCalendarId ? [selectedCalendarId] : []}
+                selectionMode="single"
+                onSelectionChange={(keys) => {
+                  const selected = Array.from(keys)[0] as string;
+                  if (selected) onCalendarChange(selected);
+                }}
+                isRequired
+                classNames={{
+                  trigger:
+                    "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+                  value: "text-zinc-200",
+                  popoverContent: "bg-zinc-900 border border-zinc-800",
+                  label: "text-zinc-400",
+                }}
+                startContent={
+                  selectedCalendarId && (
+                    <div
+                      className="size-3 rounded-full"
+                      style={{
+                        backgroundColor:
+                          calendars.find((cal) => cal.id === selectedCalendarId)
+                            ?.backgroundColor || "#3b82f6",
+                      }}
+                    />
+                  )
+                }
+              >
+                {calendars.map((cal) => (
+                  <SelectItem
+                    key={cal.id}
+                    textValue={`${cal.name || cal.summary}${cal.primary ? " (Primary)" : ""}`}
+                    startContent={
+                      <div
+                        className="size-3 rounded-full"
+                        style={{
+                          backgroundColor: cal.backgroundColor || "#3b82f6",
+                        }}
+                      />
+                    }
+                  >
+                    {cal.name || cal.summary}
+                    {cal.primary ? " (Primary)" : ""}
+                  </SelectItem>
+                ))}
+              </Select>
+            </div>
+          )}
+
           {/* Recurrence Info (only for existing recurring events) */}
           {!isCreating && selectedEvent?.recurrence && (
             <div className="rounded-lg border border-zinc-800/50 bg-zinc-800/20 p-3">
@@ -411,7 +421,19 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                 {isSaving ? "Saving changes..." : "Changes saved"}
               </div>
               <button
-                onClick={onDelete}
+                onClick={async () => {
+                  const confirmed = await confirm({
+                    title: "Delete Event",
+                    message: `Are you sure you want to delete "${summary}"? This action cannot be undone.`,
+                    confirmText: "Delete",
+                    cancelText: "Cancel",
+                    variant: "destructive",
+                  });
+
+                  if (confirmed) {
+                    onDelete();
+                  }
+                }}
                 disabled={isSaving}
                 className="cursor-pointer rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-all hover:bg-red-500/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Delete event"
@@ -422,6 +444,9 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
           )}
         </div>
       </SidebarFooter>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog {...confirmationProps} />
     </div>
   );
 };
