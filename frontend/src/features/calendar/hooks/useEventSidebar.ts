@@ -181,7 +181,12 @@ export const useEventSidebar = ({
 
       setIsSaving(true);
       try {
-        const timezone = getUserTimezone();
+        // Preserve original event timezone if available, otherwise use user's current timezone
+        const originalTimezone =
+          selectedEvent.start?.timeZone ||
+          selectedEvent.end?.timeZone ||
+          getUserTimezone();
+
         const updatePayload: Record<string, unknown> = {
           event_id: selectedEvent.id,
           calendar_id:
@@ -196,18 +201,22 @@ export const useEventSidebar = ({
           // Convert datetime-local to ISO string with timezone info
           const isoString = dateTimeLocalToISO(value as string);
           updatePayload[field] = isoString;
-          updatePayload.timezone = timezone;
+          updatePayload.timezone = originalTimezone; // Preserve original timezone
         } else if (field === "isAllDay") {
           updatePayload.is_all_day = value;
           if (value) {
-            // For all-day events, send just the date part
-            updatePayload.start = startDate.split("T")[0];
-            updatePayload.end = endDate.split("T")[0];
+            // For all-day events, send just the date part safely
+            updatePayload.start = startDate.includes("T")
+              ? startDate.split("T")[0]
+              : startDate;
+            updatePayload.end = endDate.includes("T")
+              ? endDate.split("T")[0]
+              : endDate;
           } else {
             // For timed events, send ISO strings with timezone
             updatePayload.start = dateTimeLocalToISO(startDate);
             updatePayload.end = dateTimeLocalToISO(endDate);
-            updatePayload.timezone = timezone;
+            updatePayload.timezone = originalTimezone; // Preserve original timezone
           }
         }
 
@@ -359,19 +368,39 @@ export const useEventSidebar = ({
 
         setIsSaving(true);
         try {
-          const timezone = getUserTimezone();
+          // Preserve original event timezone if available, otherwise use user's current timezone
+          const originalTimezone =
+            selectedEvent.start?.timeZone ||
+            selectedEvent.end?.timeZone ||
+            getUserTimezone();
+
+          // For all-day events, extract date safely
+          let startDateValue: string;
+          let endDateValue: string;
+
+          if (isAllDay) {
+            // Extract date from datetime-local format or use as-is if already in date format
+            startDateValue = startDate.includes("T")
+              ? startDate.split("T")[0]
+              : startDate;
+            endDateValue = endDate.includes("T")
+              ? endDate.split("T")[0]
+              : endDate;
+          } else {
+            // For timed events, convert to ISO preserving the timezone
+            startDateValue = dateTimeLocalToISO(startDate);
+            endDateValue = dateTimeLocalToISO(endDate);
+          }
 
           const createPayload = {
             summary,
             description,
             is_all_day: isAllDay,
-            start: isAllDay
-              ? startDate.split("T")[0]
-              : dateTimeLocalToISO(startDate),
-            end: isAllDay ? endDate.split("T")[0] : dateTimeLocalToISO(endDate),
+            start: startDateValue,
+            end: endDateValue,
             fixedTime: !isAllDay,
             calendar_id: calendarId,
-            timezone,
+            timezone: originalTimezone, // Preserve original timezone
           };
 
           // Create in new calendar first
