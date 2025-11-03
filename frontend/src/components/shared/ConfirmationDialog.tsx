@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/shadcn/alert-dialog";
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 interface ConfirmationDialogProps {
   isOpen: boolean;
@@ -34,8 +34,15 @@ export function ConfirmationDialog({
   onConfirm,
   onCancel,
 }: ConfirmationDialogProps) {
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     if (!isOpen) return;
+
+    // Focus the confirm button when dialog opens
+    const timer = setTimeout(() => {
+      confirmButtonRef.current?.focus();
+    }, 100);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
@@ -48,7 +55,10 @@ export function ConfirmationDialog({
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, [isOpen, onConfirm, onCancel]);
 
   return (
@@ -68,6 +78,7 @@ export function ConfirmationDialog({
             {cancelText}
           </Button>
           <Button
+            ref={confirmButtonRef}
             color={variant === "destructive" ? "danger" : "primary"}
             onPress={onConfirm}
             endContent={<Kbd keys={["enter"]} />}

@@ -7,7 +7,6 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/modal";
 import { CircleArrowUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import React, { ReactNode, useState } from "react";
@@ -19,6 +18,7 @@ import {
   ThreeDotsMenu,
   WhatsappIcon,
 } from "@/components/shared/icons";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useLogout } from "@/features/auth/hooks/useLogout";
 import { chatApi } from "@/features/chat/api/chatApi";
@@ -26,6 +26,7 @@ import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { ContactSupportModal } from "@/features/support";
+import { useConfirmation } from "@/hooks/useConfirmation";
 import { useConversationsStore } from "@/stores/conversationsStore";
 
 // Only allow these values in our modal state.
@@ -52,27 +53,44 @@ export default function SettingsMenu({
   const fetchConversations = useFetchConversations();
   const { updateConvoMessages } = useConversation();
   const { logout } = useLogout();
+  const { confirm, confirmationProps } = useConfirmation();
 
   const discordLink = getLinkByLabel("Discord");
   const whatsappLink = getLinkByLabel("WhatsApp");
-  const [modalAction, setModalAction] = useState<ModalAction | null>(null);
   const [supportModalOpen, setSupportModalOpen] = useState(false);
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
-  // either "clear_chats", "logout", or null (closed)
 
   // Confirm logout action.
   const handleConfirmLogout = async () => {
+    const confirmed = await confirm({
+      title: "Confirm Logout",
+      message: "Are you sure you want to logout?",
+      confirmText: "Logout",
+      cancelText: "Cancel",
+      variant: "destructive",
+    });
+
+    if (!confirmed) return;
+
     try {
       await logout();
     } catch (error) {
       console.error("Error during logout:", error);
-    } finally {
-      setModalAction(null);
     }
   };
 
   // Confirm clear chats action.
   const handleConfirmClearChats = async () => {
+    const confirmed = await confirm({
+      title: "Clear All Chats",
+      message: "Are you sure you want to delete all chats?",
+      confirmText: "Delete all chats",
+      cancelText: "Cancel",
+      variant: "destructive",
+    });
+
+    if (!confirmed) return;
+
     try {
       router.push("/c");
 
@@ -89,8 +107,6 @@ export default function SettingsMenu({
     } catch (error) {
       // Error toast is already shown by the API service
       console.error("Error clearing chats:", error);
-    } finally {
-      setModalAction(null);
     }
   };
 
@@ -183,44 +199,6 @@ export default function SettingsMenu({
 
   return (
     <>
-      <Modal
-        isOpen={modalAction !== null}
-        backdrop="blur"
-        onOpenChange={() => setModalAction(null)}
-      >
-        <ModalContent>
-          <>
-            <ModalHeader className="flex justify-center">
-              {modalAction === "logout"
-                ? "Are you sure you want to logout?"
-                : "Are you sure you want to delete all chats?"}
-            </ModalHeader>
-            <ModalBody className="mb-4 flex flex-col gap-2">
-              <Button
-                color="danger"
-                radius="full"
-                onPress={() => {
-                  if (modalAction === "logout") {
-                    handleConfirmLogout();
-                  } else if (modalAction === "clear_chats") {
-                    handleConfirmClearChats();
-                  }
-                }}
-              >
-                {modalAction === "logout" ? "Logout" : "Delete all chats"}
-              </Button>
-              <Button
-                radius="full"
-                variant="bordered"
-                onPress={() => setModalAction(null)}
-              >
-                Cancel
-              </Button>
-            </ModalBody>
-          </>
-        </ModalContent>
-      </Modal>
-
       <Dropdown className="text-foreground dark">
         <DropdownTrigger>{children}</DropdownTrigger>
         <DropdownMenu aria-label="Dynamic Actions">
@@ -242,6 +220,8 @@ export default function SettingsMenu({
         isOpen={supportModalOpen}
         onOpenChange={() => setSupportModalOpen(false)}
       />
+
+      <ConfirmationDialog {...confirmationProps} />
     </>
   );
 }
