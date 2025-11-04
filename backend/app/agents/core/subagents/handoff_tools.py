@@ -72,57 +72,6 @@ def create_handoff_tool(
     return handoff_tool
 
 
-async def get_mcp_handoff_tools(user_id: str) -> List:
-    """
-    Get handoff tools for user's configured MCP servers.
-
-    Args:
-        user_id: User identifier
-
-    Returns:
-        List of handoff tools for MCP servers
-    """
-    from app.services.mcp import get_mcp_service
-
-    try:
-        mcp_service = get_mcp_service()
-        servers = await mcp_service.get_user_servers(user_id)
-
-        tools = []
-        for server in servers:
-            if server.enabled:
-                agent_name = f"mcp_{server.name}_agent"
-                tool_name = f"call_mcp_{server.name}_agent"
-
-                description = (
-                    f"Transfer control to the {server.name} MCP server specialist agent. "
-                    f"Description: {server.description}. "
-                    f"Use this agent to access {server.name} server capabilities. "
-                    f"Provide detailed task description and relevant context."
-                )
-
-                system_prompt = f"""You are a specialized agent for the {server.name} MCP server.
-
-{server.description}
-
-Use the available tools from this MCP server to accomplish the user's task.
-Always explain what you're doing and provide clear, helpful responses."""
-
-                tool = create_handoff_tool(
-                    tool_name=tool_name,
-                    agent_name=agent_name,
-                    description=description,
-                    system_prompt=system_prompt,
-                )
-                tools.append(tool)
-
-        logger.info(f"Created {len(tools)} MCP handoff tools for user {user_id}")
-        return tools
-
-    except Exception as e:
-        logger.error(f"Failed to create MCP handoff tools for user {user_id}: {e}")
-        return []
-
 
 def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
     """

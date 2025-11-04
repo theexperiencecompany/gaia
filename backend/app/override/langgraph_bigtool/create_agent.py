@@ -45,6 +45,9 @@ from langgraph.types import Send
 from langgraph.utils.runnable import RunnableCallable
 from langgraph_bigtool.graph import State, _format_selected_tools
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
+from mcp_use import MCPAgent, MCPClient
+
+from app.config.mcp_registry import get_multi_server_config
 
 HookType = Union[
     Callable[[State, RunnableConfig, BaseStore], State],
@@ -205,6 +208,9 @@ def create_agent(
             store,
         )
 
+        server_config = get_multi_server_config()
+        mcp_client = MCPClient(server_config)
+
         model_configurations = config.get("configurable", {}).get(
             "model_configurations", {}
         )
@@ -221,7 +227,18 @@ def create_agent(
         tools_to_bind.extend(selected_tools)
         tools_to_bind.extend(initial_tools)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[arg-type]
-        response = await llm_with_tools.ainvoke(state["messages"])
+        agent = MCPAgent(llm=llm_with_tools, client=mcp_client)
+
+        latest_message = state["messages"][-1]
+        external_history = state["messages"][:-1]
+        response = await agent.run(
+            query=latest_message.text(),
+            external_history=external_history,  # type: ignore[arg-type]
+        )
+
+        response = AIMessage(content=response)
+
+        # response = await llm_with_tools.ainvoke(state["messages"])
 
         # Set the name for the response for filtering
         response.additional_kwargs = {"visible_to": {agent_name}}

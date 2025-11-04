@@ -47,7 +47,6 @@ from app.helpers.lifespan_helpers import (
     setup_event_loop_policy,
 )
 from app.services.composio.composio_service import init_composio_service
-from app.services.mcp.mcp_service import init_mcp_service
 from app.services.startup_validation import validate_startup_requirements
 from pydantic import PydanticDeprecatedSince20
 
@@ -93,7 +92,6 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     init_embeddings()
     initialize_tools_store()
     init_cloudinary()
-    init_mcp_service()
     validate_startup_requirements()
     setup_event_loop_policy()
     logger.info(f"All lazy providers registered successfully for {context}")

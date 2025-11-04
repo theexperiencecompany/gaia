@@ -149,58 +149,6 @@ class ProviderSubAgents:
 
         return calendar_agent
 
-    @staticmethod
-    async def create_mcp_agents(llm: LanguageModelLike, user_id: str) -> dict[str, Any]:
-        """
-        Create sub-agents for all enabled MCP servers for a user.
-
-        Args:
-            llm: Language model to use
-            user_id: User identifier
-
-        Returns:
-            Dictionary of compiled MCP sub-agent graphs
-        """
-        from app.agents.core.subagents.mcp_subagent import MCPSubAgentFactory
-        from app.services.mcp import get_mcp_service
-
-        try:
-            mcp_service = get_mcp_service()
-            servers = await mcp_service.get_user_servers(user_id)
-
-            if not servers:
-                logger.debug(f"No MCP servers configured for user {user_id}")
-                return {}
-
-            mcp_agents = {}
-            for server in servers:
-                if server.get("enabled", True):
-                    server_name = server.get("server_name")
-                    if not server_name:
-                        logger.warning(f"Skipping server with missing server_name: {server}")
-                        continue
-                        
-                    display_name = server.get("display_name", server_name)
-                    description = server.get(
-                        "description", f"{display_name} MCP server"
-                    )
-
-                    agent_name = f"mcp_{server_name}_agent"
-                    logger.info(f"Creating MCP subagent: {agent_name}")
-
-                    agent = await MCPSubAgentFactory.create_mcp_subagent(
-                        server_name=server_name,
-                        description=description,
-                        llm=llm,
-                    )
-                    mcp_agents[agent_name] = agent
-
-            logger.info(f"Created {len(mcp_agents)} MCP subagents for user {user_id}")
-            return mcp_agents
-
-        except Exception as e:
-            logger.error(f"Failed to create MCP agents for user {user_id}: {e}")
-            return {}
 
     @staticmethod
     async def get_all_subagents(
