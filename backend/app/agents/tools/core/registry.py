@@ -200,7 +200,7 @@ class ToolRegistry:
             ("linkedin", "LINKEDIN"),
             ("google_sheets", "GOOGLE_SHEETS"),
             ("gmail", "GMAIL"),
-            ("github", "GITHUB"),
+            # ("github", "GITHUB"),
             ("reddit", "REDDIT"),
             ("airtable", "AIRTABLE"),
             ("linear", "LINEAR"),
@@ -215,7 +215,7 @@ class ToolRegistry:
         ):
             tools = await composio_service.get_tools(tool_kit=name)
             add_category(
-                name,
+                name=name,
                 tools=tools,
                 require_integration=True,
                 integration_name=name,

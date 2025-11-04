@@ -130,15 +130,15 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         ),
     ),
     OAuthIntegration(
-        id="x",
-        name="X",
+        id="twitter",
+        name="Twitter",
         description="Post tweets, read timelines, and manage your account with AI-powered tools",
         icons=["/images/icons/twitter.webp"],
         category="social",
-        provider="x",
+        provider="twitter",
         scopes=[],
         available=True,
-        short_name="x",
+        short_name="twitter",
         managed_by="composio",
         composio_config=ComposioConfig(
             auth_config_id="ac_vloH3fnhIeUa", toolkit="TWITTER"
