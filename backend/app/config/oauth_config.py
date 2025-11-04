@@ -113,22 +113,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             )
         ],
     ),
-    OAuthIntegration(
-        id="google_drive",
-        name="Google Drive",
-        description="Access and manage your files in the cloud",
-        icons=["/images/icons/drive.webp"],
-        category="storage",
-        provider="google",
-        scopes=[
-            OAuthScope(
-                scope="https://www.googleapis.com/auth/drive.file",
-                description="Create and manage files",
-            ),
-        ],
-        short_name="drive",
-        managed_by="self",
-    ),
     # Composio integrations
     OAuthIntegration(
         id="notion",
@@ -146,15 +130,15 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         ),
     ),
     OAuthIntegration(
-        id="twitter",
-        name="Twitter",
+        id="x",
+        name="X",
         description="Post tweets, read timelines, and manage your account with AI-powered tools",
         icons=["/images/icons/twitter.webp"],
         category="social",
-        provider="twitter",
+        provider="x",
         scopes=[],
         available=True,
-        short_name="twitter",
+        short_name="x",
         managed_by="composio",
         composio_config=ComposioConfig(
             auth_config_id="ac_vloH3fnhIeUa", toolkit="TWITTER"
@@ -188,6 +172,111 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         managed_by="composio",
         composio_config=ComposioConfig(
             auth_config_id="ac_GMeJBELf3z_m", toolkit="LINKEDIN"
+        ),
+    ),
+    OAuthIntegration(
+        id="github",
+        name="GitHub",
+        description="Manage repositories, issues, pull requests, and automate your development workflow",
+        icons=["/images/icons/github.svg"],
+        category="productivity",
+        provider="github",
+        scopes=[],
+        available=True,
+        short_name="github",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_y2VK4j0ATiZo", toolkit="GITHUB"
+        ),
+    ),
+    OAuthIntegration(
+        id="reddit",
+        name="Reddit",
+        description="Post content, manage comments, and engage with communities on Reddit",
+        icons=["/images/icons/reddit.svg"],
+        category="social",
+        provider="reddit",
+        scopes=[],
+        available=True,
+        short_name="reddit",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_7-hfiMVLhcDN", toolkit="REDDIT"
+        ),
+    ),
+    OAuthIntegration(
+        id="airtable",
+        name="Airtable",
+        description="Create and manage bases, tables, and records with AI-powered automation",
+        icons=["/images/icons/airtable.svg"],
+        category="productivity",
+        provider="airtable",
+        scopes=[],
+        available=True,
+        short_name="airtable",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_QPtQsXnIYm4C", toolkit="AIRTABLE"
+        ),
+    ),
+    OAuthIntegration(
+        id="linear",
+        name="Linear",
+        description="Manage issues, projects, and track development progress with AI assistance",
+        icons=["/images/icons/linear.svg"],
+        category="productivity",
+        provider="linear",
+        scopes=[],
+        available=True,
+        short_name="linear",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_mnrcEhhTXPVS", toolkit="LINEAR"
+        ),
+    ),
+    OAuthIntegration(
+        id="slack",
+        name="Slack",
+        description="Send messages, manage channels, and automate team communication",
+        icons=["/images/icons/slack.svg"],
+        category="communication",
+        provider="slack",
+        scopes=[],
+        available=True,
+        short_name="slack",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_acm0K6K_kWxY", toolkit="SLACK"
+        ),
+    ),
+    OAuthIntegration(
+        id="hubspot",
+        name="HubSpot",
+        description="Manage CRM contacts, deals, and automate sales and marketing workflows",
+        icons=["/images/icons/hubspot.svg"],
+        category="productivity",
+        provider="hubspot",
+        scopes=[],
+        available=True,
+        short_name="hubspot",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_rcnwYp1PRCVr", toolkit="HUBSPOT"
+        ),
+    ),
+    OAuthIntegration(
+        id="google_tasks",
+        name="Google Tasks",
+        description="Create, manage, and organize your tasks and to-do lists",
+        icons=["/images/icons/googletasks.svg"],
+        category="productivity",
+        provider="google_tasks",
+        scopes=[],
+        available=True,
+        short_name="tasks",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_xPSnVjKyHCDb", toolkit="GOOGLETASKS"
         ),
     ),
 ]

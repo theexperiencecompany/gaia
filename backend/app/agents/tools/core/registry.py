@@ -145,8 +145,21 @@ class ToolRegistry:
 
         add_category(
             "delegation",
-            core_tools=get_handoff_tools(
-                ["gmail", "notion", "twitter", "linkedin", "calendar"]
+            tools=get_handoff_tools(
+                [
+                    "gmail",
+                    "notion",
+                    "twitter",
+                    "linkedin",
+                    "github",
+                    "reddit",
+                    "airtable",
+                    "linear",
+                    "slack",
+                    "hubspot",
+                    "google_tasks",
+                    "google_sheets",
+                ]
             ),
         )
 
@@ -186,6 +199,13 @@ class ToolRegistry:
             ("linkedin", "LINKEDIN"),
             ("google_sheets", "GOOGLE_SHEETS"),
             ("gmail", "GMAIL"),
+            ("github", "GITHUB"),
+            ("reddit", "REDDIT"),
+            ("airtable", "AIRTABLE"),
+            ("linear", "LINEAR"),
+            ("slack", "SLACK"),
+            ("hubspot", "HUBSPOT"),
+            ("google_tasks", "GOOGLETASKS"),
         ]
 
         async def add_provider_category(

@@ -12,9 +12,17 @@ import asyncio
 from typing import Any
 
 from app.agents.prompts.subagent_prompts import (
+    AIRTABLE_AGENT_SYSTEM_PROMPT,
     CALENDAR_AGENT_SYSTEM_PROMPT,
+    GITHUB_AGENT_SYSTEM_PROMPT,
+    GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
+    GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
+    HUBSPOT_AGENT_SYSTEM_PROMPT,
+    LINEAR_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
+    REDDIT_AGENT_SYSTEM_PROMPT,
+    SLACK_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
 )
 from app.config.loggers import langchain_logger as logger
@@ -150,6 +158,102 @@ class ProviderSubAgents:
         return calendar_agent
 
     @staticmethod
+    async def create_github_agent(llm: LanguageModelLike):
+        """Create a specialized GitHub agent graph."""
+        logger.info("Creating GitHub sub-agent graph")
+        return await SubAgentFactory.create_provider_subagent(
+            provider="github",
+            llm=llm,
+            tool_space="github",
+            name="github_agent",
+            prompt=GITHUB_AGENT_SYSTEM_PROMPT,
+        )
+
+    @staticmethod
+    async def create_reddit_agent(llm: LanguageModelLike):
+        """Create a specialized Reddit agent graph."""
+        logger.info("Creating Reddit sub-agent graph")
+        return await SubAgentFactory.create_provider_subagent(
+            provider="reddit",
+            llm=llm,
+            tool_space="reddit",
+            name="reddit_agent",
+            prompt=REDDIT_AGENT_SYSTEM_PROMPT,
+        )
+
+    @staticmethod
+    async def create_airtable_agent(llm: LanguageModelLike):
+        """Create a specialized Airtable agent graph."""
+        logger.info("Creating Airtable sub-agent graph")
+        return await SubAgentFactory.create_provider_subagent(
+            provider="airtable",
+            llm=llm,
+            tool_space="airtable",
+            name="airtable_agent",
+            prompt=AIRTABLE_AGENT_SYSTEM_PROMPT,
+        )
+
+    @staticmethod
+    async def create_linear_agent(llm: LanguageModelLike):
+        """Create a specialized Linear agent graph."""
+        logger.info("Creating Linear sub-agent graph")
+        return await SubAgentFactory.create_provider_subagent(
+            provider="linear",
+            llm=llm,
+            tool_space="linear",
+            name="linear_agent",
+            prompt=LINEAR_AGENT_SYSTEM_PROMPT,
+        )
+
+    @staticmethod
+    async def create_slack_agent(llm: LanguageModelLike):
+        """Create a specialized Slack agent graph."""
+        logger.info("Creating Slack sub-agent graph")
+        return await SubAgentFactory.create_provider_subagent(
+            provider="slack",
+            llm=llm,
+            tool_space="slack",
+            name="slack_agent",
+            prompt=SLACK_AGENT_SYSTEM_PROMPT,
+        )
+
+    @staticmethod
+    async def create_hubspot_agent(llm: LanguageModelLike):
+        """Create a specialized HubSpot agent graph."""
+        logger.info("Creating HubSpot sub-agent graph")
+        return await SubAgentFactory.create_provider_subagent(
+            provider="hubspot",
+            llm=llm,
+            tool_space="hubspot",
+            name="hubspot_agent",
+            prompt=HUBSPOT_AGENT_SYSTEM_PROMPT,
+        )
+
+    @staticmethod
+    async def create_google_tasks_agent(llm: LanguageModelLike):
+        """Create a specialized Google Tasks agent graph."""
+        logger.info("Creating Google Tasks sub-agent graph")
+        return await SubAgentFactory.create_provider_subagent(
+            provider="google_tasks",
+            llm=llm,
+            tool_space="google_tasks",
+            name="google_tasks_agent",
+            prompt=GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
+        )
+
+    @staticmethod
+    async def create_google_sheets_agent(llm: LanguageModelLike):
+        """Create a specialized Google Sheets agent graph."""
+        logger.info("Creating Google Sheets sub-agent graph")
+        return await SubAgentFactory.create_provider_subagent(
+            provider="google_sheets",
+            llm=llm,
+            tool_space="google_sheets",
+            name="google_sheets_agent",
+            prompt=GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
+        )
+
+    @staticmethod
     async def get_all_subagents(llm: LanguageModelLike) -> dict[str, Any]:
         """
         Create all provider-specific sub-agent graphs.
@@ -165,12 +269,28 @@ class ProviderSubAgents:
             ProviderSubAgents.create_notion_agent(llm),
             ProviderSubAgents.create_twitter_agent(llm),
             ProviderSubAgents.create_linkedin_agent(llm),
-            ProviderSubAgents.create_calendar_agent(llm),
+            ProviderSubAgents.create_github_agent(llm),
+            ProviderSubAgents.create_reddit_agent(llm),
+            ProviderSubAgents.create_airtable_agent(llm),
+            ProviderSubAgents.create_linear_agent(llm),
+            ProviderSubAgents.create_slack_agent(llm),
+            ProviderSubAgents.create_hubspot_agent(llm),
+            ProviderSubAgents.create_google_tasks_agent(llm),
+            ProviderSubAgents.create_google_sheets_agent(llm),
+            # ProviderSubAgents.create_calendar_agent(llm),
         )
         return {
             "gmail_agent": results[0],
             "notion_agent": results[1],
             "twitter_agent": results[2],
             "linkedin_agent": results[3],
-            "calendar_agent": results[4],
+            "github_agent": results[4],
+            "reddit_agent": results[5],
+            "airtable_agent": results[6],
+            "linear_agent": results[7],
+            "slack_agent": results[8],
+            "hubspot_agent": results[9],
+            "google_tasks_agent": results[10],
+            "google_sheets_agent": results[11],
+            # "calendar_agent": results[12],
         }
