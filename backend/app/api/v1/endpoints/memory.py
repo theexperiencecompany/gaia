@@ -2,8 +2,6 @@
 
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException
-
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.decorators import tiered_rate_limit
 from app.models.memory_models import (
@@ -13,8 +11,9 @@ from app.models.memory_models import (
     MemorySearchResult,
 )
 from app.services.memory_service import memory_service
+from fastapi import APIRouter, Depends, HTTPException
 
-router = APIRouter()
+router = APIRouter(prefix="/memory")
 
 
 @router.get("", response_model=MemorySearchResult)

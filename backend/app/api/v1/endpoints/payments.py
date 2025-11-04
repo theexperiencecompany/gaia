@@ -6,11 +6,9 @@ Single service approach - simple and maintainable.
 import json
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Header
-
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.config.loggers import general_logger as logger
 from app.api.v1.middleware.rate_limiter import limiter
+from app.config.loggers import general_logger as logger
 from app.models.payment_models import (
     CreateSubscriptionRequest,
     PaymentVerificationResponse,
@@ -19,9 +17,9 @@ from app.models.payment_models import (
 )
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
-
-router = APIRouter()
+router = APIRouter(prefix="/payments")
 
 
 @router.get("/plans", response_model=List[PlanResponse])

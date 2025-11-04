@@ -600,6 +600,5 @@ class TokenRepository:
 
             return oauth_token
 
-
 # Singleton instance
 token_repository = TokenRepository()

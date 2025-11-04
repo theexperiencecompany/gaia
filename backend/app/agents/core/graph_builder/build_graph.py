@@ -27,6 +27,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 async def build_graph(
     chat_llm: Optional[LanguageModelLike] = None,
     in_memory_checkpointer: bool = False,
+    user_id: Optional[str] = None,
 ):
     """Construct and compile the state graph with integrated sub-agent graphs."""
     # Get default LLM if none provided
@@ -36,7 +37,7 @@ async def build_graph(
     tool_registry, store, sub_agents = await asyncio.gather(
         get_tool_registry(),
         get_tools_store(),
-        ProviderSubAgents.get_all_subagents(chat_llm),
+        ProviderSubAgents.get_all_subagents(chat_llm, user_id=user_id),
     )
 
     # Create main agent with custom tool retrieval logic

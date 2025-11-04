@@ -54,7 +54,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse, RedirectResponse
 from workos import WorkOSClient
 
-router = APIRouter()
+router = APIRouter(prefix="/oauth")
 http_async_client = httpx.AsyncClient()
 
 workos = WorkOSClient(
@@ -506,9 +506,17 @@ async def get_integrations_status(
             else:
                 is_connected = False
 
-            integration_statuses.append(
-                {"integrationId": integration.id, "connected": is_connected}
-            )
+            status_obj = {
+                "integrationId": integration.id,
+                "connected": is_connected,
+            }
+
+            # Add MCP server info if this integration powers an MCP server
+            if integration.mcp_server_id:
+                status_obj["mcpServerId"] = integration.mcp_server_id
+                status_obj["hasMcpServer"] = True
+
+            integration_statuses.append(status_obj)
 
         return JSONResponse(
             content={
