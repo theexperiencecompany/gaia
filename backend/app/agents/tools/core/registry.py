@@ -159,6 +159,7 @@ class ToolRegistry:
                     "hubspot",
                     "google_tasks",
                     "google_sheets",
+                    "todoist",
                 ]
             ),
         )
@@ -206,6 +207,7 @@ class ToolRegistry:
             ("slack", "SLACK"),
             ("hubspot", "HUBSPOT"),
             ("google_tasks", "GOOGLETASKS"),
+            ("todoist", "TODOIST"),
         ]
 
         async def add_provider_category(

@@ -279,6 +279,21 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_xPSnVjKyHCDb", toolkit="GOOGLETASKS"
         ),
     ),
+    OAuthIntegration(
+        id="todoist",
+        name="Todoist",
+        description="Manage tasks, projects, and productivity workflows with advanced task management",
+        icons=["/images/icons/todoist.svg"],
+        category="productivity",
+        provider="todoist",
+        scopes=[],
+        available=True,
+        short_name="todoist",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_TOjltL3O2kEB", toolkit="TODOIST"
+        ),
+    ),
 ]
 
 

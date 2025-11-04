@@ -12,6 +12,7 @@ from app.agents.prompts.subagent_prompts import (
     NOTION_AGENT_SYSTEM_PROMPT,
     REDDIT_AGENT_SYSTEM_PROMPT,
     SLACK_AGENT_SYSTEM_PROMPT,
+    TODOIST_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
 )
 from app.config.loggers import common_logger as logger
@@ -104,6 +105,7 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
             "hubspot",
             "google_tasks",
             "google_sheets",
+            "todoist",
         ]
 
     tools = []
@@ -280,11 +282,26 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
                 agent_name="google_sheets_agent",
                 description=HANDOFF_DESCRIPTION_TEMPLATE.format(
                     provider_name="Google Sheets",
-                    domain="spreadsheet and data automation",
-                    capabilities="creating spreadsheets, reading data, updating cells, managing sheets, applying formulas, formatting data, working with ranges, and automating spreadsheet workflows",
+                    domain="spreadsheet and data management",
+                    capabilities="creating spreadsheets, managing sheets, reading/writing cell data, applying formulas, formatting data, batch operations, and automating spreadsheet workflows",
                     use_cases="spreadsheet creation, data entry, formula management, data analysis, or any Google Sheets operation",
                 ),
                 system_prompt=GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
+            )
+        )
+
+    if "todoist" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_todoist_agent",
+                agent_name="todoist_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Todoist",
+                    domain="task and project management",
+                    capabilities="creating tasks, managing projects, organizing with sections and labels, setting priorities and due dates, tracking completion, and automating productivity workflows",
+                    use_cases="task creation, project organization, productivity tracking, to-do management, or any Todoist workflow",
+                ),
+                system_prompt=TODOIST_AGENT_SYSTEM_PROMPT,
             )
         )
 

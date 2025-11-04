@@ -23,6 +23,7 @@ from app.agents.prompts.subagent_prompts import (
     NOTION_AGENT_SYSTEM_PROMPT,
     REDDIT_AGENT_SYSTEM_PROMPT,
     SLACK_AGENT_SYSTEM_PROMPT,
+    TODOIST_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
 )
 from app.config.loggers import langchain_logger as logger
@@ -254,6 +255,18 @@ class ProviderSubAgents:
         )
 
     @staticmethod
+    async def create_todoist_agent(llm: LanguageModelLike):
+        """Create a specialized Todoist agent graph."""
+        logger.info("Creating Todoist sub-agent graph")
+        return await SubAgentFactory.create_provider_subagent(
+            provider="todoist",
+            llm=llm,
+            tool_space="todoist",
+            name="todoist_agent",
+            prompt=TODOIST_AGENT_SYSTEM_PROMPT,
+        )
+
+    @staticmethod
     async def get_all_subagents(llm: LanguageModelLike) -> dict[str, Any]:
         """
         Create all provider-specific sub-agent graphs.
@@ -277,6 +290,7 @@ class ProviderSubAgents:
             ProviderSubAgents.create_hubspot_agent(llm),
             ProviderSubAgents.create_google_tasks_agent(llm),
             ProviderSubAgents.create_google_sheets_agent(llm),
+            ProviderSubAgents.create_todoist_agent(llm),
             # ProviderSubAgents.create_calendar_agent(llm),
         )
         return {
