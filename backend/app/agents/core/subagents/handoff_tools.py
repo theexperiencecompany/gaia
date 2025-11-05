@@ -1,15 +1,15 @@
 from typing import Annotated, List, Optional
 
+from app.agents.prompts.github_node_prompts import GITHUB_ORCHESTRATOR_PROMPT
 from app.agents.prompts.gmail_node_prompts import GMAIL_ORCHESTRATOR_PROMPT
+from app.agents.prompts.hubspot_node_prompts import HUBSPOT_ORCHESTRATOR_PROMPT
 from app.agents.prompts.subagent_prompts import (
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
-    GITHUB_AGENT_SYSTEM_PROMPT,
     GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
     GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
     GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
     GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
-    HUBSPOT_AGENT_SYSTEM_PROMPT,
     LINEAR_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
     MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
@@ -193,7 +193,7 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
                     capabilities="managing repositories, creating issues, handling pull requests, managing branches, reviewing code, managing collaborators, and automating development workflows",
                     use_cases="repository management, issue tracking, pull requests, code review, or any GitHub development task",
                 ),
-                system_prompt=GITHUB_AGENT_SYSTEM_PROMPT,
+                system_prompt=GITHUB_ORCHESTRATOR_PROMPT,
             )
         )
 
@@ -268,7 +268,7 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
                     capabilities="managing contacts, tracking deals, organizing companies, logging activities, creating tasks, sending emails, managing pipeline, and automating sales/marketing workflows",
                     use_cases="CRM management, sales tracking, marketing automation, contact management, or any HubSpot operation",
                 ),
-                system_prompt=HUBSPOT_AGENT_SYSTEM_PROMPT,
+                system_prompt=HUBSPOT_ORCHESTRATOR_PROMPT,
             )
         )
 
