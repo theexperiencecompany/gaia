@@ -49,7 +49,7 @@ export default function SettingsPage() {
       <div className="flex h-full w-full flex-col">
         <div className="flex-1 overflow-y-auto">
           <div className="flex w-full justify-center p-6">
-            <div className="w-full max-w-2xl">{renderContent()}</div>
+            <div className="w-full">{renderContent()}</div>
           </div>
         </div>
       </div>
