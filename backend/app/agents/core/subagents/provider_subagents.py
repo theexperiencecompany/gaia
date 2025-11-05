@@ -390,7 +390,6 @@ class ProviderSubAgents:
             ProviderSubAgents.create_google_maps_agent(llm),
             ProviderSubAgents.create_asana_agent(llm),
             ProviderSubAgents.create_trello_agent(llm),
-            # ProviderSubAgents.create_calendar_agent(llm),
         )
         return {
             "gmail_agent": results[0],
@@ -412,5 +411,4 @@ class ProviderSubAgents:
             "google_maps_agent": results[16],
             "asana_agent": results[17],
             "trello_agent": results[18],
-            # "calendar_agent": results[19],
         }

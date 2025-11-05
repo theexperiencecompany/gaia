@@ -160,6 +160,12 @@ class ToolRegistry:
                     "google_tasks",
                     "google_sheets",
                     "todoist",
+                    "microsoft_teams",
+                    "google_meet",
+                    "zoom",
+                    "google_maps",
+                    "asana",
+                    "trello",
                 ]
             ),
         )
@@ -195,37 +201,46 @@ class ToolRegistry:
 
         # Provider categories (integration required + delegated)
         provider_configs = [
-            ("twitter", "TWITTER"),
-            ("notion", "NOTION"),
-            ("linkedin", "LINKEDIN"),
-            ("google_sheets", "GOOGLE_SHEETS"),
-            ("reddit", "REDDIT"),
-            ("airtable", "AIRTABLE"),
-            ("linear", "LINEAR"),
-            ("slack", "SLACK"),
-            ("google_tasks", "GOOGLETASKS"),
-            ("todoist", "TODOIST"),
-            # ("gmail", "GMAIL"),
-            # ("github", "GITHUB"),
-            # ("hubspot", "HUBSPOT"),
+            ("TWITTER", "twitter"),
+            ("NOTION", "notion"),
+            ("LINKEDIN", "linkedin"),
+            ("GOOGLESHEETS", "google_sheets"),
+            ("REDDIT", "reddit"),
+            ("AIRTABLE", "airtable"),
+            ("LINEAR", "linear"),
+            ("SLACK", "slack"),
+            ("GOOGLETASKS", "google_tasks"),
+            ("TODOIST", "todoist"),
+            #
+            # ("MICROSOFT_TEAMS", "microsoft_teams"), action params starts with $
+            # ("ZOOM", "zoom"), action params has parameter named from
+            #
+            ("GOOGLEMEET", "google_meet"),
+            ("GOOGLE_MAPS", "google_maps"),
+            ("ASANA", "asana"),
+            ("TRELLO", "trello"),
         ]
 
         async def add_provider_category(
-            name: str,
+            toolkit_name: str,
+            space_name: str,
         ):
-            tools = await composio_service.get_tools(tool_kit=name)
+            tools = await composio_service.get_tools(tool_kit=toolkit_name)
             add_category(
-                name=name,
+                name=toolkit_name,
                 tools=tools,
                 require_integration=True,
-                integration_name=name,
+                integration_name=toolkit_name,
                 is_delegated=True,
-                space=name,
+                space=space_name,
             )
 
         # Parallelize provider category addition
         await asyncio.gather(
-            *[add_provider_category(name) for name, _ in provider_configs]
+            *[
+                add_provider_category(toolkit_name, space_name)
+                for toolkit_name, space_name in provider_configs
+            ]
         )
 
     def get_category(self, name: str) -> Optional[ToolCategory]:
