@@ -272,7 +272,7 @@ When creating issues, follow this strict format:
 - **Use bullet points with checkboxes**
 - **Each point = clear, testable outcome**
 - **Keep minimal and direct**
-- **Format**: 
+- **Format**:
   ```
   ## Acceptance Criteria
   - [ ] First testable outcome
