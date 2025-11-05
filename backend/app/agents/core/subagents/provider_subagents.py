@@ -14,10 +14,8 @@ from typing import Any
 from app.agents.prompts.subagent_prompts import (
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     CALENDAR_AGENT_SYSTEM_PROMPT,
-    GITHUB_AGENT_SYSTEM_PROMPT,
     GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
     GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
-    HUBSPOT_AGENT_SYSTEM_PROMPT,
     LINEAR_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
@@ -27,7 +25,9 @@ from app.agents.prompts.subagent_prompts import (
     TWITTER_AGENT_SYSTEM_PROMPT,
 )
 from app.config.loggers import langchain_logger as logger
+from app.langchain.core.subgraphs.github_subgraph import create_github_subgraph
 from app.langchain.core.subgraphs.gmail_subgraph import create_gmail_subgraph
+from app.langchain.core.subgraphs.hubspot_subgraph import create_hubspot_subgraph
 from langchain_core.language_models import LanguageModelLike
 
 from .base_subagent import SubAgentFactory
@@ -160,15 +160,21 @@ class ProviderSubAgents:
 
     @staticmethod
     async def create_github_agent(llm: LanguageModelLike):
-        """Create a specialized GitHub agent graph."""
-        logger.info("Creating GitHub sub-agent graph")
-        return await SubAgentFactory.create_provider_subagent(
-            provider="github",
-            llm=llm,
-            tool_space="github",
-            name="github_agent",
-            prompt=GITHUB_AGENT_SYSTEM_PROMPT,
-        )
+        """
+        Create a clean GitHub agent with plan-and-execute flow.
+
+        Args:
+            llm: Language model to use
+
+        Returns:
+            Compiled GitHub agent
+        """
+        logger.info("Creating clean GitHub plan-and-execute subgraph")
+
+        github_agent = await create_github_subgraph(llm=llm)
+
+        logger.info("GitHub subgraph created successfully")
+        return github_agent
 
     @staticmethod
     async def create_reddit_agent(llm: LanguageModelLike):
@@ -220,15 +226,21 @@ class ProviderSubAgents:
 
     @staticmethod
     async def create_hubspot_agent(llm: LanguageModelLike):
-        """Create a specialized HubSpot agent graph."""
-        logger.info("Creating HubSpot sub-agent graph")
-        return await SubAgentFactory.create_provider_subagent(
-            provider="hubspot",
-            llm=llm,
-            tool_space="hubspot",
-            name="hubspot_agent",
-            prompt=HUBSPOT_AGENT_SYSTEM_PROMPT,
-        )
+        """
+        Create a clean HubSpot agent with plan-and-execute flow.
+
+        Args:
+            llm: Language model to use
+
+        Returns:
+            Compiled HubSpot agent
+        """
+        logger.info("Creating clean HubSpot plan-and-execute subgraph")
+
+        hubspot_agent = await create_hubspot_subgraph(llm=llm)
+
+        logger.info("HubSpot subgraph created successfully")
+        return hubspot_agent
 
     @staticmethod
     async def create_google_tasks_agent(llm: LanguageModelLike):

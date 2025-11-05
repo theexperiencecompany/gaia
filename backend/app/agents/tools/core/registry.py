@@ -200,7 +200,7 @@ class ToolRegistry:
             ("linkedin", "LINKEDIN"),
             ("google_sheets", "GOOGLE_SHEETS"),
             ("gmail", "GMAIL"),
-            # ("github", "GITHUB"),
+            ("github", "GITHUB"),
             ("reddit", "REDDIT"),
             ("airtable", "AIRTABLE"),
             ("linear", "LINEAR"),

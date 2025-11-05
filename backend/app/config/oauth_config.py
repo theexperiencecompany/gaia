@@ -174,21 +174,21 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_GMeJBELf3z_m", toolkit="LINKEDIN"
         ),
     ),
-    # OAuthIntegration(
-    #     id="github",
-    #     name="GitHub",
-    #     description="Manage repositories, issues, pull requests, and automate your development workflow",
-    #     icons=["/images/icons/github.svg"],
-    #     category="productivity",
-    #     provider="github",
-    #     scopes=[],
-    #     available=True,
-    #     short_name="github",
-    #     managed_by="composio",
-    #     composio_config=ComposioConfig(
-    #         auth_config_id="ac_y2VK4j0ATiZo", toolkit="GITHUB"
-    #     ),
-    # ),
+    OAuthIntegration(
+        id="github",
+        name="GitHub",
+        description="Manage repositories, issues, pull requests, and automate your development workflow",
+        icons=["/images/icons/github.svg"],
+        category="productivity",
+        provider="github",
+        scopes=[],
+        available=True,
+        short_name="github",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_y2VK4j0ATiZo", toolkit="GITHUB"
+        ),
+    ),
     OAuthIntegration(
         id="reddit",
         name="Reddit",
