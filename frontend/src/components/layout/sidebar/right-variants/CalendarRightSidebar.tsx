@@ -25,6 +25,8 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import { CalendarItem } from "@/types/api/calendarApiTypes";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
+import CalendarEventAIActions from "./CalendarEventAIActions";
+
 interface EventSidebarProps {
   isCreating: boolean;
   selectedEvent: GoogleCalendarEvent | null;
@@ -403,7 +405,16 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
         </div>
       </SidebarContent>
 
-      <SidebarFooter className="px-6 py-6">
+      <SidebarFooter className="space-y-3 px-6 py-6">
+        {/* AI Actions (only for existing events) */}
+        {!isCreating && selectedEvent && (
+          <CalendarEventAIActions
+            selectedEvent={selectedEvent}
+            calendars={calendars}
+          />
+        )}
+
+        {/* Create/Delete Actions */}
         <div className="flex items-center gap-3">
           {isCreating ? (
             <Button

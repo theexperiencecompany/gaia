@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { ArrowUpRight } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -27,13 +28,17 @@ export default function UseCaseCard({
 }: UseCaseCardProps) {
   const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
   const appendToInput = useAppendToInput();
+  const router = useRouter();
   const { selectWorkflow } = useWorkflowSelection();
   const { createWorkflow } = useWorkflowCreation();
 
   // Unified action handler for both card and button
   const handleAction = async () => {
     if (action_type === "prompt") {
-      if (prompt) appendToInput(prompt);
+      if (prompt) {
+        appendToInput(prompt);
+        router.push("/c");
+      }
     } else {
       setIsCreatingWorkflow(true);
       const toastId = toast.loading("Creating workflow...");

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Task01Icon } from "@/components/shared/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui";
 import { useUser } from "@/features/auth/hooks/useUser";
+import SelectedCalendarEventIndicator from "@/features/chat/components/composer/SelectedCalendarEventIndicator";
 import SelectedToolIndicator from "@/features/chat/components/composer/SelectedToolIndicator";
 import SelectedWorkflowIndicator from "@/features/chat/components/composer/SelectedWorkflowIndicator";
 import { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
@@ -20,10 +21,15 @@ export default function ChatBubbleUser({
   selectedTool,
   toolCategory,
   selectedWorkflow,
+  selectedCalendarEvent,
   disableActions = false,
 }: ChatBubbleUserProps & { disableActions?: boolean }) {
   const hasContent =
-    !!text || fileData.length > 0 || !!selectedTool || !!selectedWorkflow;
+    !!text ||
+    fileData.length > 0 ||
+    !!selectedTool ||
+    !!selectedWorkflow ||
+    !!selectedCalendarEvent;
 
   const user = useUser();
 
@@ -55,6 +61,12 @@ export default function ChatBubbleUser({
         {selectedWorkflow && (
           <div className="flex justify-end">
             <SelectedWorkflowIndicator workflow={selectedWorkflow} />
+          </div>
+        )}
+
+        {selectedCalendarEvent && (
+          <div className="flex justify-end">
+            <SelectedCalendarEventIndicator event={selectedCalendarEvent} />
           </div>
         )}
 

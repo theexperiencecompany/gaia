@@ -2,8 +2,10 @@ import { useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import { useChatStream } from "@/features/chat/hooks/useChatStream";
+import { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
 import { db, type IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
+import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
 import { useComposerStore } from "@/stores/composerStore";
 import { useConversationStore } from "@/stores/conversationStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
@@ -23,6 +25,7 @@ type SendMessageOverrides = {
   selectedTool?: string | null;
   selectedToolCategory?: string | null;
   selectedWorkflow?: WorkflowData | null;
+  selectedCalendarEvent?: SelectedCalendarEventData | null;
 };
 
 export const useSendMessage = () => {
@@ -46,9 +49,11 @@ export const useSendMessage = () => {
 
       const composerState = useComposerStore.getState();
       const workflowState = useWorkflowSelectionStore.getState();
+      const calendarEventState = useCalendarEventSelectionStore.getState();
 
-  const files = overrides?.files ?? composerState.uploadedFileData;
-  const normalizedFiles = (files ?? []) as typeof composerState.uploadedFileData;
+      const files = overrides?.files ?? composerState.uploadedFileData;
+      const normalizedFiles = (files ??
+        []) as typeof composerState.uploadedFileData;
       const selectedTool =
         overrides?.selectedTool ?? composerState.selectedTool ?? null;
       const selectedToolCategory =
@@ -57,6 +62,10 @@ export const useSendMessage = () => {
         null;
       const selectedWorkflow =
         overrides?.selectedWorkflow ?? workflowState.selectedWorkflow ?? null;
+      const selectedCalendarEvent =
+        overrides?.selectedCalendarEvent ??
+        calendarEventState.selectedCalendarEvent ??
+        null;
 
       const isoTimestamp = fetchDate();
       const createdAt = new Date(isoTimestamp);
@@ -68,11 +77,12 @@ export const useSendMessage = () => {
         response: trimmedContent,
         date: isoTimestamp,
         message_id: tempMessageId,
-  fileIds: normalizedFiles.map((file) => file.fileId),
-  fileData: normalizedFiles,
+        fileIds: normalizedFiles.map((file) => file.fileId),
+        fileData: normalizedFiles,
         selectedTool: selectedTool ?? undefined,
         toolCategory: selectedToolCategory ?? undefined,
         selectedWorkflow: selectedWorkflow ?? undefined,
+        selectedCalendarEvent: selectedCalendarEvent ?? undefined,
       };
 
       addLegacyMessage(userMessage);
@@ -86,6 +96,7 @@ export const useSendMessage = () => {
           selectedTool,
           selectedToolCategory,
           selectedWorkflow,
+          selectedCalendarEvent,
         );
         return;
       }
@@ -164,6 +175,7 @@ export const useSendMessage = () => {
           selectedTool,
           selectedToolCategory,
           selectedWorkflow,
+          selectedCalendarEvent,
         );
       } catch (error) {
         const failedMessage: IMessage = {
