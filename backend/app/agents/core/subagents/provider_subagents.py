@@ -11,6 +11,7 @@ Now supports both legacy subagent architecture and new plan-and-execute subgraph
 import asyncio
 from typing import Any
 
+from app.agents.llm.client import init_llm
 from app.agents.prompts.subagent_prompts import (
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
@@ -357,7 +358,7 @@ class ProviderSubAgents:
         )
 
     @staticmethod
-    async def get_all_subagents(llm: LanguageModelLike) -> dict[str, Any]:
+    async def get_all_subagents() -> dict[str, Any]:
         """
         Create all provider-specific sub-agent graphs.
 
@@ -367,6 +368,8 @@ class ProviderSubAgents:
         Returns:
             Dictionary of compiled sub-agent graphs
         """
+        llm = init_llm()
+
         results = await asyncio.gather(
             ProviderSubAgents.create_gmail_agent(llm),
             ProviderSubAgents.create_notion_agent(llm),
