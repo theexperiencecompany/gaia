@@ -51,9 +51,7 @@ def trim_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> T:
             return state
 
         # Extract model configuration from runnable config
-        model_configurations = config.get("configurable", {}).get(
-            "model_configurations", {}
-        )
+        model_configurations = config.get("configurable", {})
         provider = model_configurations.get("provider", None)
         max_tokens = model_configurations.get("max_tokens", None)
 

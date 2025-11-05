@@ -52,21 +52,19 @@ def build_agent_config(
             parameters, metadata, and recursion limits
         - UsageMetadataCallbackHandler instance for tracking token usage during execution
     """
-    model_configuration = {
-        "provider": (
-            user_model_config.inference_provider.value
-            if user_model_config
-            else DEFAULT_LLM_PROVIDER
-        ),
-        "max_tokens": user_model_config.max_tokens
+    model_name = (
+        user_model_config.provider_model_name
         if user_model_config
-        else DEFAULT_MAX_TOKENS,
-        "model_name": (
-            user_model_config.provider_model_name
-            if user_model_config
-            else DEFAULT_MODEL_NAME
-        ),
-    }
+        else DEFAULT_MODEL_NAME
+    )
+    provider_name = (
+        user_model_config.inference_provider.value
+        if user_model_config
+        else DEFAULT_LLM_PROVIDER
+    )
+    max_tokens = (
+        user_model_config.max_tokens if user_model_config else DEFAULT_MAX_TOKENS
+    )
 
     config = {
         "configurable": {
@@ -74,7 +72,10 @@ def build_agent_config(
             "user_id": user.get("user_id"),
             "email": user.get("email"),
             "user_time": user_time.isoformat(),
-            "model_configurations": model_configuration,
+            "provider": provider_name,
+            "max_tokens": max_tokens,
+            "model_name": model_name,
+            "model": model_name,
         },
         "recursion_limit": 25,
         "metadata": {"user_id": user.get("user_id")},

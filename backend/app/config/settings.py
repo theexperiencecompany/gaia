@@ -160,7 +160,6 @@ class ProductionSettings(CommonSettings):
 
     # AI & Machine Learning
     OPENAI_API_KEY: str
-    CEREBRAS_API_KEY: str
     GOOGLE_API_KEY: str
 
     # Media & Content Processing
@@ -251,9 +250,7 @@ class DevelopmentSettings(CommonSettings):
 
     # AI & Machine Learning
     OPENAI_API_KEY: Optional[str] = None
-    CEREBRAS_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
-    GCP_TOPIC_NAME: Optional[str] = None
 
     # Media & Content Processing
     ASSEMBLYAI_API_KEY: Optional[str] = None

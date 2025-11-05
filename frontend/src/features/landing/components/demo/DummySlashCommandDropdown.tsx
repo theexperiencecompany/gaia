@@ -5,7 +5,6 @@ import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Hash, Search, X } from "lucide-react";
-import Image from "next/image";
 import React, { useMemo, useState } from "react";
 
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -16,43 +15,36 @@ const dummyIntegrations = [
   {
     id: "gmail",
     name: "Gmail",
-    icons: ["/images/icons/gmail.svg"],
     status: "connected",
   },
   {
     id: "google_calendar",
     name: "Google Calendar",
-    icons: ["/images/icons/googlecalendar.webp"],
     status: "connected",
   },
   {
     id: "google_docs",
     name: "Google Docs",
-    icons: ["/images/icons/google_docs.webp"],
     status: "connected",
   },
   {
     id: "google_sheets",
     name: "Google Sheets",
-    icons: ["/images/icons/google_sheets.webp"],
     status: "connected",
   },
   {
     id: "notion",
     name: "Notion",
-    icons: ["/images/icons/notion.webp"],
     status: "connected",
   },
   {
     id: "twitter",
     name: "Twitter",
-    icons: ["/images/icons/twitter.webp"],
     status: "connected",
   },
   {
     id: "linkedin",
     name: "LinkedIn",
-    icons: ["/images/icons/linkedin.svg"],
     status: "connected",
   },
 ];
@@ -104,13 +96,12 @@ const DummyIntegrationsCard: React.FC = () => {
                   {/* Icon */}
                   <div className="flex-shrink-0">
                     <div className="flex items-center justify-center rounded-lg">
-                      <Image
-                        width={25}
-                        height={25}
-                        src={integration.icons[0]}
-                        alt={integration.name}
-                        className="aspect-square max-w-[25px] min-w-[25px] object-contain"
-                      />
+                      {getToolCategoryIcon(integration.id, {
+                        size: 25,
+                        width: 25,
+                        height: 25,
+                        showBackground: false,
+                      })}
                     </div>
                   </div>
 

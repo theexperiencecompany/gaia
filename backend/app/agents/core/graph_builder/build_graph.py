@@ -28,15 +28,14 @@ async def build_graph(
     chat_llm: Optional[LanguageModelLike] = None,
     in_memory_checkpointer: bool = False,
 ):
-    """Construct and compile the state graph with integrated sub-agent graphs."""
-    # Get default LLM if none provided
     if chat_llm is None:
         chat_llm = init_llm()
 
+    """Construct and compile the state graph with integrated sub-agent graphs."""
     tool_registry, store, sub_agents = await asyncio.gather(
         get_tool_registry(),
         get_tools_store(),
-        ProviderSubAgents.get_all_subagents(chat_llm),
+        ProviderSubAgents.get_all_subagents(),
     )
 
     # Create main agent with custom tool retrieval logic

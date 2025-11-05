@@ -145,25 +145,6 @@ def get_models_configuration() -> List[Dict[str, Any]]:
             "pricing_per_1k_input_tokens": 0.00125,  # $1.25 per million tokens
             "pricing_per_1k_output_tokens": 0.01,  # $10.00 per million tokens
         },
-        # Cerebras Models
-        {
-            "model_id": "gpt-oss-120b",
-            "name": "GPT OSS 120B",
-            "model_provider": ModelProvider.OPENAI.value,
-            "inference_provider": ModelProvider.CEREBRAS.value,
-            "provider_model_name": "gpt-oss-120b",
-            "description": "Cerebras' open-source model, high performance with fast inference",
-            "logo_url": "/images/icons/chatgpt.webp",
-            "max_tokens": 120_000,
-            "supports_streaming": True,
-            "supports_function_calling": True,
-            "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
-            "lowest_tier": PlanType.FREE.value,
-            "is_active": True,
-            "is_default": False,
-            "pricing_per_1k_input_tokens": 0.00035,  # $0.35 per million tokens
-            "pricing_per_1k_output_tokens": 0.00075,  # $0.75 per million tokens
-        },
     ]
 
 

@@ -145,8 +145,22 @@ class ToolRegistry:
 
         add_category(
             "delegation",
-            core_tools=get_handoff_tools(
-                ["gmail", "notion", "twitter", "linkedin", "calendar"]
+            tools=get_handoff_tools(
+                [
+                    "gmail",
+                    "notion",
+                    "twitter",
+                    "linkedin",
+                    "github",
+                    "reddit",
+                    "airtable",
+                    "linear",
+                    "slack",
+                    "hubspot",
+                    "google_tasks",
+                    "google_sheets",
+                    "todoist",
+                ]
             ),
         )
 
@@ -185,7 +199,15 @@ class ToolRegistry:
             ("notion", "NOTION"),
             ("linkedin", "LINKEDIN"),
             ("google_sheets", "GOOGLE_SHEETS"),
-            ("gmail", "GMAIL"),
+            ("reddit", "REDDIT"),
+            ("airtable", "AIRTABLE"),
+            ("linear", "LINEAR"),
+            ("slack", "SLACK"),
+            ("google_tasks", "GOOGLETASKS"),
+            ("todoist", "TODOIST"),
+            # ("gmail", "GMAIL"),
+            # ("github", "GITHUB"),
+            # ("hubspot", "HUBSPOT"),
         ]
 
         async def add_provider_category(
@@ -193,7 +215,7 @@ class ToolRegistry:
         ):
             tools = await composio_service.get_tools(tool_kit=name)
             add_category(
-                name,
+                name=name,
                 tools=tools,
                 require_integration=True,
                 integration_name=name,

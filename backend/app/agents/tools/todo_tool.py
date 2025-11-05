@@ -4,29 +4,6 @@ from typing import Annotated, Any, Dict, List, Optional
 
 from app.config.loggers import chat_logger as logger
 from app.decorators import with_doc, with_rate_limiting
-from app.templates.docstrings.todo_tool_docs import (
-    ADD_SUBTASK,
-    BULK_COMPLETE_TODOS,
-    BULK_DELETE_TODOS,
-    BULK_MOVE_TODOS,
-    CREATE_PROJECT,
-    CREATE_TODO,
-    DELETE_PROJECT,
-    DELETE_SUBTASK,
-    DELETE_TODO,
-    GET_ALL_LABELS,
-    GET_TODAY_TODOS,
-    GET_TODO_STATS,
-    GET_TODOS_BY_LABEL,
-    GET_UPCOMING_TODOS,
-    LIST_PROJECTS,
-    LIST_TODOS,
-    SEARCH_TODOS,
-    SEMANTIC_SEARCH_TODOS,
-    UPDATE_PROJECT,
-    UPDATE_SUBTASK,
-    UPDATE_TODO,
-)
 from app.models.todo_models import (
     Priority,
     ProjectCreate,
@@ -61,11 +38,33 @@ from app.services.todos.todo_service import (
 )
 from app.services.todos.todo_service import update_project as update_project_service
 from app.services.todos.todo_service import update_todo as update_todo_service
+from app.templates.docstrings.todo_tool_docs import (
+    ADD_SUBTASK,
+    BULK_COMPLETE_TODOS,
+    BULK_DELETE_TODOS,
+    BULK_MOVE_TODOS,
+    CREATE_PROJECT,
+    CREATE_TODO,
+    DELETE_PROJECT,
+    DELETE_SUBTASK,
+    DELETE_TODO,
+    GET_ALL_LABELS,
+    GET_TODAY_TODOS,
+    GET_TODO_STATS,
+    GET_TODOS_BY_LABEL,
+    GET_UPCOMING_TODOS,
+    LIST_PROJECTS,
+    LIST_TODOS,
+    SEARCH_TODOS,
+    SEMANTIC_SEARCH_TODOS,
+    UPDATE_PROJECT,
+    UPDATE_SUBTASK,
+    UPDATE_TODO,
+)
+from app.utils.chat_utils import get_user_id_from_config
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
-
-from app.utils.chat_utils import get_user_id_from_config
 
 
 @tool
@@ -233,8 +232,7 @@ async def update_todo(
             project_id=project_id,
             completed=completed,
             subtasks=None,
-            workflow=None,
-            workflow_status=None,
+            workflow_id=None,
         )
         result = await update_todo_service(todo_id, update_request, user_id)
         todo_dict = result.model_dump(mode="json")
@@ -877,8 +875,7 @@ async def add_subtask(
             priority=None,
             project_id=None,
             completed=None,
-            workflow=None,
-            workflow_status=None,
+            workflow_id=None,
         )
 
         result = await update_todo_service(todo_id, update_data, user_id)
@@ -949,8 +946,7 @@ async def update_subtask(
             priority=None,
             project_id=None,
             completed=None,
-            workflow=None,
-            workflow_status=None,
+            workflow_id=None,
         )
         result = await update_todo_service(todo_id, update_data, user_id)
         todo_dict = result.model_dump(mode="json")
@@ -1009,8 +1005,7 @@ async def delete_subtask(
             priority=None,
             project_id=None,
             completed=None,
-            workflow=None,
-            workflow_status=None,
+            workflow_id=None,
         )
         result = await update_todo_service(todo_id, update_data, user_id)
         todo_dict = result.model_dump(mode="json")

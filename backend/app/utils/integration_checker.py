@@ -8,11 +8,10 @@ permissions and stream connection prompts to the frontend when needed.
 from typing import Optional
 
 import httpx
-from langgraph.config import get_stream_writer
-
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import get_integration_by_id, get_integration_scopes
 from app.config.token_repository import token_repository
+from langgraph.config import get_stream_writer
 
 http_async_client = httpx.AsyncClient(timeout=10.0)
 
@@ -97,7 +96,6 @@ async def stream_integration_connection_prompt(
             "integration_connection_required": {
                 "integration_id": integration_id,
                 "integration_name": integration.name,
-                "integration_icon": integration.icons[0],
                 "integration_description": integration.description,
                 "integration_category": integration.category,
                 "tool_name": tool_name,
