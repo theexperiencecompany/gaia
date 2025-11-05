@@ -10,5 +10,4 @@ def get_token_counter(provider: Optional[str] = None):
     elif provider == "gemini":
         return providers.get("gemini_llm")
 
-
     return providers.get("openai_llm")
