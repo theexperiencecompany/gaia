@@ -294,6 +294,96 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_TOjltL3O2kEB", toolkit="TODOIST"
         ),
     ),
+    OAuthIntegration(
+        id="microsoft_teams",
+        name="Microsoft Teams",
+        description="Collaborate with teams, send messages, manage channels, and automate team workflows",
+        icons=["/images/icons/microsoft_teams.svg"],
+        category="communication",
+        provider="microsoft_teams",
+        scopes=[],
+        available=True,
+        short_name="teams",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_0kzvAbsi2xu3", toolkit="MICROSOFTTEAMS"
+        ),
+    ),
+    OAuthIntegration(
+        id="google_meet",
+        name="Google Meet",
+        description="Schedule and manage video meetings with Google Meet",
+        icons=["/images/icons/google_meet.svg"],
+        category="communication",
+        provider="google_meet",
+        scopes=[],
+        available=True,
+        short_name="meet",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_GsHKAmsiGvz1", toolkit="GOOGLEMEET"
+        ),
+    ),
+    OAuthIntegration(
+        id="zoom",
+        name="Zoom",
+        description="Create and manage Zoom meetings, webinars, and video conferencing",
+        icons=["/images/icons/zoom.svg"],
+        category="communication",
+        provider="zoom",
+        scopes=[],
+        available=True,
+        short_name="zoom",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_fABNBG17lf2A", toolkit="ZOOM"
+        ),
+    ),
+    OAuthIntegration(
+        id="google_maps",
+        name="Google Maps",
+        description="Search locations, get directions, and manage place information",
+        icons=["/images/icons/google_maps.svg"],
+        category="productivity",
+        provider="google_maps",
+        scopes=[],
+        available=True,
+        short_name="maps",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_vy6NqsFlzLuO", toolkit="GOOGLEMAPS"
+        ),
+    ),
+    OAuthIntegration(
+        id="asana",
+        name="Asana",
+        description="Manage projects, tasks, and team workflows with comprehensive project management",
+        icons=["/images/icons/asana.svg"],
+        category="productivity",
+        provider="asana",
+        scopes=[],
+        available=True,
+        short_name="asana",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_gF2RuhulKw3I", toolkit="ASANA"
+        ),
+    ),
+    OAuthIntegration(
+        id="trello",
+        name="Trello",
+        description="Organize projects with boards, lists, and cards for visual task management",
+        icons=["/images/icons/trello.svg"],
+        category="productivity",
+        provider="trello",
+        scopes=[],
+        available=True,
+        short_name="trello",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_nMjBqOcjLTGW", toolkit="TRELLO"
+        ),
+    ),
 ]
 
 

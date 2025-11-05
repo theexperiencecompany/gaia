@@ -3,17 +3,23 @@ from typing import Annotated, List, Optional
 from app.agents.prompts.gmail_node_prompts import GMAIL_ORCHESTRATOR_PROMPT
 from app.agents.prompts.subagent_prompts import (
     AIRTABLE_AGENT_SYSTEM_PROMPT,
+    ASANA_AGENT_SYSTEM_PROMPT,
     GITHUB_AGENT_SYSTEM_PROMPT,
+    GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
+    GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
     GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
     GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
     HUBSPOT_AGENT_SYSTEM_PROMPT,
     LINEAR_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
+    MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
     REDDIT_AGENT_SYSTEM_PROMPT,
     SLACK_AGENT_SYSTEM_PROMPT,
     TODOIST_AGENT_SYSTEM_PROMPT,
+    TRELLO_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
+    ZOOM_AGENT_SYSTEM_PROMPT,
 )
 from app.config.loggers import common_logger as logger
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
@@ -106,6 +112,12 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
             "google_tasks",
             "google_sheets",
             "todoist",
+            "microsoft_teams",
+            "google_meet",
+            "zoom",
+            "google_maps",
+            "asana",
+            "trello",
         ]
 
     tools = []
@@ -302,6 +314,96 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
                     use_cases="task creation, project organization, productivity tracking, to-do management, or any Todoist workflow",
                 ),
                 system_prompt=TODOIST_AGENT_SYSTEM_PROMPT,
+            )
+        )
+
+    if "microsoft_teams" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_microsoft_teams_agent",
+                agent_name="microsoft_teams_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Microsoft Teams",
+                    domain="team collaboration and communication",
+                    capabilities="sending messages, managing channels, scheduling meetings, sharing files, organizing team discussions, and automating collaboration workflows",
+                    use_cases="team messaging, channel management, meeting scheduling, file sharing, or any Teams collaboration task",
+                ),
+                system_prompt=MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
+            )
+        )
+
+    if "google_meet" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_google_meet_agent",
+                agent_name="google_meet_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Google Meet",
+                    domain="video conferencing and meeting management",
+                    capabilities="creating meetings, scheduling video calls, generating meeting links, managing participants, and organizing virtual collaboration",
+                    use_cases="video meeting creation, scheduling calls, generating meeting links, or any Google Meet operation",
+                ),
+                system_prompt=GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
+            )
+        )
+
+    if "zoom" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_zoom_agent",
+                agent_name="zoom_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Zoom",
+                    domain="video conferencing and webinar management",
+                    capabilities="creating meetings, managing webinars, scheduling video calls, handling recordings, configuring settings, managing participants, and organizing virtual events",
+                    use_cases="video meeting creation, webinar management, call scheduling, recording management, or any Zoom operation",
+                ),
+                system_prompt=ZOOM_AGENT_SYSTEM_PROMPT,
+            )
+        )
+
+    if "google_maps" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_google_maps_agent",
+                agent_name="google_maps_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Google Maps",
+                    domain="location search and navigation",
+                    capabilities="searching locations, getting directions, finding nearby places, geocoding addresses, calculating distances, and providing travel information",
+                    use_cases="location search, route planning, finding nearby places, address geocoding, or any Google Maps operation",
+                ),
+                system_prompt=GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
+            )
+        )
+
+    if "asana" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_asana_agent",
+                agent_name="asana_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Asana",
+                    domain="project and task management",
+                    capabilities="creating tasks, managing projects, organizing with sections, assigning team members, setting due dates, tracking progress, adding subtasks, and automating project workflows",
+                    use_cases="task management, project organization, team collaboration, sprint planning, or any Asana workflow",
+                ),
+                system_prompt=ASANA_AGENT_SYSTEM_PROMPT,
+            )
+        )
+
+    if "trello" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_trello_agent",
+                agent_name="trello_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Trello",
+                    domain="visual project management and organization",
+                    capabilities="creating boards and cards, organizing lists, managing checklists, adding labels, assigning members, setting due dates, tracking progress, and visual workflow management",
+                    use_cases="board creation, card management, workflow organization, checklist tracking, or any Trello operation",
+                ),
+                system_prompt=TRELLO_AGENT_SYSTEM_PROMPT,
             )
         )
 
