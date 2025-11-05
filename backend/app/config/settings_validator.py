@@ -163,15 +163,6 @@ class SettingsValidator:
 
         self.register_group(
             SettingsGroup(
-                name="Cerebras AI",
-                keys=["CEREBRAS_API_KEY"],
-                description="Cerebras AI service",
-                affected_features="High-performance AI model inference",
-            )
-        )
-
-        self.register_group(
-            SettingsGroup(
                 name="Google AI",
                 keys=["GOOGLE_API_KEY"],
                 description="Google AI services",

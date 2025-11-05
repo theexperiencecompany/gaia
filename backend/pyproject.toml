@@ -97,7 +97,6 @@ dependencies = [
   "composio>=0.8.19",
   "composio-langchain==0.8.0",
   "dodopayments>=1.49.0",
-  "langchain-cerebras>=0.5.0",
   "standardwebhooks>=1.0.0",
   "psycopg[binary,pool]>=3.2.10",
   "langchain-core>=0.3.74",

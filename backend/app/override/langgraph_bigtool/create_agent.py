@@ -4,7 +4,7 @@ LANGGRAPH BIGTOOL OVERRIDE
 This overrides `create_agent` from langgraph_bigtool to support dynamic model configuration.
 
 WHY THIS EXISTS:
-- Need to switch between OpenAI, Gemini, and Cerebras models dynamically at runtime
+- Need to switch between OpenAI and Gemini models dynamically at runtime
 - Extract model_name and provider from config and apply to LLM before tool binding
 
 WHAT'S MODIFIED:

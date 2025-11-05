@@ -10,7 +10,6 @@ class ModelProvider(str, Enum):
 
     OPENAI = "openai"
     GEMINI = "gemini"
-    CEREBRAS = "cerebras"
 
 
 class PlanType(str, Enum):
