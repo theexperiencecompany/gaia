@@ -6,7 +6,6 @@ export interface Integration {
   id: string;
   name: string;
   description: string;
-  icons: string[]; // List of icon URLs
   category:
     | "productivity"
     | "communication"
@@ -35,7 +34,6 @@ export interface IntegrationCategory {
   id: string;
   name: string;
   description: string;
-  icons: string[]; // List of icon URLs
   integrations: Integration[];
 }
 

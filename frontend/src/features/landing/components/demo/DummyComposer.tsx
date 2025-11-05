@@ -4,7 +4,6 @@ import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
 import { ArrowUp, ChevronRight } from "lucide-react";
 import { WrenchIcon } from "lucide-react";
-import Image from "next/image";
 import React, { useRef, useState } from "react";
 
 import { AttachmentIcon, PlusSignIcon } from "@/components/shared/icons";
@@ -15,6 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/shadcn/dropdown-menu";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 import DummySlashCommandDropdown from "./DummySlashCommandDropdown";
 
@@ -23,37 +23,30 @@ const dummyIntegrations = [
   {
     id: "gmail",
     name: "Gmail",
-    icons: ["/images/icons/gmail.svg"],
   },
   {
-    id: "google-calendar",
+    id: "google_calendar",
     name: "Google Calendar",
-    icons: ["/images/icons/googlecalendar.webp"],
   },
   {
-    id: "google-docs",
+    id: "google_docs",
     name: "Google Docs",
-    icons: ["/images/icons/google_docs.webp"],
   },
   {
     id: "notion",
     name: "Notion",
-    icons: ["/images/icons/notion.webp"],
   },
   {
-    id: "google-sheets",
+    id: "google_sheets",
     name: "Google Sheets",
-    icons: ["/images/icons/google_sheets.webp"],
   },
   {
     id: "twitter",
     name: "Twitter",
-    icons: ["/images/icons/twitter.svg"],
   },
   {
     id: "linkedin",
     name: "LinkedIn",
-    icons: ["/images/icons/linkedin.svg"],
   },
 ];
 
@@ -117,13 +110,13 @@ const DummyComposer: React.FC = () => {
                   className="opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-120"
                   title={integration.name}
                 >
-                  <Image
-                    width={14}
-                    height={14}
-                    src={integration.icons[0]}
-                    alt={integration.name}
-                    className="h-[14px] w-[14px] object-contain"
-                  />
+                  {getToolCategoryIcon(integration.id, {
+                    size: 14,
+                    width: 14,
+                    height: 14,
+                    showBackground: false,
+                    className: "h-[14px] w-[14px] object-contain",
+                  })}
                 </div>
               ))}
               <ChevronRight width={18} height={18} className="ml-3" />

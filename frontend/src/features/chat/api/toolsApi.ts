@@ -22,22 +22,3 @@ export const fetchAvailableTools = async (): Promise<ToolsListResponse> => {
     silent: true, // Don't show error toast since this is used in background
   });
 };
-
-export const fetchToolCategories = async (): Promise<ToolsCategoryResponse> => {
-  return apiService.get<ToolsCategoryResponse>("/tools/categories", {
-    errorMessage: "Failed to fetch tool categories",
-    silent: true,
-  });
-};
-
-export const fetchToolsByCategory = async (
-  category: string,
-): Promise<ToolsListResponse> => {
-  return apiService.get<ToolsListResponse>(
-    `/tools/category/${encodeURIComponent(category)}`,
-    {
-      errorMessage: `Failed to fetch tools in category: ${category}`,
-      silent: true,
-    },
-  );
-};

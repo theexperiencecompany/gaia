@@ -2,9 +2,9 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { motion } from "framer-motion";
 import { Plus, Puzzle } from "lucide-react";
-import Image from "next/image";
 import React from "react";
 
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
 
 import { useIntegrations } from "../hooks/useIntegrations";
@@ -70,16 +70,12 @@ const IntegrationSettingsCard: React.FC<{
         <div className="flex flex-1 items-start gap-4">
           {/* Icon */}
           <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-zinc-700">
-            <Image
-              src={integration.icons[0]}
-              alt={integration.name}
-              width={32}
-              height={32}
-              className="h-8 w-8 object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
+            {getToolCategoryIcon(integration.id, {
+              size: 32,
+              width: 32,
+              height: 32,
+              showBackground: false,
+            })}
           </div>
 
           {/* Content */}
