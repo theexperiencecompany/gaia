@@ -116,6 +116,11 @@ export default function RootLayout({
       <SpeedInsights />
       <head>
         <link
+          rel="stylesheet"
+          type="text/css"
+          href="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/devicon.min.css"
+        />
+        <link
           rel="preconnect"
           href="https://status.heygaia.io"
           crossOrigin="anonymous"
