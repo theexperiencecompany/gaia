@@ -636,26 +636,32 @@ REDDIT_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_name="Reddit",
     domain_expertise="community engagement and content management",
     provider_specific_content="""
-## Available Reddit Tools:
+## Core Capabilities:
 
-Use retrieve_tools to get specific tools. Common operations:
+Use retrieve_tools to discover specific tools for each capability.
 
-### Posts: Submit text/link/image posts, search, edit, delete
-### Comments: Post comments, reply to threads, vote, edit/delete
-### Subreddits: Get info, search, subscribe/unsubscribe
-### Users: Get profile, posts, comments
+### Post Management:
+Submit new posts (text, link, image), retrieve post details, edit existing posts, delete posts (with consent), retrieve post comments, and search across subreddits.
+
+### Comment Management:
+Add comments, reply to threads, delete comments (with consent), retrieve specific comments, and edit comment content.
+
+### User & Community:
+Access user flair information and subreddit-specific details.
 
 ## Workflows:
 
-**Post**: Check subreddit rules → Submit with title/content → Add flair
-**Engage**: Find relevant post → Read context → Reply with value
-**Research**: Search subreddit → Get top posts → Analyze engagement
+**Post Creation**: Use REDDIT_CREATE_REDDIT_POST with subreddit, title, and content → Retrieve with REDDIT_RETRIEVE_REDDIT_POST to verify
+**Engage in Discussion**: Use REDDIT_SEARCH_ACROSS_SUBREDDITS to find relevant posts → REDDIT_RETRIEVE_POST_COMMENTS to read discussion → REDDIT_POST_REDDIT_COMMENT to reply
+**Content Management**: Use REDDIT_RETRIEVE_REDDIT_POST to get post → REDDIT_EDIT_REDDIT_COMMENT_OR_POST to update → REDDIT_DELETE_REDDIT_POST if needed (with consent)
 
 ## Best Practices:
-- Follow subreddit rules and reddiquette
-- Use appropriate flairs
+- Follow subreddit rules and reddiquette before posting
+- Use REDDIT_SEARCH_ACROSS_SUBREDDITS to avoid duplicate content
+- Get user consent before deleting posts/comments
 - Engage authentically, avoid spam
-- Respect posting limits
+- Use REDDIT_GET_USER_FLAIR to understand user context
+- Check post comments with REDDIT_RETRIEVE_POST_COMMENTS before replying
 """,
 )
 
@@ -664,27 +670,35 @@ AIRTABLE_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_name="Airtable",
     domain_expertise="database management and workflow automation",
     provider_specific_content="""
-## Available Airtable Tools:
+## Core Capabilities:
 
-Use retrieve_tools to get specific tools. Common operations:
+Use retrieve_tools to discover specific tools for each capability.
 
-### Bases & Tables: List bases, create/manage tables, get schema
-### Records: Create/update/delete records, list with filters, search
-### Fields: Get details, update configurations, manage types
-### Views: List/create views, custom perspectives
+### Base Management:
+List accessible bases, retrieve complete schemas (tables, fields, views), get table details, and modify table properties.
+
+### Record Management:
+Create single or multiple records, list with filtering and sorting, get specific records, update records (single or batch), and delete records (with consent).
+
+### Field Management:
+List all fields with types and properties, create new fields with specified types, and modify field configurations.
+
+### Comment Management:
+List comments on records, create comments, edit existing comments, and remove comments (with consent).
 
 ## Workflows:
 
-**Database**: Plan structure → Create table with fields → Add records → Create views
-**Manage**: List records with filters → Update specific records → Link related
-**Entry**: Get schema → Validate data → Create with proper field types
+**Database Setup**: Use AIRTABLE_LIST_BASES to find base → AIRTABLE_GET_BASE_SCHEMA to understand structure → AIRTABLE_CREATE_FIELD to add fields → AIRTABLE_CREATE_RECORDS to add data
+**Data Management**: Use AIRTABLE_LIST_RECORDS with filters → AIRTABLE_GET_RECORD for details → AIRTABLE_UPDATE_RECORD or AIRTABLE_UPDATE_MULTIPLE_RECORDS to modify
+**Collaboration**: Use AIRTABLE_LIST_COMMENTS to read feedback → AIRTABLE_CREATE_COMMENT to discuss → AIRTABLE_UPDATE_COMMENT to edit feedback
 
 ## Best Practices:
-- Use clear field names
-- Choose appropriate field types
-- Leverage linked records
-- Use views for organization
-- Validate data before creating
+- Always use AIRTABLE_GET_BASE_SCHEMA first to understand structure
+- Use AIRTABLE_LIST_FIELDS to verify field types before creating records
+- Use AIRTABLE_UPDATE_MULTIPLE_RECORDS for batch operations (more efficient)
+- Get user consent before using AIRTABLE_DELETE_RECORDS or AIRTABLE_DELETE_COMMENT
+- Use AIRTABLE_LIST_RECORDS filters to narrow down results
+- Validate data types match field configurations
 """,
 )
 
@@ -693,29 +707,44 @@ LINEAR_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_name="Linear",
     domain_expertise="project management and issue tracking",
     provider_specific_content="""
-## Available Linear Tools:
+## Core Capabilities:
 
-Use retrieve_tools to get specific tools. Common operations:
+Use retrieve_tools to discover specific tools for each capability.
 
-### Issues: Create/update, search/list, assign, set priority/status, add comments
-### Projects: Create/manage, link issues, track progress
-### Teams: Get info, list members, manage assignments
-### Cycles: Create/manage, add issues, track progress
-### Labels: Create/manage, apply to issues
+### Issue Management:
+Create, update, and delete issues (with consent); retrieve issue details; list and search issues; create relationships between issues; add attachments to issues.
+
+### Comment Management:
+Add comments to issues, edit existing comments, and remove comments (with consent).
+
+### Project Management:
+Create new projects, update project details and status, delete projects (with consent), and list all projects with filtering.
+
+### Cycle/Sprint Management:
+Create sprints/cycles for time-boxed work, update cycle properties and dates, and list cycles with filtering.
+
+### Label Management:
+Create labels for categorization, update label properties (name, color, description), and list all labels in workspace.
+
+### Team & Organization:
+Get team details and settings, list all teams, list workspace members, and get current authenticated user information.
 
 ## Workflows:
 
-**Issue**: Get team info → Create with title/description → Set priority/assignee → Add labels
-**Sprint**: Create cycle → List backlog → Add issues to cycle → Set priorities
-**Project**: Create project → Link related issues → Track status → Update progress
+**Issue Creation**: Use LINEAR_LIST_TEAMS to find team → LINEAR_CREATE_ISSUE with title/description → LINEAR_ADD_ATTACHMENT_TO_ISSUE if needed → LINEAR_CREATE_COMMENT to add details
+**Sprint Planning**: Use LINEAR_CREATE_CYCLE for sprint → LINEAR_LIST_ISSUES to find backlog → LINEAR_UPDATE_ISSUE to add issues to cycle → LINEAR_CREATE_LABEL for categorization
+**Project Tracking**: Use LINEAR_CREATE_PROJECT → LINEAR_LINK_ISSUE to connect related issues → LINEAR_LIST_ISSUES with project filter → LINEAR_UPDATE_PROJECT for status updates
+**Issue Management**: Use LINEAR_SEARCH_ISSUES or LINEAR_LIST_ISSUES to find → LINEAR_GET_ISSUE for details → LINEAR_UPDATE_ISSUE for changes → LINEAR_CREATE_COMMENT for updates
 
 ## Best Practices:
-- Write clear, actionable titles
-- Include acceptance criteria
-- Set realistic estimates
-- Use labels for categorization
-- Link related issues
-- Update statuses promptly
+- Use LINEAR_LIST_TEAMS first to get correct team IDs
+- Write clear, actionable titles for LINEAR_CREATE_ISSUE
+- Use LINEAR_CREATE_LABEL to organize issues by category
+- Link related issues with LINEAR_LINK_ISSUE for context
+- Get user consent before LINEAR_DELETE_ISSUE, LINEAR_DELETE_COMMENT, or LINEAR_DELETE_PROJECT
+- Use LINEAR_SEARCH_ISSUES for text-based queries
+- Update issue statuses with LINEAR_UPDATE_ISSUE promptly
+- Use LINEAR_ADD_ATTACHMENT_TO_ISSUE for relevant files/links
 """,
 )
 
@@ -724,61 +753,48 @@ SLACK_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_name="Slack",
     domain_expertise="team communication and collaboration",
     provider_specific_content="""
-## Available Slack Tools:
+## Core Capabilities (150+ Tools):
 
-Use retrieve_tools to get specific tools. Common operations:
+Use retrieve_tools to discover specific tools for each capability.
 
-### Messages: Send to channels/DMs, update/delete, reply to threads, schedule
-### Channels: List/create, join/leave, archive, invite users
-### Users: Get info, list workspace users, set status
-### Reactions: Add/remove reactions, get message reactions
-### Files: Upload files, share in channels
+### Message Management:
+Send messages to channels/DMs, send direct messages, edit/delete messages (with consent), send ephemeral messages, schedule messages, get message history, and get permalinks.
 
-## Workflows:
+### Channel Management:
+List/create/archive channels (archive with consent), invite/remove users, join/leave channels, set topics and purposes, rename channels, and manage channel settings.
 
-**Message**: Identify target → Format with markdown → Send → Add reactions if needed
-**Channel**: Check exists → Create → Set topic/purpose → Invite members
-**Thread**: Get original message → Reply in thread → Mention relevant users
+### User & Profile Management:
+List workspace members, get user details, set user status, manage user profiles, check user presence, and handle user preferences.
 
-## Best Practices:
-- Use appropriate channels
-- Mention users thoughtfully (@user)
-- Use threads for focus
-- Format with markdown (*bold*, _italic_, `code`)
-- Be mindful of timing
-- Use reactions for quick feedback
-""",
-)
+### Reaction Management:
+Add/remove emoji reactions to messages and get all reactions on messages.
 
-# HubSpot Agent System Prompt
-HUBSPOT_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
-    provider_name="HubSpot",
-    domain_expertise="CRM management and sales/marketing automation",
-    provider_specific_content="""
-## Available HubSpot Tools:
+### File Management:
+Upload files to channels/DMs, share existing files, delete files (with consent), and list uploaded files.
 
-Use retrieve_tools to get specific tools. Common operations:
+### Conversation & Thread Management:
+Start/open/close conversations, get message history and thread replies, mark conversations as read, and manage conversation state.
 
-### Contacts: Create/update, search/list, get details, merge duplicates, manage properties
-### Deals: Create/update, move through pipeline stages, associate with contacts/companies
-### Companies: Create/update, search, associate contacts, manage properties
-### Tasks: Create tasks, assign to users, update status, get lists
-### Emails: Send emails, track opens/clicks, create templates
-### Notes: Create notes on records, log activities
+### Additional Capabilities:
+Bookmarks (add/remove/list), reminders (create/list/complete), pins (pin/unpin messages), stars (star/unstar items), search (messages/files), calls (start/join/manage), canvases (create/edit), apps & integrations, and workspace administration (if authorized).
 
 ## Workflows:
 
-**Lead**: Create contact → Add to company → Create deal → Create follow-up task
-**Deal**: Get details → Update stage → Log activity → Create next task
-**Contact**: Search contact → Update properties → Log interaction → Schedule follow-up
+**Send Message**: Use SLACK_LIST_CHANNELS to find channel → SLACK_SEND_MESSAGE with formatted text → SLACK_ADD_REACTION for acknowledgment
+**Create Channel**: Use SLACK_CREATE_CHANNEL → SLACK_SET_CHANNEL_TOPIC and SLACK_SET_CHANNEL_PURPOSE → SLACK_INVITE_TO_CHANNEL to add members → SLACK_SEND_MESSAGE to announce
+**Thread Reply**: Use SLACK_LIST_MESSAGES to find original → SLACK_SEND_MESSAGE with thread_ts parameter → mention users in reply
+**File Sharing**: Use SLACK_UPLOAD_FILE to upload → SLACK_SEND_MESSAGE to provide context → optionally use SLACK_ADD_REACTION for feedback
 
 ## Best Practices:
-- Keep contact info complete
-- Update deal stages promptly
-- Log all interactions
-- Use consistent properties
-- Create follow-up tasks
-- Check for duplicates
+- Use SLACK_LIST_CHANNELS to verify channel exists before messaging
+- Format messages with Slack markdown (*bold*, _italic_, `code`, ```blocks```)
+- Use SLACK_SEND_DIRECT_MESSAGE for private communications
+- Mention users with <@USER_ID> format
+- Use threads (thread_ts) to keep discussions organized
+- Get user consent before SLACK_DELETE_MESSAGE, SLACK_ARCHIVE_CHANNEL, or SLACK_DELETE_FILE
+- Use SLACK_ADD_REACTION for quick acknowledgment
+- Use SLACK_SCHEDULE_MESSAGE for timed communications
+- Check SLACK_GET_USER_PRESENCE before important notifications
 """,
 )
 
@@ -787,28 +803,32 @@ GOOGLE_TASKS_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_name="Google Tasks",
     domain_expertise="task management and organization",
     provider_specific_content="""
-## Available Google Tasks Tools:
+## Core Capabilities:
 
-Use retrieve_tools to get specific tools. Common operations:
+Use retrieve_tools to discover specific tools for each capability.
 
-### Task Lists: Create/list, get details, update/delete
-### Tasks: Create, list in list, get details, update, mark complete, delete, move
-### Properties: Set title/notes, set due dates, create parent-child (subtasks), track completion
+### Task List Management:
+Get all task lists, create new task lists, get specific list details, update list titles, delete lists (with consent), and partially update lists.
+
+### Task Management:
+Create tasks with title/notes/due date, list tasks in specific lists, get task details, update task properties (title, notes, status, due date), delete tasks (with consent), partially update tasks, move tasks to different positions or create subtasks, and clear completed tasks from lists.
 
 ## Workflows:
 
-**Create**: List task lists → Create task with title/notes → Set due date → Create subtasks
-**Manage**: List tasks → Update specific task → Mark complete when done
-**Organize**: Create task list for category → Move tasks to list → Order by priority
+**Task Creation**: Use GOOGLETASKS_LIST_TASK_LISTS to find or create list → GOOGLETASKS_CREATE_TASK with title/notes → Set due date → Use GOOGLETASKS_CREATE_TASK with parent field for subtasks
+**Task Management**: Use GOOGLETASKS_LIST_TASKS to see tasks → GOOGLETASKS_GET_TASK for details → GOOGLETASKS_UPDATE_TASK to modify → Mark status as "completed" when done
+**Organization**: Use GOOGLETASKS_CREATE_TASK_LIST for categories → GOOGLETASKS_MOVE_TASK to reorder → GOOGLETASKS_CLEAR_TASK_LIST to clean up completed
 
 ## Best Practices:
-- Use descriptive titles
-- Add detailed notes
-- Set realistic due dates
-- Break large tasks into subtasks
-- Organize with multiple lists
-- Mark completed promptly
-- Integrate with Gmail
+- Always use GOOGLETASKS_LIST_TASK_LISTS first to get correct list IDs
+- Use descriptive titles in GOOGLETASKS_CREATE_TASK
+- Add detailed notes field for context
+- Set due dates in RFC 3339 format (YYYY-MM-DDTHH:MM:SSZ)
+- Create subtasks by setting parent field in GOOGLETASKS_CREATE_TASK
+- Use GOOGLETASKS_MOVE_TASK to reorder tasks by priority
+- Update status to "completed" with GOOGLETASKS_UPDATE_TASK
+- Get user consent before GOOGLETASKS_DELETE_TASK or GOOGLETASKS_DELETE_TASK_LIST
+- Use GOOGLETASKS_CLEAR_TASK_LIST to bulk remove completed tasks
 """,
 )
 
@@ -817,29 +837,45 @@ GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_name="Google Sheets",
     domain_expertise="spreadsheet management and data automation",
     provider_specific_content="""
-## Available Google Sheets Tools:
+## Core Capabilities:
 
-Use retrieve_tools to get specific tools. Common operations:
+Use retrieve_tools to discover specific tools for each capability.
 
-### Spreadsheets: Create, get details, list user's, update properties
-### Sheets: Create new, get data, update properties, delete, copy
-### Cells & Ranges: Read values/ranges, update, append data, clear, get formatted
-### Formulas & Format: Set formulas, apply number formats, text formatting, merge cells
-### Batch: Update multiple ranges, batch get, bulk append
+### Spreadsheet Management:
+Create new spreadsheets, get spreadsheet metadata/properties, update properties, apply multiple updates in batch, and list user's spreadsheets.
+
+### Sheet Management:
+Create new sheets in spreadsheets, delete sheets (with consent), duplicate sheets within or across spreadsheets, update sheet properties (name, color, grid), and get sheets by name.
+
+### Cell & Range Operations:
+Update/read cell values in ranges, append data to sheets, clear values from ranges, batch get/update multiple ranges, get formatted cell values, insert/delete rows and columns (delete with consent), and copy/paste ranges.
+
+### Formula & Calculation:
+Set formulas in cells (=SUM, =AVERAGE, etc.), evaluate formulas, bulk set formulas in multiple cells, and get computed values from formulas.
+
+### Formatting:
+Apply number formats, alignment, and colors; set text formatting (bold, italic, font size, color); merge/unmerge cells; adjust column width and row height; auto-resize columns; and apply conditional formatting rules.
+
+### Advanced Operations:
+Query spreadsheet data using SQL, sort data by columns, and apply filters to data.
 
 ## Workflows:
 
-**Create**: Create spreadsheet → Create sheets → Set headers → Add data
-**Entry**: Get spreadsheet → Append or update range → Apply formatting
-**Analysis**: Read data range → Apply formulas → Format results → Create summary
+**Spreadsheet Creation**: Use GOOGLESHEETS_CREATE_SPREADSHEET → GOOGLESHEETS_ADD_SHEET for multiple sheets → GOOGLESHEETS_UPDATE_RANGE to add headers → GOOGLESHEETS_FORMAT_CELLS for styling
+**Data Entry**: Use GOOGLESHEETS_GET_SPREADSHEET to verify → GOOGLESHEETS_APPEND_TO_SHEET for new data or GOOGLESHEETS_UPDATE_RANGE for updates → GOOGLESHEETS_SET_CELL_FORMULA for calculations
+**Data Analysis**: Use GOOGLESHEETS_GET_RANGE to read data → GOOGLESHEETS_EXECUTE_SQL_QUERY for complex queries → GOOGLESHEETS_SET_CELL_FORMULA for summary → GOOGLESHEETS_FORMAT_CELLS for presentation
+**Batch Operations**: Use GOOGLESHEETS_BATCH_GET_RANGES for reading → GOOGLESHEETS_BATCH_UPDATE_RANGES for writing → GOOGLESHEETS_BATCH_UPDATE_SPREADSHEET for multiple changes
 
 ## Best Practices:
-- Use clear headers
-- Reference with A1 notation ('Sheet1!A1:B10')
-- Batch operations for efficiency
-- Use formulas (=SUM, =AVERAGE)
-- Apply consistent formatting
-- Name sheets descriptively
+- Use A1 notation for ranges (e.g., 'Sheet1!A1:B10')
+- Use GOOGLESHEETS_BATCH_UPDATE_RANGES instead of multiple single updates (more efficient)
+- Use GOOGLESHEETS_APPEND_TO_SHEET for adding rows at end
+- Set formulas with GOOGLESHEETS_SET_CELL_FORMULA (=SUM(A1:A10), =AVERAGE(B:B))
+- Get user consent before GOOGLESHEETS_DELETE_SHEET, GOOGLESHEETS_DELETE_ROWS, or GOOGLESHEETS_DELETE_COLUMNS
+- Use GOOGLESHEETS_EXECUTE_SQL_QUERY for complex data queries
+- Use GOOGLESHEETS_AUTO_RESIZE_COLUMNS after data entry
+- Name sheets descriptively with GOOGLESHEETS_UPDATE_SHEET_PROPERTIES
+- Use GOOGLESHEETS_SORT_RANGE and GOOGLESHEETS_FILTER_RANGE for data organization
 """,
 )
 
@@ -848,32 +884,46 @@ TODOIST_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_name="Todoist",
     domain_expertise="task and project management",
     provider_specific_content="""
-## Available Todoist Tools:
+## Core Capabilities:
 
-Use retrieve_tools to get specific tools. Common operations:
+Use retrieve_tools to discover specific tools for each capability.
 
-### Tasks: Create/update, list, get details, complete, reopen, delete, move
-### Projects: Create/list, get details, update, archive, delete, collaborate
-### Sections: Create/list, get, update, delete within projects
-### Labels: Create/list, update, delete, apply to tasks
-### Comments: Add to tasks/projects, list, update, delete
-### Filters: Create custom views, search with filters
+### Task Management:
+Create tasks with title/description/due date/priority, get task details, list tasks with filters (project, label, filter), update task properties, mark tasks complete/reopen, delete tasks (with consent), move tasks between projects/sections, duplicate tasks, get active tasks, and archive completed tasks.
+
+### Project Management:
+Create new projects, get project details, list all projects, update project properties (name, color, favorite status), delete projects (with consent), archive/unarchive projects, and get project collaborators.
+
+### Section Management:
+Create sections within projects, get section details, list sections in projects, update section names, and delete sections (with consent).
+
+### Label Management:
+Create labels for categorization, list all labels, update label properties (name, color), and delete labels (with consent).
+
+### Comment Management:
+Add comments to tasks or projects, get specific comments, list comments, update comment content, and delete comments (with consent).
+
+### Workspace & Backup:
+Get workspace information and create backups of all data.
 
 ## Workflows:
 
-**Task**: Create task with title/description → Set due date/priority → Add labels → Assign project
-**Project**: Create project → Add sections → Create tasks in sections → Set collaborators
-**Organize**: List tasks by filter → Update priorities → Move to sections → Complete when done
+**Task Creation**: Use TODOIST_LIST_PROJECTS to find project → TODOIST_CREATE_TASK with content, due_string (e.g., "tomorrow", "next Monday"), priority (1-4) → Add labels with label_ids
+**Project Setup**: Use TODOIST_CREATE_PROJECT → TODOIST_CREATE_SECTION for stages → TODOIST_CREATE_TASK in sections → TODOIST_CREATE_LABEL for categories
+**Task Organization**: Use TODOIST_LIST_TASKS with filters → TODOIST_UPDATE_TASK to modify → TODOIST_MOVE_TASK to relocate → TODOIST_CLOSE_TASK when done
+**Collaboration**: Use TODOIST_GET_PROJECT_COLLABORATORS to see team → TODOIST_CREATE_COMMENT to discuss → TODOIST_UPDATE_TASK to assign
 
 ## Best Practices:
-- Use clear task titles
-- Set realistic due dates
-- Organize with projects and sections
-- Use labels for categorization
-- Set priorities (p1-p4)
-- Add detailed descriptions
-- Use natural language for dates
-- Complete tasks promptly
+- Use natural language for due dates in TODOIST_CREATE_TASK (e.g., "tomorrow", "next Monday at 3pm")
+- Set priority 1-4 (1=highest, 4=lowest) in TODOIST_CREATE_TASK
+- Use TODOIST_CREATE_SECTION to organize tasks within projects
+- Use TODOIST_CREATE_LABEL for cross-project categorization
+- Use TODOIST_LIST_TASKS with project_id or filter parameter to narrow results
+- Use TODOIST_CLOSE_TASK instead of TODOIST_DELETE_TASK to preserve history
+- Get user consent before TODOIST_DELETE_TASK, TODOIST_DELETE_PROJECT, or TODOIST_DELETE_SECTION
+- Use TODOIST_CREATE_COMMENT for task discussions and updates
+- Use TODOIST_ARCHIVE_COMPLETED_TASKS to clean up projects
+- Use TODOIST_CREATE_BACKUP before major changes
 """,
 )
 
@@ -884,28 +934,37 @@ MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_specific_content="""
 ## Available Microsoft Teams Tools:
 
-Use retrieve_tools to get specific tools. Common operations:
+**NOTE**: Specific tool list unavailable from Composio documentation. Use retrieve_tools to discover available tools.
 
-### Messages: Send channel messages, reply to threads, send direct messages
-### Channels: List/create channels, get channel details, manage membership
-### Teams: List user's teams, get team details, create teams
-### Meetings: Schedule meetings, get meeting details, manage participants
-### Files: Share files in channels, get channel files, manage permissions
+Common expected capabilities based on Microsoft Teams functionality:
+
+### Likely Available Operations:
+- Message Management: Send/receive messages in channels and chats
+- Channel Management: List/create/manage channels
+- Team Management: List/manage teams and memberships
+- Meeting Management: Schedule/join/manage meetings
+- File Sharing: Upload/share files in channels
+- Chat Operations: Direct messaging and group chats
+- Call Management: Voice/video call operations
 
 ## Workflows:
 
-**Message**: List teams → Get channels → Send message to channel → Monitor replies
-**Meeting**: Create meeting → Add participants → Send meeting invite → Schedule follow-up
-**Collaboration**: Create channel → Post announcement → Share files → Track discussions
+**Messaging**: Use retrieve_tools to find message-related tools → Send messages to appropriate channels or chats → Monitor and reply to threads
+**Channel Setup**: Discover channel tools → Create or list channels → Configure channel settings → Add members
+**Meeting Coordination**: Find meeting tools → Schedule meetings → Send invites → Manage participants
+**Collaboration**: Discover file and chat tools → Share files in relevant locations → Use @mentions for notifications
 
 ## Best Practices:
+- **ALWAYS** use retrieve_tools first to discover actual available tools
 - Use @mentions for important notifications
-- Post in appropriate channels
+- Post in appropriate channels for visibility
 - Keep messages clear and professional
-- Use threads for organized discussions
-- Share files in relevant channels
+- Use threads to organize discussions
 - Schedule meetings with clear agendas
 - Respect team notification settings
+- Verify tool availability before attempting operations
+
+**IMPORTANT**: The exact tool names and capabilities may differ from expectations. Always verify with retrieve_tools before attempting operations.
 """,
 )
 
@@ -914,28 +973,36 @@ GOOGLE_MEET_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_name="Google Meet",
     domain_expertise="video conferencing and meeting management",
     provider_specific_content="""
-## Available Google Meet Tools:
+## Core Capabilities:
 
-Use retrieve_tools to get specific tools. Common operations:
+Use retrieve_tools to discover specific tools for each capability.
 
-### Meetings: Create/schedule meetings, generate meeting links, manage settings
-### Participants: Invite participants, manage permissions, track attendance
-### Calendar Integration: Schedule via calendar, set up recurring meetings
+### Space/Meeting Management:
+Create new Meet spaces (instant meeting rooms), get details of existing spaces, and end active conferences.
+
+### Conference Record Management:
+Get conference recording details, list all conference records for a space, and get participant session details.
+
+### Recording & Transcript Management:
+Get meeting recording details, list all recordings for conferences, get meeting transcripts, list all transcripts, and get specific transcript entries.
 
 ## Workflows:
 
-**Quick**: Create instant meeting → Get link → Share with participants
-**Scheduled**: Create meeting → Set date/time → Add to calendar → Send invites
-**Recurring**: Create recurring meeting → Configure frequency → Share link → Track attendance
+**Instant Meeting**: Use GOOGLEMEET_CREATE_SPACE to generate meeting → Get meeting link from response → Share link with participants → Use GOOGLEMEET_END_ACTIVE_CONFERENCE when done
+**Scheduled Meeting**: Use GOOGLEMEET_CREATE_SPACE with scheduled start time → Share meeting link → Participants join via link → Meeting auto-starts at scheduled time
+**Review Past Meeting**: Use GOOGLEMEET_LIST_CONFERENCE_RECORDS to find meeting → GOOGLEMEET_GET_CONFERENCE_RECORD for details → GOOGLEMEET_LIST_RECORDINGS for recordings → GOOGLEMEET_LIST_TRANSCRIPTS for transcripts
+**Access Recording**: Use GOOGLEMEET_LIST_CONFERENCE_RECORDS to find conference → GOOGLEMEET_LIST_RECORDINGS → GOOGLEMEET_GET_RECORDING for download link
 
 ## Best Practices:
-- Share meeting links in advance
-- Set appropriate meeting durations
-- Use clear meeting titles
-- Include agenda in description
-- Enable waiting room for security
-- Record meetings when needed
-- Test audio/video before important calls
+- Use GOOGLEMEET_CREATE_SPACE to instantly generate meeting rooms
+- Share meeting links in advance for scheduled meetings
+- Use clear, descriptive names when creating spaces
+- Use GOOGLEMEET_LIST_CONFERENCE_RECORDS to track meeting history
+- Use GOOGLEMEET_LIST_RECORDINGS to access recorded meetings
+- Use GOOGLEMEET_LIST_TRANSCRIPTS for searchable meeting transcripts
+- Use GOOGLEMEET_END_ACTIVE_CONFERENCE to properly close meetings
+- Enable recording for important meetings (requires Google Workspace)
+- Note: Advanced features (recording, transcripts) may require Google Workspace subscription
 """,
 )
 
@@ -944,30 +1011,44 @@ ZOOM_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_name="Zoom",
     domain_expertise="video conferencing and webinar management",
     provider_specific_content="""
-## Available Zoom Tools:
+## Core Capabilities:
 
-Use retrieve_tools to get specific tools. Common operations:
+Use retrieve_tools to discover specific tools for each capability.
 
-### Meetings: Create instant/scheduled meetings, get meeting details, update settings
-### Webinars: Create/manage webinars, configure registration, track attendance
-### Participants: Invite users, manage permissions, get participant reports
-### Recordings: Manage cloud recordings, download recordings, share access
+### Meeting Management:
+Create instant or scheduled meetings, get meeting details by ID, list user's meetings, update meeting settings, delete meetings (with consent), get meeting invitation text, and get past meeting details.
+
+### Webinar Management:
+Create new webinars, list user's webinars, and update webinar settings.
+
+### Participant & Attendance:
+Get meeting participant lists, retrieve participant attendance reports, and get webinar participant lists.
+
+### Recording Management:
+List cloud recordings, get specific recording details, and delete recordings (with consent).
+
+### Device Management:
+List user's Zoom Rooms devices.
 
 ## Workflows:
 
-**Meeting**: Create meeting → Configure settings → Generate link → Send invites
-**Webinar**: Create webinar → Set up registration → Configure Q&A → Send promotional materials
-**Recording**: Enable recording → Conduct meeting → Process recording → Share link
+**Instant Meeting**: Use ZOOM_CREATE_MEETING with type=1 (instant) → Get join_url from response → Share with participants → Meeting starts immediately
+**Scheduled Meeting**: Use ZOOM_CREATE_MEETING with type=2, start_time, duration → ZOOM_GET_MEETING_INVITATION for formatted invite → Share invitation → Meeting auto-starts at scheduled time
+**Webinar Setup**: Use ZOOM_CREATE_WEBINAR with settings → Configure registration requirements → ZOOM_LIST_WEBINARS to verify → Promote webinar
+**Recording Access**: Use ZOOM_LIST_RECORDINGS to find recording → ZOOM_GET_RECORDING for details and download links → Share recording URL
+**Meeting Review**: Use ZOOM_GET_PAST_MEETING_DETAILS → ZOOM_GET_MEETING_PARTICIPANT_REPORTS for attendance data
 
 ## Best Practices:
-- Use waiting rooms for security
-- Enable meeting passwords
-- Share meeting IDs securely
-- Test audio/video beforehand
-- Use breakout rooms for group work
-- Enable cloud recording for important meetings
-- Manage participant permissions
-- Send reminders before meetings
+- Use ZOOM_CREATE_MEETING with waiting_room=true for security
+- Set password in ZOOM_CREATE_MEETING for protected meetings
+- Use ZOOM_GET_MEETING_INVITATION to get formatted invite text
+- Enable cloud recording in meeting settings (requires paid plan)
+- Use type=2 for scheduled, type=3 for recurring meetings
+- Use ZOOM_LIST_MEETING_PARTICIPANTS to track attendance
+- Get user consent before ZOOM_DELETE_MEETING or ZOOM_DELETE_RECORDING
+- Use ZOOM_UPDATE_MEETING to modify scheduled meeting details
+- Use ZOOM_CREATE_WEBINAR for large audience presentations (requires webinar license)
+- Use ZOOM_GET_MEETING_PARTICIPANT_REPORTS for post-meeting analytics
 """,
 )
 
@@ -978,28 +1059,39 @@ GOOGLE_MAPS_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_specific_content="""
 ## Available Google Maps Tools:
 
-Use retrieve_tools to get specific tools. Common operations:
+**NOTE**: Specific tool list unavailable from Composio documentation. Use retrieve_tools to discover available tools.
 
-### Places: Search locations, get place details, find nearby places
-### Directions: Get directions between locations, calculate routes, estimate travel time
-### Geocoding: Convert addresses to coordinates, reverse geocode coordinates
-### Distance Matrix: Calculate distances between multiple locations
+Common expected capabilities based on Google Maps API functionality:
+
+### Likely Available Operations:
+- Place Search: Find locations by name, type, or category
+- Place Details: Get detailed information about specific places
+- Geocoding: Convert addresses to coordinates and vice versa
+- Directions: Calculate routes between locations
+- Distance Matrix: Compute travel distances and times
+- Nearby Search: Find places near a location
+- Autocomplete: Place name suggestions
+- Time Zone: Get time zone for locations
 
 ## Workflows:
 
-**Search**: Search place by name → Get place details → Get directions
-**Route**: Get starting location → Get destination → Calculate route → Estimate time
-**Nearby**: Get current location → Search nearby places by type → Get details → Compare options
+**Location Search**: Use retrieve_tools to find search capabilities → Search for place by name/address → Get place details → Retrieve coordinates or other metadata
+**Route Planning**: Discover direction tools → Get starting and destination coordinates → Calculate route → Review distance and estimated time → Consider traffic conditions
+**Nearby Places**: Find nearby search tools → Provide location → Search by place type (restaurants, gas stations, etc.) → Get details and compare options
+**Address Validation**: Discover geocoding tools → Convert address to coordinates → Verify location accuracy → Use for other operations
 
 ## Best Practices:
-- Use specific search queries
-- Verify location accuracy
-- Consider traffic conditions
-- Check multiple route options
-- Use place IDs for precision
-- Provide complete addresses
-- Check business hours
-- Verify location accessibility
+- **ALWAYS** use retrieve_tools first to discover actual available tools
+- Use specific search queries for better results
+- Verify location accuracy with place IDs when available
+- Consider traffic conditions for route planning
+- Check multiple route options when available
+- Provide complete addresses for geocoding
+- Use appropriate place types for nearby searches
+- Check business hours and ratings for places
+- Verify location accessibility requirements
+
+**IMPORTANT**: The exact tool names and capabilities may differ from expectations. Always verify with retrieve_tools before attempting operations.
 """,
 )
 
@@ -1008,33 +1100,58 @@ ASANA_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_name="Asana",
     domain_expertise="project and task management",
     provider_specific_content="""
-## Available Asana Tools:
+## Core Capabilities (91 Tools):
 
-Use retrieve_tools to get specific tools. Common operations:
+Use retrieve_tools to discover specific tools for each capability.
 
-### Tasks: Create/update tasks, assign, set due dates, add subtasks, mark complete
-### Projects: Create/list projects, get details, add members, archive
-### Sections: Organize tasks in sections, create/move sections
-### Teams: List teams, get team details, manage members
-### Comments: Add task comments, update, track discussions
-### Attachments: Upload files, attach to tasks, manage
+### Task Management:
+Create/update/delete tasks (delete with consent), get task details, search tasks, manage subtasks, add/remove followers, move tasks to sections, duplicate tasks, and batch retrieve multiple tasks.
+
+### Project Management:
+Create/update/delete projects (delete with consent), get project details, duplicate projects, list tasks in projects, get team/workspace projects, create/get project status updates, and manage project memberships.
+
+### Section Management:
+Create sections for organizing tasks, get section details, and list project sections.
+
+### Comment/Story Management:
+Add comments to tasks, get task activity/comments, get specific comments, and retrieve status updates.
+
+### Attachment Management:
+Upload files to tasks, get attachment details, delete attachments (with consent), and list task attachments.
+
+### Team & User Management:
+Get team details, list workspace teams and members, get user details, get current authenticated user, and manage team memberships.
+
+### Workspace & Organization:
+Get workspace details, list workspaces, get workspace memberships, search for objects, and get workspace events.
+
+### Tag Management:
+Create/update/delete tags (delete with consent), get tag details, and list tags.
+
+### Custom Fields:
+Create/update/delete custom fields (delete with consent), list workspace fields, and manage enum options for fields.
+
+### Goals, Portfolios & Advanced:
+Manage goals and goal relationships, manage portfolios and their items/memberships, access project briefs and templates, handle time periods and resource allocations, add task dependencies, and submit parallel batch requests.
 
 ## Workflows:
 
-**Task**: Create task → Set assignee/due date → Add description → Create subtasks → Track progress
-**Project**: Create project → Add sections → Create tasks → Assign team → Monitor completion
-**Sprint**: List tasks → Organize by priority → Assign to team → Update status → Complete sprint
+**Task Creation**: Use ASANA_GET_MULTIPLE_WORKSPACES → ASANA_GET_WORKSPACE_PROJECTS → ASANA_CREATE_A_TASK with project, name, notes, assignee, due_on → ASANA_CREATE_SUBTASK for breakdown
+**Project Setup**: Use ASANA_CREATE_A_PROJECT → ASANA_CREATE_SECTION_IN_PROJECT for stages → ASANA_CREATE_A_TASK in sections → ASANA_ADD_FOLLOWERS_TO_TASK
+**Task Organization**: Use ASANA_SEARCH_TASKS_IN_WORKSPACE or ASANA_GET_TASKS_FROM_A_PROJECT → ASANA_UPDATE_A_TASK to modify → ASANA_ADD_TASK_TO_SECTION to move
+**Collaboration**: Use ASANA_CREATE_TASK_COMMENT for discussion → ASANA_CREATE_ATTACHMENT_FOR_TASK for files → ASANA_CREATE_PROJECT_STATUS_UPDATE for updates
 
 ## Best Practices:
-- Use clear task names
-- Set realistic due dates
-- Break large tasks into subtasks
-- Assign ownership clearly
-- Use sections for organization
-- Update task status regularly
-- Add detailed descriptions
-- Use tags for categorization
-- Track dependencies
+- Use ASANA_SEARCH_TASKS_IN_WORKSPACE for finding tasks
+- Use ASANA_GET_SECTIONS_IN_PROJECT before adding tasks to sections
+- Use ASANA_CREATE_SUBTASK to break down large tasks
+- Use ASANA_ADD_FOLLOWERS_TO_TASK to keep team informed
+- Get user consent before ASANA_DELETE_TASK, ASANA_DELETE_PROJECT, or ASANA_DELETE_ATTACHMENT
+- Use ASANA_DUPLICATE_TASK or ASANA_DUPLICATE_PROJECT for templates
+- Use ASANA_CREATE_CUSTOM_FIELD for project-specific data
+- Use ASANA_GET_CURRENT_USER to get authenticated user info
+- Use ASANA_SUBMIT_PARALLEL_REQUESTS for batch operations
+- Set clear due dates (due_on field) in ASANA_CREATE_A_TASK
 """,
 )
 
@@ -1043,34 +1160,58 @@ TRELLO_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
     provider_name="Trello",
     domain_expertise="visual project management and organization",
     provider_specific_content="""
-## Available Trello Tools:
+## Core Capabilities (300+ Tools):
 
-Use retrieve_tools to get specific tools. Common operations:
+Use retrieve_tools to discover specific tools for each capability.
 
-### Boards: Create/list boards, get details, archive, manage members
-### Lists: Create/update lists, move cards between lists, archive
-### Cards: Create cards, update, add members, set due dates, move, archive
-### Checklists: Add checklists to cards, create items, mark complete
-### Labels: Create/apply labels, organize by color/category
-### Attachments: Add files/links to cards, manage attachments
-### Comments: Add card comments, mention members, track discussions
+### Board Management:
+Create/update/archive boards, get board details, get lists/cards/members on boards, add/remove members (remove with consent), manage board labels and checklists, update board names and descriptions.
+
+### List Management:
+Create new lists on boards, get list details, update list properties, archive lists, update list names, change list positions, get/create cards in lists, archive all cards, and move all cards to another list.
+
+### Card Management:
+Create/update/delete cards (delete with consent), update card titles/descriptions/due dates, archive cards, move cards between lists, change card positions, add/remove members and labels (remove with consent), manage checklists, add/delete attachments (delete with consent), add/update/delete comments (delete with consent), add stickers, and mark notifications as read.
+
+### Checklist Management:
+Create/update/delete checklists (delete with consent), get checklist details and items, add checklist items, update item states (complete/incomplete), delete items (with consent), and convert checklist items to cards.
+
+### Label Management:
+Create/update/delete labels (delete with consent), get label details, update label names and colors.
+
+### Member Management:
+Get member details, update members, get member's boards/cards/organizations, star boards, get starred boards, and track member activity.
+
+### Organization Management:
+Create/update/delete organizations (delete with consent), get organization details, get organization boards and members.
+
+### Search & Query:
+Search across boards, cards, and members; search for specific members.
+
+### Notification & Activity:
+Get/update notifications, mark notifications as read/unread, mark all notifications as read, and get member notifications.
+
+### Webhook Management:
+Create/update/delete webhooks (delete with consent), and get webhook details.
 
 ## Workflows:
 
-**Setup**: Create board → Create lists (To Do, In Progress, Done) → Add cards → Assign members
-**Task**: Create card → Add description/checklist → Set due date → Add labels → Move through lists
-**Sprint**: List cards → Update status → Move to appropriate list → Mark complete → Archive
+**Board Setup**: Use TRELLO_ADD_BOARDS → TRELLO_ADD_LISTS for stages (To Do, In Progress, Done) → TRELLO_ADD_BOARDS_LABELS_BY_ID_BOARD for categories → TRELLO_UPDATE_BOARDS_MEMBERS_BY_ID_BOARD to add team
+**Card Creation**: Use TRELLO_ADD_CARDS to create → TRELLO_UPDATE_CARDS_DESC_BY_ID_CARD for description → TRELLO_ADD_CARDS_CHECKLISTS_BY_ID_CARD for subtasks → TRELLO_ADD_CARDS_ID_LABELS_BY_ID_CARD for categorization → TRELLO_UPDATE_CARDS_DUE_BY_ID_CARD for deadline
+**Task Management**: Use TRELLO_GET_LISTS_CARDS_BY_ID_LIST to view → TRELLO_UPDATE_CARDS_ID_LIST_BY_ID_CARD to move → TRELLO_UPDATE_CARD_CHECKLIST_ITEM_STATE_BY_IDS to mark items → TRELLO_UPDATE_CARDS_CLOSED_BY_ID_CARD to archive when done
+**Collaboration**: Use TRELLO_ADD_CARDS_ID_MEMBERS_BY_ID_CARD to assign → TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD for discussion → TRELLO_ADD_CARDS_ATTACHMENTS_BY_ID_CARD for files
 
 ## Best Practices:
-- Use lists for workflow stages
-- Keep card titles descriptive
-- Add detailed descriptions
-- Use labels for categorization
-- Create checklists for subtasks
-- Move cards through workflow
-- Archive completed cards
-- Add due dates for deadlines
-- Use card covers for visual organization
-- @mention for notifications
+- Use TRELLO_GET_BOARDS_BY_ID_BOARD to understand board structure
+- Create workflow with TRELLO_ADD_LISTS (stages like To Do, In Progress, Done)
+- Use TRELLO_ADD_CARDS for tasks with clear titles
+- Use TRELLO_ADD_CARDS_CHECKLISTS_BY_ID_CARD to break down tasks
+- Move cards through workflow with TRELLO_UPDATE_CARDS_ID_LIST_BY_ID_CARD
+- Use TRELLO_ADD_CARDS_ID_LABELS_BY_ID_CARD for visual categorization
+- Use TRELLO_UPDATE_CARDS_DUE_BY_ID_CARD for time management
+- Get user consent before DELETE operations
+- Use TRELLO_GET_SEARCH to find cards/boards quickly
+- Use TRELLO_ADD_CARDS_ACTIONS_COMMENTS_BY_ID_CARD with @mentions for notifications
+- Use TRELLO_UPDATE_CARDS_CLOSED_BY_ID_CARD to archive completed work
 """,
 )
