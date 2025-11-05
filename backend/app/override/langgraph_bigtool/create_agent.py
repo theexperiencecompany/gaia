@@ -164,23 +164,18 @@ def create_agent(
         # For sync context, we need to run hooks in a new event loop
         return _sync_execute_hooks(end_graph_hooks, state, config, store)
 
+    async def aexecute_end_graph_hooks(
+        state: State, config: RunnableConfig, *, store: BaseStore
+    ) -> State:
+        # For async context, run hooks directly without creating a new event loop
+        return await _execute_hooks(end_graph_hooks, state, config, store)
+
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         # For sync context, we need to run hooks in a new event loop
         _sync_execute_hooks(end_graph_hooks, state, config, store)
 
-        model_configurations = config.get("configurable", {}).get(
-            "model_configurations", {}
-        )
-        model_name = model_configurations.get("model_name", "gpt-4o-mini")
-        provider = model_configurations.get("provider", None)
-
-        _llm = llm.with_config(
-            configurable={
-                "model_name": model_name,
-                "model": model_name,  # Gemini uses "model" instead of "model_name"
-                "provider": provider,
-            }
-        )
+        model_configurations = config.get("configurable", {})
+        _llm = llm.with_config(configurable=model_configurations)
         selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
         initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
         tools_to_bind: list[Any] = []
@@ -205,16 +200,10 @@ def create_agent(
             store,
         )
 
-        model_configurations = config.get("configurable", {}).get(
-            "model_configurations", {}
-        )
-        model_name = model_configurations.get("model_name", "gpt-4o-mini")
-        provider = model_configurations.get("provider", None)
+        model_configurations = config.get("configurable", {})
+        _llm = llm.with_config(configurable=model_configurations)
         selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
         initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
-        _llm = llm.with_config(
-            configurable={"model_name": model_name, "provider": provider}
-        )
         tools_to_bind: list[Any] = []
         if retrieve_tools is not None:
             tools_to_bind.append(retrieve_tools)
@@ -305,7 +294,10 @@ def create_agent(
     if not disable_retrieve_tools:
         path_map.insert(0, "select_tools")
     if end_graph_hooks:
-        builder.add_node("end_graph_hooks", execute_end_graph_hooks)
+        builder.add_node(
+            "end_graph_hooks",
+            RunnableCallable(execute_end_graph_hooks, aexecute_end_graph_hooks),
+        )
         builder.add_edge("end_graph_hooks", END)
         path_map.append("end_graph_hooks")
 

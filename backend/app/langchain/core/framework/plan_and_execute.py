@@ -50,8 +50,8 @@ from typing import (
     cast,
 )
 
-from app.agents.core.nodes.trim_messages_node import trim_messages_node
 from app.agents.core.nodes.filter_messages import create_filter_messages_node
+from app.agents.core.nodes.trim_messages_node import trim_messages_node
 from app.agents.llm.client import init_llm
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import (
