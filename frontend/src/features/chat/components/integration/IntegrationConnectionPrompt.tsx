@@ -1,11 +1,11 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import { Settings } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import React, { useState } from "react";
 import { toast } from "sonner";
 
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { IntegrationConnectionData } from "@/types/features/integrationTypes";
 
@@ -46,16 +46,13 @@ export const IntegrationConnectionPrompt: React.FC<
       <div className="flex items-center justify-between px-6 py-1">
         <div className="flex flex-row items-center gap-3 pt-3 pb-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-700">
-            <Image
-              src={data.integration_icon}
-              alt={data.integration_name}
-              width={20}
-              height={20}
-              className="h-5 w-5 object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
+            {getToolCategoryIcon(data.integration_id, {
+              size: 20,
+              width: 20,
+              height: 20,
+              showBackground: false,
+              className: "h-5 w-5 object-contain",
+            })}
           </div>
           <span className="text-sm font-medium">
             {isConnected ? "Already Connected" : "Connection Required"}

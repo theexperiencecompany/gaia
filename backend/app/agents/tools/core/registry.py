@@ -199,15 +199,15 @@ class ToolRegistry:
             ("notion", "NOTION"),
             ("linkedin", "LINKEDIN"),
             ("google_sheets", "GOOGLE_SHEETS"),
-            ("gmail", "GMAIL"),
-            ("github", "GITHUB"),
             ("reddit", "REDDIT"),
             ("airtable", "AIRTABLE"),
             ("linear", "LINEAR"),
             ("slack", "SLACK"),
-            ("hubspot", "HUBSPOT"),
             ("google_tasks", "GOOGLETASKS"),
             ("todoist", "TODOIST"),
+            # ("gmail", "GMAIL"),
+            # ("github", "GITHUB"),
+            # ("hubspot", "HUBSPOT"),
         ]
 
         async def add_provider_category(
