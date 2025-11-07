@@ -24,6 +24,142 @@ from app.services.composio.composio_service import get_composio_service
 from langchain_core.language_models import LanguageModelLike
 from langgraph.graph.state import CompiledStateGraph
 
+# Contacts Tools
+CONTACTS_TOOLS = [
+    "HUBSPOT_CREATE_CONTACT",
+    "HUBSPOT_READ_CONTACT",
+    "HUBSPOT_UPDATE_CONTACT",
+    "HUBSPOT_ARCHIVE_CONTACT",
+    "HUBSPOT_LIST_CONTACTS",
+    "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
+    "HUBSPOT_CREATE_BATCH_OF_CONTACTS",
+    "HUBSPOT_ARCHIVE_BATCH_OF_CONTACTS_BY_ID",
+    "HUBSPOT_PERMANENTLY_DELETE_CONTACT_FOR_GDPR",
+]
+
+# Companies Tools
+COMPANIES_TOOLS = [
+    "HUBSPOT_CREATE_COMPANY",
+    "HUBSPOT_GET_COMPANY",
+    "HUBSPOT_UPDATE_COMPANY",
+    "HUBSPOT_ARCHIVE_COMPANY",
+    "HUBSPOT_LIST_COMPANIES",
+    "HUBSPOT_SEARCH_COMPANIES",
+    "HUBSPOT_CREATE_A_BATCH_OF_COMPANIES",
+    "HUBSPOT_ARCHIVE_BATCH_OF_COMPANIES_BY_ID_BATCH",
+    "HUBSPOT_PERMANENTLY_DELETE_COMPANY_FOR_GDPR_COMPLIANCE",
+]
+
+# Deals Tools
+DEALS_TOOLS = [
+    "HUBSPOT_CREATE_DEAL",
+    "HUBSPOT_GET_DEAL",
+    "HUBSPOT_UPDATE_DEAL",
+    "HUBSPOT_REMOVE_DEAL",
+    "HUBSPOT_LIST_DEALS",
+    "HUBSPOT_SEARCH_DEALS",
+    "HUBSPOT_CREATE_BATCH_OF_DEALS",
+    "HUBSPOT_ARCHIVE_BATCH_OF_DEALS_BY_ID",
+    "HUBSPOT_PERMANENTLY_DELETE_DEAL_FOR_GDPR_COMPLIANCE",
+]
+
+# Tickets Tools
+TICKETS_TOOLS = [
+    "HUBSPOT_CREATE_TICKET",
+    "HUBSPOT_GET_TICKET",
+    "HUBSPOT_UPDATE_TICKET",
+    "HUBSPOT_ARCHIVE_TICKET",
+    "HUBSPOT_LIST_TICKETS",
+    "HUBSPOT_SEARCH_TICKETS",
+    "HUBSPOT_CREATE_BATCH_OF_TICKET",
+    "HUBSPOT_ARCHIVE_BATCH_OF_TICKETS_BY_ID",
+]
+
+# Products Tools
+PRODUCTS_TOOLS = [
+    "HUBSPOT_CREATE_PRODUCT",
+    "HUBSPOT_GET_PRODUCT",
+    "HUBSPOT_UPDATE_PRODUCT",
+    "HUBSPOT_ARCHIVE_PRODUCT",
+    "HUBSPOT_LIST_PRODUCTS_WITH_PAGING",
+    "HUBSPOT_SEARCH_PRODUCTS",
+    "HUBSPOT_CREATE_PRODUCT_BATCH",
+    "HUBSPOT_ARCHIVE_BATCH_PRODUCTS_BY_ID",
+]
+
+# Quotes Tools
+QUOTES_TOOLS = [
+    "HUBSPOT_CREATE_QUOTE_OBJECT",
+    "HUBSPOT_GET_QUOTE_BY_ID",
+    "HUBSPOT_PARTIAL_UPDATE_QUOTE_BY_QUOTE_ID",
+    "HUBSPOT_ARCHIVE_QUOTE_OBJECT_BY_ID",
+    "HUBSPOT_SEARCH_QUOTES_BY_CRITERIA",
+    "HUBSPOT_CREATE_LINE_ITEM",
+    "HUBSPOT_RETRIEVE_LINE_ITEM_BY_ID",
+    "HUBSPOT_UPDATE_LINE_ITEM_OBJECT_PARTIALLY",
+    "HUBSPOT_ARCHIVE_LINE_ITEM_BY_ID",
+]
+
+# Activities Tools
+ACTIVITIES_TOOLS = [
+    "HUBSPOT_CREATE_TASK",
+    "HUBSPOT_CREATE_EMAIL",
+    "HUBSPOT_LIST",
+    "HUBSPOT_SEARCH_EMAILS",
+    "HUBSPOT_CREATE_TIMELINE_EVENT_BASED_ON_TEMPLATE",
+    "HUBSPOT_RETRIEVE_TIMELINE_EVENT_BY_IDS",
+    "HUBSPOT_LIST_ALL_EVENT_TEMPLATES_FOR_APP",
+]
+
+# Marketing Tools
+MARKETING_TOOLS = [
+    "HUBSPOT_CREATE_CAMPAIGN",
+    "HUBSPOT_GET_CAMPAIGN",
+    "HUBSPOT_UPDATE_CAMPAIGN",
+    "HUBSPOT_DELETE_CAMPAIGN",
+    "HUBSPOT_SEARCH_CAMPAIGNS",
+    "HUBSPOT_CREATE_A_NEW_MARKETING_EMAIL",
+    "HUBSPOT_GET_THE_DETAILS_OF_A_SPECIFIED_MARKETING_EMAIL",
+    "HUBSPOT_UPDATE_A_MARKETING_EMAIL",
+    "HUBSPOT_DELETE_A_MARKETING_EMAIL",
+    "HUBSPOT_PUBLISH_MARKETING_EMAIL",
+]
+
+# Admin Tools
+ADMIN_TOOLS = [
+    "HUBSPOT_RETRIEVE_ALL_PIPELINES_FOR_SPECIFIED_OBJECT_TYPE",
+    "HUBSPOT_RETURN_PIPELINE_BY_ID",
+    "HUBSPOT_CREATE_PIPELINE_FOR_OBJECT_TYPE",
+    "HUBSPOT_DELETE_PIPELINE_BY_ID",
+    "HUBSPOT_RETRIEVE_PIPELINE_STAGES",
+    "HUBSPOT_CREATE_PIPELINE_STAGE",
+    "HUBSPOT_DELETE_PIPELINE_STAGE_BY_ID",
+    "HUBSPOT_RETRIEVE_OWNERS",
+    "HUBSPOT_RETRIEVE_OWNER_BY_ID_OR_USER_ID",
+]
+
+# Data Management Tools
+DATA_MANAGEMENT_TOOLS = [
+    "HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA",
+    "HUBSPOT_CREATE_ASSOCIATION_FOR_OBJECT_TYPE",
+    "HUBSPOT_LIST_ASSOCIATION_TYPES",
+    "HUBSPOT_REMOVE_ASSOCIATION_FROM_SCHEMA",
+]
+
+# All tools used in HubSpot subgraph (merged from all categories)
+HUBSPOT_TOOLS = (
+    CONTACTS_TOOLS
+    + COMPANIES_TOOLS
+    + DEALS_TOOLS
+    + TICKETS_TOOLS
+    + PRODUCTS_TOOLS
+    + QUOTES_TOOLS
+    + ACTIVITIES_TOOLS
+    + MARKETING_TOOLS
+    + ADMIN_TOOLS
+    + DATA_MANAGEMENT_TOOLS
+)
+
 
 async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
     """Get the list of HubSpot node configurations."""
@@ -41,138 +177,16 @@ async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
         admin_tools,
         data_management_tools,
     ) = await asyncio.gather(
-        # Contacts
-        composio_service.get_tools_by_name(
-            [
-                "HUBSPOT_CREATE_CONTACT",
-                "HUBSPOT_READ_CONTACT",
-                "HUBSPOT_UPDATE_CONTACT",
-                "HUBSPOT_ARCHIVE_CONTACT",
-                "HUBSPOT_LIST_CONTACTS",
-                "HUBSPOT_SEARCH_CONTACTS_BY_CRITERIA",
-                "HUBSPOT_CREATE_BATCH_OF_CONTACTS",
-                "HUBSPOT_ARCHIVE_BATCH_OF_CONTACTS_BY_ID",
-                "HUBSPOT_PERMANENTLY_DELETE_CONTACT_FOR_GDPR",
-            ]
-        ),
-        # Companies
-        composio_service.get_tools_by_name(
-            [
-                "HUBSPOT_CREATE_COMPANY",
-                "HUBSPOT_GET_COMPANY",
-                "HUBSPOT_UPDATE_COMPANY",
-                "HUBSPOT_ARCHIVE_COMPANY",
-                "HUBSPOT_LIST_COMPANIES",
-                "HUBSPOT_SEARCH_COMPANIES",
-                "HUBSPOT_CREATE_A_BATCH_OF_COMPANIES",
-                "HUBSPOT_ARCHIVE_BATCH_OF_COMPANIES_BY_ID_BATCH",
-                "HUBSPOT_PERMANENTLY_DELETE_COMPANY_FOR_GDPR_COMPLIANCE",
-            ]
-        ),
-        # Deals
-        composio_service.get_tools_by_name(
-            [
-                "HUBSPOT_CREATE_DEAL",
-                "HUBSPOT_GET_DEAL",
-                "HUBSPOT_UPDATE_DEAL",
-                "HUBSPOT_REMOVE_DEAL",
-                "HUBSPOT_LIST_DEALS",
-                "HUBSPOT_SEARCH_DEALS",
-                "HUBSPOT_CREATE_BATCH_OF_DEALS",
-                "HUBSPOT_ARCHIVE_BATCH_OF_DEALS_BY_ID",
-                "HUBSPOT_PERMANENTLY_DELETE_DEAL_FOR_GDPR_COMPLIANCE",
-            ]
-        ),
-        # Tickets
-        composio_service.get_tools_by_name(
-            [
-                "HUBSPOT_CREATE_TICKET",
-                "HUBSPOT_GET_TICKET",
-                "HUBSPOT_UPDATE_TICKET",
-                "HUBSPOT_ARCHIVE_TICKET",
-                "HUBSPOT_LIST_TICKETS",
-                "HUBSPOT_SEARCH_TICKETS",
-                "HUBSPOT_CREATE_BATCH_OF_TICKET",
-                "HUBSPOT_ARCHIVE_BATCH_OF_TICKETS_BY_ID",
-            ]
-        ),
-        # Products
-        composio_service.get_tools_by_name(
-            [
-                "HUBSPOT_CREATE_PRODUCT",
-                "HUBSPOT_GET_PRODUCT",
-                "HUBSPOT_UPDATE_PRODUCT",
-                "HUBSPOT_ARCHIVE_PRODUCT",
-                "HUBSPOT_LIST_PRODUCTS_WITH_PAGING",
-                "HUBSPOT_SEARCH_PRODUCTS",
-                "HUBSPOT_CREATE_PRODUCT_BATCH",
-                "HUBSPOT_ARCHIVE_BATCH_PRODUCTS_BY_ID",
-            ]
-        ),
-        # Quotes & Line Items
-        composio_service.get_tools_by_name(
-            [
-                "HUBSPOT_CREATE_QUOTE_OBJECT",
-                "HUBSPOT_GET_QUOTE_BY_ID",
-                "HUBSPOT_PARTIAL_UPDATE_QUOTE_BY_QUOTE_ID",
-                "HUBSPOT_ARCHIVE_QUOTE_OBJECT_BY_ID",
-                "HUBSPOT_SEARCH_QUOTES_BY_CRITERIA",
-                "HUBSPOT_CREATE_LINE_ITEM",
-                "HUBSPOT_RETRIEVE_LINE_ITEM_BY_ID",
-                "HUBSPOT_UPDATE_LINE_ITEM_OBJECT_PARTIALLY",
-                "HUBSPOT_ARCHIVE_LINE_ITEM_BY_ID",
-            ]
-        ),
-        # Activities (Tasks, Emails & Events)
-        composio_service.get_tools_by_name(
-            [
-                "HUBSPOT_CREATE_TASK",
-                "HUBSPOT_CREATE_EMAIL",
-                "HUBSPOT_LIST",
-                "HUBSPOT_SEARCH_EMAILS",
-                "HUBSPOT_CREATE_TIMELINE_EVENT_BASED_ON_TEMPLATE",
-                "HUBSPOT_RETRIEVE_TIMELINE_EVENT_BY_IDS",
-                "HUBSPOT_LIST_ALL_EVENT_TEMPLATES_FOR_APP",
-            ]
-        ),
-        # Marketing (Campaigns & Marketing Emails)
-        composio_service.get_tools_by_name(
-            [
-                "HUBSPOT_CREATE_CAMPAIGN",
-                "HUBSPOT_GET_CAMPAIGN",
-                "HUBSPOT_UPDATE_CAMPAIGN",
-                "HUBSPOT_DELETE_CAMPAIGN",
-                "HUBSPOT_SEARCH_CAMPAIGNS",
-                "HUBSPOT_CREATE_A_NEW_MARKETING_EMAIL",
-                "HUBSPOT_GET_THE_DETAILS_OF_A_SPECIFIED_MARKETING_EMAIL",
-                "HUBSPOT_UPDATE_A_MARKETING_EMAIL",
-                "HUBSPOT_DELETE_A_MARKETING_EMAIL",
-                "HUBSPOT_PUBLISH_MARKETING_EMAIL",
-            ]
-        ),
-        # Pipelines & Owners (Admin)
-        composio_service.get_tools_by_name(
-            [
-                "HUBSPOT_RETRIEVE_ALL_PIPELINES_FOR_SPECIFIED_OBJECT_TYPE",
-                "HUBSPOT_RETURN_PIPELINE_BY_ID",
-                "HUBSPOT_CREATE_PIPELINE_FOR_OBJECT_TYPE",
-                "HUBSPOT_DELETE_PIPELINE_BY_ID",
-                "HUBSPOT_RETRIEVE_PIPELINE_STAGES",
-                "HUBSPOT_CREATE_PIPELINE_STAGE",
-                "HUBSPOT_DELETE_PIPELINE_STAGE_BY_ID",
-                "HUBSPOT_RETRIEVE_OWNERS",
-                "HUBSPOT_RETRIEVE_OWNER_BY_ID_OR_USER_ID",
-            ]
-        ),
-        # Global Search & Associations
-        composio_service.get_tools_by_name(
-            [
-                "HUBSPOT_SEARCH_CRM_OBJECTS_BY_CRITERIA",
-                "HUBSPOT_CREATE_ASSOCIATION_FOR_OBJECT_TYPE",
-                "HUBSPOT_LIST_ASSOCIATION_TYPES",
-                "HUBSPOT_REMOVE_ASSOCIATION_FROM_SCHEMA",
-            ]
-        ),
+        composio_service.get_tools_by_name(CONTACTS_TOOLS),
+        composio_service.get_tools_by_name(COMPANIES_TOOLS),
+        composio_service.get_tools_by_name(DEALS_TOOLS),
+        composio_service.get_tools_by_name(TICKETS_TOOLS),
+        composio_service.get_tools_by_name(PRODUCTS_TOOLS),
+        composio_service.get_tools_by_name(QUOTES_TOOLS),
+        composio_service.get_tools_by_name(ACTIVITIES_TOOLS),
+        composio_service.get_tools_by_name(MARKETING_TOOLS),
+        composio_service.get_tools_by_name(ADMIN_TOOLS),
+        composio_service.get_tools_by_name(DATA_MANAGEMENT_TOOLS),
     )
 
     return (

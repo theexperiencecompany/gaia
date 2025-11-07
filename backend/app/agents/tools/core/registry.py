@@ -22,6 +22,9 @@ from app.agents.tools import (
     webpage_tool,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
+from app.langchain.core.subgraphs.gmail_subgraph import GMAIL_TOOLS
+from app.langchain.core.subgraphs.hubspot_subgraph import HUBSPOT_TOOLS
 from app.services.composio.composio_service import (
     get_composio_service,
 )
@@ -201,31 +204,38 @@ class ToolRegistry:
 
         # Provider categories (integration required + delegated)
         provider_configs = [
-            ("TWITTER", "twitter"),
-            ("NOTION", "notion"),
-            ("LINKEDIN", "linkedin"),
-            ("GOOGLESHEETS", "google_sheets"),
-            ("REDDIT", "reddit"),
-            ("AIRTABLE", "airtable"),
-            ("LINEAR", "linear"),
-            ("SLACK", "slack"),
-            ("GOOGLETASKS", "google_tasks"),
-            ("TODOIST", "todoist"),
+            ("TWITTER", "twitter", None),
+            ("NOTION", "notion", None),
+            ("LINKEDIN", "linkedin", None),
+            ("GOOGLESHEETS", "google_sheets", None),
+            ("REDDIT", "reddit", None),
+            ("AIRTABLE", "airtable", None),
+            ("LINEAR", "linear", None),
+            ("SLACK", "slack", None),
+            ("GOOGLETASKS", "google_tasks", None),
+            ("TODOIST", "todoist", None),
             #
-            # ("MICROSOFT_TEAMS", "microsoft_teams"), action params starts with $
-            # ("ZOOM", "zoom"), action params has parameter named from
+            # ("MICROSOFT_TEAMS", "microsoft_teams", None),  # action params starts with $
+            # ("ZOOM", "zoom", None),  # action params has parameter named from
             #
-            ("GOOGLEMEET", "google_meet"),
-            ("GOOGLE_MAPS", "google_maps"),
-            ("ASANA", "asana"),
-            ("TRELLO", "trello"),
+            ("GOOGLEMEET", "google_meet", None),
+            ("GOOGLE_MAPS", "google_maps", None),
+            ("ASANA", "asana", None),
+            ("TRELLO", "trello", None),
+            ("GMAIL", "gmail", GMAIL_TOOLS),
+            ("GITHUB", "github", GITHUB_TOOLS),
+            ("HUBSPOT", "hubspot", HUBSPOT_TOOLS),
         ]
 
         async def add_provider_category(
             toolkit_name: str,
             space_name: str,
+            specific_tools: list[str] | None = None,
         ):
-            tools = await composio_service.get_tools(tool_kit=toolkit_name)
+            if specific_tools:
+                tools = await composio_service.get_tools_by_name(specific_tools)
+            else:
+                tools = await composio_service.get_tools(tool_kit=toolkit_name)
             add_category(
                 name=toolkit_name,
                 tools=tools,
@@ -238,8 +248,8 @@ class ToolRegistry:
         # Parallelize provider category addition
         await asyncio.gather(
             *[
-                add_provider_category(toolkit_name, space_name)
-                for toolkit_name, space_name in provider_configs
+                add_provider_category(toolkit_name, space_name, specific_tools)
+                for toolkit_name, space_name, specific_tools in provider_configs
             ]
         )
 
