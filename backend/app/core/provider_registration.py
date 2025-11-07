@@ -28,6 +28,7 @@ from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings, initialize_tools_store
 from app.config.cloudinary import init_cloudinary
 from app.config.loggers import app_logger as logger
+from app.config.posthog import init_posthog
 from app.core.lazy_loader import providers
 from app.db.chromadb import init_chroma
 from app.db.postgresql import init_postgresql_engine
@@ -94,6 +95,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     init_cloudinary()
     validate_startup_requirements()
     setup_event_loop_policy()
+    init_posthog()
     logger.info(f"All lazy providers registered successfully for {context}")
 
     # Define eager services (must be ready before processing requests/tasks)
