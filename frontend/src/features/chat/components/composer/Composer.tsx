@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import posthog from "posthog-js";
 
 import FilePreview, {
   UploadedFilePreview,
@@ -206,6 +207,19 @@ const Composer: React.FC<MainSearchbarProps> = ({
     }
     // Use contextual loading with user's message for similarity-based loading text
     setContextualLoading(true, inputText);
+
+    // Track message send event with PostHog
+    posthog.capture("Message Sent", {
+      has_text: !!inputText,
+      has_files: uploadedFiles.length > 0,
+      file_count: uploadedFiles.length,
+      has_tool: !!selectedTool,
+      tool_name: selectedTool,
+      tool_category: selectedToolCategory,
+      has_workflow: !!selectedWorkflow,
+      workflow_name: selectedWorkflow?.title,
+      conversation_id: conversationId,
+    });
 
     sendMessage(inputText, conversationId, {
       files: uploadedFileData,
