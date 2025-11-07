@@ -4,8 +4,8 @@ import { Avatar } from "@heroui/avatar";
 import { Play, User } from "lucide-react";
 import { useState } from "react";
 
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import MetaInfoCard from "@/features/use-cases/components/MetaInfoCard";

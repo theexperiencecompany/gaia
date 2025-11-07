@@ -1,17 +1,17 @@
 "use client";
 
+import { Button } from "@heroui/button";
+import { Kbd } from "@heroui/kbd";
+import { useEffect, useRef } from "react";
+
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/shadcn/alert-dialog";
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/kbd";
-import { useEffect, useRef } from "react";
 
 interface ConfirmationDialogProps {
   isOpen: boolean;

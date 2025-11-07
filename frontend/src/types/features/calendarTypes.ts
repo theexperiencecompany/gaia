@@ -75,6 +75,7 @@ export interface GoogleCalendarEvent {
   end: GoogleCalendarDateTime;
   recurrence?: string[];
   transparency?: "opaque" | "transparent";
+  backgroundColor?: string;
   visibility?: "default" | "public" | "private";
   iCalUID: string;
   sequence: number;

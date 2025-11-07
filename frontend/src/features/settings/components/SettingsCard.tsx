@@ -1,5 +1,6 @@
-import { cn } from "@/lib";
 import { ReactNode } from "react";
+
+import { cn } from "@/lib";
 
 interface SettingsCardProps {
   icon?: ReactNode;
