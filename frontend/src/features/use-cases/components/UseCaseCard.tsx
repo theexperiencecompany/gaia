@@ -2,7 +2,6 @@
 
 import { Button } from "@heroui/button";
 import { ArrowUpRight } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
