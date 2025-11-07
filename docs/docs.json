@@ -28,6 +28,7 @@
     "tabs": [
       {
         "tab": "Home",
+        "icon": "home",
         "groups": [
           {
             "group": "Get Started",
@@ -65,6 +66,16 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "Guides",
+        "icon": "book-open",
+        "groups": [
+          {
+            "group": "Guides",
+            "pages": ["guides/create-public-workflow"]
+          }
+        ]
       }
     ]
   },
@@ -99,7 +110,7 @@
   "footer": {
     "socials": {
       "website": "https://heygaia.io",
-      "twitter": "https://x.com/_heygaia",
+      "twitter": "https://x.com/trygaia",
       "github": "https://github.com/heygaia",
       "discord": "https://discord.heygaia.io",
       "linkedin": "https://linkedin.com/company/heygaia"

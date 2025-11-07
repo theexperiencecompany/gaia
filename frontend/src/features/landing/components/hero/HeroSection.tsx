@@ -1,7 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 
-import { Button } from "@/components";
+import { Github } from "@/components";
 import ShinyText from "@/components/ui/shadcn/shimmering-chip";
 import { useLatestRelease } from "@/hooks/useLatestRelease";
 import { MotionContainer } from "@/layouts/MotionContainer";
@@ -26,19 +26,21 @@ export default function HeroSection() {
         disableIntersectionObserver={true}
       >
         <div className="mx-auto flex w-full justify-center gap-2">
-          {/* <div className="relative z-10 w-fit cursor-pointer rounded-full bg-white/5 p-1 px-4 text-sm font-light outline-1 outline-white/30 backdrop-blur-xl transition-colors">
-          <Link href="/blog/public-beta">
-            <ShinyText text={`New: Here is this feature!`} speed={10} />
+          <Link href="https://github.com/heygaia/gaia/blob/master/CHANGELOG.md">
+            <div className="relative z-10 flex w-fit cursor-pointer items-center gap-2 rounded-full bg-zinc-900 p-1 px-3 pl-1 text-sm font-light outline-1 outline-zinc-800 transition-colors hover:bg-zinc-800">
+              <Github width={20} height={20} />
+              <ShinyText
+                text={`New: ${isReleaseLoading ? "" : release?.name.replace("-beta", "")}`}
+                speed={10}
+              />
+            </div>
           </Link>
-        </div> */}
 
           <Link href="/blog/public-beta">
-            <ShinyText
-              text={`Public Beta ${isReleaseLoading ? "" : release?.name.replace("-beta", "")}`}
-              // text={`New: Here is this feature!`}
-              speed={10}
-              className="relative z-10 cursor-pointer rounded-full bg-zinc-900 p-1 px-4 text-sm font-light outline-1 outline-zinc-800 transition-colors hover:bg-zinc-800"
-            />
+            <div className="relative z-10 flex w-fit cursor-pointer items-center gap-2 rounded-full bg-zinc-900 p-1 px-4 text-sm font-light outline-1 outline-zinc-800 transition-colors hover:bg-zinc-800">
+              <ShinyText text={`Public Beta`} speed={10} />
+              <ArrowRight width={15} height={15} className="text-zinc-400" />
+            </div>
           </Link>
         </div>
 
@@ -56,11 +58,11 @@ export default function HeroSection() {
         <div className="flex gap-4">
           <GetStartedButton />
 
-          <Link href={"/manifesto"}>
+          {/* <Link href={"/manifesto"}>
             <Button className="rounded-xl bg-black/20 px-8! py-5 text-sm! font-light text-zinc-300 backdrop-blur-2xl! transition-all! duration-200 hover:scale-110 hover:bg-black/40">
               Read the Manifesto <ArrowRight width={20} height={20} />
             </Button>
-          </Link>
+          </Link> */}
         </div>
       </MotionContainer>
     </div>

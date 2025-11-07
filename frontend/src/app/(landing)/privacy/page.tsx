@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import JsonLd from "@/components/seo/JsonLd";
 import { generatePageMetadata, generateWebPageSchema } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
@@ -27,10 +28,7 @@ const PrivacyPolicy = () => {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(privacySchema) }}
-      />
+      <JsonLd data={privacySchema} />
       <div className="flex w-screen flex-col items-center justify-center">
         <div className="privacy-policy max-w-(--breakpoint-xl) p-6 pt-24">
           <h1 className="mb-4 text-2xl font-bold">Privacy Policy</h1>

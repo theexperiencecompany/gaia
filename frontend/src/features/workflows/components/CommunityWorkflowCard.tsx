@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
@@ -17,15 +17,16 @@ import {
 interface CommunityWorkflowCardProps {
   workflow: CommunityWorkflow;
   onClick?: () => void;
+  useBlurEffect?: boolean;
 }
 
 export default function CommunityWorkflowCard({
   workflow,
   onClick,
+  useBlurEffect = false,
 }: CommunityWorkflowCardProps) {
   const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
   const [localWorkflow, setLocalWorkflow] = useState(workflow);
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { selectWorkflow } = useWorkflowSelection();
   const { createWorkflow } = useWorkflowCreation();
@@ -65,87 +66,6 @@ export default function CommunityWorkflowCard({
     }
   };
 
-  // const handleUpvoteImmediate = useCallback(async () => {
-  //   if (isUpvoting) return;
-
-  //   setIsUpvoting(true);
-
-  //   // Store the current state for potential rollback
-  //   const previousState = {
-  //     is_upvoted: localWorkflow.is_upvoted,
-  //     upvotes: localWorkflow.upvotes,
-  //   };
-
-  //   // Optimistic update - predict the action based on current state
-  //   const predictedAction = localWorkflow.is_upvoted ? "removed" : "added";
-
-  //   // Apply optimistic update immediately
-  //   setLocalWorkflow((prev: CommunityWorkflow) => ({
-  //     ...prev,
-  //     is_upvoted: predictedAction === "added",
-  //     upvotes:
-  //       predictedAction === "added" ? prev.upvotes + 1 : prev.upvotes - 1,
-  //   }));
-
-  //   try {
-  //     const result = await workflowApi.upvoteWorkflow(localWorkflow.id);
-
-  //     // Verify optimistic update was correct, if not, apply correct state
-  //     if (result.action !== predictedAction) {
-  //       setLocalWorkflow((prev: CommunityWorkflow) => ({
-  //         ...prev,
-  //         is_upvoted: result.action === "added",
-  //         upvotes:
-  //           result.action === "added"
-  //             ? previousState.upvotes + 1
-  //             : previousState.upvotes - 1,
-  //       }));
-  //     }
-  //   } catch (error) {
-  //     console.error("Error upvoting workflow:", error);
-  //     toast.error("Failed to update vote. Please try again.");
-
-  //     // Rollback to previous state on error
-  //     setLocalWorkflow((prev: CommunityWorkflow) => ({
-  //       ...prev,
-  //       is_upvoted: previousState.is_upvoted,
-  //       upvotes: previousState.upvotes,
-  //     }));
-  //   } finally {
-  //     setIsUpvoting(false);
-  //   }
-  // }, [
-  //   isUpvoting,
-  //   localWorkflow.is_upvoted,
-  //   localWorkflow.upvotes,
-  //   localWorkflow.id,
-  // ]);
-
-  // const handleUpvote = useCallback(() => {
-  //   // Prevent rapid clicks by checking if already processing
-  //   if (isUpvoting) return;
-
-  //   // Clear any existing timeout
-  //   if (debounceTimeoutRef.current) {
-  //     clearTimeout(debounceTimeoutRef.current);
-  //   }
-
-  //   // Set new timeout for debouncing
-  //   debounceTimeoutRef.current = setTimeout(() => {
-  //     handleUpvoteImmediate();
-  //   }, 300); // 300ms debounce
-  // }, [isUpvoting, handleUpvoteImmediate]);
-
-  // Cleanup timeout on unmount
-
-  useEffect(() => {
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-    };
-  }, []);
-
   const triggerContent = (
     <TriggerDisplay triggerType="manual" triggerLabel="Manual" />
   );
@@ -171,6 +91,8 @@ export default function CommunityWorkflowCard({
       footerContent={footerContent}
       totalExecutions={0}
       onClick={onClick}
+      useBlurEffect={useBlurEffect}
+      showArrowIcon={!!onClick}
     />
   );
 }

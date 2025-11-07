@@ -177,7 +177,7 @@ export const useSendMessage = () => {
           selectedWorkflow,
           selectedCalendarEvent,
         );
-      } catch (error) {
+      } catch {
         const failedMessage: IMessage = {
           ...finalMessage,
           status: "failed",

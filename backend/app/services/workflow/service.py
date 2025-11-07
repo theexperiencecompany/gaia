@@ -9,8 +9,10 @@ from typing import List, Optional
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
+from app.decorators.caching import Cacheable
 from app.models.workflow_models import (
     CreateWorkflowRequest,
+    PublicWorkflowsResponse,
     UpdateWorkflowRequest,
     Workflow,
     WorkflowExecutionRequest,
@@ -523,6 +525,102 @@ class WorkflowService:
                 f"Error updating execution count for workflow {workflow_id}: {str(e)}"
             )
             return False
+
+    @staticmethod
+    @Cacheable(smart_hash=True, ttl=300, model=PublicWorkflowsResponse)
+    async def get_community_workflows(
+        limit: int = 20,
+        offset: int = 0,
+        user_id: Optional[str] = None,
+    ) -> PublicWorkflowsResponse:
+        """Get public workflows from the community marketplace with caching."""
+        try:
+            pipeline = [
+                {"$match": {"is_public": True}},
+                {"$sort": {"created_at": -1}},
+                {"$skip": offset},
+                {"$limit": limit},
+                {
+                    "$lookup": {
+                        "from": "users",
+                        "let": {"creator_id": "$created_by"},
+                        "pipeline": [
+                            {
+                                "$match": {
+                                    "$expr": {
+                                        "$eq": ["$_id", {"$toObjectId": "$$creator_id"}]
+                                    }
+                                }
+                            },
+                            {
+                                "$project": {
+                                    "name": 1,
+                                    "email": 1,
+                                    "picture": 1,
+                                    "_id": 0,
+                                }
+                            },
+                        ],
+                        "as": "creator_info",
+                    }
+                },
+                {
+                    "$project": {
+                        "_id": 1,
+                        "title": 1,
+                        "description": 1,
+                        "steps": {
+                            "$map": {
+                                "input": "$steps",
+                                "as": "step",
+                                "in": {
+                                    "title": "$$step.title",
+                                    "tool_name": "$$step.tool_name",
+                                    "tool_category": "$$step.tool_category",
+                                    "description": "$$step.description",
+                                },
+                            }
+                        },
+                        "upvoted_by": 1,
+                        "created_at": 1,
+                        "created_by": 1,
+                        "creator_info": 1,
+                    }
+                },
+            ]
+
+            workflows = await workflows_collection.aggregate(pipeline).to_list(
+                length=limit
+            )
+            total = await workflows_collection.count_documents({"is_public": True})
+
+            formatted_workflows = []
+            for workflow in workflows:
+                creator_info = (
+                    workflow.get("creator_info", [{}])[0]
+                    if workflow.get("creator_info")
+                    else {}
+                )
+
+                formatted_workflow = {
+                    "id": workflow["_id"],
+                    "title": workflow["title"],
+                    "description": workflow["description"],
+                    "steps": workflow.get("steps", []),
+                    "created_at": workflow["created_at"],
+                    "creator": {
+                        "id": workflow.get("created_by"),
+                        "name": creator_info.get("name", "Unknown"),
+                        "avatar": creator_info.get("picture"),
+                    },
+                }
+                formatted_workflows.append(formatted_workflow)
+
+            return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
+
+        except Exception as e:
+            logger.error(f"Error fetching community workflows: {str(e)}")
+            raise
 
     @staticmethod
     async def _generate_workflow_steps(workflow_id: str, user_id: str) -> None:

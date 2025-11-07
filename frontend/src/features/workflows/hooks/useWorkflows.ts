@@ -1,6 +1,6 @@
-import { useCallback,useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { Workflow,workflowApi } from "../api/workflowApi";
+import { Workflow, workflowApi } from "../api/workflowApi";
 
 interface UseWorkflowsReturn {
   workflows: Workflow[];
@@ -15,7 +15,7 @@ interface UseWorkflowsReturn {
 
 export const useWorkflows = (autoFetch: boolean = true): UseWorkflowsReturn => {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(autoFetch);
   const [error, setError] = useState<string | null>(null);
 
   const fetchWorkflows = useCallback(async () => {

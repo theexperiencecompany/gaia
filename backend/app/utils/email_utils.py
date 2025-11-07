@@ -40,7 +40,7 @@ jinja_env = Environment(
 CONTACT_EMAIL = "aryan@heygaia.io"
 DISCORD_URL = "https://discord.heygaia.io"
 WHATSAPP_URL = "https://whatsapp.heygaia.io"
-TWITTER_URL = "https://twitter.com/_heygaia"
+TWITTER_URL = "https://twitter.com/trygaia"
 
 
 async def send_support_team_notification(

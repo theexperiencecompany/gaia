@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import JsonLd from "@/components/seo/JsonLd";
 import ContactForm from "@/features/contact/components/ContactForm";
 import ContactSidebar from "@/features/contact/components/ContactSidebar";
 import { generateContactPageSchema, generatePageMetadata } from "@/lib/seo";
@@ -27,10 +28,7 @@ export default function ContactPage() {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(contactSchema) }}
-      />
+      <JsonLd data={contactSchema} />
       <main className="flex h-screen w-screen flex-col items-center justify-center bg-gradient-to-b from-zinc-900 to-black px-6 py-16">
         <header className="text-center">
           <h1 className="font-serif text-8xl font-light tracking-tight text-balance">

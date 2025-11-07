@@ -14,14 +14,14 @@ import GetStartedButton from "../shared/GetStartedButton";
 
 export const SOCIAL_LINKS = [
   {
-    href: "https://twitter.com/_heygaia",
+    href: "https://twitter.com/trygaia",
     ariaLabel: "Twitter Link",
     buttonProps: {
       color: "#1DA1F2",
       className: "rounded-xl text-black!",
       "aria-label": "Twitter Link Button",
     },
-    username: "@_heygaia",
+    username: "@trygaia",
     icon: <TwitterIcon width={20} height={20} />,
     label: "Twitter",
     description: "Follow us for updates",

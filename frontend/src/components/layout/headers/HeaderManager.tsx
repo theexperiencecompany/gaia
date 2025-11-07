@@ -2,9 +2,10 @@
 
 import { Tooltip } from "@heroui/react";
 import { usePathname } from "next/navigation";
-import { ReactNode, useMemo } from "react";
+import { ReactNode, Suspense, useMemo } from "react";
 
 import { Button } from "@/components";
+import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { useHeader } from "@/hooks/layout/useHeader";
 
 import BrowserHeader from "./BrowserHeader";
@@ -52,7 +53,12 @@ export default function HeaderManager() {
     if (pathname.startsWith("/calendar")) return <CalendarHeader />;
     if (pathname.startsWith("/c")) return <ChatHeader />;
     if (pathname.startsWith("/browser")) return <BrowserHeader />;
-    if (pathname.startsWith("/todos")) return <TodosHeader />;
+    if (pathname.startsWith("/todos"))
+      return (
+        <Suspense fallback={<SuspenseLoader />}>
+          <TodosHeader />
+        </Suspense>
+      );
     if (pathname.match(/^\/goals\/[^/]+$/)) return <GoalHeader />;
     if (pathname.startsWith("/goals")) return <GoalsHeader />;
     if (pathname.startsWith("/settings")) return <SettingsHeader />;

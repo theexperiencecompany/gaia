@@ -6,6 +6,7 @@ import Link from "next/link";
 import { lazy, Suspense, useEffect, useState } from "react";
 
 import { RaisedButton } from "@/components/ui/shadcn/raised-button";
+import Spinner from "@/components/ui/shadcn/spinner";
 import { useGitHubContributors } from "@/hooks/useGitHubContributors";
 
 import LargeHeader from "../shared/LargeHeader";
@@ -135,7 +136,7 @@ export default function OpenSource() {
             <Suspense
               fallback={
                 <div className="flex items-center gap-2">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-600 border-t-white sm:h-8 sm:w-8"></div>
+                  <Spinner />
                   <span className="text-sm text-zinc-400 sm:text-base">
                     Loading contributors...
                   </span>
@@ -148,12 +149,7 @@ export default function OpenSource() {
               />
             </Suspense>
           ) : (
-            <div className="h-8 w-full sm:h-12" /> // Placeholder to maintain layout
-          )}
-          {!isLoading && !isError && (
-            <p className="text-center text-xs text-zinc-400 sm:text-sm">
-              {totalCount} amazing contributors and growing!
-            </p>
+            <div className="h-8 w-full sm:h-12" />
           )}
         </div>
         <div className="flex w-full flex-col gap-3 pt-6 sm:w-auto sm:flex-row sm:pt-8 lg:pt-10">
