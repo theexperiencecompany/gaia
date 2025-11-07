@@ -2,7 +2,7 @@
 
 import { isToday, isYesterday, subDays } from "date-fns";
 import { Loader } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import {
   Accordion,
@@ -10,7 +10,10 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/shadcn/accordion";
-import { useConversations } from "@/hooks/useConversations";
+import {
+  useConversationList,
+  useFetchConversations,
+} from "@/features/chat/hooks/useConversationList";
 import type { IConversation } from "@/lib/db/chatDb";
 
 import { ChatTab } from "./ChatTab";
@@ -47,7 +50,48 @@ const timeFramePriority = (timeFrame: string): number => {
 };
 
 export default function ChatsList() {
-  const { conversations, conversationsLoadingStatus } = useConversations();
+  const {
+    conversations: apiConversations,
+    loading,
+    error,
+  } = useConversationList();
+  const fetchConversations = useFetchConversations();
+  const hasFetchedRef = useRef(false);
+
+  useEffect(() => {
+    console.log("[ChatsList] useEffect triggered:", {
+      conversationsCount: apiConversations.length,
+      loading,
+      hasFetched: hasFetchedRef.current,
+      conversations: apiConversations.map((c) => ({
+        id: c.conversation_id,
+        desc: c.description,
+      })),
+    });
+
+    // Only fetch once on initial mount if store is empty
+    if (!hasFetchedRef.current && apiConversations.length === 0 && !loading) {
+      console.log("[ChatsList] Fetching conversations because store is empty");
+      hasFetchedRef.current = true;
+      fetchConversations(1, 20, false);
+    }
+  }, [apiConversations.length, loading, fetchConversations]);
+
+  const conversations: IConversation[] = useMemo(() => {
+    return apiConversations.map((conv) => ({
+      id: conv.conversation_id,
+      title: conv.description || "Untitled conversation",
+      description: conv.description,
+      userId: conv.user_id,
+      starred: conv.starred ?? false,
+      isSystemGenerated: conv.is_system_generated ?? false,
+      systemPurpose: conv.system_purpose ?? null,
+      createdAt: new Date(conv.createdAt),
+      updatedAt: conv.updatedAt
+        ? new Date(conv.updatedAt)
+        : new Date(conv.createdAt),
+    }));
+  }, [apiConversations]);
 
   const { systemConversations, starredConversations, sortedTimeFrames } =
     useMemo(() => {
@@ -87,8 +131,8 @@ export default function ChatsList() {
       };
     }, [conversations]);
 
-  const isLoading = conversationsLoadingStatus === "loading";
-  const isError = conversationsLoadingStatus === "error";
+  const isLoading = loading;
+  const isError = !!error;
 
   // Calculate which accordions should be open by default - show ALL expanded
   const getDefaultAccordionValues = () => {

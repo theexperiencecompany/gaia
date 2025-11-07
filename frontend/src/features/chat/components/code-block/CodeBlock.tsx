@@ -6,6 +6,7 @@ import React, { ReactNode, useEffect, useState } from "react";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 
 import CopyButton from "./CopyButton";
+import DownloadButton from "./DownloadButton";
 import StandardCodeBlock from "./StandardCodeBlock";
 
 // Dynamic import for MermaidTabs with loading fallback
@@ -105,7 +106,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
 
   if (isMermaid) {
     return (
-      <div className="relative flex w-[40vw] max-w-[30vw] flex-col gap-0 overflow-x-visible rounded-t-[10px]! bg-zinc-900 pb-0!">
+      <div className="relative my-3 flex w-[40vw] max-w-[30vw] flex-col gap-0 overflow-x-visible rounded-t-[10px]! bg-zinc-900 pb-0!">
         <MermaidTabs
           activeTab={activeTab}
           onTabChange={(key) => {
@@ -124,7 +125,11 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
         >
           {children}
         </MermaidTabs>
-        <div className="absolute top-2 right-1">
+        <div className="absolute top-2 right-1 flex items-center gap-1">
+          <DownloadButton
+            content={String(children)}
+            language={match ? match[1] : undefined}
+          />
           <CopyButton copied={copied} onPress={handleCopy} />
         </div>
       </div>
