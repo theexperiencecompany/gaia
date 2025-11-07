@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 
 import { chatApi } from "@/features/chat/api/chatApi";
+import { batchSyncConversations } from "@/services/syncService";
 import {
   ConversationPaginationMeta,
   useConversationsStore,
@@ -21,6 +22,11 @@ export const useConversationsOperations = () => {
       clearError();
 
       try {
+        // Trigger batch sync in background
+        batchSyncConversations().catch(() => {
+          // Ignore sync errors
+        });
+
         const data = await chatApi.fetchConversations(page, limit);
 
         const conversations = data.conversations ?? [];

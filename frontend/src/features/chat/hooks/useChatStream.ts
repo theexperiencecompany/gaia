@@ -4,11 +4,11 @@ import { useEffect, useRef } from "react";
 
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
-import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { streamController } from "@/features/chat/utils/streamController";
 import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useComposerStore } from "@/stores/composerStore";
+import { useConversationsStore } from "@/stores/conversationsStore";
 import { MessageType } from "@/types/features/convoTypes";
 import { WorkflowData } from "@/types/features/workflowTypes";
 import { FileData } from "@/types/shared";
@@ -20,7 +20,9 @@ import { parseStreamData } from "./useStreamDataParser";
 export const useChatStream = () => {
   const { setIsLoading, setAbortController } = useLoading();
   const { updateConvoMessages, convoMessages } = useConversation();
-  const fetchConversations = useFetchConversations();
+  const addConversation = useConversationsStore(
+    (state) => state.addConversation,
+  );
   const { setLoadingText, resetLoadingText } = useLoadingText();
 
   // Add ref to track if a stream is already in progress
@@ -55,6 +57,51 @@ export const useChatStream = () => {
     resetLoadingText();
     streamController.clear();
     setAbortController(null);
+  };
+
+  const handleConversationCreation = (
+    conversationId: string,
+    description: string | null,
+  ) => {
+    const conversations = useConversationsStore.getState().conversations;
+    const alreadyExists = conversations.some(
+      (conv) => conv.conversation_id === conversationId,
+    );
+
+    if (!alreadyExists) {
+      const finalDescription = description || "New Chat";
+
+      console.log("[useChatStream] Adding new conversation to store:", {
+        id: conversationId,
+        description: finalDescription,
+      });
+
+      addConversation({
+        _id: conversationId,
+        user_id: "",
+        conversation_id: conversationId,
+        description: finalDescription,
+        starred: false,
+        is_system_generated: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  };
+
+  const handleConversationDescriptionUpdate = (
+    conversationId: string,
+    description: string,
+  ) => {
+    console.log("[useChatStream] Updating conversation description:", {
+      id: conversationId,
+      description: description,
+    });
+
+    const updateConversation =
+      useConversationsStore.getState().updateConversation;
+    updateConversation(conversationId, {
+      description: description,
+    });
   };
 
   const saveIncompleteConversation = async () => {
@@ -124,9 +171,14 @@ export const useChatStream = () => {
    */
   const handleStreamEvent = (event: EventSourceMessage): void | string => {
     try {
+      const data = event.data === "[DONE]" ? null : JSON.parse(event.data);
+
+      if (data) {
+        console.log("[useChatStream] Stream event received:", data);
+      }
+
       if (event.data === "[DONE]") return;
 
-      const data = JSON.parse(event.data);
       if (data.error) {
         // Immediately terminate the stream on error
         console.error("Stream error received:", data.error);
@@ -159,11 +211,31 @@ export const useChatStream = () => {
           });
         }
       }
-      if (data.conversation_id)
+      if (data.conversation_id) {
         refs.current.newConversation.id = data.conversation_id;
-      if (data.conversation_description)
         refs.current.newConversation.description =
           data.conversation_description;
+
+        // Update URL immediately when we get the conversation ID
+        window.history.replaceState({}, "", `/c/${data.conversation_id}`);
+
+        // Add conversation to store immediately with temporary description
+        handleConversationCreation(
+          data.conversation_id,
+          data.conversation_description,
+        );
+      } else if (
+        data.conversation_description &&
+        refs.current.newConversation.id
+      ) {
+        // Update the description when it arrives later (after LLM generation)
+        refs.current.newConversation.description =
+          data.conversation_description;
+        handleConversationDescriptionUpdate(
+          refs.current.newConversation.id,
+          data.conversation_description,
+        );
+      }
 
       if (data.status === "generating_image") {
         setLoadingText("Generating image...");
@@ -220,19 +292,6 @@ export const useChatStream = () => {
       setIsLoading(false);
       resetLoadingText();
       streamController.clear();
-
-      // Only navigate for successful completions (manual aborts are handled in the save callback)
-      if (refs.current.newConversation.id) {
-        // If a new conversation was created, update the URL and fetch conversations
-        // Using replaceState to avoid reloading the page that would happen with pushState
-        // Reloading results in fetching conversations again hence the flickering
-        window.history.replaceState(
-          {},
-          "",
-          `/c/${refs.current.newConversation.id}`,
-        );
-        fetchConversations();
-      }
 
       // Reset stream state after successful completion
       streamInProgressRef.current = false;

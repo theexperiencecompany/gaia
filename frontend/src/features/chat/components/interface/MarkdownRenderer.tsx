@@ -50,10 +50,14 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           ),
           blockquote: ({ ...props }) => (
             <blockquote
-              className="my-8 border-l-3 border-gray-300 bg-gray-300/10 py-5 pl-4 italic"
+              className="my-2 border-gray-300 bg-gray-300/10 py-3 pl-4 italic"
               {...props}
             />
           ),
+          hr: ({ ...props }) => (
+            <hr className="my-8 border-t border-zinc-700" {...props} />
+          ),
+          li: ({ ...props }) => <li className="mb-2" {...props} />,
           img: ({ ...props }) => (
             <Image
               width={500}
@@ -69,22 +73,30 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           table: ({ ...props }) => (
             <div className="overflow-x-auto">
               <table
-                className="min-w-full border-collapse border border-zinc-600"
+                className="min-w-full border-collapse border-zinc-600"
                 {...props}
               />
             </div>
           ),
           thead: ({ ...props }) => (
-            <thead className="bg-opacity-20 bg-zinc-900" {...props} />
+            <thead
+              className="bg-opacity-20 border border-zinc-700 bg-zinc-700"
+              {...props}
+            />
           ),
           tbody: ({ ...props }) => <tbody {...props} />,
           tr: ({ ...props }) => (
             <tr className="border-b border-zinc-600" {...props} />
           ),
           th: ({ ...props }) => (
-            <th className="px-4 py-2 text-left font-bold" {...props} />
+            <th
+              className="border border-zinc-600 px-4 py-2 text-left font-bold"
+              {...props}
+            />
           ),
-          td: ({ ...props }) => <td className="px-4 py-2" {...props} />,
+          td: ({ ...props }) => (
+            <td className="border border-zinc-700 px-4 py-2" {...props} />
+          ),
         }}
         remarkPlugins={[remarkGfm]}
       >

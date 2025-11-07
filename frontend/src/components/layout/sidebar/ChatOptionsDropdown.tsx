@@ -26,6 +26,7 @@ import { chatApi } from "@/features/chat/api/chatApi";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useDeleteConversation } from "@/hooks/useDeleteConversation";
+import { db } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 
 export default function ChatOptionsDropdown({
@@ -56,6 +57,20 @@ export default function ChatOptionsDropdown({
     const newStarredValue = starred === undefined ? true : !starred;
 
     try {
+      const newStarredValue = starred === undefined ? true : !starred;
+      await chatApi.toggleStarConversation(chatId, newStarredValue);
+
+      const conversation = await db.getConversation(chatId);
+      if (conversation) {
+        await db.putConversation({
+          ...conversation,
+          starred: newStarredValue,
+          updatedAt: new Date(),
+        });
+      }
+
+      setIsOpen(false);
+      await fetchConversations();
       // Optimistically update the UI
       updateConversation(chatId, { starred: newStarredValue });
 
@@ -77,7 +92,18 @@ export default function ChatOptionsDropdown({
     if (!newName) return;
     try {
       await chatApi.renameConversation(chatId, newName);
-      closeEditModal();
+
+      const conversation = await db.getConversation(chatId);
+      if (conversation) {
+        await db.putConversation({
+          ...conversation,
+          title: newName,
+          description: newName,
+          updatedAt: new Date(),
+        });
+      }
+
+      closeModal();
       await fetchConversations(1, 20, false);
     } catch (error) {
       console.error("Failed to update chat name", error);
