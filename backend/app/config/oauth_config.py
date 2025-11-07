@@ -53,7 +53,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
     OAuthIntegration(
         id="google_calendar",
         name="Google Calendar",
-        description="Schedule and manage your calendar events seamlessly",
+        description="Schedule meetings and manage your calendar events",
         category="productivity",
         provider="google",
         scopes=[
@@ -72,7 +72,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
     OAuthIntegration(
         id="google_docs",
         name="Google Docs",
-        description="Create and edit documents with AI assistance",
+        description="Create and edit documents in your workspace",
         category="productivity",
         provider="google",
         scopes=[
@@ -114,7 +114,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
     OAuthIntegration(
         id="notion",
         name="Notion",
-        description="Manage pages, databases, and workspace content with AI",
+        description="Manage pages, databases, and workspace content",
         category="productivity",
         provider="notion",
         scopes=[],
@@ -128,7 +128,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
     OAuthIntegration(
         id="twitter",
         name="Twitter",
-        description="Post tweets, read timelines, and manage your account with AI-powered tools",
+        description="Post tweets, read timelines, and manage your account",
         category="social",
         provider="twitter",
         scopes=[],
@@ -142,7 +142,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
     OAuthIntegration(
         id="google_sheets",
         name="Google Sheets",
-        description="Create, read, and update Google Sheets with AI-powered tools for automation and data management",
+        description="Create, read, and update spreadsheets",
         category="productivity",
         provider="google_sheets",
         scopes=[],
@@ -156,7 +156,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
     OAuthIntegration(
         id="linkedin",
         name="LinkedIn",
-        description="Share posts, engage with your network, and manage your professional presence using AI-powered tools",
+        description="Share posts and engage with your professional network",
         category="social",
         provider="linkedin",
         scopes=[],

@@ -4,11 +4,12 @@ import { Tooltip } from "@heroui/tooltip";
 import { ArrowUp, Square } from "lucide-react";
 
 import { useLoading } from "@/features/chat/hooks/useLoading";
+import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 
 interface RightSideProps {
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
-  searchbarText: string;
+  searchbarText: string | null | undefined;
   selectedTool?: string | null;
 }
 
@@ -19,14 +20,24 @@ export default function RightSide({
 }: RightSideProps) {
   const { isLoading, stopStream } = useLoading();
   const { selectedWorkflow } = useWorkflowSelection();
-  const hasText = searchbarText.trim().length > 0;
+  const { selectedCalendarEvent } = useCalendarEventSelection();
+  const hasText = (searchbarText || "").trim().length > 0;
   const hasSelectedTool = selectedTool != null;
   const hasSelectedWorkflow = selectedWorkflow != null;
+  const hasSelectedCalendarEvent = selectedCalendarEvent != null;
   const isDisabled =
-    isLoading || (!hasText && !hasSelectedTool && !hasSelectedWorkflow);
+    isLoading ||
+    (!hasText &&
+      !hasSelectedTool &&
+      !hasSelectedWorkflow &&
+      !hasSelectedCalendarEvent);
 
   const getTooltipContent = () => {
     if (isLoading) return "Stop generation";
+
+    if (hasSelectedCalendarEvent && !hasText && !hasSelectedTool) {
+      return `Send with calendar event: ${selectedCalendarEvent?.summary}`;
+    }
 
     if (hasSelectedWorkflow && !hasText && !hasSelectedTool) {
       return `Send with ${selectedWorkflow?.title}`;

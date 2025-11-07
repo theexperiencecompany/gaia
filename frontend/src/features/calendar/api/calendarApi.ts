@@ -151,16 +151,21 @@ export const calendarApi = {
   },
 
   // Delete event via agent tool (unified endpoint)
-  deleteEventByAgent: async (deletePayload: {
-    event_id: string;
-    calendar_id: string;
-    summary?: string;
-  }): Promise<{ success: boolean; message: string }> => {
+  deleteEventByAgent: async (
+    deletePayload: {
+      event_id: string;
+      calendar_id: string;
+      summary?: string;
+    },
+    options?: { silent?: boolean },
+  ): Promise<{ success: boolean; message: string }> => {
     return apiService.delete<{ success: boolean; message: string }>(
       "/calendar/event",
       deletePayload,
       {
-        successMessage: "Event deleted successfully!",
+        successMessage: options?.silent
+          ? undefined
+          : "Event deleted successfully!",
         errorMessage: "Failed to delete event",
       },
     );

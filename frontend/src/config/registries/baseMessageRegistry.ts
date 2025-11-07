@@ -6,6 +6,7 @@
 
 import { IntegrationConnectionData } from "@/types/features/integrationTypes";
 import { WorkflowData } from "@/types/features/workflowTypes";
+import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { FileData } from "@/types/shared/fileTypes";
 
 import { TOOLS_MESSAGE_SCHEMA } from "./toolRegistry";
@@ -30,6 +31,10 @@ export const BASE_MESSAGE_SCHEMA = {
   selectedTool: undefined as string | null | undefined,
   toolCategory: undefined as string | null | undefined,
   selectedWorkflow: undefined as WorkflowData | null | undefined,
+  selectedCalendarEvent: undefined as
+    | SelectedCalendarEventData
+    | null
+    | undefined,
   isConvoSystemGenerated: undefined as boolean | undefined,
   follow_up_actions: undefined as string[] | undefined,
   integration_connection_required: undefined as

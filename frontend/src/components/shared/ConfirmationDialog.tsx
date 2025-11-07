@@ -3,14 +3,15 @@
 import {
   AlertDialog,
   AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/shadcn/alert-dialog";
-import { Button } from "@/components/ui/shadcn/button";
+import { Button } from "@heroui/button";
+import { Kbd } from "@heroui/kbd";
+import { useEffect, useRef } from "react";
 
 interface ConfirmationDialogProps {
   isOpen: boolean;
@@ -33,6 +34,33 @@ export function ConfirmationDialog({
   onConfirm,
   onCancel,
 }: ConfirmationDialogProps) {
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Focus the confirm button when dialog opens
+    const timer = setTimeout(() => {
+      confirmButtonRef.current?.focus();
+    }, 100);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        onConfirm();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onConfirm, onCancel]);
+
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
       <AlertDialogContent>
@@ -41,15 +69,22 @@ export function ConfirmationDialog({
           <AlertDialogDescription>{message}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel}>{cancelText}</AlertDialogCancel>
-          <AlertDialogAction asChild>
-            <Button
-              variant={variant === "destructive" ? "destructive" : "default"}
-              onClick={onConfirm}
-            >
-              {confirmText}
-            </Button>
-          </AlertDialogAction>
+          <Button
+            variant="flat"
+            onPress={onCancel}
+            className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+            endContent={<Kbd keys={["escape"]} />}
+          >
+            {cancelText}
+          </Button>
+          <Button
+            ref={confirmButtonRef}
+            color={variant === "destructive" ? "danger" : "primary"}
+            onPress={onConfirm}
+            endContent={<Kbd keys={["enter"]} />}
+          >
+            {confirmText}
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
