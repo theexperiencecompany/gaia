@@ -3,13 +3,12 @@ import inspect
 import time
 from typing import Any, List, Optional, Tuple
 
-from bson import ObjectId
-from langchain_core.documents import Document
-
 from app.config.loggers import chat_logger as logger
 from app.db.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection, notes_collection
 from app.db.redis import redis_cache
+from bson import ObjectId
+from langchain_core.documents import Document
 
 
 async def get_or_compute_embeddings(all_tools, embeddings):
@@ -18,7 +17,10 @@ async def get_or_compute_embeddings(all_tools, embeddings):
     tool_descriptions = []
     tool_hashes = []
 
-    for tool in all_tools:
+    # Sort tools by name for deterministic ordering
+    sorted_tools = sorted(all_tools, key=lambda t: getattr(t, "name", ""))
+
+    for tool in sorted_tools:
         description = f"{tool.name}: {tool.description}"
         tool_descriptions.append(description)
 
@@ -33,6 +35,10 @@ async def get_or_compute_embeddings(all_tools, embeddings):
                 # Fallback: use string representation
                 code_source = str(tool)
 
+            # Normalize whitespace and line endings for consistent hashing
+            code_source = code_source.strip()
+            code_source = "\n".join(line.rstrip() for line in code_source.split("\n"))
+
             code_hash = hashlib.sha256(code_source.encode()).hexdigest()
 
             # Get tool name safely
@@ -42,6 +48,9 @@ async def get_or_compute_embeddings(all_tools, embeddings):
             # Fallback if we can't get source (built-in functions, etc.)
             tool_name = getattr(tool, "name", getattr(tool, "__name__", str(tool)))
             tool_hashes.append(f"{tool_name}:no_source")
+
+    # Sort hashes for deterministic ordering
+    tool_hashes.sort()
 
     # Generate combined hash for descriptions + code
     combined_description = "||".join(tool_descriptions)
