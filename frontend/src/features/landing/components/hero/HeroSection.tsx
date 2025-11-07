@@ -14,7 +14,9 @@ export default function HeroSection() {
     useLatestRelease("heygaia/gaia");
 
   return (
-    <div className="relative mt-28 w-screen flex-col gap-8 py-16 sm:pb-10">
+    <div className="relative w-screen flex-col gap-8 pb-14">
+      {/* <div className="relative mt-28 w-screen flex-col gap-8 py-16 sm:pb-10"> */}
+
       {/* <div className="particles absolute top-0 z-1 h-screen w-full overflow-hidden bg-[#00bbff50] bg-[radial-gradient(circle_at_center,_#00bbff50_0%,_#00bbff50_40%,_#01bbff0d_75%,_transparent_100%)]">
 
         <div className="vignette absolute h-[351%] w-full bg-[radial-gradient(circle,_rgba(0,0,0,0)_0%,_rgba(0,0,0,0)_47%,_#000_80%)]" />

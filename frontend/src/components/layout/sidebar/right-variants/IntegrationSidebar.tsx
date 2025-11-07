@@ -47,9 +47,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   };
 
   return (
-    <div className="flex h-full max-h-[calc(100vh-60px)] flex-col px-6">
-      <SidebarHeader className="space-y-3">
-        <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-zinc-800/50">
+    <div className="flex h-full max-h-[calc(100vh-60px)] flex-col px-5">
+      <SidebarHeader>
+        <div className="flex w-fit items-center justify-center p-1">
           <Image
             width={40}
             height={40}
@@ -62,7 +62,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           />
         </div>
 
-        <div className="flex flex-col items-start gap-1">
+        <div className="mb-0 flex flex-col items-start gap-1">
           <div className="flex w-full items-center justify-between">
             <h1 className="text-2xl font-semibold text-zinc-100">
               {integration.name}
@@ -80,24 +80,22 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             )}
           </div>
 
-          <p className="text-sm leading-relaxed text-zinc-400">
+          <p className="text-sm leading-relaxed font-light text-zinc-400">
             {integration.description}
           </p>
         </div>
 
-        <div>
-          {!isConnected && (
-            <Button
-              color="primary"
-              fullWidth
-              onPress={handleConnect}
-              isDisabled={!isAvailable}
-            >
-              {isAvailable ? "Connect" : "Coming Soon"}
-            </Button>
-          )}
-        </div>
-        <Separator className="my-1 bg-zinc-800" />
+        {!isConnected && (
+          <Button
+            color="primary"
+            fullWidth
+            onPress={handleConnect}
+            isDisabled={!isAvailable}
+          >
+            {isAvailable ? "Connect" : "Coming Soon"}
+          </Button>
+        )}
+        <Separator className="my-3 bg-zinc-800" />
         <h2 className="mb-2 text-sm font-medium text-zinc-300">
           Available Tools ({integrationTools.length})
         </h2>
