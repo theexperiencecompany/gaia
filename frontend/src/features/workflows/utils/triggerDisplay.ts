@@ -7,6 +7,7 @@ import { Integration } from "@/features/integrations/types";
 
 import { Workflow } from "../api/workflowApi";
 import { getScheduleDescription } from "./cronUtils";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 /**
  * Get trigger configuration for a workflow type
@@ -50,7 +51,7 @@ export const getTriggerDisplay = (
       : config?.label || "unknown trigger";
 
   return {
-    icon: integration?.icons?.[0] || null,
+    icon: getToolCategoryIcon(integration?.category || "default"),
     label,
     integration,
   };
@@ -68,7 +69,7 @@ export const getTriggerEnabledIntegrations = (integrations: Integration[]) => {
         id: config.integrationId!,
         name: config.name,
         description: config.description,
-        icon: integration?.icons?.[0] || "",
+        icon: getToolCategoryIcon(integration?.category || "default"),
         triggerType,
       };
     })
