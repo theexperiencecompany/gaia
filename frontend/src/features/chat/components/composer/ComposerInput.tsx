@@ -45,7 +45,8 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
     },
     ref,
   ) => {
-    const { detectSlashCommand, getAllTools } = useSlashCommands();
+    const { detectSlashCommand, getAllTools, getSlashCommandSuggestions } =
+      useSlashCommands();
     const [slashCommandState, setSlashCommandState] = useState({
       isActive: false,
       matches: [] as SlashCommandMatch[],
@@ -77,12 +78,9 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
               openedViaButton: false,
             }));
           } else {
-            // Open the dropdown
-            const allTools = getAllTools();
-            const allMatches = allTools.map((tool) => ({
-              tool,
-              matchedText: "",
-            }));
+            // Open the dropdown - use getSlashCommandSuggestions with empty query
+            // to get all tools with enhancement info (including lock status)
+            const allMatches = getSlashCommandSuggestions("");
 
             // Calculate dropdown position - use same logic as normal slash command detection
             const textarea = inputRef.current;
@@ -122,7 +120,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
         },
         isSlashCommandDropdownOpen: () => slashCommandState.isActive,
       }),
-      [getAllTools, inputRef, slashCommandState.isActive],
+      [getSlashCommandSuggestions, inputRef, slashCommandState.isActive],
     );
 
     const updateSlashCommandDetection = useCallback(
@@ -237,10 +235,27 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
         switch (e.key) {
           case "ArrowUp":
             e.preventDefault();
-            setSlashCommandState((prev) => ({
-              ...prev,
-              selectedIndex: Math.max(0, prev.selectedIndex - 1),
-            }));
+            setSlashCommandState((prev) => {
+              const filteredMatches = getFilteredMatches(
+                prev.selectedCategory,
+                prev.matches,
+              );
+
+              let newIndex = prev.selectedIndex - 1;
+              // Skip locked items when navigating up
+              while (newIndex >= 0) {
+                const match = filteredMatches[newIndex];
+                if (!match.enhancedTool?.isLocked) {
+                  break;
+                }
+                newIndex--;
+              }
+
+              return {
+                ...prev,
+                selectedIndex: Math.max(0, newIndex),
+              };
+            });
             return true;
 
           case "ArrowDown":
@@ -250,12 +265,32 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
                 prev.selectedCategory,
                 prev.matches,
               );
+
+              let newIndex = prev.selectedIndex + 1;
+              // Skip locked items when navigating down
+              while (newIndex < filteredMatches.length) {
+                const match = filteredMatches[newIndex];
+                if (!match.enhancedTool?.isLocked) {
+                  break;
+                }
+                newIndex++;
+              }
+
+              // Find the last unlocked index to properly limit navigation
+              const unlockedMatches = filteredMatches.filter(
+                (match) => !match.enhancedTool?.isLocked,
+              );
+              const lastUnlockedIndex = filteredMatches.findIndex(
+                (match, idx) =>
+                  idx >= newIndex && !match.enhancedTool?.isLocked,
+              );
+
               return {
                 ...prev,
-                selectedIndex: Math.min(
-                  filteredMatches.length - 1,
-                  prev.selectedIndex + 1,
-                ),
+                selectedIndex:
+                  lastUnlockedIndex >= 0
+                    ? lastUnlockedIndex
+                    : prev.selectedIndex,
               };
             });
             return true;
@@ -297,13 +332,19 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
           case "Enter":
           case "Tab":
             e.preventDefault();
-            // If there's only one filtered match, automatically select it
-            if (currentFilteredMatches.length === 1) {
-              handleSlashCommandSelect(currentFilteredMatches[0]);
+            // Filter to only unlocked matches
+            const unlockedFilteredMatches = currentFilteredMatches.filter(
+              (match) => !match.enhancedTool?.isLocked,
+            );
+
+            // If there's only one unlocked filtered match, automatically select it
+            if (unlockedFilteredMatches.length === 1) {
+              handleSlashCommandSelect(unlockedFilteredMatches[0]);
             } else {
               const selectedMatch =
                 currentFilteredMatches[slashCommandState.selectedIndex];
-              if (selectedMatch) {
+              // Only select if the match exists and is not locked
+              if (selectedMatch && !selectedMatch.enhancedTool?.isLocked) {
                 handleSlashCommandSelect(selectedMatch);
               }
             }
@@ -443,10 +484,40 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
             }));
           }}
           onNavigateUp={() => {
-            setSlashCommandState((prev) => ({
-              ...prev,
-              selectedIndex: Math.max(0, prev.selectedIndex - 1),
-            }));
+            setSlashCommandState((prev) => {
+              const getFilteredMatches = (
+                category: string,
+                matches: SlashCommandMatch[],
+              ) => {
+                if (category === "all") return matches;
+                return matches.filter(
+                  (match) => match.tool.category === category,
+                );
+              };
+              const filteredMatches = getFilteredMatches(
+                prev.selectedCategory,
+                prev.matches,
+              );
+              // Only navigate through unlocked items
+              const unlockedMatches = filteredMatches.filter(
+                (match) => !match.enhancedTool?.isLocked,
+              );
+
+              let newIndex = prev.selectedIndex - 1;
+              // Keep going up until we find an unlocked item or reach the start
+              while (newIndex >= 0 && newIndex < filteredMatches.length) {
+                const match = filteredMatches[newIndex];
+                if (!match.enhancedTool?.isLocked) {
+                  break;
+                }
+                newIndex--;
+              }
+
+              return {
+                ...prev,
+                selectedIndex: Math.max(0, newIndex),
+              };
+            });
           }}
           onNavigateDown={() => {
             setSlashCommandState((prev) => {
@@ -463,12 +534,24 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
                 prev.selectedCategory,
                 prev.matches,
               );
+              // Only navigate through unlocked items
+              const unlockedMatches = filteredMatches.filter(
+                (match) => !match.enhancedTool?.isLocked,
+              );
+
+              let newIndex = prev.selectedIndex + 1;
+              // Keep going down until we find an unlocked item or reach the end
+              while (newIndex < filteredMatches.length) {
+                const match = filteredMatches[newIndex];
+                if (!match.enhancedTool?.isLocked) {
+                  break;
+                }
+                newIndex++;
+              }
+
               return {
                 ...prev,
-                selectedIndex: Math.min(
-                  filteredMatches.length - 1,
-                  prev.selectedIndex + 1,
-                ),
+                selectedIndex: Math.min(unlockedMatches.length - 1, newIndex),
               };
             });
           }}

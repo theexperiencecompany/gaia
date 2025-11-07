@@ -244,6 +244,20 @@ const Composer: React.FC<MainSearchbarProps> = ({
       event.preventDefault();
       handleFormSubmit();
     }
+
+    // Handle Escape key when slash command dropdown is closed
+    if (event.key === "Escape" && !isSlashCommandDropdownOpen) {
+      // If there's a selected tool, remove it
+      if (selectedTool) {
+        event.preventDefault();
+        handleRemoveSelectedTool();
+      }
+      // If there's a selected workflow, clear it
+      else if (selectedWorkflow) {
+        event.preventDefault();
+        clearSelectedWorkflow();
+      }
+    }
   };
 
   const openFileUploadModal = () => {
