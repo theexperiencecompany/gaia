@@ -9,7 +9,7 @@ import type {
   WithContext,
 } from "schema-dts";
 
-import { BlogPost } from "@/features/blog/api/blogApi";
+import { BlogPost } from "@/lib/blog";
 import { UseCase } from "@/features/use-cases/constants/dummy-data";
 import { siteConfig } from "@/lib/seo";
 
@@ -52,9 +52,7 @@ export function generateBlogMetadata(blog: BlogPost): Metadata {
   return {
     title: blog.title,
     description,
-    authors:
-      blog.author_details?.map((author) => ({ name: author.name })) ||
-      blog.authors.map((name) => ({ name })),
+    authors: blog.authors.map((author) => ({ name: author.name })),
 
     openGraph: {
       title: blog.title,
@@ -72,8 +70,7 @@ export function generateBlogMetadata(blog: BlogPost): Metadata {
       ],
       type: "article",
       publishedTime: blog.date,
-      authors:
-        blog.author_details?.map((author) => author.name) || blog.authors,
+      authors: blog.authors.map((author) => author.name),
       section: blog.category,
     },
 
@@ -110,14 +107,11 @@ export function generateBlogStructuredData(
     headline: blog.title,
     description: extractDescription(blog.content),
     image: blog.image || "/og-image.webp",
-    author:
-      blog.author_details?.map(
-        (author): Person => ({
-          "@type": "Person",
-          name: author.name,
-          jobTitle: author.role,
-        }),
-      ) || blog.authors.map((name): Person => ({ "@type": "Person", name })),
+    author: blog.authors.map((author) => ({
+      "@type": "Person",
+      name: author.name,
+      jobTitle: author.role,
+    })),
     publisher: {
       "@type": "Organization",
       name: "GAIA",
