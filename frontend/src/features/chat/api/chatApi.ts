@@ -4,6 +4,7 @@ import {
 } from "@microsoft/fetch-event-source";
 
 import { apiService } from "@/lib/api";
+import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { MessageType } from "@/types/features/convoTypes";
 import { WorkflowData } from "@/types/features/workflowTypes";
 import { FileData } from "@/types/shared";
@@ -175,6 +176,7 @@ export const chatApi = {
     selectedTool: string | null = null,
     toolCategory: string | null = null,
     selectedWorkflow: WorkflowData | null = null,
+    selectedCalendarEvent: SelectedCalendarEventData | null = null,
   ): Promise<{ success: boolean; conversation_id: string }> => {
     const fileIds = fileData.map((file) => file.fileId);
 
@@ -188,6 +190,7 @@ export const chatApi = {
         selectedTool,
         toolCategory,
         selectedWorkflow,
+        selectedCalendarEvent,
         incomplete_response: incompleteResponse,
       },
     );
@@ -206,6 +209,7 @@ export const chatApi = {
     toolCategory: string | null = null,
     externalController?: AbortController,
     selectedWorkflow: WorkflowData | null = null,
+    selectedCalendarEvent: SelectedCalendarEventData | null = null,
   ) => {
     const controller = externalController || new AbortController();
 
@@ -241,6 +245,7 @@ export const chatApi = {
           selectedTool, // Add selectedTool to the request body
           toolCategory, // Add toolCategory to the request body
           selectedWorkflow, // Add selectedWorkflow to the request body
+          selectedCalendarEvent, // Add selectedCalendarEvent to the request body
           messages: convoMessages
             .slice(-30)
             .filter(({ response }) => response.trim().length > 0)

@@ -1,14 +1,15 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/modal";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUserActions } from "@/features/auth/hooks/useUser";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
+import { useConfirmation } from "@/hooks/useConfirmation";
 import { useConversationsStore } from "@/stores/conversationsStore";
 
 import { ModalAction } from "./SettingsMenu";
@@ -27,6 +28,7 @@ export default function LogoutModal({
   const { clearConversations } = useConversationsStore();
   const fetchConversations = useFetchConversations();
   const { updateConvoMessages } = useConversation();
+  const { confirm, confirmationProps } = useConfirmation();
 
   // Confirm logout action.
   const handleConfirmLogout = async () => {
@@ -36,7 +38,6 @@ export default function LogoutModal({
     } catch (error) {
       console.error("Error during logout:", error);
     } finally {
-      setModalAction(null);
       router.push("/");
     }
   };
@@ -59,49 +60,39 @@ export default function LogoutModal({
     } catch (error) {
       // Error toast is already shown by the API service
       console.error("Error clearing chats:", error);
-    } finally {
-      setModalAction(null);
     }
   };
 
-  return (
-    <Modal
-      isOpen={modalAction !== null}
-      backdrop="blur"
-      onOpenChange={() => setModalAction(null)}
-    >
-      <ModalContent>
-        <>
-          <ModalHeader className="flex justify-center">
-            {modalAction === "logout"
-              ? "Are you sure you want to logout?"
-              : "Are you sure you want to delete all chats?"}
-          </ModalHeader>
-          <ModalBody className="mb-4 flex flex-col gap-2">
-            <Button
-              color="danger"
-              variant="solid"
-              radius="full"
-              onPress={() => {
-                if (modalAction === "logout") {
-                  handleConfirmLogout();
-                } else if (modalAction === "clear_chats") {
-                  handleConfirmClearChats();
-                }
-              }}
-            >
-              {modalAction === "logout" ? "Logout" : "Delete all chats"}
-            </Button>
-            <Button
-              radius="full"
-              variant="bordered"
-              onPress={() => setModalAction(null)}
-            >
-              Cancel
-            </Button>
-          </ModalBody>
-        </>
-      </ModalContent>
-    </Modal>
-  );
+  // Trigger confirmation dialog when modalAction changes
+  useEffect(() => {
+    if (modalAction === "logout") {
+      confirm({
+        title: "Confirm Logout",
+        message: "Are you sure you want to logout?",
+        confirmText: "Logout",
+        cancelText: "Cancel",
+        variant: "destructive",
+      }).then((confirmed) => {
+        setModalAction(null);
+        if (confirmed) {
+          handleConfirmLogout();
+        }
+      });
+    } else if (modalAction === "clear_chats") {
+      confirm({
+        title: "Clear All Chats",
+        message: "Are you sure you want to delete all chats?",
+        confirmText: "Delete all chats",
+        cancelText: "Cancel",
+        variant: "destructive",
+      }).then((confirmed) => {
+        setModalAction(null);
+        if (confirmed) {
+          handleConfirmClearChats();
+        }
+      });
+    }
+  }, [modalAction]);
+
+  return <ConfirmationDialog {...confirmationProps} />;
 }

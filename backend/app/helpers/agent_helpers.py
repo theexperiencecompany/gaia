@@ -117,6 +117,7 @@ def build_initial_state(
         "conversation_id": conversation_id,
         "selected_tool": request.selectedTool,
         "selected_workflow": request.selectedWorkflow,
+        "selected_calendar_event": request.selectedCalendarEvent,
     }
 
     if trigger_context:

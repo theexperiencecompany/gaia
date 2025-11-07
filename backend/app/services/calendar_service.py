@@ -730,13 +730,14 @@ async def create_calendar_event(
             recurrence_rules = event.recurrence.to_google_calendar_format()
             event_payload["recurrence"] = recurrence_rules
 
-            # For recurring events, times are already processed by calendar tool
-            # Just ensure timezone is consistent
+            # For recurring events, preserve the user's timezone instead of forcing UTC
+            # This ensures recurring events appear at the correct time in the user's timezone
             if not event.is_all_day:
+                timezone = getattr(event, "timezone", None) or "UTC"
                 if "timeZone" in event_payload.get("start", {}):
-                    event_payload["start"]["timeZone"] = "UTC"
+                    event_payload["start"]["timeZone"] = timezone
                 if "timeZone" in event_payload.get("end", {}):
-                    event_payload["end"]["timeZone"] = "UTC"
+                    event_payload["end"]["timeZone"] = timezone
 
         except Exception as e:
             raise HTTPException(

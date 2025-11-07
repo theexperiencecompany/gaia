@@ -11,6 +11,10 @@ interface ChatState {
   conversationsLoadingStatus: LoadingStatus;
   setConversations: (conversations: IConversation[]) => void;
   upsertConversation: (conversation: IConversation) => void;
+  updateConversation: (
+    conversationId: string,
+    updates: Partial<IConversation>,
+  ) => void;
   setMessagesForConversation: (
     conversationId: string,
     messages: IMessage[],
@@ -45,6 +49,13 @@ export const useChatStore = create<ChatState>((set) => ({
 
       return { conversations };
     }),
+
+  updateConversation: (conversationId, updates) =>
+    set((state) => ({
+      conversations: state.conversations.map((conv) =>
+        conv.id === conversationId ? { ...conv, ...updates } : conv,
+      ),
+    })),
 
   setMessagesForConversation: (conversationId, messages) =>
     set((state) => ({

@@ -5,9 +5,9 @@ import Image from "next/image";
 import type { Article, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
-import { BlogPost } from "@/features/blog/api/blogApi";
 import BlogMetadata from "@/features/blog/components/BlogMetadata";
 import MarkdownWrapper from "@/features/blog/components/MarkdownWrapper";
+import { BlogPost } from "@/lib/blog";
 
 interface BlogPostClientProps {
   blog: BlogPost;
@@ -53,15 +53,15 @@ export default function BlogPostClient({
               )}
             </div>
             <BlogMetadata
-              authors={blog.author_details}
+              authors={blog.authors}
               date={blog.date}
               className="mb-10"
             />
             <div className="prose prose-lg dark:prose-invert max-w-2xl text-foreground-600">
-              <MarkdownWrapper content={blog.content.toString()} />
+              <MarkdownWrapper content={blog.content} />
             </div>
             <BlogMetadata
-              authors={blog.author_details}
+              authors={blog.authors}
               date={blog.date}
               className="my-10 w-full max-w-3xl border-t-1 border-gray-700 py-10"
             />
