@@ -1,7 +1,7 @@
 {
   "name": "gaia",
   "description": "Frontend of GAIA - The personal AI assistant",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "homepage": "https://github.com/heygaia/gaia",
   "bugs": {
