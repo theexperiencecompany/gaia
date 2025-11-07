@@ -1,4 +1,5 @@
 import { TOOLS_MESSAGE_KEYS } from "@/config/registries/toolRegistry";
+import { posthog } from "@/lib/posthog";
 import { MessageType } from "@/types/features/convoTypes";
 
 export function parseStreamData(
@@ -16,6 +17,18 @@ export function parseStreamData(
       if (key === "tool_data") {
         const existingToolData = existingBotMessage?.tool_data || [];
         const newEntries = Array.isArray(value) ? value : [value];
+
+        // Track each new tool usage in PostHog
+        newEntries.forEach((entry: any) => {
+          if (entry?.tool_name) {
+            posthog.capture("tool:used", {
+              tool_name: entry.tool_name,
+              tool_category: entry.tool_category || "unknown",
+              timestamp: entry.timestamp || new Date().toISOString(),
+            });
+          }
+        });
+
         (result as Record<string, unknown>)[key] = [
           ...existingToolData,
           ...newEntries,
