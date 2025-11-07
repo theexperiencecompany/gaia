@@ -24,7 +24,7 @@ from app.utils.agent_utils import (
     process_custom_event_for_tools,
     store_agent_progress,
 )
-from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessageChunk
 from langsmith import traceable
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
@@ -54,7 +54,21 @@ def build_agent_config(
             parameters, metadata, and recursion limits
         - UsageMetadataCallbackHandler instance for tracking token usage during execution
     """
+
+    callbacks: list[BaseCallbackHandler] = []
     posthog_client = providers.get("posthog")
+
+    if posthog_client is not None:
+        callbacks.append(
+            PostHogCallbackHandler(
+                client=posthog_client,
+                distinct_id=user.get("user_id"),
+                properties={"conversation_id": conversation_id},
+                privacy_mode=True,
+            )
+        )
+    if usage_metadata_callback:
+        callbacks.append(usage_metadata_callback)
 
     model_name = (
         user_model_config.provider_model_name
@@ -83,15 +97,7 @@ def build_agent_config(
         },
         "recursion_limit": 25,
         "metadata": {"user_id": user.get("user_id")},
-        "callbacks": [
-            usage_metadata_callback,
-            PostHogCallbackHandler(
-                client=posthog_client,
-                distinct_id=user.get("user_id"),
-                properties={"conversation_id": conversation_id},
-                privacy_mode=True,
-            ),
-        ],
+        "callbacks": callbacks,
     }
 
     return config
