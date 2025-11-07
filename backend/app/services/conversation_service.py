@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import (
+    BatchSyncRequest,
     ConversationModel,
     SystemPurpose,
     UpdateMessagesRequest,
@@ -75,6 +76,7 @@ async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
         "is_system_generated": 1,
         "system_purpose": 1,
         "createdAt": 1,
+        "updatedAt": 1,
     }
 
     starred_filter = {"user_id": user_id, "starred": True}
@@ -145,6 +147,18 @@ async def get_conversation(conversation_id: str, user: dict) -> dict:
 
     conversation["_id"] = str(conversation["_id"])
 
+    # Convert datetime objects to ISO format strings for JSON serialization
+    if "createdAt" in conversation and isinstance(conversation["createdAt"], datetime):
+        conversation["createdAt"] = conversation["createdAt"].isoformat()
+
+    # Convert datetime objects in messages if present
+    if "messages" in conversation:
+        for message in conversation["messages"]:
+            if isinstance(message.get("timestamp"), datetime):
+                message["timestamp"] = message["timestamp"].isoformat()
+            if isinstance(message.get("createdAt"), datetime):
+                message["createdAt"] = message["createdAt"].isoformat()
+
     # Convert legacy tool data to unified format
     conversation = convert_conversation_messages(conversation)
 
@@ -158,7 +172,7 @@ async def star_conversation(conversation_id: str, starred: bool, user: dict) -> 
     user_id = user.get("user_id")
     update_result = await conversations_collection.update_one(
         {"user_id": user_id, "conversation_id": conversation_id},
-        {"$set": {"starred": starred}},
+        {"$set": {"starred": starred}, "$currentDate": {"updatedAt": True}},
     )
 
     if update_result.modified_count == 0:
@@ -206,7 +220,6 @@ async def delete_conversation(conversation_id: str, user: dict) -> dict:
     }
 
 
-# TODO: only accept messages that are not already in the conversation
 async def update_messages(request: UpdateMessagesRequest, user: dict) -> dict:
     """
     Add messages to an existing conversation, including any file IDs attached to the messages.
@@ -224,7 +237,10 @@ async def update_messages(request: UpdateMessagesRequest, user: dict) -> dict:
 
     update_result = await conversations_collection.update_one(
         {"user_id": user_id, "conversation_id": conversation_id},
-        {"$push": {"messages": {"$each": messages}}},
+        {
+            "$push": {"messages": {"$each": messages}},
+            "$currentDate": {"updatedAt": True},
+        },
     )
 
     if update_result.modified_count == 0:
@@ -269,7 +285,10 @@ async def pin_message(
             "conversation_id": conversation_id,
             "messages.message_id": message_id,
         },
-        {"$set": {"messages.$.pinned": pinned}},
+        {
+            "$set": {"messages.$.pinned": pinned},
+            "$currentDate": {"updatedAt": True},
+        },
     )
 
     if update_result.modified_count == 0:
@@ -417,7 +436,7 @@ async def update_conversation_description(
     user_id = user.get("user_id")
     update_result = await conversations_collection.update_one(
         {"user_id": user_id, "conversation_id": conversation_id},
-        {"$set": {"description": description}},
+        {"$set": {"description": description}, "$currentDate": {"updatedAt": True}},
     )
 
     if update_result.modified_count == 0:
@@ -433,7 +452,96 @@ async def update_conversation_description(
     }
 
 
+def _convert_datetime_to_iso(obj: dict, *fields: str) -> None:
+    """Convert datetime fields to ISO format strings in place."""
+    for field in fields:
+        if field in obj and isinstance(obj[field], datetime):
+            obj[field] = obj[field].isoformat()
+
+
 def _convert_ids(conversations):
+    """Convert MongoDB ObjectIds and datetime fields to JSON-serializable formats."""
     for conv in conversations:
         conv["_id"] = str(conv["_id"])
+        _convert_datetime_to_iso(conv, "createdAt", "updatedAt")
     return conversations
+
+
+async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dict:
+    """
+    Batch sync conversations - returns only conversations that have been updated
+    since the provided timestamp, including their messages.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated"
+        )
+
+    conversation_map = {
+        item.conversation_id: item.last_updated for item in request.conversations
+    }
+
+    if not conversation_map:
+        return {"conversations": []}
+
+    # Build match conditions for each conversation
+    match_conditions = []
+    for conv_id, last_updated in conversation_map.items():
+        condition = {
+            "user_id": user_id,
+            "conversation_id": conv_id,
+        }
+
+        # Only include if updated after the provided timestamp
+        if last_updated:
+            try:
+                last_updated_dt = datetime.fromisoformat(
+                    last_updated.replace("Z", "+00:00")
+                )
+                condition["$or"] = [
+                    {"updatedAt": {"$gt": last_updated_dt}},
+                    {"updatedAt": {"$exists": False}},
+                ]
+            except (ValueError, AttributeError):
+                # If invalid timestamp, include the conversation
+                pass
+
+        match_conditions.append(condition)
+
+    if not match_conditions:
+        return {"conversations": []}
+
+    # Use aggregation to efficiently fetch conversations with messages
+    pipeline = [
+        {"$match": {"$or": match_conditions}},
+        {
+            "$project": {
+                "_id": 0,
+                "conversation_id": 1,
+                "description": 1,
+                "starred": 1,
+                "is_system_generated": 1,
+                "system_purpose": 1,
+                "createdAt": 1,
+                "updatedAt": 1,
+                "messages": 1,
+            }
+        },
+    ]
+
+    conversations = await conversations_collection.aggregate(pipeline).to_list(None)
+
+    # Convert datetime objects to ISO strings
+    for conv in conversations:
+        _convert_datetime_to_iso(conv, "createdAt", "updatedAt")
+
+        # Convert message timestamps
+        if "messages" in conv:
+            for message in conv["messages"]:
+                _convert_datetime_to_iso(message, "timestamp", "createdAt", "date")
+
+        # Convert legacy tool data
+        conv = convert_conversation_messages(conv)
+
+    return {"conversations": conversations}

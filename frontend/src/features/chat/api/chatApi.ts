@@ -56,6 +56,11 @@ export interface FetchConversationsResponse {
   total_pages: number;
 }
 
+export interface ConversationSyncItem {
+  conversation_id: string;
+  last_updated?: string;
+}
+
 export const chatApi = {
   // Fetch conversations with pagination
   fetchConversations: async (
@@ -66,6 +71,31 @@ export const chatApi = {
       `/conversations?page=${page}&limit=${limit}`,
       {
         errorMessage: "Failed to fetch conversations",
+      },
+    );
+  },
+
+  // Batch sync conversations - only fetch stale conversations
+  batchSyncConversations: async (
+    conversations: ConversationSyncItem[],
+  ): Promise<{
+    conversations: {
+      conversation_id: string;
+      description: string;
+      starred?: boolean;
+      is_system_generated?: boolean;
+      system_purpose?: SystemPurpose;
+      createdAt: string;
+      updatedAt?: string;
+      messages: MessageType[];
+    }[];
+  }> => {
+    return apiService.post(
+      "/conversations/batch-sync",
+      { conversations },
+      {
+        errorMessage: "Failed to sync conversations",
+        silent: true,
       },
     );
   },

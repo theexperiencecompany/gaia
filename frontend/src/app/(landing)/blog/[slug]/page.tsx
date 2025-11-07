@@ -69,7 +69,7 @@ export default async function BlogPostPage({ params }: PageProps) {
     // Generate structured data for SEO
     const structuredData = {
       "@context": "https://schema.org" as const,
-      "@type": "BlogPosting" as const,
+      "@type": "Article" as const,
       headline: blog.title,
       image: blog.image,
       datePublished: blog.date,

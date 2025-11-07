@@ -14,12 +14,14 @@
     "backend": {
       "release-type": "python",
       "component": "backend",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "changelog-type": "github"
     },
     "frontend": {
       "release-type": "node",
       "component": "frontend",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "changelog-type": "github"
     }
   }
 }

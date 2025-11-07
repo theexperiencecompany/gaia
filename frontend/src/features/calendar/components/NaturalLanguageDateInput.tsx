@@ -275,9 +275,7 @@ export const NaturalLanguageDateRangeInput: React.FC<
   };
 
   const handleRangeSelect = (
-    selectedRange:
-      | { from: Date | undefined; to?: Date | undefined }
-      | undefined,
+    selectedRange: { from?: Date; to?: Date } | undefined,
   ) => {
     if (selectedRange?.from) {
       onStartChange(getStartOfDay(selectedRange.from));

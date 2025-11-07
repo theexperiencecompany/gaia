@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { syncAndPrecacheMessages } from "@/services/syncService";
+import { batchSyncConversations } from "@/services/syncService";
 
 export const useBackgroundSync = () => {
   useEffect(() => {
@@ -10,7 +10,7 @@ export const useBackgroundSync = () => {
 
     const runSync = async () => {
       try {
-        await syncAndPrecacheMessages();
+        await batchSyncConversations();
       } catch {
         // Ignore background sync errors to keep UI responsive
       }
@@ -32,10 +32,7 @@ export const useBackgroundSync = () => {
     window.addEventListener("online", handleOnline);
 
     return () => {
-      document.removeEventListener(
-        "visibilitychange",
-        handleVisibilityChange,
-      );
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("online", handleOnline);
     };
   }, []);
