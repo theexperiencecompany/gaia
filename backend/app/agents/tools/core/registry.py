@@ -133,7 +133,7 @@ class ToolRegistry:
         # Core categories (no integration required)
         add_category(
             "search",
-            core_tools=[
+            tools=[
                 search_tool.web_search_tool,
                 # search_tool.deep_research_tool,
                 webpage_tool.fetch_webpages,
@@ -142,8 +142,7 @@ class ToolRegistry:
 
         add_category(
             "documents",
-            core_tools=[file_tools.query_file],
-            tools=[document_tool.generate_document],
+            tools=[file_tools.query_file, document_tool.generate_document],
         )
 
         add_category(
