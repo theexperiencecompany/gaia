@@ -6,6 +6,7 @@ import type {
   ScheduleTriggerConfig,
   TriggerConfig,
 } from "@/config/registries/triggerRegistry";
+import type { ContentCreator } from "@/types/shared/contentTypes";
 
 // Legacy workflow step data (for message components)
 export interface WorkflowStepData {
@@ -83,14 +84,8 @@ export interface CommunityWorkflow {
   title: string;
   description: string;
   steps: CommunityWorkflowStep[];
-  upvotes: number;
-  is_upvoted: boolean;
   created_at: string;
-  creator: {
-    id: string;
-    name: string;
-    avatar?: string;
-  };
+  creator: ContentCreator;
 }
 
 // Community workflows response
@@ -124,8 +119,7 @@ export interface Workflow {
   // Community features
   is_public?: boolean;
   created_by?: string;
-  upvotes?: number;
-  upvoted_by?: string[];
+  creator?: ContentCreator; // Optional creator info from community workflows
 }
 
 // API request types

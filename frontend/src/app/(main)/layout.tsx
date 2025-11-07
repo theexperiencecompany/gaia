@@ -2,11 +2,14 @@
 
 import { useDrag } from "@use-gesture/react";
 import { usePathname } from "next/navigation";
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, Suspense, useEffect, useRef, useState } from "react";
+
+export const dynamic = "force-dynamic";
 
 import HeaderManager from "@/components/layout/headers/HeaderManager";
 import Sidebar from "@/components/layout/sidebar/MainSidebar";
 import RightSidebar from "@/components/layout/sidebar/RightSidebar";
+import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { SidebarInset, SidebarProvider } from "@/components/ui/shadcn/sidebar";
 import { TooltipProvider } from "@/components/ui/shadcn/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
@@ -119,7 +122,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
               <HeaderManager />
             </header>
             <main className="flex flex-1 flex-col overflow-hidden">
-              {children}
+              <Suspense fallback={<SuspenseLoader />}>{children}</Suspense>
             </main>
           </SidebarInset>
 

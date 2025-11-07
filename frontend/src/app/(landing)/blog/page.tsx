@@ -1,12 +1,9 @@
-import type { Metadata } from "next";
-
-// Commented out API-based blog fetching
-// import { blogApi, type BlogPost } from "@/features/blog/api/blogApi";
 import { BlogCard } from "@/features/blog/components/BlogCard";
 import { BlogHeader } from "@/features/blog/components/BlogHeader";
 import { BlogListItem } from "@/features/blog/components/BlogListItem";
 import { getAllBlogPosts } from "@/lib/blog";
 import { generatePageMetadata } from "@/lib/seo";
+import type { Metadata } from "next";
 
 interface Blog {
   slug: string;
@@ -39,32 +36,6 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-// Commented out - Old API-based conversion function
-// function convertBlogPost(blog: BlogPost): Blog {
-//   return {
-//     slug: blog.slug,
-//     title: blog.title,
-//     category: blog.category || "Uncategorized",
-//     date: blog.date,
-//     image: blog.image || "/images/logos/logo_glass.webp",
-//     authors:
-//       blog.author_details?.map((author) => ({
-//         name: author.name,
-//         role: author.role,
-//         avatar:
-//           author.avatar ||
-//           `https://api.dicebear.com/9.x/notionists/svg?seed=${author.name}`,
-//         linkedin: author.linkedin,
-//         twitter: author.twitter,
-//       })) ||
-//       blog.authors.map((name) => ({
-//         name,
-//         role: "Author",
-//         avatar: `https://api.dicebear.com/9.x/notionists/svg?seed=${name}`,
-//       })),
-//   };
-// }
-
 export default async function BlogList() {
   try {
     // Read blogs from markdown files instead of API
@@ -77,9 +48,6 @@ export default async function BlogList() {
       image: blog.image,
       authors: blog.authors,
     }));
-    // Commented out - Old API-based blog fetching
-    // const blogs = await blogApi.getBlogs(false);
-    // const displayBlogs: Blog[] = blogs.map(convertBlogPost);
 
     const latestPosts = displayBlogs.slice(0, 5);
     const remainingPosts = displayBlogs.slice(5);

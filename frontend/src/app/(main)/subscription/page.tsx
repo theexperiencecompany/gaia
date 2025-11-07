@@ -1,3 +1,5 @@
+"use client";
+
 import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
 

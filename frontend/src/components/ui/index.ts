@@ -23,7 +23,6 @@ export * from "./shadcn/animated-shiny-text";
 export * from "./shadcn/aspect-ratio";
 export * from "./shadcn/avatar";
 export * from "./shadcn/badge";
-export * from "./shadcn/breadcrumb";
 export * from "./shadcn/button";
 export * from "./shadcn/calendar";
 export * from "./shadcn/card";
