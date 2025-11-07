@@ -1,7 +1,8 @@
+import { MetadataRoute } from "next";
+
 import { useCasesData } from "@/features/use-cases/constants/dummy-data";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { getAllBlogPosts } from "@/lib/blog";
-import { MetadataRoute } from "next";
 
 /**
  * Generate dynamic sitemap for GAIA

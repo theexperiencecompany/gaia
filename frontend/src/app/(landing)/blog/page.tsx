@@ -1,9 +1,10 @@
+import type { Metadata } from "next";
+
 import { BlogCard } from "@/features/blog/components/BlogCard";
 import { BlogHeader } from "@/features/blog/components/BlogHeader";
 import { BlogListItem } from "@/features/blog/components/BlogListItem";
 import { getAllBlogPosts } from "@/lib/blog";
 import { generatePageMetadata } from "@/lib/seo";
-import type { Metadata } from "next";
 
 interface Blog {
   slug: string;

@@ -9,8 +9,8 @@ import type {
   WithContext,
 } from "schema-dts";
 
-import { BlogPost } from "@/lib/blog";
 import { UseCase } from "@/features/use-cases/constants/dummy-data";
+import { BlogPost } from "@/lib/blog";
 import { siteConfig } from "@/lib/seo";
 
 /**
