@@ -128,3 +128,16 @@ class StarredUpdate(BaseModel):
 
 class PinnedUpdate(BaseModel):
     pinned: bool
+
+
+class UpdateDescriptionRequest(BaseModel):
+    description: str
+
+
+class ConversationSyncItem(BaseModel):
+    conversation_id: str
+    last_updated: Optional[str] = None
+
+
+class BatchSyncRequest(BaseModel):
+    conversations: List[ConversationSyncItem]
