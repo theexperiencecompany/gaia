@@ -1,8 +1,7 @@
 "use client";
 
 import { Avatar } from "@heroui/avatar";
-import { Clock, Play, User } from "lucide-react";
-import Image from "next/image";
+import { Play, User } from "lucide-react";
 import { useState } from "react";
 
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
@@ -186,19 +185,7 @@ export default function UseCaseDetailClient({
             {/* Trigger */}
             {shouldShowTrigger && triggerInfo && (
               <MetaInfoCard
-                icon={
-                  triggerInfo.icon ? (
-                    <Image
-                      src={triggerInfo.icon}
-                      alt="Trigger"
-                      width={20}
-                      height={20}
-                      className="h-5 w-5 object-contain"
-                    />
-                  ) : (
-                    <Clock className="h-5 w-5 text-zinc-400" />
-                  )
-                }
+                icon={triggerInfo.icon}
                 label="Trigger"
                 value={<span className="capitalize">{triggerInfo.label}</span>}
               />
