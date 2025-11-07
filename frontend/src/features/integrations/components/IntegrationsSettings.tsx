@@ -1,6 +1,6 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Plus, Puzzle } from "lucide-react";
+import { motion } from "framer-motion";
 import React from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -18,6 +18,24 @@ const IntegrationSettingsCard: React.FC<{
 }> = ({ integration, onConnect, onDisconnect: _onDisconnect }) => {
   const isConnected = integration.status === "connected";
   const isAvailable = !!integration.loginEndpoint;
+
+  const getStatusBadge = () => {
+    if (isConnected) {
+      return (
+        <Chip variant="flat" size="sm" color="success" className="h-6">
+          Connected
+        </Chip>
+      );
+    }
+    if (isAvailable) {
+      return null; // Button will be shown instead
+    }
+    return (
+      <Chip variant="flat" size="sm" color="warning" className="h-6">
+        Soon
+      </Chip>
+    );
+  };
 
   return (
     <motion.div
@@ -52,37 +70,22 @@ const IntegrationSettingsCard: React.FC<{
             </p>
           </div>
         </div>
-        {isConnected ? (
-          <Chip variant="flat" size="sm" color="success" className="h-6">
-            Connected
-          </Chip>
-        ) : isAvailable ? (
-          <Button
-            color="primary"
-            size="sm"
-            className="w-fit font-medium"
-            onPress={() => onConnect(integration.id)}
-          >
-            Connect
-          </Button>
-        ) : (
-          <Chip variant="flat" size="sm" color="warning" className="h-6">
-            Soon
-          </Chip>
-        )}
-      </div>
 
-      <div
-        className={`${isAvailable && !isConnected ? "mb-2" : "mb-0"} flex-1`}
-      >
-        <h3 className="mb-1 text-base font-medium text-white">
-          {integration.name}
-        </h3>
-        <p className="text-sm leading-relaxed text-zinc-400">
-          {integration.description}
-        </p>
+        {/* Action Button */}
+        <div className="flex-shrink-0">
+          {isAvailable && !isConnected && (
+            <Button
+              color="primary"
+              size="sm"
+              className="w-fit font-medium"
+              onPress={() => onConnect(integration.id)}
+            >
+              Connect
+            </Button>
+          )}
+        </div>
       </div>
-    </div>
+    </motion.div>
   );
 };
 
