@@ -47,7 +47,7 @@ WORKOS_COOKIE_PASSWORD=your-random-cookie-secret
 - **Blog admin**: `BLOG_BEARER_TOKEN`
 - **Queues/DB (prod)**: `POSTGRES_URL`, `RABBITMQ_URL`, `CHROMADB_HOST`, `CHROMADB_PORT`
 - **Composio**: `COMPOSIO_KEY`, `COMPOSIO_WEBHOOK_SECRET`
-- **Telemetry**: `SENTRY_DSN`
+- **Telemetry**: `SENTRY_DSN`, `POSTHOG_API_KEY`
 
 Add only what you need; dev will warn and the feature stays inactive until keys are added.
 
@@ -97,6 +97,7 @@ BLOG_BEARER_TOKEN=your-blog-bearer-token
 COMPOSIO_KEY=your-composio-key
 COMPOSIO_WEBHOOK_SECRET=your-composio-webhook-secret
 SENTRY_DSN=your-sentry-dsn
+POSTHOG_API_KEY=your-posthog-api-key
 ```
 
 ## Frontend Environment Variables

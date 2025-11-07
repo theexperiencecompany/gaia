@@ -68,13 +68,13 @@ export default async function BlogPostPage({ params }: PageProps) {
 
     // Generate structured data for SEO
     const structuredData = {
-      "@context": "https://schema.org",
-      "@type": "BlogPosting",
+      "@context": "https://schema.org" as const,
+      "@type": "BlogPosting" as const,
       headline: blog.title,
       image: blog.image,
       datePublished: blog.date,
       author: blog.authors.map((author) => ({
-        "@type": "Person",
+        "@type": "Person" as const,
         name: author.name,
       })),
     };

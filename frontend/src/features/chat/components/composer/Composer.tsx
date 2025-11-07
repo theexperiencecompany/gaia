@@ -11,9 +11,9 @@ import FilePreview, {
   UploadedFilePreview,
 } from "@/features/chat/components/files/FilePreview";
 import FileUpload from "@/features/chat/components/files/FileUpload";
+import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
-import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useSendMessage } from "@/hooks/useSendMessage";
