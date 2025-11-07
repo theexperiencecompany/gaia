@@ -330,7 +330,7 @@ export default function WorkflowModal({
           workflow_id: existingWorkflow.id,
           workflow_title: existingWorkflow.title,
           step_count: existingWorkflow.steps?.length || 0,
-          is_published: existingWorkflow.is_published,
+          is_public: existingWorkflow.is_public,
         });
 
         // Call the actual delete API

@@ -10,6 +10,7 @@ import { posthog } from "@/lib";
 import {
   CalendarIcon,
   CheckmarkCircle02Icon,
+  ConnectIcon,
   MessageMultiple02Icon,
   NotificationIcon,
   Target04Icon,
@@ -78,6 +79,11 @@ export default function SidebarTopButtons() {
       route: "/todos",
       icon: <CheckmarkCircle02Icon />,
       label: "Todos",
+    },
+    {
+      route: "/integrations",
+      icon: <ConnectIcon />,
+      label: "Integrations",
     },
     // {
     //   route: "/mail",

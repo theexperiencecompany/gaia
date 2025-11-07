@@ -3,7 +3,6 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { IntegrationsSettings } from "@/features/integrations/components/IntegrationsSettings";
 import AccountSettings from "@/features/settings/components/AccountSettings";
 import LogoutModal from "@/features/settings/components/LogoutModal";
 import MemorySettings from "@/features/settings/components/MemorySettings";
@@ -37,8 +36,6 @@ export default function SettingsPage() {
         return <PreferencesSettings setModalAction={setModalAction} />;
       case "memory":
         return <MemorySettings />;
-      case "integrations":
-        return <IntegrationsSettings />;
       default:
         return <AccountSettings setModalAction={setModalAction} />;
     }

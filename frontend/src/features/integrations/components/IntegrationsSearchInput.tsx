@@ -18,6 +18,7 @@ export const IntegrationsSearchInput: React.FC<
         type="text"
         value={value}
         isClearable
+        radius="full"
         startContent={<Search width={16} height={16} />}
         onValueChange={onChange}
         placeholder="Search integrations..."

@@ -7,7 +7,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   AccountSetting02Icon,
   AiBrain01Icon,
-  ConnectIcon,
   CreditCardIcon,
   MessageMultiple02Icon,
 } from "@/components/shared/icons";
@@ -52,11 +51,6 @@ export default function SettingsSidebar() {
       label: "Memory",
       icon: AiBrain01Icon,
       href: "/settings?section=memory",
-    },
-    {
-      label: "Integrations",
-      icon: ConnectIcon,
-      href: "/settings?section=integrations",
     },
   ];
 
