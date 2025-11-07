@@ -18,7 +18,7 @@ from app.services.conversation_service import update_messages
 from app.services.file_service import get_files
 from app.services.model_service import get_user_selected_model
 from app.services.payments.payment_service import payment_service
-from app.utils.chat_utils import create_conversation
+from app.utils.chat_utils import create_conversation, generate_and_update_description
 from fastapi import BackgroundTasks
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
@@ -37,6 +37,7 @@ async def chat_stream(
     """
     complete_message = ""
     conversation_id, init_chunk = await initialize_conversation(body, user)
+    is_new_conversation = init_chunk is not None
 
     # Dictionary to collect tool outputs during streaming
     tool_data: Dict[str, Any] = {"tool_data": []}
@@ -67,12 +68,16 @@ async def chat_stream(
         user_model_config=user_model_config,
         usage_metadata_callback=usage_metadata_callback,
     ):
-        # Process complete message marker
+        # Skip [DONE] marker from agent - we'll send it after description generation
+        if chunk == "data: [DONE]\n\n":
+            continue
+
+        # Process complete message marker (for DB storage)
         if chunk.startswith("nostream: "):
-            # So that we can return data that doesn't need to be streamed
             chunk_json = json.loads(chunk.replace("nostream: ", ""))
             complete_message = chunk_json.get("complete_message", "")
-        # Process data chunk - potentially contains tool outputs
+
+        # Process and yield data chunks (tool outputs, responses, etc.)
         elif chunk.startswith("data: "):
             try:
                 # Extract tool data from the chunk
@@ -112,6 +117,29 @@ async def chat_stream(
         # Pass through other chunks
         else:
             yield chunk
+
+    # Generate and stream description for new conversations
+    if is_new_conversation:
+        last_message = body.messages[-1] if body.messages else None
+        selectedTool = body.selectedTool if body.selectedTool else None
+        selectedWorkflow = body.selectedWorkflow if body.selectedWorkflow else None
+
+        try:
+            description = await generate_and_update_description(
+                conversation_id,
+                last_message,
+                user,
+                selectedTool,
+                selectedWorkflow,
+            )
+
+            # Stream the updated description
+            yield f"""data: {json.dumps({"conversation_description": description})}\n\n"""
+        except Exception as e:
+            logger.error(f"Failed to generate conversation description: {e}")
+
+    # Now send [DONE] marker
+    yield "data: [DONE]\n\n"
 
     # Save the conversation once streaming is complete
     update_conversation_messages(
@@ -194,11 +222,15 @@ async def initialize_conversation(
         last_message = body.messages[-1] if body.messages else None
         selectedTool = body.selectedTool if body.selectedTool else None
         selectedWorkflow = body.selectedWorkflow if body.selectedWorkflow else None
+
+        # Create conversation with temporary "New Chat" description to start streaming immediately
+        # Real description will be generated and streamed after the main response completes
         conversation = await create_conversation(
             last_message,
             user=user,
             selectedTool=selectedTool,
             selectedWorkflow=selectedWorkflow,
+            generate_description=False,  # Don't block on LLM description generation
         )
         conversation_id = conversation.get("conversation_id", "")
 

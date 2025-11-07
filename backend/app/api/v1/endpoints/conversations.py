@@ -1,15 +1,17 @@
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.models.chat_models import (
+    BatchSyncRequest,
     ConversationModel,
     PinnedUpdate,
     StarredUpdate,
+    UpdateDescriptionRequest,
     UpdateMessagesRequest,
 )
 from app.services.conversation_service import (
+    batch_sync_conversations,
     create_conversation_service,
     delete_all_conversations,
     delete_conversation,
@@ -54,6 +56,17 @@ async def get_conversations_endpoint(
     Retrieve paginated conversations for the authenticated user.
     """
     response = await get_conversations(user, page=page, limit=limit)
+    return JSONResponse(content=response)
+
+
+@router.post("/conversations/batch-sync")
+async def batch_sync_conversations_endpoint(
+    request: BatchSyncRequest, user: dict = Depends(get_current_user)
+) -> JSONResponse:
+    """
+    Batch sync conversations - returns only stale conversations with messages.
+    """
+    response = await batch_sync_conversations(request, user)
     return JSONResponse(content=response)
 
 
@@ -137,10 +150,6 @@ async def get_starred_messages_endpoint(
     """
     response = await get_starred_messages(user)
     return JSONResponse(content=response)
-
-
-class UpdateDescriptionRequest(BaseModel):
-    description: str
 
 
 @router.put("/conversations/{conversation_id}/description")

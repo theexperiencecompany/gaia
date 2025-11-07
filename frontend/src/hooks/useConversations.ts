@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
-import { chatApi, type Conversation } from "@/features/chat/api/chatApi";
 import { db, type IConversation } from "@/lib/db/chatDb";
+import { batchSyncConversations } from "@/services/syncService";
 import { useChatStore } from "@/stores/chatStore";
 
 type ChatStoreState = ReturnType<typeof useChatStore.getState>;
@@ -41,21 +41,12 @@ export const useConversations = (): ConversationsHookResult => {
       }
 
       try {
-        const { conversations: apiConversations } =
-          await chatApi.fetchConversations(1, 20);
-        if (!isActive) return;
-
-  const mappedConversations = mapApiConversations(apiConversations);
-
-        try {
-          await db.putConversationsBulk(mappedConversations);
-        } catch {
-          // Ignore persistence errors; UI state has already been updated from the network response
-        }
+        await batchSyncConversations();
 
         if (!isActive) return;
 
-        setConversations(mappedConversations);
+        const updatedConversations = await db.getAllConversations();
+        setConversations(updatedConversations);
         setLoadingStatus("success");
       } catch {
         if (!isActive) return;
@@ -75,23 +66,3 @@ export const useConversations = (): ConversationsHookResult => {
     conversationsLoadingStatus,
   };
 };
-
-export const mapApiConversation = (
-  conversation: Conversation,
-): IConversation => ({
-  id: conversation.conversation_id,
-  title: conversation.description || "Untitled conversation",
-  description: conversation.description,
-  userId: conversation.user_id,
-  starred: conversation.starred ?? false,
-  isSystemGenerated: conversation.is_system_generated ?? false,
-  systemPurpose: conversation.system_purpose ?? null,
-  createdAt: new Date(conversation.createdAt),
-  updatedAt: conversation.updatedAt
-    ? new Date(conversation.updatedAt)
-    : new Date(conversation.createdAt),
-});
-
-export const mapApiConversations = (
-  conversations: Conversation[],
-): IConversation[] => conversations.map(mapApiConversation);
