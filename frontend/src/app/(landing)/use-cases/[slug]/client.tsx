@@ -4,6 +4,7 @@ import { Avatar } from "@heroui/avatar";
 import { Play, User } from "lucide-react";
 import { useState } from "react";
 
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
@@ -185,7 +186,16 @@ export default function UseCaseDetailClient({
             {/* Trigger */}
             {shouldShowTrigger && triggerInfo && (
               <MetaInfoCard
-                icon={triggerInfo.icon}
+                icon={
+                  triggerInfo.integrationId
+                    ? getToolCategoryIcon(triggerInfo.integrationId, {
+                        size: 20,
+                        width: 20,
+                        height: 20,
+                        showBackground: false,
+                      })
+                    : undefined
+                }
                 label="Trigger"
                 value={<span className="capitalize">{triggerInfo.label}</span>}
               />
