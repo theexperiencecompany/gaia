@@ -30,10 +30,8 @@ from langsmith import traceable
 from posthog import Posthog
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
-posthog = Posthog(
-    settings.POSTHOG_API_KEY,
-    host="https://us.i.posthog.com"
-)
+posthog = Posthog(settings.POSTHOG_API_KEY, host="https://us.i.posthog.com")
+
 
 def build_agent_config(
     conversation_id: str,
