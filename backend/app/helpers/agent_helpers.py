@@ -10,6 +10,7 @@ import json
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
+from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
@@ -26,7 +27,13 @@ from app.utils.agent_utils import (
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessageChunk
 from langsmith import traceable
+from posthog import Posthog
+from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
+posthog = Posthog(
+    settings.POSTHOG_API_KEY,
+    host="https://us.i.posthog.com"
+)
 
 def build_agent_config(
     conversation_id: str,
@@ -79,7 +86,15 @@ def build_agent_config(
         },
         "recursion_limit": 25,
         "metadata": {"user_id": user.get("user_id")},
-        "callbacks": [usage_metadata_callback],
+        "callbacks": [
+            usage_metadata_callback,
+            PostHogCallbackHandler(
+                client=posthog,
+                distinct_id=user.get("user_id"),
+                properties={"conversation_id": conversation_id},
+                privacy_mode=True,
+            ),
+        ],
     }
 
     return config

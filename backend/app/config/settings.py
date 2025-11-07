@@ -213,7 +213,8 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     # Monitoring & Analytics
     # ----------------------------------------------
-    SENTRY_DSN: str = ""
+    SENTRY_DSN: str
+    POSTHOG_API_KEY: str
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
@@ -306,6 +307,7 @@ class DevelopmentSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: Optional[str] = None
+    POSTHOG_API_KEY: Optional[str] = None
 
     # ----------------------------------------------
     # Environment Configuration

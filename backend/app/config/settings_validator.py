@@ -282,6 +282,15 @@ class SettingsValidator:
                 # Optional in production
             )
         )
+        self.register_group(
+            SettingsGroup(
+                name="Posthog Analytics",
+                keys=["POSTHOG_API_KEY"],
+                description="Posthog analytics and event tracking",
+                affected_features="User behavior analytics and event tracking",
+                # Optional in production
+            )
+        )
 
     def register_group(self, group: SettingsGroup):
         """

@@ -117,6 +117,7 @@ dependencies = [
   "types-python-dateutil",
   "composio-client>=1.10.0",
   "firecrawl>=4.5.0",
+  "posthog>=5.4.0",
 ]
 
 ## To run the tasks use commands like:
