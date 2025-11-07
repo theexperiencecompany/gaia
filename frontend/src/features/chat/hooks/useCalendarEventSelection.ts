@@ -1,4 +1,3 @@
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 import {
   CalendarEventSelectionOptions,
   SelectedCalendarEventData,

@@ -2,12 +2,10 @@ from typing import Any, Dict, List, Optional, TypedDict
 
 from app.config.settings import settings
 from app.constants.llm import (
-    DEFAULT_CEREBRAS_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_MODEL_NAME,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from langchain_cerebras import ChatCerebras
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
@@ -18,12 +16,10 @@ from langchain_openai import ChatOpenAI
 PROVIDER_MODELS = {
     "openai": DEFAULT_MODEL_NAME,
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
-    "cerebras": DEFAULT_CEREBRAS_MODEL_NAME,
 }
 PROVIDER_PRIORITY = {
     1: "openai",
     2: "gemini",
-    3: "cerebras",
 }
 
 
@@ -45,26 +41,6 @@ def init_openai_llm():
         temperature=0.1,
         streaming=True,
         stream_usage=True,
-    ).configurable_fields(
-        model_name=ConfigurableField(id="model_name", name="LLM Model Name")
-    )
-
-
-@lazy_provider(
-    name="cerebras_llm",
-    required_keys=[settings.CEREBRAS_API_KEY],
-    strategy=MissingKeyStrategy.WARN,
-    warning_message="Cerebras API key not configured. Models provided by cerebras will not work.",
-)
-def init_cerebras_llm():
-    """Initialize Cerebras LLM with default model."""
-    return ChatCerebras(
-        model=PROVIDER_MODELS["cerebras"],
-        temperature=0.1,
-        streaming=True,
-        reasoning_effort="medium",
-    ).configurable_fields(
-        model_name=ConfigurableField(id="model_name", name="LLM Model Name")
     )
 
 
@@ -79,9 +55,6 @@ def init_gemini_llm():
     return ChatGoogleGenerativeAI(
         model=PROVIDER_MODELS["gemini"],
         temperature=0.1,
-    ).configurable_fields(
-        # gemini uses model instead of model_name unlike others
-        model=ConfigurableField(id="model_name", name="LLM Model Name")
     )
 
 
@@ -90,7 +63,7 @@ def init_llm(preferred_provider: Optional[str] = None, fallback_enabled: bool = 
     Initialize LLM with configurable alternatives based on provider priority.
 
     Args:
-        preferred_provider (Optional[str]): Specific provider to prefer (e.g., "openai", "gemini", "cerebras").
+        preferred_provider (Optional[str]): Specific provider to prefer (e.g., "openai", "gemini").
                                           If None, uses default priority order.
         fallback_enabled (bool): Whether to enable fallback to other providers
                                if preferred provider is not available.
@@ -146,7 +119,6 @@ def _get_available_providers() -> Dict[str, Any]:
     provider_instance_mapping = {
         "openai": "openai_llm",
         "gemini": "gemini_llm",
-        "cerebras": "cerebras_llm",
     }
 
     available = {}
@@ -234,4 +206,3 @@ def register_llm_providers():
     """Register LLM providers in the lazy loader."""
     init_openai_llm()
     init_gemini_llm()
-    init_cerebras_llm()

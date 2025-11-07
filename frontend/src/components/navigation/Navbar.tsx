@@ -3,7 +3,6 @@
 import { Button } from "@heroui/button";
 import { StarFilledIcon } from "@radix-ui/react-icons";
 import AnimatedNumber from "animated-number-react";
-// Removed framer-motion import to reduce bundle size
 import { ChevronDown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";

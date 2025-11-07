@@ -50,9 +50,10 @@ from typing import (
     cast,
 )
 
-from app.agents.core.nodes.trim_messages_node import trim_messages_node
 from app.agents.core.nodes.filter_messages import create_filter_messages_node
+from app.agents.core.nodes.trim_messages_node import trim_messages_node
 from app.agents.llm.client import init_llm
+from app.constants.general import ORCHESTRATOR_MAX_ITERATIONS
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
@@ -170,7 +171,7 @@ class OrchestratorGraph:
         self, state: OrchestratorState, config: RunnableConfig, store: BaseStore
     ) -> OrchestratorState:
         iterations = state.get("_orchestrator_iterations", 0)
-        if iterations >= 20:
+        if iterations >= ORCHESTRATOR_MAX_ITERATIONS:
             error_msg = AIMessage(
                 content="Orchestrator recursion limit reached (20 iterations). Forcing finalization.",
                 additional_kwargs={

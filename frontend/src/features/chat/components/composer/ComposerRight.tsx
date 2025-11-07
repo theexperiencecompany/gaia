@@ -3,8 +3,8 @@ import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
 import { ArrowUp, Square } from "lucide-react";
 
-import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
+import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 
 interface RightSideProps {

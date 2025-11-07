@@ -1,11 +1,11 @@
 import { useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 
-import { useChatStream } from "@/features/chat/hooks/useChatStream";
 import { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
+import { useChatStream } from "@/features/chat/hooks/useChatStream";
 import { db, type IMessage } from "@/lib/db/chatDb";
-import { useChatStore } from "@/stores/chatStore";
 import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
+import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
 import { useConversationStore } from "@/stores/conversationStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";

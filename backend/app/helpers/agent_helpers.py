@@ -10,6 +10,7 @@ import json
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
+from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
@@ -26,6 +27,10 @@ from app.utils.agent_utils import (
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessageChunk
 from langsmith import traceable
+from posthog import Posthog
+from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
+
+posthog = Posthog(settings.POSTHOG_API_KEY, host="https://us.i.posthog.com")
 
 
 def build_agent_config(
@@ -52,21 +57,19 @@ def build_agent_config(
             parameters, metadata, and recursion limits
         - UsageMetadataCallbackHandler instance for tracking token usage during execution
     """
-    model_configuration = {
-        "provider": (
-            user_model_config.inference_provider.value
-            if user_model_config
-            else DEFAULT_LLM_PROVIDER
-        ),
-        "max_tokens": user_model_config.max_tokens
+    model_name = (
+        user_model_config.provider_model_name
         if user_model_config
-        else DEFAULT_MAX_TOKENS,
-        "model_name": (
-            user_model_config.provider_model_name
-            if user_model_config
-            else DEFAULT_MODEL_NAME
-        ),
-    }
+        else DEFAULT_MODEL_NAME
+    )
+    provider_name = (
+        user_model_config.inference_provider.value
+        if user_model_config
+        else DEFAULT_LLM_PROVIDER
+    )
+    max_tokens = (
+        user_model_config.max_tokens if user_model_config else DEFAULT_MAX_TOKENS
+    )
 
     config = {
         "configurable": {
@@ -74,11 +77,22 @@ def build_agent_config(
             "user_id": user.get("user_id"),
             "email": user.get("email"),
             "user_time": user_time.isoformat(),
-            "model_configurations": model_configuration,
+            "provider": provider_name,
+            "max_tokens": max_tokens,
+            "model_name": model_name,
+            "model": model_name,
         },
         "recursion_limit": 25,
         "metadata": {"user_id": user.get("user_id")},
-        "callbacks": [usage_metadata_callback],
+        "callbacks": [
+            usage_metadata_callback,
+            PostHogCallbackHandler(
+                client=posthog,
+                distinct_id=user.get("user_id"),
+                properties={"conversation_id": conversation_id},
+                privacy_mode=True,
+            ),
+        ],
     }
 
     return config

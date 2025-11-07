@@ -91,7 +91,6 @@ def _build_integrations_config():
             id=integration.id,
             name=integration.name,
             description=integration.description,
-            icons=integration.icons,
             category=integration.category,
             provider=integration.provider,
             available=integration.available,

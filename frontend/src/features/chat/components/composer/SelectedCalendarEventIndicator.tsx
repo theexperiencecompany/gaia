@@ -1,13 +1,10 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Clock, X } from "lucide-react";
+import { X } from "lucide-react";
 import React from "react";
-import Twemoji from "react-twemoji";
 
-import { getEventIcon } from "@/features/calendar/utils/calendarUtils";
 import { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface SelectedCalendarEventIndicatorProps {
   event: SelectedCalendarEventData | null;

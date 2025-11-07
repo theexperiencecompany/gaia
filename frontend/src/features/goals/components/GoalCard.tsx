@@ -10,11 +10,11 @@ import { Tooltip } from "@heroui/tooltip";
 import { DotsVerticalIcon } from "@radix-ui/react-icons";
 import { useRouter } from "next/navigation";
 
-import { Calendar03Icon } from "@/components/shared/icons";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { Calendar03Icon } from "@/components/shared/icons";
 import { goalsApi } from "@/features/goals/api/goalsApi";
-import { Goal } from "@/types/api/goalsApiTypes";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { Goal } from "@/types/api/goalsApiTypes";
 import { parseDate2 } from "@/utils";
 
 export function GoalCard({

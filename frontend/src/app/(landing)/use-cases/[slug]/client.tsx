@@ -1,11 +1,11 @@
 "use client";
 
 import { Avatar } from "@heroui/avatar";
-import { Clock, Play, User } from "lucide-react";
-import Image from "next/image";
+import { Play, User } from "lucide-react";
 import { useState } from "react";
 
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import MetaInfoCard from "@/features/use-cases/components/MetaInfoCard";
@@ -187,17 +187,14 @@ export default function UseCaseDetailClient({
             {shouldShowTrigger && triggerInfo && (
               <MetaInfoCard
                 icon={
-                  triggerInfo.icon ? (
-                    <Image
-                      src={triggerInfo.icon}
-                      alt="Trigger"
-                      width={20}
-                      height={20}
-                      className="h-5 w-5 object-contain"
-                    />
-                  ) : (
-                    <Clock className="h-5 w-5 text-zinc-400" />
-                  )
+                  triggerInfo.integrationId
+                    ? getToolCategoryIcon(triggerInfo.integrationId, {
+                        size: 20,
+                        width: 20,
+                        height: 20,
+                        showBackground: false,
+                      })
+                    : undefined
                 }
                 label="Trigger"
                 value={<span className="capitalize">{triggerInfo.label}</span>}

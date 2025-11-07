@@ -58,7 +58,7 @@ export default function WorkflowCard({
             word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
         )
         .join(" "),
-      integrationIconUrl: triggerDisplay.icon || undefined,
+      integrationId: triggerDisplay.integrationId,
       nextRunText: nextRunText || undefined,
     };
   };

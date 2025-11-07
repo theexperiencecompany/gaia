@@ -1,8 +1,9 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { CheckCircle } from "lucide-react";
-import Image from "next/image";
 import React from "react";
+
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 import { Integration } from "../types";
 
@@ -35,45 +36,44 @@ export const SpecialIntegrationCard: React.FC<SpecialIntegrationCardProps> = ({
         {/* Integration Icon */}
         <div className="flex-shrink-0">
           <div className={`flex items-center justify-center rounded-lg`}>
-            {integration.icons.length > 1 ? (
-              // Multiple icons in a stacked layout
+            {integration.includedIntegrations &&
+            integration.includedIntegrations.length > 1 ? (
+              // Multiple icons in a stacked layout for unified integrations
               <div className="relative flex items-center justify-center -space-x-1">
-                {integration.icons.slice(0, 4).map((iconUrl, index) => (
-                  <Image
-                    key={index}
-                    src={iconUrl}
-                    alt={`${integration.name} icon ${index + 1}`}
-                    width={30}
-                    height={30}
-                    className={`aspect-square min-h-8 min-w-8 rounded-md bg-zinc-800 object-contain p-1 shadow-medium shadow-zinc-900/80 ${
-                      index > 0 ? "-ml-1" : ""
-                    } ${
-                      index === 0
-                        ? "z-30 rotate-6"
-                        : index === 1
-                          ? "z-20 -rotate-6"
-                          : index === 2
-                            ? "z-10 rotate-6"
-                            : "z-0 -rotate-6"
-                    }`}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
-                  />
-                ))}
+                {integration.includedIntegrations
+                  .slice(0, 4)
+                  .map((includedId, index) => (
+                    <div
+                      key={includedId}
+                      className={`aspect-square min-h-8 min-w-8 rounded-md bg-zinc-800 p-1 shadow-medium shadow-zinc-900/80 ${
+                        index > 0 ? "-ml-1" : ""
+                      } ${
+                        index === 0
+                          ? "z-30 rotate-6"
+                          : index === 1
+                            ? "z-20 -rotate-6"
+                            : index === 2
+                              ? "z-10 rotate-6"
+                              : "z-0 -rotate-6"
+                      }`}
+                    >
+                      {getToolCategoryIcon(includedId, {
+                        size: 22,
+                        width: 22,
+                        height: 22,
+                        showBackground: false,
+                      })}
+                    </div>
+                  ))}
               </div>
             ) : (
               // Single icon
-              <Image
-                src={integration.icons[0]}
-                alt={integration.name}
-                width={25}
-                height={25}
-                className="aspect-square max-w-[25px] min-w-[25px] object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                }}
-              />
+              getToolCategoryIcon(integration.id, {
+                size: 25,
+                width: 25,
+                height: 25,
+                showBackground: false,
+              })
             )}
           </div>
         </div>

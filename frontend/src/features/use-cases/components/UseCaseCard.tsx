@@ -28,7 +28,6 @@ export default function UseCaseCard({
   prompt,
   slug,
 }: UseCaseCardProps) {
-  const router = useRouter();
   const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
   const appendToInput = useAppendToInput();
   const { selectWorkflow } = useWorkflowSelection();

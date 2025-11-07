@@ -1,5 +1,5 @@
 import { Input } from "@heroui/input";
-import { Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 import React from "react";
 
 interface IntegrationsSearchInputProps {
@@ -10,7 +10,7 @@ interface IntegrationsSearchInputProps {
 
 export const IntegrationsSearchInput: React.FC<
   IntegrationsSearchInputProps
-> = ({ value, onChange, onClear }) => {
+> = ({ value, onChange }) => {
   return (
     <div className="relative w-full">
       <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-zinc-400" />

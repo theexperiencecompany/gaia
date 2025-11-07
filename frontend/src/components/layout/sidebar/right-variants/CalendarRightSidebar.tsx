@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Input, Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Switch } from "@heroui/switch";
-import { ArrowDown, Repeat, Trash2 } from "lucide-react";
+import { Repeat, Trash2 } from "lucide-react";
 import React from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
