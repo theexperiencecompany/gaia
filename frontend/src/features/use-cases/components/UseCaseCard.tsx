@@ -31,6 +31,7 @@ export default function UseCaseCard({
   const router = useRouter();
   const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
   const appendToInput = useAppendToInput();
+  const router = useRouter();
   const { selectWorkflow } = useWorkflowSelection();
   const { createWorkflow } = useWorkflowCreation();
 
@@ -44,7 +45,10 @@ export default function UseCaseCard({
   // Action handler for the action button
   const handleAction = async () => {
     if (action_type === "prompt") {
-      if (prompt) appendToInput(prompt);
+      if (prompt) {
+        appendToInput(prompt);
+        router.push("/c");
+      }
     } else {
       setIsCreatingWorkflow(true);
       const toastId = toast.loading("Creating workflow...");

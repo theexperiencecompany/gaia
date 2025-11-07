@@ -4,8 +4,8 @@ import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
 
-import { HeartHandIcon } from "@/components/shared/icons";
 import { ContactSupportModal } from "@/features/support";
+import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 
 export default function ContactSupport() {
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
@@ -16,12 +16,12 @@ export default function ContactSupport() {
         <Tooltip content="Need support or want a new feature? Talk to us!">
           <Button
             variant="flat"
-            className="flex h-fit w-full justify-center gap-2 pl-3"
+            className="flex h-fit w-full justify-center gap-2 pl-3 text-zinc-300"
             radius="sm"
             onPress={onOpen}
           >
-            <HeartHandIcon width={23} height={23} color={undefined} />
-            <div className="w-full py-2 text-left text-sm font-light text-wrap">
+            <QuestionMarkCircledIcon width={23} height={23} color={undefined} />
+            <div className="w-full py-2 text-left text-sm text-wrap">
               Need Support?
             </div>
           </Button>

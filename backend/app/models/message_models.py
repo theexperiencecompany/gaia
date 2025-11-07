@@ -24,6 +24,18 @@ class SelectedWorkflowData(BaseModel):
     steps: List[Dict[str, Any]]
 
 
+class SelectedCalendarEventData(BaseModel):
+    id: str
+    summary: str
+    description: str
+    start: Dict[str, Optional[str]]
+    end: Dict[str, Optional[str]]
+    calendarId: Optional[str] = None
+    calendarTitle: Optional[str] = None
+    backgroundColor: Optional[str] = None
+    isAllDay: Optional[bool] = False
+
+
 class MessageRequestWithHistory(BaseModel):
     message: str
     conversation_id: Optional[str] = None
@@ -35,6 +47,9 @@ class MessageRequestWithHistory(BaseModel):
     selectedWorkflow: Optional[SelectedWorkflowData] = (
         None  # Workflow selected for execution
     )
+    selectedCalendarEvent: Optional[SelectedCalendarEventData] = (
+        None  # Calendar event selected for context
+    )
 
 
 class SaveIncompleteConversationRequest(BaseModel):
@@ -45,6 +60,7 @@ class SaveIncompleteConversationRequest(BaseModel):
     selectedTool: Optional[str] = None
     toolCategory: Optional[str] = None
     selectedWorkflow: Optional[SelectedWorkflowData] = None
+    selectedCalendarEvent: Optional[SelectedCalendarEventData] = None
     incomplete_response: str = ""  # The partial response from the bot
 
 

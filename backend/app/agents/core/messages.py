@@ -2,12 +2,18 @@ from typing import List, Optional
 
 from app.helpers.message_helpers import (
     create_system_message,
+    format_calendar_event_context,
     format_files_list,
     format_tool_selection_message,
     format_workflow_execution_message,
     get_memory_message,
 )
-from app.models.message_models import FileData, MessageDict, SelectedWorkflowData
+from app.models.message_models import (
+    FileData,
+    MessageDict,
+    SelectedCalendarEventData,
+    SelectedWorkflowData,
+)
 from langchain_core.messages import AnyMessage, HumanMessage
 
 
@@ -21,6 +27,7 @@ async def construct_langchain_messages(
     query: Optional[str] = None,
     selected_tool: Optional[str] = None,
     selected_workflow: Optional[SelectedWorkflowData] = None,
+    selected_calendar_event: Optional[SelectedCalendarEventData] = None,
     trigger_context: Optional[dict] = None,
 ) -> List[AnyMessage]:
     """
@@ -39,6 +46,7 @@ async def construct_langchain_messages(
         query: Search query for memory retrieval (typically latest user message)
         selected_tool: Tool chosen via slash command (overrides normal flow)
         selected_workflow: Workflow to execute (overrides everything else)
+        selected_calendar_event: Calendar event selected for context
         trigger_context: Email/automation context for workflows
 
     Returns:
@@ -73,12 +81,14 @@ async def construct_langchain_messages(
         else ""
     )
 
-    # Priority: workflow > tool selection > user message
+    # Priority: workflow > calendar event > tool selection > user message
     content = (
         await format_workflow_execution_message(
             selected_workflow, user_id, trigger_context, user_content
         )
         if selected_workflow
+        else format_calendar_event_context(selected_calendar_event, user_content)
+        if selected_calendar_event
         else format_tool_selection_message(selected_tool, user_content)
         if selected_tool
         else user_content

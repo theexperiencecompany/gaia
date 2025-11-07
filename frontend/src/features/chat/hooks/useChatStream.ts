@@ -6,6 +6,7 @@ import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { streamController } from "@/features/chat/utils/streamController";
+import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useComposerStore } from "@/stores/composerStore";
 import { useConversationsStore } from "@/stores/conversationsStore";
 import { MessageType } from "@/types/features/convoTypes";
@@ -115,6 +116,7 @@ export const useChatStream = () => {
         refs.current.botMessage.selectedTool || null,
         refs.current.botMessage.toolCategory || null,
         refs.current.botMessage.selectedWorkflow || null,
+        refs.current.botMessage.selectedCalendarEvent || null,
       );
 
       // Handle navigation for incomplete conversations
@@ -323,6 +325,7 @@ export const useChatStream = () => {
     selectedTool: string | null = null,
     toolCategory: string | null = null,
     selectedWorkflow: WorkflowData | null = null,
+    selectedCalendarEvent: SelectedCalendarEventData | null = null,
   ) => {
     try {
       refs.current.accumulatedResponse = "";
@@ -345,6 +348,7 @@ export const useChatStream = () => {
         selectedTool,
         toolCategory,
         selectedWorkflow,
+        selectedCalendarEvent,
       };
 
       // Create abort controller for this stream
@@ -377,6 +381,7 @@ export const useChatStream = () => {
         toolCategory,
         controller,
         selectedWorkflow,
+        selectedCalendarEvent,
       );
     } catch (error) {
       console.error("Error initiating chat stream:", error);

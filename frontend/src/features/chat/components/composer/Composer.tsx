@@ -13,6 +13,7 @@ import FilePreview, {
 import FileUpload from "@/features/chat/components/files/FileUpload";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
+import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useSendMessage } from "@/hooks/useSendMessage";
@@ -29,6 +30,7 @@ import { FileData, SearchMode } from "@/types/shared";
 import ComposerInput, { ComposerInputRef } from "./ComposerInput";
 import ComposerToolbar from "./ComposerToolbar";
 import IntegrationsBanner from "./IntegrationsBanner";
+import SelectedCalendarEventIndicator from "./SelectedCalendarEventIndicator";
 import SelectedToolIndicator from "./SelectedToolIndicator";
 import SelectedWorkflowIndicator from "./SelectedWorkflowIndicator";
 
@@ -84,6 +86,8 @@ const Composer: React.FC<MainSearchbarProps> = ({
   const { isSlashCommandDropdownOpen, setIsSlashCommandDropdownOpen } =
     useComposerUI();
   const { selectedWorkflow, clearSelectedWorkflow } = useWorkflowSelection();
+  const { selectedCalendarEvent, clearSelectedCalendarEvent } =
+    useCalendarEventSelection();
   const { autoSend } = useWorkflowSelectionStore();
 
   const sendMessage = useSendMessage();
@@ -109,21 +113,16 @@ const Composer: React.FC<MainSearchbarProps> = ({
     }
     autoSendExecutedRef.current = true;
 
-    const workflowToRun = selectedWorkflow;
-    const toolToRun = selectedTool;
-    const toolCategoryToRun = selectedToolCategory;
-    const filesToSend = uploadedFileData;
-
     // Clear state immediately to prevent any race conditions
     // Note: clearSelectedWorkflow() already sets autoSend to false
     clearSelectedWorkflow();
 
     setIsLoading(true);
     sendMessage("Run this workflow", conversationId, {
-      files: filesToSend,
-      selectedWorkflow: workflowToRun,
-      selectedTool: toolToRun ?? null,
-      selectedToolCategory: toolCategoryToRun ?? null,
+      files: uploadedFileData,
+      selectedWorkflow,
+      selectedTool: selectedTool ?? null,
+      selectedToolCategory: selectedToolCategory ?? null,
     });
 
     if (inputRef.current) inputRef.current.focus();
@@ -195,29 +194,38 @@ const Composer: React.FC<MainSearchbarProps> = ({
     // Prevent double execution when workflow is auto-sending
     if (autoSend) return;
 
-    // Only prevent submission if there's no text AND no files AND no selected tool AND no selected workflow
+    // Prepare the message text with calendar event prompt if available
+    let messageText = inputText;
+    if (selectedCalendarEvent && prompt) {
+      messageText = prompt + (inputText ? `\n\n${inputText}` : "");
+    }
+
+    // Only prevent submission if there's no text AND no files AND no selected tool AND no selected workflow AND no selected calendar event
     if (
-      !inputText &&
+      !messageText &&
       uploadedFiles.length === 0 &&
       !selectedTool &&
-      !selectedWorkflow
+      !selectedWorkflow &&
+      !selectedCalendarEvent
     ) {
       return;
     }
     // Use contextual loading with user's message for similarity-based loading text
-    setContextualLoading(true, inputText);
+    setContextualLoading(true, messageText);
 
-    sendMessage(inputText, conversationId, {
+    sendMessage(messageText, conversationId, {
       files: uploadedFileData,
       selectedTool: selectedTool ?? null,
       selectedToolCategory: selectedToolCategory ?? null,
       selectedWorkflow,
+      selectedCalendarEvent,
     });
 
     clearInputText();
     clearAllFiles();
     clearToolSelection();
     clearSelectedWorkflow();
+    clearSelectedCalendarEvent();
 
     if (inputRef) inputRef.current?.focus();
     scrollToBottom();
@@ -244,6 +252,8 @@ const Composer: React.FC<MainSearchbarProps> = ({
     setSelectedToolCategory(null);
     // Clear selected workflow when mode changes
     clearSelectedWorkflow();
+    // Clear selected calendar event when mode changes
+    clearSelectedCalendarEvent();
     // If the user selects upload_file mode, open the file selector immediately
     if (mode === "upload_file")
       setTimeout(() => {
@@ -258,6 +268,8 @@ const Composer: React.FC<MainSearchbarProps> = ({
     setSelectedMode(new Set([null]));
     // Clear selected workflow when tool is selected
     clearSelectedWorkflow();
+    // Clear selected calendar event when tool is selected
+    clearSelectedCalendarEvent();
   };
 
   const handleRemoveSelectedTool = () => {
@@ -396,6 +408,10 @@ const Composer: React.FC<MainSearchbarProps> = ({
         <SelectedWorkflowIndicator
           workflow={selectedWorkflow}
           onRemove={clearSelectedWorkflow}
+        />
+        <SelectedCalendarEventIndicator
+          event={selectedCalendarEvent}
+          onRemove={clearSelectedCalendarEvent}
         />
         <ComposerInput
           ref={composerInputRef}
