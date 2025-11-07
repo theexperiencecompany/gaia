@@ -10,7 +10,6 @@ from app.services.conversation_service import (
     create_conversation_service,
     update_conversation_description,
 )
-from fastapi import HTTPException
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
