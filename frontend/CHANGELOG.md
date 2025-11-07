@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.1 (2025-11-07)
+
+## What's Changed
+* fix: Dexie fetching uses batch syncing & sidebar state updation by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/276
+* release: v0.6.1-beta by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/280
+
+
+**Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.6.0...v0.6.1
+
 ## [0.6.0](https://github.com/theexperiencecompany/gaia/compare/v0.5.1...v0.6.0) (2025-11-07)
 
 
