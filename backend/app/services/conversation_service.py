@@ -145,6 +145,18 @@ async def get_conversation(conversation_id: str, user: dict) -> dict:
 
     conversation["_id"] = str(conversation["_id"])
 
+    # Convert datetime objects to ISO format strings for JSON serialization
+    if "createdAt" in conversation and isinstance(conversation["createdAt"], datetime):
+        conversation["createdAt"] = conversation["createdAt"].isoformat()
+
+    # Convert datetime objects in messages if present
+    if "messages" in conversation:
+        for message in conversation["messages"]:
+            if isinstance(message.get("timestamp"), datetime):
+                message["timestamp"] = message["timestamp"].isoformat()
+            if isinstance(message.get("createdAt"), datetime):
+                message["createdAt"] = message["createdAt"].isoformat()
+
     # Convert legacy tool data to unified format
     conversation = convert_conversation_messages(conversation)
 
@@ -436,4 +448,7 @@ async def update_conversation_description(
 def _convert_ids(conversations):
     for conv in conversations:
         conv["_id"] = str(conv["_id"])
+        # Convert datetime objects to ISO format strings for JSON serialization
+        if "createdAt" in conv and isinstance(conv["createdAt"], datetime):
+            conv["createdAt"] = conv["createdAt"].isoformat()
     return conversations

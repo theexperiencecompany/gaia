@@ -31,6 +31,7 @@ import { PencilRenameIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useDeleteConversation } from "@/hooks/useDeleteConversation";
+import { db } from "@/lib/db/chatDb";
 
 export default function ChatOptionsDropdown({
   buttonHovered,
@@ -59,10 +60,18 @@ export default function ChatOptionsDropdown({
 
   const handleStarToggle = async () => {
     try {
-      await chatApi.toggleStarConversation(
-        chatId,
-        starred === undefined ? true : !starred,
-      );
+      const newStarredValue = starred === undefined ? true : !starred;
+      await chatApi.toggleStarConversation(chatId, newStarredValue);
+
+      const conversation = await db.getConversation(chatId);
+      if (conversation) {
+        await db.putConversation({
+          ...conversation,
+          starred: newStarredValue,
+          updatedAt: new Date(),
+        });
+      }
+
       setIsOpen(false);
       await fetchConversations();
     } catch (error) {
@@ -80,6 +89,17 @@ export default function ChatOptionsDropdown({
     if (!newName) return;
     try {
       await chatApi.renameConversation(chatId, newName);
+
+      const conversation = await db.getConversation(chatId);
+      if (conversation) {
+        await db.putConversation({
+          ...conversation,
+          title: newName,
+          description: newName,
+          updatedAt: new Date(),
+        });
+      }
+
       closeModal();
       await fetchConversations(1, 20, false);
     } catch (error) {
