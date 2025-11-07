@@ -3,7 +3,7 @@ import { ShuffleIcon } from "lucide-react";
 import React, { useCallback, useState } from "react";
 
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
-import { useSendMessage } from "@/features/chat/hooks/useSendMessage";
+import { useSendMessage } from "@/hooks/useSendMessage";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useComposerTextActions } from "@/stores/composerStore";
 
