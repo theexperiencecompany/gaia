@@ -4,6 +4,7 @@ import { Chip } from "@heroui/chip";
 import { useRouter } from "next/navigation";
 import React from "react";
 import { toast } from "sonner";
+import { posthog } from "@/lib";
 
 import { Tick02Icon } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/shadcn/raised-button";
@@ -78,6 +79,17 @@ export function PricingCard({
   const router = useRouter();
 
   const handleGetStarted = async () => {
+    // Track pricing card interaction
+    posthog.capture("pricing:plan_selected", {
+      plan_title: title,
+      plan_id: planId,
+      price: price,
+      is_monthly: durationIsMonth,
+      is_current_plan: isCurrentPlan,
+      has_active_subscription: hasActiveSubscription,
+      is_free_plan: price === 0,
+    });
+
     if (price === 0) {
       // Handle free plan - redirect to signup or dashboard
       if (user) router.push("/c");

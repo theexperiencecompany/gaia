@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { Input, Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import type React from "react";
+import { posthog } from "@/lib";
 
 import {
   SUPPORT_REQUEST_TYPE_LABELS,
@@ -19,6 +20,14 @@ export default function ContactForm(props: Props) {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    // Track contact form submission
+    posthog.capture("support:form_submitted", {
+      request_type: formData.type,
+      title_length: formData.title.length,
+      description_length: formData.description.length,
+    });
+
     await submitRequest();
   }
 

@@ -11,6 +11,7 @@ import {
 } from "@heroui/react";
 import { Plus } from "lucide-react";
 import { useEffect, useMemo } from "react";
+import { posthog } from "@/lib";
 
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
@@ -106,10 +107,28 @@ export default function TodoModal({
           const updates = getChangedFields(todo, data);
 
           if (Object.keys(updates).length > 0) {
+            // Track todo update
+            posthog.capture("todos:updated", {
+              todo_id: todo.id,
+              fields_changed: Object.keys(updates),
+              has_due_date: !!data.due_date,
+              priority: data.priority,
+              has_subtasks: (data.subtasks?.length || 0) > 0,
+            });
             await updateTodo(todo.id, updates);
           }
           return;
         }
+
+        // Track todo creation
+        posthog.capture("todos:created", {
+          has_description: !!data.description,
+          has_due_date: !!data.due_date,
+          priority: data.priority,
+          labels_count: data.labels?.length || 0,
+          has_project: !!data.project_id,
+          subtasks_count: data.subtasks?.length || 0,
+        });
 
         await createTodo(data);
       },

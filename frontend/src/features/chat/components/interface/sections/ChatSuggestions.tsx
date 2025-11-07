@@ -2,6 +2,7 @@ import { Button } from "@heroui/button";
 import { ShuffleIcon } from "lucide-react";
 import React, { useCallback, useState } from "react";
 
+import { posthog } from "@/lib/posthog";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import { useSendMessage } from "@/features/chat/hooks/useSendMessage";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -181,6 +182,10 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
   const { setContextualLoading } = useLoadingText();
 
   const handleShuffle = useCallback(() => {
+    posthog.capture("chat:suggestion_shuffled", {
+      current_suggestion_ids: currentSuggestions.map((s) => s.id),
+    });
+
     const allSuggestions = getAllSuggestions();
     const currentIds = new Set(currentSuggestions.map((s) => s.id));
 
@@ -201,6 +206,13 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
 
   const handleSuggestionClick = useCallback(
     async (suggestion: ChatSuggestion) => {
+      // Track suggestion click
+      posthog.capture("chat:suggestion_clicked", {
+        suggestion_id: suggestion.id,
+        suggestion_text: suggestion.text,
+        suggestion_category: suggestion.category,
+      });
+
       // Set loading state with contextual message
       setContextualLoading(true, suggestion.text);
 

@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import posthog from "posthog-js";
+import { posthog } from "@/lib";
 
 import FilePreview, {
   UploadedFilePreview,
@@ -209,7 +209,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
     setContextualLoading(true, inputText);
 
     // Track message send event with PostHog
-    posthog.capture("Message Sent", {
+    posthog.capture("chat:message_sent", {
       has_text: !!inputText,
       has_files: uploadedFiles.length > 0,
       file_count: uploadedFiles.length,

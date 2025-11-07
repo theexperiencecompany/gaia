@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { posthog } from "@/lib";
 
 import { calendarApi } from "@/features/calendar/api/calendarApi";
 import {
@@ -472,6 +473,16 @@ export const useEventSidebar = ({
       };
 
       await calendarApi.createEventDefault(payload);
+
+      // Track calendar event creation
+      posthog.capture("calendar:event_created", {
+        is_all_day: isAllDay,
+        has_description: !!description,
+        has_recurrence: !!recurrence,
+        recurrence_type: recurrenceType,
+        calendar_id: selectedCalendarId,
+      });
+
       onEventUpdate?.();
       close();
       toast.success("Event created successfully");
@@ -504,6 +515,12 @@ export const useEventSidebar = ({
         calendar_id:
           selectedEvent.calendarId || selectedCalendarId || "primary",
         summary: selectedEvent.summary,
+      });
+
+      // Track calendar event deletion
+      posthog.capture("calendar:event_deleted", {
+        event_id: selectedEvent.id,
+        calendar_id: selectedEvent.calendarId || selectedCalendarId,
       });
 
       // Remove event from store immediately

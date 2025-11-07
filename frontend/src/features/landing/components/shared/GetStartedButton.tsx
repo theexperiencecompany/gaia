@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { posthog } from "@/lib";
 
 import { RaisedButton } from "@/components/ui/shadcn/raised-button";
 
@@ -15,6 +16,12 @@ export default function GetStartedButton({
         <RaisedButton
           className="rounded-xl px-8 text-black! before:rounded-xl hover:scale-110"
           color="#00bbff"
+          onClick={() => {
+            posthog.capture("cta:get_started_clicked", {
+              button_text: text,
+              has_small_text: small_text,
+            });
+          }}
         >
           {text}
         </RaisedButton>

@@ -5,6 +5,7 @@ import { ArrowUpRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { posthog } from "@/lib";
 
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflowCard";
@@ -37,12 +38,25 @@ export default function UseCaseCard({
   // Handler for card click - navigate to detail page
   const handleCardClick = () => {
     if (slug) {
+      posthog.capture("use_cases:card_clicked", {
+        title,
+        slug,
+        action_type,
+        integrations,
+      });
       router.push(`/use-cases/${slug}`);
     }
   };
 
   // Action handler for the action button
   const handleAction = async () => {
+    posthog.capture("use_cases:action_executed", {
+      title,
+      action_type,
+      integrations,
+      has_prompt: !!prompt,
+    });
+
     if (action_type === "prompt") {
       if (prompt) appendToInput(prompt);
     } else {

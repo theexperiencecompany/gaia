@@ -5,6 +5,7 @@ import { CircleArrowUp, ZapIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useState } from "react";
+import { posthog } from "@/lib";
 
 import {
   CalendarIcon,
@@ -105,10 +106,15 @@ export default function SidebarTopButtons() {
     <div className="flex flex-col">
       {/* Only show Upgrade to Pro button when user doesn't have an active subscription */}
       {!subscriptionStatus?.is_subscribed && (
-        <Link href={"/pricing"}>
+        <Link href="/pricing">
           <Button
             variant="faded"
             className="mb-2 flex h-fit w-full justify-start gap-3 px-3"
+            onPress={() => {
+              posthog.capture("pricing:upgrade_clicked", {
+                source: "sidebar",
+              });
+            }}
           >
             <CircleArrowUp width={20} height={20} />
             <div className="flex items-center gap-4">
@@ -151,6 +157,12 @@ export default function SidebarTopButtons() {
                       }`}
                       as={Link}
                       href={route}
+                      onPress={() => {
+                        posthog.capture("navigation:sidebar_clicked", {
+                          destination: route,
+                          label,
+                        });
+                      }}
                     >
                       <div className="flex w-full items-center gap-2">
                         <div className="flex w-[17px] min-w-[17px] items-center justify-center">

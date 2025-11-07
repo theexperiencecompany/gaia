@@ -6,6 +6,7 @@ import { Hash, Search, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
+import { posthog } from "@/lib/posthog";
 import { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -96,6 +97,11 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   }, [selectedIndex]);
 
   const handleCategoryChange = (category: string) => {
+    posthog.capture("chat:slash_command_category_changed", {
+      category,
+      previous_category: selectedCategory,
+    });
+
     if (onCategoryChange) {
       onCategoryChange(category);
     } else {
@@ -360,7 +366,15 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                     className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${
                       isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"
                     }`}
-                    onClick={() => onSelect(match)}
+                    onClick={() => {
+                      posthog.capture("chat:slash_command_selected", {
+                        tool_name: match.tool.name,
+                        tool_category: match.tool.category,
+                        opened_via_button: openedViaButton,
+                        search_query: searchQuery || null,
+                      });
+                      onSelect(match);
+                    }}
                   >
                     <div className="flex items-center gap-2 p-2">
                       {/* Icon */}

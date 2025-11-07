@@ -1,6 +1,8 @@
 import { useRouter } from "next/navigation";
 import React from "react";
 
+import { posthog } from "@/lib/posthog";
+
 import UpcomingEventsView from "@/features/calendar/components/UpcomingEventsView";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
 import { useUpcomingEventsQuery } from "@/features/calendar/hooks/useUpcomingEventsQuery";
@@ -52,6 +54,11 @@ export const GridSection = () => {
 
   // Handle connection flow
   const handleConnect = async (integrationId: string) => {
+    posthog.capture("chat:grid_integration_connect_clicked", {
+      integration_id: integrationId,
+      source: "new_chat_grid",
+    });
+
     try {
       await connectIntegration(integrationId);
     } catch (error) {
@@ -61,10 +68,12 @@ export const GridSection = () => {
 
   // Handle refresh actions
   const handleEmailRefresh = () => {
+    posthog.capture("chat:grid_email_refresh_clicked");
     emailQuery.refetch();
   };
 
   const handleCalendarRefresh = () => {
+    posthog.capture("chat:grid_calendar_refresh_clicked");
     calendarQuery.refetch();
   };
 
