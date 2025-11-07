@@ -8,7 +8,6 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Input } from "@heroui/input";
-import { Kbd } from "@heroui/kbd";
 import {
   Modal,
   ModalBody,
@@ -19,18 +18,16 @@ import {
 import { DotsVerticalIcon } from "@radix-ui/react-icons";
 import { ChevronDown, Star, Trash } from "lucide-react";
 import { useRouter } from "next/navigation";
-import {
-  ReactNode,
-  SetStateAction,
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { ReactNode, SetStateAction, useCallback, useState } from "react";
 
 import { PencilRenameIcon } from "@/components/shared/icons";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
+import { useConfirmation } from "@/hooks/useConfirmation";
 import { useDeleteConversation } from "@/hooks/useDeleteConversation";
+import { db } from "@/lib/db/chatDb";
+import { useChatStore } from "@/stores/chatStore";
 
 export default function ChatOptionsDropdown({
   buttonHovered,
@@ -49,30 +46,45 @@ export default function ChatOptionsDropdown({
 }) {
   const fetchConversations = useFetchConversations();
   const deleteConversation = useDeleteConversation();
+  const { confirm, confirmationProps } = useConfirmation();
+  const updateConversation = useChatStore((state) => state.updateConversation);
   const [dangerStateHovered, setDangerStateHovered] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [newName, setNewName] = useState(chatName);
   const router = useRouter();
-  const [modalAction, setModalAction] = useState<"edit" | "delete" | null>(
-    null,
-  );
 
   const handleStarToggle = async () => {
+    const newStarredValue = starred === undefined ? true : !starred;
+
     try {
-      await chatApi.toggleStarConversation(
-        chatId,
-        starred === undefined ? true : !starred,
-      );
+      const newStarredValue = starred === undefined ? true : !starred;
+      await chatApi.toggleStarConversation(chatId, newStarredValue);
+
+      const conversation = await db.getConversation(chatId);
+      if (conversation) {
+        await db.putConversation({
+          ...conversation,
+          starred: newStarredValue,
+          updatedAt: new Date(),
+        });
+      }
+
       setIsOpen(false);
       await fetchConversations();
+      // Optimistically update the UI
+      updateConversation(chatId, { starred: newStarredValue });
+
+      // Make the API call
+      await chatApi.toggleStarConversation(chatId, newStarredValue);
     } catch (error) {
       console.error("Failed to update star", error);
+      // Revert the optimistic update on error
+      updateConversation(chatId, { starred: !newStarredValue });
     }
   };
 
-  const closeModal = useCallback(() => {
-    setIsOpen(false);
-    setModalAction(null);
+  const closeEditModal = useCallback(() => {
+    setIsEditModalOpen(false);
     setNewName(""); // Clear the input field
   }, []);
 
@@ -80,6 +92,17 @@ export default function ChatOptionsDropdown({
     if (!newName) return;
     try {
       await chatApi.renameConversation(chatId, newName);
+
+      const conversation = await db.getConversation(chatId);
+      if (conversation) {
+        await db.putConversation({
+          ...conversation,
+          title: newName,
+          description: newName,
+          updatedAt: new Date(),
+        });
+      }
+
       closeModal();
       await fetchConversations(1, 20, false);
     } catch (error) {
@@ -88,39 +111,30 @@ export default function ChatOptionsDropdown({
   };
 
   const handleDelete = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Delete Chat",
+      message:
+        "Are you sure you want to delete this chat? This action cannot be undone.",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      variant: "destructive",
+    });
+
+    if (!confirmed) return;
+
     try {
       router.push("/c");
       await deleteConversation(chatId);
-      closeModal();
       await fetchConversations(1, 20, false);
     } catch (error) {
       console.error("Failed to delete chat", error);
     }
-  }, [router, chatId, deleteConversation, fetchConversations, closeModal]);
+  }, [router, chatId, deleteConversation, fetchConversations, confirm]);
 
-  const openModal = (action: "edit" | "delete") => {
-    setModalAction(action);
-    if (action === "edit") setNewName(chatName); // Reset to current chat name when opening edit modal
-
-    setIsOpen(true);
+  const openEditModal = () => {
+    setNewName(chatName); // Reset to current chat name when opening edit modal
+    setIsEditModalOpen(true);
   };
-
-  // Handle Enter key for delete modal
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Enter" && isOpen && modalAction === "delete") {
-        event.preventDefault();
-        handleDelete();
-      }
-    };
-
-    if (isOpen && modalAction === "delete")
-      document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen, modalAction, handleDelete]);
 
   return (
     <>
@@ -160,11 +174,7 @@ export default function ChatOptionsDropdown({
               {starred ? "Remove" : "Add"} star
             </div>
           </DropdownItem>
-          <DropdownItem
-            key="edit"
-            textValue="Rename"
-            onPress={() => openModal("edit")}
-          >
+          <DropdownItem key="edit" textValue="Rename" onPress={openEditModal}>
             <div className="flex flex-row items-center justify-between gap-2">
               <PencilRenameIcon color="white" width={16} />
               Rename
@@ -177,7 +187,7 @@ export default function ChatOptionsDropdown({
             textValue="Delete"
             onMouseOut={() => setDangerStateHovered(false)}
             onMouseOver={() => setDangerStateHovered(true)}
-            onPress={() => openModal("delete")}
+            onPress={handleDelete}
           >
             <div className="flex flex-row items-center justify-between gap-2">
               <Trash color={dangerStateHovered ? "white" : "red"} width={16} />
@@ -189,69 +199,45 @@ export default function ChatOptionsDropdown({
 
       <Modal
         className="text-foreground dark"
-        isOpen={isOpen}
-        onOpenChange={closeModal}
+        isOpen={isEditModalOpen}
+        onOpenChange={closeEditModal}
       >
         <ModalContent>
-          {modalAction === "edit" ? (
-            <>
-              <ModalHeader className="pb-0">Rename Conversation</ModalHeader>
-              <ModalBody>
-                <Input
-                  label={
-                    <div className="space-x-1 text-xs">
-                      <span>Previous Name:</span>
-                      <span className="text-red-500">{chatName}</span>
-                    </div>
-                  }
-                  labelPlacement="outside"
-                  placeholder="Enter new chat name"
-                  size="lg"
-                  type="text"
-                  value={newName}
-                  variant="faded"
-                  onChange={(e: {
-                    target: { value: SetStateAction<string> };
-                  }) => setNewName(e.target.value)}
-                  onKeyDown={(e: { key: string }) => {
-                    if (e.key == "Enter") handleEdit();
-                  }}
-                />
-              </ModalBody>
-              <ModalFooter>
-                <Button variant="light" onPress={closeModal}>
-                  Cancel
-                </Button>
-                <Button color="primary" onPress={handleEdit}>
-                  Save
-                </Button>
-              </ModalFooter>
-            </>
-          ) : (
-            <>
-              <ModalHeader className="pb-0">
-                Are you sure you want to delete this chat?
-              </ModalHeader>
-              <ModalBody className="py-0">
-                <p className="text-danger">This action cannot be undone.</p>
-              </ModalBody>
-              <ModalFooter>
-                <Button variant="light" onPress={closeModal}>
-                  Cancel
-                </Button>
-                <Button
-                  color="danger"
-                  variant="flat"
-                  onPress={handleDelete}
-                  endContent={<Kbd keys={["enter"]} />}
-                >
-                  Delete
-                </Button>
-              </ModalFooter>
-            </>
-          )}
+          <ModalHeader className="pb-0">Rename Conversation</ModalHeader>
+          <ModalBody>
+            <Input
+              label={
+                <div className="space-x-1 text-xs">
+                  <span>Previous Name:</span>
+                  <span className="text-red-500">{chatName}</span>
+                </div>
+              }
+              labelPlacement="outside"
+              placeholder="Enter new chat name"
+              size="lg"
+              type="text"
+              value={newName}
+              variant="faded"
+              onChange={(e: { target: { value: SetStateAction<string> } }) =>
+                setNewName(e.target.value)
+              }
+              onKeyDown={(e: { key: string }) => {
+                if (e.key == "Enter") handleEdit();
+              }}
+            />
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={closeEditModal}>
+              Cancel
+            </Button>
+            <Button color="primary" onPress={handleEdit}>
+              Save
+            </Button>
+          </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <ConfirmationDialog {...confirmationProps} />
     </>
   );
 }

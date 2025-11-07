@@ -1,6 +1,7 @@
 {
   "separate-pull-requests": false,
   "include-component-in-tag": false,
+  "group-pull-request-title-pattern": "chore: release",
   "plugins": [
     {
       "type": "linked-versions",
@@ -10,18 +11,17 @@
     }
   ],
   "packages": {
-    ".": {
-      "release-type": "simple",
-      "changelog-path": "CHANGELOG.md",
-      "pull-request-title-pattern": "release: ${version}"
-    },
     "backend": {
       "release-type": "python",
-      "component": "backend"
+      "component": "backend",
+      "changelog-path": "CHANGELOG.md",
+      "changelog-type": "github"
     },
     "frontend": {
       "release-type": "node",
-      "component": "frontend"
+      "component": "frontend",
+      "changelog-path": "CHANGELOG.md",
+      "changelog-type": "github"
     }
   }
 }

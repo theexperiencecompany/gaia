@@ -1,6 +1,6 @@
 [project]
 name = "gaia"
-version = "0.5.0-beta"
+version = "0.5.1"
 description = "Backend of GAIA - The personal AI assistant"
 readme = "../README.md"
 requires-python = ">=3.11"

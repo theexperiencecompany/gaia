@@ -176,12 +176,13 @@ export default function AccountSection({
           title="Sign Out"
           description="Sign out of your account on this device"
           action={
-            <button
-              onClick={() => setModalAction("logout")}
-              className="rounded-lg bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition-colors duration-200 hover:bg-red-500/20"
+            <Button
+              variant="flat"
+              color="danger"
+              onPress={() => setModalAction("logout")}
             >
               Sign Out
-            </button>
+            </Button>
           }
         />
       </SettingsCardSimple>

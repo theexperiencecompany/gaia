@@ -4,6 +4,7 @@ import {
 } from "@microsoft/fetch-event-source";
 
 import { apiService } from "@/lib/api";
+import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { MessageType } from "@/types/features/convoTypes";
 import { WorkflowData } from "@/types/features/workflowTypes";
 import { FileData } from "@/types/shared";
@@ -55,6 +56,11 @@ export interface FetchConversationsResponse {
   total_pages: number;
 }
 
+export interface ConversationSyncItem {
+  conversation_id: string;
+  last_updated?: string;
+}
+
 export const chatApi = {
   // Fetch conversations with pagination
   fetchConversations: async (
@@ -65,6 +71,31 @@ export const chatApi = {
       `/conversations?page=${page}&limit=${limit}`,
       {
         errorMessage: "Failed to fetch conversations",
+      },
+    );
+  },
+
+  // Batch sync conversations - only fetch stale conversations
+  batchSyncConversations: async (
+    conversations: ConversationSyncItem[],
+  ): Promise<{
+    conversations: {
+      conversation_id: string;
+      description: string;
+      starred?: boolean;
+      is_system_generated?: boolean;
+      system_purpose?: SystemPurpose;
+      createdAt: string;
+      updatedAt?: string;
+      messages: MessageType[];
+    }[];
+  }> => {
+    return apiService.post(
+      "/conversations/batch-sync",
+      { conversations },
+      {
+        errorMessage: "Failed to sync conversations",
+        silent: true,
       },
     );
   },
@@ -175,6 +206,7 @@ export const chatApi = {
     selectedTool: string | null = null,
     toolCategory: string | null = null,
     selectedWorkflow: WorkflowData | null = null,
+    selectedCalendarEvent: SelectedCalendarEventData | null = null,
   ): Promise<{ success: boolean; conversation_id: string }> => {
     const fileIds = fileData.map((file) => file.fileId);
 
@@ -188,6 +220,7 @@ export const chatApi = {
         selectedTool,
         toolCategory,
         selectedWorkflow,
+        selectedCalendarEvent,
         incomplete_response: incompleteResponse,
       },
     );
@@ -206,6 +239,7 @@ export const chatApi = {
     toolCategory: string | null = null,
     externalController?: AbortController,
     selectedWorkflow: WorkflowData | null = null,
+    selectedCalendarEvent: SelectedCalendarEventData | null = null,
   ) => {
     const controller = externalController || new AbortController();
 
@@ -241,6 +275,7 @@ export const chatApi = {
           selectedTool, // Add selectedTool to the request body
           toolCategory, // Add toolCategory to the request body
           selectedWorkflow, // Add selectedWorkflow to the request body
+          selectedCalendarEvent, // Add selectedCalendarEvent to the request body
           messages: convoMessages
             .slice(-30)
             .filter(({ response }) => response.trim().length > 0)

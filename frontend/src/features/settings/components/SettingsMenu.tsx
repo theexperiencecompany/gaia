@@ -7,25 +7,29 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/modal";
 import { CircleArrowUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import React, { ReactNode, useState } from "react";
 
 import {
+  BookOpen01Icon,
   Brain02Icon,
+  CustomerService01Icon,
   DiscordIcon,
   Settings01Icon,
   ThreeDotsMenu,
+  TwitterIcon,
   WhatsappIcon,
 } from "@/components/shared/icons";
-import { getLinkByLabel } from "@/config/appConfig";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { appConfig, getLinkByLabel } from "@/config/appConfig";
 import { useLogout } from "@/features/auth/hooks/useLogout";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { ContactSupportModal } from "@/features/support";
+import { useConfirmation } from "@/hooks/useConfirmation";
 import { useConversationsStore } from "@/stores/conversationsStore";
 
 // Only allow these values in our modal state.
@@ -48,53 +52,27 @@ export default function SettingsMenu({
   children?: ReactNode;
 }) {
   const router = useRouter();
-  const { clearConversations } = useConversationsStore();
-  const fetchConversations = useFetchConversations();
-  const { updateConvoMessages } = useConversation();
-  const { logout } = useLogout();
+  const { confirmationProps } = useConfirmation();
 
   const discordLink = getLinkByLabel("Discord");
   const whatsappLink = getLinkByLabel("WhatsApp");
-  const [modalAction, setModalAction] = useState<ModalAction | null>(null);
+  const twitterLink = getLinkByLabel("Twitter");
+  const docsLink = getLinkByLabel("Documentation");
   const [supportModalOpen, setSupportModalOpen] = useState(false);
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
-  // either "clear_chats", "logout", or null (closed)
-
-  // Confirm logout action.
-  const handleConfirmLogout = async () => {
-    try {
-      await logout();
-    } catch (error) {
-      console.error("Error during logout:", error);
-    } finally {
-      setModalAction(null);
-    }
-  };
-
-  // Confirm clear chats action.
-  const handleConfirmClearChats = async () => {
-    try {
-      router.push("/c");
-
-      await chatApi.deleteAllConversations();
-
-      // Clear conversations in store immediately
-      clearConversations();
-
-      // Then fetch from the API to ensure sync with server
-      await fetchConversations(1, 20, false);
-
-      updateConvoMessages([]);
-      // Toast is already shown by the API service
-    } catch (error) {
-      // Error toast is already shown by the API service
-      console.error("Error clearing chats:", error);
-    } finally {
-      setModalAction(null);
-    }
-  };
 
   const items: MenuItem[] = [
+    {
+      key: "manage_memories",
+      label: (
+        <div className="flex items-center gap-2">
+          <BookOpen01Icon color="#9b9b9b" width={18} />
+          Documentation
+        </div>
+      ),
+      action: () => window.open(docsLink?.href, "_blank"),
+    },
+
     // Only show Upgrade to Pro if user doesn't have active subscription
     ...(subscriptionStatus?.is_subscribed
       ? []
@@ -111,16 +89,16 @@ export default function SettingsMenu({
           },
         ]),
 
-    // {
-    //   key: "contact_support",
-    //   label: (
-    //     <div className="flex items-center gap-2">
-    //       <CustomerService01Icon color={"#9b9b9b"} width={18} />
-    //       Contact Support
-    //     </div>
-    //   ),
-    //   action: () => setSupportModalOpen(true),
-    // },
+    {
+      key: "contact_support",
+      label: (
+        <div className="flex items-center gap-2">
+          <CustomerService01Icon color={"#9b9b9b"} width={18} />
+          Contact Support
+        </div>
+      ),
+      action: () => setSupportModalOpen(true),
+    },
     // {
     //   key: "feature_request",
     //   label: (
@@ -142,32 +120,34 @@ export default function SettingsMenu({
       action: () => router.push("/settings?section=memory"),
     },
     {
+      key: "twitter",
+      label: (
+        <div className="flex items-center gap-2 text-[#1da1f2]">
+          <TwitterIcon />
+          Follow Us
+        </div>
+      ),
+      action: () => window.open(twitterLink?.href, "_blank"),
+    },
+    {
       key: "discord",
       label: (
         <div className="flex items-center gap-2 text-[#5865F2]">
           <DiscordIcon color="#5865F2" width={18} />
-          {discordLink?.description || "Join our Discord"}
+          Join Discord
         </div>
       ),
-      action: () =>
-        window.open(
-          discordLink?.href || "https://discord.heygaia.io",
-          "_blank",
-        ),
+      action: () => window.open(discordLink?.href, "_blank"),
     },
     {
       key: "whatsapp",
       label: (
         <div className="flex items-center gap-2 text-[#25d366]">
           <WhatsappIcon color="#25d366" width={18} />
-          {whatsappLink?.description || "WhatsApp Community"}
+          Join WhatsApp
         </div>
       ),
-      action: () =>
-        window.open(
-          whatsappLink?.href || "https://whatsapp.heygaia.io",
-          "_blank",
-        ),
+      action: () => window.open(whatsappLink?.href, "_blank"),
     },
     {
       key: "settings",
@@ -183,45 +163,7 @@ export default function SettingsMenu({
 
   return (
     <>
-      <Modal
-        isOpen={modalAction !== null}
-        backdrop="blur"
-        onOpenChange={() => setModalAction(null)}
-      >
-        <ModalContent>
-          <>
-            <ModalHeader className="flex justify-center">
-              {modalAction === "logout"
-                ? "Are you sure you want to logout?"
-                : "Are you sure you want to delete all chats?"}
-            </ModalHeader>
-            <ModalBody className="mb-4 flex flex-col gap-2">
-              <Button
-                color="danger"
-                radius="full"
-                onPress={() => {
-                  if (modalAction === "logout") {
-                    handleConfirmLogout();
-                  } else if (modalAction === "clear_chats") {
-                    handleConfirmClearChats();
-                  }
-                }}
-              >
-                {modalAction === "logout" ? "Logout" : "Delete all chats"}
-              </Button>
-              <Button
-                radius="full"
-                variant="bordered"
-                onPress={() => setModalAction(null)}
-              >
-                Cancel
-              </Button>
-            </ModalBody>
-          </>
-        </ModalContent>
-      </Modal>
-
-      <Dropdown className="text-foreground dark">
+      <Dropdown className="text-foreground dark shadow-xl">
         <DropdownTrigger>{children}</DropdownTrigger>
         <DropdownMenu aria-label="Dynamic Actions">
           {items.map((item) => (
@@ -242,6 +184,8 @@ export default function SettingsMenu({
         isOpen={supportModalOpen}
         onOpenChange={() => setSupportModalOpen(false)}
       />
+
+      <ConfirmationDialog {...confirmationProps} />
     </>
   );
 }

@@ -58,7 +58,10 @@ export default function UseCaseCard({
     });
 
     if (action_type === "prompt") {
-      if (prompt) appendToInput(prompt);
+      if (prompt) {
+        appendToInput(prompt);
+        router.push("/c");
+      }
     } else {
       setIsCreatingWorkflow(true);
       const toastId = toast.loading("Creating workflow...");

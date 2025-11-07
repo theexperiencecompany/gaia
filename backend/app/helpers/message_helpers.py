@@ -7,7 +7,11 @@ from app.agents.prompts.workflow_prompts import (
 )
 from app.agents.templates.agent_template import AGENT_PROMPT_TEMPLATE
 from app.config.loggers import llm_logger as logger
-from app.models.message_models import FileData, SelectedWorkflowData
+from app.models.message_models import (
+    FileData,
+    SelectedCalendarEventData,
+    SelectedWorkflowData,
+)
 from app.services.memory_service import memory_service
 from app.services.workflow import WorkflowService
 from app.utils.user_preferences_utils import (
@@ -199,6 +203,29 @@ async def format_workflow_execution_message(
         user_message=existing_content or f"Execute workflow: {workflow_title}",
         **common_args,
     )
+
+
+def format_calendar_event_context(
+    selected_calendar_event: SelectedCalendarEventData, existing_content: str = ""
+) -> str:
+    """Format calendar event context for AI conversation."""
+    event = selected_calendar_event
+
+    # Format time
+    if event.isAllDay:
+        time = f"All day on {event.start.get('date', 'Unknown date')}"
+    else:
+        time = f"{event.start.get('dateTime', 'Unknown')} to {event.end.get('dateTime', 'Unknown')}"
+
+    # Build context
+    context = f"""**CALENDAR EVENT:** {event.summary}
+Description: {event.description or "None"}
+Time: {time}"""
+
+    if event.calendarTitle:
+        context += f"\nCalendar: {event.calendarTitle}"
+
+    return f"{context}\n\n{existing_content}" if existing_content else context
 
 
 def format_files_list(

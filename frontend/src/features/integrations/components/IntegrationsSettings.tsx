@@ -1,6 +1,5 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { motion } from "framer-motion";
 import { Plus, Puzzle } from "lucide-react";
 import Image from "next/image";
 import React from "react";
@@ -8,7 +7,9 @@ import React from "react";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
 
 import { useIntegrations } from "../hooks/useIntegrations";
+import { useIntegrationSearch } from "../hooks/useIntegrationSearch";
 import { Integration } from "../types";
+import { IntegrationsSearchInput } from "./IntegrationsSearchInput";
 
 const IntegrationSettingsCard: React.FC<{
   integration: Integration;
@@ -18,94 +19,61 @@ const IntegrationSettingsCard: React.FC<{
   const isConnected = integration.status === "connected";
   const isAvailable = !!integration.loginEndpoint;
 
-  const getStatusBadge = () => {
-    if (isConnected) {
-      return (
-        <Chip variant="flat" size="sm" color="success">
-          Connected
-        </Chip>
-      );
-    }
-
-    if (isAvailable) {
-      return (
-        <Chip variant="flat" size="sm">
-          Not Connected
-        </Chip>
-      );
-    }
-
-    return (
-      <Chip variant="flat" size="sm" color="danger">
-        Coming Soon
-      </Chip>
-    );
-  };
-
-  const getActionButton = () => {
-    if (isAvailable && !isConnected) {
-      return (
-        <Button
-          color="primary"
-          className="font-medium"
-          startContent={<Plus size={19} />}
-          onPress={() => onConnect(integration.id)}
-        >
-          Connect
-        </Button>
-      );
-    }
-
-    return <></>;
-  };
-
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl bg-zinc-800/60 p-4"
-    >
-      <div className="flex items-start justify-between gap-4">
-        {/* Integration Info */}
-        <div className="flex flex-1 items-start gap-4">
-          {/* Icon */}
-          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-zinc-700">
-            <Image
-              src={integration.icons[0]}
-              alt={integration.name}
-              width={32}
-              height={32}
-              className="h-8 w-8 object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          </div>
-
-          {/* Content */}
-          <div className="min-w-0 flex-1 space-y-1">
-            <div className="flex items-center gap-4">
-              <h3 className="text-base font-medium text-white">
-                {integration.name}
-              </h3>
-              {getStatusBadge()}
-            </div>
-
-            <p className="text-sm leading-relaxed text-zinc-500">
-              {integration.description}
-            </p>
-          </div>
+    <div className="group relative flex h-full flex-col rounded-2xl bg-zinc-800/50 p-5 transition-all hover:bg-zinc-800">
+      <div className="mb-3 flex items-start justify-between">
+        <div className="flex flex-shrink-0 items-center justify-center">
+          <Image
+            src={integration.icons[0]}
+            alt={integration.name}
+            width={40}
+            height={40}
+            className="h-7 w-7 object-contain"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
         </div>
-
-        <div className="flex h-full items-center">{getActionButton()}</div>
+        {isConnected ? (
+          <Chip variant="flat" size="sm" color="success" className="h-6">
+            Connected
+          </Chip>
+        ) : isAvailable ? (
+          <Button
+            color="primary"
+            size="sm"
+            className="w-fit font-medium"
+            onPress={() => onConnect(integration.id)}
+          >
+            Connect
+          </Button>
+        ) : (
+          <Chip variant="flat" size="sm" color="warning" className="h-6">
+            Soon
+          </Chip>
+        )}
       </div>
-    </motion.div>
+
+      <div
+        className={`${isAvailable && !isConnected ? "mb-2" : "mb-0"} flex-1`}
+      >
+        <h3 className="mb-1 text-base font-medium text-white">
+          {integration.name}
+        </h3>
+        <p className="text-sm leading-relaxed text-zinc-400">
+          {integration.description}
+        </p>
+      </div>
+    </div>
   );
 };
 
 export const IntegrationsSettings: React.FC = () => {
   const { integrations, connectIntegration, disconnectIntegration, isLoading } =
     useIntegrations();
+
+  const { searchQuery, setSearchQuery, clearSearch, filteredIntegrations } =
+    useIntegrationSearch(integrations);
 
   const handleConnect = async (integrationId: string) => {
     try {
@@ -123,86 +91,95 @@ export const IntegrationsSettings: React.FC = () => {
     }
   };
 
-  const connectedIntegrations = integrations.filter(
+  const connectedIntegrations = filteredIntegrations.filter(
     (i) => i.status === "connected",
   );
-  const availableIntegrations = integrations.filter(
+  const availableIntegrations = filteredIntegrations.filter(
     (i) => i.status === "not_connected" && i.loginEndpoint,
   );
-  const comingSoonIntegrations = integrations.filter((i) => !i.loginEndpoint);
+  const comingSoonIntegrations = filteredIntegrations.filter(
+    (i) => !i.loginEndpoint,
+  );
 
-  if (isLoading) {
-    return (
-      <SettingsCard
-        icon={<Puzzle className="h-5 w-5 text-purple-400" />}
-        title="Integrations"
-      >
-        <div className="flex justify-center py-12">
-          <div className="text-zinc-400">Loading integrations...</div>
-        </div>
-      </SettingsCard>
-    );
-  }
+  const hasResults =
+    connectedIntegrations.length > 0 ||
+    availableIntegrations.length > 0 ||
+    comingSoonIntegrations.length > 0;
 
   return (
-    <SettingsCard title="Integrations">
-      <p className="mb-6 text-sm text-zinc-400">
-        Connect your favorite apps and services to unlock powerful AI
-        capabilities
-      </p>
+    <SettingsCard
+      title="Integrations"
+      className="bg-transparent! p-0! outline-none"
+    >
+      <div className="mb-6 space-y-6">
+        <div>
+          <p className="text-[15px] leading-relaxed text-zinc-400">
+            Connect your favorite apps and services to unlock powerful AI
+            capabilities
+          </p>
+        </div>
 
-      <div className="space-y-4">
-        {/* Connected Integrations */}
-        {connectedIntegrations.length > 0 && (
-          <div className="space-y-4">
-            {connectedIntegrations.map((integration) => (
-              <IntegrationSettingsCard
-                key={integration.id}
-                integration={integration}
-                onConnect={handleConnect}
-                onDisconnect={handleDisconnect}
-              />
-            ))}
-          </div>
-        )}
+        <IntegrationsSearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          onClear={clearSearch}
+        />
+      </div>
 
-        {/* Available Integrations */}
-        {availableIntegrations.length > 0 && (
-          <div className="space-y-4">
-            {availableIntegrations.map((integration) => (
-              <IntegrationSettingsCard
-                key={integration.id}
-                integration={integration}
-                onConnect={handleConnect}
-                onDisconnect={handleDisconnect}
-              />
-            ))}
-          </div>
-        )}
+      {!hasResults && searchQuery && (
+        <div className="py-16 text-center">
+          <p className="text-sm text-zinc-400">
+            No integrations found for &ldquo;{searchQuery}&rdquo;
+          </p>
+          <Button
+            onPress={clearSearch}
+            variant="light"
+            className="mt-2 text-zinc-400"
+          >
+            Clear search
+          </Button>
+        </div>
+      )}
 
-        {/* Coming Soon */}
-        {comingSoonIntegrations.length > 0 && (
-          <div className="space-y-4">
-            {comingSoonIntegrations.map((integration) => (
-              <IntegrationSettingsCard
-                key={integration.id}
-                integration={integration}
-                onConnect={handleConnect}
-                onDisconnect={handleDisconnect}
-              />
-            ))}
-          </div>
-        )}
+      {!hasResults && !searchQuery && integrations.length === 0 && (
+        <div className="py-16 text-center">
+          <p className="text-sm text-zinc-400">No integrations available</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            Check back later for new integrations
+          </p>
+        </div>
+      )}
 
-        {/* Empty State */}
-        {integrations.length === 0 && (
-          <div className="py-12 text-center">
-            <div className="mb-2 text-zinc-400">No integrations available</div>
-            <div className="text-sm text-zinc-500">
-              Check back later for new integrations
-            </div>
-          </div>
-        )}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {connectedIntegrations.length > 0 &&
+          connectedIntegrations.map((integration) => (
+            <IntegrationSettingsCard
+              key={integration.id}
+              integration={integration}
+              onConnect={handleConnect}
+              onDisconnect={handleDisconnect}
+            />
+          ))}
+
+        {availableIntegrations.length > 0 &&
+          availableIntegrations.map((integration) => (
+            <IntegrationSettingsCard
+              key={integration.id}
+              integration={integration}
+              onConnect={handleConnect}
+              onDisconnect={handleDisconnect}
+            />
+          ))}
+
+        {comingSoonIntegrations.length > 0 &&
+          comingSoonIntegrations.map((integration) => (
+            <IntegrationSettingsCard
+              key={integration.id}
+              integration={integration}
+              onConnect={handleConnect}
+              onDisconnect={handleDisconnect}
+            />
+          ))}
       </div>
     </SettingsCard>
   );

@@ -1,3 +1,4 @@
+import { cn } from "@/lib";
 import { ReactNode } from "react";
 
 interface SettingsCardProps {
@@ -15,7 +16,7 @@ export function SettingsCard({
 }: SettingsCardProps) {
   return (
     <div
-      className={`rounded-2xl bg-zinc-900 p-4 outline-1 outline-zinc-800 ${className}`}
+      className={`rounded-2xl bg-zinc-900 p-4 outline-1 outline-zinc-800 ${cn(className)}`}
     >
       {(icon || title) && (
         <div className="mb-1 flex items-center space-x-2">

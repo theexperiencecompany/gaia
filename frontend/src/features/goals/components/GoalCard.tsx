@@ -6,23 +6,15 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
 import { Tooltip } from "@heroui/tooltip";
 import { DotsVerticalIcon } from "@radix-ui/react-icons";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 
-import {
-  Calendar03Icon,
-} from "@/components/shared/icons";
+import { Calendar03Icon } from "@/components/shared/icons";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { Goal } from "@/types/api/goalsApiTypes";
+import { useConfirmation } from "@/hooks/useConfirmation";
 import { parseDate2 } from "@/utils";
 
 export function GoalCard({
@@ -33,7 +25,7 @@ export function GoalCard({
   fetchGoals: () => void;
 }) {
   const router = useRouter();
-  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const { confirm, confirmationProps } = useConfirmation();
 
   async function deleteGoal(goalId: string) {
     try {
@@ -44,49 +36,23 @@ export function GoalCard({
     }
   }
 
-  const handleDelete = () => {
-    deleteGoal(goal?.id);
-    setOpenDeleteDialog(false);
+  const handleDelete = async () => {
+    const confirmed = await confirm({
+      title: "Delete Roadmap",
+      message: `Are you sure you want to delete the roadmap titled "${goal?.roadmap?.title || goal.title}"? This action cannot be undone.`,
+      confirmText: "Delete",
+      cancelText: "Close",
+      variant: "destructive",
+    });
+
+    if (!confirmed) return;
+    await deleteGoal(goal?.id);
   };
 
   console.log(goal);
 
   return (
     <>
-      <Modal
-        className="text-foreground dark"
-        isOpen={openDeleteDialog}
-        onOpenChange={setOpenDeleteDialog}
-      >
-        <ModalContent>
-          <ModalHeader className="inline-block">
-            Are you sure you want to delete the roadmap titled
-            <span className="ml-1 font-normal text-primary-500">
-              {goal?.roadmap?.title || goal.title}
-            </span>
-            <span className="ml-1">?</span>
-          </ModalHeader>
-
-          <ModalBody>
-            <p className="font-medium text-danger-400">
-              This action cannot be undone.
-            </p>
-          </ModalBody>
-          <ModalFooter>
-            <Button
-              color="danger"
-              variant="light"
-              onPress={() => setOpenDeleteDialog(false)}
-            >
-              Close
-            </Button>
-            <Button color="primary" onPress={handleDelete}>
-              Delete
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
       <div className="group bg-opacity-50 flex w-full flex-col rounded-2xl bg-zinc-800 p-4">
         <div className="relative flex w-full items-center gap-2">
           <span className="w-[90%] truncate">
@@ -109,7 +75,7 @@ export function GoalCard({
                   key="delete"
                   className="text-danger"
                   color="danger"
-                  onPress={() => setOpenDeleteDialog(true)}
+                  onPress={handleDelete}
                 >
                   Delete Roadmap
                 </DropdownItem>
@@ -172,6 +138,8 @@ export function GoalCard({
           </Button>
         </div>
       </div>
+
+      <ConfirmationDialog {...confirmationProps} />
     </>
   );
 }

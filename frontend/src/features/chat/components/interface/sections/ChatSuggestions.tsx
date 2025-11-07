@@ -4,8 +4,8 @@ import React, { useCallback, useState } from "react";
 
 import { posthog } from "@/lib/posthog";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
-import { useSendMessage } from "@/features/chat/hooks/useSendMessage";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useSendMessage } from "@/hooks/useSendMessage";
 import { useComposerTextActions } from "@/stores/composerStore";
 
 interface ChatSuggestion {

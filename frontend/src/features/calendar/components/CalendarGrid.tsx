@@ -107,51 +107,12 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
         className="relative flex min-h-0 min-w-fit"
         style={{ height: `${hours.length * 64}px` }}
       >
-        {/* Global loading overlay for initial/main loading */}
-        {loading.events && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-900/50">
-            <Spinner size="lg" color="primary" />
-          </div>
-        )}
-
-        {/* Global error states */}
-        {error.calendars && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-900/80">
-            <div className="text-center text-red-500">
-              <div className="text-lg font-medium">Error loading calendars</div>
-              <div className="mt-1 text-sm">{error.calendars}</div>
-            </div>
-          </div>
-        )}
-
-        {error.events && !loading.events && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-zinc-900/80">
-            <div className="text-center text-red-500">
-              <div className="text-lg font-medium">Error loading events</div>
-              <div className="mt-1 text-sm">{error.events}</div>
-            </div>
-          </div>
-        )}
-
-        {selectedCalendars.length === 0 && !loading.calendars && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center">
-            <div className="text-center text-zinc-500">
-              <div className="text-lg font-medium">No calendars selected</div>
-              <div className="mt-1 text-sm">
-                Please select a calendar to view events
-              </div>
-            </div>
-          </div>
-        )}
-        {/* Current Time Line */}
         <CurrentTimeLine />
 
-        {/* Time Labels Column */}
         <div
           className="sticky left-0 z-[11] w-20 flex-shrink-0 border-r border-zinc-800 bg-[#1a1a1a]"
           style={{ height: `${hours.length * 64}px` }}
         >
-          {/* Current Time Label */}
           <CurrentTimeLabel />
 
           {hours.map((hour) => (

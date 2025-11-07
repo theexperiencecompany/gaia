@@ -5,17 +5,50 @@ from app.agents.core.state import State
 from app.agents.llm.chatbot import chatbot
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
 from app.models.message_models import MessageDict, SelectedWorkflowData
-
-# from uuid_extensions import uuid7, uuid7str
 from app.services.conversation_service import (
     ConversationModel,
     create_conversation_service,
+    update_conversation_description,
 )
-from fastapi import HTTPException
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
 from uuid_extensions import uuid7str
+
+
+async def _generate_description_from_message(
+    last_message: MessageDict | None,
+    selectedTool: Optional[str],
+    selectedWorkflow: Optional[SelectedWorkflowData],
+) -> str:
+    """Helper to generate conversation description from message context."""
+    user_message = (
+        last_message.get("content")
+        if last_message and "content" in last_message
+        else "New conversation started"
+    )
+
+    workflow_context = (
+        f" - Workflow: {selectedWorkflow.title}" if selectedWorkflow else ""
+    )
+
+    try:
+        response = await do_prompt_no_stream(
+            prompt=CONVERSATION_DESCRIPTION_GENERATOR.format(
+                user_message=user_message,
+                selectedTool=selectedTool,
+                workflow_context=workflow_context,
+            ),
+        )
+
+        if not isinstance(response, dict) or "response" not in response:
+            logger.error("Invalid response from LLM for description generation")
+            return "New Chat"
+
+        return response.get("response", "New Chat").replace('"', "").strip()
+    except Exception as e:
+        logger.error(f"Failed to generate description: {e}")
+        return "New Chat"
 
 
 @traceable(name="Create Conversation")
@@ -24,34 +57,30 @@ async def create_conversation(
     user: dict,
     selectedTool: Optional[str] | None,
     selectedWorkflow: Optional[SelectedWorkflowData] | None = None,
+    generate_description: bool = True,
 ) -> dict:
+    """
+    Create a new conversation with optional description generation.
+
+    Args:
+        last_message: The user's message to generate description from
+        user: User information
+        selectedTool: Optional tool selection
+        selectedWorkflow: Optional workflow selection
+        generate_description: If False, uses "New Chat" as placeholder
+
+    Returns:
+        dict with conversation_id and conversation_description
+    """
     uuid_value = uuid7str()
 
-    # If last_message is None or doesn't have content, use a fallback prompt
-    user_message = (
-        last_message.get("content")
-        if last_message and "content" in last_message
-        else "New conversation started"
+    description = (
+        "New Chat"
+        if not generate_description
+        else await _generate_description_from_message(
+            last_message, selectedTool, selectedWorkflow
+        )
     )
-
-    # Create context for description generation
-    workflow_context = ""
-    if selectedWorkflow:
-        workflow_context = f" - Workflow: {selectedWorkflow.title}"
-
-    response = await do_prompt_no_stream(
-        prompt=CONVERSATION_DESCRIPTION_GENERATOR.format(
-            user_message=user_message,
-            selectedTool=selectedTool,
-            workflow_context=workflow_context,
-        ),
-    )
-
-    # Validate LLM response
-    if not isinstance(response, dict) or "response" not in response:
-        raise HTTPException(status_code=500, detail="Invalid response from LLM")
-
-    description = response.get("response", "New Chat").replace('"', "").strip()
 
     conversation = ConversationModel(
         conversation_id=str(uuid_value), description=description
@@ -65,18 +94,58 @@ async def create_conversation(
     }
 
 
+@traceable(name="Generate Conversation Description")
+async def generate_and_update_description(
+    conversation_id: str,
+    last_message: MessageDict | None,
+    user: dict,
+    selectedTool: Optional[str] | None,
+    selectedWorkflow: Optional[SelectedWorkflowData] | None = None,
+) -> str:
+    """
+    Generate a description for an existing conversation and update it.
+
+    Args:
+        conversation_id: ID of the conversation to update
+        last_message: The user's message to generate description from
+        user: User information
+        selectedTool: Optional tool selection
+        selectedWorkflow: Optional workflow selection
+
+    Returns:
+        The generated description
+    """
+    description = await _generate_description_from_message(
+        last_message, selectedTool, selectedWorkflow
+    )
+
+    await update_conversation_description(conversation_id, description, user)
+
+    return description
+
+
 async def do_prompt_no_stream(
     prompt: str,
     system_prompt: str | None = None,
     use_tools: bool = False,
 ) -> dict:
+    """
+    Execute a single LLM prompt without streaming.
+
+    Args:
+        prompt: The user prompt to send to the LLM
+        system_prompt: Optional system message
+        use_tools: Whether tools should be available (currently unused)
+
+    Returns:
+        dict with "response" key containing the AI's response content
+    """
     messages: List[AnyMessage] = (
         [SystemMessage(content=system_prompt)] if system_prompt else []
     )
     messages.append(HumanMessage(content=prompt))
 
     state = State(messages=messages)
-
     response = await chatbot(state)
 
     # Extract the AI's response content

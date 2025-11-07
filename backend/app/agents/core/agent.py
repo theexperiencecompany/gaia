@@ -77,6 +77,7 @@ async def _core_agent_logic(
             user_dict=user,
             selected_tool=request.selectedTool,
             selected_workflow=request.selectedWorkflow,
+            selected_calendar_event=request.selectedCalendarEvent,
             trigger_context=trigger_context,
         ),
         GraphManager.get_graph(),
