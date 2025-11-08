@@ -42,24 +42,25 @@ export function getNextRunDisplay(workflow: Workflow): string | null {
 // Reusable Trigger Icon Component
 interface TriggerIconProps {
   triggerType: string;
-  integrationIconUrl?: string;
+  integrationId?: string;
   size?: number;
 }
 
 export function TriggerIcon({
   triggerType,
-  integrationIconUrl,
+  integrationId,
   size = 15,
 }: TriggerIconProps) {
-  if (integrationIconUrl) {
-    return (
-      <Image
-        src={integrationIconUrl}
-        alt="Integration icon"
-        width={size}
-        height={size}
-      />
-    );
+  // Try to get icon from integrationId first
+  if (integrationId) {
+    const icon = getToolCategoryIcon(integrationId, {
+      width: size,
+      height: size,
+      showBackground: false,
+    });
+    if (icon) {
+      return <div className="flex items-center">{icon}</div>;
+    }
   }
 
   // Use getToolCategoryIcon for integration-based triggers like gmail
@@ -88,7 +89,7 @@ export function TriggerIcon({
 interface TriggerDisplayProps {
   triggerType: string;
   triggerLabel: string;
-  integrationIconUrl?: string;
+  integrationId?: string;
   nextRunText?: string;
   className?: string;
 }
@@ -96,7 +97,7 @@ interface TriggerDisplayProps {
 export function TriggerDisplay({
   triggerType,
   triggerLabel,
-  integrationIconUrl,
+  integrationId,
   nextRunText,
   className = "",
 }: TriggerDisplayProps) {
@@ -106,7 +107,7 @@ export function TriggerDisplay({
         <div className="w-4">
           <TriggerIcon
             triggerType={triggerType}
-            integrationIconUrl={integrationIconUrl}
+            integrationId={integrationId}
             size={15}
           />
         </div>

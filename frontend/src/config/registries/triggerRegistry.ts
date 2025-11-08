@@ -50,7 +50,7 @@ export const getTriggerMetadata = <T extends TriggerType>(
  *   - Each field specifies type, optionality, and description
  *
  * Icon Sources:
- * - Integration triggers (integrationId !== null): Icons from integrations API via integration.icons[0]
+ * - Integration triggers (integrationId !== null): Icons from toolIcons.tsx via getToolCategoryIcon
  * - Non-integration triggers (integrationId === null): Fallback to default Lucide icons
  *   - Schedule: Clock icon from Lucide
  *   - Manual: CursorMagicSelection icon from custom icons

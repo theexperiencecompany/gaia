@@ -163,15 +163,6 @@ class SettingsValidator:
 
         self.register_group(
             SettingsGroup(
-                name="Cerebras AI",
-                keys=["CEREBRAS_API_KEY"],
-                description="Cerebras AI service",
-                affected_features="High-performance AI model inference",
-            )
-        )
-
-        self.register_group(
-            SettingsGroup(
                 name="Google AI",
                 keys=["GOOGLE_API_KEY"],
                 description="Google AI services",
@@ -288,6 +279,15 @@ class SettingsValidator:
                 keys=["SENTRY_DSN"],
                 description="Sentry error tracking and monitoring",
                 affected_features="Error reporting and application monitoring",
+                # Optional in production
+            )
+        )
+        self.register_group(
+            SettingsGroup(
+                name="Posthog Analytics",
+                keys=["POSTHOG_API_KEY"],
+                description="Posthog analytics and event tracking",
+                affected_features="User behavior analytics and event tracking",
                 # Optional in production
             )
         )

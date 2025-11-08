@@ -160,7 +160,6 @@ class ProductionSettings(CommonSettings):
 
     # AI & Machine Learning
     OPENAI_API_KEY: str
-    CEREBRAS_API_KEY: str
     GOOGLE_API_KEY: str
 
     # Media & Content Processing
@@ -214,7 +213,8 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     # Monitoring & Analytics
     # ----------------------------------------------
-    SENTRY_DSN: str = ""
+    SENTRY_DSN: str
+    POSTHOG_API_KEY: str
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
@@ -251,9 +251,7 @@ class DevelopmentSettings(CommonSettings):
 
     # AI & Machine Learning
     OPENAI_API_KEY: Optional[str] = None
-    CEREBRAS_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
-    GCP_TOPIC_NAME: Optional[str] = None
 
     # Media & Content Processing
     ASSEMBLYAI_API_KEY: Optional[str] = None
@@ -309,6 +307,7 @@ class DevelopmentSettings(CommonSettings):
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: Optional[str] = None
+    POSTHOG_API_KEY: Optional[str] = None
 
     # ----------------------------------------------
     # Environment Configuration

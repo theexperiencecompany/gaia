@@ -1,9 +1,9 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Chip } from "@heroui/chip";
 import { Selection } from "@heroui/react";
-import Image from "next/image";
 import React from "react";
 
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
@@ -37,16 +37,12 @@ const IntegrationItem: React.FC<{
       {/* Icon */}
       <div className="flex-shrink-0">
         <div className="flex items-center justify-center rounded-lg">
-          <Image
-            width={25}
-            height={25}
-            src={integration.icons[0]}
-            alt={integration.name}
-            className="aspect-square max-w-[25px] min-w-[25px] object-contain"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
+          {getToolCategoryIcon(integration.id, {
+            size: 25,
+            width: 25,
+            height: 25,
+            showBackground: false,
+          })}
         </div>
       </div>
 

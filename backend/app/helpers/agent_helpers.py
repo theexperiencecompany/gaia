@@ -15,6 +15,7 @@ from app.constants.llm import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
 )
+from app.core.lazy_loader import providers
 from app.models.models_models import ModelConfig
 from app.utils.agent_utils import (
     format_sse_data,
@@ -23,9 +24,10 @@ from app.utils.agent_utils import (
     process_custom_event_for_tools,
     store_agent_progress,
 )
-from langchain_core.callbacks import UsageMetadataCallbackHandler
+from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessageChunk
 from langsmith import traceable
+from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 
 def build_agent_config(
@@ -52,21 +54,35 @@ def build_agent_config(
             parameters, metadata, and recursion limits
         - UsageMetadataCallbackHandler instance for tracking token usage during execution
     """
-    model_configuration = {
-        "provider": (
-            user_model_config.inference_provider.value
-            if user_model_config
-            else DEFAULT_LLM_PROVIDER
-        ),
-        "max_tokens": user_model_config.max_tokens
+
+    callbacks: list[BaseCallbackHandler] = []
+    posthog_client = providers.get("posthog")
+
+    if posthog_client is not None:
+        callbacks.append(
+            PostHogCallbackHandler(
+                client=posthog_client,
+                distinct_id=user.get("user_id"),
+                properties={"conversation_id": conversation_id},
+                privacy_mode=True,
+            )
+        )
+    if usage_metadata_callback:
+        callbacks.append(usage_metadata_callback)
+
+    model_name = (
+        user_model_config.provider_model_name
         if user_model_config
-        else DEFAULT_MAX_TOKENS,
-        "model_name": (
-            user_model_config.provider_model_name
-            if user_model_config
-            else DEFAULT_MODEL_NAME
-        ),
-    }
+        else DEFAULT_MODEL_NAME
+    )
+    provider_name = (
+        user_model_config.inference_provider.value
+        if user_model_config
+        else DEFAULT_LLM_PROVIDER
+    )
+    max_tokens = (
+        user_model_config.max_tokens if user_model_config else DEFAULT_MAX_TOKENS
+    )
 
     config = {
         "configurable": {
@@ -74,11 +90,14 @@ def build_agent_config(
             "user_id": user.get("user_id"),
             "email": user.get("email"),
             "user_time": user_time.isoformat(),
-            "model_configurations": model_configuration,
+            "provider": provider_name,
+            "max_tokens": max_tokens,
+            "model_name": model_name,
+            "model": model_name,
         },
         "recursion_limit": 25,
         "metadata": {"user_id": user.get("user_id")},
-        "callbacks": [usage_metadata_callback],
+        "callbacks": callbacks,
     }
 
     return config

@@ -79,7 +79,6 @@ class OAuthIntegration(BaseModel):
     id: str
     name: str
     description: str
-    icons: List[str]  # List of icon URLs for different contexts/sizes
     category: str
     provider: str  # 'google', 'github', 'figma', 'notion', etc.
     scopes: List[OAuthScope]
@@ -105,7 +104,6 @@ class IntegrationConfigResponse(BaseModel):
     id: str
     name: str
     description: str
-    icons: List[str]
     category: str
     provider: str
     available: bool

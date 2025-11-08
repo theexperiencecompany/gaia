@@ -1,9 +1,9 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Plus, Puzzle } from "lucide-react";
-import Image from "next/image";
+import { motion } from "framer-motion";
 import React from "react";
 
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
 
 import { useIntegrations } from "../hooks/useIntegrations";
@@ -19,52 +19,73 @@ const IntegrationSettingsCard: React.FC<{
   const isConnected = integration.status === "connected";
   const isAvailable = !!integration.loginEndpoint;
 
-  return (
-    <div className="group relative flex h-full flex-col rounded-2xl bg-zinc-800/50 p-5 transition-all hover:bg-zinc-800">
-      <div className="mb-3 flex items-start justify-between">
-        <div className="flex flex-shrink-0 items-center justify-center">
-          <Image
-            src={integration.icons[0]}
-            alt={integration.name}
-            width={40}
-            height={40}
-            className="h-7 w-7 object-contain"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-        </div>
-        {isConnected ? (
-          <Chip variant="flat" size="sm" color="success" className="h-6">
-            Connected
-          </Chip>
-        ) : isAvailable ? (
-          <Button
-            color="primary"
-            size="sm"
-            className="w-fit font-medium"
-            onPress={() => onConnect(integration.id)}
-          >
-            Connect
-          </Button>
-        ) : (
-          <Chip variant="flat" size="sm" color="warning" className="h-6">
-            Soon
-          </Chip>
-        )}
-      </div>
+  const getStatusBadge = () => {
+    if (isConnected) {
+      return (
+        <Chip variant="flat" size="sm" color="success" className="h-6">
+          Connected
+        </Chip>
+      );
+    }
+    if (isAvailable) {
+      return null; // Button will be shown instead
+    }
+    return (
+      <Chip variant="flat" size="sm" color="warning" className="h-6">
+        Soon
+      </Chip>
+    );
+  };
 
-      <div
-        className={`${isAvailable && !isConnected ? "mb-2" : "mb-0"} flex-1`}
-      >
-        <h3 className="mb-1 text-base font-medium text-white">
-          {integration.name}
-        </h3>
-        <p className="text-sm leading-relaxed text-zinc-400">
-          {integration.description}
-        </p>
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl bg-zinc-800/60 p-4"
+    >
+      <div className="flex items-start justify-between gap-4">
+        {/* Integration Info */}
+        <div className="flex flex-1 items-start gap-4">
+          {/* Icon */}
+          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-zinc-700">
+            {getToolCategoryIcon(integration.id, {
+              size: 32,
+              width: 32,
+              height: 32,
+              showBackground: false,
+            })}
+          </div>
+
+          {/* Content */}
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex items-center gap-4">
+              <h3 className="text-base font-medium text-white">
+                {integration.name}
+              </h3>
+              {getStatusBadge()}
+            </div>
+
+            <p className="text-sm leading-relaxed text-zinc-500">
+              {integration.description}
+            </p>
+          </div>
+        </div>
+
+        {/* Action Button */}
+        <div className="flex-shrink-0">
+          {isAvailable && !isConnected && (
+            <Button
+              color="primary"
+              size="sm"
+              className="w-fit font-medium"
+              onPress={() => onConnect(integration.id)}
+            >
+              Connect
+            </Button>
+          )}
+        </div>
       </div>
-    </div>
+    </motion.div>
   );
 };
 

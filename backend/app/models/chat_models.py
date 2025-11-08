@@ -17,7 +17,6 @@ class IntegrationConnectionData(BaseModel):
 
     integration_id: str
     integration_name: str
-    integration_icon: str
     integration_description: str
     integration_category: str
     message: str
