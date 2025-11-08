@@ -20,8 +20,8 @@ import { ChevronDown, Star, Trash } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ReactNode, SetStateAction, useCallback, useState } from "react";
 
-import { PencilRenameIcon } from "@/components/shared/icons";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { PencilRenameIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useConfirmation } from "@/hooks/useConfirmation";

@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { posthog } from "@/lib";
 
 import { RaisedButton } from "@/components/ui/shadcn/raised-button";
+import { posthog } from "@/lib";
 
 export default function GetStartedButton({
   small_text = false,

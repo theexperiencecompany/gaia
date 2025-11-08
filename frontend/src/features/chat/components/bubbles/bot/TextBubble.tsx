@@ -15,8 +15,8 @@ function getTypedData<K extends ToolName>(
 import { Chip } from "@heroui/chip";
 import { AlertTriangleIcon } from "lucide-react";
 import React from "react";
-// import { PostHogCaptureOnViewed } from "posthog-js/react";
 
+// import { PostHogCaptureOnViewed } from "posthog-js/react";
 import { ToolDataMap, ToolName } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
 import CalendarListFetchCard from "@/features/calendar/components/CalendarListFetchCard";

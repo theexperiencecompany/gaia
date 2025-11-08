@@ -11,6 +11,7 @@ import { CircleArrowUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import React, { ReactNode, useState } from "react";
 
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import {
   BookOpen01Icon,
   Brain02Icon,
@@ -21,16 +22,10 @@ import {
   TwitterIcon,
   WhatsappIcon,
 } from "@/components/shared/icons";
-import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { appConfig, getLinkByLabel } from "@/config/appConfig";
-import { useLogout } from "@/features/auth/hooks/useLogout";
-import { chatApi } from "@/features/chat/api/chatApi";
-import { useConversation } from "@/features/chat/hooks/useConversation";
-import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
+import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { ContactSupportModal } from "@/features/support";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { useConversationsStore } from "@/stores/conversationsStore";
 
 // Only allow these values in our modal state.
 export type ModalAction = "clear_chats" | "logout";

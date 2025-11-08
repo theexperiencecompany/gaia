@@ -7,6 +7,7 @@ import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/I
 import { ConnectIcon } from "@/components/shared/icons";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import type { Integration } from "@/features/integrations/types";
 import { useHeader } from "@/hooks/layout/useHeader";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
@@ -58,7 +59,7 @@ export default function IntegrationsPage() {
         <IntegrationSidebar
           integration={selectedIntegration}
           onConnect={connectIntegration}
-          includedIntegrations={includedIntegrations as any}
+          includedIntegrations={includedIntegrations as Integration[]}
           category={selectedIntegration.name}
         />,
       );

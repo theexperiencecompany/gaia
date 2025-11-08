@@ -9,6 +9,7 @@ import {
 } from "@heroui/modal";
 import { Send } from "lucide-react";
 import React, { Dispatch, SetStateAction, useEffect, useState } from "react";
+
 import { posthog } from "@/lib";
 
 export default function AddGoalDialog({

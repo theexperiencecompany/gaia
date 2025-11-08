@@ -11,12 +11,12 @@ import {
 } from "@heroui/react";
 import { Plus } from "lucide-react";
 import { useEffect, useMemo } from "react";
-import { posthog } from "@/lib";
 
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useModalForm } from "@/hooks/ui/useModalForm";
+import { posthog } from "@/lib";
 import { Priority, Todo, TodoCreate } from "@/types/features/todoTypes";
 
 import SubtaskManager from "./shared/SubtaskManager";

@@ -3,8 +3,6 @@ import { Tooltip } from "@heroui/tooltip";
 import { Check } from "lucide-react";
 import React from "react";
 
-import { posthog } from "@/lib/posthog";
-
 import {
   AttachmentIcon,
   PlusSignIcon,
@@ -18,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/shadcn/dropdown-menu";
 import { useLoading } from "@/features/chat/hooks/useLoading";
+import { posthog } from "@/lib/posthog";
 import { cn } from "@/lib/utils";
 import { SearchMode } from "@/types/shared";
 

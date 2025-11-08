@@ -4,13 +4,13 @@ import { Button } from "@heroui/button";
 import { Input, Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import type React from "react";
-import { posthog } from "@/lib";
 
 import {
   SUPPORT_REQUEST_TYPE_LABELS,
   SUPPORT_REQUEST_TYPES,
 } from "@/features/support/constants/supportConstants";
 import { useContactSupport } from "@/features/support/hooks/useContactSupport";
+import { posthog } from "@/lib";
 
 type Props = React.ComponentProps<"form">;
 

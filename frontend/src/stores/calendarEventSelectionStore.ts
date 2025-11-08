@@ -54,7 +54,7 @@ export const useCalendarEventSelectionStore =
         (set) => ({
           ...initialState,
 
-          selectCalendarEvent: (event, options) => {
+          selectCalendarEvent: (event, _options) => {
             const eventData: SelectedCalendarEventData =
               "kind" in event
                 ? {
@@ -74,7 +74,12 @@ export const useCalendarEventSelectionStore =
                     calendarId: event.calendarId,
                     calendarTitle: event.calendarTitle,
                     backgroundColor:
-                      event.organizer?.email && (event as any).backgroundColor,
+                      event.organizer?.email &&
+                      (
+                        event as GoogleCalendarEvent & {
+                          backgroundColor?: string;
+                        }
+                      ).backgroundColor,
                     isAllDay: !!event.start.date,
                   }
                 : event;

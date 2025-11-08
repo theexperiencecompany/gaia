@@ -5,11 +5,11 @@ import { ArrowUpRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { posthog } from "@/lib";
 
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflowCard";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
+import { posthog } from "@/lib";
 import { useAppendToInput } from "@/stores/composerStore";
 
 interface UseCaseCardProps {

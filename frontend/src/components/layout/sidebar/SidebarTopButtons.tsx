@@ -5,7 +5,6 @@ import { CircleArrowUp, ZapIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useState } from "react";
-import { posthog } from "@/lib";
 
 import {
   CalendarIcon,
@@ -23,6 +22,7 @@ import {
 } from "@/components/ui/shadcn/accordion";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import { posthog } from "@/lib";
 import { useRefreshTrigger } from "@/stores/notificationStore";
 import { useMenuAccordion } from "@/stores/uiStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";

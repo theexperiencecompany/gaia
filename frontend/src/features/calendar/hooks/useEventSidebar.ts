@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { posthog } from "@/lib";
 
 import { calendarApi } from "@/features/calendar/api/calendarApi";
+import { posthog } from "@/lib";
 import {
   useAddEvent,
   useRemoveEvent,

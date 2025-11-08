@@ -1,4 +1,5 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Selection } from "@heroui/react";
 import Image from "next/image";
@@ -8,8 +9,6 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
 import { Integration } from "../types";
-import { Button } from "@heroui/button";
-import { useImageColor } from "../hooks/useImageColor";
 
 interface IntegrationsCardProps {
   onClose?: () => void;

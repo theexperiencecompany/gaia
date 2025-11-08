@@ -1,14 +1,13 @@
 import { useRouter } from "next/navigation";
 import React from "react";
 
-import { posthog } from "@/lib/posthog";
-
 import UpcomingEventsView from "@/features/calendar/components/UpcomingEventsView";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
 import { useUpcomingEventsQuery } from "@/features/calendar/hooks/useUpcomingEventsQuery";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import UnreadEmailsView from "@/features/mail/components/UnreadEmailsView";
 import { useUnreadEmailsQuery } from "@/features/mail/hooks/useUnreadEmailsQuery";
+import { posthog } from "@/lib/posthog";
 
 export const GridSection = () => {
   const router = useRouter();

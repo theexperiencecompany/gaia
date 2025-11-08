@@ -11,9 +11,9 @@ import {
 } from "@heroui/dropdown";
 import { format } from "date-fns";
 import { Edit2, MoreVertical, Trash2 } from "lucide-react";
-import { posthog } from "@/lib";
 
 import { CalendarIcon } from "@/components/shared/icons";
+import { posthog } from "@/lib";
 import { Priority, Todo, TodoUpdate } from "@/types/features/todoTypes";
 
 interface TodoItemProps {

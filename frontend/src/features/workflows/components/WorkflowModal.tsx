@@ -2,7 +2,6 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { posthog } from "@/lib";
 import {
   Dropdown,
   DropdownItem,
@@ -37,6 +36,7 @@ import { CheckmarkCircle02Icon } from "@/components/shared/icons";
 import CustomSpinner from "@/components/ui/shadcn/spinner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { posthog } from "@/lib";
 
 import { Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflowCreation } from "../hooks";

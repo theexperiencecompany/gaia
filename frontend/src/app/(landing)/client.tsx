@@ -4,7 +4,6 @@ import Image from "next/image";
 import { lazy, Suspense, useEffect } from "react";
 
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
-import HeroVideoDialog from "@/components/ui/magic-ui/hero-video-dialog";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import CommunitySection from "@/features/landing/components/sections/CommunitySection";
 import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
