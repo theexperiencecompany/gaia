@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Tick02Icon } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/shadcn/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { posthog } from "@/lib";
 
 // Removed currency import - using USD only
 import { useDodoPayments } from "../hooks/useDodoPayments";
@@ -78,6 +79,17 @@ export function PricingCard({
   const router = useRouter();
 
   const handleGetStarted = async () => {
+    // Track pricing card interaction
+    posthog.capture("pricing:plan_selected", {
+      plan_title: title,
+      plan_id: planId,
+      price: price,
+      is_monthly: durationIsMonth,
+      is_current_plan: isCurrentPlan,
+      has_active_subscription: hasActiveSubscription,
+      is_free_plan: price === 0,
+    });
+
     if (price === 0) {
       // Handle free plan - redirect to signup or dashboard
       if (user) router.push("/c");

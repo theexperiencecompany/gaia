@@ -39,7 +39,7 @@ export default function RightSidebar({
   if (variant === "sidebar") {
     return (
       <aside
-        className="relative flex flex-col border-l border-zinc-800 bg-[#141414] transition-all duration-300 ease-in-out"
+        className="relative flex flex-col bg-[#141414] transition-all duration-300 ease-in-out"
         style={{
           width: isOpen ? "350px" : "0px",
           minWidth: isOpen ? "350px" : "0px",

@@ -1,4 +1,5 @@
-import { useCallback } from "react";
+import Fuse from "fuse.js";
+import { useCallback, useMemo } from "react";
 
 import { ToolInfo } from "@/features/chat/api/toolsApi";
 
@@ -37,6 +38,45 @@ export const useSlashCommands = (): UseSlashCommandsReturn => {
   // Get enhanced tools with integration status
   const { tools: enhancedTools } = useToolsWithIntegrations();
 
+  // Create Fuse instance with optimized config for fuzzy search
+  const fuse = useMemo(() => {
+    const toolsWithEnhanced = tools.map((tool) => {
+      const enhancedTool = enhancedTools.find((et) => et.name === tool.name);
+      return {
+        tool,
+        enhancedTool,
+        // Create searchable strings
+        nameSpaced: tool.name.replace(/_/g, " "),
+        category: tool.category,
+      };
+    });
+
+    return new Fuse(toolsWithEnhanced, {
+      keys: [
+        {
+          name: "nameSpaced",
+          weight: 4, // Highest priority for spaced name matches
+        },
+        {
+          name: "tool.name",
+          weight: 2,
+        },
+        {
+          name: "category",
+          weight: 1, // Lower priority for category matches
+        },
+      ],
+      threshold: 0.35, // Lower = more strict, higher = more fuzzy (0-1)
+      distance: 100, // Maximum distance for fuzzy matching
+      includeScore: true,
+      minMatchCharLength: 1,
+      ignoreLocation: true, // Match anywhere in string
+      useExtendedSearch: false,
+      shouldSort: true,
+      findAllMatches: true, // Find all pattern matches
+    });
+  }, [tools, enhancedTools]);
+
   const getSlashCommandSuggestions = useCallback(
     (query: string): SlashCommandMatch[] => {
       // If no query, show all tools sorted by unlock status, category and name
@@ -68,58 +108,17 @@ export const useSlashCommands = (): UseSlashCommandsReturn => {
           });
       }
 
-      const queryLower = query.toLowerCase().trim();
-      const matches: SlashCommandMatch[] = [];
+      // Use Fuse.js for fuzzy search
+      const results = fuse.search(query.trim());
 
-      // Find name matches - now supports partial matches with spaces
-      tools.forEach((tool) => {
-        const enhancedTool = enhancedTools.find((et) => et.name === tool.name);
-        const toolNameLower = tool.name.toLowerCase();
-        const toolNameSpaced = tool.name.replace(/_/g, " ").toLowerCase();
-
-        if (
-          toolNameLower.includes(queryLower) ||
-          toolNameSpaced.includes(queryLower)
-        ) {
-          matches.push({
-            tool,
-            enhancedTool,
-            matchedText: tool.name,
-          });
-        }
-      });
-
-      // Find category matches
-      tools.forEach((tool) => {
-        const enhancedTool = enhancedTools.find((et) => et.name === tool.name);
-        if (
-          !matches.find((m) => m.tool.name === tool.name) &&
-          tool.category.toLowerCase().includes(queryLower)
-        ) {
-          matches.push({
-            tool,
-            enhancedTool,
-            matchedText: `${tool.category} tool`,
-          });
-        }
-      });
-
-      // Sort by relevance: exact name matches first, then partial name, then category
-      return matches.sort((a, b) => {
-        const aNameExact = a.tool.name.toLowerCase() === queryLower;
-        const bNameExact = b.tool.name.toLowerCase() === queryLower;
-        if (aNameExact && !bNameExact) return -1;
-        if (!aNameExact && bNameExact) return 1;
-
-        const aNameStart = a.tool.name.toLowerCase().startsWith(queryLower);
-        const bNameStart = b.tool.name.toLowerCase().startsWith(queryLower);
-        if (aNameStart && !bNameStart) return -1;
-        if (!aNameStart && bNameStart) return 1;
-
-        return a.tool.name.localeCompare(b.tool.name);
-      });
+      // Convert Fuse results to SlashCommandMatch[]
+      return results.map((result) => ({
+        tool: result.item.tool,
+        enhancedTool: result.item.enhancedTool,
+        matchedText: result.item.tool.name,
+      }));
     },
-    [tools, enhancedTools],
+    [tools, enhancedTools, fuse],
   );
 
   const detectSlashCommand = useCallback(

@@ -4,7 +4,6 @@ import Image from "next/image";
 import { lazy, Suspense, useEffect } from "react";
 
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
-import HeroVideoDialog from "@/components/ui/magic-ui/hero-video-dialog";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import CommunitySection from "@/features/landing/components/sections/CommunitySection";
 import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
@@ -71,7 +70,7 @@ export default function LandingPageClient() {
 
         <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
           <HeroSection />
-          <div className="mx-auto mt-8 flex w-full max-w-screen-xl items-center justify-center px-4 sm:px-6">
+          {/* <div className="mx-auto mt-8 flex w-full max-w-screen-xl items-center justify-center px-4 sm:px-6">
             <HeroVideoDialog
               className="block w-full rounded-3xl"
               animationStyle="from-center"
@@ -79,7 +78,7 @@ export default function LandingPageClient() {
               thumbnailSrc="https://img.youtube.com/vi/K-ZbxMHxReM/maxresdefault.jpg"
               thumbnailAlt="Hero Section Video"
             />
-          </div>
+          </div> */}
         </section>
         <div>
           <div className="relative">

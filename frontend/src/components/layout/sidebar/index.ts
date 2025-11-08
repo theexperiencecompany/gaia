@@ -11,6 +11,7 @@ export * from "./ContactSupport";
 export * from "./MainSidebar";
 export * from "./right-variants/CalendarRightSidebar";
 export * from "./right-variants/GoalSidebar";
+export * from "./right-variants/IntegrationSidebar";
 export * from "./right-variants/TodoSidebar";
 export * from "./RightSidebar";
 export * from "./SidebarTopButtons";

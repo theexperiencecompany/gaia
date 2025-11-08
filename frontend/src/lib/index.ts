@@ -3,4 +3,5 @@
  */
 
 export * from "./api/index";
+export * from "./posthog";
 export * from "./utils";

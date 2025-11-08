@@ -1,5 +1,5 @@
 import { Input } from "@heroui/input";
-import { Search, X } from "lucide-react";
+import { Search } from "lucide-react";
 import React from "react";
 
 interface IntegrationsSearchInputProps {
@@ -18,6 +18,7 @@ export const IntegrationsSearchInput: React.FC<
         type="text"
         value={value}
         isClearable
+        radius="full"
         startContent={<Search width={16} height={16} />}
         onValueChange={onChange}
         placeholder="Search integrations..."

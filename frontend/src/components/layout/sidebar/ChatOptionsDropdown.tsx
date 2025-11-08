@@ -20,8 +20,8 @@ import { ChevronDown, Star, Trash } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ReactNode, SetStateAction, useCallback, useState } from "react";
 
-import { PencilRenameIcon } from "@/components/shared/icons";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { PencilRenameIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -57,7 +57,10 @@ export default function ChatOptionsDropdown({
     const newStarredValue = starred === undefined ? true : !starred;
 
     try {
-      const newStarredValue = starred === undefined ? true : !starred;
+      // Optimistically update the UI
+      updateConversation(chatId, { starred: newStarredValue });
+
+      // Make the API call
       await chatApi.toggleStarConversation(chatId, newStarredValue);
 
       const conversation = await db.getConversation(chatId);
@@ -69,13 +72,7 @@ export default function ChatOptionsDropdown({
         });
       }
 
-      setIsOpen(false);
       await fetchConversations();
-      // Optimistically update the UI
-      updateConversation(chatId, { starred: newStarredValue });
-
-      // Make the API call
-      await chatApi.toggleStarConversation(chatId, newStarredValue);
     } catch (error) {
       console.error("Failed to update star", error);
       // Revert the optimistic update on error
@@ -103,7 +100,7 @@ export default function ChatOptionsDropdown({
         });
       }
 
-      closeModal();
+      closeEditModal();
       await fetchConversations(1, 20, false);
     } catch (error) {
       console.error("Failed to update chat name", error);

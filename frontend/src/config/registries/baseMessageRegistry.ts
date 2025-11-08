@@ -4,9 +4,9 @@
  * Extends the tools message schema to produce the full message shape.
  */
 
+import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { IntegrationConnectionData } from "@/types/features/integrationTypes";
 import { WorkflowData } from "@/types/features/workflowTypes";
-import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { FileData } from "@/types/shared/fileTypes";
 
 import { TOOLS_MESSAGE_SCHEMA } from "./toolRegistry";

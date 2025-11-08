@@ -16,6 +16,7 @@ import { Chip } from "@heroui/chip";
 import { AlertTriangleIcon } from "lucide-react";
 import React from "react";
 
+// import { PostHogCaptureOnViewed } from "posthog-js/react";
 import { ToolDataMap, ToolName } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
 import CalendarListFetchCard from "@/features/calendar/components/CalendarListFetchCard";
@@ -281,6 +282,9 @@ export default function TextBubble({
         return (
           <React.Fragment key={`tool-${toolName}-${index}`}>
             {renderTool(toolName, typedData, index)}
+            {/*
+            <PostHogCaptureOnViewed >
+            {/* </PostHogCaptureOnViewed> */}
           </React.Fragment>
         );
       })}

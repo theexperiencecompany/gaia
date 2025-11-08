@@ -3,9 +3,9 @@
 import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
+import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 
 import { ContactSupportModal } from "@/features/support";
-import { QuestionMarkCircledIcon } from "@radix-ui/react-icons";
 
 export default function ContactSupport() {
   const { isOpen, onOpen, onOpenChange } = useDisclosure();

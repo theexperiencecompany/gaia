@@ -7,6 +7,7 @@ import { useUpcomingEventsQuery } from "@/features/calendar/hooks/useUpcomingEve
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import UnreadEmailsView from "@/features/mail/components/UnreadEmailsView";
 import { useUnreadEmailsQuery } from "@/features/mail/hooks/useUnreadEmailsQuery";
+import { posthog } from "@/lib/posthog";
 
 export const GridSection = () => {
   const router = useRouter();
@@ -52,6 +53,11 @@ export const GridSection = () => {
 
   // Handle connection flow
   const handleConnect = async (integrationId: string) => {
+    posthog.capture("chat:grid_integration_connect_clicked", {
+      integration_id: integrationId,
+      source: "new_chat_grid",
+    });
+
     try {
       await connectIntegration(integrationId);
     } catch (error) {
@@ -61,10 +67,12 @@ export const GridSection = () => {
 
   // Handle refresh actions
   const handleEmailRefresh = () => {
+    posthog.capture("chat:grid_email_refresh_clicked");
     emailQuery.refetch();
   };
 
   const handleCalendarRefresh = () => {
+    posthog.capture("chat:grid_calendar_refresh_clicked");
     calendarQuery.refetch();
   };
 

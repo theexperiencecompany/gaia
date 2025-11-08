@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { Edit2, MoreVertical, Trash2 } from "lucide-react";
 
 import { CalendarIcon } from "@/components/shared/icons";
+import { posthog } from "@/lib";
 import { Priority, Todo, TodoUpdate } from "@/types/features/todoTypes";
 
 interface TodoItemProps {
@@ -48,7 +49,17 @@ export default function TodoItem({
 }: TodoItemProps) {
   const handleToggleComplete = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
-    onUpdate(todo.id, { completed: !todo.completed });
+    const newCompletedState = !todo.completed;
+
+    // Track todo completion toggle
+    posthog.capture("todos:toggled", {
+      todo_id: todo.id,
+      completed: newCompletedState,
+      priority: todo.priority,
+      had_due_date: !!todo.due_date,
+    });
+
+    onUpdate(todo.id, { completed: newCompletedState });
   };
 
   const isOverdue =
@@ -155,7 +166,16 @@ export default function TodoItem({
                   startContent={<Trash2 className="h-4 w-4" />}
                   className="text-danger"
                   color="danger"
-                  onPress={() => onDelete(todo.id)}
+                  onPress={() => {
+                    // Track todo deletion
+                    posthog.capture("todos:deleted", {
+                      todo_id: todo.id,
+                      was_completed: todo.completed,
+                      priority: todo.priority,
+                      had_due_date: !!todo.due_date,
+                    });
+                    onDelete(todo.id);
+                  }}
                 >
                   Delete
                 </DropdownItem>

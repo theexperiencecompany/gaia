@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/shadcn/dropdown-menu";
 import { useLoading } from "@/features/chat/hooks/useLoading";
+import { posthog } from "@/lib/posthog";
 import { cn } from "@/lib/utils";
 import { SearchMode } from "@/types/shared";
 
@@ -135,6 +136,11 @@ export default function ComposerLeft({
               <DropdownMenuItem
                 key={item.id}
                 onClick={() => {
+                  posthog.capture("chat:composer_plus_menu_clicked", {
+                    item_id: item.id,
+                    item_label: item.label,
+                    is_mode: item.isMode,
+                  });
                   // setLoadingText(item.loadingText ?? "");
                   if (item.isMode) handleSelectionChange(item.id as SearchMode);
                   else if (item.action) item.action();
@@ -186,7 +192,12 @@ export default function ComposerLeft({
                 "border-primary/50 bg-primary/20 text-primary",
             )}
             disabled={isLoading}
-            onClick={onOpenSlashCommandDropdown}
+            onClick={() => {
+              posthog.capture("chat:tools_button_clicked", {
+                is_open: isSlashCommandDropdownOpen,
+              });
+              onOpenSlashCommandDropdown?.();
+            }}
           >
             <ToolIcon
               className="min-h-[20px] min-w-[20px]"

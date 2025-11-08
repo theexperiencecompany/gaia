@@ -36,6 +36,7 @@ import { CheckmarkCircle02Icon } from "@/components/shared/icons";
 import CustomSpinner from "@/components/ui/shadcn/spinner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { posthog } from "@/lib";
 
 import { Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflowCreation } from "../hooks";
@@ -250,6 +251,15 @@ export default function WorkflowModal({
       const result = await createWorkflow(createRequest);
 
       if (result.success && result.workflow) {
+        // Track workflow creation
+        posthog.capture("workflows:created", {
+          workflow_id: result.workflow.id,
+          workflow_title: result.workflow.title,
+          step_count: result.workflow.steps?.length || 0,
+          trigger_type: data.trigger_config.type,
+          has_schedule: data.trigger_config.type === "schedule",
+        });
+
         // Update currentWorkflow with the newly created workflow
         setCurrentWorkflow(result.workflow);
         setCreationPhase("success");
@@ -315,6 +325,14 @@ export default function WorkflowModal({
   const handleDelete = async () => {
     if (mode === "edit" && existingWorkflow) {
       try {
+        // Track workflow deletion
+        posthog.capture("workflows:deleted", {
+          workflow_id: existingWorkflow.id,
+          workflow_title: existingWorkflow.title,
+          step_count: existingWorkflow.steps?.length || 0,
+          is_public: existingWorkflow.is_public,
+        });
+
         // Call the actual delete API
         await workflowApi.deleteWorkflow(existingWorkflow.id);
 
@@ -368,6 +386,15 @@ export default function WorkflowModal({
     forceDifferentTools: boolean = true,
   ) => {
     if (mode !== "edit" || !currentWorkflow) return;
+
+    // Track workflow regeneration
+    posthog.capture("workflows:steps_regenerated", {
+      workflow_id: currentWorkflow.id,
+      workflow_title: currentWorkflow.title,
+      instruction,
+      force_different_tools: forceDifferentTools,
+      previous_step_count: currentWorkflow.steps?.length || 0,
+    });
 
     setIsRegeneratingSteps(true);
     setRegenerationError(null);
@@ -429,6 +456,14 @@ export default function WorkflowModal({
     }
 
     try {
+      // Track workflow run
+      posthog.capture("workflows:executed", {
+        workflow_id: existingWorkflow.id,
+        workflow_title: existingWorkflow.title,
+        step_count: currentWorkflow.steps.length,
+        trigger_type: existingWorkflow.trigger_config.type,
+      });
+
       selectWorkflow(existingWorkflow, { autoSend: true });
 
       // Close the modal after navigation starts
@@ -626,6 +661,10 @@ export default function WorkflowModal({
 
                               try {
                                 if (currentWorkflow.is_public) {
+                                  posthog.capture("workflows:unpublished", {
+                                    workflow_id: currentWorkflow.id,
+                                    workflow_title: currentWorkflow.title,
+                                  });
                                   await workflowApi.unpublishWorkflow(
                                     currentWorkflow.id,
                                   );
@@ -633,6 +672,12 @@ export default function WorkflowModal({
                                     prev ? { ...prev, is_public: false } : null,
                                   );
                                 } else {
+                                  posthog.capture("workflows:published", {
+                                    workflow_id: currentWorkflow.id,
+                                    workflow_title: currentWorkflow.title,
+                                    step_count:
+                                      currentWorkflow.steps?.length || 0,
+                                  });
                                   await workflowApi.publishWorkflow(
                                     currentWorkflow.id,
                                   );

@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import React from "react";
+import React, { useEffect } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useComposerUI } from "@/stores/composerStore";
 
 interface SelectedToolIndicatorProps {
   toolName: string | null;
@@ -25,6 +26,24 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
   toolCategory,
   onRemove,
 }) => {
+  const { isSlashCommandDropdownOpen } = useComposerUI();
+
+  // Handle Escape key to close the indicator
+  useEffect(() => {
+    if (!toolName || !onRemove) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle escape if slash command dropdown is NOT open
+      if (e.key === "Escape" && !isSlashCommandDropdownOpen) {
+        e.preventDefault();
+        onRemove();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toolName, onRemove, isSlashCommandDropdownOpen]);
+
   return (
     <AnimatePresence>
       {toolName && (

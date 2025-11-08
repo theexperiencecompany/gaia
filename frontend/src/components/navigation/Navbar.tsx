@@ -16,6 +16,7 @@ import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
+import { posthog } from "@/lib";
 
 import { Github } from "../shared";
 import { RaisedButton } from "../ui/shadcn/raised-button";
@@ -158,6 +159,12 @@ export default function Navbar() {
                       setActiveDropdown(null);
                       toggleBackdrop(false);
                     }}
+                    onClick={() => {
+                      posthog.capture("navigation:navbar_link_clicked", {
+                        label: item.label,
+                        href: item.href,
+                      });
+                    }}
                   >
                     {/* {hoveredItem === item.label.toLowerCase() && (
                       <div className="absolute inset-0 h-full w-full rounded-lg bg-zinc-800/40 font-medium! transition-all! duration-300 ease-out" />
@@ -168,7 +175,12 @@ export default function Navbar() {
                   <button
                     key={item.menu}
                     className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-zinc-400 capitalize transition-colors hover:text-zinc-100"
-                    onMouseEnter={() => handleMouseEnter(item.menu)}
+                    onMouseEnter={() => {
+                      handleMouseEnter(item.menu);
+                      posthog.capture("navigation:navbar_dropdown_opened", {
+                        menu: item.menu,
+                      });
+                    }}
                   >
                     {hoveredItem === item.menu && (
                       <div className="absolute inset-0 h-full w-full rounded-xl bg-zinc-800 font-medium! transition-all duration-300 ease-out" />
@@ -201,6 +213,11 @@ export default function Navbar() {
                 href="https://github.com/heygaia/gaia"
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => {
+                  posthog.capture("navigation:github_clicked", {
+                    source: "navbar",
+                  });
+                }}
               >
                 <RaisedButton
                   size={"sm"}
@@ -230,6 +247,12 @@ export default function Navbar() {
                   size={"sm"}
                   className="rounded-xl text-black!"
                   color="#00bbff"
+                  onClick={() => {
+                    posthog.capture("navigation:cta_clicked", {
+                      is_logged_in: !!user.email,
+                      destination: user.email ? "/c" : "/signup",
+                    });
+                  }}
                 >
                   {user.email ? "Open Chat" : "Get Started"}
                 </RaisedButton>
