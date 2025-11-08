@@ -5,6 +5,8 @@ using ChromaDB for vector storage and retrieval.
 """
 
 import asyncio
+import hashlib
+import inspect
 import pickle
 from collections.abc import Iterable
 from datetime import datetime, timezone
@@ -334,15 +336,30 @@ class ChromaStore(BaseStore):
                 continue
 
             if op.query and self.embeddings:
-                # Vector search with query
+                # Vector search with ChromaDB's native where filter for namespace
                 query_embedding = await self.embeddings.aembed_query(op.query)
 
                 try:
+                    # Build where filter for namespace prefix
+                    where_filter: dict[str, Any] | None = None
+                    if op.namespace_prefix:
+                        namespace_str = "::".join(op.namespace_prefix)
+                        where_filter = {"namespace": {"$eq": namespace_str}}
+
+                    # Apply additional filters if provided
+                    if op.filter:
+                        # Combine namespace filter with op.filter if both exist
+                        if where_filter:
+                            where_filter = {"$and": [where_filter, op.filter]}
+                        else:
+                            where_filter = op.filter
+
+                    # Use ChromaDB's native query with where filter
                     search_result = await collection.query(
                         query_embeddings=[query_embedding],
-                        n_results=min(op.limit + op.offset, len(candidate_ids)),
+                        n_results=op.limit + op.offset,
                         include=["metadatas", "distances", "documents"],
-                        where=None,
+                        where=where_filter,  # type: ignore[arg-type]
                     )
 
                     items = []
@@ -379,7 +396,7 @@ class ChromaStore(BaseStore):
                             created_at_str = metadata.get("created_at")
                             updated_at_str = metadata.get("updated_at")
 
-                            # Convert distance to similarity score (cosine distance -> similarity)
+                            # Convert distance to similarity score
                             score = 1.0 - distance if distance is not None else None
 
                             items.append(
@@ -403,6 +420,7 @@ class ChromaStore(BaseStore):
                                 )
                             )
 
+                    # Apply pagination
                     results[i] = items[op.offset : op.offset + op.limit]
                 except Exception as e:
                     logger.error(f"Error in vector search: {e}")
@@ -462,10 +480,17 @@ class ChromaStore(BaseStore):
     ) -> None:
         """Upsert a single item."""
         now = datetime.now(timezone.utc)
+        # Store namespace in metadata for efficient filtering
+        namespace_str = "::".join(op.namespace) if op.namespace else "default"
         metadata = {
             "created_at": now.isoformat(),
             "updated_at": now.isoformat(),
+            "namespace": namespace_str,
         }
+
+        # Add tool_hash to metadata if provided in value
+        if isinstance(op.value, dict) and "tool_hash" in op.value:
+            metadata["tool_hash"] = op.value["tool_hash"]
 
         # Serialize value to document
         document = pickle.dumps(op.value).decode("latin1")
@@ -570,7 +595,7 @@ class ChromaStore(BaseStore):
     auto_initialize=False,
 )
 async def initialize_chroma_tools_store():
-    """Initialize and return the ChromaDB-backed tools store."""
+    """Initialize and return the ChromaDB-backed tools store with incremental updates."""
     tool_registry = await get_tool_registry()
     chroma_client = await ChromaClient.get_client()
 
@@ -591,36 +616,123 @@ async def initialize_chroma_tools_store():
     )
 
     # Get collection to ensure it exists
-    await store._get_collection()
+    collection = await store._get_collection()
 
-    # Register tools
+    # Get current tools from registry
     tool_dict = tool_registry.get_tool_dict()
-    all_tools = [tool_data for tool_data in tool_dict.values()]
 
-    logger.info(f"Registering {len(all_tools)} tools in ChromaDB store")
+    # Compute hash for each tool (description + code)
+    current_tools_with_hashes = {}
+    for tool_name, tool in tool_dict.items():
+        # Compute tool hash based on description and code
+        try:
+            # Try to get source code if available
+            code_source = inspect.getsource(tool)
 
-    # Store all tools
-    put_ops = []
-    for tool in tool_dict.values():
+            # Normalize whitespace
+            code_source = code_source.strip()
+            code_source = "\n".join(line.rstrip() for line in code_source.split("\n"))
+
+            # Hash description + code
+            content = f"{tool.description}::{code_source}"
+            tool_hash = hashlib.sha256(content.encode()).hexdigest()
+        except (OSError, TypeError, AttributeError):
+            # Fallback to description-only hash
+            tool_hash = hashlib.sha256(tool.description.encode()).hexdigest()
+
         tool_category = tool_registry.get_category(
             name=tool_registry.get_category_of_tool(tool.name)
         )
+        if tool_category:
+            current_tools_with_hashes[tool_name] = {
+                "tool": tool,
+                "hash": tool_hash,
+                "namespace": tool_category.space,
+            }
 
-        if not tool_category:
-            continue
+    # Get existing tools from ChromaDB
+    existing_data = None
+    existing_tools = {}
+    try:
+        existing_data = await collection.get(include=["metadatas"])
+        if (
+            existing_data
+            and existing_data.get("ids")
+            and existing_data.get("metadatas")
+        ):
+            for doc_id, metadata in zip(
+                existing_data["ids"], existing_data["metadatas"] or []
+            ):
+                if metadata and "::" in doc_id:
+                    tool_name = doc_id.split("::")[-1]
+                    existing_tools[tool_name] = metadata.get("tool_hash", "")
+    except Exception as e:
+        logger.warning(f"Error fetching existing tools: {e}, will register all tools")
 
+    # Determine what needs to be updated
+    tools_to_upsert = []
+    tools_to_delete = []
+
+    # Find new or modified tools
+    for tool_name, tool_data in current_tools_with_hashes.items():
+        existing_hash = existing_tools.get(tool_name)
+        if existing_hash != tool_data["hash"]:
+            tools_to_upsert.append((tool_name, tool_data))
+
+    # Find deleted tools
+    for existing_tool_name in existing_tools:
+        if existing_tool_name not in current_tools_with_hashes:
+            tools_to_delete.append(existing_tool_name)
+
+    # Log what we're doing
+    if not tools_to_upsert and not tools_to_delete:
+        logger.info("ChromaDB tools store is up-to-date, no changes needed")
+        return store
+
+    logger.info(
+        f"Updating ChromaDB tools store: {len(tools_to_upsert)} to upsert, "
+        f"{len(tools_to_delete)} to delete"
+    )
+
+    # Build operations
+    put_ops = []
+    for tool_name, tool_data in tools_to_upsert:
+        tool = tool_data["tool"]
         put_ops.append(
             PutOp(
-                namespace=(tool_category.space,),
-                key=tool.name,
-                value={"description": tool.description},
+                namespace=(tool_data["namespace"],),
+                key=tool_name,
+                value={
+                    "description": tool.description,
+                    "tool_hash": tool_data["hash"],
+                },
                 index=["description"],
             )
         )
 
-    # Batch insert all tools
+    # Add delete operations for removed tools
+    for tool_name in tools_to_delete:
+        # Find namespace from existing data
+        if existing_data and existing_data.get("ids"):
+            for doc_id in existing_data["ids"]:
+                if doc_id.endswith(f"::{tool_name}"):
+                    namespace_str = (
+                        doc_id.split("::")[0] if "::" in doc_id else "default"
+                    )
+                    put_ops.append(
+                        PutOp(
+                            namespace=(namespace_str,),
+                            key=tool_name,
+                            value=None,  # Delete operation
+                        )
+                    )
+                    break
+
+    # Execute batch operations
     if put_ops:
         await store.abatch(put_ops)
-        logger.info(f"Successfully registered {len(put_ops)} tools in ChromaDB")
+        logger.info(f"Successfully updated {len(put_ops)} tools in ChromaDB")
+
+    return store
 
     return store
