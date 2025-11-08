@@ -1,6 +1,6 @@
 import {
-  TOOLS_MESSAGE_KEYS,
   type ToolDataEntry,
+  TOOLS_MESSAGE_KEYS,
 } from "@/config/registries/toolRegistry";
 import { posthog } from "@/lib/posthog";
 import { MessageType } from "@/types/features/convoTypes";
