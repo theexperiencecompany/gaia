@@ -135,6 +135,7 @@ class ChromaClient:
             )
         return instance
 
+
 @lazy_provider(
     name="chromadb_client",
     required_keys=[
