@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 
 import { RaisedButton } from "@/components/ui/shadcn/raised-button";
