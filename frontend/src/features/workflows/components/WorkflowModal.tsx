@@ -26,7 +26,6 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -35,6 +34,7 @@ import { toast } from "sonner";
 import { CheckmarkCircle02Icon } from "@/components/shared/icons";
 import CustomSpinner from "@/components/ui/shadcn/spinner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
 import { Workflow, workflowApi } from "../api/workflowApi";
@@ -477,30 +477,23 @@ export default function WorkflowModal({
               }
             }}
             startContent={
-              selectedTriggerOption && (
-                <Image
-                  src={selectedTriggerOption.icon}
-                  alt={selectedTriggerOption.name}
-                  width={20}
-                  height={20}
-                  className="h-5 w-5 object-contain"
-                />
-              )
+              selectedTriggerOption &&
+              getToolCategoryIcon(selectedTriggerOption.id, {
+                width: 20,
+                height: 20,
+                showBackground: false,
+              })
             }
           >
             {triggerOptions.map((trigger) => (
               <SelectItem
                 key={trigger.id}
                 textValue={trigger.name}
-                startContent={
-                  <Image
-                    src={trigger.icon}
-                    alt={trigger.name}
-                    width={20}
-                    height={20}
-                    className="h-5 w-5 object-contain"
-                  />
-                }
+                startContent={getToolCategoryIcon(trigger.id, {
+                  width: 20,
+                  height: 20,
+                  showBackground: false,
+                })}
                 description={trigger.description}
               >
                 {trigger.name}
