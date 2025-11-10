@@ -150,6 +150,7 @@ class ToolRegistry:
             tools=get_handoff_tools(
                 [
                     "gmail",
+                    "calendar",
                     "notion",
                     "twitter",
                     "linkedin",

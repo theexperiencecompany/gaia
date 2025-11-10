@@ -12,25 +12,6 @@ import asyncio
 from typing import Any
 
 from app.agents.llm.client import init_llm
-from app.agents.prompts.subagent_prompts import (
-    AIRTABLE_AGENT_SYSTEM_PROMPT,
-    ASANA_AGENT_SYSTEM_PROMPT,
-    CALENDAR_AGENT_SYSTEM_PROMPT,
-    GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
-    GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
-    GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
-    GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
-    LINEAR_AGENT_SYSTEM_PROMPT,
-    LINKEDIN_AGENT_SYSTEM_PROMPT,
-    MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
-    NOTION_AGENT_SYSTEM_PROMPT,
-    REDDIT_AGENT_SYSTEM_PROMPT,
-    SLACK_AGENT_SYSTEM_PROMPT,
-    TODOIST_AGENT_SYSTEM_PROMPT,
-    TRELLO_AGENT_SYSTEM_PROMPT,
-    TWITTER_AGENT_SYSTEM_PROMPT,
-    ZOOM_AGENT_SYSTEM_PROMPT,
-)
 from app.config.loggers import langchain_logger as logger
 from app.langchain.core.subgraphs.github_subgraph import create_github_subgraph
 from app.langchain.core.subgraphs.gmail_subgraph import create_gmail_subgraph
@@ -81,7 +62,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="notion",
             name="notion_agent",
-            prompt=NOTION_AGENT_SYSTEM_PROMPT,
         )
 
         return notion_agent
@@ -106,7 +86,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="twitter",
             name="twitter_agent",
-            prompt=TWITTER_AGENT_SYSTEM_PROMPT,
         )
 
         return twitter_agent
@@ -131,7 +110,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="linkedin",
             name="linkedin_agent",
-            prompt=LINKEDIN_AGENT_SYSTEM_PROMPT,
         )
 
         return linkedin_agent
@@ -158,7 +136,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="calendar",
             name="calendar_agent",
-            prompt=CALENDAR_AGENT_SYSTEM_PROMPT,
             use_direct_tools=True,  # Bind all 7 calendar tools directly
             disable_retrieve_tools=True,  # Disable retrieve_tools functionality
         )
@@ -192,7 +169,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="reddit",
             name="reddit_agent",
-            prompt=REDDIT_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -204,7 +180,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="airtable",
             name="airtable_agent",
-            prompt=AIRTABLE_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -216,7 +191,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="linear",
             name="linear_agent",
-            prompt=LINEAR_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -228,7 +202,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="slack",
             name="slack_agent",
-            prompt=SLACK_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -258,7 +231,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="google_tasks",
             name="google_tasks_agent",
-            prompt=GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -270,7 +242,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="google_sheets",
             name="google_sheets_agent",
-            prompt=GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -282,7 +253,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="todoist",
             name="todoist_agent",
-            prompt=TODOIST_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -294,7 +264,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="microsoft_teams",
             name="microsoft_teams_agent",
-            prompt=MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -306,7 +275,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="google_meet",
             name="google_meet_agent",
-            prompt=GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -318,7 +286,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="zoom",
             name="zoom_agent",
-            prompt=ZOOM_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -330,7 +297,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="google_maps",
             name="google_maps_agent",
-            prompt=GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -342,7 +308,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="asana",
             name="asana_agent",
-            prompt=ASANA_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -354,7 +319,6 @@ class ProviderSubAgents:
             llm=llm,
             tool_space="trello",
             name="trello_agent",
-            prompt=TRELLO_AGENT_SYSTEM_PROMPT,
         )
 
     @staticmethod
@@ -372,6 +336,7 @@ class ProviderSubAgents:
 
         results = await asyncio.gather(
             ProviderSubAgents.create_gmail_agent(llm),
+            ProviderSubAgents.create_calendar_agent(llm),
             ProviderSubAgents.create_notion_agent(llm),
             ProviderSubAgents.create_twitter_agent(llm),
             ProviderSubAgents.create_linkedin_agent(llm),
@@ -393,22 +358,23 @@ class ProviderSubAgents:
         )
         return {
             "gmail_agent": results[0],
-            "notion_agent": results[1],
-            "twitter_agent": results[2],
-            "linkedin_agent": results[3],
-            "github_agent": results[4],
-            "reddit_agent": results[5],
-            "airtable_agent": results[6],
-            "linear_agent": results[7],
-            "slack_agent": results[8],
-            "hubspot_agent": results[9],
-            "google_tasks_agent": results[10],
-            "google_sheets_agent": results[11],
-            "todoist_agent": results[12],
-            "microsoft_teams_agent": results[13],
-            "google_meet_agent": results[14],
-            "zoom_agent": results[15],
-            "google_maps_agent": results[16],
-            "asana_agent": results[17],
-            "trello_agent": results[18],
+            "calendar_agent": results[1],
+            "notion_agent": results[2],
+            "twitter_agent": results[3],
+            "linkedin_agent": results[4],
+            "github_agent": results[5],
+            "reddit_agent": results[6],
+            "airtable_agent": results[7],
+            "linear_agent": results[8],
+            "slack_agent": results[9],
+            "hubspot_agent": results[10],
+            "google_tasks_agent": results[11],
+            "google_sheets_agent": results[12],
+            "todoist_agent": results[13],
+            "microsoft_teams_agent": results[14],
+            "google_meet_agent": results[15],
+            "zoom_agent": results[16],
+            "google_maps_agent": results[17],
+            "asana_agent": results[18],
+            "trello_agent": results[19],
         }

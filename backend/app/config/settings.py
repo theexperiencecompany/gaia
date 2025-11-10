@@ -22,7 +22,7 @@ from app.config.loggers import app_logger as logger
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
 from dotenv import load_dotenv
-from pydantic import computed_field, model_validator
+from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 load_dotenv()
@@ -118,19 +118,6 @@ class CommonSettings(BaseAppSettings):
         validate_default=False,
         arbitrary_types_allowed=True,
     )
-
-    @model_validator(mode="after")
-    def validate_settings(self):
-        """Custom validation logic for settings."""
-        settings_validator.configure(
-            self.SHOW_MISSING_KEY_WARNINGS, is_production=self.ENV == "production"
-        )
-        settings_validator.validate_settings(self)
-
-        if self.SHOW_MISSING_KEY_WARNINGS:
-            settings_validator.log_validation_results()
-
-        return self
 
 
 class ProductionSettings(CommonSettings):

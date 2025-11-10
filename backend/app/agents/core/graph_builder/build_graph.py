@@ -43,7 +43,9 @@ async def build_graph(
         llm=chat_llm,
         agent_name="main_agent",
         tool_registry=tool_registry.get_tool_dict(),
-        retrieve_tools_coroutine=get_retrieve_tools_function(tool_space="general"),
+        retrieve_tools_coroutine=get_retrieve_tools_function(
+            tool_space="general", limit=8
+        ),
         sub_agents=sub_agents,  # pyright: ignore[reportArgumentType]
         pre_model_hooks=[
             create_filter_messages_node(

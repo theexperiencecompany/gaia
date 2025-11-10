@@ -1,4 +1,4 @@
-from typing import Annotated, List, Optional
+from typing import Annotated, List
 
 from app.agents.prompts.github_node_prompts import GITHUB_ORCHESTRATOR_PROMPT
 from app.agents.prompts.gmail_node_prompts import GMAIL_ORCHESTRATOR_PROMPT
@@ -6,6 +6,7 @@ from app.agents.prompts.hubspot_node_prompts import HUBSPOT_ORCHESTRATOR_PROMPT
 from app.agents.prompts.subagent_prompts import (
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
+    CALENDAR_AGENT_SYSTEM_PROMPT,
     GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
     GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
     GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
@@ -86,7 +87,7 @@ def create_handoff_tool(
     return handoff_tool
 
 
-def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
+def get_handoff_tools(enabled_providers: List[str]):
     """
     Get handoff tools for enabled provider sub-agent graphs.
 
@@ -96,30 +97,6 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
     Returns:
         List of handoff tools for the enabled provider sub-agent graphs
     """
-
-    if enabled_providers is None:
-        enabled_providers = [
-            "gmail",
-            "notion",
-            "twitter",
-            "linkedin",
-            "github",
-            "reddit",
-            "airtable",
-            "linear",
-            "slack",
-            "hubspot",
-            "google_tasks",
-            "google_sheets",
-            "todoist",
-            "microsoft_teams",
-            "google_meet",
-            "zoom",
-            "google_maps",
-            "asana",
-            "trello",
-        ]
-
     tools = []
 
     if "gmail" in enabled_providers:
@@ -407,19 +384,20 @@ def get_handoff_tools(enabled_providers: Optional[List[str]] = None):
             )
         )
 
-    # if "calendar" in enabled_providers:
-    #     tools.append(
-    #         create_handoff_tool(
-    #             tool_name="call_calendar_agent",
-    #             agent_name="calendar_agent",
-    #             description=HANDOFF_DESCRIPTION_TEMPLATE.format(
-    #                 provider_name="Calendar",
-    #                 domain="calendar and event management",
-    #                 capabilities="creating events, scheduling meetings, managing calendars, searching events, editing appointments, handling recurring events, and comprehensive calendar workflows",
-    #             ),
-    #             system_prompt=CALENDAR_AGENT_SYSTEM_PROMPT,
-    #         )
-    #     )
+    if "calendar" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_calendar_agent",
+                agent_name="calendar_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Calendar",
+                    domain="calendar and event management",
+                    capabilities="creating events, scheduling meetings, managing calendars, searching events, editing appointments, handling recurring events, and comprehensive calendar workflows",
+                    use_cases="event creation, meeting scheduling, calendar management, or any calendar-related task",
+                ),
+                system_prompt=CALENDAR_AGENT_SYSTEM_PROMPT,
+            )
+        )
 
     logger.info(
         f"Created {len(tools)} handoff tools for providers: {enabled_providers}"

@@ -31,7 +31,6 @@ class SubAgentFactory:
     async def create_provider_subagent(
         provider: str,
         name: str,
-        prompt: str,
         llm: LanguageModelLike,
         tool_space: str = "general",
         retrieve_tools_limit: int = 10,
@@ -123,7 +122,7 @@ class SubAgentFactory:
                     "retrieve_tools_coroutine": get_retrieve_tools_function(
                         tool_space=tool_space,
                         include_core_tools=False,  # Provider agents don't need core tools
-                        additional_tools=[get_all_memory, search_memory],
+                        additional_tools=[search_memory],
                         limit=retrieve_tools_limit,
                     )
                 }

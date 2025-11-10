@@ -19,7 +19,6 @@ You are the dedicated expert for all {provider_name}-related tasks. A user has r
 ## Core Tools Available to You:
 
 ### Memory Tools:
-- **get_all_memory**: Retrieve all stored memories about the user (preferences, name, personal details, past interactions)
 - **search_memory**: Search through user memories using specific queries or keywords
   - Use these tools multiple times as needed to gather relevant user context
   - Essential for personalizing your responses and understanding user preferences
