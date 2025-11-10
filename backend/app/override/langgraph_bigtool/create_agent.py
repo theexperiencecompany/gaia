@@ -186,6 +186,10 @@ def create_agent(
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[arg-type]
         response = llm_with_tools.invoke(state["messages"])
 
+        # Handle empty response content (edge case)
+        # Happens with gemini models https://discuss.ai.google.dev/t/gemini-2-5-pro-with-empty-response-text/81175
+        response.content = response.content or "Empty response from model."
+
         # Set the name for the response for filtering
         response.additional_kwargs = {"visible_to": {agent_name}}
         return {"messages": [response]}  # type: ignore[return-value]
@@ -210,7 +214,11 @@ def create_agent(
         tools_to_bind.extend(selected_tools)
         tools_to_bind.extend(initial_tools)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[arg-type]
-        response = await llm_with_tools.ainvoke(state["messages"])
+        response: AIMessage = await llm_with_tools.ainvoke(state["messages"])
+
+        # Handle empty response content (edge case)
+        # Happens with gemini models https://discuss.ai.google.dev/t/gemini-2-5-pro-with-empty-response-text/81175
+        response.content = response.content or "Empty response from model."
 
         # Set the name for the response for filtering
         response.additional_kwargs = {"visible_to": {agent_name}}

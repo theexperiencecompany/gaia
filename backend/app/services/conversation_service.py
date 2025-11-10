@@ -145,24 +145,10 @@ async def get_conversation(conversation_id: str, user: dict) -> dict:
             detail="Conversation not found or does not belong to the user",
         )
 
-    conversation["_id"] = str(conversation["_id"])
-
-    # Convert datetime objects to ISO format strings for JSON serialization
-    if "createdAt" in conversation and isinstance(conversation["createdAt"], datetime):
-        conversation["createdAt"] = conversation["createdAt"].isoformat()
-
-    # Convert datetime objects in messages if present
-    if "messages" in conversation:
-        for message in conversation["messages"]:
-            if isinstance(message.get("timestamp"), datetime):
-                message["timestamp"] = message["timestamp"].isoformat()
-            if isinstance(message.get("createdAt"), datetime):
-                message["createdAt"] = message["createdAt"].isoformat()
+    conversations = _convert_ids([conversation])
 
     # Convert legacy tool data to unified format
-    conversation = convert_conversation_messages(conversation)
-
-    return conversation
+    return convert_conversation_messages(conversations[0])
 
 
 async def star_conversation(conversation_id: str, starred: bool, user: dict) -> dict:
