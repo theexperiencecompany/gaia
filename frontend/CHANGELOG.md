@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.0 (2025-11-11)
+
+## What's Changed
+* fix: Dexie fetching uses batch syncing & sidebar state updation by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/276
+* release: v0.6.1-beta by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/280
+* release: v0.6.1-beta by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/282
+* chore: release by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/283
+* feat: Posthog analytics setup and integrations page by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/284
+* feat: added more integrations eg: github, linear, slack etc. by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/271
+* release: v0.7.0-beta by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/285
+* chore(release): add fallback release-please config and update workflow by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/286
+
+
+**Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.6.0...v0.7.0
+
 ## 0.6.1 (2025-11-07)
 
 ## What's Changed
