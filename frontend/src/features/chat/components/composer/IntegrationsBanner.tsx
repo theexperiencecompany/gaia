@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useMemo } from "react";
 
 import { ArrowRight01Icon, Button } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { shuffle } from "lodash";
 
 interface Integration {
   id: string;
@@ -26,6 +27,12 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
     return null;
   }
 
+  // Memoize shuffled integrations to prevent re-shuffling on every render
+  const shuffledIntegrations = useMemo(
+    () => shuffle(integrations.slice(0, 14)),
+    [integrations],
+  );
+
   return (
     <Button
       className="absolute -top-4 z-[0] flex h-fit w-[92%] rounded-full bg-zinc-800/40 px-4 py-2 pb-8 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 sm:w-[46%]"
@@ -34,7 +41,7 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
       <div className="flex w-full items-center justify-between">
         <span className="text-xs">Connect your tools to GAIA</span>
         <div className="ml-3 flex items-center gap-1">
-          {integrations.slice(0, 8).map((integration) => (
+          {shuffledIntegrations.map((integration) => (
             <div
               key={integration.id}
               className="opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-120"

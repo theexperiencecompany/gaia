@@ -13,13 +13,15 @@ import { Integration } from "../types";
 interface IntegrationsCardProps {
   onClose?: () => void;
   onIntegrationClick?: (integrationId: string) => void;
+  size?: "default" | "small";
 }
 
 const IntegrationItem: React.FC<{
   integration: Integration;
   onConnect: (id: string) => void;
   onClick: (id: string) => void;
-}> = ({ integration, onConnect, onClick }) => {
+  size?: "default" | "small";
+}> = ({ integration, onConnect, onClick, size }) => {
   const isConnected = integration.status === "connected";
   const isAvailable = !!integration.loginEndpoint;
 
@@ -33,10 +35,12 @@ const IntegrationItem: React.FC<{
       onConnect(integration.id);
     }
   };
+  const paddingClass = size === "small" ? "p-2" : "p-4";
+  const gapClass = size === "small" ? "gap-2" : "gap-3";
 
   return (
     <div
-      className="flex cursor-pointer flex-col gap-3 overflow-hidden rounded-2xl bg-zinc-800/40 p-4 transition hover:bg-zinc-700"
+      className={`flex min-h-12 cursor-pointer flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
       onClick={handleClick}
     >
       {/* {color && (
@@ -105,26 +109,26 @@ const IntegrationItem: React.FC<{
 
       <div className="flex items-center gap-3">
         <div className="flex-shrink-0">
-          <div className="flex items-center justify-center rounded-lg bg-zinc-800 p-2">
-            <Image
-              width={35}
-              height={35}
-              src={integration.icons[0]}
-              alt={integration.name}
-              className="aspect-square max-w-[35] min-w-[35] object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          </div>
+          {getToolCategoryIcon(integration.id, {
+            size: 22,
+            width: 22,
+            height: 22,
+            showBackground: false,
+          })}
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="text-sm font-medium">{integration.name}</div>
-          <div className="truncate text-xs font-light text-zinc-400">
-            {integration.description}
+        {size !== "small" ? (
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div className="text-sm font-medium">{integration.name}</div>
+            <div className="truncate text-xs font-light text-zinc-400">
+              {integration.description}
+            </div>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="flex-1 text-sm font-medium">{integration.name}</div>
+          </>
+        )}
 
         <div className="flex-shrink-0" onClick={handleConnectClick}>
           {isConnected && (
@@ -160,6 +164,7 @@ export { IntegrationItem };
 export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   onClose,
   onIntegrationClick,
+  size = "default",
 }) => {
   const { integrations, connectIntegration } = useIntegrations();
 
@@ -193,17 +198,20 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
       <Accordion
         variant="light"
         isCompact
+        className="px-0!"
         selectedKeys={selectedKeys}
         onSelectionChange={handleSelectionChange}
         itemClasses={{
           base: "pb-1",
           trigger: "cursor-pointer",
+          title: "pl-1",
         }}
       >
         <AccordionItem
           key="integrations"
+          textValue={`Integrations ${connectedCount} of ${integrations.length} connected`}
           title={
-            <div className="flex items-center gap-3 px-1 pt-1">
+            <div className="flex items-center gap-3 pt-1">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-normal text-foreground-500">
@@ -218,12 +226,13 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
           }
         >
           <div onClick={(e) => e.stopPropagation()}>
-            <div className="flex flex-col gap-1">
+            <div className="grid grid-cols-2 gap-2">
               {integrations.map((integration) => (
                 <IntegrationItem
                   key={integration.id}
                   integration={integration}
                   onConnect={handleConnect}
+                  size={size}
                   onClick={(id) => onIntegrationClick?.(id)}
                 />
               ))}

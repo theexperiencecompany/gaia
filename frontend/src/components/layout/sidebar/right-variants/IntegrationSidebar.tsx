@@ -2,13 +2,13 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import Image from "next/image";
 import React from "react";
 
 import { Separator, SidebarHeader } from "@/components/ui";
 import { SidebarContent } from "@/components/ui/shadcn/sidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { Integration } from "@/features/integrations/types";
 
 interface IntegrationSidebarProps {
@@ -49,18 +49,12 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   return (
     <div className="flex h-full max-h-[calc(100vh-60px)] flex-col px-5">
       <SidebarHeader>
-        <div className="flex w-fit items-center justify-center p-1">
-          <Image
-            width={40}
-            height={40}
-            src={integration.icons[0]}
-            alt={integration.name}
-            className="aspect-square max-w-[40px] min-w-[40px] object-contain"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-        </div>
+        {getToolCategoryIcon(integration.id, {
+          size: 40,
+          width: 40,
+          height: 40,
+          showBackground: true,
+        })}
 
         <div className="mb-0 flex flex-col items-start gap-1">
           <div className="flex w-full items-center justify-between">
@@ -110,27 +104,13 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   variant="flat"
                   color="default"
                   startContent={
-                    tool.integration?.requiredIntegration && (
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full p-1">
-                        <Image
-                          width={30}
-                          height={30}
-                          src={
-                            includedIntegrations.find(
-                              (int) =>
-                                int.id ===
-                                tool.integration?.requiredIntegration,
-                            )?.icons[0] || integration.icons[0]
-                          }
-                          alt=""
-                          className="aspect-square object-contain"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display =
-                              "none";
-                          }}
-                        />
-                      </div>
-                    )
+                    tool.integration?.requiredIntegration &&
+                    getToolCategoryIcon(tool.integration.requiredIntegration, {
+                      size: 18,
+                      width: 18,
+                      height: 18,
+                      showBackground: false,
+                    })
                   }
                 >
                   {category

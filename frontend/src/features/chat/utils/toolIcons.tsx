@@ -10,6 +10,8 @@ import {
   Target02Icon,
 } from "@/components/shared/icons";
 
+import { useIconColorDetection } from "../hooks/useIconColorDetection";
+
 interface IconProps {
   size?: number;
   width?: number;
@@ -224,6 +226,28 @@ const iconConfigs: Record<string, IconConfig> = {
   },
 };
 
+// Component that auto-detects and inverts dark icons
+const AutoInvertIcon: React.FC<{
+  src: string;
+  alt: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  className?: string;
+}> = ({ src, alt, size, width, height, className }) => {
+  const { shouldInvert } = useIconColorDetection(src);
+
+  return (
+    <Image
+      alt={alt}
+      width={width || size || 20}
+      height={height || size || 20}
+      className={`${className} aspect-square object-contain ${shouldInvert ? "invert" : ""}`}
+      src={src}
+    />
+  );
+};
+
 export const getToolCategoryIcon = (
   category: string,
   iconProps: IconProps = {},
@@ -242,10 +266,12 @@ export const getToolCategoryIcon = (
   if (!config) return null;
 
   const iconElement = config.isImage ? (
-    <Image
+    <AutoInvertIcon
       alt={`${category} Icon`}
-      {...defaultProps}
-      className={`${restProps.className} aspect-square object-contain`}
+      size={defaultProps.size}
+      width={defaultProps.width}
+      height={defaultProps.height}
+      className={restProps.className}
       src={config.icon as string}
     />
   ) : (

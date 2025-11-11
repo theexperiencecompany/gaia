@@ -58,18 +58,7 @@ export const integrationsApi = {
       console.error("Failed to get integration status:", error);
       // Return empty array if we can't determine status
       return {
-        integrations: [
-          { integrationId: "google_calendar", connected: false },
-          { integrationId: "google_docs", connected: false },
-          { integrationId: "gmail", connected: false },
-          { integrationId: "google_drive", connected: false },
-          { integrationId: "github", connected: false },
-          { integrationId: "figma", connected: false },
-          { integrationId: "notion", connected: false },
-          { integrationId: "twitter", connected: false },
-          { integrationId: "linkedin", connected: false },
-          { integrationId: "google sheet", connected: false },
-        ],
+        integrations: [],
       };
     }
   },
