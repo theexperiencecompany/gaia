@@ -20,6 +20,59 @@ from app.services.composio.composio_service import get_composio_service
 from langchain_core.language_models import LanguageModelLike
 from langgraph.graph.state import CompiledStateGraph
 
+# Email Composition Tools
+EMAIL_COMPOSITION_TOOLS = [
+    "GMAIL_CREATE_EMAIL_DRAFT",
+    "GMAIL_SEND_EMAIL",
+    "GMAIL_SEND_DRAFT",
+    "GMAIL_LIST_DRAFTS",
+    "GMAIL_DELETE_DRAFT",
+    "GMAIL_REPLY_TO_THREAD",
+    "GMAIL_FORWARD_MESSAGE",
+]
+
+# Email Retrieval Tools
+EMAIL_RETRIEVAL_TOOLS = [
+    "GMAIL_FETCH_EMAILS",
+    "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+    "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+    "GMAIL_LIST_THREADS",
+]
+
+# Email Management Tools
+EMAIL_MANAGEMENT_TOOLS = [
+    "GMAIL_ADD_LABEL_TO_EMAIL",
+    "GMAIL_CREATE_LABEL",
+    "GMAIL_LIST_LABELS",
+    "GMAIL_MODIFY_THREAD_LABELS",
+    "GMAIL_PATCH_LABEL",
+    "GMAIL_REMOVE_LABEL",
+    "GMAIL_DELETE_MESSAGE",
+    "GMAIL_MOVE_TO_TRASH",
+]
+
+# Contact Management Tools
+CONTACT_MANAGEMENT_TOOLS = [
+    "GMAIL_GET_CONTACTS",
+    "GMAIL_GET_PEOPLE",
+    "GMAIL_GET_PROFILE",
+    "GMAIL_SEARCH_PEOPLE",
+]
+
+# Attachment Handling Tools
+ATTACHMENT_HANDLING_TOOLS = [
+    "GMAIL_GET_ATTACHMENT",
+]
+
+# All tools used in Gmail subgraph (merged from all categories)
+GMAIL_TOOLS = (
+    EMAIL_COMPOSITION_TOOLS
+    + EMAIL_RETRIEVAL_TOOLS
+    + EMAIL_MANAGEMENT_TOOLS
+    + CONTACT_MANAGEMENT_TOOLS
+    + ATTACHMENT_HANDLING_TOOLS
+)
+
 
 async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
     """Get the list of Gmail node configurations."""
@@ -32,46 +85,11 @@ async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
         contact_management_tools,
         attachment_handling_tools,
     ) = await asyncio.gather(
-        composio_service.get_tools_by_name(
-            [
-                "GMAIL_CREATE_EMAIL_DRAFT",
-                "GMAIL_SEND_EMAIL",
-                "GMAIL_SEND_DRAFT",
-                "GMAIL_LIST_DRAFTS",
-                "GMAIL_DELETE_DRAFT",
-                "GMAIL_REPLY_TO_THREAD",
-                "GMAIL_FORWARD_MESSAGE",
-            ],
-        ),
-        composio_service.get_tools_by_name(
-            [
-                "GMAIL_FETCH_EMAILS",
-                "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
-                "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
-                "GMAIL_LIST_THREADS",
-            ]
-        ),
-        composio_service.get_tools_by_name(
-            [
-                "GMAIL_ADD_LABEL_TO_EMAIL",
-                "GMAIL_CREATE_LABEL",
-                "GMAIL_LIST_LABELS",
-                "GMAIL_MODIFY_THREAD_LABELS",
-                "GMAIL_PATCH_LABEL",
-                "GMAIL_REMOVE_LABEL",
-                "GMAIL_DELETE_MESSAGE",
-                "GMAIL_MOVE_TO_TRASH",
-            ]
-        ),
-        composio_service.get_tools_by_name(
-            [
-                "GMAIL_GET_CONTACTS",
-                "GMAIL_GET_PEOPLE",
-                "GMAIL_GET_PROFILE",
-                "GMAIL_SEARCH_PEOPLE",
-            ]
-        ),
-        composio_service.get_tools_by_name(["GMAIL_GET_ATTACHMENT"]),
+        composio_service.get_tools_by_name(EMAIL_COMPOSITION_TOOLS),
+        composio_service.get_tools_by_name(EMAIL_RETRIEVAL_TOOLS),
+        composio_service.get_tools_by_name(EMAIL_MANAGEMENT_TOOLS),
+        composio_service.get_tools_by_name(CONTACT_MANAGEMENT_TOOLS),
+        composio_service.get_tools_by_name(ATTACHMENT_HANDLING_TOOLS),
     )
 
     return (

@@ -2,43 +2,19 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Clock, Mail } from "lucide-react";
-import Image from "next/image";
 import { useState } from "react";
 
-import { CursorMagicSelection03Icon } from "@/components";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { Workflow } from "@/features/workflows/api/workflowApi";
 
 import { getTriggerDisplay } from "../utils/triggerDisplay";
 import BaseWorkflowCard from "./shared/BaseWorkflowCard";
+import { TriggerIcon } from "./shared/WorkflowCardComponents";
 
 interface UserWorkflowCardProps {
   workflow: Workflow;
 }
-
-const getTriggerIcon = (triggerType: string, integrationIconUrl?: string) => {
-  if (integrationIconUrl) {
-    return (
-      <Image
-        src={integrationIconUrl}
-        alt="Integration icon"
-        width={15}
-        height={15}
-      />
-    );
-  }
-
-  switch (triggerType) {
-    case "schedule":
-      return <Clock width={15} />;
-    case "manual":
-      return <CursorMagicSelection03Icon width={15} />;
-    default:
-      return <Mail width={15} />;
-  }
-};
 
 export default function UserWorkflowCard({ workflow }: UserWorkflowCardProps) {
   const [isRunning, setIsRunning] = useState(false);
@@ -65,10 +41,13 @@ export default function UserWorkflowCard({ workflow }: UserWorkflowCardProps) {
       <div className="flex items-center gap-2">
         <Chip
           size="sm"
-          startContent={getTriggerIcon(
-            workflow.trigger_config.type,
-            triggerDisplay.icon || undefined,
-          )}
+          startContent={
+            <TriggerIcon
+              triggerType={workflow.trigger_config.type}
+              integrationId={triggerDisplay.integrationId}
+              size={15}
+            />
+          }
           radius="sm"
           variant="light"
           className="flex gap-1 px-2! text-zinc-400"

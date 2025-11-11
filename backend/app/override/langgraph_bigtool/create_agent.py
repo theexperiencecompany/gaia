@@ -4,7 +4,7 @@ LANGGRAPH BIGTOOL OVERRIDE
 This overrides `create_agent` from langgraph_bigtool to support dynamic model configuration.
 
 WHY THIS EXISTS:
-- Need to switch between OpenAI, Gemini, and Cerebras models dynamically at runtime
+- Need to switch between OpenAI and Gemini models dynamically at runtime
 - Extract model_name and provider from config and apply to LLM before tool binding
 
 WHAT'S MODIFIED:
@@ -164,23 +164,18 @@ def create_agent(
         # For sync context, we need to run hooks in a new event loop
         return _sync_execute_hooks(end_graph_hooks, state, config, store)
 
+    async def aexecute_end_graph_hooks(
+        state: State, config: RunnableConfig, *, store: BaseStore
+    ) -> State:
+        # For async context, run hooks directly without creating a new event loop
+        return await _execute_hooks(end_graph_hooks, state, config, store)
+
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         # For sync context, we need to run hooks in a new event loop
         _sync_execute_hooks(end_graph_hooks, state, config, store)
 
-        model_configurations = config.get("configurable", {}).get(
-            "model_configurations", {}
-        )
-        model_name = model_configurations.get("model_name", "gpt-4o-mini")
-        provider = model_configurations.get("provider", None)
-
-        _llm = llm.with_config(
-            configurable={
-                "model_name": model_name,
-                "model": model_name,  # Gemini uses "model" instead of "model_name"
-                "provider": provider,
-            }
-        )
+        model_configurations = config.get("configurable", {})
+        _llm = llm.with_config(configurable=model_configurations)
         selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
         initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
         tools_to_bind: list[Any] = []
@@ -190,6 +185,10 @@ def create_agent(
         tools_to_bind.extend(initial_tools)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[arg-type]
         response = llm_with_tools.invoke(state["messages"])
+
+        # Handle empty response content (edge case)
+        # Happens with gemini models https://discuss.ai.google.dev/t/gemini-2-5-pro-with-empty-response-text/81175
+        response.content = response.content or "Empty response from model."
 
         # Set the name for the response for filtering
         response.additional_kwargs = {"visible_to": {agent_name}}
@@ -205,23 +204,21 @@ def create_agent(
             store,
         )
 
-        model_configurations = config.get("configurable", {}).get(
-            "model_configurations", {}
-        )
-        model_name = model_configurations.get("model_name", "gpt-4o-mini")
-        provider = model_configurations.get("provider", None)
+        model_configurations = config.get("configurable", {})
+        _llm = llm.with_config(configurable=model_configurations)
         selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
         initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
-        _llm = llm.with_config(
-            configurable={"model_name": model_name, "provider": provider}
-        )
         tools_to_bind: list[Any] = []
         if retrieve_tools is not None:
             tools_to_bind.append(retrieve_tools)
         tools_to_bind.extend(selected_tools)
         tools_to_bind.extend(initial_tools)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[arg-type]
-        response = await llm_with_tools.ainvoke(state["messages"])
+        response: AIMessage = await llm_with_tools.ainvoke(state["messages"])
+
+        # Handle empty response content (edge case)
+        # Happens with gemini models https://discuss.ai.google.dev/t/gemini-2-5-pro-with-empty-response-text/81175
+        response.content = response.content or "Empty response from model."
 
         # Set the name for the response for filtering
         response.additional_kwargs = {"visible_to": {agent_name}}
@@ -305,7 +302,10 @@ def create_agent(
     if not disable_retrieve_tools:
         path_map.insert(0, "select_tools")
     if end_graph_hooks:
-        builder.add_node("end_graph_hooks", execute_end_graph_hooks)
+        builder.add_node(
+            "end_graph_hooks",
+            RunnableCallable(execute_end_graph_hooks, aexecute_end_graph_hooks),
+        )
         builder.add_edge("end_graph_hooks", END)
         path_map.append("end_graph_hooks")
 

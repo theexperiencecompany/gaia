@@ -1,12 +1,12 @@
-import Image from "next/image";
-import React from "react";
+import React, { useMemo } from "react";
 
 import { ArrowRight01Icon, Button } from "@/components";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { shuffle } from "lodash";
 
 interface Integration {
   id: string;
   name: string;
-  icons: string[];
 }
 
 interface IntegrationsBannerProps {
@@ -22,6 +22,12 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
   hasMessages,
   onToggleSlashCommand,
 }) => {
+  // Memoize shuffled integrations to prevent re-shuffling on every render
+  const shuffledIntegrations = useMemo(
+    () => shuffle(integrations.slice(0, 14)),
+    [integrations],
+  );
+
   // Don't render if loading, no integrations, or if there are already messages
   if (isLoading || integrations.length === 0 || hasMessages) {
     return null;
@@ -35,19 +41,19 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
       <div className="flex w-full items-center justify-between">
         <span className="text-xs">Connect your tools to GAIA</span>
         <div className="ml-3 flex items-center gap-1">
-          {integrations.slice(0, 8).map((integration) => (
+          {shuffledIntegrations.map((integration) => (
             <div
               key={integration.id}
               className="opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-120"
               title={integration.name}
             >
-              <Image
-                width={14}
-                height={14}
-                src={integration.icons[0]}
-                alt={integration.name}
-                className="h-[14px] w-[14px] object-contain"
-              />
+              {getToolCategoryIcon(integration.id, {
+                size: 14,
+                width: 14,
+                height: 14,
+                showBackground: false,
+                className: "h-[14px] w-[14px] object-contain",
+              })}
             </div>
           ))}
           <ArrowRight01Icon width={18} height={18} className="ml-3" />

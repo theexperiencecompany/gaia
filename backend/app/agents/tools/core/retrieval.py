@@ -110,7 +110,7 @@ def get_retrieve_tools_function(
 
         # Search for matching tools based on query (if provided)
         if query:
-            results = store.search((tool_space,), query=query, limit=limit)
+            results = await store.asearch((tool_space,), query=query, limit=limit)
             # Validate that tools from search results actually exist in registry
             query_tool_ids = [
                 result.key for result in results if result.key in available_tool_names

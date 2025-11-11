@@ -12,6 +12,7 @@ import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
 import { posthog } from "@/lib/posthog";
+import { useIntegrationsAccordion } from "@/stores/uiStore";
 
 import { CategoryIntegrationStatus } from "./CategoryIntegrationStatus";
 import { LockedCategorySection } from "./LockedCategorySection";
@@ -49,6 +50,10 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+  const {
+    isExpanded: isIntegrationsExpanded,
+    setExpanded: setIntegrationsExpanded,
+  } = useIntegrationsAccordion();
 
   // Determine max height based on current route
   const maxHeight = useMemo(() => {
@@ -71,6 +76,13 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
       });
     }
   }, [isVisible, openedViaButton]);
+
+  // Close integrations accordion when user starts searching
+  useEffect(() => {
+    if (searchQuery.trim() && isIntegrationsExpanded) {
+      setIntegrationsExpanded(false);
+    }
+  }, [searchQuery, isIntegrationsExpanded, setIntegrationsExpanded]);
 
   const handleCategoryChange = (category: string) => {
     posthog.capture("chat:slash_command_category_changed", {
@@ -198,6 +210,22 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     return filtered;
   }, [matches, selectedCategory, searchQuery]);
 
+  // Check if IntegrationsCard should be shown
+  const showIntegrationsCard = useMemo(() => {
+    return (
+      selectedCategory === "all" &&
+      (openedViaButton
+        ? !searchQuery.trim()
+        : matches.length === filteredMatches.length)
+    );
+  }, [
+    selectedCategory,
+    openedViaButton,
+    searchQuery,
+    matches.length,
+    filteredMatches.length,
+  ]);
+
   // Separate unlocked and locked matches, grouping locked by category
   const { unlockedMatches, lockedCategories } = useMemo(() => {
     const unlocked: SlashCommandMatch[] = [];
@@ -221,26 +249,53 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     };
   }, [filteredMatches]);
 
-  // Create virtualizer for unlocked matches only
+  // Create virtualizer - IntegrationsCard is index 0 if shown, tools start after
+  const totalCount = showIntegrationsCard
+    ? unlockedMatches.length + 1
+    : unlockedMatches.length;
+
   const rowVirtualizer = useVirtualizer({
-    count: unlockedMatches.length,
+    count: totalCount,
     getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 48, // Estimated height of each row in pixels
-    overscan: 10, // Increased overscan for smoother scrolling
+    estimateSize: (index) => {
+      // First item is IntegrationsCard with dynamic height
+      if (showIntegrationsCard && index === 0) {
+        return 200; // Estimated height for IntegrationsCard (will auto-adjust)
+      }
+      // Regular tool items
+      return 48;
+    },
+    overscan: 5,
   });
 
   // Scroll to selected item when selectedIndex changes
   useEffect(() => {
     if (selectedIndex >= 0 && selectedIndex < unlockedMatches.length) {
-      // Use requestAnimationFrame to ensure the virtualizer has updated
+      // Don't scroll if IntegrationsCard is shown and expanded
+      // This keeps the integrations visible while navigating tools
+      if (showIntegrationsCard && isIntegrationsExpanded) {
+        return;
+      }
+
+      // Offset by 1 if IntegrationsCard is shown (it's at index 0)
+      const virtualIndex = showIntegrationsCard
+        ? selectedIndex + 1
+        : selectedIndex;
+
       requestAnimationFrame(() => {
-        rowVirtualizer.scrollToIndex(selectedIndex, {
+        rowVirtualizer.scrollToIndex(virtualIndex, {
           align: "center",
           behavior: "smooth",
         });
       });
     }
-  }, [selectedIndex, rowVirtualizer, unlockedMatches.length]);
+  }, [
+    selectedIndex,
+    rowVirtualizer,
+    unlockedMatches.length,
+    showIntegrationsCard,
+    isIntegrationsExpanded,
+  ]);
 
   return (
     <AnimatePresence>
@@ -340,15 +395,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
             className={`relative z-[1] h-fit ${maxHeight} overflow-y-auto`}
           >
             <div className="py-2">
-              {/* Integrations Card - Only show in "all" category and when not filtering */}
-              {selectedCategory === "all" &&
-                (openedViaButton
-                  ? !searchQuery.trim()
-                  : matches.length === filteredMatches.length) && (
-                  <IntegrationsCard onClose={onClose} />
-                )}
-
-              {/* Virtualized unlocked tools */}
+              {/* Single virtualized container for everything */}
               <div
                 style={{
                   height: `${rowVirtualizer.getTotalSize()}px`,
@@ -357,8 +404,29 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                 }}
               >
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                  const match = unlockedMatches[virtualRow.index];
-                  const isSelected = virtualRow.index === selectedIndex;
+                  // First item is IntegrationsCard if shown
+                  if (showIntegrationsCard && virtualRow.index === 0) {
+                    return (
+                      <div
+                        key={"integrations-card"}
+                        data-index={virtualRow.index}
+                        ref={rowVirtualizer.measureElement}
+                        className="absolute top-0 left-0 w-full"
+                        style={{
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        <IntegrationsCard onClose={onClose} size="small" />
+                      </div>
+                    );
+                  }
+
+                  // Adjust index for tool matches (offset by 1 if IntegrationsCard is shown)
+                  const toolIndex = showIntegrationsCard
+                    ? virtualRow.index - 1
+                    : virtualRow.index;
+                  const match = unlockedMatches[toolIndex];
+                  const isSelected = toolIndex === selectedIndex;
 
                   return (
                     <div

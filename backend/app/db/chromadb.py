@@ -8,7 +8,6 @@ from chromadb.api import AsyncClientAPI
 from chromadb.config import Settings
 from fastapi import Request
 from langchain_chroma import Chroma
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 
 class ChromaClient:
@@ -68,7 +67,7 @@ class ChromaClient:
         """
         # Ensure we have the embedding function
         if embedding_function is None:
-            embedding_function = await providers.aget("gemini_embedding_model")
+            embedding_function = await providers.aget("google_embeddings")
 
         # If no collection name provided, return the default client
         if not collection_name:
@@ -135,26 +134,6 @@ class ChromaClient:
                 f"Failed to create Langchain client for collection '{collection_name}'"
             )
         return instance
-
-
-@lazy_provider(
-    name="gemini_embedding_model",
-    required_keys=[
-        settings.GOOGLE_API_KEY,
-    ],
-    auto_initialize=False,
-    strategy=MissingKeyStrategy.WARN,
-)
-def langchain_embedding_model():
-    """
-    Lazy-load the Google Gemini embedding model and cache it.
-
-    Returns:
-        GoogleGenerativeAIEmbeddings: The embedding model
-    """
-    return GoogleGenerativeAIEmbeddings(
-        model="models/gemini-embedding-001",
-    )
 
 
 @lazy_provider(
@@ -265,7 +244,7 @@ def init_langchain_chroma():
     # Create default langchain client with no specific collection
     langchain_chroma_client = Chroma(
         client=constructor_client,
-        embedding_function=providers.get("gemini_embedding_model"),
+        embedding_function=providers.get("google_embeddings"),
     )
 
     return langchain_chroma_client
@@ -288,7 +267,6 @@ def init_chroma():
         init_chromadb_client()
         init_chromadb_constructor()
         init_langchain_chroma()
-        langchain_embedding_model()
 
     except Exception as e:
         logger.error(f"Error in init_chroma compatibility function: {e}")

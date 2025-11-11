@@ -2,7 +2,6 @@
 
 import { Button } from "@heroui/button";
 import { ArrowUpRight } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -29,7 +28,6 @@ export default function UseCaseCard({
   prompt,
   slug,
 }: UseCaseCardProps) {
-  const router = useRouter();
   const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
   const appendToInput = useAppendToInput();
   const { selectWorkflow } = useWorkflowSelection();

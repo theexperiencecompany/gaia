@@ -1,6 +1,3 @@
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import JSONResponse
-
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.models.chat_models import (
     BatchSyncRequest,
@@ -23,6 +20,8 @@ from app.services.conversation_service import (
     update_conversation_description,
     update_messages,
 )
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
@@ -56,6 +55,7 @@ async def get_conversations_endpoint(
     Retrieve paginated conversations for the authenticated user.
     """
     response = await get_conversations(user, page=page, limit=limit)
+
     return JSONResponse(content=response)
 
 

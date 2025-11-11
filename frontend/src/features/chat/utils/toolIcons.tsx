@@ -10,6 +10,8 @@ import {
   Target02Icon,
 } from "@/components/shared/icons";
 
+import { useIconColorDetection } from "../hooks/useIconColorDetection";
+
 interface IconProps {
   size?: number;
   width?: number;
@@ -131,6 +133,119 @@ const iconConfigs: Record<string, IconConfig> = {
     bgColor: "bg-gray-500/20 backdrop-blur",
     iconColor: "text-gray-400",
   },
+  // Integration icons
+  google_calendar: {
+    icon: "/images/icons/googlecalendar.webp",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  github: {
+    icon: "/images/icons/github.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  reddit: {
+    icon: "/images/icons/reddit.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  airtable: {
+    icon: "/images/icons/airtable.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  linear: {
+    icon: "/images/icons/linear.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  slack: {
+    icon: "/images/icons/slack.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  hubspot: {
+    icon: "/images/icons/hubspot.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  google_tasks: {
+    icon: "/images/icons/googletasks.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  todoist: {
+    icon: "/images/icons/todoist.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  microsoft_teams: {
+    icon: "/images/icons/microsoft_teams.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  google_meet: {
+    icon: "/images/icons/google_meet.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  zoom: {
+    icon: "/images/icons/zoom.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  google_maps: {
+    icon: "/images/icons/google_maps.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  asana: {
+    icon: "/images/icons/asana.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  trello: {
+    icon: "/images/icons/trello.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+};
+
+// Component that auto-detects and inverts dark icons
+const AutoInvertIcon: React.FC<{
+  src: string;
+  alt: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  className?: string;
+}> = ({ src, alt, size, width, height, className }) => {
+  const { shouldInvert } = useIconColorDetection(src);
+
+  return (
+    <Image
+      alt={alt}
+      width={width || size || 20}
+      height={height || size || 20}
+      className={`${className} aspect-square object-contain ${shouldInvert ? "invert" : ""}`}
+      src={src}
+    />
+  );
 };
 
 export const getToolCategoryIcon = (
@@ -151,10 +266,12 @@ export const getToolCategoryIcon = (
   if (!config) return null;
 
   const iconElement = config.isImage ? (
-    <Image
+    <AutoInvertIcon
       alt={`${category} Icon`}
-      {...defaultProps}
-      className={`${restProps.className} aspect-square object-contain`}
+      size={defaultProps.size}
+      width={defaultProps.width}
+      height={defaultProps.height}
+      className={restProps.className}
       src={config.icon as string}
     />
   ) : (

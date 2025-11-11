@@ -50,7 +50,7 @@ export const getTriggerDisplay = (
       : config?.label || "unknown trigger";
 
   return {
-    icon: integration?.icons?.[0] || null,
+    integrationId: integration?.id,
     label,
     integration,
   };
@@ -68,9 +68,9 @@ export const getTriggerEnabledIntegrations = (integrations: Integration[]) => {
         id: config.integrationId!,
         name: config.name,
         description: config.description,
-        icon: integration?.icons?.[0] || "",
+        integrationId: integration?.id,
         triggerType,
       };
     })
-    .filter((t) => t.icon); // Only show integrations with icons
+    .filter((t) => t.integrationId); // Only show integrations with IDs
 };

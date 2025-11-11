@@ -80,7 +80,7 @@ class ComposioService:
 
         # Run the first tools.get() call asynchronously
         tools = await asyncio.to_thread(
-            self.composio.tools.get, user_id="", toolkits=[tool_kit], limit=100
+            self.composio.tools.get, user_id="", toolkits=[tool_kit], limit=1000
         )
 
         exclude_tools = exclude_tools or []

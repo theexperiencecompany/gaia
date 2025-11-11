@@ -1,6 +1,5 @@
 import { Button } from "@heroui/button";
 import { Lock } from "lucide-react";
-import Image from "next/image";
 import React from "react";
 
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -64,17 +63,13 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
             size="sm"
             color="primary"
             variant="flat"
-            startContent={
-              integration.icons?.[0] && (
-                <Image
-                  src={integration.icons[0]}
-                  alt={integration.name}
-                  width={16}
-                  height={16}
-                  className="h-4 w-4 object-contain"
-                />
-              )
-            }
+            startContent={getToolCategoryIcon(integration.id, {
+              size: 16,
+              width: 16,
+              height: 16,
+              showBackground: false,
+              className: "h-4 w-4 object-contain",
+            })}
             onPress={handleConnect}
           >
             Connect

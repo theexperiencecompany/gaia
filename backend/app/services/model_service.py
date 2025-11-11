@@ -57,8 +57,8 @@ async def get_available_models(user_plan: str = "all") -> List[ModelResponse]:
 
         return models
 
-    except ValueError:
-        logger.error(f"Invalid plan type: {user_plan}")
+    except ValueError as e:
+        logger.error(f"Invalid plan type: {user_plan}: {e}")
         raise HTTPException(status_code=400, detail="Invalid plan type")
     except Exception as e:
         logger.error(f"Error fetching available models: {e}")

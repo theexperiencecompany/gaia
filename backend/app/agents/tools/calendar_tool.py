@@ -467,7 +467,7 @@ async def edit_calendar_event(
     timezone_offset: Optional[str] = None,
     recurrence: Optional[dict] = None,
     location: Optional[str] = None,
-    attendees: Optional[list] = None,
+    attendees: Optional[List[str]] = None,
     reminders: Optional[dict] = None,
     visibility: Optional[str] = None,
     color_id: Optional[str] = None,

@@ -74,12 +74,7 @@ export const useCalendarEventSelectionStore =
                     calendarId: event.calendarId,
                     calendarTitle: event.calendarTitle,
                     backgroundColor:
-                      event.organizer?.email &&
-                      (
-                        event as GoogleCalendarEvent & {
-                          backgroundColor?: string;
-                        }
-                      ).backgroundColor,
+                      event.organizer?.email && event.backgroundColor,
                     isAllDay: !!event.start.date,
                   }
                 : event;

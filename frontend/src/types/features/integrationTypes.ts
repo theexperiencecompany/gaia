@@ -5,7 +5,6 @@
 export interface IntegrationConnectionData {
   integration_id: string;
   integration_name: string;
-  integration_icon: string;
   integration_description: string;
   integration_category: string;
   tool_name?: string;
