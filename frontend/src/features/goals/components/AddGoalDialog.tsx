@@ -10,6 +10,8 @@ import {
 import { Send } from "lucide-react";
 import React, { Dispatch, SetStateAction, useEffect, useState } from "react";
 
+import { posthog } from "@/lib";
+
 export default function AddGoalDialog({
   openDialog,
   setOpenDialog,
@@ -37,6 +39,13 @@ export default function AddGoalDialog({
     if (!goalTitle) {
       return;
     }
+
+    // Track goal creation
+    posthog.capture("goals:created", {
+      title_length: goalTitle.length,
+      has_previous_title: !!prevGoalTitle,
+    });
+
     addGoal(goalTitle);
     setGoalTitle("");
     setOpenDialog(false);

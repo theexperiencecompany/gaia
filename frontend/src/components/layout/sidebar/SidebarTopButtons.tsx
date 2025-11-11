@@ -9,6 +9,7 @@ import React, { useEffect, useState } from "react";
 import {
   CalendarIcon,
   CheckmarkCircle02Icon,
+  ConnectIcon,
   MessageMultiple02Icon,
   NotificationIcon,
   Target04Icon,
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/shadcn/accordion";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import { posthog } from "@/lib";
 import { useRefreshTrigger } from "@/stores/notificationStore";
 import { useMenuAccordion } from "@/stores/uiStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";
@@ -78,6 +80,11 @@ export default function SidebarTopButtons() {
       icon: <CheckmarkCircle02Icon />,
       label: "Todos",
     },
+    {
+      route: "/integrations",
+      icon: <ConnectIcon />,
+      label: "Integrations",
+    },
     // {
     //   route: "/mail",
     //   icon: <Mail01Icon />,
@@ -105,10 +112,15 @@ export default function SidebarTopButtons() {
     <div className="flex flex-col">
       {/* Only show Upgrade to Pro button when user doesn't have an active subscription */}
       {!subscriptionStatus?.is_subscribed && (
-        <Link href={"/pricing"}>
+        <Link href="/pricing">
           <Button
             variant="faded"
             className="mb-2 flex h-fit w-full justify-start gap-3 px-3"
+            onPress={() => {
+              posthog.capture("pricing:upgrade_clicked", {
+                source: "sidebar",
+              });
+            }}
           >
             <CircleArrowUp width={20} height={20} />
             <div className="flex items-center gap-4">
@@ -151,6 +163,12 @@ export default function SidebarTopButtons() {
                       }`}
                       as={Link}
                       href={route}
+                      onPress={() => {
+                        posthog.capture("navigation:sidebar_clicked", {
+                          destination: route,
+                          label,
+                        });
+                      }}
                     >
                       <div className="flex w-full items-center gap-2">
                         <div className="flex w-[17px] min-w-[17px] items-center justify-center">

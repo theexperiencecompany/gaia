@@ -17,6 +17,7 @@ import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useSendMessage } from "@/hooks/useSendMessage";
+import { posthog } from "@/lib";
 import {
   useComposerFiles,
   useComposerModeSelection,
@@ -194,15 +195,9 @@ const Composer: React.FC<MainSearchbarProps> = ({
     // Prevent double execution when workflow is auto-sending
     if (autoSend) return;
 
-    // Prepare the message text with calendar event prompt if available
-    let messageText = inputText;
-    if (selectedCalendarEvent && prompt) {
-      messageText = prompt + (inputText ? `\n\n${inputText}` : "");
-    }
-
     // Only prevent submission if there's no text AND no files AND no selected tool AND no selected workflow AND no selected calendar event
     if (
-      !messageText &&
+      !inputText &&
       uploadedFiles.length === 0 &&
       !selectedTool &&
       !selectedWorkflow &&
@@ -211,9 +206,22 @@ const Composer: React.FC<MainSearchbarProps> = ({
       return;
     }
     // Use contextual loading with user's message for similarity-based loading text
-    setContextualLoading(true, messageText);
+    setContextualLoading(true, inputText);
 
-    sendMessage(messageText, conversationId, {
+    // Track message send event with PostHog
+    posthog.capture("chat:message_sent", {
+      has_text: !!inputText,
+      has_files: uploadedFiles.length > 0,
+      file_count: uploadedFiles.length,
+      has_tool: !!selectedTool,
+      tool_name: selectedTool,
+      tool_category: selectedToolCategory,
+      has_workflow: !!selectedWorkflow,
+      workflow_name: selectedWorkflow?.title,
+      conversation_id: conversationId,
+    });
+
+    sendMessage(inputText, conversationId, {
       files: uploadedFileData,
       selectedTool: selectedTool ?? null,
       selectedToolCategory: selectedToolCategory ?? null,
@@ -237,6 +245,20 @@ const Composer: React.FC<MainSearchbarProps> = ({
     if (event.key === "Enter" && !event.shiftKey && !isLoading) {
       event.preventDefault();
       handleFormSubmit();
+    }
+
+    // Handle Escape key when slash command dropdown is closed
+    if (event.key === "Escape" && !isSlashCommandDropdownOpen) {
+      // If there's a selected tool, remove it
+      if (selectedTool) {
+        event.preventDefault();
+        handleRemoveSelectedTool();
+      }
+      // If there's a selected workflow, clear it
+      else if (selectedWorkflow) {
+        event.preventDefault();
+        clearSelectedWorkflow();
+      }
     }
   };
 

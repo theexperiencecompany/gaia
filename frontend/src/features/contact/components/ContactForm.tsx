@@ -10,6 +10,7 @@ import {
   SUPPORT_REQUEST_TYPES,
 } from "@/features/support/constants/supportConstants";
 import { useContactSupport } from "@/features/support/hooks/useContactSupport";
+import { posthog } from "@/lib";
 
 type Props = React.ComponentProps<"form">;
 
@@ -19,6 +20,14 @@ export default function ContactForm(props: Props) {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    // Track contact form submission
+    posthog.capture("support:form_submitted", {
+      request_type: formData.type,
+      title_length: formData.title.length,
+      description_length: formData.description.length,
+    });
+
     await submitRequest();
   }
 

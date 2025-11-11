@@ -54,7 +54,7 @@ export const useCalendarEventSelectionStore =
         (set) => ({
           ...initialState,
 
-          selectCalendarEvent: (event, options) => {
+          selectCalendarEvent: (event, _options) => {
             const eventData: SelectedCalendarEventData =
               "kind" in event
                 ? {

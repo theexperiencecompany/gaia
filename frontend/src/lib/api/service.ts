@@ -50,7 +50,7 @@ async function request<T = unknown>(
         PATCH: "Failed to update data",
         DELETE: "Failed to delete data",
       };
-      toast.error(options.errorMessage || defaultMessages[method]);
+      toast?.error?.(options.errorMessage || defaultMessages[method]);
     }
 
     throw error;

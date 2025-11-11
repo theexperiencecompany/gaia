@@ -7,7 +7,6 @@ export * from "./config/index";
 export * from "./data/notifications";
 export * from "./hooks/index";
 export * from "./instrumentation";
-export * from "./instrumentation-client";
 export * from "./layouts/AnalyticsLayout";
 export * from "./layouts/HeroUIProvider";
 export * from "./layouts/MotionContainer";
