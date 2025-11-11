@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { ArrowUpRight } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -32,6 +33,7 @@ export default function UseCaseCard({
   const appendToInput = useAppendToInput();
   const { selectWorkflow } = useWorkflowSelection();
   const { createWorkflow } = useWorkflowCreation();
+  const router = useRouter();
 
   // Handler for card click - navigate to detail page
   const handleCardClick = () => {

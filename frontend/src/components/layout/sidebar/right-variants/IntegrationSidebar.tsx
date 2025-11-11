@@ -14,14 +14,12 @@ import { Integration } from "@/features/integrations/types";
 interface IntegrationSidebarProps {
   integration: Integration;
   onConnect: (integrationId: string) => void;
-  includedIntegrations?: Integration[];
   category?: string;
 }
 
 export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   integration,
   onConnect,
-  includedIntegrations = [],
   category,
 }) => {
   const isConnected = integration.status === "connected";

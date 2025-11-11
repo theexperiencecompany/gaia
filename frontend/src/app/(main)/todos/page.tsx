@@ -26,7 +26,6 @@ export default function TodosPage() {
   const projectId = searchParams.get("project");
   const priority = searchParams.get("priority");
   const completedParam = searchParams.get("completed");
-  const completed = completedParam === "true";
 
   // Helper function to validate priority value
   const getPriorityFilter = (
@@ -55,7 +54,7 @@ export default function TodosPage() {
     }
 
     // Handle completed filter - always default to false for inbox
-    urlFilters.completed = completedParam === "true" ? true : false;
+    urlFilters.completed = completedParam === "true";
 
     return urlFilters;
   }, [projectId, priority, completedParam]);

@@ -63,7 +63,6 @@ export const useIconColorDetection = (src: string) => {
 
         let totalBrightness = 0;
         let opaquePixels = 0;
-        const pixelCount = data.length / 4;
 
         // Sample every 2nd pixel for 4x speed improvement (still 200 samples)
         for (let i = 0; i < data.length; i += 8) {
