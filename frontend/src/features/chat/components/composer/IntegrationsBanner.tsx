@@ -22,16 +22,16 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
   hasMessages,
   onToggleSlashCommand,
 }) => {
-  // Don't render if loading, no integrations, or if there are already messages
-  if (isLoading || integrations.length === 0 || hasMessages) {
-    return null;
-  }
-
   // Memoize shuffled integrations to prevent re-shuffling on every render
   const shuffledIntegrations = useMemo(
     () => shuffle(integrations.slice(0, 14)),
     [integrations],
   );
+
+  // Don't render if loading, no integrations, or if there are already messages
+  if (isLoading || integrations.length === 0 || hasMessages) {
+    return null;
+  }
 
   return (
     <Button
