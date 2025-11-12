@@ -6,755 +6,194 @@ icon: "terminal"
 
 # Commands Reference
 
-GAIA uses [mise](https://mise.jdx.dev) as a unified task runner for both backend and frontend development. This page provides a complete reference of all available commands.
+GAIA uses [mise](https://mise.jdx.dev) as a unified task runner. Run `mise tasks` to see all available commands.
 
-<Tip>
-  **Quick Tip:** Run `mise tasks` from any directory to see all available
-  commands with descriptions.
-</Tip>
+## Quick Start
 
-## Backend Commands
+```bash
+mise setup        # First time setup
+mise dev          # Start development (backend + frontend + docker)
+mise dev:full     # Start everything (includes ARQ worker)
+```
 
-Run these commands from the `backend/` directory or use `mise -C backend <task>` from the root.
-
-### Development
-
-<AccordionGroup>
-  <Accordion icon="rocket" title="mise dev">
-    **Run development server with hot reload**
-
-    Starts the FastAPI backend with automatic reloading on code changes.
-
-    ```bash
-    mise dev
-    ```
-
-    Server will be available at `http://localhost:8000`
-
-  </Accordion>
-
-  <Accordion icon="play" title="mise start">
-    **Run production server**
-
-    Starts the FastAPI server in production mode.
-
-    ```bash
-    mise start
-    ```
-
-  </Accordion>
-
-  <Accordion icon="cog" title="mise worker">
-    **Start ARQ worker**
-
-    Starts the background task worker for processing asynchronous jobs.
-
-    ```bash
-    mise worker
-    ```
-
-    Alias: `mise arq`
-
-  </Accordion>
-</AccordionGroup>
-
-### Code Quality
-
-<AccordionGroup>
-  <Accordion icon="check" title="mise lint">
-    **Run ruff linter**
-
-    Check code for style and potential issues.
-
-    ```bash
-    mise lint
-    ```
-
-  </Accordion>
-
-  <Accordion icon="wrench" title="mise lint:fix">
-    **Run ruff linter with auto-fix**
-
-    Automatically fix linting issues where possible.
-
-    ```bash
-    mise lint:fix
-    ```
-
-  </Accordion>
-
-  <Accordion icon="paintbrush" title="mise format">
-    **Format code with ruff**
-
-    Format all Python files according to project style.
-
-    ```bash
-    mise format
-    ```
-
-  </Accordion>
-
-  <Accordion icon="shield" title="mise mypy">
-    **Run mypy type checker**
-
-    Check for type errors in the codebase.
-
-    ```bash
-    mise mypy
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-### Testing & Security
-
-<AccordionGroup>
-  <Accordion icon="file-contract" title="mise schema">
-    **Test API schema with schemathesis**
-
-    Validate the OpenAPI schema and test endpoints.
-
-    ```bash
-    mise schema
-    ```
-
-  </Accordion>
-
-  <Accordion icon="file-export" title="mise schema:write">
-    **Test API schema and write report**
-
-    Generate a JUnit XML report of schema tests.
-
-    ```bash
-    mise schema:write
-    ```
-
-  </Accordion>
-
-  <Accordion icon="lock" title="mise bandit">
-    **Run bandit security scanner**
-
-    Scan code for common security issues.
-
-    ```bash
-    mise bandit
-    ```
-
-  </Accordion>
-
-  <Accordion icon="shield-check" title="mise pip:audit">
-    **Audit pip packages for vulnerabilities**
-
-    Check installed packages for known vulnerabilities.
-
-    ```bash
-    mise pip:audit
-    ```
-
-  </Accordion>
-
-  <Accordion icon="key" title="mise secrets">
-    **Detect secrets in codebase**
-
-    Scan all files for accidentally committed secrets.
-
-    ```bash
-    mise secrets
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-### Installation & Setup
-
-<AccordionGroup>
-  <Accordion icon="download" title="mise install">
-    **Install all dependencies**
-
-    Install all project dependencies with uv.
-
-    ```bash
-    mise install
-    ```
-
-  </Accordion>
-
-</AccordionGroup>
-
-### Database & Seeding
-
-<AccordionGroup>
-  <Accordion icon="database" title="mise db:migrate">
-    **Run database migrations**
-
-    Apply database schema migrations.
-
-    ```bash
-    mise db:migrate
-    ```
-
-  </Accordion>
-
-  <Accordion icon="brain" title="mise seed:models">
-    **Seed AI models**
-
-    Populate the database with default AI model configurations.
-
-    ```bash
-    mise seed:models
-    ```
-
-  </Accordion>
-
-  <Accordion icon="diagram-project" title="mise seed:workflows">
-    **Seed workflows**
-
-    Populate the database with default workflow templates.
-
-    ```bash
-    mise seed:workflows
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-### Maintenance
-
-<AccordionGroup>
-  <Accordion icon="trash" title="mise clean">
-    **Clean up build artifacts**
-
-    Remove `__pycache__`, `.pyc` files, and other build artifacts.
-
-    ```bash
-    mise clean
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-## Frontend Commands
-
-Run these commands from the `frontend/` directory or use `mise -C frontend <task>` from the root.
-
-### Development
-
-<AccordionGroup>
-  <Accordion icon="rocket" title="mise dev">
-    **Run development server with Turbopack**
-
-    Starts the Next.js dev server with Turbopack for faster builds.
-
-    ```bash
-    mise dev
-    ```
-
-    Server will be available at `http://localhost:3000`
-
-  </Accordion>
-
-  <Accordion icon="webpack" title="mise dev:webpack">
-    **Run development server with Webpack**
-
-    Starts the Next.js dev server with traditional Webpack.
-
-    ```bash
-    mise dev:webpack
-    ```
-
-  </Accordion>
-
-  <Accordion icon="box" title="mise build">
-    **Build for production**
-
-    Create an optimized production build.
-
-    ```bash
-    mise build
-    ```
-
-  </Accordion>
-
-  <Accordion icon="play" title="mise start">
-    **Start production server**
-
-    Run the production build locally.
-
-    ```bash
-    mise start
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-### Code Quality
-
-<AccordionGroup>
-  <Accordion icon="t" title="mise type">
-    **Run TypeScript type checking**
-
-    Check TypeScript types without emitting files.
-
-    ```bash
-    mise type
-    ```
-
-  </Accordion>
-
-  <Accordion icon="check" title="mise lint">
-    **Run ESLint**
-
-    Check code for style and potential issues.
-
-    ```bash
-    mise lint
-    ```
-
-  </Accordion>
-
-  <Accordion icon="wrench" title="mise lint:fix">
-    **Run ESLint with auto-fix**
-
-    Automatically fix linting issues where possible.
-
-    ```bash
-    mise lint:fix
-    ```
-
-  </Accordion>
-
-  <Accordion icon="paintbrush" title="mise format">
-    **Format code with Prettier**
-
-    Format all files according to project style.
-
-    ```bash
-    mise format
-    ```
-
-  </Accordion>
-
-  <Accordion icon="file-export" title="mise lint:export">
-    **Export ESLint config for debugging**
-
-    Generate ESLint configuration file for inspection.
-
-    ```bash
-    mise lint:export
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-### Dependencies
-
-<AccordionGroup>
-  <Accordion icon="magnifying-glass" title="mise depcheck">
-    **Check for unused dependencies**
-
-    Find unused dependencies in package.json.
-
-    ```bash
-    mise depcheck
-    ```
-
-  </Accordion>
-
-  <Accordion icon="scissors" title="mise knip">
-    **Find unused files and exports**
-
-    Detect unused files, dependencies, and exports.
-
-    ```bash
-    mise knip
-    ```
-
-  </Accordion>
-
-  <Accordion icon="download" title="mise install">
-    **Install dependencies with pnpm**
-
-    Install all frontend dependencies.
-
-    ```bash
-    mise install
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-### Build Tools
-
-<AccordionGroup>
-  <Accordion icon="chart-bar" title="mise analyze">
-    **Analyze bundle size**
-
-    Generate a bundle size analysis report.
-
-    ```bash
-    mise analyze
-    ```
-
-  </Accordion>
-
-  <Accordion icon="folder-tree" title="mise generate:barrels">
-    **Generate barrel exports**
-
-    Auto-generate index.ts barrel files.
-
-    ```bash
-    mise generate:barrels
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-### Maintenance
-
-<AccordionGroup>
-  <Accordion icon="trash" title="mise clean">
-    **Clean build artifacts**
-
-    Remove `.next`, `node_modules`, and `.turbo` directories.
-
-    ```bash
-    mise clean
-    ```
-
-  </Accordion>
-
-  <Accordion icon="broom" title="mise clean:cache">
-    **Clean Next.js cache**
-
-    Remove only the `.next` directory.
-
-    ```bash
-    mise clean:cache
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-### Git Hooks
-
-<AccordionGroup>
-  <Accordion icon="git" title="mise prepare">
-    **Setup husky hooks**
-
-    Initialize git hooks for pre-commit checks.
-
-    ```bash
-    mise prepare
-    ```
-
-  </Accordion>
-</AccordionGroup>
+---
 
 ## Root Commands
 
-Run these commands from the project root directory to manage both backend and frontend.
-
-### Setup & Installation
-
-<AccordionGroup>
-  <Accordion icon="rocket" title="mise setup">
-    **Complete project setup**
-
-    Automated setup that handles everything:
-    - Checks environment files exist
-    - Starts Docker services
-    - Installs Python 3.11 and Node.js 22
-    - Creates Python virtual environment
-    - Installs all backend dependencies
-    - Installs all frontend dependencies
-    - Seeds AI models and workflows
-
-    ```bash
-    mise setup
-    ```
-
-    <Warning>
-      Before running setup, ensure you've copied and configured your `.env` files:
-      ```bash
-      cp backend/.env.example backend/.env
-      cp frontend/.env.example frontend/.env
-      ```
-    </Warning>
-
-  </Accordion>
-
-  <Accordion icon="check-circle" title="mise setup:env">
-    **Check if environment files exist**
-
-    Validates that required `.env` files are present.
-
-    ```bash
-    mise setup:env
-    ```
-
-  </Accordion>
-
-  <Accordion icon="download" title="mise install:all">
-    **Install all dependencies**
-
-    Install dependencies for both backend and frontend.
-
-    ```bash
-    mise install:all
-    ```
-
-  </Accordion>
-
-  <Accordion icon="server" title="mise setup:backend">
-    **Set up backend only**
-
-    Install Python tools and backend dependencies.
-
-    ```bash
-    mise setup:backend
-    ```
-
-  </Accordion>
-
-  <Accordion icon="browser" title="mise setup:frontend">
-    **Set up frontend only**
-
-    Install Node.js tools and frontend dependencies.
-
-    ```bash
-    mise setup:frontend
-    ```
-
-  </Accordion>
-
-</AccordionGroup>
+Run these from the project root.
 
 ### Development
 
-<AccordionGroup>
-  <Accordion icon="server" title="mise dev:backend">
-    **Run backend development server**
+| Command             | Description                                    |
+| ------------------- | ---------------------------------------------- |
+| `mise dev`          | Backend + frontend + docker logs               |
+| `mise dev:backend`  | Backend only (no docker)                       |
+| `mise dev:frontend` | Frontend only                                  |
+| `mise dev:arq`      | ARQ worker only                                |
+| `mise dev:full`     | Everything (backend + frontend + ARQ + docker) |
 
-    Start only the backend.
+### Setup
 
-    ```bash
-    mise dev:backend
-    ```
-
-  </Accordion>
-
-  <Accordion icon="browser" title="mise dev:frontend">
-    **Run frontend development server**
-
-    Start only the frontend.
-
-    ```bash
-    mise dev:frontend
-    ```
-
-  </Accordion>
-
-  <Accordion icon="rocket" title="mise dev">
-    **Run backend + frontend + docker**
-
-    Start both backend and frontend services with docker dependencies.
-
-    ```bash
-    mise dev
-    ```
-
-  </Accordion>
-
-  <Accordion icon="rocket" title="mise dev:full">
-    **Run backend + frontend + arq + docker**
-
-    Start all services including the ARQ worker.
-
-    ```bash
-    mise dev:full
-    ```
-
-  </Accordion>
-</AccordionGroup>
+| Command               | Description                                           |
+| --------------------- | ----------------------------------------------------- |
+| `mise setup`          | Complete setup (env check, deps, docker, seed models) |
+| `mise setup:env`      | Check if `.env` files exist                           |
+| `mise setup:backend`  | Backend dependencies only                             |
+| `mise setup:frontend` | Frontend dependencies only                            |
+| `mise setup:deps`     | All dependencies                                      |
 
 ### Code Quality
 
-<AccordionGroup>
-  <Accordion icon="check" title="mise lint">
-    **Lint both backend and frontend**
+| Command       | Description               |
+| ------------- | ------------------------- |
+| `mise lint`   | Lint backend + frontend   |
+| `mise format` | Format backend + frontend |
+| `mise clean`  | Clean build artifacts     |
 
-    Run linters for the entire codebase.
+### Documentation
 
-    ```bash
-    mise lint
-    ```
+| Command     | Description              |
+| ----------- | ------------------------ |
+| `mise docs` | Run mintlify docs server |
 
-  </Accordion>
+---
 
-  <Accordion icon="paintbrush" title="mise format">
-    **Format both backend and frontend**
+## Backend Commands
 
-    Format all code in the project.
+Run from `backend/` or use `mise -C backend <task>` from root.
 
-    ```bash
-    mise format
-    ```
+### Development
 
-  </Accordion>
+| Command       | Description                            |
+| ------------- | -------------------------------------- |
+| `mise dev`    | Dev server with hot reload (port 8000) |
+| `mise start`  | Production server                      |
+| `mise worker` | ARQ background worker (alias: `arq`)   |
 
-  <Accordion icon="trash" title="mise clean:all">
-    **Clean both backend and frontend**
+### Code Quality
 
-    Remove all build artifacts from the entire project.
+| Command         | Description          |
+| --------------- | -------------------- |
+| `mise lint`     | Ruff linter          |
+| `mise lint:fix` | Auto-fix lint issues |
+| `mise format`   | Format with ruff     |
+| `mise mypy`     | Type checking        |
 
-    ```bash
-    mise clean:all
-    ```
+### Security & Testing
 
-  </Accordion>
-</AccordionGroup>
+| Command             | Description                   |
+| ------------------- | ----------------------------- |
+| `mise schema`       | Test API schema               |
+| `mise schema:write` | Test schema + JUnit report    |
+| `mise bandit`       | Security scanner              |
+| `mise pip:audit`    | Audit package vulnerabilities |
+| `mise secrets`      | Detect secrets in code        |
 
-### Docker Management
+### Database
 
-<AccordionGroup>
-  <Accordion icon="docker" title="docker compose up">
-    **Start all docker services**
+| Command               | Description    |
+| --------------------- | -------------- |
+| `mise seed:models`    | Seed AI models |
+| `mise seed:workflows` | Seed workflows |
 
-    Start all services with Docker Compose.
+### Maintenance
 
-    ```bash
-    docker compose up
-    ```
+| Command        | Description                    |
+| -------------- | ------------------------------ |
+| `mise install` | Install dependencies (uv)      |
+| `mise clean`   | Clean `__pycache__` and `.pyc` |
 
-    Run in background with `-d` flag:
-    ```bash
-    docker compose up -d
-    ```
+---
 
-  </Accordion>
+## Frontend Commands
 
-  <Accordion icon="stop" title="docker compose down">
-    **Stop all docker services**
+Run from `frontend/` or use `mise -C frontend <task>` from root.
 
-    Stop and remove all Docker containers.
+### Development
 
-    ```bash
-    docker compose down
-    ```
+| Command            | Description                           |
+| ------------------ | ------------------------------------- |
+| `mise dev`         | Dev server with Turbopack (port 3000) |
+| `mise dev:webpack` | Dev server with Webpack               |
+| `mise build`       | Production build                      |
+| `mise start`       | Production server                     |
 
-  </Accordion>
+### Code Quality
 
-  <Accordion icon="file-lines" title="docker compose logs">
-    **View docker logs**
+| Command            | Description              |
+| ------------------ | ------------------------ |
+| `mise type`        | TypeScript type checking |
+| `mise lint`        | ESLint                   |
+| `mise lint:fix`    | Auto-fix lint issues     |
+| `mise lint:export` | Export ESLint config     |
+| `mise format`      | Format with Prettier     |
 
-    Stream logs from all Docker services.
+### Dependencies
 
-    ```bash
-    docker compose logs -f
-    ```
+| Command         | Description               |
+| --------------- | ------------------------- |
+| `mise install`  | Install with pnpm         |
+| `mise depcheck` | Check unused dependencies |
+| `mise knip`     | Find unused files/exports |
 
-    View logs for a specific service:
-    ```bash
-    docker compose logs -f postgres
-    ```
+### Build & Analysis
 
-  </Accordion>
+| Command                 | Description             |
+| ----------------------- | ----------------------- |
+| `mise analyze`          | Bundle size analysis    |
+| `mise generate:barrels` | Generate barrel exports |
 
-  <Accordion icon="rotate" title="docker compose restart">
-    **Restart all docker services**
+### Maintenance
 
-    Restart all Docker services without recreating containers.
+| Command            | Description                             |
+| ------------------ | --------------------------------------- |
+| `mise clean`       | Clean `.next`, `node_modules`, `.turbo` |
+| `mise clean:cache` | Clean `.next` only                      |
+| `mise prepare`     | Setup git hooks (husky)                 |
 
-    ```bash
-    docker compose restart
-    ```
+---
 
-  </Accordion>
+## Docker Commands
 
-  <Accordion icon="box" title="docker compose --profile all up">
-    **Start ALL containers**
+Standard Docker Compose commands:
 
-    Start all containers including backend/arq in docker (profile: all).
+| Command                               | Description                  |
+| ------------------------------------- | ---------------------------- |
+| `docker compose up`                   | Start services               |
+| `docker compose up -d`                | Start in background          |
+| `docker compose down`                 | Stop and remove              |
+| `docker compose logs -f`              | Stream logs                  |
+| `docker compose logs -f postgres`     | Logs for specific service    |
+| `docker compose restart`              | Restart services             |
+| `docker compose build`                | Rebuild images               |
+| `docker compose --profile all up`     | All containers (backend/arq) |
+| `docker compose --profile backend up` | Services + backend           |
+| `docker compose --profile worker up`  | Services + ARQ worker        |
 
-    ```bash
-    docker compose --profile all up
-    ```
+---
 
-  </Accordion>
+## Tips
 
-  <Accordion icon="box" title="docker compose --profile backend up">
-    **Start docker + backend container**
+**Run tasks from anywhere:**
 
-    Start docker services + backend container (profile: backend).
+```bash
+mise -C backend dev           # Backend from root
+mise -C frontend lint         # Frontend from root
+```
 
-    ```bash
-    docker compose --profile backend up
-    ```
+**Common workflows:**
 
-  </Accordion>
+```bash
+mise setup                    # First time
+mise dev                      # Daily dev
+mise dev:full                 # Everything
+mise lint && mise format      # Code quality
+```
 
-  <Accordion icon="box" title="docker compose --profile worker up">
-    **Start docker + worker container**
+**Need help?**
 
-    Start docker services + ARQ worker container (profile: worker).
-
-    ```bash
-    docker compose --profile worker up
-    ```
-
-  </Accordion>
-
-  <Accordion icon="hammer" title="docker compose build">
-    **Build docker images**
-
-    Rebuild all Docker images from scratch.
-
-    ```bash
-    docker compose build
-    ```
-
-    Build without cache:
-    ```bash
-    docker compose build --no-cache
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-## Tips & Tricks
-
-<CardGroup cols={2}>
-  <Card title="List All Tasks" icon="list">
-    See all available commands:
-    ```bash
-    mise tasks
-    ```
-  </Card>
-
-{" "}
-
-<Card title="Run from Root" icon="folder">
-  Execute tasks from any directory: ```bash mise -C backend dev mise -C frontend
-  dev ```
-</Card>
-
-{" "}
-
-<Card title="Parallel Execution" icon="bolt">
-  Some tasks like `dev:all` run dependencies in parallel automatically.
-</Card>
-
-  <Card title="Task Aliases" icon="link">
-    Some tasks have shorter aliases:
-    - `mise worker` = `mise arq`
-  </Card>
-</CardGroup>
-
-## Need Help?
-
-If you encounter issues with any commands:
-
-1. Check the command is running from the correct directory
-2. Ensure all dependencies are installed with `mise setup:deps`
-3. Verify Docker services are running for backend tasks
-4. Check the [Development Setup](/developers/development-setup) guide
+1. Check you're in the correct directory
+2. Run `mise setup` to install dependencies
+3. Verify Docker is running
+4. Check `.env` files exist
+5. See [Development Setup](/developers/development-setup)
