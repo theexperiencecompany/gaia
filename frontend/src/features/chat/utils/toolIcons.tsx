@@ -1,4 +1,4 @@
-import { Bell, Info } from "lucide-react";
+import { Bell, DoorOpen, Info } from "lucide-react";
 import Image from "next/image";
 
 import {
@@ -127,6 +127,11 @@ const iconConfigs: Record<string, IconConfig> = {
     icon: Info,
     bgColor: "bg-blue-500/20 backdrop-blur",
     iconColor: "text-blue-400",
+  },
+  iot: {
+    icon: DoorOpen,
+    bgColor: "bg-purple-500/20 backdrop-blur",
+    iconColor: "text-purple-400",
   },
   general: {
     icon: Info,

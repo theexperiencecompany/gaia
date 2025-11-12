@@ -7,6 +7,7 @@ from app.agents.tools import (
     calendar_tool,
     code_exec_tool,
     document_tool,
+    door_tool,
     file_tools,
     flowchart_tool,
     goal_tool,
@@ -184,6 +185,7 @@ class ToolRegistry:
         )
         add_category("creative", tools=[image_tool.generate_image])
         add_category("weather", tools=[weather_tool.get_weather])
+        add_category("iot", core_tools=door_tool.tools)
 
         # Integration-required categories
         add_category(

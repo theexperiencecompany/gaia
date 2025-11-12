@@ -17,10 +17,10 @@ export const useToolsQuery = (): UseToolsQueryReturn => {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["tools", "available"],
     queryFn: fetchAvailableTools,
-    staleTime: 3 * 60 * 60 * 1000, // 3 hours - cache for a few hours as requested
-    gcTime: 6 * 60 * 60 * 1000, // 6 hours - keep in cache longer than staleTime
-    retry: 2,
-    refetchOnWindowFocus: false, // Don't refetch when user focuses window
+    // staleTime: 3 * 60 * 60 * 1000, // 3 hours - cache for a few hours as requested
+    // gcTime: 6 * 60 * 60 * 1000, // 6 hours - keep in cache longer than staleTime
+    // retry: 2,
+    // refetchOnWindowFocus: false, // Don't refetch when user focuses window
   });
 
   return {

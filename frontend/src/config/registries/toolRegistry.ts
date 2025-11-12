@@ -5,6 +5,7 @@ import type {
   CodeData,
   DeepResearchResults,
   DocumentData,
+  DoorData,
   EmailComposeData,
   EmailThreadData,
   GoalDataMessageType,
@@ -77,6 +78,7 @@ export const TOOL_REGISTRY = {
   todo_data: null as unknown as TodoToolData,
   goal_data: null as unknown as GoalDataMessageType,
   notification_data: null as unknown as { notifications: NotificationRecord[] },
+  door_data: null as unknown as DoorData,
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;

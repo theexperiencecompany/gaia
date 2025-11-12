@@ -22,6 +22,7 @@ import { TodoToolData } from "./todoToolTypes";
 import {
   CodeData,
   DocumentData,
+  DoorData,
   GoalDataMessageType,
   GoogleDocsData,
   ImageData,
@@ -75,6 +76,7 @@ export type {
   ContactData,
   DeepResearchResults,
   DocumentData,
+  DoorData,
   EmailComposeData,
   EmailSentData,
   EmailThreadData,

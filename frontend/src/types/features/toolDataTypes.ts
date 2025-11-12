@@ -136,3 +136,12 @@ export type GoogleDocsData = {
   type: string;
 };
 
+// Define door operation data structure for IoT door control
+export type DoorData = {
+  success: boolean;
+  action: "open" | "close";
+  is_open: boolean;
+  message: string;
+  timestamp?: string;
+  details?: Record<string, unknown>;
+};

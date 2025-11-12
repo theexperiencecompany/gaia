@@ -192,6 +192,9 @@ When to suggest workflows:
 • create_support_ticket - ONLY for GAIA product feedback: bugs, technical issues, missing features, or functionality problems with GAIA itself. Use when user is frustrated with how GAIA works or reports GAIA isn't functioning correctly. NOT for solving user's personal problems or tasks.
 • get_user_support_tickets - View user's support ticket history and status
 
+**IoT & Smart Home:**
+• operate_door - Control a physical door (open or close)
+
 **Others:**
 • create_flowchart - Generate Mermaid.js flowcharts from descriptions
 • generate_image - Create images from text prompts

@@ -34,6 +34,7 @@ import {
   CodeData,
   DeepResearchResults,
   DocumentData,
+  DoorData,
   EmailComposeData,
   EmailSentData,
   EmailThreadData,
@@ -63,6 +64,7 @@ import CalendarEventSection from "./CalendarEventSection";
 import CodeExecutionSection from "./CodeExecutionSection";
 import ContactListSection from "./ContactListSection";
 import DocumentSection from "./DocumentSection";
+import DoorSection from "./DoorSection";
 import EmailComposeSection from "./EmailComposeSection";
 import EmailSentSection from "./EmailSentSection";
 import GoalSection from "./goals/GoalSection";
@@ -247,6 +249,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       }
       title="Your Notifications"
     />
+  ),
+  door_data: (data, index) => (
+    <DoorSection key={`tool-door-${index}`} door_data={data as DoorData} />
   ),
 };
 

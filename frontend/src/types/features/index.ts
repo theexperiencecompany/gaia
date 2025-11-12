@@ -24,6 +24,7 @@ export type {
   ContactData,
   DeepResearchResults,
   DocumentData,
+  DoorData,
   EmailComposeData,
   EmailSentData,
   EmailThreadData,
