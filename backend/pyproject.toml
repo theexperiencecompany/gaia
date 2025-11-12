@@ -120,24 +120,6 @@ dependencies = [
   "posthog>=5.4.0",
 ]
 
-## To run the tasks use commands like:
-#   task dev
-#   task start
-[tool.taskipy.tasks]
-dev = "uv run uvicorn app.main:app --port 8000 --reload --log-level warning"
-start = "uv run fastapi run"
-arq = "uv run arq app.worker.WorkerSettings"
-worker = "task arq"
-lint = "uvx ruff check ."
-"lint.fix" = "uvx ruff check . --fix"
-format = "uvx ruff format ."
-mypy = "uvx mypy app --ignore-missing-imports"
-schema = "uvx schemathesis run http://localhost:8000/openapi.json"
-"schema.write" = "uvx schemathesis run http://localhost:8000/openapi.json --report-junit-path report.xml"
-bandit = "uvx bandit -r app"
-pip_audit = "uvx pip-audit"
-detect_secrets = "uvx detect-secrets scan --all-files" # pragma: allowlist secret
-
 [dependency-groups]
 dev = [
   "mypy>=1.16.1",
@@ -170,7 +152,6 @@ dev = [
   "types-tensorflow>=2.18.0.20250516",
   "types-tqdm>=4.67.0.20250516",
   "types-ujson>=5.10.0.20250326",
-  "taskipy>=1.14.1",
 ]
 
 heavy = [

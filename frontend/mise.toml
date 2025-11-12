@@ -1,0 +1,87 @@
+# Frontend mise.toml for GAIA
+#
+# This file defines tasks for the GAIA frontend (Next.js/React).
+#
+# Quick Start:
+#   mise dev             # Start development server (Turbopack)
+#   mise install         # Install dependencies
+#   mise tasks               # List all available commands
+#
+# Common Commands:
+#   Development:  mise dev, mise dev:webpack
+#   Build:        mise build, mise start
+#   Code Quality: mise lint, mise format, mise type
+#   Analysis:     mise depcheck, mise knip, mise analyze
+#
+# Run from root: mise -C frontend <task>
+
+[tools]
+node = "22"
+
+[tasks.dev]
+description = "Run development server with Turbopack"
+run = "pnpm dev"
+
+[tasks."dev:webpack"]
+description = "Run development server with Webpack"
+run = "pnpm dev:webpack"
+
+[tasks.build]
+description = "Build for production"
+run = "pnpm build"
+
+[tasks.start]
+description = "Start production server"
+run = "pnpm start"
+
+[tasks.type]
+description = "Run TypeScript type checking"
+run = "pnpm type"
+
+[tasks.lint]
+description = "Run ESLint"
+run = "pnpm lint"
+
+[tasks."lint:fix"]
+description = "Run ESLint with auto-fix"
+run = "pnpm lint:fix"
+
+[tasks.format]
+description = "Format code with Prettier"
+run = "pnpm format"
+
+[tasks.depcheck]
+description = "Check for unused dependencies"
+run = "pnpm depcheck"
+
+[tasks.prepare]
+description = "Setup husky hooks"
+run = "pnpm prepare"
+
+[tasks."generate:barrels"]
+description = "Generate barrel exports"
+run = "pnpm generate-barrels"
+
+[tasks.install]
+description = "Install dependencies with pnpm"
+run = "pnpm install"
+
+[tasks.clean]
+description = "Clean build artifacts and node_modules"
+run = "rm -rf .next node_modules .turbo"
+
+[tasks."clean:cache"]
+description = "Clean Next.js cache"
+run = "rm -rf .next"
+
+[tasks.analyze]
+description = "Analyze bundle size"
+run = "ANALYZE=true pnpm build"
+
+[tasks.knip]
+description = "Find unused files and exports"
+run = "pnpm knip"
+
+[tasks."lint:export"]
+description = "Export ESLint config for debugging"
+run = "pnpm lint:export"

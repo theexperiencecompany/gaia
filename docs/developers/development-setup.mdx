@@ -32,10 +32,8 @@ Before you begin, ensure you have the following installed:
   </Accordion>
   <Accordion icon="code" title="Development Tools">
     - Git (for version control)
-    - Python 3.11+ (for backend development)
-    - Node.js 18+ (for frontend development)
-    - pnpm (for frontend package management)
-    - uv (for Python package management)
+    - [mise](https://mise.jdx.dev) (task runner and tool manager)
+    - Docker & Docker Compose
   </Accordion>
 
   <Accordion icon="terminal" title="System Requirements">
@@ -47,15 +45,25 @@ Before you begin, ensure you have the following installed:
 
 ## Development Environment Setup
 
-To start developing on GAIA, you need to set up your local environment. You can choose between an automated setup using our script or a manual setup.
+To start developing on GAIA, you need to set up your local environment. You can choose between an automated setup using mise or a manual setup.
 
 <Tabs>
-  <Tab title="Automated Setup" icon="rocket">
-    We provide a script that automates the entire setup process. This is the recommended method for most users.
+  <Tab title="Automated Setup (Recommended)" icon="rocket">
+    We use **mise** to automate the entire setup process. This is the recommended method for all users.
 
     <Steps>
+      <Step title="Install mise">
+        First, install mise if you haven't already:
+
+        ```bash
+        curl https://mise.run | sh
+        ```
+
+        Or follow the [mise installation guide](https://mise.jdx.dev/getting-started.html) for other methods.
+      </Step>
+
       <Step title="Setup Environment Variables">
-        First, copy the example environment files and configure them:
+        Copy the example environment files and configure them:
 
         ```bash
         cp backend/.env.example backend/.env
@@ -63,30 +71,41 @@ To start developing on GAIA, you need to set up your local environment. You can 
         ```
 
         Then configure your environment variables by following the [Environment Variables Reference](/configuration/environment-variables).
-
       </Step>
-      <Step title="Run the Setup Script">
-        Open your terminal and run the following command from the project root:
+
+      <Step title="Run Setup">
+        Run the automated setup from the project root:
 
         ```bash
-        ./scripts/setup.sh
+        mise setup
         ```
 
-        This script will:
-        - Start all Docker services
-        - Create a Python virtual environment.
-        - Install backend dependencies with `uv`.
-        - Install frontend dependencies with `pnpm`.
-
+        This will:
+        - ✅ Check environment files exist
+        - 🐳 Start all Docker services
+        - 🐍 Install Python 3.11 and create virtual environment
+        - 📦 Install backend dependencies with uv
+        - ⚛️ Install Node.js 22 and frontend dependencies with pnpm
+        - 🤖 Seed AI models and workflows
       </Step>
-      <Step title="You're Ready!">
-        Your development environment is now ready to go!
+
+      <Step title="Start Development">
+        Your development environment is now ready! Start coding:
+
+        ```bash
+        mise dev:backend   # Start backend
+        mise dev:frontend  # Start frontend
+        mise dev:all       # Start both
+        ```
+
+        See all available commands: `mise tasks`
       </Step>
     </Steps>
 
   </Tab>
+
   <Tab title="Manual Setup" icon="wrench">
-    If you prefer to set up your environment manually, follow these steps.
+    If you prefer to set up your environment manually or want more control, follow these steps.
 
 ### Environment Variables
 
@@ -102,6 +121,7 @@ Before you start the services, you need to configure your environment variables.
     ```
 
   </Step>
+
   <Step title="Fill in Your Secrets">
     Edit the newly created `.env` files and fill in your API keys and other secrets.
 
@@ -129,7 +149,7 @@ Before you start the services, you need to configure your environment variables.
     <Note>
       **Why use backend-only profile?**
 
-      Running the frontend in Docker can introduce slight latency and slower hot reloading. For the best development experience, we recommend using the `backend-only` profile and running the frontend manually with `pnpm dev` (see Frontend Setup below).
+      Running the frontend in Docker can introduce slight latency and slower hot reloading. For the best development experience, we recommend using the `backend-only` profile and running the frontend manually with `mise dev` (see Frontend Setup below).
     </Note>
 
   </Step>
@@ -145,6 +165,11 @@ Before you start the services, you need to configure your environment variables.
   <Step title="Install Backend Dependencies">
     We use `uv` for fast dependency management. Install the required packages:
 
+    ```bash
+    mise install
+    ```
+
+    Or directly with uv:
     ```bash
     uv sync
     ```
@@ -164,6 +189,11 @@ Before you start the services, you need to configure your environment variables.
     We use `pnpm` for managing frontend packages. Install them with:
 
     ```bash
+    mise install
+    ```
+
+    Or directly with pnpm:
+    ```bash
     pnpm install
     ```
 
@@ -172,7 +202,7 @@ Before you start the services, you need to configure your environment variables.
     For the best development experience with fast hot reloading, run the frontend manually:
 
     ```bash
-    pnpm dev
+    mise dev
     ```
 
     This will start the Next.js development server on `http://localhost:3000` with optimized hot reloading.
@@ -181,7 +211,12 @@ Before you start the services, you need to configure your environment variables.
       **Performance Tip:** Running the frontend outside Docker provides faster hot reloading and better performance during development. The frontend will automatically connect to the backend services running in Docker.
     </Tip>
 
+    <Info>
+      See all available commands in the [Commands Reference](/developers/commands).
+    </Info>
+
   </Step>
+
   <Step title="Return to Root Directory">
     ```bash
     cd ..

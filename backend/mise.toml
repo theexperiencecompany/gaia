@@ -1,0 +1,124 @@
+# Backend mise.toml for GAIA
+#
+# This file defines tasks for the GAIA backend (Python/FastAPI).
+#
+# Quick Start:
+#   mise dev             # Start development server
+#   mise install         # Install dependencies
+#   mise tasks               # List all available commands
+#
+# Common Commands:
+#   Development:  mise dev, mise worker
+#   Code Quality: mise lint, mise format, mise mypy
+#   Testing:      mise test, mise schema
+#   Setup:        mise install, mise seed:models
+#   Docker:       mise docker:up, mise docker:down
+#
+# Run from root: mise -C backend <task>
+
+[tools]
+python = "3.11"
+
+[env]
+_.python.venv = { path = ".venv", create = true }
+
+[tasks.dev]
+description = "Run development server with hot reload"
+run = "uv run uvicorn app.main:app --port 8000 --reload --log-level warning"
+
+[tasks.start]
+description = "Run production server"
+run = "uv run fastapi run"
+
+[tasks.worker]
+description = "Start ARQ worker"
+run = "uv run arq app.worker.WorkerSettings"
+alias = "arq"
+
+[tasks.lint]
+description = "Run ruff linter"
+run = "uvx ruff check ."
+
+[tasks."lint:fix"]
+description = "Run ruff linter with auto-fix"
+run = "uvx ruff check . --fix"
+
+[tasks.format]
+description = "Format code with ruff"
+run = "uvx ruff format ."
+
+[tasks.mypy]
+description = "Run mypy type checker"
+run = "uvx mypy app --ignore-missing-imports"
+
+[tasks.schema]
+description = "Test API schema with schemathesis"
+run = "uvx schemathesis run http://localhost:8000/openapi.json"
+
+[tasks."schema:write"]
+description = "Test API schema and write report"
+run = "uvx schemathesis run http://localhost:8000/openapi.json --report-junit-path report.xml"
+
+[tasks.bandit]
+description = "Run bandit security scanner"
+run = "uvx bandit -r app"
+
+[tasks."pip:audit"]
+description = "Audit pip packages for vulnerabilities"
+run = "uvx pip-audit"
+
+[tasks.secrets]
+description = "Detect secrets in codebase"
+run = "uvx detect-secrets scan --all-files"
+
+[tasks.install]
+description = "Install all dependencies"
+run = "uv sync"
+
+[tasks."install:dev"]
+description = "Install dev dependencies"
+run = "uv sync --group dev"
+
+[tasks."install:backend"]
+description = "Install backend dependencies"
+run = "uv sync --group backend"
+
+[tasks."install:voice"]
+description = "Install voice agent dependencies"
+run = "uv sync --group voice_agent"
+
+[tasks.test]
+description = "Run tests"
+run = "uv run pytest tests/"
+
+[tasks."db:migrate"]
+description = "Run database migrations"
+run = "echo 'Add migration command here'"
+
+[tasks."seed:models"]
+description = "Seed AI models"
+run = "uv run python scripts/seed_models.py --force"
+
+[tasks."seed:workflows"]
+description = "Seed workflows"
+run = "uv run python scripts/seed_workflows.py"
+
+[tasks.clean]
+description = "Clean up __pycache__ and build artifacts"
+run = "find . -type d -name '__pycache__' -exec rm -rf {} + && find . -type f -name '*.pyc' -delete"
+
+[tasks."docker:up"]
+description = "Start all docker services"
+run = "cd .. && docker compose --profile backend up -d"
+
+[tasks."docker:down"]
+description = "Stop all docker services"
+run = "cd .. && docker compose --profile backend down"
+
+[tasks."docker:logs"]
+description = "View docker logs"
+run = "cd .. && docker compose --profile backend logs -f"
+
+[tasks."docker:build"]
+description = "Build docker images"
+run = "cd .. && docker compose --profile backend build"

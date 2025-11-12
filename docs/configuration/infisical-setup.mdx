@@ -49,28 +49,7 @@ Machine identities allow GAIA to authenticate with Infisical automatically:
 
 ### Step 3: Add Secrets to Infisical
 
-Navigate to your project's **Secrets** section and add all your environment variables:
-
-<CardGroup cols={2}>
-  <Card title="Core Application">
-    ```bash ENV=production DEBUG=false HOST=https://api.heygaia.io
-    FRONTEND_URL=https://heygaia.io ```
-  </Card>
-  <Card title="Database URLs">
-    ```bash POSTGRES_URL=postgresql://user:pass@host:5432/db
-    MONGO_DB=mongodb://user:pass@host:27017/gaia
-    REDIS_URL=redis://user:pass@host:6379 ```
-  </Card>
-  <Card title="AI API Keys">
-    ```bash OPENAI_API_KEY=sk-your-openai-key GEMINI_API_KEY=your-gemini-key
-    HUGGINGFACE_API_KEY=hf_your-hf-token ```
-  </Card>
-  <Card title="Integration APIs">
-    ```bash GOOGLE_CLIENT_ID=your-google-client-id
-    GOOGLE_CLIENT_SECRET=your-google-secret TAVILY_API_KEY=your-tavily-key
-    FIRECRAWL_API_KEY=your-firecrawl-key ```
-  </Card>
-</CardGroup>
+Navigate to your project's **Secrets** section and add all your environment variables.
 
 ### Step 4: Configure GAIA Backend
 
@@ -155,7 +134,6 @@ INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET=your-prod-client-secret
   </Accordion>
 
 {" "}
-
 <Accordion title="Authentication failed">
   **Solution**: - Verify your `INFISICAL_MACHINE_INDENTITY_CLIENT_ID` and
   `INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET` - Ensure the machine identity has
@@ -163,7 +141,6 @@ INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET=your-prod-client-secret
 </Accordion>
 
 {" "}
-
 <Accordion title="Secrets not loading">
   **Solution**: - Verify the environment slug matches (development/production) -
   Check that secrets exist in the correct Infisical project - Ensure the machine
@@ -183,20 +160,20 @@ To debug Infisical integration, check the application logs during startup. The b
 
 <CardGroup cols={2}>
   <Card title="Access Control">
-    - Use separate machine identities for different environments - Grant minimal
-    required permissions - Regularly audit access logs
+    Use separate machine identities for different environments, grant minimal
+    required permissions, and regularly audit access logs.
   </Card>
   <Card title="Secret Management">
-    - Use different secrets for dev/staging/production - Rotate secrets
-    regularly - Never commit Infisical credentials to version control
+    Use different secrets for dev/staging/production, rotate secrets regularly,
+    and never commit Infisical credentials to version control.
   </Card>
   <Card title="Environment Separation">
-    - Use separate Infisical projects for each environment - Implement proper
-    CI/CD secret injection - Monitor secret access patterns
+    Use separate Infisical projects for each environment, implement proper CI/CD
+    secret injection, and monitor secret access patterns.
   </Card>
   <Card title="Backup Strategy">
-    - Export secrets regularly for backup - Document secret recovery procedures
-    - Have fallback authentication methods
+    Export secrets regularly for backup, document secret recovery procedures,
+    and have fallback authentication methods.
   </Card>
 </CardGroup>
 

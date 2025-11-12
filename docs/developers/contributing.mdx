@@ -10,11 +10,30 @@ Thank you for your interest in contributing to GAIA! We're excited to have you j
 
 ## Getting Started
 
-Before making your first contribution, please:
+Before making your first contribution:
 
-1. **Read our [Code of Conduct](https://github.com/heygaia/gaia/blob/master/CODE_OF_CONDUCT.md)**
-2. [Set up your development environment](/developers/development-setup)
-3. Explore the codebase
+<CardGroup cols={2}>
+  <Card
+    title="Code of Conduct"
+    icon="handshake"
+    href="https://github.com/heygaia/gaia/blob/master/CODE_OF_CONDUCT.md"
+  >
+    Read our community guidelines
+  </Card>
+  <Card
+    title="Development Setup"
+    icon="laptop-code"
+    href="/developers/development-setup"
+  >
+    Set up your local environment
+  </Card>
+  <Card title="Code Style Guide" icon="code" href="/developers/code-style">
+    Learn our coding standards
+  </Card>
+  <Card title="Commands Reference" icon="terminal" href="/developers/commands">
+    Discover available mise commands
+  </Card>
+</CardGroup>
 
 ## Ways to Contribute
 
@@ -37,11 +56,12 @@ Before making your first contribution, please:
 
 <Steps>
   <Step title="Fork & Clone">
-    Fork the repository on GitHub and clone your fork locally:
+    **Fork** the repository on GitHub and clone **your fork** locally:
 
     ```bash
     git clone https://github.com/YOUR_USERNAME/gaia.git
     ```
+
   </Step>
 
   <Step title="Create a Branch">
@@ -50,11 +70,12 @@ Before making your first contribution, please:
     ```bash
     git checkout -b feature/your-feature-name
     ```
+
   </Step>
 
-  <Step title="Make Changes">
-    Make your changes following our coding standards and best practices.
-  </Step>
+<Step title="Make Changes">
+  Make your changes following our coding standards and best practices.
+</Step>
 
   <Step title="Commit & Push">
     Commit your changes with a descriptive message following our [conventional commits](/configuration/conventional-commits) format:
@@ -64,6 +85,7 @@ Before making your first contribution, please:
     git commit -m "feat: your commit message"
     git push origin your-branch-name
     ```
+
   </Step>
 
   <Step title="Create Pull Request">
@@ -74,6 +96,7 @@ Before making your first contribution, please:
 ## Recognition
 
 Contributors are recognized in:
+
 - **README.md** contributors section
 - **Release notes** for significant contributions
 - **Discord** contributor role and channels

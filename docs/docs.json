@@ -39,6 +39,9 @@
             "pages": [
               "developers/introduction",
               "developers/development-setup",
+              "developers/commands",
+              "developers/code-style",
+              "developers/pull-requests",
               "developers/contributing"
             ]
           },
