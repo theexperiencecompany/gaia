@@ -1,22 +1,17 @@
 # Frontend mise.toml for GAIA
-#
 # This file defines tasks for the GAIA frontend (Next.js/React).
 #
 # Quick Start:
-#   mise dev             # Start development server (Turbopack)
+#   mise dev             # Start development server
 #   mise install         # Install dependencies
 #   mise tasks               # List all available commands
-#
-# Common Commands:
-#   Development:  mise dev, mise dev:webpack
-#   Build:        mise build, mise start
-#   Code Quality: mise lint, mise format, mise type
-#   Analysis:     mise depcheck, mise knip, mise analyze
-#
-# Run from root: mise -C frontend <task>
 
 [tools]
+mprocs = "0.7.3"
 node = "22"
+
+[env]
+NEXT_PUBLIC_API_BASE_URL="http://localhost:8000/api/v1/"
 
 [tasks.dev]
 description = "Run development server with Turbopack"

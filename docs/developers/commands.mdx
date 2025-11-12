@@ -109,17 +109,6 @@ Run these commands from the `backend/` directory or use `mise -C backend <task>`
 ### Testing & Security
 
 <AccordionGroup>
-  <Accordion icon="vial" title="mise test">
-    **Run tests**
-
-    Execute the test suite with pytest.
-
-    ```bash
-    mise test
-    ```
-
-  </Accordion>
-
   <Accordion icon="file-contract" title="mise schema">
     **Test API schema with schemathesis**
 
@@ -190,38 +179,6 @@ Run these commands from the `backend/` directory or use `mise -C backend <task>`
 
   </Accordion>
 
-  <Accordion icon="code" title="mise install:dev">
-    **Install dev dependencies**
-
-    Install only development dependencies.
-
-    ```bash
-    mise install:dev
-    ```
-
-  </Accordion>
-
-  <Accordion icon="server" title="mise install:backend">
-    **Install backend dependencies**
-
-    Install backend-specific dependencies.
-
-    ```bash
-    mise install:backend
-    ```
-
-  </Accordion>
-
-  <Accordion icon="microphone" title="mise install:voice">
-    **Install voice agent dependencies**
-
-    Install dependencies for voice agent features.
-
-    ```bash
-    mise install:voice
-    ```
-
-  </Accordion>
 </AccordionGroup>
 
 ### Database & Seeding
@@ -256,54 +213,6 @@ Run these commands from the `backend/` directory or use `mise -C backend <task>`
 
     ```bash
     mise seed:workflows
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-### Docker Management
-
-<AccordionGroup>
-  <Accordion icon="docker" title="mise docker:up">
-    **Start all docker services**
-
-    Start all backend services in Docker.
-
-    ```bash
-    mise docker:up
-    ```
-
-  </Accordion>
-
-  <Accordion icon="stop" title="mise docker:down">
-    **Stop all docker services**
-
-    Stop and remove all Docker containers.
-
-    ```bash
-    mise docker:down
-    ```
-
-  </Accordion>
-
-  <Accordion icon="file-lines" title="mise docker:logs">
-    **View docker logs**
-
-    Stream logs from all Docker services.
-
-    ```bash
-    mise docker:logs
-    ```
-
-  </Accordion>
-
-  <Accordion icon="hammer" title="mise docker:build">
-    **Build docker images**
-
-    Rebuild all Docker images from scratch.
-
-    ```bash
-    mise docker:build
     ```
 
   </Accordion>
@@ -574,13 +483,13 @@ Run these commands from the project root directory to manage both backend and fr
 
   </Accordion>
 
-  <Accordion icon="check-circle" title="mise check:env">
+  <Accordion icon="check-circle" title="mise setup:env">
     **Check if environment files exist**
 
     Validates that required `.env` files are present.
 
     ```bash
-    mise check:env
+    mise setup:env
     ```
 
   </Accordion>
@@ -618,16 +527,6 @@ Run these commands from the project root directory to manage both backend and fr
 
   </Accordion>
 
-  <Accordion icon="database" title="mise setup:seed">
-    **Seed AI models and workflows**
-
-    Populate the database with default AI models and workflow templates.
-
-    ```bash
-    mise setup:seed
-    ```
-
-  </Accordion>
 </AccordionGroup>
 
 ### Development
@@ -655,39 +554,24 @@ Run these commands from the project root directory to manage both backend and fr
 
   </Accordion>
 
-  <Accordion icon="rocket" title="mise dev:all">
-    **Run both backend and frontend**
+  <Accordion icon="rocket" title="mise dev">
+    **Run backend + frontend + docker**
 
-    Start both services simultaneously (requires tmux or separate terminals).
-
-    ```bash
-    mise dev:all
-    ```
-
-  </Accordion>
-</AccordionGroup>
-
-### Installation & Setup
-
-<AccordionGroup>
-  <Accordion icon="download" title="mise install:all">
-    **Install all dependencies**
-
-    Install dependencies for both backend and frontend.
+    Start both backend and frontend services with docker dependencies.
 
     ```bash
-    mise install:all
+    mise dev
     ```
 
   </Accordion>
 
-  <Accordion icon="cog" title="mise setup">
-    **Initial project setup**
+  <Accordion icon="rocket" title="mise dev:full">
+    **Run backend + frontend + arq + docker**
 
-    Run the complete setup script.
+    Start all services including the ARQ worker.
 
     ```bash
-    mise setup
+    mise dev:full
     ```
 
   </Accordion>
@@ -696,24 +580,35 @@ Run these commands from the project root directory to manage both backend and fr
 ### Code Quality
 
 <AccordionGroup>
-  <Accordion icon="check" title="mise lint:all">
+  <Accordion icon="check" title="mise lint">
     **Lint both backend and frontend**
 
     Run linters for the entire codebase.
 
     ```bash
-    mise lint:all
+    mise lint
     ```
 
   </Accordion>
 
-  <Accordion icon="paintbrush" title="mise format:all">
+  <Accordion icon="paintbrush" title="mise format">
     **Format both backend and frontend**
 
     Format all code in the project.
 
     ```bash
-    mise format:all
+    mise format
+    ```
+
+  </Accordion>
+
+  <Accordion icon="trash" title="mise clean:all">
+    **Clean both backend and frontend**
+
+    Remove all build artifacts from the entire project.
+
+    ```bash
+    mise clean:all
     ```
 
   </Accordion>
@@ -722,61 +617,105 @@ Run these commands from the project root directory to manage both backend and fr
 ### Docker Management
 
 <AccordionGroup>
-  <Accordion icon="docker" title="mise docker:up">
+  <Accordion icon="docker" title="docker compose up">
     **Start all docker services**
 
     Start all services with Docker Compose.
 
     ```bash
-    mise docker:up
+    docker compose up
+    ```
+
+    Run in background with `-d` flag:
+    ```bash
+    docker compose up -d
     ```
 
   </Accordion>
 
-  <Accordion icon="stop" title="mise docker:down">
+  <Accordion icon="stop" title="docker compose down">
     **Stop all docker services**
 
     Stop and remove all Docker containers.
 
     ```bash
-    mise docker:down
+    docker compose down
     ```
 
   </Accordion>
 
-  <Accordion icon="file-lines" title="mise docker:logs">
+  <Accordion icon="file-lines" title="docker compose logs">
     **View docker logs**
 
     Stream logs from all Docker services.
 
     ```bash
-    mise docker:logs
+    docker compose logs -f
+    ```
+
+    View logs for a specific service:
+    ```bash
+    docker compose logs -f postgres
     ```
 
   </Accordion>
 
-  <Accordion icon="rotate" title="mise docker:restart">
+  <Accordion icon="rotate" title="docker compose restart">
     **Restart all docker services**
 
-    Stop and start all Docker services.
+    Restart all Docker services without recreating containers.
 
     ```bash
-    mise docker:restart
+    docker compose restart
     ```
 
   </Accordion>
-</AccordionGroup>
 
-### Maintenance
+  <Accordion icon="box" title="docker compose --profile all up">
+    **Start ALL containers**
 
-<AccordionGroup>
-  <Accordion icon="trash" title="mise clean:all">
-    **Clean both backend and frontend**
-
-    Remove all build artifacts from the entire project.
+    Start all containers including backend/arq in docker (profile: all).
 
     ```bash
-    mise clean:all
+    docker compose --profile all up
+    ```
+
+  </Accordion>
+
+  <Accordion icon="box" title="docker compose --profile backend up">
+    **Start docker + backend container**
+
+    Start docker services + backend container (profile: backend).
+
+    ```bash
+    docker compose --profile backend up
+    ```
+
+  </Accordion>
+
+  <Accordion icon="box" title="docker compose --profile worker up">
+    **Start docker + worker container**
+
+    Start docker services + ARQ worker container (profile: worker).
+
+    ```bash
+    docker compose --profile worker up
+    ```
+
+  </Accordion>
+
+  <Accordion icon="hammer" title="docker compose build">
+    **Build docker images**
+
+    Rebuild all Docker images from scratch.
+
+    ```bash
+    docker compose build
+    ```
+
+    Build without cache:
+    ```bash
+    docker compose build --no-cache
     ```
 
   </Accordion>
@@ -816,6 +755,6 @@ Run these commands from the project root directory to manage both backend and fr
 If you encounter issues with any commands:
 
 1. Check the command is running from the correct directory
-2. Ensure all dependencies are installed with `mise install:all`
+2. Ensure all dependencies are installed with `mise setup:deps`
 3. Verify Docker services are running for backend tasks
 4. Check the [Development Setup](/developers/development-setup) guide

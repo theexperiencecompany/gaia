@@ -46,8 +46,7 @@ mise setup
 git checkout -b feature/your-feature-name
 
 # 6. Make changes and test
-mise lint:all      # Check code quality
-mise test          # Run tests (from backend/)
+mise lint     # Check code quality
 
 # 7. Commit and push
 git commit -m "feat: your changes"

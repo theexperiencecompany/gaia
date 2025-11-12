@@ -1,0 +1,18 @@
+# mprocs configuration for GAIA development
+#
+# This file runs when you call `mprocs` directly without arguments.
+#
+# Recommended: Use mise tasks instead for better control:
+#   mise tasks (list all tasks)
+#   mise dev
+#
+# Custom combinations - call mprocs with inline commands:
+#   mprocs "task1 task2 task3"
+
+procs:
+  backend:
+    shell: "mise dev:backend"
+  frontend:
+    shell: "mise dev:frontend"
+  docker:
+    shell: "mise dev:docker"

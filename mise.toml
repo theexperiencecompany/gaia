@@ -1,48 +1,49 @@
 # Root mise.toml for GAIA monorepo
 #
 # This file defines tasks and tools for the entire GAIA project.
+#
 # mise is a task runner and tool manager that handles both backend and frontend.
 #
-# Quick Start:
-#   mise setup           # Complete project setup
-#   mise dev:all         # Start both backend and frontend
-#   mise tasks               # List all available commands
-#
+# Run 'mise tasks' to see all tasks in the current directory.
+# Run 'mise tasks --all' to see all tasks including subdirectories
 # Documentation: https://docs.heygaia.io/developers/commands
-#
-# Common Commands:
-#   Development:  mise dev:backend, mise dev:frontend
-#   Setup:        mise setup, mise install:all
-#   Code Quality: mise lint:all, mise format:all
-#   Docker:       mise docker:up, mise docker:down
-#
-# Run from subdirectories:
-#   mise -C backend dev     # Run backend dev from any directory
-#   mise -C frontend build  # Run frontend build from any directory
+
 
 [tools]
+mprocs = "0.7.3"
 python = "3.11"
 node = "22"
+"npm:mintlify" = "latest"
 
 [env]
 _.python.venv = { path = "backend/.venv", create = true }
 MISE_NODE_COREPACK = "1"
 
-# Development
-[tasks."dev:backend"]
-description = "Run backend development server"
-run = "mise -C backend dev"
-
 [tasks."dev:frontend"]
-description = "Run frontend development server"
-run = "mise -C frontend dev"
+description = "Run ONLY frontend"
+dir = "frontend"
+run = "mise dev"
 
-[tasks."dev:all"]
-description = "Run both backend and frontend"
-depends = ["dev:backend", "dev:frontend"]
+[tasks."dev:backend"]
+description = "Run ONLY backend server (without docker dependencies)"
+dir = "backend"
+run = "mise dev"
 
-# Installation
-[tasks."check:env"]
+[tasks."dev:arq"]
+description = "Run ONLY ARQ worker (without docker dependencies)"
+dir = "backend"
+run = "mise worker"
+
+[tasks."dev:full"]
+description = "Run backend + frontend + arq + docker"
+run = 'mprocs "mise dev:backend" "mise dev:frontend" "mise dev:arq" "docker compose up"'
+
+[tasks.dev]
+description = "Run backend + frontend + docker logs"
+run = 'mprocs "mise dev:backend" "mise dev:frontend" "docker compose up"'
+
+# Setup and Installation (setup:*)
+[tasks."setup:env"]
 description = "Check if environment files exist"
 run = '''
 if [ ! -f "backend/.env" ] || [ ! -f "frontend/.env" ]; then
@@ -57,48 +58,39 @@ fi
 
 [tasks."setup:backend"]
 description = "Set up backend dependencies"
-run = "mise -C backend install"
-depends = ["check:env"]
+dir = "backend"
+run = "mise install"
+depends = ["setup:env"]
 
 [tasks."setup:frontend"]
 description = "Set up frontend dependencies"
-run = "mise -C frontend install"
+dir = "frontend"
+run = "mise install"
 
-[tasks."install:all"]
+[tasks."setup:deps"]
 description = "Install all dependencies"
 depends = ["setup:backend", "setup:frontend"]
 
 [tasks.setup]
 description = "Complete project setup"
-depends = ["check:env", "docker:up", "setup:backend", "setup:frontend"]
-run = "mise -C backend seed:models"
+depends = ["setup:*"]
+dir = "backend"
+run = "docker compose up -d && mise seed:models"
 
-# Code Quality
-[tasks."lint:all"]
+# Code Quality (lint:*, format:*, clean:*)
+[tasks.lint]
 description = "Lint both backend and frontend"
 run = ["mise -C backend lint", "mise -C frontend lint"]
 
-[tasks."format:all"]
+[tasks.format]
 description = "Format both backend and frontend"
 run = ["mise -C backend format", "mise -C frontend format"]
 
-[tasks."clean:all"]
+[tasks.clean]
 description = "Clean both backend and frontend"
 run = ["mise -C backend clean", "mise -C frontend clean"]
 
-# Docker
-[tasks."docker:up"]
-description = "Start all docker services"
-run = "docker compose --profile backend up -d"
-
-[tasks."docker:down"]
-description = "Stop all docker services"
-run = "docker compose --profile backend down"
-
-[tasks."docker:logs"]
-description = "View docker logs"
-run = "docker compose --profile backend logs -f"
-
-[tasks."docker:restart"]
-description = "Restart all docker services"
-depends = ["docker:down", "docker:up"]
+[tasks.docs]
+description = "Run the mintlify documentation server"
+dir = "docs"
+run = "mintlify dev"

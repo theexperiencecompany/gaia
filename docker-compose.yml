@@ -1,10 +1,10 @@
 name: gaia-dev
 
 services:
-  # FastAPI Application
+  # FastAPI Application (use profile to run in docker, otherwise run locally with mise)
   gaia-backend:
     container_name: gaia-backend
-    profiles: ["", "backend-only"]
+    profiles: ["backend", "all"]
     build: ./backend
     image: gaia
     working_dir: /app
@@ -58,7 +58,6 @@ services:
   chromadb:
     image: chromadb/chroma:1.0.0
     container_name: chromadb
-    profiles: ["", "backend-only"]
     volumes:
       - chroma_data:/chroma/chroma
     environment:
@@ -81,7 +80,6 @@ services:
   postgres:
     image: postgres:alpine
     container_name: postgres
-    profiles: ["", "backend-only"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres # pragma: allowlist secret
@@ -99,11 +97,10 @@ services:
     networks:
       - gaia_network
 
-  # Redis Service (dev only)
+  # Redis Service
   redis:
     image: redis:alpine
     container_name: redis
-    profiles: ["", "backend-only"]
     ports:
       - "6379:6379"
     volumes:
@@ -117,11 +114,10 @@ services:
     networks:
       - gaia_network
 
-  # MongoDB Service (dev only)
+  # MongoDB Service
   mongo:
     image: mongo:latest
     container_name: mongo
-    profiles: ["", "backend-only"]
     volumes:
       - mongo_data:/data/db
     restart: on-failure
@@ -139,7 +135,6 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
-    profiles: ["", "backend-only"]
     ports:
       - "5672:5672" # AMQP protocol
       - "15672:15672" # Management UI
@@ -154,11 +149,11 @@ services:
     networks:
       - gaia_network
 
-  # Arq Worker
+  # Arq Worker (use profile to run in docker, otherwise run locally with mise)
   arq_worker:
     container_name: arq_worker
     image: gaia
-    profiles: ["", "backend-only"]
+    profiles: ["worker", "all"]
     working_dir: /app
     env_file:
       - ./backend/.env
@@ -174,11 +169,10 @@ services:
     networks:
       - gaia_network
 
-  # Mongo Express Service (dev only)
+  # Mongo Express Service
   mongo_express:
     image: mongo-express:latest
     container_name: mongo_express
-    profiles: ["", "backend-only"]
     environment:
       ME_CONFIG_MONGODB_SERVER: mongo
       ME_CONFIG_MONGODB_PORT: 27017

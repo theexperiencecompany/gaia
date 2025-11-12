@@ -1,0 +1,35 @@
+#!/usr/bin/env -S mise tool-stub
+# mise Tool Stub Configuration for mprocs
+#
+# This TOML file defines how mise should download and install mprocs, a TUI
+# (terminal user interface) for running multiple processes concurrently.
+#
+# How it works:
+# 1. When you run `mprocs` command, mise checks if the binary exists in cache
+# 2. If not cached, mise detects your platform (OS + architecture)
+# 3. Downloads the appropriate binary from the GitHub releases specified below
+#
+# Platform mappings:
+# - linux-x64: Linux on x86_64 (Intel/AMD 64-bit)
+# - macos-arm64: macOS on Apple Silicon (M1/M2/M3)
+# - macos-x64: macOS on Intel processors
+# - windows-x64: Windows on x86_64
+#
+# Benefits:
+# - Zero manual installation required
+# - Version pinned to v0.7.3 for consistency across dev environments
+# - Automatic platform detection
+# - Enables running GAIA's frontend and backend simultaneously via mprocs.yaml
+
+[platforms.linux-x64]
+url = "https://github.com/pvolok/mprocs/releases/download/v0.7.3/mprocs-0.7.3-linux-x86_64-musl.tar.gz"
+
+[platforms.macos-arm64]
+url = "https://github.com/pvolok/mprocs/releases/download/v0.7.3/mprocs-0.7.3-darwin-aarch64.tar.gz"
+
+[platforms.macos-x64]
+url = "https://github.com/pvolok/mprocs/releases/download/v0.7.3/mprocs-0.7.3-darwin-x86_64.tar.gz"
+
+[platforms.windows-x64]
+url = "https://github.com/pvolok/mprocs/releases/download/v0.7.3/mprocs-0.7.3-windows-x86_64.zip"
+bin = "mprocs.exe"
