@@ -291,6 +291,14 @@ class DevelopmentSettings(CommonSettings):
     DODO_PAYMENTS_API_KEY: Optional[str] = None
 
     # ----------------------------------------------
+    # IoT & Hardware Control
+    # ----------------------------------------------
+    DOOR_SERIAL_PORT: Optional[str] = (
+        "/dev/cu.usbserial-130"  # Serial port for Arduino door controller
+    )
+    DOOR_BAUDRATE: Optional[int] = 9600  # Serial communication speed
+
+    # ----------------------------------------------
     # Monitoring & Analytics
     # ----------------------------------------------
     SENTRY_DSN: Optional[str] = None

@@ -263,6 +263,9 @@ function renderTool<K extends ToolName>(
   const renderer = TOOL_RENDERERS[name] as
     | ((data: ToolDataMap[K], index: number) => React.ReactNode)
     | undefined;
+
+  console.log();
+
   return renderer ? renderer(data, index) : null;
 }
 

@@ -188,7 +188,7 @@ def create_agent(
 
         # Handle empty response content (edge case)
         # Happens with gemini models https://discuss.ai.google.dev/t/gemini-2-5-pro-with-empty-response-text/81175
-        response.content = response.content or "Empty response from model."
+        response.content = response.content or ""
 
         # Set the name for the response for filtering
         response.additional_kwargs = {"visible_to": {agent_name}}
@@ -218,7 +218,7 @@ def create_agent(
 
         # Handle empty response content (edge case)
         # Happens with gemini models https://discuss.ai.google.dev/t/gemini-2-5-pro-with-empty-response-text/81175
-        response.content = response.content or "Empty response from model."
+        response.content = response.content or ""
 
         # Set the name for the response for filtering
         response.additional_kwargs = {"visible_to": {agent_name}}

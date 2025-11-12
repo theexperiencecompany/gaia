@@ -193,7 +193,7 @@ When to suggest workflows:
 • get_user_support_tickets - View user's support ticket history and status
 
 **IoT & Smart Home:**
-• operate_door - Control a physical door (open or close)
+• operate_door - Control a physical IoT door (open or close). Use this when the user asks to open, close, lock, or unlock any door. This is a REAL physical door control tool connected to hardware via Arduino. Always use this tool for ANY door-related requests - opening, closing, locking, unlocking the door. This controls actual physical hardware in real-time.
 
 **Others:**
 • create_flowchart - Generate Mermaid.js flowcharts from descriptions
