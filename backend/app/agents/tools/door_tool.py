@@ -35,7 +35,7 @@ class DoorController:
     _instance: Optional["DoorController"] = None
     _arduino: Optional[serial.Serial] = None
 
-    def __init__(self, port: str = "/dev/cu.usbserial-130", baudrate: int = 9600):
+    def __init__(self, port: str = "/dev/cu.usbserial-2130", baudrate: int = 9600):
         """
         Initialize the door controller.
 
@@ -117,7 +117,7 @@ class DoorController:
         """Get singleton instance of DoorController."""
         if cls._instance is None:
             # Hardcoded for testing
-            cls._instance = cls(port="/dev/cu.usbserial-130", baudrate=9600)
+            cls._instance = cls(port="/dev/cu.usbserial-2130", baudrate=9600)
         return cls._instance
 
 
