@@ -172,5 +172,5 @@ torch = [
 [project.urls]
 Homepage = "https://heygaia.io"
 Documentation = "https://docs.heygaia.io"
-Repository = "https://github.com/heygaia/gaia"
-Issues = "https://github.com/heygaia/gaia/issues"
+Repository = "https://github.com/theexperiencecompany/gaia"
+Issues = "https://github.com/theexperiencecompany/gaia/issues"

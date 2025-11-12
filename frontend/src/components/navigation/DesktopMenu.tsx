@@ -11,8 +11,9 @@ import { Github } from "../shared";
 export default function DesktopMenu({ scrolled }: { scrolled: boolean }) {
   const user = useUser();
   const isAuthenticated = user?.email; // Check if user has email to determine auth status
-  const { data: repoData, isLoading: isLoadingStars } =
-    useGitHubStars("heygaia/gaia");
+  const { data: repoData, isLoading: isLoadingStars } = useGitHubStars(
+    "theexperiencecompany/gaia",
+  );
 
   if (scrolled) {
     return (
@@ -22,7 +23,7 @@ export default function DesktopMenu({ scrolled }: { scrolled: boolean }) {
           <div className="relative top-1">
             <Button
               as={Link}
-              href="https://github.com/heygaia/gaia"
+              href="https://github.com/theexperiencecompany/gaia"
               target="_blank"
               size="sm"
               rel="noopener noreferrer"

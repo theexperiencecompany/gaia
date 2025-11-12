@@ -284,7 +284,7 @@ When creating issues, follow this strict format:
 - Use broad, relevant labels: bug, enhancement, documentation, refactor, maintenance, test
 
 ### Default Repository
-- **Use `heygaia/gaia` unless user specifies otherwise**
+- **Use `theexperiencecompany/gaia` unless user specifies otherwise**
 
 ## Operation Guidelines
 

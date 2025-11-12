@@ -26,7 +26,7 @@ export default function Navbar() {
   const isMobileScreen = useMediaQuery("(max-width: 990px)");
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
-  const { data: repoData } = useGitHubStars("heygaia/gaia");
+  const { data: repoData } = useGitHubStars("theexperiencecompany/gaia");
 
   const user = useUser();
 
@@ -209,7 +209,7 @@ export default function Navbar() {
           ) : (
             <div className="group hidden items-center gap-3 sm:flex">
               <a
-                href="https://github.com/heygaia/gaia"
+                href="https://github.com/theexperiencecompany/gaia"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => {

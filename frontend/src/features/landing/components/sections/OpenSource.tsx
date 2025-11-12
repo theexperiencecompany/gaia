@@ -63,7 +63,7 @@ export default function OpenSource() {
     data: contributorsData,
     isLoading,
     isError,
-  } = useGitHubContributors("heygaia/gaia");
+  } = useGitHubContributors("theexperiencecompany/gaia");
 
   const contributors = contributorsData?.contributors || [];
   const totalCount = contributorsData?.totalCount || 0;
@@ -163,7 +163,7 @@ export default function OpenSource() {
             </RaisedButton>
           </Link>
           <Link
-            href={"https://github.com/heygaia/gaia"}
+            href={"https://github.com/theexperiencecompany/gaia"}
             className="w-full sm:w-auto"
           >
             <RaisedButton

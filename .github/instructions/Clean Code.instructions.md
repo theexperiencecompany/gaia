@@ -31,7 +31,7 @@ Do not run or open backend/frontend servers or any other servers. You can only m
 
 Use meaningful names for variables, functions, classes, and modules. Avoid vague names like “data” or “info”; be specific about the purpose.
 
-Github Repository: https://github.com/heygaia/gaia
+Github Repository: https://github.com/theexperiencecompany/gaia
 Use DeepWiki MCP (when available) for understanding the codebase. Use the ask_question tool to clarify doubts. Verify DeepWiki information against the latest codebase.
 Maintain clarity, conciseness, and production-level quality in all code edits.
 

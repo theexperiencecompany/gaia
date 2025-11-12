@@ -54,7 +54,7 @@ export const SOCIAL_LINKS = [
     color: "#5865f2",
   },
   {
-    href: "https://github.com/heygaia/gaia",
+    href: "https://github.com/theexperiencecompany/gaia",
     ariaLabel: "GitHub Link",
     buttonProps: {
       color: "#a6a6a6",

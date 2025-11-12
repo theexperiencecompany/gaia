@@ -10,8 +10,9 @@ import GetStartedButton from "../shared/GetStartedButton";
 import { SplitTextBlur } from "./SplitTextBlur";
 
 export default function HeroSection() {
-  const { data: release, isLoading: isReleaseLoading } =
-    useLatestRelease("heygaia/gaia");
+  const { data: release, isLoading: isReleaseLoading } = useLatestRelease(
+    "theexperiencecompany/gaia",
+  );
 
   return (
     <div className="relative w-screen flex-col gap-8 pb-14">
@@ -28,7 +29,7 @@ export default function HeroSection() {
         disableIntersectionObserver={true}
       >
         <div className="mx-auto flex w-full justify-center gap-2">
-          <Link href="https://github.com/heygaia/gaia/blob/master/CHANGELOG.md">
+          <Link href="https://github.com/theexperiencecompany/gaia/blob/master/CHANGELOG.md">
             <div className="relative z-10 flex w-fit cursor-pointer items-center gap-2 rounded-full bg-zinc-900 p-1 px-3 pl-1 text-sm font-light outline-1 outline-zinc-800 transition-colors hover:bg-zinc-800">
               <Github width={20} height={20} />
               <ShinyText

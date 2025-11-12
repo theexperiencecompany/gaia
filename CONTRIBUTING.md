@@ -10,7 +10,7 @@ For comprehensive contribution guidelines, please visit our documentation:
 
 - **[Development Setup](https://docs.heygaia.io/developers/development-setup)** - Set up your local environment
 - **[Contributing Guidelines](https://docs.heygaia.io/developers/contributing)** - Overview of contribution process
-- **[Code of Conduct](https://github.com/heygaia/gaia/blob/master/CODE_OF_CONDUCT.md)** - Community standards
+- **[Code of Conduct](https://github.com/theexperiencecompany/gaia/blob/master/CODE_OF_CONDUCT.md)** - Community standards
 
 ### Developer Guides
 
@@ -59,8 +59,8 @@ git push origin feature/your-feature-name
 ## Need Help?
 
 - **[Discord](https://discord.heygaia.io)** - Join our community
-- **[GitHub Issues](https://github.com/heygaia/gaia/issues)** - Report bugs or request features
-- **[Discussions](https://github.com/heygaia/gaia/discussions)** - Ask questions
+- **[GitHub Issues](https://github.com/theexperiencecompany/gaia/issues)** - Report bugs or request features
+- **[Discussions](https://github.com/theexperiencecompany/gaia/discussions)** - Ask questions
 
 ## Additional Resources
 

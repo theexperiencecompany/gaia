@@ -9,7 +9,7 @@ GAIA is an open source project, and we welcome contributions of all kinds:
 
 ## Getting Started
 
-- Read our [Code of Conduct](https://github.com/heygaia/gaia/blob/master/CODE_OF_CONDUCT.md)
+- Read our [Code of Conduct](https://github.com/theexperiencecompany/gaia/blob/master/CODE_OF_CONDUCT.md)
 - Set up your environment: [Development Setup Guide](https://docs.heygaia.io/developers/development-setup)
 - Explore our [contribution guidelines](https://docs.heygaia.io/developers/contributing) for details
 
@@ -28,13 +28,13 @@ GAIA is an open source project, and we welcome contributions of all kinds:
 
 ## Code of Conduct
 
-Help us keep GAIA open and inclusive. Please read and follow our [Code of Conduct](https://github.com/heygaia/gaia/blob/master/CODE_OF_CONDUCT.md).
+Help us keep GAIA open and inclusive. Please read and follow our [Code of Conduct](https://github.com/theexperiencecompany/gaia/blob/master/CODE_OF_CONDUCT.md).
 
 ## Need Help?
 
 - [Documentation](https://docs.heygaia.io/)
 - [Discord Community](https://discord.heygaia.io/)
-- [GitHub Issues](https://github.com/heygaia/gaia/issues)
-- [Discussions](https://github.com/heygaia/gaia/discussions)
+- [GitHub Issues](https://github.com/theexperiencecompany/gaia/issues)
+- [Discussions](https://github.com/theexperiencecompany/gaia/discussions)
 
 Thank you for contributing to GAIA!
