@@ -54,7 +54,6 @@ class ComposioService:
                     user_id=user_id,
                     auth_config_id=config.auth_config_id,
                     callback_url=callback_url,
-                    allow_multiple=True,
                 ),
             )
 
