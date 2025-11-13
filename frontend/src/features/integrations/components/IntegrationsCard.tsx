@@ -29,12 +29,10 @@ const IntegrationItem: React.FC<{
     onClick(integration.id);
   };
 
-  const handleConnectClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isAvailable && !isConnected) {
-      onConnect(integration.id);
-    }
+  const handleConnectClick = () => {
+    onConnect(integration.id);
   };
+
   const paddingClass = size === "small" ? "p-2" : "p-4";
   const gapClass = size === "small" ? "gap-2" : "gap-3";
 
@@ -130,7 +128,7 @@ const IntegrationItem: React.FC<{
           </>
         )}
 
-        <div className="flex-shrink-0" onClick={handleConnectClick}>
+        <div className="flex-shrink-0">
           {isConnected && (
             <Chip size="sm" variant="flat" color="success">
               Connected
@@ -143,6 +141,7 @@ const IntegrationItem: React.FC<{
               variant="flat"
               color="primary"
               className="text-xs text-primary"
+              onPress={handleConnectClick}
             >
               Connect
             </Button>
