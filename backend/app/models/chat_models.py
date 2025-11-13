@@ -12,18 +12,6 @@ class ImageData(BaseModel):
     improved_prompt: Optional[str] = None
 
 
-class IntegrationConnectionData(BaseModel):
-    """Data structure for integration connection prompts."""
-
-    integration_id: str
-    integration_name: str
-    integration_description: str
-    integration_category: str
-    message: str
-    connect_url: str
-    settings_url: Optional[str] = None
-
-
 class SupportTicketData(BaseModel):
     """Data structure for support ticket creation."""
 
@@ -99,7 +87,6 @@ class MessageModel(BaseModel):
     selectedWorkflow: Optional[SelectedWorkflowData] = None
     tool_data: Optional[List[ToolDataEntry]] = None
     follow_up_actions: Optional[List[str]] = None
-    integration_connection_required: Optional[IntegrationConnectionData] = None
     metadata: Optional[dict] = None
 
 
