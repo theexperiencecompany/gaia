@@ -1,23 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { type Author } from "@/types";
-
-import { AuthorTooltip } from "./AuthorTooltip";
+import { type BlogPost } from "@/lib/blog";
 import { Chip } from "@heroui/chip";
 
-export interface Blog {
-  slug: string;
-  title: string;
-  image: string;
-  category: string;
-  date: string;
-  authors: Author[];
-  featured?: boolean;
-}
+import { AuthorTooltip } from "./AuthorTooltip";
 
 interface BlogCardProps {
-  blog: Blog;
+  blog: BlogPost;
   variant?: "large" | "small";
 }
 
@@ -27,7 +17,7 @@ export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
   return (
     <Link href={`/blog/${blog.slug}`} className="block">
       <div
-        className={`group flex h-full flex-col overflow-hidden rounded-3xl bg-zinc-900/70 p-6 outline-1 outline-zinc-800 transition-all hover:bg-zinc-900 ${isLarge ? "p-1" : "p-0"} `}
+        className={`group flex h-full flex-col overflow-hidden rounded-2xl bg-zinc-900/70 p-6 outline-1 outline-zinc-800 transition-all hover:bg-zinc-900 ${isLarge ? "p-1" : "p-0"} `}
       >
         {blog.image && (
           <div className="relative mb-6 aspect-video">
