@@ -1,6 +1,6 @@
 // ChatBubbleBot.tsx
 import Image from "next/image";
-import { ReactNode, useCallback, useMemo, useRef } from "react";
+import { ReactNode, useCallback, useRef } from "react";
 
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import ChatBubble_Actions from "@/features/chat/components/bubbles/actions/ChatBubble_Actions";
