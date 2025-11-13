@@ -1,21 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { type Author } from "@/types";
+import { type BlogPost } from "@/lib/blog";
+import { Chip } from "@heroui/chip";
 
 import { AuthorTooltip } from "./AuthorTooltip";
 
-export interface Blog {
-  slug: string;
-  title: string;
-  image: string;
-  category: string;
-  date: string;
-  authors: Author[];
-}
-
 interface BlogCardProps {
-  blog: Blog;
+  blog: BlogPost;
   variant?: "large" | "small";
 }
 
@@ -25,17 +17,31 @@ export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
   return (
     <Link href={`/blog/${blog.slug}`} className="block">
       <div
-        className={`group h-full overflow-hidden rounded-xl bg-zinc-950 p-6 outline-1 outline-zinc-800 transition-all hover:bg-zinc-900 ${isLarge ? "p-7" : "p-4"} `}
+        className={`group flex h-full flex-col overflow-hidden rounded-2xl bg-zinc-900/70 p-6 outline-1 outline-zinc-800 transition-all hover:bg-zinc-900 ${isLarge ? "p-1" : "p-0"} `}
       >
-        <div className="relative mb-6 aspect-video">
-          <Image
-            src={blog.image}
-            alt={blog.title}
-            fill
-            className="rounded-xl object-cover"
-          />
-        </div>
-        <div className={`${isLarge ? "space-y-3" : "space-y-2"}`}>
+        {blog.image && (
+          <div className="relative mb-6 aspect-video">
+            <Image
+              src={blog.image}
+              alt={blog.title}
+              fill
+              className="rounded-2xl object-cover"
+            />
+            {blog.featured && (
+              <Chip
+                variant="flat"
+                color="primary"
+                size="sm"
+                className="absolute top-3 right-3 text-primary"
+              >
+                Featured
+              </Chip>
+            )}
+          </div>
+        )}
+        <div
+          className={`${isLarge ? "space-y-3" : "space-y-2"} flex flex-1 flex-col justify-end`}
+        >
           <div className="flex items-center -space-x-2">
             {(isLarge ? blog.authors : blog.authors.slice(0, 3)).map(
               (author) => (
@@ -57,14 +63,21 @@ export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="mb-1 flex items-center gap-3">
             <span className="text-xs text-foreground-500 group-hover:text-foreground">
               {blog.category}
+            </span>
+            <span className="text-xs text-foreground-300 group-hover:text-foreground-500">
+              {new Date(blog.date).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
             </span>
           </div>
           <h3
             className={`font-medium text-white transition-colors ${
-              isLarge ? "" : "line-clamp-2 text-sm"
+              isLarge ? "text-lg" : "line-clamp-2 text-sm"
             }`}
           >
             {blog.title}

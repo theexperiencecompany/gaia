@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
+import { useImageDialog } from "@/stores/uiStore";
 import { cn } from "@/lib";
 
 export interface MarkdownRendererProps {
@@ -16,6 +17,8 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   content,
   className,
 }) => {
+  const { openDialog } = useImageDialog();
+
   return (
     <div
       className={cn(
@@ -63,8 +66,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               width={500}
               height={500}
               alt="image"
-              className="my-4 object-contain"
+              className="mx-auto my-4 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
               src={props.src as string}
+              onClick={() => openDialog(props.src as string)}
             />
           ),
           pre: ({ ...props }) => (

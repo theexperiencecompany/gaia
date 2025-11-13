@@ -7,6 +7,7 @@ import type { Article, WithContext } from "schema-dts";
 import JsonLd from "@/components/seo/JsonLd";
 import BlogMetadata from "@/features/blog/components/BlogMetadata";
 import MarkdownWrapper from "@/features/blog/components/MarkdownWrapper";
+import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
 import { BlogPost } from "@/lib/blog";
 
 interface BlogPostClientProps {
@@ -29,29 +30,33 @@ export default function BlogPostClient({
   return (
     <>
       <JsonLd data={structuredData} />
+      <SearchedImageDialog />
       <div className="flex h-fit min-h-screen w-screen justify-center overflow-y-auto pt-28">
         <div className="mx-auto w-full px-5 sm:p-0">
-          <div className="mb-8 flex flex-col items-center">
-            <div className="mb-5 flex w-full justify-center text-foreground-400">
+          <div className="mb-8 flex flex-col items-center space-y-10">
+            <div className="flex w-full justify-center text-foreground-400">
               <Breadcrumbs>
                 <BreadcrumbItem href="/blog">Blog</BreadcrumbItem>
                 <BreadcrumbItem>{blog.category}</BreadcrumbItem>
               </Breadcrumbs>
             </div>
-            <h1 className="text-center text-4xl font-medium tracking-tight sm:text-5xl">
-              {blog.title}
-            </h1>
-            <div className="flex h-fit max-w-4xl items-center justify-center py-10">
+
+            <div className="flex h-fit max-w-3xl items-center justify-center">
               {blog.image && (
                 <Image
                   src={blog.image}
                   alt={blog.title}
                   width={1920}
                   height={1080}
-                  className="object-cover sm:max-w-5xl"
+                  className="bg-zinc-900 object-cover sm:max-w-5xl"
                 />
               )}
             </div>
+
+            <h1 className="text-center text-4xl font-medium tracking-tight sm:text-5xl">
+              {blog.title}
+            </h1>
+
             <BlogMetadata
               authors={blog.authors}
               date={blog.date}
