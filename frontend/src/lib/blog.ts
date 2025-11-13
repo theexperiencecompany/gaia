@@ -20,6 +20,7 @@ export interface BlogPost {
   category: string;
   image: string;
   content: string;
+  featured?: boolean;
 }
 
 export interface BlogPostFrontmatter {
@@ -29,6 +30,7 @@ export interface BlogPostFrontmatter {
   category: string;
   image: string;
   slug: string;
+  featured?: boolean;
 }
 
 /**
@@ -67,6 +69,7 @@ export function getBlogPost(slug: string): BlogPost | null {
       category: frontmatter.category,
       image: frontmatter.image,
       content,
+      featured: frontmatter.featured,
     };
   } catch (error) {
     console.error(`Error reading blog post ${slug}:`, error);
@@ -93,7 +96,11 @@ export function getAllBlogPosts(includeContent: boolean = false): BlogPost[] {
     })
     .filter((post): post is BlogPost => post !== null)
     .sort((a, b) => {
-      // Sort by date, newest first
+      // Featured posts come first
+      if (a.featured && !b.featured) return -1;
+      if (!a.featured && b.featured) return 1;
+
+      // Then sort by date, newest first
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
 

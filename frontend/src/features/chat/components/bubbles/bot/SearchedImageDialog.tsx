@@ -15,47 +15,24 @@ export default function SearchedImageDialog() {
 
   return (
     <Modal
-      className="text-foreground dark"
+      className="h-full text-foreground dark"
       isOpen={isOpen}
       onOpenChange={closeDialog}
-      size="2xl"
+      size="5xl"
       scrollBehavior="inside"
     >
       <ModalContent>
-        <ModalHeader className="flex flex-col gap-1">
-          <h2 className="text-xl font-semibold">Image Preview</h2>
-        </ModalHeader>
-        <ModalBody className="p-0">
+        <ModalBody className="max-h-[80vh] overflow-auto">
           {selectedImage && (
-            <div className="flex flex-col gap-4">
-              <div className="relative w-full">
-                <Image
-                  src={selectedImage}
-                  alt="Search result image"
-                  width={800}
-                  height={600}
-                  className="w-full rounded-lg object-contain"
-                  priority
-                />
-              </div>
-            </div>
+            <Image
+              src={selectedImage}
+              alt="Search result image"
+              fill
+              className="h-full w-full rounded-lg object-contain p-10"
+              priority
+            />
           )}
         </ModalBody>
-        <ModalFooter className="flex justify-between">
-          {selectedImage && (
-            <a
-              href={selectedImage}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="max-w-md truncate text-sm text-foreground-500 transition hover:text-primary"
-            >
-              {selectedImage}
-            </a>
-          )}
-          <Button color="primary" onPress={closeDialog}>
-            Close
-          </Button>
-        </ModalFooter>
       </ModalContent>
     </Modal>
   );

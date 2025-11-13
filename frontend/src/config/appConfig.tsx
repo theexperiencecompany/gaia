@@ -39,7 +39,7 @@ export const appConfig = {
   // Site information
   site: {
     name: "GAIA",
-    copyright: "Copyright © 2025 GAIA. All rights reserved.",
+    copyright: "Copyright © 2025 The Experience Company. All rights reserved.",
     domain: "heygaia.io",
   },
 

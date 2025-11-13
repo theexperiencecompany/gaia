@@ -19,6 +19,7 @@ interface Blog {
     linkedin?: string;
     twitter?: string;
   }>;
+  featured?: boolean;
 }
 
 export const metadata: Metadata = generatePageMetadata({
@@ -48,13 +49,15 @@ export default async function BlogList() {
       date: blog.date,
       image: blog.image,
       authors: blog.authors,
+      featured: blog.featured,
     }));
 
-    const latestPosts = displayBlogs.slice(0, 5);
-    const remainingPosts = displayBlogs.slice(5);
+    const hasMoreThanTen = displayBlogs.length > 10;
+    const latestPosts = displayBlogs.slice(0, hasMoreThanTen ? 13 : 5);
+    const remainingPosts = displayBlogs.slice(hasMoreThanTen ? 13 : 5);
 
     return (
-      <div className="flex min-h-screen w-screen justify-center pt-28">
+      <div className="flex min-h-screen w-screen justify-center py-28">
         <div className="w-full max-w-(--breakpoint-lg)">
           <BlogHeader />
 
@@ -62,19 +65,21 @@ export default async function BlogList() {
           {latestPosts.length > 0 && (
             <div className="mb-12">
               <div className="mb-6 grid gap-6">
-                {/* First row - 2 posts */}
+                {/* First row */}
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                  {latestPosts.slice(0, 2).map((blog) => (
+                  {latestPosts.slice(0, hasMoreThanTen ? 4 : 2).map((blog) => (
                     <BlogCard key={blog.slug} blog={blog} variant="large" />
                   ))}
                 </div>
 
-                {/* Second row - 3 posts */}
-                {latestPosts.length > 2 && (
+                {/* Remaining posts */}
+                {latestPosts.length > (hasMoreThanTen ? 4 : 2) && (
                   <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                    {latestPosts.slice(2, 5).map((blog) => (
-                      <BlogCard key={blog.slug} blog={blog} variant="small" />
-                    ))}
+                    {latestPosts
+                      .slice(hasMoreThanTen ? 4 : 2, hasMoreThanTen ? 13 : 5)
+                      .map((blog) => (
+                        <BlogCard key={blog.slug} blog={blog} variant="small" />
+                      ))}
                   </div>
                 )}
               </div>
