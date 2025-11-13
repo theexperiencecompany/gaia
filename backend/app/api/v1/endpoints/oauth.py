@@ -19,7 +19,9 @@ from app.config.oauth_config import (
 )
 from app.config.settings import settings
 from app.config.token_repository import token_repository
+from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.mongodb.collections import users_collection
+from app.db.redis import delete_cache
 from app.models.oauth_models import IntegrationConfigResponse
 from app.models.user_models import (
     OnboardingPreferences,
@@ -261,29 +263,39 @@ async def login_integration(
 @router.get("/composio/callback", response_class=RedirectResponse)
 async def composio_callback(
     status: str,
-    connectedAccountId: str,
     frontend_redirect_path: str,
     background_tasks: BackgroundTasks,
+    connectedAccountId: Optional[str] = None,
+    error: Optional[str] = None,
 ):
     """
     Handle Composio OAuth callback after successful/failed connection.
 
     Args:
         status: Connection status from Composio ('success' or 'failed')
-        connectedAccountId: Unique identifier for the connected account
         frontend_redirect_path: Path to redirect user after processing
         background_tasks: FastAPI background tasks for async operations
+        connectedAccountId: Unique identifier for the connected account (optional for failures)
+        error: Error code from OAuth provider (optional)
 
     Returns:
         RedirectResponse: Redirects user to frontend with appropriate status
     """
     # Handle failed connection early
     if status != "success":
-        logger.error(
-            f"Composio connection failed: status={status}, accountId={connectedAccountId}"
+        error_type = "cancelled" if error == "access_denied" else "failed"
+        logger.warning(
+            f"Composio connection failed: status={status}, error={error}, accountId={connectedAccountId}"
         )
         return RedirectResponse(
-            url=f"{settings.FRONTEND_URL}/redirect?oauth_error=failed"
+            url=f"{settings.FRONTEND_URL}/{frontend_redirect_path}?oauth_error={error_type}"
+        )
+
+    # Ensure we have connectedAccountId for success status
+    if not connectedAccountId:
+        logger.error("Connected account ID missing for successful connection")
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}/{frontend_redirect_path}?oauth_error=failed"
         )
 
     composio_service = get_composio_service()
@@ -335,6 +347,14 @@ async def composio_callback(
         if integration_config.id == "gmail":
             logger.info(f"Starting Gmail email processing for user {user_id}")
             background_tasks.add_task(_queue_gmail_processing, user_id)
+
+        # Invalidate OAuth status cache for this user
+        try:
+            cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
+            await delete_cache(cache_key)
+            logger.info(f"OAuth status cache invalidated for user {user_id}")
+        except Exception as e:
+            logger.warning(f"Failed to invalidate OAuth status cache: {e}")
 
         # Successful connection - redirect to frontend
         logger.info(

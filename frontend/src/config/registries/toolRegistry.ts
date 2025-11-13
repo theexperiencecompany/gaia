@@ -77,6 +77,10 @@ export const TOOL_REGISTRY = {
   todo_data: null as unknown as TodoToolData,
   goal_data: null as unknown as GoalDataMessageType,
   notification_data: null as unknown as { notifications: NotificationRecord[] },
+  integration_connection_required: null as unknown as {
+    integration_id: string;
+    message: string;
+  },
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;

@@ -77,6 +77,7 @@ tool_fields = [
     "goal_data",
     "code_data",
     "google_docs_data",
+    "integration_connection_required",
 ]
 
 
