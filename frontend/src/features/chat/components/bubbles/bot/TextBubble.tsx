@@ -279,18 +279,11 @@ export default function TextBubble({
   text,
   disclaimer,
   tool_data,
-  integration_connection_required,
   isConvoSystemGenerated,
   systemPurpose,
 }: ChatBubbleBotProps) {
   return (
     <>
-      {integration_connection_required && (
-        <IntegrationConnectionPrompt
-          integration_connection_required={integration_connection_required}
-        />
-      )}
-
       {/* Unified tool_data rendering via registry */}
       {tool_data?.map((entry, index) => {
         const toolName = entry.tool_name as ToolName;

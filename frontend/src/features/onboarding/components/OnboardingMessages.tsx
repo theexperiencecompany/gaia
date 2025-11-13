@@ -44,7 +44,6 @@ export const OnboardingMessages = ({
               selectedCalendarEvent={undefined}
               isConvoSystemGenerated={undefined}
               follow_up_actions={undefined}
-              integration_connection_required={undefined}
               image_data={undefined}
               memory_data={undefined}
               setOpenImage={() => {}}
@@ -82,7 +81,6 @@ export const OnboardingMessages = ({
               selectedCalendarEvent={undefined}
               isConvoSystemGenerated={undefined}
               follow_up_actions={undefined}
-              integration_connection_required={undefined}
               image_data={undefined}
               memory_data={undefined}
               disableActions={true}

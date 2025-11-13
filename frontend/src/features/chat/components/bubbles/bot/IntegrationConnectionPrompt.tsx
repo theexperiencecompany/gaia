@@ -9,10 +9,7 @@ import { useIntegrations } from "@/features/integrations";
 import { IntegrationConnectionData } from "@/types/features/integrationTypes";
 
 interface IntegrationConnectionPromptProps {
-  integration_connection_required: Pick<
-    IntegrationConnectionData,
-    "integration_id" | "message"
-  >;
+  integration_connection_required: IntegrationConnectionData;
 }
 
 export default function IntegrationConnectionPrompt({

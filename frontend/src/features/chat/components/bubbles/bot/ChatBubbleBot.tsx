@@ -5,7 +5,6 @@ import { ReactNode, useCallback, useMemo, useRef } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import ChatBubble_Actions from "@/features/chat/components/bubbles/actions/ChatBubble_Actions";
 import ChatBubble_Actions_Image from "@/features/chat/components/bubbles/actions/ChatBubble_Actions_Image";
-import { IntegrationConnectionPrompt } from "@/features/chat/components/integration/IntegrationConnectionPrompt";
 import MemoryIndicator from "@/features/chat/components/memory/MemoryIndicator";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
@@ -13,8 +12,8 @@ import { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
 import FollowUpActions from "./FollowUpActions";
-import ImageBubble from "./ImageBubble";
 import TextBubble from "./TextBubble";
+import ImageBubble from "./ImageBubble";
 
 export default function ChatBubbleBot(
   props: ChatBubbleBotProps & {
@@ -33,7 +32,6 @@ export default function ChatBubbleBot(
     onOpenMemoryModal,
     isConvoSystemGenerated,
     systemPurpose,
-    integration_connection_required,
     follow_up_actions,
     isLastMessage,
     disableActions = false,
@@ -58,22 +56,15 @@ export default function ChatBubbleBot(
   }, [disableActions]);
 
   const renderedComponent = useMemo(() => {
-    // Integration connection prompt takes priority
-    if (integration_connection_required)
-      return (
-        <IntegrationConnectionPrompt data={integration_connection_required} />
-      );
-
     if (image_data) return <ImageBubble {...props} image_data={image_data} />;
 
     return <TextBubble {...props} />;
-  }, [image_data, props, integration_connection_required]);
+  }, [image_data, props]);
 
   // Check if there's actual content to display
   const hasContent =
     image_data ||
     !!text ||
-    props.integration_connection_required ||
     (isConvoSystemGenerated &&
       systemPurpose === SystemPurpose.EMAIL_PROCESSING);
 
