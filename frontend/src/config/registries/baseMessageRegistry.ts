@@ -5,7 +5,6 @@
  */
 
 import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
-import { IntegrationConnectionData } from "@/types/features/integrationTypes";
 import { WorkflowData } from "@/types/features/workflowTypes";
 import { FileData } from "@/types/shared/fileTypes";
 
@@ -37,10 +36,6 @@ export const BASE_MESSAGE_SCHEMA = {
     | undefined,
   isConvoSystemGenerated: undefined as boolean | undefined,
   follow_up_actions: undefined as string[] | undefined,
-  integration_connection_required: undefined as
-    | IntegrationConnectionData
-    | null
-    | undefined,
   // Core non-tool fields
   image_data: undefined as ImageData | null | undefined,
   memory_data: undefined as MemoryData | null | undefined,

@@ -1,16 +1,5 @@
 from typing import Annotated, Dict, Optional, Union
 
-from app.config.loggers import chat_logger as logger
-from app.decorators import require_integration, with_doc, with_rate_limiting
-from app.templates.docstrings.google_docs_tool_docs import (
-    CREATE_GOOGLE_DOC,
-    FORMAT_GOOGLE_DOC,
-    GET_GOOGLE_DOC,
-    LIST_GOOGLE_DOCS,
-    SEARCH_GOOGLE_DOCS,
-    SHARE_GOOGLE_DOC,
-    UPDATE_GOOGLE_DOC,
-)
 from app.agents.templates.google_docs_templates import (
     GOOGLE_DOCS_CREATE_TEMPLATE,
     GOOGLE_DOCS_FORMAT_TEMPLATE,
@@ -20,6 +9,8 @@ from app.agents.templates.google_docs_templates import (
     GOOGLE_DOCS_SHARE_TEMPLATE,
     GOOGLE_DOCS_UPDATE_TEMPLATE,
 )
+from app.config.loggers import chat_logger as logger
+from app.decorators import require_integration, with_doc, with_rate_limiting
 from app.services.google_docs_service import (
     create_google_doc,
     format_google_doc,
@@ -29,22 +20,19 @@ from app.services.google_docs_service import (
     share_google_doc,
     update_google_doc_content,
 )
+from app.templates.docstrings.google_docs_tool_docs import (
+    CREATE_GOOGLE_DOC,
+    FORMAT_GOOGLE_DOC,
+    GET_GOOGLE_DOC,
+    LIST_GOOGLE_DOCS,
+    SEARCH_GOOGLE_DOCS,
+    SHARE_GOOGLE_DOC,
+    UPDATE_GOOGLE_DOC,
+)
+from app.utils.oauth_utils import get_tokens_by_user_id
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
-
-
-def get_auth_from_config(config: RunnableConfig) -> Dict[str, str]:
-    """Extract access and refresh tokens from the config."""
-    if not config:
-        logger.error("Google Docs tool called without config")
-        return {"access_token": "", "refresh_token": ""}
-
-    configurable = config.get("configurable", {})
-    return {
-        "access_token": configurable.get("access_token", ""),
-        "refresh_token": configurable.get("refresh_token", ""),
-    }
 
 
 @tool
@@ -58,18 +46,21 @@ async def create_google_doc_tool(
 ) -> str:
     """Create a new Google Doc with the specified title and optional initial content."""
     try:
-        auth = get_auth_from_config(config)
+        user_id = config.get("configurable", {}).get("user_id")
+        if not user_id:
+            return "User ID not found in config"
 
-        if not auth["access_token"] or not auth["refresh_token"]:
-            return "Authentication credentials not provided"
+        access_token, refresh_token, token_success = await get_tokens_by_user_id(user_id)
+        if not token_success or not access_token or not refresh_token:
+            return "Failed to get valid access token"
 
         # Send progress update
         writer = get_stream_writer()
         writer({"progress": f"Creating Google Doc '{title}'..."})
 
         result = await create_google_doc(
-            refresh_token=auth["refresh_token"],
-            access_token=auth["access_token"],
+            refresh_token=refresh_token,
+            access_token=access_token,
             title=title,
             content=content,
         )
@@ -123,14 +114,17 @@ async def list_google_docs_tool(
 ) -> str:
     """List the user's Google Docs with optional filtering."""
     try:
-        auth = get_auth_from_config(config)
+        user_id = config.get("configurable", {}).get("user_id")
+        if not user_id:
+            return "User ID not found in config"
 
-        if not auth["access_token"] or not auth["refresh_token"]:
-            return "Authentication credentials not provided"
+        access_token, refresh_token, token_success = await get_tokens_by_user_id(user_id)
+        if not token_success or not access_token or not refresh_token:
+            return "Failed to get valid access token"
 
         docs = await list_google_docs(
-            refresh_token=auth["refresh_token"],
-            access_token=auth["access_token"],
+            refresh_token=refresh_token,
+            access_token=access_token,
             limit=limit,
             query=query,
         )
@@ -206,18 +200,21 @@ async def get_google_doc_tool(
 ) -> str:
     """Retrieve the content and metadata of a specific Google Doc."""
     try:
-        auth = get_auth_from_config(config)
+        user_id = config.get("configurable", {}).get("user_id")
+        if not user_id:
+            return "User ID not found in config"
 
-        if not auth["access_token"] or not auth["refresh_token"]:
-            return "Authentication credentials not provided"
+        access_token, refresh_token, token_success = await get_tokens_by_user_id(user_id)
+        if not token_success or not access_token or not refresh_token:
+            return "Failed to get valid access token"
 
         # Send progress update
         writer = get_stream_writer()
         writer({"progress": "Retrieving Google Doc content..."})
 
         doc = await get_google_doc(
-            refresh_token=auth["refresh_token"],
-            access_token=auth["access_token"],
+            refresh_token=refresh_token,
+            access_token=access_token,
             document_id=document_id,
         )
 
@@ -275,10 +272,13 @@ async def update_google_doc_tool(
 ) -> str:
     """Update the content of an existing Google Doc."""
     try:
-        auth = get_auth_from_config(config)
+        user_id = config.get("configurable", {}).get("user_id")
+        if not user_id:
+            return "User ID not found in config"
 
-        if not auth["access_token"] or not auth["refresh_token"]:
-            return "Authentication credentials not provided"
+        access_token, refresh_token, token_success = await get_tokens_by_user_id(user_id)
+        if not token_success or not access_token or not refresh_token:
+            return "Failed to get valid access token"
 
         # Send progress update
         writer = get_stream_writer()
@@ -288,8 +288,8 @@ async def update_google_doc_tool(
         writer({"progress": f"{action_type} Google Doc..."})
 
         result = await update_google_doc_content(
-            refresh_token=auth["refresh_token"],
-            access_token=auth["access_token"],
+            refresh_token=refresh_token,
+            access_token=access_token,
             document_id=document_id,
             content=content,
             insert_at_end=insert_at_end,
@@ -297,7 +297,7 @@ async def update_google_doc_tool(
 
         # Get document info for display
         doc_info = await get_google_doc(
-            auth["refresh_token"], auth["access_token"], document_id
+            refresh_token, access_token, document_id
         )
 
         # Send structured data to frontend
@@ -352,10 +352,13 @@ async def format_google_doc_tool(
 ) -> str:
     """Apply formatting to a specific range of text in a Google Doc."""
     try:
-        auth = get_auth_from_config(config)
+        user_id = config.get("configurable", {}).get("user_id")
+        if not user_id:
+            return "User ID not found in config"
 
-        if not auth["access_token"] or not auth["refresh_token"]:
-            return "Authentication credentials not provided"
+        access_token, refresh_token, token_success = await get_tokens_by_user_id(user_id)
+        if not token_success or not access_token or not refresh_token:
+            return "Failed to get valid access token"
 
         # Send progress update
         writer = get_stream_writer()
@@ -374,8 +377,8 @@ async def format_google_doc_tool(
             formatting["foregroundColor"] = foreground_color
 
         result = await format_google_doc(
-            refresh_token=auth["refresh_token"],
-            access_token=auth["access_token"],
+            refresh_token=refresh_token,
+            access_token=access_token,
             document_id=document_id,
             start_index=start_index,
             end_index=end_index,
@@ -384,7 +387,7 @@ async def format_google_doc_tool(
 
         # Get document info for display
         doc_info = await get_google_doc(
-            auth["refresh_token"], auth["access_token"], document_id
+            refresh_token, access_token, document_id
         )
 
         # Send structured data to frontend
@@ -446,18 +449,21 @@ async def share_google_doc_tool(
 ) -> str:
     """Share a Google Doc with another user."""
     try:
-        auth = get_auth_from_config(config)
+        user_id = config.get("configurable", {}).get("user_id")
+        if not user_id:
+            return "User ID not found in config"
 
-        if not auth["access_token"] or not auth["refresh_token"]:
-            return "Authentication credentials not provided"
+        access_token, refresh_token, token_success = await get_tokens_by_user_id(user_id)
+        if not token_success or not access_token or not refresh_token:
+            return "Failed to get valid access token"
 
         # Send progress update
         writer = get_stream_writer()
         writer({"progress": f"Sharing Google Doc with {email}..."})
 
         result = await share_google_doc(
-            refresh_token=auth["refresh_token"],
-            access_token=auth["access_token"],
+            refresh_token=refresh_token,
+            access_token=access_token,
             document_id=document_id,
             email=email,
             role=role,
@@ -466,7 +472,7 @@ async def share_google_doc_tool(
 
         # Get document info for display
         doc_info = await get_google_doc(
-            auth["refresh_token"], auth["access_token"], document_id
+            refresh_token, access_token, document_id
         )
 
         # Send structured data to frontend
@@ -513,18 +519,21 @@ async def search_google_docs_tool(
 ) -> str:
     """Search through the user's Google Docs by title and content."""
     try:
-        auth = get_auth_from_config(config)
+        user_id = config.get("configurable", {}).get("user_id")
+        if not user_id:
+            return "User ID not found in config"
 
-        if not auth["access_token"] or not auth["refresh_token"]:
-            return "Authentication credentials not provided"
+        access_token, refresh_token, token_success = await get_tokens_by_user_id(user_id)
+        if not token_success or not access_token or not refresh_token:
+            return "Failed to get valid access token"
 
         # Send progress update
         writer = get_stream_writer()
         writer({"progress": f"Searching Google Docs for '{query}'..."})
 
         docs = await search_google_docs(
-            refresh_token=auth["refresh_token"],
-            access_token=auth["access_token"],
+            refresh_token=refresh_token,
+            access_token=access_token,
             query=query,
             limit=limit,
         )

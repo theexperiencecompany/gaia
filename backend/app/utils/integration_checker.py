@@ -95,15 +95,8 @@ async def stream_integration_connection_prompt(
         connection_data = {
             "integration_connection_required": {
                 "integration_id": integration_id,
-                "integration_name": integration.name,
-                "integration_description": integration.description,
-                "integration_category": integration.category,
-                "tool_name": tool_name,
-                "tool_category": tool_category,
                 "message": message
                 or f"To use {str(tool_name).replace('_', ' ') or 'this feature'}, please connect your {integration.name} account.",
-                "connect_url": f"/oauth/login/integration/{integration_id}",
-                "settings_url": "/settings?section=integrations",
             }
         }
 
