@@ -5,7 +5,9 @@ from typing import Optional
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
+from app.constants.keys import OAUTH_STATUS_KEY
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.decorators.caching import Cacheable
 from app.models.oauth_models import TriggerConfig
 from app.services.composio.langchain_composio_service import LangchainProvider
 from app.utils.composio_hooks.registry import (
@@ -54,6 +56,7 @@ class ComposioService:
                     user_id=user_id,
                     auth_config_id=config.auth_config_id,
                     callback_url=callback_url,
+                    allow_multiple=True,
                 ),
             )
 
@@ -197,6 +200,9 @@ class ComposioService:
             logger.error(f"Error getting tool {tool_name}: {e}")
             return None
 
+    @Cacheable(
+        ttl=86400, key_pattern=f"{OAUTH_STATUS_KEY}:{{user_id}}"
+    )  # Cache for 1 day
     async def check_connection_status(
         self, providers: list[str], user_id: str
     ) -> dict[str, bool]:
