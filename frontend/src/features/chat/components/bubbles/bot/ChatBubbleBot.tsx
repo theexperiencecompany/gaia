@@ -12,8 +12,8 @@ import { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
 import FollowUpActions from "./FollowUpActions";
-import TextBubble from "./TextBubble";
 import ImageBubble from "./ImageBubble";
+import TextBubble from "./TextBubble";
 
 export default function ChatBubbleBot(
   props: ChatBubbleBotProps & {
