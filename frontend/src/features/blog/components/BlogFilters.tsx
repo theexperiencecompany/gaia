@@ -4,6 +4,7 @@ import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { Search } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+
 import type { BlogPost } from "@/lib/blog";
 
 interface BlogFiltersProps {

@@ -1,10 +1,7 @@
-import { Button } from "@heroui/button";
 import {
   Modal,
   ModalBody,
   ModalContent,
-  ModalFooter,
-  ModalHeader,
 } from "@heroui/modal";
 import Image from "next/image";
 

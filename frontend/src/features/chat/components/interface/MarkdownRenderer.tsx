@@ -5,8 +5,8 @@ import remarkGfm from "remark-gfm";
 
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
-import { useImageDialog } from "@/stores/uiStore";
 import { cn } from "@/lib";
+import { useImageDialog } from "@/stores/uiStore";
 
 export interface MarkdownRendererProps {
   content: string;
