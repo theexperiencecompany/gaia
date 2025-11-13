@@ -1,6 +1,6 @@
 // ChatBubbleBot.tsx
 import Image from "next/image";
-import { ReactNode, useCallback, useRef } from "react";
+import { ReactNode, useCallback, useMemo, useRef } from "react";
 
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import ChatBubble_Actions from "@/features/chat/components/bubbles/actions/ChatBubble_Actions";
@@ -12,6 +12,8 @@ import { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
 import FollowUpActions from "./FollowUpActions";
+import TextBubble from "./TextBubble";
+import ImageBubble from "./ImageBubble";
 
 export default function ChatBubbleBot(
   props: ChatBubbleBotProps & {
@@ -52,6 +54,12 @@ export default function ChatBubbleBot(
       actionsRef.current.style.visibility = "hidden";
     }
   }, [disableActions]);
+
+  const renderedComponent = useMemo(() => {
+    if (image_data) return <ImageBubble {...props} image_data={image_data} />;
+
+    return <TextBubble {...props} />;
+  }, [image_data, props]);
 
   // Check if there's actual content to display
   const hasContent =
@@ -99,6 +107,7 @@ export default function ChatBubbleBot(
                   onOpenModal={onOpenMemoryModal}
                 />
               )}
+              <div className="chat_bubble_container">{renderedComponent}</div>
             </div>
           </div>
         </div>
