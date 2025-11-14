@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0 (2025-11-14)
+
+## What's Changed
+* chore(dx): Setup mise as a task runner for better DX and mprocs to run multiple tasks in a single terminal window by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/288
+* feat(ui): added ui to let users connect to intended integration in chat screen by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/290
+* fix: fixed token issue in google docs tool by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/291
+* chore: Added 2 new Tool calling blogs by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/295
+* release: v0.7.1 by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/296
+
+
+**Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.7.0...v0.8.0
+
 ## 0.7.0 (2025-11-11)
 
 ## What's Changed
