@@ -328,7 +328,7 @@ def get_handoff_tools(enabled_providers: List[str]):
             )
         )
 
-    if "google_tasks" in enabled_providers:
+    if "googletasks" in enabled_providers:
         tools.append(
             create_handoff_tool(
                 tool_name="call_google_tasks_agent",
@@ -340,11 +340,11 @@ def get_handoff_tools(enabled_providers: List[str]):
                     use_cases="task creation, to-do list management, deadline tracking, or any Google Tasks operation",
                 ),
                 system_prompt=GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
-                integration_id="google_tasks",
+                integration_id="googletasks",
             )
         )
 
-    if "google_sheets" in enabled_providers:
+    if "googlesheets" in enabled_providers:
         tools.append(
             create_handoff_tool(
                 tool_name="call_google_sheets_agent",
@@ -356,7 +356,7 @@ def get_handoff_tools(enabled_providers: List[str]):
                     use_cases="spreadsheet creation, data entry, formula management, data analysis, or any Google Sheets operation",
                 ),
                 system_prompt=GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
-                integration_id="google_sheets",
+                integration_id="googlesheets",
             )
         )
 
@@ -392,7 +392,7 @@ def get_handoff_tools(enabled_providers: List[str]):
             )
         )
 
-    if "google_meet" in enabled_providers:
+    if "googlemeet" in enabled_providers:
         tools.append(
             create_handoff_tool(
                 tool_name="call_google_meet_agent",
@@ -404,7 +404,7 @@ def get_handoff_tools(enabled_providers: List[str]):
                     use_cases="video meeting creation, scheduling calls, generating meeting links, or any Google Meet operation",
                 ),
                 system_prompt=GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
-                integration_id="google_meet",
+                integration_id="googlemeet",
             )
         )
 

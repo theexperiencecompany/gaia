@@ -31,10 +31,14 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     const integrationIds = [
       integration.id,
       ...(integration.includedIntegrations || []),
-    ];
+    ].map((id) => id.toLowerCase());
+
+    console.log({ integrationIds, integration });
 
     return tools.filter((tool) =>
-      integrationIds.includes(tool.integration?.requiredIntegration || ""),
+      integrationIds.includes(
+        tool.integration?.requiredIntegration.toLowerCase() || "",
+      ),
     );
   }, [tools, integration.id, integration.includedIntegrations]);
 
