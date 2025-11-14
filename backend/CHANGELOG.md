@@ -17,6 +17,7 @@
 * ci(workflows): upgrade setup-gcloud to v3 and standardize docker/login-action to v3 by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/312
 * ci(workflows): pin docker/setup-buildx-action to v3 by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/313
 * ci(workflows): discard local changes on GCP VM before pulling latest code by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/314
+* ci(workflows): stop containers before pulling and remove --no-deps in deploy job by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/315
 
 
 **Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.8.0...v0.8.1
