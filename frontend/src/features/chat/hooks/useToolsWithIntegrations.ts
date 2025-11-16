@@ -58,19 +58,28 @@ export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
       let isLocked = false;
 
       if (tool.required_integration) {
+        // Normalize to lowercase for case-insensitive matching (backend returns uppercase)
+        const normalizedRequiredIntegration =
+          tool.required_integration.toLowerCase();
+
         // Check if required integration is connected
         const requiredIntegration = integrationsWithStatus.find(
-          (integration) => integration.id === tool.required_integration,
+          (integration) =>
+            integration.id.toLowerCase() === normalizedRequiredIntegration,
         );
 
         isLocked =
           !requiredIntegration || requiredIntegration.status !== "connected";
       }
 
-      // Find integration details
-      const integrationDetails = integrationsWithStatus.find(
-        (integration) => integration.id === tool.required_integration,
-      );
+      // Find integration details (normalize for case-insensitive lookup)
+      const integrationDetails = tool.required_integration
+        ? integrationsWithStatus.find(
+            (integration) =>
+              integration.id.toLowerCase() ===
+              tool.required_integration!.toLowerCase(),
+          )
+        : undefined;
 
       return {
         name: tool.name,
@@ -79,7 +88,8 @@ export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
           ? {
               toolName: tool.name,
               category: tool.category,
-              requiredIntegration: tool.required_integration,
+              // Store normalized (lowercase) integration ID for consistent matching
+              requiredIntegration: tool.required_integration.toLowerCase(),
               integrationName:
                 integrationDetails?.name || tool.required_integration,
               isRequired: true,
