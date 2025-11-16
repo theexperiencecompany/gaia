@@ -399,37 +399,37 @@ const dummyTools = {
     // Calendar tools (requires integration)
     {
       name: "fetch_calendar_list",
-      category: "calendar",
+      category: "google_calendar",
       required_integration: "google_calendar",
     },
     {
       name: "create_calendar_event",
-      category: "calendar",
+      category: "google_calendar",
       required_integration: "google_calendar",
     },
     {
       name: "edit_calendar_event",
-      category: "calendar",
+      category: "google_calendar",
       required_integration: "google_calendar",
     },
     {
       name: "fetch_calendar_events",
-      category: "calendar",
+      category: "google_calendar",
       required_integration: "google_calendar",
     },
     {
       name: "search_calendar_events",
-      category: "calendar",
+      category: "google_calendar",
       required_integration: "google_calendar",
     },
     {
       name: "view_calendar_event",
-      category: "calendar",
+      category: "google_calendar",
       required_integration: "google_calendar",
     },
     {
       name: "delete_calendar_event",
-      category: "calendar",
+      category: "google_calendar",
       required_integration: "google_calendar",
     },
     // Google Docs tools (requires integration)
