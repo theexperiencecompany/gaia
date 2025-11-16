@@ -1,9 +1,9 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualizer, VirtualItem } from "@tanstack/react-virtual";
 import { AnimatePresence, motion } from "framer-motion";
-import { Hash, Search, X } from "lucide-react";
+import { Hash, Lock, Search, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
@@ -11,11 +11,239 @@ import { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { posthog } from "@/lib/posthog";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
 import { CategoryIntegrationStatus } from "./CategoryIntegrationStatus";
-import { LockedCategorySection } from "./LockedCategorySection";
+
+// Types for virtualized items
+type VirtualItemType =
+  | { type: "integrations-card" }
+  | { type: "unlocked-tool"; match: SlashCommandMatch; toolIndex: number }
+  | {
+      type: "locked-category-header";
+      category: string;
+      tools: SlashCommandMatch[];
+      requiredIntegration: { id: string; name: string };
+    }
+  | { type: "locked-tool"; match: SlashCommandMatch };
+
+// Component to render each virtualized item
+interface VirtualizedItemProps {
+  virtualRow: VirtualItem;
+  item: VirtualItemType;
+  selectedIndex: number;
+  selectedCategory: string;
+  openedViaButton: boolean;
+  searchQuery: string;
+  onSelect: (match: SlashCommandMatch) => void;
+  onClose: () => void;
+  measureElement: (element: HTMLElement | null) => void;
+}
+
+const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
+  virtualRow,
+  item,
+  selectedIndex,
+  selectedCategory,
+  openedViaButton,
+  searchQuery,
+  onSelect,
+  onClose,
+  measureElement,
+}) => {
+  const { connectIntegration, integrations } = useIntegrations();
+
+  const baseStyle = {
+    transform: `translateY(${virtualRow.start}px)`,
+  };
+
+  // IntegrationsCard
+  if (item.type === "integrations-card") {
+    return (
+      <div
+        data-index={virtualRow.index}
+        ref={measureElement}
+        className="absolute top-0 left-0 w-full"
+        style={baseStyle}
+      >
+        <IntegrationsCard onClose={onClose} size="small" />
+      </div>
+    );
+  }
+
+  // Unlocked tool
+  if (item.type === "unlocked-tool") {
+    const { match, toolIndex } = item;
+    const isSelected = toolIndex === selectedIndex;
+
+    return (
+      <div
+        data-index={virtualRow.index}
+        ref={measureElement}
+        className="absolute top-0 left-0 w-full"
+        style={baseStyle}
+      >
+        <div
+          className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${
+            isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"
+          }`}
+          onClick={() => {
+            posthog.capture("chat:slash_command_selected", {
+              tool_name: match.tool.name,
+              tool_category: match.tool.category,
+              opened_via_button: openedViaButton,
+              search_query: searchQuery || null,
+            });
+            onSelect(match);
+          }}
+        >
+          <div className="flex items-center gap-2 p-2">
+            {/* Icon */}
+            <div className="flex-shrink-0">
+              {getToolCategoryIcon(match.tool.category)}
+            </div>
+
+            {/* Content */}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-sm text-foreground-600">
+                  {formatToolName(match.tool.name)}
+                </span>
+                {selectedCategory === "all" && (
+                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
+                    {formatToolName(match.tool.category)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Locked category header
+  if (item.type === "locked-category-header") {
+    const { category, tools, requiredIntegration } = item;
+
+    const integration = integrations.find(
+      (int) => int.id.toLowerCase() === requiredIntegration.id.toLowerCase(),
+    );
+
+    const handleConnect = async () => {
+      try {
+        // connectIntegration handles normalization internally
+        await connectIntegration(requiredIntegration.id);
+        onClose?.();
+      } catch (error) {
+        console.error("Failed to connect integration:", error);
+      }
+    };
+
+    // Check if integration is available (has loginEndpoint)
+    const isAvailable = !!integration?.loginEndpoint;
+    const isConnected = integration?.status === "connected";
+
+    return (
+      <div
+        data-index={virtualRow.index}
+        ref={measureElement}
+        className="absolute top-0 left-0 w-full"
+        style={baseStyle}
+      >
+        <div className="mx-2 mt-4 mb-2">
+          <div className="flex items-center justify-between rounded-xl bg-zinc-800 p-2">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/20">
+                <Lock className="h-4 w-4 text-red-400" />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-zinc-200">
+                  {tools.length} {category.replace("_", " ")} tools locked
+                </div>
+                <div className="text-xs text-zinc-500">
+                  Requires {requiredIntegration.name} connection
+                </div>
+              </div>
+            </div>
+
+            {isAvailable && !isConnected && (
+              <Button
+                size="sm"
+                color="primary"
+                variant="flat"
+                startContent={getToolCategoryIcon(requiredIntegration.id, {
+                  size: 16,
+                  width: 16,
+                  height: 16,
+                  showBackground: false,
+                  className: "h-4 w-4 object-contain",
+                })}
+                onPress={handleConnect}
+              >
+                Connect
+              </Button>
+            )}
+
+            {!isAvailable && (
+              <Button
+                size="sm"
+                variant="flat"
+                color="default"
+                disabled
+                className="text-xs"
+              >
+                Soon
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Locked tool
+  if (item.type === "locked-tool") {
+    const { match } = item;
+
+    return (
+      <div
+        data-index={virtualRow.index}
+        ref={measureElement}
+        className="absolute top-0 left-0 w-full"
+        style={baseStyle}
+      >
+        <div className="relative mx-2 mb-1">
+          {/* Overlay */}
+          <div className="absolute inset-0 z-10 rounded-xl bg-zinc-900/60 backdrop-blur-[1px]" />
+
+          {/* Tool content */}
+          <div className="relative rounded-xl border border-transparent p-2">
+            <div className="flex items-center gap-2">
+              {/* Icon */}
+              <div className="flex-shrink-0">
+                {getToolCategoryIcon(match.tool.category)}
+              </div>
+
+              {/* Content */}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-sm text-foreground-600">
+                    {formatToolName(match.tool.name)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
 
 interface SlashCommandDropdownProps {
   matches: SlashCommandMatch[];
@@ -249,21 +477,70 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     };
   }, [filteredMatches]);
 
-  // Create virtualizer - IntegrationsCard is index 0 if shown, tools start after
-  const totalCount = showIntegrationsCard
-    ? unlockedMatches.length + 1
-    : unlockedMatches.length;
+  // Build flat list of virtualized items
+  const virtualItems = useMemo((): VirtualItemType[] => {
+    const items: VirtualItemType[] = [];
+
+    // Add IntegrationsCard if shown
+    if (showIntegrationsCard) {
+      items.push({ type: "integrations-card" });
+    }
+
+    // Add unlocked tools
+    unlockedMatches.forEach((match, index) => {
+      items.push({ type: "unlocked-tool", match, toolIndex: index });
+    });
+
+    // Add locked categories with their tools
+    Object.entries(lockedCategories).forEach(([category, categoryMatches]) => {
+      const firstTool = categoryMatches[0];
+      const requiredIntegration = firstTool.tool.required_integration;
+
+      if (!requiredIntegration) return;
+
+      const integrationName =
+        firstTool.enhancedTool?.integration?.integrationName ||
+        requiredIntegration;
+
+      // Add category header
+      items.push({
+        type: "locked-category-header",
+        category,
+        tools: categoryMatches,
+        requiredIntegration: {
+          id: requiredIntegration,
+          name: integrationName,
+        },
+      });
+
+      // Add each locked tool
+      categoryMatches.forEach((match) => {
+        items.push({ type: "locked-tool", match });
+      });
+    });
+
+    return items;
+  }, [showIntegrationsCard, unlockedMatches, lockedCategories]);
 
   const rowVirtualizer = useVirtualizer({
-    count: totalCount,
+    count: virtualItems.length,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: (index) => {
-      // First item is IntegrationsCard with dynamic height
-      if (showIntegrationsCard && index === 0) {
-        return 200; // Estimated height for IntegrationsCard (will auto-adjust)
+      const item = virtualItems[index];
+      if (!item) return 48;
+
+      switch (item.type) {
+        case "integrations-card":
+          return 200; // Estimated height for IntegrationsCard (will auto-adjust)
+        case "unlocked-tool":
+          return 48; // Regular tool item height
+        case "locked-category-header":
+          return 80; // Category header with connect button
+        case "locked-tool":
+          return 48; // Locked tool item (same as regular)
+        default:
+          return 48;
       }
-      // Regular tool items
-      return 48;
     },
     overscan: 5,
   });
@@ -277,17 +554,24 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
         return;
       }
 
-      // Offset by 1 if IntegrationsCard is shown (it's at index 0)
-      const virtualIndex = showIntegrationsCard
-        ? selectedIndex + 1
-        : selectedIndex;
+      // Find the virtual index for the selected unlocked tool
+      let virtualIndex = -1;
+      for (let i = 0; i < virtualItems.length; i++) {
+        const item = virtualItems[i];
+        if (item.type === "unlocked-tool" && item.toolIndex === selectedIndex) {
+          virtualIndex = i;
+          break;
+        }
+      }
 
-      requestAnimationFrame(() => {
-        rowVirtualizer.scrollToIndex(virtualIndex, {
-          align: "center",
-          behavior: "smooth",
+      if (virtualIndex >= 0) {
+        requestAnimationFrame(() => {
+          rowVirtualizer.scrollToIndex(virtualIndex, {
+            align: "center",
+            behavior: "smooth",
+          });
         });
-      });
+      }
     }
   }, [
     selectedIndex,
@@ -295,6 +579,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     unlockedMatches.length,
     showIntegrationsCard,
     isIntegrationsExpanded,
+    virtualItems,
   ]);
 
   return (
@@ -404,107 +689,25 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                 }}
               >
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                  // First item is IntegrationsCard if shown
-                  if (showIntegrationsCard && virtualRow.index === 0) {
-                    return (
-                      <div
-                        key={"integrations-card"}
-                        data-index={virtualRow.index}
-                        ref={rowVirtualizer.measureElement}
-                        className="absolute top-0 left-0 w-full"
-                        style={{
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        <IntegrationsCard onClose={onClose} size="small" />
-                      </div>
-                    );
-                  }
-
-                  // Adjust index for tool matches (offset by 1 if IntegrationsCard is shown)
-                  const toolIndex = showIntegrationsCard
-                    ? virtualRow.index - 1
-                    : virtualRow.index;
-                  const match = unlockedMatches[toolIndex];
-                  const isSelected = toolIndex === selectedIndex;
+                  const item = virtualItems[virtualRow.index];
+                  if (!item) return null;
 
                   return (
-                    <div
+                    <VirtualizedItem
                       key={virtualRow.key}
-                      data-index={virtualRow.index}
-                      ref={rowVirtualizer.measureElement}
-                      className="absolute top-0 left-0 w-full"
-                      style={{
-                        transform: `translateY(${virtualRow.start}px)`,
-                      }}
-                    >
-                      <div
-                        className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${
-                          isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"
-                        }`}
-                        onClick={() => {
-                          posthog.capture("chat:slash_command_selected", {
-                            tool_name: match.tool.name,
-                            tool_category: match.tool.category,
-                            opened_via_button: openedViaButton,
-                            search_query: searchQuery || null,
-                          });
-                          onSelect(match);
-                        }}
-                      >
-                        <div className="flex items-center gap-2 p-2">
-                          {/* Icon */}
-                          <div className="flex-shrink-0">
-                            {getToolCategoryIcon(match.tool.category)}
-                          </div>
-
-                          {/* Content */}
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="truncate text-sm text-foreground-600">
-                                {formatToolName(match.tool.name)}
-                              </span>
-                              {selectedCategory === "all" && (
-                                <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
-                                  {formatToolName(match.tool.category)}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                      virtualRow={virtualRow}
+                      item={item}
+                      selectedIndex={selectedIndex}
+                      selectedCategory={selectedCategory}
+                      openedViaButton={openedViaButton}
+                      searchQuery={searchQuery}
+                      onSelect={onSelect}
+                      onClose={onClose}
+                      measureElement={rowVirtualizer.measureElement}
+                    />
                   );
                 })}
               </div>
-
-              {/* Locked categories with sticky connect section */}
-              {Object.entries(lockedCategories).map(
-                ([category, categoryMatches]) => {
-                  const firstTool = categoryMatches[0];
-                  const requiredIntegration =
-                    firstTool.tool.required_integration;
-
-                  if (!requiredIntegration) return null;
-
-                  const integrationName =
-                    firstTool.enhancedTool?.integration?.integrationName ||
-                    requiredIntegration;
-
-                  return (
-                    <LockedCategorySection
-                      key={`locked-${category}`}
-                      category={category}
-                      tools={categoryMatches}
-                      requiredIntegration={{
-                        id: requiredIntegration,
-                        name: integrationName,
-                      }}
-                      onConnect={onClose}
-                    />
-                  );
-                },
-              )}
             </div>
           </div>
         </motion.div>
