@@ -57,8 +57,8 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
-  google_sheets: {
-    icon: "/images/icons/google_sheets.webp",
+  googlesheets: {
+    icon: "/images/icons/googlesheets.webp",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
     isImage: true,
@@ -176,7 +176,7 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
-  google_tasks: {
+  googletasks: {
     icon: "/images/icons/googletasks.svg",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
@@ -194,8 +194,8 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
-  google_meet: {
-    icon: "/images/icons/google_meet.svg",
+  googlemeet: {
+    icon: "/images/icons/googlemeet.svg",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
     isImage: true,
