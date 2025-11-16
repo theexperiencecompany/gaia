@@ -16,6 +16,8 @@ import { posthog } from "@/lib/posthog";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
 import { CategoryIntegrationStatus } from "./CategoryIntegrationStatus";
+import { LockedCategorySection } from "./LockedCategorySection";
+import { LockedToolItem } from "./LockedToolItem";
 
 // Types for virtualized items
 type VirtualItemType =
@@ -53,8 +55,6 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
   onClose,
   measureElement,
 }) => {
-  const { connectIntegration, integrations } = useIntegrations();
-
   const baseStyle = {
     transform: `translateY(${virtualRow.start}px)`,
   };
@@ -128,24 +128,6 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
   if (item.type === "locked-category-header") {
     const { category, tools, requiredIntegration } = item;
 
-    const integration = integrations.find(
-      (int) => int.id.toLowerCase() === requiredIntegration.id.toLowerCase(),
-    );
-
-    const handleConnect = async () => {
-      try {
-        // connectIntegration handles normalization internally
-        await connectIntegration(requiredIntegration.id);
-        onClose?.();
-      } catch (error) {
-        console.error("Failed to connect integration:", error);
-      }
-    };
-
-    // Check if integration is available (has loginEndpoint)
-    const isAvailable = !!integration?.loginEndpoint;
-    const isConnected = integration?.status === "connected";
-
     return (
       <div
         data-index={virtualRow.index}
@@ -153,52 +135,13 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
         className="absolute top-0 left-0 w-full"
         style={baseStyle}
       >
-        <div className="mx-2 mt-4 mb-2">
-          <div className="flex items-center justify-between rounded-xl bg-zinc-800 p-2">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/20">
-                <Lock className="h-4 w-4 text-red-400" />
-              </div>
-              <div>
-                <div className="text-sm font-medium text-zinc-200">
-                  {tools.length} {category.replace("_", " ")} tools locked
-                </div>
-                <div className="text-xs text-zinc-500">
-                  Requires {requiredIntegration.name} connection
-                </div>
-              </div>
-            </div>
-
-            {isAvailable && !isConnected && (
-              <Button
-                size="sm"
-                color="primary"
-                variant="flat"
-                startContent={getToolCategoryIcon(requiredIntegration.id, {
-                  size: 16,
-                  width: 16,
-                  height: 16,
-                  showBackground: false,
-                  className: "h-4 w-4 object-contain",
-                })}
-                onPress={handleConnect}
-              >
-                Connect
-              </Button>
-            )}
-
-            {!isAvailable && (
-              <Button
-                size="sm"
-                variant="flat"
-                color="default"
-                disabled
-                className="text-xs"
-              >
-                Soon
-              </Button>
-            )}
-          </div>
+        <div className="mt-2">
+          <LockedCategorySection
+            category={category}
+            tools={tools}
+            requiredIntegration={requiredIntegration}
+            onConnect={onClose}
+          />
         </div>
       </div>
     );
@@ -215,29 +158,11 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
         className="absolute top-0 left-0 w-full"
         style={baseStyle}
       >
-        <div className="relative mx-2 mb-1">
-          {/* Overlay */}
-          <div className="absolute inset-0 z-10 rounded-xl bg-zinc-900/60 backdrop-blur-[1px]" />
-
-          {/* Tool content */}
-          <div className="relative rounded-xl border border-transparent p-2">
-            <div className="flex items-center gap-2">
-              {/* Icon */}
-              <div className="flex-shrink-0">
-                {getToolCategoryIcon(match.tool.category)}
-              </div>
-
-              {/* Content */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm text-foreground-600">
-                    {formatToolName(match.tool.name)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <LockedToolItem
+          tool={match.enhancedTool!}
+          onConnect={onClose}
+          showDescription={false}
+        />
       </div>
     );
   }
