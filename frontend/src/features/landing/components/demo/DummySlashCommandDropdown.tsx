@@ -28,7 +28,7 @@ const dummyIntegrations = [
     status: "connected",
   },
   {
-    id: "google_sheets",
+    id: "googlesheets",
     name: "Google Sheets",
     status: "connected",
   },
@@ -545,18 +545,18 @@ const dummyTools = {
     // Google Sheets tools (requires integration - delegated)
     {
       name: "google_sheets_create_spreadsheet",
-      category: "google_sheets",
-      required_integration: "google_sheets",
+      category: "googlesheets",
+      required_integration: "googlesheets",
     },
     {
       name: "google_sheets_get_values",
-      category: "google_sheets",
-      required_integration: "google_sheets",
+      category: "googlesheets",
+      required_integration: "googlesheets",
     },
     {
       name: "google_sheets_update_values",
-      category: "google_sheets",
-      required_integration: "google_sheets",
+      category: "googlesheets",
+      required_integration: "googlesheets",
     },
   ],
   total_count: 109,
@@ -568,7 +568,7 @@ const dummyTools = {
     "gmail",
     "goal_tracking",
     "google_docs",
-    "google_sheets",
+    "googlesheets",
     "linkedin",
     "memory",
     "notifications",
