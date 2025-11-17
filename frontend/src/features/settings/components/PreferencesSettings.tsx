@@ -298,7 +298,7 @@ export default function PreferencesSettings({
               }}
             >
               {professionOptions.map((profession) => (
-                <SelectItem key={profession.value}>
+                <SelectItem key={profession.value} textValue={profession.label}>
                   {profession.label}
                 </SelectItem>
               ))}
@@ -325,7 +325,9 @@ export default function PreferencesSettings({
                 }}
               >
                 {timezoneOptions.map((timezone) => (
-                  <SelectItem key={timezone.value}>{timezone.label}</SelectItem>
+                  <SelectItem key={timezone.value} textValue={timezone.label}>
+                    {timezone.label}
+                  </SelectItem>
                 ))}
               </Select>
 
