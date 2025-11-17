@@ -12,13 +12,12 @@ from typing import Any, Callable, Dict, Optional
 
 from fastapi import HTTPException
 
-from app.config.loggers import app_logger
-from app.config.rate_limits import get_limits_for_plan
-from app.db.redis import redis_cache
 from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
     tiered_limiter,
 )
+from app.config.loggers import app_logger
+from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
 
@@ -229,19 +228,19 @@ def tiered_rate_limit(feature_key: str, count_tokens: bool = False):
             result = await func(*args, **kwargs)
 
             # Handle token counting post-execution
-            if count_tokens and isinstance(result, dict):
-                tokens_used = result.get("tokens_used", 0)
-                if tokens_used > 0:
-                    # Validate token limits
-                    current_limits = get_limits_for_plan(feature_key, user_plan)
-                    if (
-                        current_limits.tokens_per_request > 0
-                        and tokens_used > current_limits.tokens_per_request
-                    ):
-                        plan_required = "pro" if user_plan == PlanType.FREE else None
-                        raise RateLimitExceededException(
-                            f"{feature_key} (token limit)", plan_required
-                        )
+            # if count_tokens and isinstance(result, dict):
+            #     tokens_used = result.get("tokens_used", 0)
+            #     if tokens_used > 0:
+            #         # Validate token limits
+            #         current_limits = get_limits_for_plan(feature_key, user_plan)
+            #         if (
+            #             current_limits.tokens_per_request > 0
+            #             and tokens_used > current_limits.tokens_per_request
+            #         ):
+            #             plan_required = "pro" if user_plan == PlanType.FREE else None
+            #             raise RateLimitExceededException(
+            #                 f"{feature_key} (token limit)", plan_required
+            #             )
 
             return result
 

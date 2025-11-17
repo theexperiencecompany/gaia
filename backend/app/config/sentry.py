@@ -29,5 +29,6 @@ def init_sentry():
         profiles_sample_rate=0.1 if settings.ENV == "production" else 1.0,
         # Set profile_lifecycle to "trace" to automatically
         # run the profiler on when there is an active transaction
+        enable_logs=True,
         profile_lifecycle="trace",
     )

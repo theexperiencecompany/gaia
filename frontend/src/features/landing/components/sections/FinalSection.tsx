@@ -81,11 +81,9 @@ export default function FinalSection({
           alt="Wallpaper"
           fill
           sizes="100vw"
-          className="noisy object-cover opacity-85"
+          className="noisy [mask-image:linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)] object-cover"
           priority
         />
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-[40vh] bg-gradient-to-b from-black via-black/50 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-black to-transparent" />
       </div>
 
       <div

@@ -4,6 +4,8 @@ import { RefreshCw } from "lucide-react";
 import Link from "next/link";
 import React from "react";
 
+import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
+
 interface BaseCardViewProps {
   title: string;
   icon: React.ReactNode;
@@ -19,6 +21,9 @@ interface BaseCardViewProps {
   connectIntegrationId?: string;
   onConnect?: (integrationId: string) => void;
   connectButtonText?: string;
+  connectTitle?: string;
+  connectDescription?: string;
+  connectIcon?: React.ReactNode;
   path?: string;
   onRefresh?: () => void;
 }
@@ -38,6 +43,9 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
   connectIntegrationId,
   onConnect,
   connectButtonText = "Connect",
+  connectTitle,
+  connectDescription,
+  connectIcon,
   path,
   onRefresh,
 }) => {
@@ -81,19 +89,34 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
         <div className="h-full max-h-[40vh] min-h-[40vh] w-full overflow-y-auto rounded-2xl bg-[#141414]">
           {!isConnected ? (
             <div className="flex h-full flex-col items-center justify-center p-6">
-              <div className="mb-4 opacity-50">{icon}</div>
-              <p className="mb-4 text-center text-sm text-foreground/60">
-                Connect your account to view {title.toLowerCase()}
-              </p>
-              {connectIntegrationId && onConnect && (
-                <Button
-                  color="primary"
-                  variant="flat"
-                  size="sm"
-                  onPress={() => onConnect(connectIntegrationId)}
-                >
-                  {connectButtonText}
-                </Button>
+              {connectIntegrationId ? (
+                <IntegrationConnectCard
+                  icon={connectIcon || icon}
+                  title={connectTitle || `Connect ${title}`}
+                  description={
+                    connectDescription ||
+                    `Connect your account to view ${title.toLowerCase()}`
+                  }
+                  buttonText={connectButtonText}
+                  integrationId={connectIntegrationId}
+                />
+              ) : (
+                <>
+                  <div className="mb-4 opacity-50">{icon}</div>
+                  <p className="mb-4 text-center text-sm text-foreground/60">
+                    Connect your account to view {title.toLowerCase()}
+                  </p>
+                  {onConnect && (
+                    <Button
+                      color="primary"
+                      variant="flat"
+                      size="sm"
+                      onPress={() => onConnect(connectIntegrationId || "")}
+                    >
+                      {connectButtonText}
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           ) : error || isEmpty ? (

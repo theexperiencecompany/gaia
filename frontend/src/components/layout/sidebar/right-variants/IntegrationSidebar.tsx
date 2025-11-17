@@ -31,10 +31,12 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     const integrationIds = [
       integration.id,
       ...(integration.includedIntegrations || []),
-    ];
+    ].map((id) => id.toLowerCase());
 
     return tools.filter((tool) =>
-      integrationIds.includes(tool.integration?.requiredIntegration || ""),
+      integrationIds.includes(
+        tool.integration?.requiredIntegration.toLowerCase() || "",
+      ),
     );
   }, [tools, integration.id, integration.includedIntegrations]);
 
@@ -47,12 +49,14 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   return (
     <div className="flex h-full max-h-[calc(100vh-60px)] flex-col px-5">
       <SidebarHeader>
-        {getToolCategoryIcon(integration.id, {
-          size: 40,
-          width: 40,
-          height: 40,
-          showBackground: true,
-        })}
+        <div className="w-fit">
+          {getToolCategoryIcon(integration.id, {
+            size: 40,
+            width: 40,
+            height: 40,
+            showBackground: true,
+          })}
+        </div>
 
         <div className="mb-0 flex flex-col items-start gap-1">
           <div className="flex w-full items-center justify-between">
@@ -87,10 +91,14 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             {isAvailable ? "Connect" : "Coming Soon"}
           </Button>
         )}
-        <Separator className="my-3 bg-zinc-800" />
-        <h2 className="mb-2 text-sm font-medium text-zinc-300">
-          Available Tools ({integrationTools.length})
-        </h2>
+        {integrationTools.length > 0 && (
+          <>
+            <Separator className="my-3 bg-zinc-800" />
+            <h2 className="mb-2 text-sm font-medium text-zinc-300">
+              Available Tools ({integrationTools.length})
+            </h2>
+          </>
+        )}
       </SidebarHeader>
       <SidebarContent className="flex-1 overflow-y-auto">
         <div className="space-y-4 pb-4">
@@ -101,6 +109,8 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   key={tool.name}
                   variant="flat"
                   color="default"
+                  radius="sm"
+                  className="pl-1"
                   startContent={
                     tool.integration?.requiredIntegration &&
                     getToolCategoryIcon(tool.integration.requiredIntegration, {

@@ -11,11 +11,13 @@ import { useImageDialog } from "@/stores/uiStore";
 export interface MarkdownRendererProps {
   content: string;
   className?: string;
+  isStreaming?: boolean;
 }
 
 const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   content,
   className,
+  isStreaming,
 }) => {
   const { openDialog } = useImageDialog();
 
@@ -49,7 +51,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             <ol className="mb-4 list-decimal pl-6" {...props} />
           ),
           a: ({ href, children }) => (
-            <CustomAnchor href={href}>{children}</CustomAnchor>
+            <CustomAnchor href={href} isStreaming={isStreaming}>
+              {children}
+            </CustomAnchor>
           ),
           blockquote: ({ ...props }) => (
             <blockquote

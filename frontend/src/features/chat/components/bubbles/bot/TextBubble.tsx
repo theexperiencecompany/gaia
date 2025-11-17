@@ -17,7 +17,12 @@ import { AlertTriangleIcon } from "lucide-react";
 import React from "react";
 
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
-import { ToolDataMap, ToolName } from "@/config/registries/toolRegistry";
+import {
+  GROUPED_TOOLS,
+  ToolDataEntry,
+  ToolDataMap,
+  ToolName,
+} from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
 import CalendarListFetchCard from "@/features/calendar/components/CalendarListFetchCard";
 import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/DeepResearchResultsTabs";
@@ -55,6 +60,14 @@ import {
   PeopleSearchData,
 } from "@/types/features/mailTypes";
 import { NotificationRecord } from "@/types/features/notificationTypes";
+import {
+  RedditCommentCreatedData,
+  RedditCommentData,
+  RedditData,
+  RedditPostCreatedData,
+  RedditPostData,
+  RedditSearchData,
+} from "@/types/features/redditTypes";
 import { SupportTicketData } from "@/types/features/supportTypes";
 
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
@@ -71,6 +84,13 @@ import { GoalAction } from "./goals/types";
 import GoogleDocsSection from "./GoogleDocsSection";
 import NotificationListSection from "./NotificationListSection";
 import PeopleSearchSection from "./PeopleSearchSection";
+import RedditCommentSection from "./RedditCommentSection";
+import {
+  RedditCommentCreatedSection,
+  RedditPostCreatedSection,
+} from "./RedditCreatedSection";
+import RedditPostSection from "./RedditPostSection";
+import RedditSearchSection from "./RedditSearchSection";
 import SupportTicketSection from "./SupportTicketSection";
 import TodoSection from "./TodoSection";
 
@@ -262,6 +282,55 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       />
     );
   },
+
+  reddit_data: (data) => {
+    const items = (Array.isArray(data) ? data : [data]) as RedditData[];
+    const groups: {
+      search: RedditSearchData[];
+      post: RedditPostData[];
+      comments: RedditCommentData[];
+      post_created: RedditPostCreatedData[];
+      comment_created: RedditCommentCreatedData[];
+    } = {
+      search: [],
+      post: [],
+      comments: [],
+      post_created: [],
+      comment_created: [],
+    };
+
+    items.forEach((d) => {
+      if (d.type === "search") groups.search.push(...d.posts);
+      else if (d.type === "post") groups.post.push(d.post);
+      else if (d.type === "comments") groups.comments.push(...d.comments);
+      else if (d.type === "post_created") groups.post_created.push(d.data);
+      else if (d.type === "comment_created")
+        groups.comment_created.push(d.data);
+    });
+
+    return (
+      <>
+        {groups.search.length > 0 && (
+          <RedditSearchSection reddit_search_data={groups.search} />
+        )}
+        {groups.post.map((p, i) => (
+          <RedditPostSection key={i} reddit_post_data={p} />
+        ))}
+        {groups.comments.length > 0 && (
+          <RedditCommentSection reddit_comment_data={groups.comments} />
+        )}
+        {groups.post_created.map((d, i) => (
+          <RedditPostCreatedSection key={i} reddit_post_created_data={d} />
+        ))}
+        {groups.comment_created.map((d, i) => (
+          <RedditCommentCreatedSection
+            key={i}
+            reddit_comment_created_data={d}
+          />
+        ))}
+      </>
+    );
+  },
 };
 
 function renderTool<K extends ToolName>(
@@ -281,24 +350,47 @@ export default function TextBubble({
   tool_data,
   isConvoSystemGenerated,
   systemPurpose,
+  loading,
 }: ChatBubbleBotProps) {
+  const processedTools = React.useMemo(() => {
+    const grouped = new Map<ToolName, any[]>();
+    const individual: ToolDataEntry[] = [];
+
+    tool_data?.forEach((entry) => {
+      const toolName = entry.tool_name as ToolName;
+      if (GROUPED_TOOLS.has(toolName)) {
+        if (!grouped.has(toolName)) grouped.set(toolName, []);
+        grouped.get(toolName)!.push(entry.data);
+      } else {
+        individual.push(entry);
+      }
+    });
+
+    const groupedEntries: ToolDataEntry[] = Array.from(grouped.entries()).map(
+      ([toolName, dataArray]) => ({
+        tool_name: toolName,
+        tool_category: "",
+        data: dataArray,
+        timestamp: null,
+      }),
+    );
+
+    return [...groupedEntries, ...individual];
+  }, [tool_data]);
+
   return (
     <>
-      {/* Unified tool_data rendering via registry */}
-      {tool_data?.map((entry, index) => {
+      {processedTools.map((entry, index) => {
         const toolName = entry.tool_name as ToolName;
+        const renderer = TOOL_RENDERERS[toolName];
+        if (!renderer) return null;
 
-        if (!TOOL_RENDERERS[toolName]) return null;
-        // Use type guard to get the correct type for data
         const typedData = getTypedData(entry as ToolDataUnion, toolName);
-        if (typedData === undefined) return null;
+        if (!typedData) return null;
 
         return (
           <React.Fragment key={`tool-${toolName}-${index}`}>
             {renderTool(toolName, typedData, index)}
-            {/*
-            <PostHogCaptureOnViewed >
-            {/* </PostHogCaptureOnViewed> */}
           </React.Fragment>
         );
       })}
@@ -306,14 +398,14 @@ export default function TextBubble({
       {shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
         (() => {
           const textParts = splitMessageByBreaks(text?.toString() || "");
-          const hasMultipleParts = textParts.length > 1;
+          // const hasMultipleParts = textParts.length > 1;
 
           const renderBubbleContent = (
             content: string,
             showDisclaimer: boolean,
           ) => (
             <div className="flex flex-col gap-3">
-              <MarkdownRenderer content={content} />
+              <MarkdownRenderer content={content} isStreaming={loading} />
               {!!disclaimer && showDisclaimer && (
                 <Chip
                   className="text-xs font-medium text-warning-500"

@@ -28,15 +28,28 @@ interface IconConfig {
   isImage?: boolean;
 }
 
+/**
+ * Normalize a category/integration name for icon lookup
+ * - Converts to lowercase
+ * - Replaces spaces, dashes, and multiple underscores with single underscore
+ */
+const normalizeCategoryName = (name: string): string => {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[\s\-]+/g, "_") // Replace spaces and dashes with underscore
+    .replace(/_+/g, "_") // Replace multiple underscores with single underscore
+    .replace(/^_|_$/g, ""); // Remove leading/trailing underscores
+};
+
+// Alias mapping for backwards compatibility and category-to-integration mapping
+const iconAliases: Record<string, string> = {
+  calendar: "google_calendar", // Map old category name to integration name
+};
+
 const iconConfigs: Record<string, IconConfig> = {
   gmail: {
     icon: "/images/icons/gmail.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  calendar: {
-    icon: "/images/icons/googlecalendar.webp",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
     isImage: true,
@@ -49,7 +62,7 @@ const iconConfigs: Record<string, IconConfig> = {
   documents: {
     icon: FileEmpty02Icon,
     bgColor: "bg-orange-500/20 backdrop-blur",
-    iconColor: "text-orange-400",
+    iconColor: "text-[#FF4500]",
   },
   google_docs: {
     icon: "/images/icons/google_docs.webp",
@@ -57,8 +70,8 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
-  google_sheets: {
-    icon: "/images/icons/google_sheets.webp",
+  googlesheets: {
+    icon: "/images/icons/googlesheets.webp",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
     isImage: true,
@@ -176,7 +189,7 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
-  google_tasks: {
+  googletasks: {
     icon: "/images/icons/googletasks.svg",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
@@ -194,8 +207,8 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
-  google_meet: {
-    icon: "/images/icons/google_meet.svg",
+  googlemeet: {
+    icon: "/images/icons/googlemeet.svg",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
     isImage: true,
@@ -262,7 +275,32 @@ export const getToolCategoryIcon = (
     className: restProps.className,
   };
 
-  const config = iconConfigs[category];
+  // Normalize the input category name
+  const normalizedCategory = normalizeCategoryName(category);
+
+  // Resolve aliases first (e.g., 'calendar' -> 'google_calendar')
+  const aliasedCategory =
+    iconAliases[normalizedCategory] ||
+    iconAliases[category] ||
+    normalizedCategory;
+
+  // Normalize the aliased category as well
+  const finalCategory = normalizeCategoryName(aliasedCategory);
+
+  // Try to find config with normalized key
+  let config = iconConfigs[finalCategory];
+
+  // If not found, try searching through all configs with normalized keys
+  if (!config) {
+    const normalizedConfigs = Object.entries(iconConfigs);
+    const matchingConfig = normalizedConfigs.find(
+      ([key]) => normalizeCategoryName(key) === finalCategory,
+    );
+    if (matchingConfig) {
+      config = matchingConfig[1];
+    }
+  }
+
   if (!config) return null;
 
   const iconElement = config.isImage ? (

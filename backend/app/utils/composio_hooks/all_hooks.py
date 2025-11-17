@@ -9,6 +9,7 @@ Just importing this module will register all hooks automatically.
 from . import (
     gmail_hooks,  # noqa: F401
     user_id_hooks,  # noqa: F401
+    reddit_hooks,  # noqa: F401
 )
 
 # Add any new hook modules here and they'll be auto-registered

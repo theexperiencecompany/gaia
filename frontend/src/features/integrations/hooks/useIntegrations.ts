@@ -49,10 +49,10 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   const { data: configData, isLoading: configLoading } = useQuery({
     queryKey: ["integrations", "config"],
     queryFn: integrationsApi.getIntegrationConfig,
-    staleTime: 3 * 60 * 60 * 1000, // 3 hours - same as tools cache
-    gcTime: 6 * 60 * 60 * 1000, // 6 hours - keep in cache longer
-    retry: 2,
-    refetchOnWindowFocus: false, // Don't refetch when user focuses window
+    // staleTime: 3 * 60 * 60 * 1000, // 3 hours - same as tools cache
+    // gcTime: 6 * 60 * 60 * 1000, // 6 hours - keep in cache longer
+    // retry: 2,
+    // refetchOnWindowFocus: false, // Don't refetch when user focuses window
   });
 
   // Query for integration status

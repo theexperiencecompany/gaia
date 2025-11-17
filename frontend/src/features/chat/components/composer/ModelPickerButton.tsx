@@ -92,7 +92,7 @@ const ModelPickerButton: React.FC = () => {
   }, [models, currentModel]);
 
   const headingClasses =
-    "flex w-full sticky top-1 z-20 py-1.5 px-2 bg-zinc-800  text-zinc-200 text-xs font-medium capitalize";
+    "flex w-full sticky top-0 z-20 py-2 px-2 bg-zinc-800  text-zinc-200 text-xs font-medium capitalize";
 
   // Don't render the button if models are still loading or not available
   if (isLoading || !models || models.length === 0) {
@@ -138,7 +138,7 @@ const ModelPickerButton: React.FC = () => {
             alt={currentModel.name}
             height={40}
             width={40}
-            className={`h-4 w-4 object-contain ${currentModel.name.toLowerCase().includes("gpt") ? "invert" : ""}`}
+            className={`h-4 w-4 object-contain`}
           />
         ) : (
           <Icon icon="lucide:cpu" className="h-3 w-3 shrink-0 text-zinc-400" />
@@ -175,7 +175,7 @@ const ModelPickerButton: React.FC = () => {
                     alt={model.name}
                     height={40}
                     width={40}
-                    className={`h-4 w-4 object-contain ${model.name.toLowerCase().includes("gpt") ? "invert" : ""}`}
+                    className={`h-4 w-4 object-contain`}
                   />
                 ) : (
                   <Icon
