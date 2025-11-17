@@ -1,7 +1,12 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
-import { MessageCircle, TrendingUp, ExternalLink } from "lucide-react";
+import {
+  MessageCircle,
+  TrendingUp,
+  ExternalLink,
+  ArrowBigUp,
+} from "lucide-react";
 
 import { RedditPostData } from "@/types/features/redditTypes";
 
@@ -53,7 +58,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
           <div className="min-w-0 flex-1">
             {/* Subreddit & Author */}
             <div className="mb-1.5 flex items-center gap-2 text-xs">
-              <span className="font-semibold text-orange-400">
+              <span className="font-semibold text-[#FF4500]">
                 {post.subreddit}
               </span>
               <span className="text-gray-500">•</span>
@@ -66,7 +71,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
 
             {/* Title */}
             <h3
-              className="cursor-pointer text-base leading-snug font-semibold text-white transition-colors group-hover:text-orange-400"
+              className="cursor-pointer text-base leading-snug font-semibold text-white transition-colors group-hover:text-[#FF4500]"
               onClick={handleOpenPost}
             >
               {post.title}
@@ -109,8 +114,8 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
         <div className="flex items-center gap-4 pt-2">
           {/* Upvotes */}
           <div className="flex items-center gap-1.5 text-sm">
-            <TrendingUp className="h-4 w-4 text-orange-400" />
-            <span className="font-medium text-orange-400">
+            <ArrowBigUp height={18} width={18} className="text-[#FF4500]" />
+            <span className="font-medium text-[#FF4500]">
               {formatNumber(post.score)}
             </span>
             {post.upvote_ratio && (
@@ -129,7 +134,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
           {/* Open Link */}
           <button
             onClick={handleOpenPost}
-            className="ml-auto text-xs text-gray-400 transition-colors hover:text-orange-400"
+            className="ml-auto text-xs text-gray-400 transition-colors hover:text-[#FF4500]"
           >
             View on Reddit →
           </button>

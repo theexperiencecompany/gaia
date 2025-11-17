@@ -109,3 +109,12 @@ export type ToolsMessageData = ToolsMessageSchema;
 export const TOOLS_MESSAGE_KEYS = Object.keys(
   TOOLS_MESSAGE_SCHEMA,
 ) as ToolsMessageKey[];
+
+// Tools that should merge multiple calls into one component
+// Add any tool name here - its data will be accumulated into an array
+export const GROUPED_TOOLS = new Set<ToolName>([
+  "reddit_data",
+  // "email_fetch_data",
+  // "test_data",
+  // Add any tool you want to group here
+]);

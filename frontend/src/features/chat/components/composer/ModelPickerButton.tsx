@@ -138,7 +138,7 @@ const ModelPickerButton: React.FC = () => {
             alt={currentModel.name}
             height={40}
             width={40}
-            className={`h-4 w-4 object-contain ${currentModel.name.toLowerCase().includes("gpt") ? "invert" : ""}`}
+            className={`h-4 w-4 object-contain`}
           />
         ) : (
           <Icon icon="lucide:cpu" className="h-3 w-3 shrink-0 text-zinc-400" />
@@ -175,7 +175,7 @@ const ModelPickerButton: React.FC = () => {
                     alt={model.name}
                     height={40}
                     width={40}
-                    className={`h-4 w-4 object-contain ${model.name.toLowerCase().includes("gpt") ? "invert" : ""}`}
+                    className={`h-4 w-4 object-contain`}
                   />
                 ) : (
                   <Icon

@@ -49,7 +49,7 @@ const iconConfigs: Record<string, IconConfig> = {
   documents: {
     icon: FileEmpty02Icon,
     bgColor: "bg-orange-500/20 backdrop-blur",
-    iconColor: "text-orange-400",
+    iconColor: "text-[#FF4500]",
   },
   google_docs: {
     icon: "/images/icons/google_docs.webp",

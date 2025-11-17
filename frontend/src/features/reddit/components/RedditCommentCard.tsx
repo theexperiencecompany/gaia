@@ -1,7 +1,7 @@
 "use client";
 
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { TrendingUp, User } from "lucide-react";
+import { ArrowBigUp, TrendingUp, User } from "lucide-react";
 
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { RedditCommentData } from "@/types/features/redditTypes";
@@ -89,8 +89,8 @@ export default function RedditCommentCard({
                 </div>
 
                 {/* Score */}
-                <div className="flex items-center gap-1 text-xs text-orange-400">
-                  <TrendingUp className="h-3.5 w-3.5" />
+                <div className="flex items-center gap-1 text-xs text-[#FF4500]">
+                  <ArrowBigUp width={18} height={18} />
                   <span className="font-medium">
                     {formatNumber(comment.score)}
                   </span>
@@ -108,7 +108,7 @@ export default function RedditCommentCard({
                   href={`https://reddit.com${comment.permalink}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-block text-xs text-orange-400 transition-colors hover:text-orange-300"
+                  className="inline-block text-xs text-[#FF4500] transition-colors hover:text-orange-300"
                 >
                   View on Reddit →
                 </a>
