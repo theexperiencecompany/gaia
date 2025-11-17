@@ -37,7 +37,7 @@ const dummyIntegrations = [
     name: "Notion",
   },
   {
-    id: "googlesheets",
+    id: "google_sheets",
     name: "Google Sheets",
   },
   {

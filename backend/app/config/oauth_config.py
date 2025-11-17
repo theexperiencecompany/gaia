@@ -140,17 +140,17 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         ),
     ),
     OAuthIntegration(
-        id="googlesheets",
+        id="google_sheets",
         name="Google Sheets",
         description="Create, read, and update spreadsheets",
         category="productivity",
-        provider="googlesheets",
+        provider="google_sheets",
         scopes=[],
         available=True,
         short_name="sheets",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_18I3fRfWyXDu", toolkit="GOOGLESHEETS"
+            auth_config_id="ac_18I3fRfWyXDu", toolkit="GOOGLE_SHEETS"
         ),
     ),
     OAuthIntegration(
@@ -252,11 +252,11 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         ),
     ),
     OAuthIntegration(
-        id="googletasks",
+        id="google_tasks",
         name="Google Tasks",
         description="Create, manage, and organize your tasks and to-do lists",
         category="productivity",
-        provider="googletasks",
+        provider="google_tasks",
         scopes=[],
         available=True,
         short_name="tasks",
@@ -308,11 +308,11 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
     #     ),
     # ),
     OAuthIntegration(
-        id="googlemeet",
+        id="google_meet",
         name="Google Meet",
         description="Schedule and manage video meetings with Google Meet",
         category="communication",
-        provider="googlemeet",
+        provider="google_meet",
         scopes=[],
         available=True,
         short_name="meet",

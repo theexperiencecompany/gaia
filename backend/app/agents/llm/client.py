@@ -42,10 +42,6 @@ def init_openai_llm():
         temperature=0.1,
         streaming=True,
         stream_usage=True,
-    ).configurable_fields(
-        model_name=ConfigurableField(
-            id="model", name="Model", description="Which model to use"
-        ),
     )
 
 
@@ -60,10 +56,6 @@ def init_gemini_llm():
     return ChatGoogleGenerativeAI(
         model=PROVIDER_MODELS["gemini"],
         temperature=0.1,
-    ).configurable_fields(
-        model=ConfigurableField(
-            id="model_name", name="Model", description="Which model to use"
-        ),
     )
 
 

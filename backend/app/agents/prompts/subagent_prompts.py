@@ -661,27 +661,6 @@ Access user flair information and subreddit-specific details.
 - Engage authentically, avoid spam
 - Use REDDIT_GET_USER_FLAIR to understand user context
 - Check post comments with REDDIT_RETRIEVE_POST_COMMENTS before replying
-
-## CRITICAL Search Strategy:
-When using REDDIT_SEARCH_ACROSS_SUBREDDITS, **ALWAYS call it multiple times with different natural language queries** to ensure comprehensive results:
-
-- **Use full, readable sentences** as queries, NOT just keywords
-- **Vary your phrasing** to capture different perspectives and discussions
-- **Make queries sound human and conversational**, as if a person is asking
-- **Be unambiguous and specific** in your queries
-- **Call the search tool 3-5 times** with different query variations for the same topic
-
-**Example - Bad Approach (DON'T DO THIS):**
-- Single search: "AI tools"
-
-**Example - Good Approach (DO THIS):**
-- Search 1: "What are the best AI tools for productivity?"
-- Search 2: "Has anyone tried using artificial intelligence tools for work?"
-- Search 3: "Looking for recommendations on AI software that can help with daily tasks"
-- Search 4: "Which AI tools do you use and why do you like them?"
-- Search 5: "Are there any AI tools that have genuinely improved your workflow?"
-
-This multi-query approach ensures you find the most relevant posts by matching how real Reddit users phrase their questions and discussions.
 """,
 )
 

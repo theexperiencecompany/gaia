@@ -223,7 +223,7 @@ export default function ChaoticWorkspaceSection() {
         className="absolute bottom-24 left-1/3 -translate-x-1/2 transform"
       >
         <Image
-          src="/images/icons/googlesheets.webp"
+          src="/images/icons/google_sheets.webp"
           alt="Google Sheets"
           width={50}
           height={50}

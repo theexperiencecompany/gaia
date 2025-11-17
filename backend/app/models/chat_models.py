@@ -66,7 +66,6 @@ tool_fields = [
     "code_data",
     "google_docs_data",
     "integration_connection_required",
-    "reddit_data",
 ]
 
 

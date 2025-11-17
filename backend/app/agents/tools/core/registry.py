@@ -160,12 +160,12 @@ class ToolRegistry:
                     "linear",
                     "slack",
                     "hubspot",
-                    "googletasks",
-                    "googlesheets",
+                    "google_tasks",
+                    "google_sheets",
                     "todoist",
                     # "microsoft_teams",
                     # "zoom",
-                    "googlemeet",
+                    "google_meet",
                     "google_maps",
                     "asana",
                     "trello",
@@ -187,7 +187,7 @@ class ToolRegistry:
 
         # Integration-required categories
         add_category(
-            "google_calendar",
+            "calendar",
             tools=calendar_tool.tools,
             require_integration=True,
             integration_name="google_calendar",
@@ -207,18 +207,18 @@ class ToolRegistry:
             ("TWITTER", "twitter", None),
             ("NOTION", "notion", None),
             ("LINKEDIN", "linkedin", None),
-            ("GOOGLESHEETS", "googlesheets", None),
+            ("GOOGLESHEETS", "google_sheets", None),
             ("REDDIT", "reddit", None),
             ("AIRTABLE", "airtable", None),
             ("LINEAR", "linear", None),
             ("SLACK", "slack", None),
-            ("GOOGLETASKS", "googletasks", None),
+            ("GOOGLETASKS", "google_tasks", None),
             ("TODOIST", "todoist", None),
             #
             # ("MICROSOFT_TEAMS", "microsoft_teams", None),  # action params starts with $
             # ("ZOOM", "zoom", None),  # action params has parameter named from
             #
-            ("GOOGLEMEET", "googlemeet", None),
+            ("GOOGLEMEET", "google_meet", None),
             ("GOOGLE_MAPS", "google_maps", None),
             ("ASANA", "asana", None),
             ("TRELLO", "trello", None),

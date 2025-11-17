@@ -18,26 +18,26 @@ interface PricingPageProps {
 
 export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
   return (
-    <div className="flex min-h-screen w-screen flex-col items-center justify-center pt-[35vh]">
-      <div className="fixed inset-0 top-0 z-0 h-[90vh] w-[100%]">
+    <div className="flex min-h-screen w-screen flex-col items-center justify-center pt-[40vh]">
+      <div className="absolute inset-0 top-0 z-0 h-[65vh] w-[102%]">
         <Image
-          src={"/images/wallpapers/field.webp"}
+          src={"/images/wallpapers/space.webp"}
           alt="GAIA Pricing page Wallpaper"
           sizes="100vw"
           priority
           fill
-          className="aspect-video object-cover object-bottom opacity-65"
+          className="aspect-video object-cover object-bottom opacity-80"
         />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-background via-background to-transparent" />
       </div>
 
       <div className="relative z-[1] flex flex-col items-center gap-2">
-        <div className="flex w-full flex-col items-center justify-center gap-3 text-white">
-          <h1 className="font-serif text-8xl font-normal">Level Up</h1>
-          <span className="text-xl font-light text-zinc-300">
-            Choose the plan that matches your ambition
-          </span>
-        </div>
+        <LargeHeader
+          centered
+          chipText="Pricing"
+          headingText="Level Up"
+          subHeadingText="Choose the plan that matches your ambition"
+        />
 
         <div className="mt-5 flex w-full flex-col items-center font-medium">
           <Tabs aria-label="Options" radius="full">
@@ -61,11 +61,7 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
         </div>
 
         <ComparisonTable />
-
-        <div className="relative mb-10 w-full max-w-7xl overflow-hidden rounded-4xl bg-zinc-900/50 px-8 backdrop-blur-sm">
-          <FAQAccordion />
-        </div>
-
+        <FAQAccordion />
         <FinalSection />
       </div>
     </div>

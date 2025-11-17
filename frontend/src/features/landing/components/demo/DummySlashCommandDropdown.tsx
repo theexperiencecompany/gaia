@@ -28,7 +28,7 @@ const dummyIntegrations = [
     status: "connected",
   },
   {
-    id: "googlesheets",
+    id: "google_sheets",
     name: "Google Sheets",
     status: "connected",
   },
@@ -399,37 +399,37 @@ const dummyTools = {
     // Calendar tools (requires integration)
     {
       name: "fetch_calendar_list",
-      category: "google_calendar",
+      category: "calendar",
       required_integration: "google_calendar",
     },
     {
       name: "create_calendar_event",
-      category: "google_calendar",
+      category: "calendar",
       required_integration: "google_calendar",
     },
     {
       name: "edit_calendar_event",
-      category: "google_calendar",
+      category: "calendar",
       required_integration: "google_calendar",
     },
     {
       name: "fetch_calendar_events",
-      category: "google_calendar",
+      category: "calendar",
       required_integration: "google_calendar",
     },
     {
       name: "search_calendar_events",
-      category: "google_calendar",
+      category: "calendar",
       required_integration: "google_calendar",
     },
     {
       name: "view_calendar_event",
-      category: "google_calendar",
+      category: "calendar",
       required_integration: "google_calendar",
     },
     {
       name: "delete_calendar_event",
-      category: "google_calendar",
+      category: "calendar",
       required_integration: "google_calendar",
     },
     // Google Docs tools (requires integration)
@@ -545,18 +545,18 @@ const dummyTools = {
     // Google Sheets tools (requires integration - delegated)
     {
       name: "google_sheets_create_spreadsheet",
-      category: "googlesheets",
-      required_integration: "googlesheets",
+      category: "google_sheets",
+      required_integration: "google_sheets",
     },
     {
       name: "google_sheets_get_values",
-      category: "googlesheets",
-      required_integration: "googlesheets",
+      category: "google_sheets",
+      required_integration: "google_sheets",
     },
     {
       name: "google_sheets_update_values",
-      category: "googlesheets",
-      required_integration: "googlesheets",
+      category: "google_sheets",
+      required_integration: "google_sheets",
     },
   ],
   total_count: 109,
@@ -568,7 +568,7 @@ const dummyTools = {
     "gmail",
     "goal_tracking",
     "google_docs",
-    "googlesheets",
+    "google_sheets",
     "linkedin",
     "memory",
     "notifications",

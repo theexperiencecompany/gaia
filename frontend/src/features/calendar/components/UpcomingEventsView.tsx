@@ -145,10 +145,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
       isConnected={isConnected}
       connectIntegrationId="google_calendar"
       onConnect={onConnect}
-      connectButtonText="Connect Google Calendar"
-      connectTitle="Connect Your Calendar"
-      connectDescription="Manage events and view your schedule"
-      connectIcon={<GoogleCalendarIcon width={32} height={32} />}
+      connectButtonText="Connect Calendar"
       path="/calendar"
       onRefresh={onRefresh}
     >

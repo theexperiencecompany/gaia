@@ -1,5 +1,5 @@
-import "./styles/globals.css";
 import "./styles/tailwind.css";
+import "./styles/globals.css";
 
 import { Databuddy } from "@databuddy/sdk/react";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/next";
