@@ -322,6 +322,28 @@ class ProviderSubAgents:
         )
 
     @staticmethod
+    async def create_clickup_agent(llm: LanguageModelLike):
+        """Create a specialized ClickUp agent graph."""
+        logger.info("Creating ClickUp sub-agent graph")
+        return await SubAgentFactory.create_provider_subagent(
+            provider="clickup",
+            llm=llm,
+            tool_space="clickup",
+            name="clickup_agent",
+        )
+
+    @staticmethod
+    async def create_instagram_agent(llm: LanguageModelLike):
+        """Create a specialized Instagram agent graph."""
+        logger.info("Creating Instagram sub-agent graph")
+        return await SubAgentFactory.create_provider_subagent(
+            provider="instagram",
+            llm=llm,
+            tool_space="instagram",
+            name="instagram_agent",
+        )
+
+    @staticmethod
     async def get_all_subagents() -> dict[str, Any]:
         """
         Create all provider-specific sub-agent graphs.
@@ -355,6 +377,8 @@ class ProviderSubAgents:
             ProviderSubAgents.create_google_maps_agent(llm),
             ProviderSubAgents.create_asana_agent(llm),
             ProviderSubAgents.create_trello_agent(llm),
+            ProviderSubAgents.create_clickup_agent(llm),
+            ProviderSubAgents.create_instagram_agent(llm),
         )
         return {
             "gmail_agent": results[0],
@@ -377,4 +401,6 @@ class ProviderSubAgents:
             "google_maps_agent": results[17],
             "asana_agent": results[18],
             "trello_agent": results[19],
+            "clickup_agent": results[20],
+            "instagram_agent": results[21],
         }

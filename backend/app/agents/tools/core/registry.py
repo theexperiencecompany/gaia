@@ -22,11 +22,9 @@ from app.agents.tools import (
     webpage_tool,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.langchain.core.subgraphs.clickup_subgraph import CLICKUP_TOOLS
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
 from app.langchain.core.subgraphs.gmail_subgraph import GMAIL_TOOLS
 from app.langchain.core.subgraphs.hubspot_subgraph import HUBSPOT_TOOLS
-from app.langchain.core.subgraphs.trello_subgraph import TRELLO_TOOLS
 from app.services.composio.composio_service import (
     get_composio_service,
 )
@@ -225,9 +223,9 @@ class ToolRegistry:
             ("GOOGLEMEET", "googlemeet", None),
             ("GOOGLE_MAPS", "google_maps", None),
             ("ASANA", "asana", None),
-            ("TRELLO", "trello", TRELLO_TOOLS),
+            ("TRELLO", "trello", None),
             ("INSTAGRAM", "instagram", None),
-            ("CLICKUP", "clickup", CLICKUP_TOOLS),
+            ("CLICKUP", "clickup", None),
             ("GMAIL", "gmail", GMAIL_TOOLS),
             ("GITHUB", "github", GITHUB_TOOLS),
             ("HUBSPOT", "hubspot", HUBSPOT_TOOLS),

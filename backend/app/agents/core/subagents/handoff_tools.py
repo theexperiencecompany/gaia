@@ -1,6 +1,5 @@
 from typing import Annotated, List, Optional
 
-from app.agents.prompts.clickup_node_prompts import CLICKUP_ORCHESTRATOR_PROMPT
 from app.agents.prompts.github_node_prompts import GITHUB_ORCHESTRATOR_PROMPT
 from app.agents.prompts.gmail_node_prompts import GMAIL_ORCHESTRATOR_PROMPT
 from app.agents.prompts.hubspot_node_prompts import HUBSPOT_ORCHESTRATOR_PROMPT
@@ -8,6 +7,7 @@ from app.agents.prompts.subagent_prompts import (
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
     CALENDAR_AGENT_SYSTEM_PROMPT,
+    CLICKUP_AGENT_SYSTEM_PROMPT,
     GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
     GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
     GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
@@ -20,10 +20,10 @@ from app.agents.prompts.subagent_prompts import (
     REDDIT_AGENT_SYSTEM_PROMPT,
     SLACK_AGENT_SYSTEM_PROMPT,
     TODOIST_AGENT_SYSTEM_PROMPT,
+    TRELLO_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
     ZOOM_AGENT_SYSTEM_PROMPT,
 )
-from app.agents.prompts.trello_node_prompts import TRELLO_ORCHESTRATOR_PROMPT
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import get_integration_by_id
 from app.services.composio.composio_service import get_composio_service
@@ -469,7 +469,7 @@ def get_handoff_tools(enabled_providers: List[str]):
                     capabilities="creating boards, managing cards and lists, organizing with labels and checklists, managing team members, and visual workflow management",
                     use_cases="board creation, card management, visual project organization, or team collaboration",
                 ),
-                system_prompt=TRELLO_ORCHESTRATOR_PROMPT,
+                system_prompt=TRELLO_AGENT_SYSTEM_PROMPT,
                 integration_id="trello",
             )
         )
@@ -485,7 +485,7 @@ def get_handoff_tools(enabled_providers: List[str]):
                     capabilities="managing tasks and projects, tracking time, setting goals, organizing workspaces, team collaboration, and workflow automation",
                     use_cases="task management, time tracking, goal setting, workspace organization, or team workflows",
                 ),
-                system_prompt=CLICKUP_ORCHESTRATOR_PROMPT,
+                system_prompt=CLICKUP_AGENT_SYSTEM_PROMPT,
                 integration_id="clickup",
             )
         )
