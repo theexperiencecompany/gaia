@@ -85,10 +85,7 @@ import GoogleDocsSection from "./GoogleDocsSection";
 import NotificationListSection from "./NotificationListSection";
 import PeopleSearchSection from "./PeopleSearchSection";
 import RedditCommentSection from "./RedditCommentSection";
-import {
-  RedditCommentCreatedSection,
-  RedditPostCreatedSection,
-} from "./RedditCreatedSection";
+import RedditCreatedSection from "./RedditCreatedSection";
 import RedditPostSection from "./RedditPostSection";
 import RedditSearchSection from "./RedditSearchSection";
 import SupportTicketSection from "./SupportTicketSection";
@@ -319,15 +316,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
         {groups.comments.length > 0 && (
           <RedditCommentSection reddit_comment_data={groups.comments} />
         )}
-        {groups.post_created.map((d, i) => (
-          <RedditPostCreatedSection key={i} reddit_post_created_data={d} />
-        ))}
-        {groups.comment_created.map((d, i) => (
-          <RedditCommentCreatedSection
-            key={i}
-            reddit_comment_created_data={d}
+        {(groups.post_created.length > 0 ||
+          groups.comment_created.length > 0) && (
+          <RedditCreatedSection
+            posts={groups.post_created}
+            comments={groups.comment_created}
           />
-        ))}
+        )}
       </>
     );
   },
