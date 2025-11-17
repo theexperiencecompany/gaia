@@ -61,11 +61,6 @@ export default function SidebarTopButtons() {
 
   const buttonData = [
     {
-      route: "/notifications",
-      icon: <NotificationIcon />,
-      label: "Notifications",
-    },
-    {
       route: "/calendar",
       icon: <CalendarIcon />,
       label: "Calendar",
