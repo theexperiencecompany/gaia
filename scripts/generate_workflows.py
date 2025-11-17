@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: S108
 """
 Script to generate realistic workflows for user testing and visualization.
 
@@ -22,20 +23,18 @@ Usage:
 
 import argparse
 import asyncio
-import random
-import sys
-from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any, Optional
-import uuid
 
 # Add the backend directory to Python path
 import os
+import random
+import sys
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo import UpdateOne
-
 
 # MongoDB connection
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
@@ -889,7 +888,7 @@ async def show_statistics(user_id: str):
 
     if exec_stats:
         stats = exec_stats[0]
-        print(f"\nExecution statistics:")
+        print("\nExecution statistics:")
         print(f"  - Total executions: {stats['total_executions']}")
         print(f"  - Successful executions: {stats['successful_executions']}")
         print(f"  - Average per workflow: {stats['avg_executions']:.2f}")
