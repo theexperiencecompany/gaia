@@ -365,16 +365,20 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
 
   // Check if IntegrationsCard should be shown
   const showIntegrationsCard = useMemo(() => {
+    // Only show integrations card when opened via button (not via typing slash)
+    if (!openedViaButton) return false;
+
+    // Hide when searching in the search input
+    if (searchQuery.trim()) return false;
+
+    // Show only for "all" category and when no filtering is happening
     return (
-      selectedCategory === "all" &&
-      (openedViaButton
-        ? !searchQuery.trim()
-        : matches.length === filteredMatches.length)
+      selectedCategory === "all" && matches.length === filteredMatches.length
     );
   }, [
     selectedCategory,
-    openedViaButton,
     searchQuery,
+    openedViaButton,
     matches.length,
     filteredMatches.length,
   ]);
