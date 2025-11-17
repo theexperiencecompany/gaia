@@ -55,6 +55,7 @@ import {
   PeopleSearchData,
 } from "@/types/features/mailTypes";
 import { NotificationRecord } from "@/types/features/notificationTypes";
+import { RedditData } from "@/types/features/redditTypes";
 import { SupportTicketData } from "@/types/features/supportTypes";
 
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
@@ -71,6 +72,13 @@ import { GoalAction } from "./goals/types";
 import GoogleDocsSection from "./GoogleDocsSection";
 import NotificationListSection from "./NotificationListSection";
 import PeopleSearchSection from "./PeopleSearchSection";
+import RedditCommentSection from "./RedditCommentSection";
+import {
+  RedditCommentCreatedSection,
+  RedditPostCreatedSection,
+} from "./RedditCreatedSection";
+import RedditPostSection from "./RedditPostSection";
+import RedditSearchSection from "./RedditSearchSection";
 import SupportTicketSection from "./SupportTicketSection";
 import TodoSection from "./TodoSection";
 
@@ -262,6 +270,51 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       />
     );
   },
+
+  // Reddit
+  reddit_data: (data, index) => {
+    const redditData = data as RedditData;
+
+    switch (redditData.type) {
+      case "search":
+        return (
+          <RedditSearchSection
+            key={`tool-reddit-search-${index}`}
+            reddit_search_data={redditData.posts}
+          />
+        );
+      case "post":
+        return (
+          <RedditPostSection
+            key={`tool-reddit-post-${index}`}
+            reddit_post_data={redditData.post}
+          />
+        );
+      case "comments":
+        return (
+          <RedditCommentSection
+            key={`tool-reddit-comments-${index}`}
+            reddit_comment_data={redditData.comments}
+          />
+        );
+      case "post_created":
+        return (
+          <RedditPostCreatedSection
+            key={`tool-reddit-post-created-${index}`}
+            reddit_post_created_data={redditData.data}
+          />
+        );
+      case "comment_created":
+        return (
+          <RedditCommentCreatedSection
+            key={`tool-reddit-comment-created-${index}`}
+            reddit_comment_created_data={redditData.data}
+          />
+        );
+      default:
+        return null;
+    }
+  },
 };
 
 function renderTool<K extends ToolName>(
@@ -281,6 +334,7 @@ export default function TextBubble({
   tool_data,
   isConvoSystemGenerated,
   systemPurpose,
+  loading,
 }: ChatBubbleBotProps) {
   return (
     <>
@@ -306,14 +360,14 @@ export default function TextBubble({
       {shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
         (() => {
           const textParts = splitMessageByBreaks(text?.toString() || "");
-          const hasMultipleParts = textParts.length > 1;
+          // const hasMultipleParts = textParts.length > 1;
 
           const renderBubbleContent = (
             content: string,
             showDisclaimer: boolean,
           ) => (
             <div className="flex flex-col gap-3">
-              <MarkdownRenderer content={content} />
+              <MarkdownRenderer content={content} isStreaming={loading} />
               {!!disclaimer && showDisclaimer && (
                 <Chip
                   className="text-xs font-medium text-warning-500"
