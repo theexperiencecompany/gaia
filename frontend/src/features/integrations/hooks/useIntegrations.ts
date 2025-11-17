@@ -32,10 +32,10 @@ export const useFetchIntegrationStatus = ({
   return useQuery({
     queryKey: ["integrations", "status"],
     queryFn: integrationsApi.getIntegrationStatus,
-    staleTime: 30 * 60 * 1000, // 30 minutes - cache status for reasonable time
-    gcTime: 60 * 60 * 1000, // 1 hour - keep in cache longer than staleTime
     retry: 2,
     refetchOnMount: refetchOnMount,
+    staleTime: 0,
+    gcTime: 0,
   });
 };
 
