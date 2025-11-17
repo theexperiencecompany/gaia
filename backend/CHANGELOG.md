@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.0 (2025-11-17)
+
+## What's Changed
+* fix: update integration identifiers for Google services to use lowerc… by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/317
+* fix: Bug fixes and production stability improvements by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/321
+* fix: Reddit tool improvements by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/322
+* release: v0.8.2 by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/325
+
+
+**Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.8.1...v0.9.0
+
 ## 0.8.1 (2025-11-14)
 
 ## What's Changed
