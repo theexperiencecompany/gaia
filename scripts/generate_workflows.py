@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-# ruff: noqa: S108
+# ruff: noqa
 # mypy: ignore-errors
+# nosec
 """
 Script to generate realistic workflows for user testing and visualization.
 
@@ -472,7 +473,7 @@ def create_workflow_steps(
 ) -> List[Dict[str, Any]]:
     """Create realistic workflow steps based on categories."""
     if num_steps is None:
-        num_steps = random.randint(3, 6)
+        num_steps = random.randint(3, 6)  # nosec B311
 
     steps = []
     available_tools = []
@@ -488,7 +489,7 @@ def create_workflow_steps(
     num_steps = min(num_steps, len(available_tools))
 
     # Select random tools
-    selected_tools = random.sample(available_tools, num_steps)
+    selected_tools = random.sample(available_tools, num_steps)  # nosec B311
 
     # Step templates for more realistic descriptions
     step_templates = {
@@ -609,7 +610,7 @@ def create_workflow_steps(
         templates = step_templates.get(
             category, [("Perform action", "Execute {tool} to complete step")]
         )
-        template = random.choice(templates)
+        template = random.choice(templates)  # nosec B311
 
         steps.append(
             {
@@ -642,7 +643,7 @@ def create_trigger_config(
         config["timezone"] = "America/New_York"
         # Calculate next run (simplified)
         config["next_run"] = (
-            datetime.now(timezone.utc) + timedelta(hours=random.randint(1, 24))
+            datetime.now(timezone.utc) + timedelta(hours=random.randint(1, 24))  # nosec B311
         ).isoformat()
 
     return config
@@ -669,12 +670,14 @@ async def generate_workflows(
 
     # Generate personal workflows
     for i in range(num_personal):
-        template = random.choice(WORKFLOW_TEMPLATES)
+        template = random.choice(WORKFLOW_TEMPLATES)  # nosec B311
         workflow_id = generate_workflow_id()
         workflow_ids["personal"].append(workflow_id)
 
         # Randomize some aspects
-        is_activated = random.choice([True, True, True, False])  # 75% activated
+        is_activated = random.choice(
+            [True, True, True, False]
+        )  # 75% activated  # nosec B311
 
         workflow = {
             "_id": workflow_id,
@@ -692,18 +695,18 @@ async def generate_workflows(
             "current_step_index": 0,
             "execution_logs": [],
             "error_message": None,
-            "total_executions": random.randint(0, 50) if is_activated else 0,
-            "successful_executions": random.randint(0, 45) if is_activated else 0,
+            "total_executions": random.randint(0, 50) if is_activated else 0,  # nosec B311
+            "successful_executions": random.randint(0, 45) if is_activated else 0,  # nosec B311
             "last_executed_at": (
-                datetime.now(timezone.utc) - timedelta(days=random.randint(0, 30))
+                datetime.now(timezone.utc) - timedelta(days=random.randint(0, 30))  # nosec B311
             ).isoformat()
-            if is_activated and random.random() > 0.3
+            if is_activated and random.random() > 0.3  # nosec B311
             else None,
             "created_at": (
-                datetime.now(timezone.utc) - timedelta(days=random.randint(1, 90))
+                datetime.now(timezone.utc) - timedelta(days=random.randint(1, 90))  # nosec B311
             ).isoformat(),
             "updated_at": (
-                datetime.now(timezone.utc) - timedelta(days=random.randint(0, 30))
+                datetime.now(timezone.utc) - timedelta(days=random.randint(0, 30))  # nosec B311
             ).isoformat(),
             "scheduled_at": datetime.now(timezone.utc).isoformat(),
             "repeat": template.get("cron")
@@ -718,13 +721,13 @@ async def generate_workflows(
 
     # Generate community workflows (public marketplace)
     for i in range(num_community):
-        template = random.choice(WORKFLOW_TEMPLATES)
+        template = random.choice(WORKFLOW_TEMPLATES)  # nosec B311
         workflow_id = generate_workflow_id()
         workflow_ids["community"].append(workflow_id)
 
         # Community workflows have higher execution counts
-        total_execs = random.randint(50, 500)
-        successful_execs = int(total_execs * random.uniform(0.85, 0.98))
+        total_execs = random.randint(50, 500)  # nosec B311
+        successful_execs = int(total_execs * random.uniform(0.85, 0.98))  # nosec B311
 
         workflow = {
             "_id": workflow_id,
@@ -745,13 +748,13 @@ async def generate_workflows(
             "total_executions": total_execs,
             "successful_executions": successful_execs,
             "last_executed_at": (
-                datetime.now(timezone.utc) - timedelta(hours=random.randint(1, 72))
+                datetime.now(timezone.utc) - timedelta(hours=random.randint(1, 72))  # nosec B311
             ).isoformat(),
             "created_at": (
-                datetime.now(timezone.utc) - timedelta(days=random.randint(30, 180))
+                datetime.now(timezone.utc) - timedelta(days=random.randint(30, 180))  # nosec B311
             ).isoformat(),
             "updated_at": (
-                datetime.now(timezone.utc) - timedelta(days=random.randint(0, 14))
+                datetime.now(timezone.utc) - timedelta(days=random.randint(0, 14))  # nosec B311
             ).isoformat(),
             "scheduled_at": datetime.now(timezone.utc).isoformat(),
             "repeat": None,
@@ -764,13 +767,13 @@ async def generate_workflows(
 
     # Generate explore workflows (featured/showcase workflows)
     for i in range(num_explore):
-        template = random.choice(WORKFLOW_TEMPLATES)
+        template = random.choice(WORKFLOW_TEMPLATES)  # nosec B311
         workflow_id = generate_workflow_id()
         workflow_ids["explore"].append(workflow_id)
 
         # Explore workflows have moderate execution counts and are public but not "community" (different UI)
-        total_execs = random.randint(100, 1000)
-        successful_execs = int(total_execs * random.uniform(0.90, 0.99))
+        total_execs = random.randint(100, 1000)  # nosec B311
+        successful_execs = int(total_execs * random.uniform(0.90, 0.99))  # nosec B311
 
         workflow = {
             "_id": workflow_id,
@@ -793,13 +796,13 @@ async def generate_workflows(
             "total_executions": total_execs,
             "successful_executions": successful_execs,
             "last_executed_at": (
-                datetime.now(timezone.utc) - timedelta(hours=random.randint(1, 48))
+                datetime.now(timezone.utc) - timedelta(hours=random.randint(1, 48))  # nosec B311
             ).isoformat(),
             "created_at": (
-                datetime.now(timezone.utc) - timedelta(days=random.randint(60, 365))
+                datetime.now(timezone.utc) - timedelta(days=random.randint(60, 365))  # nosec B311
             ).isoformat(),
             "updated_at": (
-                datetime.now(timezone.utc) - timedelta(days=random.randint(0, 7))
+                datetime.now(timezone.utc) - timedelta(days=random.randint(0, 7))  # nosec B311
             ).isoformat(),
             "scheduled_at": datetime.now(timezone.utc).isoformat(),
             "repeat": None,

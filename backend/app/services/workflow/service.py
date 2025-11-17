@@ -644,8 +644,6 @@ class WorkflowService:
     ) -> PublicWorkflowsResponse:
         """Get explore/featured workflows for the discover section with caching."""
         try:
-            from app.db.mongodb.collections import users_collection
-
             # Query for explore workflows (is_explore = True)
             query = {"is_explore": True}
 

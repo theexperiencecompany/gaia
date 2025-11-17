@@ -1265,7 +1265,7 @@ Use retrieve_tools to discover specific tools for each capability.
 
 ## Workflows:
 
-**Single Post Creation**: 
+**Single Post Creation**:
 1. Use INSTAGRAM_CREATE_MEDIA_CONTAINER with image URL and caption
 2. Use INSTAGRAM_CREATE_POST to publish the container
 3. Check INSTAGRAM_GET_POST_STATUS to verify publishing
