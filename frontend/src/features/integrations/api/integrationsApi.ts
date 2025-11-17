@@ -65,12 +65,16 @@ export const integrationsApi = {
 
   /**
    * Initiate OAuth flow for an integration
+   * Normalizes integration ID to lowercase for case-insensitive matching
    */
   connectIntegration: async (integrationId: string): Promise<void> => {
+    // Normalize to lowercase (backend may return uppercase toolkit names)
+    const normalizedId = integrationId.toLowerCase();
+
     // Get the integration config first
     const configResponse = await integrationsApi.getIntegrationConfig();
     const integration = configResponse.integrations.find(
-      (i) => i.id === integrationId,
+      (i) => i.id.toLowerCase() === normalizedId,
     );
 
     if (!integration || !integration.loginEndpoint) {

@@ -187,7 +187,7 @@ class ToolRegistry:
 
         # Integration-required categories
         add_category(
-            "calendar",
+            "google_calendar",
             tools=calendar_tool.tools,
             require_integration=True,
             integration_name="google_calendar",

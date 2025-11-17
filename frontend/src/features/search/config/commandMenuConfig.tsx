@@ -5,6 +5,7 @@ import {
   Brain02Icon,
   CalendarIcon,
   CheckmarkCircle02Icon,
+  ConnectIcon,
   DiscordIcon,
   MessageMultiple02Icon,
   NotificationIcon,
@@ -61,6 +62,13 @@ export const PAGE_ITEMS: MenuItemConfig[] = [
     icon: <CheckmarkCircle02Icon width={18} height={18} color={undefined} />,
     path: "/todos",
   },
+
+  {
+    id: "integrations",
+    label: "Integrations",
+    icon: <ConnectIcon width={18} height={18} color={undefined} />,
+    path: "/integrations",
+  },
   {
     id: "workflows",
     label: "Workflows",
@@ -79,7 +87,7 @@ export const PAGE_ITEMS: MenuItemConfig[] = [
 export const ACTION_ITEMS: MenuItemConfig[] = [
   {
     id: "new_chat",
-    label: "New Chat",
+    label: "Create a New Chat",
     icon: <PencilEdit01Icon width={18} height={18} color={undefined} />,
     action: "new_chat",
   },

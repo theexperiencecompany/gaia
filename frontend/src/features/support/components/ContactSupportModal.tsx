@@ -26,11 +26,17 @@ import { useContactSupport } from "../hooks/useContactSupport";
 interface ContactSupportModalProps {
   isOpen: boolean;
   onOpenChange: () => void;
+  initialValues?: {
+    type?: string;
+    title?: string;
+    description?: string;
+  };
 }
 
 export default function ContactSupportModal({
   isOpen,
   onOpenChange,
+  initialValues,
 }: ContactSupportModalProps) {
   const {
     formData,
@@ -41,7 +47,7 @@ export default function ContactSupportModal({
     removeFile,
     submitRequest,
     resetForm,
-  } = useContactSupport();
+  } = useContactSupport(initialValues);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);

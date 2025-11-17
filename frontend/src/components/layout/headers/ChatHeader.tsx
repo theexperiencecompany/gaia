@@ -29,7 +29,7 @@ export default function ChatHeader() {
   return (
     <div className="flex w-full justify-between">
       <ModelPickerButton />
-      <div className="relative z-[100] flex items-center">
+      <div className="relative flex items-center">
         <SidebarHeaderButton
           onClick={handleSearchClick}
           aria-label="Search"
