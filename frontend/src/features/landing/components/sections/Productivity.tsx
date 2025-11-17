@@ -1,7 +1,7 @@
 // import { Tab, Tabs } from "@heroui/react";
 import { Chip } from "@heroui/chip";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { RaisedButton } from "@/components/ui/shadcn/raised-button";
 // import { CalendarDemo } from "@/features/calendar/components/Calendar";
@@ -9,45 +9,53 @@ import { RaisedButton } from "@/components/ui/shadcn/raised-button";
 // import MailAnimationWrapper from "./MailAnimationWrapper";
 // import TodosBentoContent from "./TodosBentoContent";
 import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
-import dataJson from "@/features/use-cases/constants/data.json";
+import { UseCase } from "@/features/use-cases/types";
+import { workflowApi } from "@/features/workflows/api/workflowApi";
 
 import LargeHeader from "../shared/LargeHeader";
-
-interface UseCase {
-  title: string;
-  description: string;
-  prompt: string;
-  published_id: string;
-  integrations: string[];
-  categories: string[];
-  demo_type?: string;
-  demo_content?: string;
-  featured?: boolean;
-  action_type: "prompt" | "workflow";
-}
-
-interface UseCaseData {
-  templates: UseCase[];
-}
 
 export default function Productivity() {
   // const [selectedTab, setSelectedTab] = useState("email");
 
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [useCases, setUseCases] = useState<UseCase[]>([]);
 
-  const data = dataJson as UseCaseData;
+  useEffect(() => {
+    const fetchUseCases = async () => {
+      try {
+        const resp = await workflowApi.getExploreWorkflows(50, 0);
+        const converted = resp.workflows.map((w) => ({
+          title: w.title,
+          description: w.description,
+          action_type: "workflow" as const,
+          integrations:
+            w.steps
+              ?.map((s) => s.tool_category)
+              .filter((v, i, a) => a.indexOf(v) === i) || [],
+          categories: w.categories || ["featured"],
+          published_id: w.id,
+          slug: w.id,
+          steps: w.steps,
+          creator: w.creator,
+        }));
+        setUseCases(converted);
+      } catch (error) {
+        console.error("Error fetching explore workflows:", error);
+      }
+    };
+
+    fetchUseCases();
+  }, []);
 
   const allCategories = [
     "all",
-    ...Array.from(
-      new Set(data.templates.flatMap((item) => item.categories || [])),
-    ),
+    ...Array.from(new Set(useCases.flatMap((item) => item.categories || []))),
   ];
 
   const filteredUseCases =
     selectedCategory === "all"
-      ? data.templates
-      : data.templates.filter((useCase) =>
+      ? useCases
+      : useCases.filter((useCase) =>
           useCase.categories?.includes(selectedCategory),
         );
 
@@ -99,7 +107,8 @@ export default function Productivity() {
               action_type={useCase.action_type || "prompt"}
               integrations={useCase.integrations || []}
               prompt={useCase.prompt}
-              slug={`/use-cases/${useCase.published_id}`}
+              slug={useCase.slug}
+              steps={useCase.steps}
             />
           ))}
         </div>

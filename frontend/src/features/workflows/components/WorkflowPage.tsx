@@ -4,10 +4,11 @@ import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/modal";
 import { RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, ReactNode } from "react";
+import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
+import { UseCase } from "@/features/use-cases/types";
 import { useHeader } from "@/hooks/layout/useHeader";
 
 import { CommunityWorkflow, Workflow, workflowApi } from "../api/workflowApi";
@@ -37,11 +38,43 @@ export default function WorkflowPage() {
   );
 
   const { workflows, isLoading, error, refetch } = useWorkflows();
+  const [exploreWorkflows, setExploreWorkflows] = useState<UseCase[]>([]);
+  const [isLoadingExplore, setIsLoadingExplore] = useState(false);
+
   const [communityWorkflows, setCommunityWorkflows] = useState<
     CommunityWorkflow[]
   >([]);
   const [isLoadingCommunity, setIsLoadingCommunity] = useState(false);
   const [communityError, setCommunityError] = useState<string | null>(null);
+
+  // Convert CommunityWorkflow to UseCase format
+  const convertToUseCase = (workflow: CommunityWorkflow): UseCase => ({
+    title: workflow.title,
+    description: workflow.description,
+    action_type: "workflow",
+    integrations:
+      workflow.steps
+        ?.map((s) => s.tool_category)
+        .filter((v, i, a) => a.indexOf(v) === i) || [],
+    categories: workflow.categories || ["featured"],
+    published_id: workflow.id,
+    slug: workflow.id,
+    steps: workflow.steps,
+    creator: workflow.creator,
+  });
+
+  const loadExploreWorkflows = useCallback(async () => {
+    setIsLoadingExplore(true);
+    try {
+      const response = await workflowApi.getExploreWorkflows(25, 0);
+      const useCases = response.workflows.map(convertToUseCase);
+      setExploreWorkflows(useCases);
+    } catch (error) {
+      console.error("Error loading explore workflows:", error);
+    } finally {
+      setIsLoadingExplore(false);
+    }
+  }, []);
 
   const loadCommunityWorkflows = useCallback(async () => {
     setIsLoadingCommunity(true);
@@ -67,8 +100,9 @@ export default function WorkflowPage() {
   }, [setHeader, onOpen]);
 
   useEffect(() => {
+    loadExploreWorkflows();
     loadCommunityWorkflows();
-  }, [loadCommunityWorkflows]);
+  }, [loadExploreWorkflows, loadCommunityWorkflows]);
 
   useEffect(() => {
     if (workflowId && workflows.length > 0) {
@@ -154,7 +188,7 @@ export default function WorkflowPage() {
     }
 
     return (
-      <div className="grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
         {items.map((item) => renderItem(item))}
       </div>
     );
@@ -174,7 +208,7 @@ export default function WorkflowPage() {
     </div>
   );
 
-  const showAnySkeleton = isLoading || isLoadingCommunity;
+  const showAnySkeleton = isLoading || isLoadingExplore || isLoadingCommunity;
 
   return (
     <div className="space-y-8 overflow-y-auto p-4 sm:p-6 md:p-8" ref={pageRef}>
@@ -222,6 +256,8 @@ export default function WorkflowPage() {
               centered={false}
               dummySectionRef={pageRef}
               hideUserWorkflows={true}
+              exploreWorkflows={exploreWorkflows}
+              isLoadingExplore={isLoadingExplore}
             />,
           )}
 

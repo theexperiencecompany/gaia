@@ -536,7 +536,15 @@ class WorkflowService:
         """Get public workflows from the community marketplace with caching."""
         try:
             pipeline = [
-                {"$match": {"is_public": True}},
+                {
+                    "$match": {
+                        "is_public": True,
+                        "$or": [
+                            {"is_explore": {"$exists": False}},
+                            {"is_explore": False},
+                        ],
+                    }
+                },
                 {"$sort": {"created_at": -1}},
                 {"$skip": offset},
                 {"$limit": limit},
@@ -592,7 +600,13 @@ class WorkflowService:
             workflows = await workflows_collection.aggregate(pipeline).to_list(
                 length=limit
             )
-            total = await workflows_collection.count_documents({"is_public": True})
+            # Exclude explore workflows from community count
+            total = await workflows_collection.count_documents(
+                {
+                    "is_public": True,
+                    "$or": [{"is_explore": {"$exists": False}}, {"is_explore": False}],
+                }
+            )
 
             formatted_workflows = []
             for workflow in workflows:
@@ -620,6 +634,70 @@ class WorkflowService:
 
         except Exception as e:
             logger.error(f"Error fetching community workflows: {str(e)}")
+            raise
+
+    @staticmethod
+    @Cacheable(smart_hash=True, ttl=600, model=PublicWorkflowsResponse)
+    async def get_explore_workflows(
+        limit: int = 25,
+        offset: int = 0,
+    ) -> PublicWorkflowsResponse:
+        """Get explore/featured workflows for the discover section with caching."""
+        try:
+            from app.db.mongodb.collections import users_collection
+
+            # Query for explore workflows (is_explore = True)
+            query = {"is_explore": True}
+
+            # Get total count
+            total = await workflows_collection.count_documents(query)
+
+            # Get workflows with pagination, sorted by execution count and recency
+            workflows = await workflows_collection.aggregate(
+                [
+                    {"$match": query},
+                    {"$sort": {"total_executions": -1, "updated_at": -1}},
+                    {"$skip": offset},
+                    {"$limit": limit},
+                    {
+                        "$lookup": {
+                            "from": "users",
+                            "localField": "created_by",
+                            "foreignField": "_id",
+                            "as": "creator_info",
+                        }
+                    },
+                ]
+            ).to_list(length=None)
+
+            # Format workflows with creator information
+            formatted_workflows = []
+            for workflow in workflows:
+                creator_info = (
+                    workflow.get("creator_info", [{}])[0]
+                    if workflow.get("creator_info")
+                    else {}
+                )
+
+                formatted_workflow = {
+                    "id": workflow["_id"],
+                    "title": workflow["title"],
+                    "description": workflow["description"],
+                    "steps": workflow.get("steps", []),
+                    "created_at": workflow["created_at"],
+                    "categories": workflow.get("use_case_categories", ["featured"]),
+                    "creator": {
+                        "id": workflow.get("created_by"),
+                        "name": creator_info.get("name", "GAIA Team"),
+                        "avatar": creator_info.get("picture"),
+                    },
+                }
+                formatted_workflows.append(formatted_workflow)
+
+            return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
+
+        except Exception as e:
+            logger.error(f"Error fetching explore workflows: {str(e)}")
             raise
 
     @staticmethod

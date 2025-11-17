@@ -1,6 +1,5 @@
 import { MetadataRoute } from "next";
 
-import { useCasesData } from "@/features/use-cases/constants/dummy-data";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { getAllBlogPosts } from "@/lib/blog";
 
@@ -98,13 +97,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     console.error("Error fetching blogs for sitemap:", error);
   }
 
-  // Generate static use case pages
-  const useCasePages: MetadataRoute.Sitemap = useCasesData.map((useCase) => ({
-    url: `${baseUrl}/use-cases/${useCase.slug}`,
-    lastModified: new Date(),
-    changeFrequency: "weekly" as const,
-    priority: useCase.categories.includes("featured") ? 0.8 : 0.7,
-  }));
+  // Fetch explore workflows from API to generate use-case pages.
+  // If the API call fails, return no dynamic use-case pages.
+  let useCasePages: MetadataRoute.Sitemap = [];
+  try {
+    const exploreResp = await workflowApi.getExploreWorkflows(200, 0);
+    useCasePages = exploreResp.workflows.map((wc) => ({
+      url: `${baseUrl}/use-cases/${wc.id}`,
+      lastModified: new Date(wc.created_at),
+      changeFrequency: "weekly" as const,
+      priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
+    }));
+  } catch (error) {
+    console.error("Error fetching explore workflows for sitemap:", error);
+    useCasePages = [];
+  }
 
   // Fetch community workflows dynamically
   let communityWorkflowPages: MetadataRoute.Sitemap = [];

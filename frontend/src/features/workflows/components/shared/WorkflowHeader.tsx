@@ -2,8 +2,8 @@ import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/react";
 import { RotateCcw, Sparkles } from "lucide-react";
 
-import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { WorkflowSquare03Icon } from "@/components";
+import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 
 interface WorkflowHeaderProps {
   isRegenerating?: boolean;

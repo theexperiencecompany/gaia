@@ -201,6 +201,19 @@ export const workflowApi = {
     );
   },
 
+  // Get explore workflows for discover section
+  getExploreWorkflows: async (
+    limit: number = 25,
+    offset: number = 0,
+  ): Promise<CommunityWorkflowsResponse> => {
+    return apiService.get<CommunityWorkflowsResponse>(
+      `/workflows/explore?limit=${limit}&offset=${offset}`,
+      {
+        errorMessage: "Failed to fetch explore workflows",
+      },
+    );
+  },
+
   // Get public workflows from community
   getCommunityWorkflows: async (
     limit: number = 20,

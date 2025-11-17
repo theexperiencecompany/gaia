@@ -3,7 +3,6 @@
 import { ArrowUpRight } from "lucide-react";
 import { ReactNode } from "react";
 
-import { ToolsIcon } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 import { RunCountDisplay } from "./WorkflowCardComponents";
@@ -68,7 +67,7 @@ export default function BaseWorkflowCard({
           ) : null;
         })}
         {categories.length > 3 && (
-          <div className="flex h-[25px] w-[25px] items-center justify-center rounded-lg bg-zinc-700 text-xs text-foreground-500">
+          <div className="z-[0] flex size-[34px] min-h-[34px] min-w-[34px] items-center justify-center rounded-lg bg-zinc-700/60 text-sm text-foreground-500">
             +{categories.length - 3}
           </div>
         )}
@@ -78,7 +77,7 @@ export default function BaseWorkflowCard({
 
   return (
     <div
-      className={`group relative z-[1] flex min-h-fit w-full flex-col gap-2 rounded-2xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${
+      className={`group relative z-[1] flex h-full min-h-fit w-full flex-col gap-2 rounded-2xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${
         onClick ? "cursor-pointer hover:bg-zinc-700/50" : ""
       }`}
       onClick={onClick}
