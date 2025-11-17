@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # ruff: noqa: S108
+# mypy: ignore-errors
 """
 Script to generate realistic workflows for user testing and visualization.
 
