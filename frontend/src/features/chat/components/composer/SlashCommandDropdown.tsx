@@ -1,9 +1,9 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { useVirtualizer, VirtualItem } from "@tanstack/react-virtual";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { AnimatePresence, motion } from "framer-motion";
-import { Hash, Lock, Search, X } from "lucide-react";
+import { Hash, Search, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
@@ -11,164 +11,11 @@ import { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
-import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { posthog } from "@/lib/posthog";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
 import { CategoryIntegrationStatus } from "./CategoryIntegrationStatus";
 import { LockedCategorySection } from "./LockedCategorySection";
-import { LockedToolItem } from "./LockedToolItem";
-
-// Types for virtualized items
-type VirtualItemType =
-  | { type: "integrations-card" }
-  | { type: "unlocked-tool"; match: SlashCommandMatch; toolIndex: number }
-  | {
-      type: "locked-category-header";
-      category: string;
-      tools: SlashCommandMatch[];
-      requiredIntegration: { id: string; name: string };
-    }
-  | { type: "locked-tool"; match: SlashCommandMatch };
-
-// Component to render each virtualized item
-interface VirtualizedItemProps {
-  virtualRow: VirtualItem;
-  item: VirtualItemType;
-  selectedIndex: number;
-  selectedCategory: string;
-  openedViaButton: boolean;
-  searchQuery: string;
-  onSelect: (match: SlashCommandMatch) => void;
-  onClose: () => void;
-  measureElement: (element: HTMLElement | null) => void;
-}
-
-const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
-  virtualRow,
-  item,
-  selectedIndex,
-  selectedCategory,
-  openedViaButton,
-  searchQuery,
-  onSelect,
-  onClose,
-  measureElement,
-}) => {
-  const baseStyle = {
-    transform: `translateY(${virtualRow.start}px)`,
-  };
-
-  // IntegrationsCard
-  if (item.type === "integrations-card") {
-    return (
-      <div
-        data-index={virtualRow.index}
-        ref={measureElement}
-        className="absolute top-0 left-0 w-full"
-        style={baseStyle}
-      >
-        <IntegrationsCard onClose={onClose} size="small" />
-      </div>
-    );
-  }
-
-  // Unlocked tool
-  if (item.type === "unlocked-tool") {
-    const { match, toolIndex } = item;
-    const isSelected = toolIndex === selectedIndex;
-
-    return (
-      <div
-        data-index={virtualRow.index}
-        ref={measureElement}
-        className="absolute top-0 left-0 w-full"
-        style={baseStyle}
-      >
-        <div
-          className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${
-            isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"
-          }`}
-          onClick={() => {
-            posthog.capture("chat:slash_command_selected", {
-              tool_name: match.tool.name,
-              tool_category: match.tool.category,
-              opened_via_button: openedViaButton,
-              search_query: searchQuery || null,
-            });
-            onSelect(match);
-          }}
-        >
-          <div className="flex items-center gap-2 p-2">
-            {/* Icon */}
-            <div className="flex-shrink-0">
-              {getToolCategoryIcon(match.tool.category)}
-            </div>
-
-            {/* Content */}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm text-foreground-600">
-                  {formatToolName(match.tool.name)}
-                </span>
-                {selectedCategory === "all" && (
-                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
-                    {formatToolName(match.tool.category)}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Locked category header
-  if (item.type === "locked-category-header") {
-    const { category, tools, requiredIntegration } = item;
-
-    return (
-      <div
-        data-index={virtualRow.index}
-        ref={measureElement}
-        className="absolute top-0 left-0 w-full"
-        style={baseStyle}
-      >
-        <div className="mt-2">
-          <LockedCategorySection
-            category={category}
-            tools={tools}
-            requiredIntegration={requiredIntegration}
-            onConnect={onClose}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  // Locked tool
-  if (item.type === "locked-tool") {
-    const { match } = item;
-
-    return (
-      <div
-        data-index={virtualRow.index}
-        ref={measureElement}
-        className="absolute top-0 left-0 w-full"
-        style={baseStyle}
-      >
-        <LockedToolItem
-          tool={match.enhancedTool!}
-          onConnect={onClose}
-          showDescription={false}
-        />
-      </div>
-    );
-  }
-
-  return null;
-};
 
 interface SlashCommandDropdownProps {
   matches: SlashCommandMatch[];
@@ -365,20 +212,16 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
 
   // Check if IntegrationsCard should be shown
   const showIntegrationsCard = useMemo(() => {
-    // Only show integrations card when opened via button (not via typing slash)
-    if (!openedViaButton) return false;
-
-    // Hide when searching in the search input
-    if (searchQuery.trim()) return false;
-
-    // Show only for "all" category and when no filtering is happening
     return (
-      selectedCategory === "all" && matches.length === filteredMatches.length
+      selectedCategory === "all" &&
+      (openedViaButton
+        ? !searchQuery.trim()
+        : matches.length === filteredMatches.length)
     );
   }, [
     selectedCategory,
-    searchQuery,
     openedViaButton,
+    searchQuery,
     matches.length,
     filteredMatches.length,
   ]);
@@ -406,70 +249,21 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     };
   }, [filteredMatches]);
 
-  // Build flat list of virtualized items
-  const virtualItems = useMemo((): VirtualItemType[] => {
-    const items: VirtualItemType[] = [];
-
-    // Add IntegrationsCard if shown
-    if (showIntegrationsCard) {
-      items.push({ type: "integrations-card" });
-    }
-
-    // Add unlocked tools
-    unlockedMatches.forEach((match, index) => {
-      items.push({ type: "unlocked-tool", match, toolIndex: index });
-    });
-
-    // Add locked categories with their tools
-    Object.entries(lockedCategories).forEach(([category, categoryMatches]) => {
-      const firstTool = categoryMatches[0];
-      const requiredIntegration = firstTool.tool.required_integration;
-
-      if (!requiredIntegration) return;
-
-      const integrationName =
-        firstTool.enhancedTool?.integration?.integrationName ||
-        requiredIntegration;
-
-      // Add category header
-      items.push({
-        type: "locked-category-header",
-        category,
-        tools: categoryMatches,
-        requiredIntegration: {
-          id: requiredIntegration,
-          name: integrationName,
-        },
-      });
-
-      // Add each locked tool
-      categoryMatches.forEach((match) => {
-        items.push({ type: "locked-tool", match });
-      });
-    });
-
-    return items;
-  }, [showIntegrationsCard, unlockedMatches, lockedCategories]);
+  // Create virtualizer - IntegrationsCard is index 0 if shown, tools start after
+  const totalCount = showIntegrationsCard
+    ? unlockedMatches.length + 1
+    : unlockedMatches.length;
 
   const rowVirtualizer = useVirtualizer({
-    count: virtualItems.length,
+    count: totalCount,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: (index) => {
-      const item = virtualItems[index];
-      if (!item) return 48;
-
-      switch (item.type) {
-        case "integrations-card":
-          return 200; // Estimated height for IntegrationsCard (will auto-adjust)
-        case "unlocked-tool":
-          return 48; // Regular tool item height
-        case "locked-category-header":
-          return 80; // Category header with connect button
-        case "locked-tool":
-          return 48; // Locked tool item (same as regular)
-        default:
-          return 48;
+      // First item is IntegrationsCard with dynamic height
+      if (showIntegrationsCard && index === 0) {
+        return 200; // Estimated height for IntegrationsCard (will auto-adjust)
       }
+      // Regular tool items
+      return 48;
     },
     overscan: 5,
   });
@@ -483,24 +277,17 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
         return;
       }
 
-      // Find the virtual index for the selected unlocked tool
-      let virtualIndex = -1;
-      for (let i = 0; i < virtualItems.length; i++) {
-        const item = virtualItems[i];
-        if (item.type === "unlocked-tool" && item.toolIndex === selectedIndex) {
-          virtualIndex = i;
-          break;
-        }
-      }
+      // Offset by 1 if IntegrationsCard is shown (it's at index 0)
+      const virtualIndex = showIntegrationsCard
+        ? selectedIndex + 1
+        : selectedIndex;
 
-      if (virtualIndex >= 0) {
-        requestAnimationFrame(() => {
-          rowVirtualizer.scrollToIndex(virtualIndex, {
-            align: "center",
-            behavior: "smooth",
-          });
+      requestAnimationFrame(() => {
+        rowVirtualizer.scrollToIndex(virtualIndex, {
+          align: "center",
+          behavior: "smooth",
         });
-      }
+      });
     }
   }, [
     selectedIndex,
@@ -508,7 +295,6 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     unlockedMatches.length,
     showIntegrationsCard,
     isIntegrationsExpanded,
-    virtualItems,
   ]);
 
   return (
@@ -618,25 +404,107 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                 }}
               >
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                  const item = virtualItems[virtualRow.index];
-                  if (!item) return null;
+                  // First item is IntegrationsCard if shown
+                  if (showIntegrationsCard && virtualRow.index === 0) {
+                    return (
+                      <div
+                        key={"integrations-card"}
+                        data-index={virtualRow.index}
+                        ref={rowVirtualizer.measureElement}
+                        className="absolute top-0 left-0 w-full"
+                        style={{
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                      >
+                        <IntegrationsCard onClose={onClose} size="small" />
+                      </div>
+                    );
+                  }
+
+                  // Adjust index for tool matches (offset by 1 if IntegrationsCard is shown)
+                  const toolIndex = showIntegrationsCard
+                    ? virtualRow.index - 1
+                    : virtualRow.index;
+                  const match = unlockedMatches[toolIndex];
+                  const isSelected = toolIndex === selectedIndex;
 
                   return (
-                    <VirtualizedItem
+                    <div
                       key={virtualRow.key}
-                      virtualRow={virtualRow}
-                      item={item}
-                      selectedIndex={selectedIndex}
-                      selectedCategory={selectedCategory}
-                      openedViaButton={openedViaButton}
-                      searchQuery={searchQuery}
-                      onSelect={onSelect}
-                      onClose={onClose}
-                      measureElement={rowVirtualizer.measureElement}
-                    />
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      className="absolute top-0 left-0 w-full"
+                      style={{
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    >
+                      <div
+                        className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${
+                          isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"
+                        }`}
+                        onClick={() => {
+                          posthog.capture("chat:slash_command_selected", {
+                            tool_name: match.tool.name,
+                            tool_category: match.tool.category,
+                            opened_via_button: openedViaButton,
+                            search_query: searchQuery || null,
+                          });
+                          onSelect(match);
+                        }}
+                      >
+                        <div className="flex items-center gap-2 p-2">
+                          {/* Icon */}
+                          <div className="flex-shrink-0">
+                            {getToolCategoryIcon(match.tool.category)}
+                          </div>
+
+                          {/* Content */}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="truncate text-sm text-foreground-600">
+                                {formatToolName(match.tool.name)}
+                              </span>
+                              {selectedCategory === "all" && (
+                                <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
+                                  {formatToolName(match.tool.category)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
+
+              {/* Locked categories with sticky connect section */}
+              {Object.entries(lockedCategories).map(
+                ([category, categoryMatches]) => {
+                  const firstTool = categoryMatches[0];
+                  const requiredIntegration =
+                    firstTool.tool.required_integration;
+
+                  if (!requiredIntegration) return null;
+
+                  const integrationName =
+                    firstTool.enhancedTool?.integration?.integrationName ||
+                    requiredIntegration;
+
+                  return (
+                    <LockedCategorySection
+                      key={`locked-${category}`}
+                      category={category}
+                      tools={categoryMatches}
+                      requiredIntegration={{
+                        id: requiredIntegration,
+                        name: integrationName,
+                      }}
+                      onConnect={onClose}
+                    />
+                  );
+                },
+              )}
             </div>
           </div>
         </motion.div>

@@ -22,7 +22,7 @@ export default function Personalised() {
           subHeadingText="Stop repeating yourself. Start building a smarter, personal AI."
         />
 
-        {/* <div className="mx-auto grid w-full max-w-4xl grid-cols-1 grid-rows-1 justify-between gap-4 py-6 sm:gap-6 sm:py-8 lg:grid-cols-2 lg:gap-7 lg:py-10">
+        <div className="mx-auto grid w-full max-w-4xl grid-cols-1 grid-rows-1 justify-between gap-4 py-6 sm:gap-6 sm:py-8 lg:grid-cols-2 lg:gap-7 lg:py-10">
           <BentoItem
             title="Recall Everything Instantly"
             description="GAIA remembers every detail you mention in a conversation"
@@ -50,7 +50,7 @@ export default function Personalised() {
           >
             <MemoryGraphDemo />
           </BentoItem>
-        </div> */}
+        </div>
       </div>
     </div>
   );

@@ -126,7 +126,11 @@ export function PricingCard({
 
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-3xl pt-4 ${className} bg-zinc-800/40 backdrop-blur-xl ${
+      className={`relative w-full overflow-hidden rounded-3xl pt-4 ${className} ${
+        type === "main"
+          ? "bg-zinc-900 outline-0 outline-primary"
+          : "bg-zinc-900 opacity-75 outline-zinc-800"
+      } ${
         isCurrentPlan && hasActiveSubscription
           ? "ring-2 ring-green-500 ring-offset-2 ring-offset-zinc-950"
           : ""

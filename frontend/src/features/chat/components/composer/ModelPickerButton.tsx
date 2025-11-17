@@ -92,7 +92,7 @@ const ModelPickerButton: React.FC = () => {
   }, [models, currentModel]);
 
   const headingClasses =
-    "flex w-full sticky top-0 z-20 py-2 px-2 bg-zinc-800  text-zinc-200 text-xs font-medium capitalize";
+    "flex w-full sticky top-1 z-20 py-1.5 px-2 bg-zinc-800  text-zinc-200 text-xs font-medium capitalize";
 
   // Don't render the button if models are still loading or not available
   if (isLoading || !models || models.length === 0) {

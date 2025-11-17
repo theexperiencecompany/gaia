@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
-import { Target02Icon, Target04Icon } from "@/components/shared/icons";
+import { Target02Icon,Target04Icon } from "@/components/shared/icons";
 import AddGoalDialog from "@/features/goals/components/AddGoalDialog";
 import { useGoals } from "@/features/goals/hooks/useGoals";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
@@ -32,7 +32,7 @@ export default function GoalsHeader() {
           text="Goals"
         />
 
-        <div className="relative flex items-center">
+        <div className="relative z-[100] flex items-center">
           <SidebarHeaderButton
             aria-label="Create new goal"
             tooltip="Create new goal"

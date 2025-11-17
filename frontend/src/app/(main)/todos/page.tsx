@@ -20,7 +20,6 @@ export default function TodosPage() {
   const searchParams = useSearchParams();
   const { selectedTodoId, selectTodo, clearSelection } = useUrlTodoSelection();
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
-  const openRightSidebar = useRightSidebar((state) => state.open);
   const closeRightSidebar = useRightSidebar((state) => state.close);
 
   // Get filter from URL params
@@ -101,10 +100,8 @@ export default function TodosPage() {
           projects={projects}
         />,
       );
-      openRightSidebar("sheet");
     } else {
       setRightSidebarContent(null);
-      closeRightSidebar();
     }
   }, [
     selectedTodoId,
@@ -112,21 +109,9 @@ export default function TodosPage() {
     projects,
     handleClose,
     setRightSidebarContent,
-    openRightSidebar,
-    closeRightSidebar,
     handleTodoUpdate,
     handleTodoDelete,
   ]);
-
-  // Sync close action from right sidebar back to URL
-  useEffect(() => {
-    return useRightSidebar.subscribe((state, prevState) => {
-      // If right sidebar was closed externally (e.g., close button), clear URL selection
-      if (prevState.isOpen && !state.isOpen && selectedTodoId) {
-        clearSelection();
-      }
-    });
-  }, [selectedTodoId, clearSelection]);
 
   // Cleanup right sidebar on unmount
   useEffect(() => {

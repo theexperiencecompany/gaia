@@ -225,7 +225,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
           }
         >
           <div onClick={(e) => e.stopPropagation()}>
-            <div className="grid grid-cols-2 gap-2 pl-1">
+            <div className="grid grid-cols-2 gap-2">
               {integrations.map((integration) => (
                 <IntegrationItem
                   key={integration.id}
