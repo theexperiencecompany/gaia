@@ -318,7 +318,6 @@ def reddit_comments_after_hook(
         response_data = response.get("data", {})
 
         # Reddit returns an array with [post_data, comments_data]
-        comments_listing = []
         if isinstance(response_data, list) and len(response_data) > 1:
             comments_data = response_data[1].get("data", {}).get("children", [])
         else:

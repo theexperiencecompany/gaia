@@ -51,6 +51,65 @@ HookType = Union[
     Callable[[State, RunnableConfig, BaseStore], Awaitable[State]],
 ]
 
+# Pre-compiled regex patterns for subagent handoff detection
+_SUBAGENT_TOOL_PATTERN = re.compile(r"call_(\w+)_agent")
+_SUBAGENT_TRANSFER_PATTERN = re.compile(r"Successfully transferred to (\w+)")
+
+
+def _clean_consecutive_ai_messages(messages: list) -> list:
+    """
+    Prevent consecutive AIMessage problem by replacing subagent handoff patterns.
+
+    When a subagent completes, it creates:
+    - ToolMessage("Successfully transferred to X")
+    - AIMessage(content=result, visible_to={main_agent, X_agent})
+
+    This causes consecutive AIMessages which Gemini rejects. We fix by replacing
+    the ToolMessage content with the AIMessage content, then discarding the AIMessage.
+
+    Args:
+        messages: List of messages from state
+
+    Returns:
+        Cleaned list of messages
+    """
+    cleaned_messages = []
+    i = 0
+
+    while i < len(messages):
+        msg = messages[i]
+
+        if not isinstance(msg, ToolMessage) or i + 1 >= len(messages):
+            cleaned_messages.append(msg)
+            i += 1
+            continue
+
+        tool_match = _SUBAGENT_TOOL_PATTERN.match(msg.name or "")
+        transfer_match = _SUBAGENT_TRANSFER_PATTERN.match(msg.content or "")  # type: ignore[call-arg]
+
+        if not (tool_match and transfer_match):
+            cleaned_messages.append(msg)
+            i += 1
+            continue
+
+        next_msg = messages[i + 1]
+        if not isinstance(next_msg, AIMessage):
+            cleaned_messages.append(msg)
+            i += 1
+            continue
+
+        visible_to = next_msg.additional_kwargs.get("visible_to", set())
+        subagent_name = f"{tool_match.group(1)}_agent"
+
+        if "main_agent" in visible_to and subagent_name in visible_to:
+            cleaned_messages.append(msg.model_copy(update={"content": next_msg.content}))
+            i += 2
+        else:
+            cleaned_messages.append(msg)
+            i += 1
+
+    return cleaned_messages
+
 
 async def _execute_hooks(
     hooks: list[HookType] | None,
@@ -171,8 +230,9 @@ def create_agent(
         return await _execute_hooks(end_graph_hooks, state, config, store)
 
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
-        # For sync context, we need to run hooks in a new event loop
         _sync_execute_hooks(end_graph_hooks, state, config, store)
+
+        state = {**state, "messages": _clean_consecutive_ai_messages(state["messages"])}
 
         model_configurations = config.get("configurable", {})
         _llm = llm.with_config(configurable=model_configurations)
@@ -203,6 +263,8 @@ def create_agent(
             config,
             store,
         )
+
+        state = {**state, "messages": _clean_consecutive_ai_messages(state["messages"])}
 
         model_configurations = config.get("configurable", {})
         _llm = llm.with_config(configurable=model_configurations)
