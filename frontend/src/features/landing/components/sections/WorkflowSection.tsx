@@ -1,5 +1,3 @@
-
-
 const triggers = [
   {
     icon: "/images/icons/slack.svg",
@@ -21,7 +19,7 @@ const triggers = [
 
 export default function WorkflowSection() {
   return (
-    <div className="mx-auto flex h-screen w-full max-w-7xl flex-col justify-center p-4 px-4 sm:p-6 sm:px-6 lg:p-7 lg:px-8">
+    <div className="mx-auto mb-20 flex h-screen w-full max-w-7xl flex-col justify-center p-4 px-4 sm:p-6 sm:px-6 lg:p-7 lg:px-8">
       <div className="mb-2 text-xl font-light text-primary sm:text-2xl">
         Your Daily Life, Automated
       </div>
@@ -29,55 +27,11 @@ export default function WorkflowSection() {
         Simple workflows to eliminate repetitive tasks
       </div>
 
-      <div className="mt-10 grid w-full grid-cols-2 gap-10">
-        <div className="flex flex-col gap-2">
-          <div className="text-3xl font-medium">Smart Triggers</div>
-          <div className="text-xl text-zinc-400">
-            Set it to run every morning at 9 AM, trigger it manually when you
-            need it, or let it kick in automatically when something happens—like
-            when you get an email, a Slack message pops up, or your next
-            meeting's about to start. We're constantly adding new ways to
-            trigger your workflows based on what you tell us you need.
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="text-3xl font-medium">Proactive by Nature</div>
-          <div className="text-xl text-zinc-400">
-            Assignment due next week? GAIA's already researched it, created the
-            Google Doc, and drafted it. That investor email you've been putting
-            off? Already written and sitting in your drafts. GAIA doesn't wait
-            around—it just handles it. Labels your emails, organizes your files,
-            and prepares whatever you need way ahead of time.
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="text-3xl font-medium">Seamless Orchestration</div>
-          <div className="text-xl text-zinc-400">
-            Gmail, Google Docs, Slack, Calendar—they all talk to each other now.
-            One workflow can pull info from your email, create a doc, schedule a
-            meeting, and ping your team on Slack. No more tab-switching hell.
-            Complex stuff becomes simple when everything just... works together.
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="text-3xl font-medium">Powered by Your Todos</div>
-          <div className="text-xl text-zinc-400">
-            Every todo you add becomes its own mini-workflow. GAIA doesn't just
-            remind you about it—it actually does the work. Research? Done.
-            Drafting? Done. Scheduling? Done. Your todo list stops being a guilt
-            trip and starts being your secret weapon.
-          </div>
-        </div>
-      </div>
-
       <div className="mt-16 flex flex-col gap-4">
         <div className="text-4xl font-medium">
           Wait, what even are workflows?
         </div>
-        <div className="text-xl text-zinc-400">
+        <div className="text-xl font-light text-zinc-400">
           Think of them as little robots you train to do your repetitive stuff.
           Could be as basic as "forward all receipts to my accountant" or as
           wild as "watch my calendar, research everyone I'm meeting today, write
@@ -93,6 +47,50 @@ export default function WorkflowSection() {
           <br />
           The more apps you connect and triggers you set up, the more powerful
           it gets. We're just getting started.
+        </div>
+      </div>
+
+      <div className="mt-10 grid w-full grid-cols-2 gap-10">
+        <div className="flex flex-col gap-2">
+          <div className="text-3xl font-medium">Smart Triggers</div>
+          <div className="text-xl font-light text-zinc-400">
+            Set it to run every morning at 9 AM, trigger it manually when you
+            need it, or let it kick in automatically when something happens—like
+            when you get an email, a Slack message pops up, or your next
+            meeting's about to start. We're constantly adding new ways to
+            trigger your workflows based on what you tell us you need.
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="text-3xl font-medium">Proactive by Nature</div>
+          <div className="text-xl font-light text-zinc-400">
+            Assignment due next week? GAIA's already researched it, created the
+            Google Doc, and drafted it. That investor email you've been putting
+            off? Already written and sitting in your drafts. GAIA doesn't wait
+            around—it just handles it. Labels your emails, organizes your files,
+            and prepares whatever you need way ahead of time.
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="text-3xl font-medium">Seamless Orchestration</div>
+          <div className="text-xl font-light text-zinc-400">
+            Gmail, Google Docs, Slack, Calendar—they all talk to each other now.
+            One workflow can pull info from your email, create a doc, schedule a
+            meeting, and ping your team on Slack. No more tab-switching hell.
+            Complex stuff becomes simple when everything just... works together.
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="text-3xl font-medium">Powered by Your Todos</div>
+          <div className="text-xl font-light text-zinc-400">
+            Every todo you add becomes its own mini-workflow. GAIA doesn't just
+            remind you about it—it actually does the work. Research? Done.
+            Drafting? Done. Scheduling? Done. Your todo list stops being a guilt
+            trip and starts being your secret weapon.
+          </div>
         </div>
       </div>
 

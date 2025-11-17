@@ -19,9 +19,11 @@ gsap.registerPlugin(ScrollTrigger);
 export default function UseCaseSection({
   dummySectionRef,
   hideUserWorkflows = false,
+  centered = true,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
+  centered?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -168,8 +170,10 @@ export default function UseCaseSection({
   }, []);
 
   return (
-    <div className="mx-auto w-full max-w-7xl" ref={dummySectionRef}>
-      <div className="mb-6 flex flex-wrap justify-center gap-2">
+    <div className="w-full max-w-7xl" ref={dummySectionRef}>
+      <div
+        className={`mb-6 flex flex-wrap ${centered ? "justify-center" : ""} gap-2`}
+      >
         {allCategories.map((category) => (
           <Chip
             key={category as string}

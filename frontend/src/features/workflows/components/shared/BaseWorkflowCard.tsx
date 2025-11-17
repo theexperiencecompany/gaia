@@ -38,95 +38,47 @@ export default function BaseWorkflowCard({
   useBlurEffect = false,
 }: BaseWorkflowCardProps) {
   const renderToolIcons = () => {
-    let categories: string[];
+    const categories = [...new Set(steps.map((step) => step.tool_category))];
 
-    if (steps.length > 0)
-      categories = [...new Set(steps.map((step) => step.tool_category))];
-    else {
-      // Handle integrations like in UseCaseCard
-      const integrationToCategory: Record<string, string> = {
-        gmail: "mail",
-        gcal: "calendar",
-        calendar: "calendar",
-        gdocs: "google_docs",
-        "google-docs": "google_docs",
-        google_docs: "google_docs",
-        notion: "notion",
-        linear: "productivity",
-        web: "search",
-        "web search": "search",
-        search: "search",
-        mail: "mail",
-        email: "mail",
-        productivity: "productivity",
-        documents: "documents",
-        development: "development",
-        memory: "memory",
-        creative: "creative",
-        weather: "weather",
-        goal_tracking: "goal_tracking",
-        webpage: "webpage",
-        support: "support",
-        general: "general",
-      };
-      categories = integrations.map(
-        (integration) => integrationToCategory[integration] || integration,
-      );
-    }
-
-    const validIcons = categories
-      .slice(0, 5)
-      .map((category, index) => {
-        const IconComponent = getToolCategoryIcon(category, {
-          width: 25,
-          height: 25,
-        });
-        return IconComponent ? (
-          <div
-            key={`${category}-${index}`}
-            className="relative flex items-center justify-center"
-            style={{
-              rotate:
-                categories.length > 1
-                  ? index % 2 == 0
-                    ? "8deg"
-                    : "-8deg"
-                  : "0deg",
-              zIndex: index,
-            }}
-          >
-            {IconComponent}
-          </div>
-        ) : null;
-      })
-      .filter(Boolean);
-
-    if (validIcons.length === 0 && categories.length > 0) {
-      validIcons.push(
-        <ToolsIcon
-          key="default-tools-icon"
-          width={25}
-          height={25}
-          className="text-foreground-400"
-        />,
-      );
-    }
+    const displayIcons = categories.slice(0, 3);
 
     return (
-      <>
-        <div className="flex min-h-8 -space-x-1.5">{validIcons}</div>
+      <div className="flex min-h-8 items-center -space-x-1.5">
+        {displayIcons.map((category, index) => {
+          const IconComponent = getToolCategoryIcon(category, {
+            width: 25,
+            height: 25,
+          });
+          return IconComponent ? (
+            <div
+              key={`${category}-${index}`}
+              className="relative flex min-w-8 items-center justify-center"
+              style={{
+                rotate:
+                  displayIcons.length > 1
+                    ? index % 2 === 0
+                      ? "8deg"
+                      : "-8deg"
+                    : "0deg",
+                zIndex: index,
+              }}
+            >
+              {IconComponent}
+            </div>
+          ) : null;
+        })}
         {categories.length > 3 && (
           <div className="flex h-[25px] w-[25px] items-center justify-center rounded-lg bg-zinc-700 text-xs text-foreground-500">
             +{categories.length - 3}
           </div>
         )}
-      </>
+      </div>
     );
   };
 
   return (
     <div
-      className={`group relative z-[1] flex min-h-[140px] w-full flex-col gap-2 rounded-2xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${
+      className={`group relative z-[1] flex min-h-fit w-full flex-col gap-2 rounded-2xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${
         onClick ? "cursor-pointer hover:bg-zinc-700/50" : ""
       }`}
       onClick={onClick}

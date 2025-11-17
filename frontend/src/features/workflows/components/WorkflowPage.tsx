@@ -2,12 +2,13 @@
 
 import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/modal";
-import { ExternalLink, RefreshCw } from "lucide-react";
-import Link from "next/link";
+import { RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, ReactNode } from "react";
 
+import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
+import { useHeader } from "@/hooks/layout/useHeader";
 
 import { CommunityWorkflow, Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
@@ -22,6 +23,7 @@ export default function WorkflowPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const workflowId = searchParams.get("id");
+  const { setHeader } = useHeader();
 
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
   const {
@@ -41,55 +43,7 @@ export default function WorkflowPage() {
   const [isLoadingCommunity, setIsLoadingCommunity] = useState(false);
   const [communityError, setCommunityError] = useState<string | null>(null);
 
-  // Load community workflows
-  useEffect(() => {
-    const loadCommunityWorkflows = async () => {
-      setIsLoadingCommunity(true);
-      setCommunityError(null);
-      try {
-        const response = await workflowApi.getCommunityWorkflows(12, 0);
-        setCommunityWorkflows(response.workflows);
-      } catch (error) {
-        console.error("Error loading community workflows:", error);
-        setCommunityError(
-          error instanceof Error
-            ? error.message
-            : "Failed to load community workflows",
-        );
-      } finally {
-        setIsLoadingCommunity(false);
-      }
-    };
-
-    loadCommunityWorkflows();
-  }, []);
-
-  // Handle URL-based modal opening
-  useEffect(() => {
-    if (workflowId && workflows.length > 0) {
-      const workflow = workflows.find((w) => w.id === workflowId);
-      if (workflow) {
-        setSelectedWorkflow(workflow);
-        onEditOpen();
-      }
-    }
-  }, [workflowId, workflows, onEditOpen]);
-
-  // Handle workflow creation completion
-  const handleWorkflowCreated = useCallback(() => {
-    refetch(); // Refresh the list to show the new workflow
-  }, [refetch]);
-
-  const handleWorkflowDeleted = useCallback(
-    (workflowId: string) => {
-      // TODO: Call delete API
-      console.log("Workflow deleted:", workflowId);
-      refetch(); // Refresh the list
-    },
-    [refetch],
-  );
-
-  const refetchCommunity = useCallback(async () => {
+  const loadCommunityWorkflows = useCallback(async () => {
     setIsLoadingCommunity(true);
     setCommunityError(null);
     try {
@@ -107,10 +61,40 @@ export default function WorkflowPage() {
     }
   }, []);
 
+  useEffect(() => {
+    setHeader(<WorkflowsHeader onCreateWorkflow={onOpen} />);
+    return () => setHeader(null);
+  }, [setHeader, onOpen]);
+
+  useEffect(() => {
+    loadCommunityWorkflows();
+  }, [loadCommunityWorkflows]);
+
+  useEffect(() => {
+    if (workflowId && workflows.length > 0) {
+      const workflow = workflows.find((w) => w.id === workflowId);
+      if (workflow) {
+        setSelectedWorkflow(workflow);
+        onEditOpen();
+      }
+    }
+  }, [workflowId, workflows, onEditOpen]);
+
+  const handleWorkflowCreated = useCallback(() => {
+    refetch();
+  }, [refetch]);
+
+  const handleWorkflowDeleted = useCallback(
+    (workflowId: string) => {
+      console.log("Workflow deleted:", workflowId);
+      refetch();
+    },
+    [refetch],
+  );
+
   const handleWorkflowClick = (workflowId: string) => {
     const workflow = workflows.find((w) => w.id === workflowId);
     if (workflow) {
-      // Update URL with workflow ID
       router.push(`/workflows?id=${workflowId}`, { scroll: false });
       setSelectedWorkflow(workflow);
       onEditOpen();
@@ -120,28 +104,35 @@ export default function WorkflowPage() {
   const handleModalClose = (open: boolean) => {
     onEditOpenChange();
     if (!open) {
-      // Clear URL parameters when modal closes
       router.push("/workflows", { scroll: false });
       setSelectedWorkflow(null);
     }
   };
 
-  const handleCommunityWorkflowClick = async (workflowId: string) => {
-    // Navigate to use-cases detail page for community workflows
+  const handleCommunityWorkflowClick = (workflowId: string) => {
     router.push(`/use-cases/${workflowId}`);
   };
 
-  const renderWorkflowsGrid = () => {
+  const renderGrid = <T extends { id: string }>(
+    items: T[],
+    isLoading: boolean,
+    error: string | null,
+    emptyTitle: string,
+    emptyDescription: string,
+    onRefetch: () => void,
+    renderItem: (item: T) => ReactNode,
+    emptyAction?: ReactNode,
+  ) => {
     if (isLoading) return <WorkflowListSkeleton />;
 
     if (error) {
       return (
         <div className="flex flex-col items-center justify-center space-y-4 py-12">
-          <p className="text-foreground-400">Failed to load workflows</p>
+          <p className="text-foreground-400">{error}</p>
           <Button
             size="sm"
             variant="flat"
-            onPress={refetch}
+            onPress={onRefetch}
             startContent={<RefreshCw className="h-4 w-4" />}
           >
             Try Again
@@ -150,143 +141,111 @@ export default function WorkflowPage() {
       );
     }
 
-    if (workflows.length === 0) {
+    if (items.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center space-y-4 py-12">
+        <div className="flex flex-col items-center justify-center space-y-4 rounded-lg border border-zinc-800 bg-zinc-900/50 py-16">
           <div className="text-center">
-            <h3 className="text-xl font-medium text-zinc-300">
-              No workflows yet
-            </h3>
+            <h3 className="text-lg font-medium text-zinc-300">{emptyTitle}</h3>
+            <p className="mt-2 text-sm text-zinc-500">{emptyDescription}</p>
           </div>
-          <Button color="primary" onPress={onOpen}>
-            Create Your First Workflow
-          </Button>
+          {emptyAction}
         </div>
       );
     }
 
     return (
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
-        {workflows.map((workflow) => (
-          <WorkflowCard
-            key={workflow.id}
-            workflow={workflow}
-            onClick={() => handleWorkflowClick(workflow.id)}
-          />
-        ))}
+      <div className="grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+        {items.map((item) => renderItem(item))}
       </div>
     );
   };
 
-  const renderCommunityWorkflowsGrid = () => {
-    if (isLoadingCommunity) return <WorkflowListSkeleton />;
-
-    if (communityError) {
-      return (
-        <div className="flex flex-col items-center justify-center space-y-4 py-12">
-          <p className="text-foreground-400">
-            Failed to load community workflows
-          </p>
-          <Button
-            size="sm"
-            variant="flat"
-            onPress={refetchCommunity}
-            startContent={<RefreshCw className="h-4 w-4" />}
-          >
-            Try Again
-          </Button>
-        </div>
-      );
-    }
-
-    if (communityWorkflows.length === 0) {
-      return (
-        <div className="flex flex-col items-center justify-center space-y-4 py-12">
-          <div className="text-center">
-            <h3 className="text-xl font-medium text-zinc-300">
-              No community workflows yet
-            </h3>
-            <p className="mt-2 text-sm text-zinc-500">
-              Be the first to publish a workflow to the community
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
-        {communityWorkflows.map((workflow: CommunityWorkflow) => (
-          <CommunityWorkflowCard
-            key={workflow.id}
-            workflow={workflow}
-            onClick={() => handleCommunityWorkflowClick(workflow.id)}
-          />
-        ))}
+  const renderSection = (
+    title: string,
+    description: string,
+    children: ReactNode,
+  ) => (
+    <div className="mt-12 flex flex-col gap-3">
+      <div className="space-y-2">
+        <h2 className="text-2xl font-medium text-zinc-100">{title}</h2>
+        <p className="font-light text-zinc-400">{description}</p>
       </div>
-    );
-  };
+      {children}
+    </div>
+  );
+
+  const showAnySkeleton = isLoading || isLoadingCommunity;
 
   return (
-    <div
-      className="space-y-10 overflow-y-auto p-4 sm:p-6 md:p-8 lg:px-10"
-      ref={pageRef}
-    >
-      <div className="flex flex-col gap-6 md:gap-7">
-        <div className="flex w-full flex-col items-center justify-center">
-          <h1 className="mb-3 text-5xl font-normal">Workflows</h1>
-
-          <div className="grid w-full max-w-md grid-cols-2 justify-center gap-2">
-            <Link href={"/use-cases"}>
-              <Button
-                variant="flat"
-                size="sm"
-                fullWidth
-                className="text-zinc-400"
-                endContent={<ExternalLink width={16} height={16} />}
-              >
-                Browse Use Cases
-              </Button>
-            </Link>
-
-            <Button
-              color="primary"
-              size="sm"
-              variant="flat"
-              fullWidth
-              onPress={onOpen}
-              className="text-primary"
-            >
-              Create Workflow
-            </Button>
-          </div>
-        </div>
-
-        {renderWorkflowsGrid()}
-      </div>
-
-      <div className="mt-16 flex flex-col gap-6">
-        <div className="text-center">
-          <h1 className="text-4xl font-normal">Explore & Discover</h1>
-          <p className="text-md mx-auto max-w-3xl text-zinc-500">
-            See what's possible with real examples that actually work!
-          </p>
-        </div>
-
-        <UseCaseSection dummySectionRef={pageRef} hideUserWorkflows={true} />
-
-        <div className="mt-12 flex flex-col gap-6">
-          <div className="text-center">
-            <h1 className="text-4xl font-normal">Community Workflows</h1>
-            <p className="text-md mx-auto max-w-3xl text-zinc-500">
-              Check out what others have built and grab anything that looks
-              useful!
-            </p>
+    <div className="space-y-8 overflow-y-auto p-4 sm:p-6 md:p-8" ref={pageRef}>
+      {showAnySkeleton ? (
+        <>
+          <WorkflowListSkeleton />
+          {renderSection(
+            "Explore & Discover",
+            "See what's possible with real examples that actually work!",
+            <WorkflowListSkeleton />,
+          )}
+          {renderSection(
+            "Community Workflows",
+            "Check out what others have built and grab anything that looks useful!",
+            <WorkflowListSkeleton />,
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex flex-col gap-6">
+            {renderGrid(
+              workflows,
+              false,
+              error ? "Failed to load workflows" : null,
+              "No workflows yet",
+              "Create your first workflow to get started",
+              refetch,
+              (workflow) => (
+                <WorkflowCard
+                  key={workflow.id}
+                  workflow={workflow}
+                  onClick={() => handleWorkflowClick(workflow.id)}
+                />
+              ),
+              <Button color="primary" variant="flat" onPress={onOpen}>
+                Create Your First Workflow
+              </Button>,
+            )}
           </div>
 
-          {renderCommunityWorkflowsGrid()}
-        </div>
-      </div>
+          {renderSection(
+            "Explore & Discover",
+            "See what's possible with real examples that actually work!",
+            <UseCaseSection
+              centered={false}
+              dummySectionRef={pageRef}
+              hideUserWorkflows={true}
+            />,
+          )}
+
+          {renderSection(
+            "Community Workflows",
+            "Check out what others have built and grab anything that looks useful!",
+            renderGrid(
+              communityWorkflows,
+              false,
+              communityError,
+              "No community workflows yet",
+              "Be the first to publish a workflow to the community",
+              loadCommunityWorkflows,
+              (workflow) => (
+                <CommunityWorkflowCard
+                  key={workflow.id}
+                  workflow={workflow}
+                  onClick={() => handleCommunityWorkflowClick(workflow.id)}
+                />
+              ),
+            ),
+          )}
+        </>
+      )}
 
       <CreateWorkflowModal
         isOpen={isOpen}
