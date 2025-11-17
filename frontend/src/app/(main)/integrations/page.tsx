@@ -4,13 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
-import { ConnectIcon, MessageFavourite02Icon } from "@/components/shared/icons";
+import { ConnectIcon } from "@/components/shared/icons";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
-import { Button } from "@heroui/button";
 
 export default function IntegrationsPage() {
   const { integrations, connectIntegration } = useIntegrations();
@@ -24,7 +22,6 @@ export default function IntegrationsPage() {
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<
     string | null
   >(null);
-  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
   // Set header
   useEffect(() => {
@@ -84,22 +81,8 @@ export default function IntegrationsPage() {
     };
   }, [closeRightSidebar]);
 
-  const handleRequestIntegration = () => {
-    setIsSupportModalOpen(true);
-  };
-
   return (
     <div className="flex h-screen w-full flex-col">
-      <div className="absolute right-4 bottom-4">
-        <Button
-          color="primary"
-          endContent={<MessageFavourite02Icon width={17} height={17} />}
-          onPress={handleRequestIntegration}
-        >
-          Request an Integration
-        </Button>
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         <div className="flex w-full justify-center px-5">
           <div className="w-full">
@@ -107,17 +90,6 @@ export default function IntegrationsPage() {
           </div>
         </div>
       </div>
-
-      <ContactSupportModal
-        isOpen={isSupportModalOpen}
-        onOpenChange={() => setIsSupportModalOpen(!isSupportModalOpen)}
-        initialValues={{
-          type: "feature",
-          title: "Integration Request",
-          description:
-            "I would like to request a new integration for:\n\n[Please describe the integration you need and how you plan to use it]",
-        }}
-      />
     </div>
   );
 }

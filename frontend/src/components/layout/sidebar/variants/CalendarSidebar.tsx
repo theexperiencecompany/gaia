@@ -3,24 +3,15 @@
 import { Button } from "@heroui/button";
 import { useRouter } from "next/navigation";
 
-import {
-  CalendarAdd01Icon,
-  GoogleCalendarIcon,
-} from "@/components/shared/icons";
-import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
+import { CalendarAdd01Icon } from "@/components/shared/icons";
 import Spinner from "@/components/ui/shadcn/spinner";
 import CalendarSelector from "@/features/calendar/components/CalendarSelector";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
-import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
 export default function CalendarSidebar() {
   const router = useRouter();
   const { calendars, selectedCalendars, handleCalendarSelect, loading } =
     useSharedCalendar();
-  const { getIntegrationStatus } = useIntegrations();
-
-  const calendarStatus = getIntegrationStatus("google_calendar");
-  const isCalendarConnected = calendarStatus?.connected || false;
 
   const handleCreateEvent = () => {
     // Navigate to calendar page which will trigger the event creation
@@ -31,20 +22,6 @@ export default function CalendarSidebar() {
     return (
       <div className="flex h-40 w-full flex-1 items-center justify-center">
         <Spinner />
-      </div>
-    );
-  }
-  // Show connect button if calendar is not connected
-  if (!isCalendarConnected) {
-    return (
-      <div className="flex flex-col gap-3">
-        <IntegrationConnectCard
-          icon={<GoogleCalendarIcon width={32} height={32} />}
-          title="Connect Your Calendar"
-          description="Manage events and view your schedule"
-          buttonText="Connect Google Calendar"
-          integrationId="google_calendar"
-        />
       </div>
     );
   }

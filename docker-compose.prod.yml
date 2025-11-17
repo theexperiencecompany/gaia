@@ -96,22 +96,6 @@ services:
       retries: 5
     networks:
       - gaia_network
-    
-  # Redis Service
-  redis:
-    image: redis:alpine
-    container_name: redis
-    profiles: ["", "backend-only"]
-    ports:
-      - "6379:6379"
-    restart: always
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    networks:
-      - gaia_network
 
   # RabbitMQ Service
   rabbitmq:

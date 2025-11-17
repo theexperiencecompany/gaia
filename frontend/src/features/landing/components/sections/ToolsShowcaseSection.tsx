@@ -98,7 +98,7 @@ const ToolsShowcaseSection: React.FC = () => {
 
         {/* Floating Background Icons - Bottom Corners */}
         <FloatingIcon
-          src="/images/icons/googlesheets.webp"
+          src="/images/icons/google_sheets.webp"
           alt="Google Sheets"
           size={40}
           className="bottom-[15%] left-[8%] opacity-70"

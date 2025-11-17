@@ -129,7 +129,22 @@ const comparisonFeatures: ComparisonFeature[] = [
       description: "Basic suggestions",
     },
   },
-
+  {
+    icon: <ComputerIcon className="h-6 w-6 text-primary" />,
+    title: "Desktop Automation",
+    gaia: {
+      available: true,
+      description: "Controls websites & desktop apps",
+    },
+    chatgpt: {
+      available: false,
+      description: "Requires external tools",
+    },
+    gemini: {
+      available: false,
+      description: "Google properties only",
+    },
+  },
   {
     icon: <UserCircle02Icon className="h-6 w-6 text-primary" />,
     title: "Personal Experience",
@@ -249,17 +264,17 @@ function FeatureRow({ feature }: { feature: ComparisonFeature }) {
 
 export function ComparisonTable() {
   return (
-    <div className="mx-auto w-full max-w-7xl py-16">
-      <div className="mb-10 flex w-full flex-col items-center justify-center gap-3 text-white">
-        <h1 className="text-center font-serif text-6xl font-normal">
+    <div className="mx-auto w-full max-w-7xl px-6 py-16">
+      <div className="mb-12 text-center">
+        <h2 className="mb-4 font-serif text-6xl font-light">
           See how GAIA stacks up against the competition.
-        </h1>
-        <span className="text-xl font-light text-zinc-300">
+        </h2>
+        <p className="text-lg text-gray-400">
           What makes GAIA better and not just a "chatbot"
-        </span>
+        </p>
       </div>
 
-      <div className="relative overflow-hidden rounded-4xl bg-zinc-900/50 p-8 backdrop-blur-sm">
+      <div className="relative overflow-hidden rounded-3xl border-1 border-zinc-800 bg-zinc-900/80 p-8 backdrop-blur-sm">
         <div className="mb-8 grid grid-cols-4 gap-6">
           <div />
           <CompanyHeader

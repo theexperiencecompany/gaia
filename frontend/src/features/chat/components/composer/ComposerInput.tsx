@@ -45,7 +45,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
     },
     ref,
   ) => {
-    const { detectSlashCommand, getSlashCommandSuggestions } =
+    const { detectSlashCommand, getAllTools, getSlashCommandSuggestions } =
       useSlashCommands();
     const [slashCommandState, setSlashCommandState] = useState({
       isActive: false,
@@ -277,6 +277,9 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
               }
 
               // Find the last unlocked index to properly limit navigation
+              const unlockedMatches = filteredMatches.filter(
+                (match) => !match.enhancedTool?.isLocked,
+              );
               const lastUnlockedIndex = filteredMatches.findIndex(
                 (match, idx) =>
                   idx >= newIndex && !match.enhancedTool?.isLocked,
@@ -496,6 +499,9 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
                 prev.matches,
               );
               // Only navigate through unlocked items
+              const unlockedMatches = filteredMatches.filter(
+                (match) => !match.enhancedTool?.isLocked,
+              );
 
               let newIndex = prev.selectedIndex - 1;
               // Keep going up until we find an unlocked item or reach the start
