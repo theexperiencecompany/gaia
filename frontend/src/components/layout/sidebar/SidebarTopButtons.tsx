@@ -11,7 +11,6 @@ import {
   CheckmarkCircle02Icon,
   ConnectIcon,
   MessageMultiple02Icon,
-  NotificationIcon,
   Target04Icon,
 } from "@/components/shared/icons";
 import {
