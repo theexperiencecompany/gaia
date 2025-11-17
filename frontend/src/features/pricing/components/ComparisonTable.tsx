@@ -8,7 +8,6 @@ import {
   Brain02Icon,
   Calendar01Icon,
   CheckmarkCircle02Icon,
-  ComputerIcon,
   ConnectIcon,
   Home01Icon,
   Mail01Icon,

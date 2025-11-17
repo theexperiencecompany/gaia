@@ -1,12 +1,12 @@
 "use client";
 
 import {
-  RedditPostCreatedCard,
   RedditCommentCreatedCard,
+  RedditPostCreatedCard,
 } from "@/features/reddit/components/RedditCreatedCard";
 import {
-  RedditPostCreatedData,
   RedditCommentCreatedData,
+  RedditPostCreatedData,
 } from "@/types/features/redditTypes";
 
 export function RedditPostCreatedSection({

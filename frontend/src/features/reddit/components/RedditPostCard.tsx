@@ -2,10 +2,9 @@
 
 import { Chip } from "@heroui/chip";
 import {
-  MessageCircle,
-  TrendingUp,
-  ExternalLink,
   ArrowBigUp,
+  ExternalLink,
+  MessageCircle,
 } from "lucide-react";
 
 import { RedditPostData } from "@/types/features/redditTypes";

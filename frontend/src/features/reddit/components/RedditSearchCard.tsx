@@ -1,13 +1,12 @@
 "use client";
 
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { ArrowBigUp, MessageCircle, TrendingUp } from "lucide-react";
-
-import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
-import { useAppendToInput } from "@/stores/composerStore";
-import { RedditSearchData } from "@/types/features/redditTypes";
+import { ArrowBigUp, MessageCircle } from "lucide-react";
 import Link from "next/link";
+
 import { RedditIcon } from "@/components";
+import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { RedditSearchData } from "@/types/features/redditTypes";
 
 interface RedditSearchCardProps {
   posts?: RedditSearchData[] | null;
@@ -51,8 +50,11 @@ export default function RedditSearchCard({
       className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
     >
       <ScrollShadow className={`${maxHeight} divide-y divide-gray-700`}>
-        {posts.map((post) => (
-          <div className="group w-full cursor-pointer p-3 transition-colors hover:bg-zinc-700">
+        {posts.map((post, index) => (
+          <div
+            className="group w-full cursor-pointer p-3 transition-colors hover:bg-zinc-700"
+            key={index}
+          >
             <Link
               href={`https://reddit.com${post?.permalink}`}
               key={post.id}

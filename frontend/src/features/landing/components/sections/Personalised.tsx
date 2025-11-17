@@ -1,9 +1,5 @@
-import { AiBrain01Icon } from "@/components";
 
-import MemoryGraphDemo from "../demo/MemoryGraphDemo";
-import { SimpleChatBubbleUser } from "../demo/SimpleChatBubbles";
 import LargeHeader from "../shared/LargeHeader";
-import { BentoItem } from "./TodosBentoContent";
 
 export default function Personalised() {
   const personalInfo = [

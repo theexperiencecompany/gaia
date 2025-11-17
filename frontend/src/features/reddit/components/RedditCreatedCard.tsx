@@ -3,11 +3,11 @@
 import { Chip } from "@heroui/chip";
 import { CheckCircleIcon, ExternalLink } from "lucide-react";
 
-import {
-  RedditPostCreatedData,
-  RedditCommentCreatedData,
-} from "@/types/features/redditTypes";
 import { RedditIcon } from "@/components";
+import {
+  RedditCommentCreatedData,
+  RedditPostCreatedData,
+} from "@/types/features/redditTypes";
 
 interface RedditPostCreatedCardProps {
   data: RedditPostCreatedData;

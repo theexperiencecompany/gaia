@@ -1,8 +1,4 @@
-import { Chip } from "@heroui/chip";
-import { DotLottieReact } from "@lottiefiles/dotlottie-react";
-import Image from "next/image";
 
-import { BentoItem } from "./TodosBentoContent";
 
 const triggers = [
   {

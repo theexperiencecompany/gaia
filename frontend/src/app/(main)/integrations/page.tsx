@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { useCallback, useEffect, useState } from "react";
 
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
@@ -10,7 +11,6 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
-import { Button } from "@heroui/button";
 
 export default function IntegrationsPage() {
   const { integrations, connectIntegration } = useIntegrations();

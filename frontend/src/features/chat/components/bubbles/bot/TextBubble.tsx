@@ -353,7 +353,7 @@ export default function TextBubble({
   loading,
 }: ChatBubbleBotProps) {
   const processedTools = React.useMemo(() => {
-    const grouped = new Map<ToolName, any[]>();
+    const grouped = new Map<ToolName, ToolDataMap[ToolName][]>();
     const individual: ToolDataEntry[] = [];
 
     tool_data?.forEach((entry) => {
@@ -370,7 +370,7 @@ export default function TextBubble({
       ([toolName, dataArray]) => ({
         tool_name: toolName,
         tool_category: "",
-        data: dataArray,
+        data: dataArray as ToolDataMap[ToolName],
         timestamp: null,
       }),
     );
