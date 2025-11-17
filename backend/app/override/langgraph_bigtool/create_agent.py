@@ -60,18 +60,34 @@ def _clean_consecutive_ai_messages(messages: list) -> list:
     """
     Prevent consecutive AIMessage problem by replacing subagent handoff patterns.
 
-    When a subagent completes, it creates:
-    - ToolMessage("Successfully transferred to X")
-    - AIMessage(content=result, visible_to={main_agent, X_agent})
+    THE PROBLEM:
+    When a subagent completes its task and returns to the main agent, it creates:
+    1. ToolMessage(name="call_reddit_agent", content="Successfully transferred to reddit")
+    2. AIMessage(content="Result from Reddit", visible_to={main_agent, reddit_agent})
 
-    This causes consecutive AIMessages which Gemini rejects. We fix by replacing
-    the ToolMessage content with the AIMessage content, then discarding the AIMessage.
+    This creates two consecutive AI responses in the message history:
+    - Previous AIMessage from main agent deciding to call subagent
+    - New AIMessage from subagent with results
+
+    Gemini (and most LLMs) expect alternating HumanMessage/AIMessage patterns and
+    reject consecutive AIMessages with empty responses or validation errors.
+
+    THE FIX:
+    When we detect the handoff pattern (ToolMessage → AIMessage with dual visibility),
+    we replace the ToolMessage's placeholder content with the AIMessage's actual result,
+    then discard the AIMessage. This maintains the conversation flow while preventing
+    consecutive AI responses.
+
+    Pattern: ToolMessage("transfer") + AIMessage(result) → ToolMessage(result)
+
+    This ensures Gemini sees: AIMessage → ToolMessage → AIMessage (valid pattern)
+    Instead of: AIMessage → ToolMessage → AIMessage → AIMessage (invalid pattern)
 
     Args:
         messages: List of messages from state
 
     Returns:
-        Cleaned list of messages
+        Cleaned list of messages with subagent handoff patterns collapsed
     """
     cleaned_messages = []
     i = 0
@@ -102,7 +118,9 @@ def _clean_consecutive_ai_messages(messages: list) -> list:
         subagent_name = f"{tool_match.group(1)}_agent"
 
         if "main_agent" in visible_to and subagent_name in visible_to:
-            cleaned_messages.append(msg.model_copy(update={"content": next_msg.content}))
+            cleaned_messages.append(
+                msg.model_copy(update={"content": next_msg.content})
+            )
             i += 2
         else:
             cleaned_messages.append(msg)

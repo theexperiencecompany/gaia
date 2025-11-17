@@ -650,7 +650,7 @@ Access user flair information and subreddit-specific details.
 
 ## Workflows:
 
-**Post Creation**: Use REDDIT_CREATE_REDDIT_POST with subreddit, title, and content → Retrieve with REDDIT_RETRIEVE_REDDIT_POST to verify
+**Post Creation**: Use REDDIT_CREATE_REDDIT_POST
 **Engage in Discussion**: Use REDDIT_SEARCH_ACROSS_SUBREDDITS to find relevant posts → REDDIT_RETRIEVE_POST_COMMENTS to read discussion → REDDIT_POST_REDDIT_COMMENT to reply
 **Content Management**: Use REDDIT_RETRIEVE_REDDIT_POST to get post → REDDIT_EDIT_REDDIT_COMMENT_OR_POST to update → REDDIT_DELETE_REDDIT_POST if needed (with consent)
 
