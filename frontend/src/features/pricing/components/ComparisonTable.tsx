@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useMemo } from "react";
 
 import {
   AiBrain01Icon,
@@ -18,10 +20,16 @@ import {
   ZapIcon,
 } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/shadcn/raised-button";
+import { shuffle } from "lodash";
 
 interface FeatureStatus {
-  available: boolean;
-  description: string;
+  // description: string;
+  description: React.ReactNode;
+}
+
+interface Integration {
+  id: string;
+  name: string;
 }
 
 interface ComparisonFeature {
@@ -32,224 +40,211 @@ interface ComparisonFeature {
   gemini: FeatureStatus;
 }
 
-const comparisonFeatures: ComparisonFeature[] = [
-  {
-    icon: <AiBrain01Icon className="h-6 w-6 text-primary" />,
-    title: "Proactive & Autonomous",
-    gaia: {
-      available: true,
-      description: "Auto-watches inbox & calendar",
-    },
-    chatgpt: {
-      available: false,
-      description: "Reactive chat only",
-    },
-    gemini: {
-      available: false,
-      description: "Reactive in Google apps",
-    },
-  },
-  {
-    icon: <Brain02Icon className="h-6 w-6 text-primary" />,
-    title: "Personal Memory",
-    gaia: {
-      available: true,
-      description: "Learns your habits & preferences",
-    },
-    chatgpt: {
-      available: false,
-      description: "Limited per-thread memory",
-    },
-    gemini: {
-      available: false,
-      description: "Not persistent across sessions",
-    },
-  },
-  {
-    icon: <ConnectIcon className="h-6 w-6 text-primary" />,
-    title: "Cross-Tool Actions",
-    gaia: {
-      available: true,
-      description: "Gmail, Calendar, Drive & desktop",
-    },
-    chatgpt: {
-      available: false,
-      description: "Limited tool integrations",
-    },
-    gemini: {
-      available: false,
-      description: "Google apps only",
-    },
-  },
-  {
-    icon: <Home01Icon className="h-6 w-6 text-primary" />,
-    title: "Self-Hosting",
-    gaia: {
-      available: true,
-      description: "Open-source & self-hostable",
-    },
-    chatgpt: {
-      available: false,
-      description: "Closed, OpenAI hosted",
-    },
-    gemini: {
-      available: false,
-      description: "Closed, Google hosted",
-    },
-  },
-  {
-    icon: <Mail01Icon className="h-6 w-6 text-primary" />,
-    title: "Email Management",
-    gaia: {
-      available: true,
-      description: "Auto-prioritize, draft & send",
-    },
-    chatgpt: {
-      available: false,
-      description: "Drafting only",
-    },
-    gemini: {
-      available: false,
-      description: "Summaries, limited actions",
-    },
-  },
-  {
-    icon: <Calendar01Icon className="h-6 w-6 text-primary" />,
-    title: "Calendar Automation",
-    gaia: {
-      available: true,
-      description: "Auto-scheduling & reminders",
-    },
-    chatgpt: {
-      available: false,
-      description: "Suggestions only",
-    },
-    gemini: {
-      available: false,
-      description: "Basic suggestions",
-    },
-  },
+interface ComparisonTableProps {
+  integrations: Integration[];
+  isLoading: boolean;
+  hasMessages: boolean;
+}
 
-  {
-    icon: <UserCircle02Icon className="h-6 w-6 text-primary" />,
-    title: "Personal Experience",
-    gaia: {
-      available: true,
-      description: "Friendly, consistent partner",
-    },
-    chatgpt: {
-      available: false,
-      description: "Less persistent persona",
-    },
-    gemini: {
-      available: false,
-      description: "Less personal feel",
-    },
-  },
-  {
-    icon: <SquareLock02Icon className="h-6 w-6 text-primary" />,
-    title: "Data Control",
-    gaia: {
-      available: true,
-      description: "Full control over data & hosting",
-    },
-    chatgpt: {
-      available: false,
-      description: "Vendor-managed storage",
-    },
-    gemini: {
-      available: false,
-      description: "Google-managed storage",
-    },
-  },
-  {
-    icon: <ZapIcon className="h-6 w-6 text-primary" />,
-    title: "Setup & Workflow",
-    gaia: {
-      available: true,
-      description: "Simple chat setup, broad integrations",
-    },
-    chatgpt: {
-      available: false,
-      description: "Needs configuration for actions",
-    },
-    gemini: {
-      available: false,
-      description: "Limited beyond Google",
-    },
-  },
-];
-
-function CompanyHeader({
-  name,
-  logo,
-  description,
+function AppConnectionsIcons({
+  integrations = [],
+  isLoading = false,
+  hasMessages = false,
 }: {
-  name: string;
-  logo: string;
-  description: string;
+  integrations: Integration[];
+  isLoading: boolean;
+  hasMessages: boolean;
 }) {
+  const shuffledIntegrations = useMemo(
+    () => shuffle(integrations.slice(0, 9)),
+    [integrations],
+  );
+  if (isLoading || integrations.length === 0 || hasMessages) return null;
   return (
-    <div className="text-center">
-      <div className="mb-3 flex items-center justify-center">
-        <Image
-          src={logo}
-          alt={`${name} Logo`}
-          width={48}
-          height={48}
-          className="rounded-2xl"
-        />
-      </div>
-      <h3 className="mb-1 text-2xl font-semibold">{name}</h3>
-      <p className="text-sm text-gray-400">{description}</p>
+    <div className="flex items-center gap-1">
+      {shuffledIntegrations.map((integration) => (
+        <span
+          key={integration.id}
+          title={integration.name}
+          className="opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-120"
+        >
+          {getToolCategoryIcon(integration.id, {
+            size: 14,
+            width: 14,
+            height: 14,
+            showBackground: false,
+            className: "h-[18px] w-[18px] object-contain",
+          })}
+        </span>
+      ))}
+      <span className="ml-1 text-lg leading-none opacity-60">…</span>
     </div>
   );
 }
 
-function FeatureStatusCell({ status }: { status: FeatureStatus }) {
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div
-        className={`flex items-center justify-center rounded-full p-1 ${
-          status.available ? "bg-green-400/10" : "bg-red-400/10"
-        }`}
-      >
-        {status.available ? (
-          <CheckmarkCircle02Icon className="h-8 w-8 text-green-600" />
-        ) : (
-          <RemoveCircleIcon className="h-7 w-7 text-red-600" />
-        )}
-      </div>
-      <span className="max-w-32 text-center text-xs leading-tight text-gray-400">
-        {status.description}
-      </span>
-    </div>
-  );
-}
+export function ComparisonTable({
+  integrations = [],
+  isLoading = false,
+  hasMessages = false,
+}: ComparisonTableProps) {
+  const comparisonFeatures: ComparisonFeature[] = [
+    {
+      icon: <AiBrain01Icon className="h-6 w-6 text-primary" />,
+      title: "Overwhelmed by emails",
+      gaia: { description: "I’ll sort, label, and reply for you." },
+      chatgpt: { description: "Copy the email here." },
+      gemini: { description: "Copy the email here." },
+    },
+    {
+      icon: <Calendar01Icon className="h-6 w-6 text-primary" />,
+      title: "Forgetting things",
+      gaia: { description: "Already added to your calendar." },
+      chatgpt: { description: "Remind you… if you type it." },
+      gemini: { description: "Remind you… manually." },
+    },
+    // {
+    //   icon: <ConnectIcon className="h-6 w-6 text-primary" />,
+    //   title: "Scattered files",
+    //   gaia: { description: "I remember every file. Ask me." },
+    //   chatgpt: { description: "Upload again?" },
+    //   gemini: { description: "Maybe I recall it… maybe not." },
+    // },
+    {
+      icon: <ZapIcon className="h-6 w-6 text-primary" />,
+      title: "Repeating tasks",
+      gaia: { description: "I’ll automate it daily." },
+      chatgpt: { description: "Type it again?" },
+      gemini: { description: "Repeat it… again?" },
+    },
+    {
+      icon: <ComputerIcon className="h-6 w-6 text-primary" />,
+      title: "Need fast reports",
+      gaia: { description: "Here’s your doc. Ready." },
+      chatgpt: { description: "I write, you finish." },
+      gemini: { description: "Same." },
+    },
+    {
+      icon: <SquareLock02Icon className="h-6 w-6 text-primary" />,
+      title: "Privacy concerns",
+      gaia: { description: "All yours. Open-source and self-hosted." },
+      chatgpt: { description: "Trust us." },
+      gemini: { description: "Trust us." },
+    },
+    {
+      icon: <UserCircle02Icon className="h-6 w-6 text-primary" />,
+      title: "Personal memory",
+      gaia: { description: "I remember your habits." },
+      chatgpt: { description: "What did we talk about?" },
+      gemini: { description: "Remind me again?" },
+    },
+    {
+      icon: <AiBrain01Icon className="h-6 w-6 text-primary" />,
+      title: "Get work done",
+      gaia: { description: "On it. Executing." },
+      chatgpt: { description: "Here’s the theory." },
+      gemini: { description: "Here’s an answer." },
+    },
+    {
+      icon: <Home01Icon className="h-6 w-6 text-primary" />,
+      title: "Personalization",
+      gaia: { description: "Change anything. It’s yours." },
+      chatgpt: { description: "You get what we give." },
+      gemini: { description: "You get what we give." },
+    },
+    {
+      icon: <ConnectIcon className="h-6 w-6 text-primary" />,
+      title: "App connections",
+      gaia: {
+        description: (
+          <AppConnectionsIcons
+            integrations={integrations}
+            isLoading={isLoading}
+            hasMessages={hasMessages}
+          />
+        ),
+      },
+      chatgpt: { description: "No real integrations." },
+      gemini: { description: "No real integrations." },
+    },
+    {
+      icon: <ZapIcon className="h-6 w-6 text-primary" />,
+      title: "Proactive help",
+      gaia: { description: "I act before you ask." },
+      chatgpt: { description: "No workflows." },
+      gemini: { description: "No workflows." },
+    },
+  ];
 
-function FeatureRow({ feature }: { feature: ComparisonFeature }) {
-  return (
-    <div className="grid grid-cols-4 items-center gap-6 border-b border-white/5 py-3 last:border-b-0">
-      <div className="flex items-center gap-3">
-        {feature.icon}
-        <span className="text-lg font-medium">{feature.title}</span>
+  function CompanyHeader({
+    name,
+    logo,
+    description,
+  }: {
+    name: string;
+    logo: string;
+    description: string;
+  }) {
+    return (
+      <div className="text-center">
+        <div className="mb-3 flex items-center justify-center">
+          <Image
+            src={logo}
+            alt={`${name} Logo`}
+            width={48}
+            height={48}
+            className="rounded-2xl"
+          />
+        </div>
+        <h3 className="mb-1 text-2xl font-semibold">{name}</h3>
+        <p className="text-sm text-gray-400">{description}</p>
       </div>
-      <div className="flex items-center justify-center">
-        <FeatureStatusCell status={feature.gaia} />
-      </div>
-      <div className="flex items-center justify-center">
-        <FeatureStatusCell status={feature.chatgpt} />
-      </div>
-      <div className="flex items-center justify-center">
-        <FeatureStatusCell status={feature.gemini} />
-      </div>
-    </div>
-  );
-}
+    );
+  }
 
-export function ComparisonTable() {
+  function FeatureStatusCell({
+    status,
+    highlight = false,
+  }: {
+    status: FeatureStatus;
+    highlight?: boolean;
+  }) {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <span
+          className={`max-w-48 text-center text-sm leading-snug ${
+            highlight ? "font-semibold text-primary" : "text-zinc-400"
+          }`}
+        >
+          {status.description}
+        </span>
+      </div>
+    );
+  }
+
+  function FeatureRow({ feature }: { feature: ComparisonFeature }) {
+    return (
+      <div className="group grid grid-cols-4 items-center gap-6 rounded-xl border-b border-white/5 px-2 py-2 transition-colors hover:bg-zinc-800/40">
+        <div className="flex items-center gap-3">
+          {feature.icon}
+          <span className="text-lg font-semibold text-zinc-100">
+            {feature.title}
+          </span>
+        </div>
+        <div className="flex items-center justify-center">
+          <FeatureStatusCell status={feature.gaia} highlight />
+        </div>
+        <div className="flex items-center justify-center">
+          <FeatureStatusCell status={feature.chatgpt} />
+        </div>
+        <div className="flex items-center justify-center">
+          <FeatureStatusCell status={feature.gemini} />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="mx-auto w-full max-w-7xl py-16">
+    <div className="mx-auto w-full max-w-6xl py-16">
       <div className="mb-10 flex w-full flex-col items-center justify-center gap-3 text-white">
         <h1 className="text-center font-serif text-6xl font-normal">
           See how GAIA stacks up against the competition.
@@ -259,8 +254,8 @@ export function ComparisonTable() {
         </span>
       </div>
 
-      <div className="relative overflow-hidden rounded-4xl bg-zinc-900/50 p-8 backdrop-blur-sm">
-        <div className="mb-8 grid grid-cols-4 gap-6">
+      <div className="relative overflow-hidden rounded-4xl bg-zinc-900/60 p-8 shadow-xl backdrop-blur-md">
+        <div className="mb-6 grid grid-cols-4 gap-6">
           <div />
           <CompanyHeader
             name="GAIA"
@@ -285,7 +280,7 @@ export function ComparisonTable() {
           ))}
         </div>
 
-        <div className="mt-12 flex justify-center">
+        <div className="mt-10 flex justify-center">
           <Link href={"/signup"}>
             <RaisedButton
               size={"lg"}

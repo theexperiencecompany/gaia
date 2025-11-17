@@ -15,6 +15,7 @@ python = "3.11"
 node = "22"
 "npm:mintlify" = "latest"
 prek = "latest"
+uv = "latest" 
 
 [env]
 _.python.venv = { path = "backend/.venv", create = true }
