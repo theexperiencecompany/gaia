@@ -5,7 +5,6 @@ import { Tab, Tabs } from "@heroui/tabs";
 import Image from "next/image";
 
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import LargeHeader from "@/features/landing/components/shared/LargeHeader";
 import { ComparisonTable } from "@/features/pricing/components/ComparisonTable";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 

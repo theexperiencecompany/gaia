@@ -2,8 +2,8 @@
 
 import RedditCreatedCard from "@/features/reddit/components/RedditCreatedCard";
 import {
-  RedditPostCreatedData,
   RedditCommentCreatedData,
+  RedditPostCreatedData,
 } from "@/types/features/redditTypes";
 
 export default function RedditCreatedSection({

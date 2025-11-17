@@ -3,7 +3,7 @@ import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { useVirtualizer, VirtualItem } from "@tanstack/react-virtual";
 import { AnimatePresence, motion } from "framer-motion";
-import { Hash, Lock, Search, X } from "lucide-react";
+import { Hash, Search, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
@@ -11,7 +11,6 @@ import { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
-import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { posthog } from "@/lib/posthog";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 

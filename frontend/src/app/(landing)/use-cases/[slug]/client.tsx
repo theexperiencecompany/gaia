@@ -11,10 +11,7 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import MetaInfoCard from "@/features/use-cases/components/MetaInfoCard";
 import ToolsList from "@/features/use-cases/components/ToolsList";
 import UseCaseDetailLayout from "@/features/use-cases/components/UseCaseDetailLayout";
-import {
-  UseCase,
-  UseCaseTool,
-} from "@/features/use-cases/constants/dummy-data";
+import { UseCase } from "@/features/use-cases/types";
 import { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
@@ -102,16 +99,13 @@ export default function UseCaseDetailClient({
     : undefined;
   const showCreator = !!communityWorkflow && !!creatorName;
 
-  // Prepare tools - Type-safe extraction
-  const tools: UseCaseTool[] =
-    useCase?.tools ||
-    (communityWorkflow?.steps || [])
-      .filter((step) => step.tool_name)
-      .map((step) => ({
-        name: step.tool_name!,
-        description: step.description || "",
-        category: step.tool_category || "general",
-      }));
+  // Prepare tools - Type-safe extraction from steps, mapped to Tool format for ToolsList
+  const tools = (useCase?.steps || communityWorkflow?.steps || [])
+    .filter((step) => step.tool_name)
+    .map((step) => ({
+      name: step.tool_name || step.tool_category,
+      category: step.tool_category,
+    }));
 
   // Prepare run count
   const runCount = communityWorkflow

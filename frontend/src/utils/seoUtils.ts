@@ -9,7 +9,7 @@ import type {
   WithContext,
 } from "schema-dts";
 
-import { UseCase } from "@/features/use-cases/constants/dummy-data";
+import { UseCase } from "@/features/use-cases/types";
 import { BlogPost } from "@/lib/blog";
 import { siteConfig } from "@/lib/seo";
 
@@ -198,19 +198,25 @@ export function generateUseCaseStructuredData(
       (step, index): HowToStep => ({
         "@type": "HowToStep",
         position: index + 1,
-        name: step.title,
+        name: step.title || `Step ${index + 1}`,
         text: step.description,
-        ...(step.details && { description: step.details }),
       }),
     );
   }
 
-  if (useCase.tools && useCase.tools.length > 0) {
-    structuredData.tool = useCase.tools.map((tool) => ({
-      "@type": "HowToTool",
-      name: tool.name,
-      description: tool.description,
-    }));
+  // Generate tools from steps
+  if (useCase.steps && useCase.steps.length > 0) {
+    const toolsFromSteps = useCase.steps
+      .filter((step) => step.tool_name)
+      .map((step) => ({
+        "@type": "HowToTool" as const,
+        name: step.tool_name || step.tool_category,
+        description: step.description,
+      }));
+
+    if (toolsFromSteps.length > 0) {
+      structuredData.tool = toolsFromSteps;
+    }
   }
 
   return structuredData;

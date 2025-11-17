@@ -3,10 +3,7 @@ import { notFound } from "next/navigation";
 
 import UseCaseDetailClient from "@/app/(landing)/use-cases/[slug]/client";
 import JsonLd from "@/components/seo/JsonLd";
-import {
-  type UseCase,
-  useCasesData,
-} from "@/features/use-cases/constants/dummy-data";
+import type { UseCase } from "@/features/use-cases/types";
 import { Workflow, workflowApi } from "@/features/workflows/api/workflowApi";
 import {
   generateUseCaseMetadata,
@@ -20,10 +17,14 @@ interface PageProps {
 export const revalidate = 3600; // Revalidate every hour
 
 export async function generateStaticParams() {
-  // Generate params for all static use cases
-  return useCasesData.map((useCase) => ({
-    slug: useCase.slug,
-  }));
+  // Generate params from explore workflows API
+  try {
+    const resp = await workflowApi.getExploreWorkflows(200, 0);
+    return resp.workflows.map((w) => ({ slug: w.id }));
+  } catch (error) {
+    console.error("Error generating static params for use-cases:", error);
+    return [];
+  }
 }
 
 export async function generateMetadata({
@@ -31,11 +32,29 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
 
-  // First, check static data
-  const staticUseCase = useCasesData.find((uc) => uc.slug === slug);
+  // First, attempt to find the use-case in explore workflows (API)
+  try {
+    const resp = await workflowApi.getExploreWorkflows(200, 0);
+    const found = resp.workflows.find((w) => w.id === slug);
+    if (found) {
+      const workflowAsUseCase: UseCase = {
+        title: found.title,
+        description: found.description || "",
+        detailed_description: found.description,
+        slug: found.id,
+        action_type: "workflow",
+        integrations:
+          found.steps?.filter((s) => s.tool_name).map((s) => s.tool_name!) ||
+          [],
+        categories: found.categories || ["featured"],
+        published_id: found.id,
+        creator: found.creator,
+      };
 
-  if (staticUseCase) {
-    return generateUseCaseMetadata(staticUseCase);
+      return generateUseCaseMetadata(workflowAsUseCase);
+    }
+  } catch (err) {
+    console.error("Error fetching explore workflows for metadata:", err);
   }
 
   // If not found in static data, try API as community workflow
@@ -81,12 +100,28 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
   let useCase: UseCase | null = null;
   let communityWorkflow: Workflow | null = null;
 
-  // First, check static data
-  const staticUseCase = useCasesData.find((uc) => uc.slug === slug);
+  // First, try to find the use-case in explore workflows
+  try {
+    const resp = await workflowApi.getExploreWorkflows(200, 0);
+    const found = resp.workflows.find((w) => w.id === slug);
+    if (found) {
+      useCase = {
+        title: found.title,
+        description: found.description || "",
+        action_type: "workflow",
+        integrations: found.steps?.map((s) => s.tool_name || "") || [],
+        categories: found.categories || ["featured"],
+        published_id: found.id,
+        slug: found.id,
+        steps: found.steps,
+        creator: found.creator,
+      } as UseCase;
+    }
+  } catch (err) {
+    console.error("Error fetching explore workflows for page data:", err);
+  }
 
-  if (staticUseCase) {
-    useCase = staticUseCase;
-  } else {
+  if (!useCase) {
     // If not found in static data, try API as community workflow
     try {
       const response = await workflowApi.getPublicWorkflow(slug);

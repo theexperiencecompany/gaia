@@ -3,10 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import {
-  type UseCase,
-  useCasesData,
-} from "@/features/use-cases/constants/dummy-data";
+import type { UseCase } from "@/features/use-cases/types";
+import { workflowApi } from "@/features/workflows/api/workflowApi";
 import {
   CommunityWorkflow,
   Workflow,
@@ -39,12 +37,28 @@ export default function YouMightAlsoLike({
         // - User behavior/preferences
         // - Popularity metrics
 
-        // Get static use cases, filter current, and randomly shuffle
-        const filtered = useCasesData
-          .filter((uc) => uc.slug !== currentSlug)
+        // Fetch explore workflows from API and convert to UseCase-like objects
+        const resp = await workflowApi.getExploreWorkflows(12, 0);
+        const useCases = resp.workflows
+          .filter((w) => w.id !== currentSlug)
+          .map((w) => ({
+            title: w.title,
+            description: w.description,
+            action_type: "workflow" as const,
+            integrations:
+              w.steps
+                ?.map((s) => s.tool_category)
+                .filter((v, i, a) => a.indexOf(v) === i) || [],
+            categories: w.categories || ["featured"],
+            published_id: w.id,
+            slug: w.id,
+            steps: w.steps,
+            creator: w.creator,
+          }))
           .sort(() => Math.random() - 0.5)
           .slice(0, 6);
-        setItems(filtered);
+
+        setItems(useCases as (UseCase | Workflow)[]);
       } catch (error) {
         console.error("Error fetching similar items:", error);
         setItems([]);

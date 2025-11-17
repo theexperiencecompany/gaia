@@ -5,12 +5,12 @@ import { CheckCircle, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 
-import {
-  RedditPostCreatedData,
-  RedditCommentCreatedData,
-} from "@/types/features/redditTypes";
 import { RedditIcon } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import {
+  RedditCommentCreatedData,
+  RedditPostCreatedData,
+} from "@/types/features/redditTypes";
 
 interface RedditCreatedCardProps {
   posts?: RedditPostCreatedData[];
