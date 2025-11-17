@@ -83,7 +83,7 @@ export default function TodosHeader() {
         </>
       </div>
 
-      <div className="relative z-[100] flex items-center">
+      <div className="relative flex items-center">
         <Tooltip content="Create new todo">
           <div className="group/btn [&_svg]:!h-5 [&_svg]:!w-5 [&_svg]:!text-zinc-400 hover:[&_svg]:!text-primary">
             <TodoModal

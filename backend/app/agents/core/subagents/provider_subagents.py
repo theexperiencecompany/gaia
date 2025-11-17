@@ -227,9 +227,9 @@ class ProviderSubAgents:
         """Create a specialized Google Tasks agent graph."""
         logger.info("Creating Google Tasks sub-agent graph")
         return await SubAgentFactory.create_provider_subagent(
-            provider="google_tasks",
+            provider="googletasks",
             llm=llm,
-            tool_space="google_tasks",
+            tool_space="googletasks",
             name="google_tasks_agent",
         )
 
@@ -238,9 +238,9 @@ class ProviderSubAgents:
         """Create a specialized Google Sheets agent graph."""
         logger.info("Creating Google Sheets sub-agent graph")
         return await SubAgentFactory.create_provider_subagent(
-            provider="google_sheets",
+            provider="googlesheets",
             llm=llm,
-            tool_space="google_sheets",
+            tool_space="googlesheets",
             name="google_sheets_agent",
         )
 
@@ -271,9 +271,9 @@ class ProviderSubAgents:
         """Create a specialized Google Meet agent graph."""
         logger.info("Creating Google Meet sub-agent graph")
         return await SubAgentFactory.create_provider_subagent(
-            provider="google_meet",
+            provider="googlemeet",
             llm=llm,
-            tool_space="google_meet",
+            tool_space="googlemeet",
             name="google_meet_agent",
         )
 

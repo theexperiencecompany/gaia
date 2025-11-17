@@ -120,7 +120,7 @@ const handleForbiddenError = (
         onClick: () => {
           // Clear from active toasts when action is clicked
           activeIntegrationToasts.delete(toastKey);
-          router.push("/settings?section=integrations");
+          router.push("/integrations");
         },
       },
       onDismiss: () => {

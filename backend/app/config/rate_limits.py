@@ -47,156 +47,158 @@ class TieredRateLimits(BaseModel):
 
 
 # All feature rate limits in one place
+# Free tier: Basic usage to try features
+# Pro tier (~$15-20/month): 20-50x multiplier for serious users
 FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
-    "file_upload": TieredRateLimits(
-        free=RateLimitConfig(day=5, month=20),
-        pro=RateLimitConfig(day=500, month=10000),
-        info=FeatureInfo(title="File Upload", description="Upload and process files"),
-    ),
-    "calendar_management": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),
-        pro=RateLimitConfig(day=1000, month=25000),
+    "chat_messages": TieredRateLimits(
+        free=RateLimitConfig(day=50, month=1000),
+        pro=RateLimitConfig(day=1000, month=30000),
         info=FeatureInfo(
-            title="Calendar Management",
-            description="Create, update, and manage calendar events",
+            title="Chat Messages", description="Send messages to AI assistants"
         ),
     ),
-    "mail_actions": TieredRateLimits(
+    "file_upload": TieredRateLimits(
+        free=RateLimitConfig(day=2, month=5),
+        pro=RateLimitConfig(day=100, month=3000),
+        info=FeatureInfo(title="File Upload", description="Upload and process files"),
+    ),
+    "file_analysis": TieredRateLimits(
         free=RateLimitConfig(day=3, month=10),
-        pro=RateLimitConfig(day=500, month=12000),
+        pro=RateLimitConfig(day=100, month=3000),
         info=FeatureInfo(
-            title="Mail Actions", description="Send emails and manage mail operations"
+            title="File Analysis", description="Analyze and process uploaded files"
         ),
     ),
     "generate_image": TieredRateLimits(
-        free=RateLimitConfig(day=2, month=5),
-        pro=RateLimitConfig(day=200, month=5000),
+        free=RateLimitConfig(day=1, month=2),
+        pro=RateLimitConfig(day=30, month=900),
         info=FeatureInfo(
             title="AI Image Generation", description="Generate images using AI models"
         ),
     ),
-    "goal_tracking": TieredRateLimits(
-        free=RateLimitConfig(day=1, month=3),
-        pro=RateLimitConfig(day=100, month=2500),
-        info=FeatureInfo(
-            title="Goal Tracking", description="Create and track personal goals"
-        ),
-    ),
     "deep_research": TieredRateLimits(
-        free=RateLimitConfig(day=1, month=3),
-        pro=RateLimitConfig(day=50, month=1200),
+        free=RateLimitConfig(day=1, month=2),
+        pro=RateLimitConfig(day=20, month=600),
         info=FeatureInfo(
             title="Deep Research", description="Perform comprehensive research analysis"
         ),
     ),
-    "todo_operations": TieredRateLimits(
-        free=RateLimitConfig(day=50, month=500),
-        pro=RateLimitConfig(day=1000, month=25000),
+    "web_search": TieredRateLimits(
+        free=RateLimitConfig(day=10, month=50),
+        pro=RateLimitConfig(day=300, month=9000),
         info=FeatureInfo(
-            title="Todo Operations", description="Create, update, and manage todo items"
+            title="Web Search", description="Search the web for information"
+        ),
+    ),
+    "webpage_fetch": TieredRateLimits(
+        free=RateLimitConfig(day=3, month=10),
+        pro=RateLimitConfig(day=100, month=3000),
+        info=FeatureInfo(
+            title="Webpage Fetch", description="Fetch and analyze web pages"
         ),
     ),
     "workflow_operations": TieredRateLimits(
-        free=RateLimitConfig(day=1, month=30),
-        pro=RateLimitConfig(day=200, month=2000),
+        free=RateLimitConfig(day=1, month=3),
+        pro=RateLimitConfig(day=30, month=900),
         info=FeatureInfo(
             title="Workflow Operations",
             description="Create, execute, and manage AI workflows",
         ),
     ),
     "email_workflow_executions": TieredRateLimits(
-        free=RateLimitConfig(day=10, month=100),
-        pro=RateLimitConfig(day=500, month=5000),
+        free=RateLimitConfig(day=3, month=10),
+        pro=RateLimitConfig(day=100, month=3000),
         info=FeatureInfo(
             title="Email Workflow Executions",
             description="Automated workflow executions triggered by incoming emails",
         ),
     ),
-    "web_search": TieredRateLimits(
-        free=RateLimitConfig(day=50, month=500),
-        pro=RateLimitConfig(day=1000, month=25000),
+    "goal_tracking": TieredRateLimits(
+        free=RateLimitConfig(day=1, month=3),
+        pro=RateLimitConfig(day=30, month=900),
         info=FeatureInfo(
-            title="Web Search", description="Search the web for information"
+            title="Goal Tracking", description="Create and track personal goals"
+        ),
+    ),
+    "todo_operations": TieredRateLimits(
+        free=RateLimitConfig(day=20, month=100),
+        pro=RateLimitConfig(day=500, month=15000),
+        info=FeatureInfo(
+            title="Todo Operations", description="Create, update, and manage todo items"
+        ),
+    ),
+    "calendar_management": TieredRateLimits(
+        free=RateLimitConfig(day=2, month=5),
+        pro=RateLimitConfig(day=50, month=1500),
+        info=FeatureInfo(
+            title="Calendar Management",
+            description="Create, update, and manage calendar events",
         ),
     ),
     "reminder_operations": TieredRateLimits(
-        free=RateLimitConfig(day=5, month=30),
-        pro=RateLimitConfig(day=200, month=5000),
+        free=RateLimitConfig(day=3, month=10),
+        pro=RateLimitConfig(day=100, month=3000),
         info=FeatureInfo(
             title="Reminder Operations", description="Create and manage reminders"
         ),
     ),
-    "weather_checks": TieredRateLimits(
-        free=RateLimitConfig(day=10, month=100),
-        pro=RateLimitConfig(day=500, month=10000),
+    "mail_actions": TieredRateLimits(
+        free=RateLimitConfig(day=2, month=5),
+        pro=RateLimitConfig(day=50, month=1500),
         info=FeatureInfo(
-            title="Weather Checks", description="Check weather information"
+            title="Mail Actions", description="Send emails and manage mail operations"
         ),
     ),
-    "webpage_fetch": TieredRateLimits(
-        free=RateLimitConfig(day=5, month=50),
-        pro=RateLimitConfig(day=200, month=5000),
+    "notes": TieredRateLimits(
+        free=RateLimitConfig(day=30, month=200),
+        pro=RateLimitConfig(day=1000, month=30000),
         info=FeatureInfo(
-            title="Webpage Fetch", description="Fetch and analyze web pages"
+            title="Notes Management", description="Create and manage notes"
+        ),
+    ),
+    "memory": TieredRateLimits(
+        free=RateLimitConfig(day=20, month=100),
+        pro=RateLimitConfig(day=500, month=15000),
+        info=FeatureInfo(
+            title="Memory Operations", description="Store and retrieve memories"
         ),
     ),
     "document_generation": TieredRateLimits(
-        free=RateLimitConfig(day=2, month=10),
-        pro=RateLimitConfig(day=100, month=2500),
+        free=RateLimitConfig(day=1, month=3),
+        pro=RateLimitConfig(day=30, month=900),
         info=FeatureInfo(
             title="Document Generation", description="Generate documents and reports"
         ),
     ),
     "flowchart_creation": TieredRateLimits(
-        free=RateLimitConfig(day=2, month=10),
-        pro=RateLimitConfig(day=50, month=1000),
+        free=RateLimitConfig(day=1, month=3),
+        pro=RateLimitConfig(day=20, month=600),
         info=FeatureInfo(
             title="Flowchart Creation", description="Create flowcharts and diagrams"
         ),
     ),
     "code_execution": TieredRateLimits(
-        free=RateLimitConfig(day=5, month=50),
-        pro=RateLimitConfig(day=200, month=5000),
+        free=RateLimitConfig(day=3, month=10),
+        pro=RateLimitConfig(day=100, month=3000),
         info=FeatureInfo(title="Code Execution", description="Execute code snippets"),
     ),
     "google_docs_operations": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=20),
-        pro=RateLimitConfig(day=100, month=2500),
+        free=RateLimitConfig(day=2, month=5),
+        pro=RateLimitConfig(day=50, month=1500),
         info=FeatureInfo(
             title="Google Docs Operations", description="Create and manage Google Docs"
         ),
     ),
-    "file_analysis": TieredRateLimits(
-        free=RateLimitConfig(day=10, month=50),
-        pro=RateLimitConfig(day=500, month=10000),
+    "weather_checks": TieredRateLimits(
+        free=RateLimitConfig(day=5, month=20),
+        pro=RateLimitConfig(day=100, month=3000),
         info=FeatureInfo(
-            title="File Analysis", description="Analyze and process uploaded files"
-        ),
-    ),
-    "memory": TieredRateLimits(
-        free=RateLimitConfig(day=50, month=500),
-        pro=RateLimitConfig(day=1000, month=25000),
-        info=FeatureInfo(
-            title="Memory Operations", description="Store and retrieve memories"
-        ),
-    ),
-    "notes": TieredRateLimits(
-        free=RateLimitConfig(day=100, month=1000),
-        pro=RateLimitConfig(day=2000, month=50000),
-        info=FeatureInfo(
-            title="Notes Management", description="Create and manage notes"
-        ),
-    ),
-    "chat_messages": TieredRateLimits(
-        free=RateLimitConfig(day=200, month=5000),
-        pro=RateLimitConfig(day=5000, month=125000),
-        info=FeatureInfo(
-            title="Chat Messages", description="Send messages to AI assistants"
+            title="Weather Checks", description="Check weather information"
         ),
     ),
     "notification_operations": TieredRateLimits(
-        free=RateLimitConfig(day=200, month=50000),
-        pro=RateLimitConfig(day=10000, month=1000000),
+        free=RateLimitConfig(day=100, month=2000),
+        pro=RateLimitConfig(day=5000, month=150000),
         info=FeatureInfo(
             title="Notification Operations", description="Manage user notifications"
         ),

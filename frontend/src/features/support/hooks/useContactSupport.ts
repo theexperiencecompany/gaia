@@ -17,11 +17,17 @@ export interface ContactFormData {
   attachments: File[];
 }
 
-export function useContactSupport() {
+export interface ContactSupportInitialValues {
+  type?: string;
+  title?: string;
+  description?: string;
+}
+
+export function useContactSupport(initialValues?: ContactSupportInitialValues) {
   const [formData, setFormData] = useState<ContactFormData>({
-    type: "",
-    title: "",
-    description: "",
+    type: initialValues?.type || "",
+    title: initialValues?.title || "",
+    description: initialValues?.description || "",
     attachments: [],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);

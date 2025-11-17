@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useCalendarStore } from "@/stores/calendarStore";
 
 import { useCalendarOperations } from "./useCalendarOperations";
@@ -25,9 +26,16 @@ export const useSharedCalendar = () => {
   const clearError = useCalendarStore((state) => state.clearError);
 
   const { loadEvents } = useCalendarOperations();
+  const { getIntegrationStatus } = useIntegrations();
 
-  // Use React Query for calendars with caching
-  const calendarsQuery = useCalendarsQuery();
+  // Check if calendar integration is connected
+  const calendarStatus = getIntegrationStatus("google_calendar");
+  const isCalendarConnected = calendarStatus?.connected || false;
+
+  // Use React Query for calendars with caching - only fetch if connected
+  const calendarsQuery = useCalendarsQuery({
+    enabled: isCalendarConnected,
+  });
   const calendars = calendarsQuery.data ?? [];
   const isInitialized = calendarsQuery.isFetched;
 

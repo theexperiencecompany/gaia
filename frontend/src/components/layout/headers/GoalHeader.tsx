@@ -40,7 +40,7 @@ export default function GoalHeader() {
         )}
       </div>
 
-      <div className="relative z-[100] flex items-center">
+      <div className="relative flex items-center">
         <Link href={"/c"}>
           <SidebarHeaderButton
             aria-label="Create new chat"
