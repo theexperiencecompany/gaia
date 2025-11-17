@@ -363,6 +363,34 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_nMjBqOcjLTGW", toolkit="TRELLO"
         ),
     ),
+    OAuthIntegration(
+        id="instagram",
+        name="Instagram",
+        description="Manage your Instagram account, post content, and engage with your audience",
+        category="social",
+        provider="instagram",
+        scopes=[],
+        available=True,
+        short_name="instagram",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_JP45uYkUcjVV", toolkit="INSTAGRAM"
+        ),
+    ),
+    OAuthIntegration(
+        id="clickup",
+        name="ClickUp",
+        description="Manage tasks, projects, and workflows with comprehensive project management",
+        category="productivity",
+        provider="clickup",
+        scopes=[],
+        available=True,
+        short_name="clickup",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_cyT9vqo3pcF3", toolkit="CLICKUP"
+        ),
+    ),
 ]
 
 

@@ -237,6 +237,18 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
+  instagram: {
+    icon: "/images/icons/instagram.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  clickup: {
+    icon: "/images/icons/clickup.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
 };
 
 // Component that auto-detects and inverts dark icons

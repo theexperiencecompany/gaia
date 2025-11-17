@@ -248,4 +248,10 @@ def format_files_list(
         f"- Name: {file.filename} Id: {file.fileId}" for file in files
     )
 
-    return f"{file_list}\n\nYou can use these files in your conversation. If you need to refer to them, use the file IDs provided.\nYou must use query_files to retrieve file content or metadata."
+    return f"""
+Uploaded Files:
+{file_list}
+
+You can use these files in your conversation. If you need to refer to them, use the file IDs provided.
+You must use query_files to retrieve file content or metadata.
+"""

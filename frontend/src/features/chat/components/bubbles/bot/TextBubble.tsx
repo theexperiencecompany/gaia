@@ -29,8 +29,10 @@ import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/Deep
 import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadCard";
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
+import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
+import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
 import {
@@ -347,6 +349,11 @@ export default function TextBubble({
   systemPurpose,
   loading,
 }: ChatBubbleBotProps) {
+  // Parse thinking content from text
+  const parsedContent = React.useMemo(() => {
+    return parseThinkingFromText(text?.toString() || "");
+  }, [text]);
+
   const processedTools = React.useMemo(() => {
     const grouped = new Map<ToolName, any[]>();
     const individual: ToolDataEntry[] = [];
@@ -375,6 +382,10 @@ export default function TextBubble({
 
   return (
     <>
+      {parsedContent.thinking && (
+        <ThinkingBubble thinkingContent={parsedContent.thinking} />
+      )}
+
       {processedTools.map((entry, index) => {
         const toolName = entry.tool_name as ToolName;
         const renderer = TOOL_RENDERERS[toolName];
@@ -392,7 +403,9 @@ export default function TextBubble({
 
       {shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
         (() => {
-          const textParts = splitMessageByBreaks(text?.toString() || "");
+          // Use cleaned text without thinking tags
+          const displayText = parsedContent.cleanText || "";
+          const textParts = splitMessageByBreaks(displayText);
           // const hasMultipleParts = textParts.length > 1;
 
           const renderBubbleContent = (
