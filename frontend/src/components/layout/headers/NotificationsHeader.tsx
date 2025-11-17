@@ -27,14 +27,6 @@ export default function NotificationsHeader({
           text="Notifications"
         />
 
-        <div className="relative ml-auto flex items-center pr-1">
-          {unreadCount > 0 && (
-            <Button variant="flat" onPress={onMarkAllAsRead}>
-              Mark All as Read
-            </Button>
-          )}
-        </div>
-
         <Tabs
           aria-label="Notifications"
           selectedKey={selectedTab}
@@ -55,6 +47,14 @@ export default function NotificationsHeader({
           />
           <Tab key="all" title="All" />
         </Tabs>
+      </div>
+
+      <div className="relative flex items-center">
+        {unreadCount > 0 && (
+          <Button size="sm" variant="flat" onPress={onMarkAllAsRead}>
+            Mark All as Read
+          </Button>
+        )}
       </div>
     </div>
   );

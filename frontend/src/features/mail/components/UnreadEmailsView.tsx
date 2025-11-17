@@ -57,9 +57,6 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
       connectIntegrationId="gmail"
       onConnect={onConnect}
       connectButtonText="Connect Gmail"
-      connectTitle="Connect Your Gmail"
-      connectDescription="Access and manage your emails"
-      connectIcon={<Gmail width={32} height={32} />}
       onRefresh={onRefresh}
     >
       {isLoading ? (

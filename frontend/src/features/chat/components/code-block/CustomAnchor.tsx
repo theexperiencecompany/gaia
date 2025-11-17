@@ -158,21 +158,11 @@ const CustomAnchor = ({
       <a
         ref={elementRef}
         href={href}
-        className="inline-flex cursor-pointer items-center gap-1 rounded-sm bg-primary/20 px-1 text-sm font-medium text-primary transition-all hover:text-white hover:underline"
+        className="cursor-pointer rounded-sm bg-primary/20 px-1 text-sm font-medium text-primary transition-all hover:text-white hover:underline"
         rel="noopener noreferrer"
         target="_blank"
         onMouseEnter={handleMouseEnter}
       >
-        {metadata?.favicon && validFavicon && (
-          <Image
-            width={14}
-            height={14}
-            alt="Favicon"
-            className="h-3.5 w-3.5 flex-shrink-0 rounded-sm"
-            src={metadata.favicon}
-            onError={() => setValidFavicon(false)}
-          />
-        )}
         {children}
       </a>
     </Tooltip>
