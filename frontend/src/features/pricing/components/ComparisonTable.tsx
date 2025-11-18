@@ -1,19 +1,16 @@
 "use client";
 
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import Image from "next/image";
 import Link from "next/link";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useMemo } from "react";
 
 import {
   AiBrain01Icon,
-  Brain02Icon,
   Calendar01Icon,
-  CheckmarkCircle02Icon,
+  ComputerIcon,
   ConnectIcon,
   Home01Icon,
-  Mail01Icon,
-  RemoveCircleIcon,
   SquareLock02Icon,
   UserCircle02Icon,
   ZapIcon,
