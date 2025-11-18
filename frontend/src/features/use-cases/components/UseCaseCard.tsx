@@ -19,6 +19,12 @@ interface UseCaseCardProps {
   integrations: string[];
   prompt?: string;
   slug?: string;
+  steps?: Array<{
+    tool_category: string;
+    tool_name?: string;
+    title?: string;
+    description?: string;
+  }>;
 }
 
 export default function UseCaseCard({
@@ -28,6 +34,7 @@ export default function UseCaseCard({
   integrations,
   prompt,
   slug,
+  steps,
 }: UseCaseCardProps) {
   const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
   const appendToInput = useAppendToInput();
@@ -114,10 +121,12 @@ export default function UseCaseCard({
     <BaseWorkflowCard
       title={title}
       description={description}
+      steps={steps}
       integrations={integrations}
       footerContent={footerContent}
       onClick={slug ? handleCardClick : undefined}
       showArrowIcon={false}
+      hideExecutions={true}
     />
   );
 }

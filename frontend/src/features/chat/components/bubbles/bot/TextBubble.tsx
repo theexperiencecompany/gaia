@@ -29,8 +29,10 @@ import DeepResearchResultsTabs from "@/features/chat/components/bubbles/bot/Deep
 import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadCard";
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
+import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
+import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
 import {
@@ -85,10 +87,7 @@ import GoogleDocsSection from "./GoogleDocsSection";
 import NotificationListSection from "./NotificationListSection";
 import PeopleSearchSection from "./PeopleSearchSection";
 import RedditCommentSection from "./RedditCommentSection";
-import {
-  RedditCommentCreatedSection,
-  RedditPostCreatedSection,
-} from "./RedditCreatedSection";
+import RedditCreatedSection from "./RedditCreatedSection";
 import RedditPostSection from "./RedditPostSection";
 import RedditSearchSection from "./RedditSearchSection";
 import SupportTicketSection from "./SupportTicketSection";
@@ -319,15 +318,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
         {groups.comments.length > 0 && (
           <RedditCommentSection reddit_comment_data={groups.comments} />
         )}
-        {groups.post_created.map((d, i) => (
-          <RedditPostCreatedSection key={i} reddit_post_created_data={d} />
-        ))}
-        {groups.comment_created.map((d, i) => (
-          <RedditCommentCreatedSection
-            key={i}
-            reddit_comment_created_data={d}
+        {(groups.post_created.length > 0 ||
+          groups.comment_created.length > 0) && (
+          <RedditCreatedSection
+            posts={groups.post_created}
+            comments={groups.comment_created}
           />
-        ))}
+        )}
       </>
     );
   },
@@ -352,8 +349,13 @@ export default function TextBubble({
   systemPurpose,
   loading,
 }: ChatBubbleBotProps) {
+  // Parse thinking content from text
+  const parsedContent = React.useMemo(() => {
+    return parseThinkingFromText(text?.toString() || "");
+  }, [text]);
+
   const processedTools = React.useMemo(() => {
-    const grouped = new Map<ToolName, any[]>();
+    const grouped = new Map<ToolName, ToolDataMap[ToolName][]>();
     const individual: ToolDataEntry[] = [];
 
     tool_data?.forEach((entry) => {
@@ -370,7 +372,7 @@ export default function TextBubble({
       ([toolName, dataArray]) => ({
         tool_name: toolName,
         tool_category: "",
-        data: dataArray,
+        data: dataArray as ToolDataMap[ToolName],
         timestamp: null,
       }),
     );
@@ -380,6 +382,10 @@ export default function TextBubble({
 
   return (
     <>
+      {parsedContent.thinking && (
+        <ThinkingBubble thinkingContent={parsedContent.thinking} />
+      )}
+
       {processedTools.map((entry, index) => {
         const toolName = entry.tool_name as ToolName;
         const renderer = TOOL_RENDERERS[toolName];
@@ -397,7 +403,9 @@ export default function TextBubble({
 
       {shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
         (() => {
-          const textParts = splitMessageByBreaks(text?.toString() || "");
+          // Use cleaned text without thinking tags
+          const displayText = parsedContent.cleanText || "";
+          const textParts = splitMessageByBreaks(displayText);
           // const hasMultipleParts = textParts.length > 1;
 
           const renderBubbleContent = (

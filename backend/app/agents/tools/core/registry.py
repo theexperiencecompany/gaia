@@ -169,6 +169,8 @@ class ToolRegistry:
                     "google_maps",
                     "asana",
                     "trello",
+                    "instagram",
+                    "clickup",
                 ]
             ),
         )
@@ -222,6 +224,8 @@ class ToolRegistry:
             ("GOOGLE_MAPS", "google_maps", None),
             ("ASANA", "asana", None),
             ("TRELLO", "trello", None),
+            ("INSTAGRAM", "instagram", None),
+            ("CLICKUP", "clickup", None),
             ("GMAIL", "gmail", GMAIL_TOOLS),
             ("GITHUB", "github", GITHUB_TOOLS),
             ("HUBSPOT", "hubspot", HUBSPOT_TOOLS),

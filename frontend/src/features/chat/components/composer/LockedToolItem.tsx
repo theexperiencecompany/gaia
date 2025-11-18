@@ -1,11 +1,10 @@
+import { Lock } from "lucide-react";
 import React from "react";
 
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 import { EnhancedToolInfo } from "../../types/enhancedTools";
-import { Lock } from "lucide-react";
-import { Tooltip } from "@heroui/react";
 
 interface LockedToolItemProps {
   tool: EnhancedToolInfo;

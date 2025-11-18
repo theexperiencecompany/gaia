@@ -16,4 +16,5 @@ export * from "./headers/NotesHeader";
 export * from "./headers/NotificationsHeader";
 export * from "./headers/SettingsHeader";
 export * from "./headers/TodosHeader";
+export * from "./headers/WorkflowsHeader";
 export * from "./sidebar/index";

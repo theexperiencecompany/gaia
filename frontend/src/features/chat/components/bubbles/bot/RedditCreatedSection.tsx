@@ -1,34 +1,23 @@
 "use client";
 
+import RedditCreatedCard from "@/features/reddit/components/RedditCreatedCard";
 import {
-  RedditPostCreatedCard,
-  RedditCommentCreatedCard,
-} from "@/features/reddit/components/RedditCreatedCard";
-import {
-  RedditPostCreatedData,
   RedditCommentCreatedData,
+  RedditPostCreatedData,
 } from "@/types/features/redditTypes";
 
-export function RedditPostCreatedSection({
-  reddit_post_created_data,
+export default function RedditCreatedSection({
+  posts = [],
+  comments = [],
 }: {
-  reddit_post_created_data: RedditPostCreatedData;
+  posts?: RedditPostCreatedData[];
+  comments?: RedditCommentCreatedData[];
 }) {
-  return (
-    <div className="mt-3 w-full">
-      <RedditPostCreatedCard data={reddit_post_created_data} />
-    </div>
-  );
-}
+  if (posts.length === 0 && comments.length === 0) return null;
 
-export function RedditCommentCreatedSection({
-  reddit_comment_created_data,
-}: {
-  reddit_comment_created_data: RedditCommentCreatedData;
-}) {
   return (
     <div className="mt-3 w-full">
-      <RedditCommentCreatedCard data={reddit_comment_created_data} />
+      <RedditCreatedCard posts={posts} comments={comments} />
     </div>
   );
 }

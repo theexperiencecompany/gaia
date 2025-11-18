@@ -1,4 +1,14 @@
-// Workflow-related types for comprehensive workflow management
+/**
+ * SINGLE SOURCE OF TRUTH FOR ALL WORKFLOW, USE-CASE, AND COMMUNITY WORKFLOW TYPES
+ *
+ * This file contains all type definitions for:
+ * - Workflows (user workflows, execution, metadata)
+ * - Community Workflows (public shared workflows)
+ * - Explore Workflows (featured/categorized workflows)
+ * - Use Cases (landing page content, templates)
+ *
+ * DO NOT create duplicate type definitions elsewhere!
+ */
 
 import type {
   EmailTriggerConfig,
@@ -8,7 +18,13 @@ import type {
 } from "@/config/registries/triggerRegistry";
 import type { ContentCreator } from "@/types/shared/contentTypes";
 
-// Legacy workflow step data (for message components)
+// ============================================================================
+// WORKFLOW STEP TYPES
+// ============================================================================
+
+/**
+ * Legacy workflow step data (for message components and chat history)
+ */
 export interface WorkflowStepData {
   id: string;
   title: string;
@@ -17,15 +33,9 @@ export interface WorkflowStepData {
   tool_category: string;
 }
 
-// Legacy workflow data (for message components)
-export interface WorkflowData {
-  id: string;
-  title: string;
-  description: string;
-  steps: WorkflowStepData[];
-}
-
-// Complete workflow step type for API operations
+/**
+ * Complete workflow step type for API operations and execution
+ */
 export interface WorkflowStepType {
   id: string;
   title: string;
@@ -38,6 +48,21 @@ export interface WorkflowStepType {
   result?: Record<string, unknown>;
 }
 
+/**
+ * Simplified workflow step for community/public display
+ * Used in CommunityWorkflow and UseCase types
+ */
+export interface PublicWorkflowStep {
+  title: string;
+  tool_name?: string;
+  tool_category: string;
+  description: string;
+}
+
+// ============================================================================
+// WORKFLOW CONFIGURATION TYPES
+// ============================================================================
+
 // Re-export trigger types for convenience
 export type {
   EmailTriggerConfig,
@@ -46,7 +71,9 @@ export type {
   TriggerConfig,
 };
 
-// Execution configuration for workflows
+/**
+ * Execution configuration for workflows
+ */
 export interface ExecutionConfig {
   method: "chat" | "background" | "hybrid";
   timeout_seconds: number;
@@ -56,7 +83,9 @@ export interface ExecutionConfig {
   notify_on_failure: boolean;
 }
 
-// Workflow metadata tracking
+/**
+ * Workflow metadata tracking
+ */
 export interface WorkflowMetadata {
   created_from: "chat" | "modal" | "todo" | "template" | "api";
   template_id?: string;
@@ -70,28 +99,66 @@ export interface WorkflowMetadata {
   average_execution_time?: number;
 }
 
-// Community workflow step (simplified)
-export interface CommunityWorkflowStep {
-  title: string;
-  tool_name: string;
-  tool_category: string;
-  description: string;
-}
+// ============================================================================
+// COMMUNITY & EXPLORE WORKFLOW TYPES
+// ============================================================================
 
-// Community workflow data
+/**
+ * Community workflow - publicly shared workflow
+ * Also used for Explore workflows (featured workflows on landing/workflows pages)
+ */
 export interface CommunityWorkflow {
   id: string;
   title: string;
   description: string;
-  steps: CommunityWorkflowStep[];
+  steps: PublicWorkflowStep[];
   created_at: string;
   creator: ContentCreator;
+  categories?: string[]; // For filtering (Students, Founders, Engineering, etc.)
 }
 
-// Community workflows response
+/**
+ * Response type for community/explore workflows API
+ */
 export interface CommunityWorkflowsResponse {
   workflows: CommunityWorkflow[];
   total: number;
+}
+
+// ============================================================================
+// USE CASE TYPES (Landing Page Content & Templates)
+// ============================================================================
+
+/**
+ * Use case - template/example workflow shown on landing pages
+ * Can be converted from CommunityWorkflow for display
+ */
+export interface UseCase {
+  title: string;
+  description: string;
+  detailed_description?: string;
+  action_type: "prompt" | "workflow";
+  integrations: string[]; // Tool category names
+  categories: string[]; // Same as CommunityWorkflow categories
+  published_id: string;
+  slug: string;
+  prompt?: string; // For prompt-type use cases
+  steps?: PublicWorkflowStep[]; // Workflow steps if action_type === "workflow"
+  creator?: ContentCreator;
+}
+
+// ============================================================================
+// MAIN WORKFLOW TYPES
+// ============================================================================
+
+/**
+ * Legacy workflow data (for message components)
+ */
+export interface WorkflowData {
+  id: string;
+  title: string;
+  description: string;
+  steps: WorkflowStepData[];
 }
 
 // Complete workflow entity

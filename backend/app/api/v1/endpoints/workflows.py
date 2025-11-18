@@ -353,6 +353,22 @@ async def unpublish_workflow(
         )
 
 
+@router.get("/workflows/explore", response_model=PublicWorkflowsResponse)
+async def get_explore_workflows(
+    limit: int = 25,
+    offset: int = 0,
+):
+    """Get explore/featured workflows for the discover section."""
+    try:
+        return await WorkflowService.get_explore_workflows(limit=limit, offset=offset)
+    except Exception as e:
+        logger.error(f"Error fetching explore workflows: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch explore workflows",
+        )
+
+
 @router.get("/workflows/community", response_model=PublicWorkflowsResponse)
 async def get_public_workflows(
     limit: int = 20,

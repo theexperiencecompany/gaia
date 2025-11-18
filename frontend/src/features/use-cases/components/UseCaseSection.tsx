@@ -5,11 +5,8 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useCallback, useEffect, useState } from "react";
 
 import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
-import {
-  type UseCase,
-  useCasesData,
-} from "@/features/use-cases/constants/dummy-data";
-import { Workflow } from "@/features/workflows/api/workflowApi";
+import { type UseCase } from "@/features/use-cases/types";
+import { Workflow, workflowApi } from "@/features/workflows/api/workflowApi";
 import WorkflowCard from "@/features/workflows/components/WorkflowCard";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 
@@ -19,14 +16,80 @@ gsap.registerPlugin(ScrollTrigger);
 export default function UseCaseSection({
   dummySectionRef,
   hideUserWorkflows = false,
+  centered = true,
+  exploreWorkflows: propExploreWorkflows,
+  isLoadingExplore: propIsLoadingExplore = false,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
+  centered?: boolean;
+  exploreWorkflows?: UseCase[];
+  isLoadingExplore?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
   );
   const { workflows, isLoading: isLoadingWorkflows } = useWorkflows();
+
+  // Local state for fetching explore workflows if not provided as props
+  const [localExploreWorkflows, setLocalExploreWorkflows] = useState<UseCase[]>(
+    [],
+  );
+  const [localIsLoadingExplore, setLocalIsLoadingExplore] = useState(false);
+
+  // Fetch explore workflows if not provided as props
+  useEffect(() => {
+    if (!propExploreWorkflows || propExploreWorkflows.length === 0) {
+      const fetchExploreWorkflows = async () => {
+        setLocalIsLoadingExplore(true);
+        try {
+          const resp = await workflowApi.getExploreWorkflows(50, 0);
+          const converted = resp.workflows.map((w) => ({
+            title: w.title,
+            description: w.description,
+            action_type: "workflow" as const,
+            integrations:
+              w.steps
+                ?.map((s) => s.tool_category)
+                .filter((v, i, a) => a.indexOf(v) === i) || [],
+            categories: w.categories || ["featured"],
+            published_id: w.id,
+            slug: w.id,
+            steps: w.steps,
+            creator: w.creator,
+          }));
+          setLocalExploreWorkflows(converted);
+        } catch (error) {
+          console.error("Error fetching explore workflows:", error);
+        } finally {
+          setLocalIsLoadingExplore(false);
+        }
+      };
+
+      fetchExploreWorkflows();
+    }
+  }, [propExploreWorkflows]);
+
+  // Use provided explore workflows or local ones
+  const exploreWorkflows =
+    propExploreWorkflows && propExploreWorkflows.length > 0
+      ? propExploreWorkflows
+      : localExploreWorkflows;
+
+  // Use only explore workflows from API
+  const allUseCases = exploreWorkflows;
+
+  // Generate categories dynamically from the actual data
+  const dynamicCategories = Array.from(
+    new Set(exploreWorkflows.flatMap((uc) => uc.categories || [])),
+  ).sort();
+
+  const allCategories = [
+    "all",
+    "featured",
+    ...(hideUserWorkflows ? [] : ["workflows"]),
+    ...dynamicCategories.filter((cat) => cat !== "featured"),
+  ];
 
   // Find scroll container - memoized to prevent effect re-runs
   const getScrollContainer = useCallback(() => {
@@ -75,28 +138,14 @@ export default function UseCaseSection({
     return () => trigger.kill();
   }, [selectedCategory, dummySectionRef, getScrollContainer]);
 
-  const allCategories = [
-    "all",
-    "featured",
-    "workflows",
-    "Students",
-    "Founders",
-    "Engineering",
-    "Marketing",
-    "Knowledge Workers",
-    "Business & Ops",
-  ];
-
-  if (hideUserWorkflows) allCategories.splice(2, 1);
-
   const filteredUseCases =
     selectedCategory === null
-      ? useCasesData.filter((useCase: UseCase) =>
+      ? allUseCases.filter((useCase: UseCase) =>
           useCase.categories?.includes("featured"),
         ) // Show featured when null (fallback)
       : selectedCategory === "all"
-        ? useCasesData
-        : useCasesData.filter((useCase: UseCase) =>
+        ? allUseCases
+        : allUseCases.filter((useCase: UseCase) =>
             useCase.categories?.includes(selectedCategory),
           );
 
@@ -168,8 +217,10 @@ export default function UseCaseSection({
   }, []);
 
   return (
-    <div className="mx-auto w-full max-w-7xl" ref={dummySectionRef}>
-      <div className="mb-6 flex flex-wrap justify-center gap-2">
+    <div className="w-full" ref={dummySectionRef}>
+      <div
+        className={`mb-6 flex flex-wrap ${centered ? "justify-center" : ""} gap-2`}
+      >
         {allCategories.map((category) => (
           <Chip
             key={category as string}
@@ -197,7 +248,7 @@ export default function UseCaseSection({
           selectedCategory !== "workflows" && (
             <motion.div
               key={selectedCategory}
-              className="mx-auto grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3"
+              className="mx-auto grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -223,6 +274,7 @@ export default function UseCaseSection({
                       integrations={useCase.integrations || []}
                       prompt={useCase.prompt}
                       slug={useCase.slug}
+                      steps={useCase.steps}
                     />
                   </motion.div>
                 ))}

@@ -1,118 +1,106 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
-import { CheckCircleIcon, ExternalLink } from "lucide-react";
+import { ScrollShadow } from "@heroui/scroll-shadow";
+import { CheckCircle, ExternalLink } from "lucide-react";
+import Link from "next/link";
 
-import {
-  RedditPostCreatedData,
-  RedditCommentCreatedData,
-} from "@/types/features/redditTypes";
 import { RedditIcon } from "@/components";
+import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import {
+  RedditCommentCreatedData,
+  RedditPostCreatedData,
+} from "@/types/features/redditTypes";
 
-interface RedditPostCreatedCardProps {
-  data: RedditPostCreatedData;
+interface RedditCreatedCardProps {
+  posts?: RedditPostCreatedData[];
+  comments?: RedditCommentCreatedData[];
+  isCollapsible?: boolean;
 }
 
-export function RedditPostCreatedCard({ data }: RedditPostCreatedCardProps) {
-  const openPost = () => {
-    if (data.permalink) {
-      window.open(`https://reddit.com${data.permalink}`, "_blank");
-    } else if (data.url) {
-      window.open(data.url, "_blank");
-    }
-  };
+export default function RedditCreatedCard({
+  posts = [],
+  comments = [],
+  isCollapsible = true,
+}: RedditCreatedCardProps) {
+  const totalCount = posts.length + comments.length;
+  if (totalCount === 0) return null;
 
-  return (
-    <div className="mx-auto w-full max-w-2xl rounded-2xl border border-orange-700/30 bg-orange-900/20 p-4 text-white">
-      {/* Header */}
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <RedditIcon className="text-[#FF4500]" />
-          <CheckCircleIcon className="h-5 w-5 text-green-400" />
-          <span className="text-sm font-medium text-green-400">
-            Post Created Successfully
-          </span>
-        </div>
-        <Chip size="sm" variant="flat" color="success" className="text-xs">
-          Just now
-        </Chip>
-      </div>
+  const allItems = [
+    ...posts.map((p) => ({ type: "post" as const, data: p })),
+    ...comments.map((c) => ({ type: "comment" as const, data: c })),
+  ];
 
-      {/* Content */}
-      <div className="space-y-2">
-        <div className="text-sm font-medium text-[#FF4500]">{data.message}</div>
+  const content = (
+    <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-3 text-white">
+      <ScrollShadow className="max-h-[400px] divide-y divide-gray-700">
+        {allItems.map((item, index) => (
+          <div key={index} className="space-y-3 p-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-400" />
+              <span className="text-sm font-semibold text-green-400">
+                {item.type === "post"
+                  ? "Post Created Successfully!"
+                  : "Comment Posted Successfully!"}
+              </span>
+              <Chip
+                size="sm"
+                variant="flat"
+                className="ml-auto bg-green-900/30 text-xs text-green-300"
+              >
+                Just now
+              </Chip>
+            </div>
 
-        {data.id && (
-          <div className="text-xs text-gray-400">
-            <span className="text-gray-500">Post ID: </span>
-            <span className="font-mono text-gray-300">{data.id}</span>
+            <div className="text-sm text-gray-300">{item.data.message}</div>
+
+            <div className="flex items-center justify-between pt-2">
+              {item.data.id && (
+                <div className="text-xs text-gray-500">
+                  ID:{" "}
+                  <span className="font-mono text-gray-400">
+                    {item.data.id}
+                  </span>
+                </div>
+              )}
+
+              {item.data.permalink && (
+                <Link
+                  href={`https://reddit.com${item.data.permalink}`}
+                  target="_blank"
+                  className="ml-auto flex items-center gap-1.5 text-xs text-[#FF4500] transition-colors hover:text-orange-300"
+                >
+                  View on Reddit
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Link>
+              )}
+              {item.type === "post" &&
+                !item.data.permalink &&
+                (item.data as RedditPostCreatedData).url && (
+                  <Link
+                    href={(item.data as RedditPostCreatedData).url || ""}
+                    target="_blank"
+                    className="ml-auto flex items-center gap-1.5 text-xs text-[#FF4500] transition-colors hover:text-orange-300"
+                  >
+                    View on Reddit
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+            </div>
           </div>
-        )}
-
-        {(data.permalink || data.url) && (
-          <button
-            onClick={openPost}
-            className="flex items-center gap-1.5 text-sm text-[#FF4500] transition-colors hover:text-orange-300"
-          >
-            <ExternalLink className="h-4 w-4" />
-            <span>View on Reddit</span>
-          </button>
-        )}
-      </div>
+        ))}
+      </ScrollShadow>
     </div>
   );
-}
-
-interface RedditCommentCreatedCardProps {
-  data: RedditCommentCreatedData;
-}
-
-export function RedditCommentCreatedCard({
-  data,
-}: RedditCommentCreatedCardProps) {
-  const openComment = () => {
-    if (data.permalink) {
-      window.open(`https://reddit.com${data.permalink}`, "_blank");
-    }
-  };
 
   return (
-    <div className="mx-auto w-full max-w-2xl rounded-2xl border border-orange-700/30 bg-orange-900/20 p-4 text-white">
-      {/* Header */}
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <RedditIcon className="text-[#FF4500]" />
-          <CheckCircleIcon className="h-5 w-5 text-green-400" />
-          <span className="text-sm font-medium text-green-400">
-            Comment Posted Successfully
-          </span>
-        </div>
-        <Chip size="sm" variant="flat" color="success" className="text-xs">
-          Just now
-        </Chip>
-      </div>
-
-      {/* Content */}
-      <div className="space-y-2">
-        <div className="text-sm font-medium text-[#FF4500]">{data.message}</div>
-
-        {data.id && (
-          <div className="text-xs text-gray-400">
-            <span className="text-gray-500">Comment ID: </span>
-            <span className="font-mono text-gray-300">{data.id}</span>
-          </div>
-        )}
-
-        {data.permalink && (
-          <button
-            onClick={openComment}
-            className="flex items-center gap-1.5 text-sm text-[#FF4500] transition-colors hover:text-orange-300"
-          >
-            <ExternalLink className="h-4 w-4" />
-            <span>View on Reddit</span>
-          </button>
-        )}
-      </div>
-    </div>
+    <CollapsibleListWrapper
+      icon={<RedditIcon color="#FF4500" />}
+      count={totalCount}
+      label={totalCount === 1 ? "Action Completed" : "Actions Completed"}
+      isCollapsible={isCollapsible}
+    >
+      {content}
+    </CollapsibleListWrapper>
   );
 }

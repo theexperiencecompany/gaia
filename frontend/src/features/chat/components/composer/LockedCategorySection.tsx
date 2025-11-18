@@ -2,7 +2,6 @@ import { Button } from "@heroui/button";
 import { Lock } from "lucide-react";
 import React from "react";
 
-import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 

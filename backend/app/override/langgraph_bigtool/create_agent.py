@@ -51,6 +51,83 @@ HookType = Union[
     Callable[[State, RunnableConfig, BaseStore], Awaitable[State]],
 ]
 
+# Pre-compiled regex patterns for subagent handoff detection
+_SUBAGENT_TOOL_PATTERN = re.compile(r"call_(\w+)_agent")
+_SUBAGENT_TRANSFER_PATTERN = re.compile(r"Successfully transferred to (\w+)")
+
+
+def _clean_consecutive_ai_messages(messages: list) -> list:
+    """
+    Prevent consecutive AIMessage problem by replacing subagent handoff patterns.
+
+    THE PROBLEM:
+    When a subagent completes its task and returns to the main agent, it creates:
+    1. ToolMessage(name="call_reddit_agent", content="Successfully transferred to reddit")
+    2. AIMessage(content="Result from Reddit", visible_to={main_agent, reddit_agent})
+
+    This creates two consecutive AI responses in the message history:
+    - Previous AIMessage from main agent deciding to call subagent
+    - New AIMessage from subagent with results
+
+    Gemini (and most LLMs) expect alternating HumanMessage/AIMessage patterns and
+    reject consecutive AIMessages with empty responses or validation errors.
+
+    THE FIX:
+    When we detect the handoff pattern (ToolMessage → AIMessage with dual visibility),
+    we replace the ToolMessage's placeholder content with the AIMessage's actual result,
+    then discard the AIMessage. This maintains the conversation flow while preventing
+    consecutive AI responses.
+
+    Pattern: ToolMessage("transfer") + AIMessage(result) → ToolMessage(result)
+
+    This ensures Gemini sees: AIMessage → ToolMessage → AIMessage (valid pattern)
+    Instead of: AIMessage → ToolMessage → AIMessage → AIMessage (invalid pattern)
+
+    Args:
+        messages: List of messages from state
+
+    Returns:
+        Cleaned list of messages with subagent handoff patterns collapsed
+    """
+    cleaned_messages = []
+    i = 0
+
+    while i < len(messages):
+        msg = messages[i]
+
+        if not isinstance(msg, ToolMessage) or i + 1 >= len(messages):
+            cleaned_messages.append(msg)
+            i += 1
+            continue
+
+        tool_match = _SUBAGENT_TOOL_PATTERN.match(msg.name or "")
+        transfer_match = _SUBAGENT_TRANSFER_PATTERN.match(msg.content or "")  # type: ignore[call-arg]
+
+        if not (tool_match and transfer_match):
+            cleaned_messages.append(msg)
+            i += 1
+            continue
+
+        next_msg = messages[i + 1]
+        if not isinstance(next_msg, AIMessage):
+            cleaned_messages.append(msg)
+            i += 1
+            continue
+
+        visible_to = next_msg.additional_kwargs.get("visible_to", set())
+        subagent_name = f"{tool_match.group(1)}_agent"
+
+        if "main_agent" in visible_to and subagent_name in visible_to:
+            cleaned_messages.append(
+                msg.model_copy(update={"content": next_msg.content})
+            )
+            i += 2
+        else:
+            cleaned_messages.append(msg)
+            i += 1
+
+    return cleaned_messages
+
 
 async def _execute_hooks(
     hooks: list[HookType] | None,
@@ -171,8 +248,9 @@ def create_agent(
         return await _execute_hooks(end_graph_hooks, state, config, store)
 
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
-        # For sync context, we need to run hooks in a new event loop
         _sync_execute_hooks(end_graph_hooks, state, config, store)
+
+        state = {**state, "messages": _clean_consecutive_ai_messages(state["messages"])}
 
         model_configurations = config.get("configurable", {})
         _llm = llm.with_config(configurable=model_configurations)
@@ -203,6 +281,8 @@ def create_agent(
             config,
             store,
         )
+
+        state = {**state, "messages": _clean_consecutive_ai_messages(state["messages"])}
 
         model_configurations = config.get("configurable", {})
         _llm = llm.with_config(configurable=model_configurations)

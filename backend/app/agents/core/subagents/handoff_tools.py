@@ -7,10 +7,12 @@ from app.agents.prompts.subagent_prompts import (
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
     CALENDAR_AGENT_SYSTEM_PROMPT,
+    CLICKUP_AGENT_SYSTEM_PROMPT,
     GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
     GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
     GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
     GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
+    INSTAGRAM_AGENT_SYSTEM_PROMPT,
     LINEAR_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
     MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
@@ -464,11 +466,27 @@ def get_handoff_tools(enabled_providers: List[str]):
                 description=HANDOFF_DESCRIPTION_TEMPLATE.format(
                     provider_name="Trello",
                     domain="visual project management and organization",
-                    capabilities="creating boards and cards, organizing lists, managing checklists, adding labels, assigning members, setting due dates, tracking progress, and visual workflow management",
-                    use_cases="board creation, card management, workflow organization, checklist tracking, or any Trello operation",
+                    capabilities="creating boards, managing cards and lists, organizing with labels and checklists, managing team members, and visual workflow management",
+                    use_cases="board creation, card management, visual project organization, or team collaboration",
                 ),
                 system_prompt=TRELLO_AGENT_SYSTEM_PROMPT,
                 integration_id="trello",
+            )
+        )
+
+    if "clickup" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_clickup_agent",
+                agent_name="clickup_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="ClickUp",
+                    domain="comprehensive project and task management",
+                    capabilities="managing tasks and projects, tracking time, setting goals, organizing workspaces, team collaboration, and workflow automation",
+                    use_cases="task management, time tracking, goal setting, workspace organization, or team workflows",
+                ),
+                system_prompt=CLICKUP_AGENT_SYSTEM_PROMPT,
+                integration_id="clickup",
             )
         )
 
@@ -485,6 +503,22 @@ def get_handoff_tools(enabled_providers: List[str]):
                 ),
                 system_prompt=CALENDAR_AGENT_SYSTEM_PROMPT,
                 integration_id="google_calendar",
+            )
+        )
+
+    if "instagram" in enabled_providers:
+        tools.append(
+            create_handoff_tool(
+                tool_name="call_instagram_agent",
+                agent_name="instagram_agent",
+                description=HANDOFF_DESCRIPTION_TEMPLATE.format(
+                    provider_name="Instagram",
+                    domain="social media management",
+                    capabilities="posting photos and videos, managing stories, engaging with followers, analyzing metrics, and automating Instagram workflows",
+                    use_cases="posting content, managing stories, engaging with followers, or analyzing Instagram activity",
+                ),
+                system_prompt=INSTAGRAM_AGENT_SYSTEM_PROMPT,
+                integration_id="instagram",
             )
         )
 
