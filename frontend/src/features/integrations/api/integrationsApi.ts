@@ -97,9 +97,17 @@ export const integrationsApi = {
    * Disconnect an integration (placeholder for future implementation)
    */
   disconnectIntegration: async (integrationId: string): Promise<void> => {
-    // This would call a disconnect endpoint in the future
-    throw new Error(
-      `Disconnect functionality not implemented yet for ${integrationId}`,
-    );
+    try {
+      await apiService.delete(
+        `/oauth/integrations/${integrationId}`,
+        {},
+        {
+          successMessage: "Integration disconnected successfully",
+        },
+      );
+    } catch (error) {
+      console.error(`Failed to disconnect ${integrationId}:`, error);
+      throw error;
+    }
   },
 };

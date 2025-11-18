@@ -272,6 +272,78 @@ class ComposioService:
             )
             return None
 
+    async def delete_connected_account(
+        self, user_id: str, provider: str
+    ) -> dict[str, str]:
+        """
+        Delete a connected account for a given provider and user.
+
+        Args:
+            user_id: The user ID who owns the connected account
+            provider: The provider name (e.g., 'gmail', 'slack', 'github')
+
+        Returns:
+            dict with status message
+
+        Raises:
+            ValueError: If provider is not supported or no account found
+        """
+        if provider not in COMPOSIO_SOCIAL_CONFIGS:
+            raise ValueError(f"Provider '{provider}' not supported")
+
+        config = COMPOSIO_SOCIAL_CONFIGS[provider]
+
+        try:
+            loop = asyncio.get_event_loop()
+            user_accounts = await loop.run_in_executor(
+                None,
+                lambda: self.composio.connected_accounts.list(
+                    user_ids=[user_id],
+                    auth_config_ids=[config.auth_config_id],
+                    limit=100,
+                ),
+            )
+
+            active_accounts = [
+                acc
+                for acc in user_accounts.items
+                if acc.status == "ACTIVE" and not acc.auth_config.is_disabled
+            ]
+
+            if not active_accounts:
+                raise ValueError(
+                    f"No active connected account found for provider '{provider}' and user '{user_id}'"
+                )
+
+            delete_tasks = []
+            for account in active_accounts:
+                delete_tasks.append(
+                    loop.run_in_executor(
+                        None,
+                        lambda acc=account: self.composio.connected_accounts.delete(
+                            nanoid=acc.id
+                        ),
+                    )
+                )
+
+            await asyncio.gather(*delete_tasks)
+
+            logger.info(
+                f"Deleted {len(active_accounts)} connected account(s) for {provider} and user {user_id}"
+            )
+            return {
+                "status": "success",
+                "message": f"Successfully deleted {len(active_accounts)} account(s) for {provider}",
+            }
+
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error deleting connected account for {provider} and user {user_id}: {e}"
+            )
+            raise
+
     async def handle_subscribe_trigger(
         self, user_id: str, triggers: list[TriggerConfig]
     ):
