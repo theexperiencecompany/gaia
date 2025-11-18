@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.0 (2025-11-18)
+
+## What's Changed
+* fix: Remove dummy data from explore workflows, workflows ui improvements & minor bug fixes by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/328
+* fix: gemini empty ai response by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/330
+* feat: enhance ComparisonTable with integration props and improve layout by @SahilSoni27 in https://github.com/theexperiencecompany/gaia/pull/332
+* release: v0.9.1 by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/333
+* fix: checkpointer posgresql issue by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/335
+* chore: release master by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/334
+
+## New Contributors
+* @SahilSoni27 made their first contribution in https://github.com/theexperiencecompany/gaia/pull/332
+
+**Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.9.0...v0.10.0
+
 ## 0.9.0 (2025-11-18)
 
 ## What's Changed
