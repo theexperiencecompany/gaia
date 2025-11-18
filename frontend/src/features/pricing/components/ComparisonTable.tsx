@@ -66,7 +66,7 @@ function AppConnectionsIcons({
         <span
           key={integration.id}
           title={integration.name}
-          className="opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-120"
+          className="opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-100"
         >
           {getToolCategoryIcon(integration.id, {
             size: 14,
