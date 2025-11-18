@@ -1,6 +1,6 @@
 "use client";
 
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { shuffle } from "lodash";
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo } from "react";
@@ -16,7 +16,7 @@ import {
   ZapIcon,
 } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/shadcn/raised-button";
-import { shuffle } from "lodash";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 interface FeatureStatus {
   // description: string;
