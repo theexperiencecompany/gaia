@@ -56,7 +56,7 @@ function AppConnectionsIcons({
   hasMessages: boolean;
 }) {
   const shuffledIntegrations = useMemo(
-    () => shuffle(integrations.slice(0, 9)),
+    () => shuffle(integrations).slice(0, 9),
     [integrations],
   );
   if (isLoading || integrations.length === 0 || hasMessages) return null;
