@@ -51,8 +51,8 @@ class TieredRateLimits(BaseModel):
 # Pro tier (~$15-20/month): 20-50x multiplier for serious users
 FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
     "chat_messages": TieredRateLimits(
-        free=RateLimitConfig(day=50, month=1000),
-        pro=RateLimitConfig(day=1000, month=30000),
+        free=RateLimitConfig(day=200, month=5000),
+        pro=RateLimitConfig(day=2500, month=40000),
         info=FeatureInfo(
             title="Chat Messages", description="Send messages to AI assistants"
         ),
