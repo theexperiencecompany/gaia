@@ -123,6 +123,7 @@ class DodoPaymentService:
                 metadata={"user_id": user_id, "product_id": product_id},
             )
         except Exception as e:
+            logger.debug(f"Error creating Dodo subscription: {e}")
             raise HTTPException(502, f"Payment service error: {str(e)}")
 
         # Return payment link without storing in database
