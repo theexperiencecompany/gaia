@@ -5,20 +5,12 @@ import { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEven
 import { useChatStream } from "@/features/chat/hooks/useChatStream";
 import { db, type IMessage } from "@/lib/db/chatDb";
 import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
-import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
 import { useConversationStore } from "@/stores/conversationStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 import { MessageType } from "@/types/features/convoTypes";
 import { WorkflowData } from "@/types/features/workflowTypes";
 import fetchDate from "@/utils/date/dateUtils";
-
-type ChatStoreState = ReturnType<typeof useChatStore.getState>;
-
-const selectAddOrUpdateMessage = (state: ChatStoreState) =>
-  state.addOrUpdateMessage;
-const selectSetMessagesForConversation = (state: ChatStoreState) =>
-  state.setMessagesForConversation;
 
 type SendMessageOverrides = {
   files?: MessageType["fileData"];
@@ -29,10 +21,6 @@ type SendMessageOverrides = {
 };
 
 export const useSendMessage = () => {
-  const addOrUpdateMessage = useChatStore(selectAddOrUpdateMessage);
-  const setMessagesForConversation = useChatStore(
-    selectSetMessagesForConversation,
-  );
   const addLegacyMessage = useConversationStore((state) => state.addMessage);
   const fetchChatStream = useChatStream();
 
@@ -126,7 +114,7 @@ export const useSendMessage = () => {
         // Ignore local persistence errors to keep the UI responsive
       }
 
-      addOrUpdateMessage(optimisticMessage);
+      // db.putMessage will emit event that updates Zustand store automatically
 
       const finalMessage: IMessage = {
         ...optimisticMessage,
@@ -150,16 +138,7 @@ export const useSendMessage = () => {
         }
       }
 
-      const existingMessages =
-        useChatStore.getState().messagesByConversation[conversationId] ?? [];
-      const withoutOptimistic = existingMessages.filter(
-        (message) => message.id !== optimisticMessage.id,
-      );
-      setMessagesForConversation(conversationId, [
-        ...withoutOptimistic,
-        finalMessage,
-      ]);
-      addOrUpdateMessage(finalMessage);
+      // db.replaceMessage/putMessage will emit events that update Zustand store automatically
 
       const streamingUserMessage: MessageType = {
         ...userMessage,
@@ -190,14 +169,9 @@ export const useSendMessage = () => {
           // Ignore persistence failures for failure state updates
         }
 
-        addOrUpdateMessage(failedMessage);
+        // db.putMessage will emit event that updates Zustand store automatically
       }
     },
-    [
-      addLegacyMessage,
-      addOrUpdateMessage,
-      fetchChatStream,
-      setMessagesForConversation,
-    ],
+    [addLegacyMessage, fetchChatStream],
   );
 };

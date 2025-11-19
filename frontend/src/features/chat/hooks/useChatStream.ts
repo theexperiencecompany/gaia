@@ -6,6 +6,7 @@ import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { streamController } from "@/features/chat/utils/streamController";
+import { db, type IMessage } from "@/lib/db/chatDb";
 import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useComposerStore } from "@/stores/composerStore";
 import { useConversationsStore } from "@/stores/conversationsStore";
@@ -88,7 +89,7 @@ export const useChatStream = () => {
     }
   };
 
-  const handleConversationDescriptionUpdate = (
+  const handleConversationDescriptionUpdate = async (
     conversationId: string,
     description: string,
   ) => {
@@ -97,11 +98,20 @@ export const useChatStream = () => {
       description: description,
     });
 
-    const updateConversation =
-      useConversationsStore.getState().updateConversation;
-    updateConversation(conversationId, {
-      description: description,
-    });
+    // Update via IndexedDB - event will update Zustand store
+    try {
+      const conversation = await db.getConversation(conversationId);
+      if (conversation) {
+        await db.putConversation({
+          ...conversation,
+          description: description,
+          title: description,
+          updatedAt: new Date(),
+        });
+      }
+    } catch (error) {
+      console.error("Failed to update conversation description:", error);
+    }
   };
 
   const saveIncompleteConversation = async () => {
@@ -169,7 +179,9 @@ export const useChatStream = () => {
    * @param event - The EventSourceMessage received from the stream.
    * @returns An error message if an error occurs, otherwise undefined.
    */
-  const handleStreamEvent = (event: EventSourceMessage): void | string => {
+  const handleStreamEvent = async (
+    event: EventSourceMessage,
+  ): Promise<void | string> => {
     try {
       const data = event.data === "[DONE]" ? null : JSON.parse(event.data);
 
@@ -257,6 +269,21 @@ export const useChatStream = () => {
       // Add to the accumulated response if there's new response content
       if (data.response) {
         refs.current.accumulatedResponse += data.response;
+
+        // Incrementally persist streaming content
+        if (
+          refs.current.botMessage?.message_id &&
+          refs.current.newConversation.id
+        ) {
+          try {
+            await db.updateMessageContent(
+              refs.current.botMessage.message_id,
+              refs.current.accumulatedResponse,
+            );
+          } catch (error) {
+            console.error("Failed to update streaming content:", error);
+          }
+        }
       }
 
       // Parse only the data that's actually present in this stream chunk
@@ -292,6 +319,46 @@ export const useChatStream = () => {
       setIsLoading(false);
       resetLoadingText();
       streamController.clear();
+
+      if (refs.current.botMessage && refs.current.newConversation.id) {
+        const botMessageId = refs.current.botMessage.message_id;
+        if (!botMessageId) return;
+
+        // Mark message as complete in database
+        try {
+          await db.updateMessageStatus(botMessageId, "sent");
+        } catch (error) {
+          console.error("Failed to mark bot message as sent:", error);
+        }
+
+        // Also ensure the final message is persisted with complete data
+        const botIMessage: IMessage = {
+          id: botMessageId,
+          conversationId: refs.current.newConversation.id,
+          content: refs.current.accumulatedResponse,
+          role: "assistant",
+          status: "sent",
+          createdAt: refs.current.botMessage.date
+            ? new Date(refs.current.botMessage.date)
+            : new Date(),
+          updatedAt: new Date(),
+          messageId: botMessageId,
+          fileIds: refs.current.botMessage.fileIds,
+          fileData: refs.current.botMessage.fileData,
+          toolName: refs.current.botMessage.selectedTool ?? null,
+          toolCategory: refs.current.botMessage.toolCategory ?? null,
+          workflowId: refs.current.botMessage.selectedWorkflow?.id ?? null,
+          metadata: {
+            originalMessage: { ...refs.current.botMessage, loading: false },
+          },
+        };
+
+        try {
+          await db.putMessage(botIMessage);
+        } catch (error) {
+          console.error("Failed to persist final bot message:", error);
+        }
+      }
 
       // Reset stream state after successful completion
       streamInProgressRef.current = false;
@@ -350,6 +417,34 @@ export const useChatStream = () => {
         selectedWorkflow,
         selectedCalendarEvent,
       };
+
+      // Persist initial bot message state immediately
+      if (refs.current.newConversation.id) {
+        const initialBotMessage: IMessage = {
+          id: botMessageId,
+          conversationId: refs.current.newConversation.id,
+          content: "",
+          role: "assistant",
+          status: "sending",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          messageId: botMessageId,
+          fileIds: fileData.map((f) => f.fileId),
+          fileData,
+          toolName: selectedTool ?? null,
+          toolCategory: toolCategory ?? null,
+          workflowId: selectedWorkflow?.id ?? null,
+          metadata: {
+            originalMessage: refs.current.botMessage,
+          },
+        };
+
+        try {
+          await db.putMessage(initialBotMessage);
+        } catch (error) {
+          console.error("Failed to persist initial bot message:", error);
+        }
+      }
 
       // Create abort controller for this stream
       const controller = new AbortController();

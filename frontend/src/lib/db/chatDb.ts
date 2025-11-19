@@ -1,4 +1,5 @@
 import Dexie, { Table } from "dexie";
+import { EventEmitter } from "events";
 
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import { FileData } from "@/types/shared";
@@ -35,6 +36,42 @@ export interface IMessage {
   metadata?: Record<string, unknown>;
 }
 
+class MessageQueue {
+  private queue: Promise<any> = Promise.resolve();
+
+  async enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(operation);
+    this.queue = result.catch(() => {}); // Don't propagate errors to queue
+    return result;
+  }
+}
+
+export const messageQueue = new MessageQueue();
+
+class DBEventEmitter extends EventEmitter {
+  emitMessageAdded(message: IMessage) {
+    this.emit("messageAdded", message);
+  }
+
+  emitMessageUpdated(message: IMessage) {
+    this.emit("messageUpdated", message);
+  }
+
+  emitMessagesSynced(conversationId: string, messages: IMessage[]) {
+    this.emit("messagesSynced", conversationId, messages);
+  }
+
+  emitConversationAdded(conversation: IConversation) {
+    this.emit("conversationAdded", conversation);
+  }
+
+  emitConversationUpdated(conversation: IConversation) {
+    this.emit("conversationUpdated", conversation);
+  }
+}
+
+export const dbEventEmitter = new DBEventEmitter();
+
 export class ChatDexie extends Dexie {
   public conversations!: Table<IConversation, string>;
   public messages!: Table<IMessage, string>;
@@ -60,13 +97,29 @@ export class ChatDexie extends Dexie {
   }
 
   public async putConversation(conversation: IConversation): Promise<string> {
-    return this.conversations.put(conversation);
+    return messageQueue.enqueue(async () => {
+      const existing = await this.conversations.get(conversation.id);
+      const id = await this.conversations.put(conversation);
+      if (existing) {
+        dbEventEmitter.emitConversationUpdated(conversation);
+      } else {
+        dbEventEmitter.emitConversationAdded(conversation);
+      }
+      return id;
+    });
   }
 
   public async putConversationsBulk(
     conversations: IConversation[],
   ): Promise<string[]> {
-    await this.conversations.bulkPut(conversations);
+    // await this.conversations.bulkPut(conversations);
+    // return conversations.map((conversation) => conversation.id);
+    await messageQueue.enqueue(async () => {
+      await this.conversations.bulkPut(conversations);
+      conversations.forEach((conv) =>
+        dbEventEmitter.emitConversationAdded(conv),
+      );
+    });
     return conversations.map((conversation) => conversation.id);
   }
 
@@ -87,11 +140,18 @@ export class ChatDexie extends Dexie {
   }
 
   public putMessage(message: IMessage): Promise<string> {
-    return this.messages.put(message);
+    return messageQueue.enqueue(async () => {
+      const id = await this.messages.put(message);
+      dbEventEmitter.emitMessageAdded(message);
+      return id;
+    });
   }
 
   public async putMessagesBulk(messages: IMessage[]): Promise<string[]> {
-    await this.messages.bulkPut(messages);
+    await messageQueue.enqueue(async () => {
+      await this.messages.bulkPut(messages);
+      messages.forEach((msg) => dbEventEmitter.emitMessageAdded(msg));
+    });
     return messages.map((message) => message.id);
   }
 
@@ -99,27 +159,72 @@ export class ChatDexie extends Dexie {
     temporaryId: string,
     message: IMessage,
   ): Promise<void> {
-    await (this as Dexie).transaction("rw", this.messages, async () => {
-      await this.messages.delete(temporaryId);
-      await this.messages.put(message);
-    });
+    await messageQueue.enqueue(() =>
+      (this as Dexie).transaction("rw", this.messages, async () => {
+        await this.messages.delete(temporaryId);
+        await this.messages.put(message);
+        dbEventEmitter.emitMessageUpdated(message);
+      }),
+    );
   }
 
   public async deleteConversationAndMessages(
     conversationId: string,
   ): Promise<void> {
-    await (this as Dexie).transaction(
-      "rw",
-      this.conversations,
-      this.messages,
-      async () => {
-        await this.messages
-          .where("conversationId")
-          .equals(conversationId)
-          .delete();
-        await this.conversations.delete(conversationId);
-      },
+    await messageQueue.enqueue(() =>
+      (this as Dexie).transaction(
+        "rw",
+        this.conversations,
+        this.messages,
+        async () => {
+          await this.messages
+            .where("conversationId")
+            .equals(conversationId)
+            .delete();
+          await this.conversations.delete(conversationId);
+        },
+      ),
     );
+  }
+
+  public async updateMessageContent(
+    messageId: string,
+    content: string,
+  ): Promise<void> {
+    await messageQueue.enqueue(async () => {
+      const message = await this.messages.get(messageId);
+      if (message) {
+        const updatedMessage = { ...message, content, updatedAt: new Date() };
+        await this.messages.put(updatedMessage);
+        dbEventEmitter.emitMessageUpdated(updatedMessage);
+      }
+    });
+  }
+
+  public async updateMessageStatus(
+    messageId: string,
+    status: MessageStatus,
+  ): Promise<void> {
+    await messageQueue.enqueue(async () => {
+      const message = await this.messages.get(messageId);
+      if (message) {
+        const updatedMessage = { ...message, status, updatedAt: new Date() };
+        await this.messages.put(updatedMessage);
+        dbEventEmitter.emitMessageUpdated(updatedMessage);
+      }
+    });
+  }
+
+  public async syncMessages(
+    conversationId: string,
+    messages: IMessage[],
+  ): Promise<void> {
+    await messageQueue.enqueue(async () => {
+      await (this as Dexie).transaction("rw", this.messages, async () => {
+        await this.messages.bulkPut(messages);
+        dbEventEmitter.emitMessagesSynced(conversationId, messages);
+      });
+    });
   }
 }
 

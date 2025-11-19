@@ -16,6 +16,7 @@ import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
+import { useChatStoreSync } from "@/stores/chatStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useUIStoreSidebar } from "@/stores/uiStore";
 
@@ -43,6 +44,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   // Check if user needs onboarding
   useOnboardingGuard();
   useBackgroundSync();
+  useChatStoreSync();
 
   // Auto-close sidebar on mobile when pathname changes
   useEffect(() => {

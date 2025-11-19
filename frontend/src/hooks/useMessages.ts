@@ -62,16 +62,17 @@ export const useMessages = (conversationId?: string) => {
         if (!isActive) return;
 
         const mappedMessages = mapApiMessages(apiMessages, conversationId);
+        const cachedMessages =
+          await db.getMessagesForConversation(conversationId);
+        const mergedMessages = mergeMessages(cachedMessages, mappedMessages);
 
         try {
-          await db.putMessagesBulk(mappedMessages);
+          await db.syncMessages(conversationId, mergedMessages);
         } catch {
           // Ignore persistence errors to keep UI responsive
         }
 
-        if (!isActive) return;
-
-        setMessagesForConversation(conversationId, mappedMessages);
+        // setMessagesForConversation will be called by event handler from syncMessages
       } catch {
         // Ignore network errors; cache content remains visible
       }
@@ -183,4 +184,33 @@ const mapConversationType = (
 ): "user" | "bot" => {
   if (role === "user") return "user";
   return "bot";
+};
+
+const mergeMessages = (local: IMessage[], remote: IMessage[]): IMessage[] => {
+  const messageMap = new Map<string, IMessage>();
+
+  // Start with local messages
+  local.forEach((msg) => messageMap.set(msg.id, msg));
+
+  // Merge with remote messages - prefer remote for existing messages
+  remote.forEach((msg) => {
+    const existing = messageMap.get(msg.id);
+    if (!existing) {
+      // New message from remote
+      messageMap.set(msg.id, msg);
+    } else {
+      // Message exists locally - prefer remote if it's newer
+      const remoteTime = msg.updatedAt?.getTime() ?? msg.createdAt.getTime();
+      const localTime =
+        existing.updatedAt?.getTime() ?? existing.createdAt.getTime();
+      if (remoteTime > localTime) {
+        messageMap.set(msg.id, msg);
+      }
+    }
+  });
+
+  // Convert back to array and sort
+  return Array.from(messageMap.values()).sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+  );
 };

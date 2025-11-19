@@ -57,12 +57,10 @@ export default function ChatOptionsDropdown({
     const newStarredValue = starred === undefined ? true : !starred;
 
     try {
-      // Optimistically update the UI
-      updateConversation(chatId, { starred: newStarredValue });
-
-      // Make the API call
+      // Make the API call first
       await chatApi.toggleStarConversation(chatId, newStarredValue);
 
+      // Update IndexedDB - event will update Zustand store
       const conversation = await db.getConversation(chatId);
       if (conversation) {
         await db.putConversation({
@@ -75,8 +73,6 @@ export default function ChatOptionsDropdown({
       await fetchConversations();
     } catch (error) {
       console.error("Failed to update star", error);
-      // Revert the optimistic update on error
-      updateConversation(chatId, { starred: !newStarredValue });
     }
   };
 

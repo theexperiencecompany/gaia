@@ -1,6 +1,8 @@
 import { create } from "zustand";
+import { useEffect } from "react";
 
 import type { IConversation, IMessage } from "@/lib/db/chatDb";
+import { dbEventEmitter } from "@/lib/db/chatDb";
 
 type LoadingStatus = "idle" | "loading" | "success" | "error";
 
@@ -115,3 +117,47 @@ export const useChatStore = create<ChatState>((set) => ({
   setConversationsLoadingStatus: (status) =>
     set({ conversationsLoadingStatus: status }),
 }));
+
+// Event-driven synchronization with IndexedDB
+export const useChatStoreSync = () => {
+  useEffect(() => {
+    const handleMessageAdded = (message: IMessage) => {
+      useChatStore.getState().addOrUpdateMessage(message);
+    };
+
+    const handleMessageUpdated = (message: IMessage) => {
+      useChatStore.getState().addOrUpdateMessage(message);
+    };
+
+    const handleMessagesSynced = (
+      conversationId: string,
+      messages: IMessage[],
+    ) => {
+      useChatStore
+        .getState()
+        .setMessagesForConversation(conversationId, messages);
+    };
+
+    const handleConversationAdded = (conversation: IConversation) => {
+      useChatStore.getState().upsertConversation(conversation);
+    };
+
+    const handleConversationUpdated = (conversation: IConversation) => {
+      useChatStore.getState().upsertConversation(conversation);
+    };
+
+    dbEventEmitter.on("messageAdded", handleMessageAdded);
+    dbEventEmitter.on("messageUpdated", handleMessageUpdated);
+    dbEventEmitter.on("messagesSynced", handleMessagesSynced);
+    dbEventEmitter.on("conversationAdded", handleConversationAdded);
+    dbEventEmitter.on("conversationUpdated", handleConversationUpdated);
+
+    return () => {
+      dbEventEmitter.off("messageAdded", handleMessageAdded);
+      dbEventEmitter.off("messageUpdated", handleMessageUpdated);
+      dbEventEmitter.off("messagesSynced", handleMessagesSynced);
+      dbEventEmitter.off("conversationAdded", handleConversationAdded);
+      dbEventEmitter.off("conversationUpdated", handleConversationUpdated);
+    };
+  }, []);
+};

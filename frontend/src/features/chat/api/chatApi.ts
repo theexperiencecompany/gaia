@@ -231,7 +231,9 @@ export const chatApi = {
     inputText: string,
     convoMessages: MessageType[],
     conversationId: string | null | undefined,
-    onMessage: (event: EventSourceMessage) => void | string,
+    onMessage: (
+      event: EventSourceMessage,
+    ) => void | string | Promise<void | string>,
     onClose: () => void,
     onError: (err: Error) => void,
     fileData: FileData[] = [],

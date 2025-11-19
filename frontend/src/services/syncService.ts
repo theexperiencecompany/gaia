@@ -8,6 +8,38 @@ import { MessageType } from "@/types/features/convoTypes";
 
 const MAX_SYNC_CONVERSATIONS = 100;
 
+const mergeMessageLists = (
+  localMessages: IMessage[],
+  remoteMessages: IMessage[],
+): IMessage[] => {
+  const messageMap = new Map<string, IMessage>();
+
+  // Start with local messages
+  localMessages.forEach((msg) => messageMap.set(msg.id, msg));
+
+  // Merge with remote messages - prefer remote for existing messages
+  remoteMessages.forEach((msg) => {
+    const existing = messageMap.get(msg.id);
+    if (!existing) {
+      // New message from remote
+      messageMap.set(msg.id, msg);
+    } else {
+      // Message exists locally - prefer remote if it's newer
+      const remoteTime = msg.updatedAt?.getTime() ?? msg.createdAt.getTime();
+      const localTime =
+        existing.updatedAt?.getTime() ?? existing.createdAt.getTime();
+      if (remoteTime > localTime) {
+        messageMap.set(msg.id, msg);
+      }
+    }
+  });
+
+  // Convert back to array and sort by creation time
+  return Array.from(messageMap.values()).sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+  );
+};
+
 const mapApiMessagesToStored = (
   messages: MessageType[],
   conversationId: string,
@@ -145,12 +177,15 @@ export const batchSyncConversations = async (): Promise<void> => {
             : new Date(conversation.createdAt),
         };
 
-        const mappedMessages = mapApiMessagesToStored(messages, conversationId);
+        const remoteMessages = mapApiMessagesToStored(messages, conversationId);
+        const localMessages =
+          await db.getMessagesForConversation(conversationId);
+        const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
 
         await Promise.allSettled([
           db.putConversation(mappedConversation),
           messages.length > 0
-            ? db.putMessagesBulk(mappedMessages)
+            ? db.syncMessages(conversationId, mergedMessages)
             : Promise.resolve(),
         ]);
       }),

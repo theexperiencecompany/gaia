@@ -45,6 +45,8 @@ export const useConversations = (): ConversationsHookResult => {
 
         if (!isActive) return;
 
+        // batchSyncConversations writes to IndexedDB and emits events
+        // But for initial load, we still need to read from DB
         const updatedConversations = await db.getAllConversations();
         setConversations(updatedConversations);
         setLoadingStatus("success");
