@@ -49,7 +49,12 @@ export default function ChatRenderer() {
 
   // Create options object for getMessageProps
   const messagePropsOptions = {
-    conversation,
+    conversation: conversation
+      ? {
+          is_system_generated: conversation.is_system_generated,
+          system_purpose: conversation.system_purpose ?? undefined,
+        }
+      : undefined,
     setImageData,
     setOpenGeneratedImage,
     setOpenMemoryModal,
@@ -62,7 +67,7 @@ export default function ChatRenderer() {
     return filterEmptyMessagePairs(
       convoMessages,
       conversation?.is_system_generated || false,
-      conversation?.system_purpose,
+      conversation?.system_purpose ?? undefined,
     );
   }, [
     convoMessages,

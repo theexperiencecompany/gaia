@@ -1,12 +1,12 @@
 import { EventSourceMessage } from "@microsoft/fetch-event-source";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { streamController } from "@/features/chat/utils/streamController";
-import { db, type IMessage, type IConversation } from "@/lib/db/chatDb";
+import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
@@ -23,12 +23,6 @@ export const useChatStream = () => {
   const { setIsLoading, setAbortController } = useLoading();
   const { convoMessages } = useConversation();
   const { setLoadingText, resetLoadingText } = useLoadingText();
-
-  // Generate unique ID for this hook instance
-  const hookIdRef = useRef(
-    `chatStream-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-  );
-  const hookId = hookIdRef.current;
 
   // Add ref to track if a stream is already in progress
   const streamInProgressRef = useRef(false);
@@ -48,16 +42,6 @@ export const useChatStream = () => {
     },
   });
 
-  // Cleanup stream on unmount
-  useEffect(() => {
-    return () => {
-      if (streamInProgressRef.current) {
-        streamController.triggerSave();
-        streamController.abort();
-      }
-    };
-  }, [hookId]);
-
   // Reset all stream-related state
   const resetStreamState = () => {
     streamInProgressRef.current = false;
@@ -73,8 +57,8 @@ export const useChatStream = () => {
     streamController.clear();
     setAbortController(null);
 
-    // Clear any remaining optimistic messages (error/abort scenarios)
-    useChatStore.getState().clearOptimisticMessages();
+    // Clear any remaining optimistic message (error/abort scenarios)
+    useChatStore.getState().clearOptimisticMessage();
   };
 
   const handleConversationCreation = async (
@@ -102,10 +86,6 @@ export const useChatStream = () => {
 
       try {
         await db.putConversation(newConversation);
-
-        // Clear optimistic messages from Zustand now that conversation has real ID
-        // Messages will be persisted to IndexedDB with real IDs below
-        useChatStore.getState().clearOptimisticMessages();
       } catch (error) {
         console.error("Failed to save conversation to IndexedDB:", error);
       }
@@ -173,9 +153,6 @@ export const useChatStream = () => {
       toolName: sourceMessage.selectedTool ?? null,
       toolCategory: sourceMessage.toolCategory ?? null,
       workflowId: sourceMessage.selectedWorkflow?.id ?? null,
-      metadata: {
-        originalMessage: sourceMessage,
-      },
     };
   };
 
@@ -268,26 +245,21 @@ export const useChatStream = () => {
           refs.current.userMessage.message_id = data.user_message_id;
         }
 
-        // Update URL and set active conversation ID
-        window.history.replaceState({}, "", `/c/${data.conversation_id}`);
-        useChatStore.getState().setActiveConversationId(data.conversation_id);
-
         // Add conversation to store immediately with temporary description
         await handleConversationCreation(
           data.conversation_id,
           data.conversation_description,
         );
 
-        // Persist user message with backend-generated ID for new conversations
-        // The optimistic message in Zustand is now replaced with a real message in IndexedDB
+        // For new conversations: persist user message with backend-generated ID
+        // The optimistic message in Zustand will be cleared after persistence
         if (
           refs.current.userMessage &&
           data.user_message_id &&
           refs.current.optimisticUserId
         ) {
           try {
-            // Optimistic message was already cleared from Zustand in handleConversationCreation
-            // Now persist with real conversation ID and backend message ID to IndexedDB
+            // Persist user message with real conversation ID and backend message ID to IndexedDB
             await db.putMessage(
               createIMessage(
                 data.user_message_id,
@@ -300,22 +272,19 @@ export const useChatStream = () => {
             );
 
             refs.current.userMessage.message_id = data.user_message_id;
-            console.log(
-              `[New Conversation] Replaced optimistic message with backend ID ${data.user_message_id}`,
-            );
           } catch (error) {
-            console.error("Failed to replace optimistic user message:", error);
+            console.error("Failed to persist user message:", error);
           }
         }
 
-        // Now persist initial bot message with conversation ID
+        // Persist initial bot message with conversation ID
         if (refs.current.botMessage && data.bot_message_id) {
           try {
             await db.putMessage(
               createIMessage(
                 data.bot_message_id,
                 data.conversation_id,
-                "",
+                refs.current.accumulatedResponse,
                 "assistant",
                 "sending",
                 refs.current.botMessage,
@@ -325,6 +294,14 @@ export const useChatStream = () => {
             console.error("Failed to persist initial bot message:", error);
           }
         }
+
+        // Clear optimistic messages AFTER persisting to IndexedDB but BEFORE redirect
+        // This ensures messages are available in the new conversation view
+        useChatStore.getState().clearOptimisticMessage();
+
+        // Now redirect - messages are already in IndexedDB for the new conversation
+        window.history.replaceState({}, "", `/c/${data.conversation_id}`);
+        useChatStore.getState().setActiveConversationId(data.conversation_id);
       } else if (
         data.user_message_id &&
         data.bot_message_id &&
@@ -334,9 +311,10 @@ export const useChatStream = () => {
         const conversationId = useChatStore.getState().activeConversationId;
 
         // Replace optimistic user message with backend ID (for existing conversations)
-        // Message was already persisted to IndexedDB with optimistic ID, now update it
+        // Message was already persisted to IndexedDB with optimistic ID in useSendMessage
         if (refs.current.optimisticUserId && conversationId) {
           try {
+            // Replace the optimistic message with the backend-confirmed one
             await db.replaceOptimisticMessage(
               refs.current.optimisticUserId,
               data.user_message_id,
@@ -344,9 +322,9 @@ export const useChatStream = () => {
             if (refs.current.userMessage) {
               refs.current.userMessage.message_id = data.user_message_id;
             }
-            console.log(
-              `Replaced optimistic ID ${refs.current.optimisticUserId} with backend ID ${data.user_message_id}`,
-            );
+            
+            // Update status to "sent" after successful replacement
+            await db.updateMessageStatus(data.user_message_id, "sent");
           } catch (error) {
             console.error("Failed to replace optimistic message:", error);
           }
@@ -369,6 +347,17 @@ export const useChatStream = () => {
             );
           } catch (error) {
             console.error("Failed to persist initial bot message:", error);
+          }
+        }
+
+        // Update conversation updatedAt timestamp
+        if (conversationId) {
+          try {
+            await db.updateConversationFields(conversationId, {
+              updatedAt: new Date(),
+            });
+          } catch (error) {
+            console.error("Failed to update conversation timestamp:", error);
           }
         }
       } else if (

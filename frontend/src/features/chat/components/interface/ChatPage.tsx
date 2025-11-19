@@ -45,10 +45,10 @@ const ChatPage = React.memo(function MainChat() {
   useEffect(() => {
     setActiveConversationId(convoIdParam || null);
 
-    // Clear optimistic messages when navigating to a different conversation
-    // This prevents stale optimistic messages from showing in wrong conversations
+    // Clear optimistic message when navigating to a different conversation
+    // This prevents stale optimistic message from showing in wrong conversations
     return () => {
-      useChatStore.getState().clearOptimisticMessages();
+      useChatStore.getState().clearOptimisticMessage();
     };
   }, [convoIdParam, setActiveConversationId]);
 

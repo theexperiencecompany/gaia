@@ -61,6 +61,12 @@ export const useChatLayout = (): UseChatLayoutReturn => {
     conversation?.system_purpose,
   ]);
 
+  console.log({
+    convoIdParam,
+    hasMessages,
+    convoMessages,
+  });
+
   return {
     hasMessages,
     chatRef,

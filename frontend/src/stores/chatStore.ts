@@ -10,6 +10,7 @@ type LoadingStatus = "idle" | "loading" | "success" | "error";
 // These are stored in Zustand only to avoid IndexedDB pollution if not cleared properly
 interface OptimisticMessage {
   id: string; // Temporary optimistic ID
+  conversationId: string | null; // null for new conversations, set for existing ones
   content: string;
   role: "user" | "assistant";
   createdAt: Date;
@@ -26,8 +27,9 @@ interface ChatState {
   messagesByConversation: Record<string, IMessage[]>;
   activeConversationId: string | null;
   conversationsLoadingStatus: LoadingStatus;
-  // Optimistic messages for new conversations (not yet persisted to IndexedDB)
-  optimisticMessages: OptimisticMessage[];
+  // Single optimistic message for new conversations (not yet persisted to IndexedDB)
+  // Only ONE optimistic message can exist at a time - enforced by using single object instead of array
+  optimisticMessage: OptimisticMessage | null;
   setConversations: (conversations: IConversation[]) => void;
   upsertConversation: (conversation: IConversation) => void;
   updateConversation: (
@@ -42,10 +44,9 @@ interface ChatState {
   removeConversation: (conversationId: string) => void;
   setActiveConversationId: (id: string | null) => void;
   setConversationsLoadingStatus: (status: LoadingStatus) => void;
-  // Optimistic message management for new conversations
-  addOptimisticMessage: (message: OptimisticMessage) => void;
-  removeOptimisticMessage: (id: string) => void;
-  clearOptimisticMessages: () => void;
+  // Optimistic message management for new conversations (single message only)
+  setOptimisticMessage: (message: OptimisticMessage | null) => void;
+  clearOptimisticMessage: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -53,8 +54,9 @@ export const useChatStore = create<ChatState>((set) => ({
   messagesByConversation: {},
   activeConversationId: null,
   conversationsLoadingStatus: "idle",
-  // In-memory optimistic messages for new conversations (prevents IndexedDB pollution)
-  optimisticMessages: [],
+  // Single optimistic message for new conversations (prevents IndexedDB pollution)
+  // Only one message at a time - enforced by type
+  optimisticMessage: null,
 
   setConversations: (conversations) =>
     set({ conversations: [...conversations] }),
@@ -140,21 +142,12 @@ export const useChatStore = create<ChatState>((set) => ({
   setConversationsLoadingStatus: (status) =>
     set({ conversationsLoadingStatus: status }),
 
-  // Add optimistic message to Zustand (for new conversations only)
-  // These are temporary and will be replaced once conversation ID is confirmed
-  addOptimisticMessage: (message) =>
-    set((state) => ({
-      optimisticMessages: [...state.optimisticMessages, message],
-    })),
+  // Set the single optimistic message (replaces any existing one)
+  // Only one optimistic message can exist at a time
+  setOptimisticMessage: (message) => set({ optimisticMessage: message }),
 
-  // Remove specific optimistic message by ID (when replaced with real message)
-  removeOptimisticMessage: (id) =>
-    set((state) => ({
-      optimisticMessages: state.optimisticMessages.filter((m) => m.id !== id),
-    })),
-
-  // Clear all optimistic messages (on navigation or error)
-  clearOptimisticMessages: () => set({ optimisticMessages: [] }),
+  // Clear the optimistic message (set to null)
+  clearOptimisticMessage: () => set({ optimisticMessage: null }),
 }));
 
 // Event-driven synchronization with IndexedDB
@@ -206,7 +199,6 @@ export const useChatStoreSync = () => {
     };
 
     const handleConversationAdded = (conversation: IConversation) => {
-      console.log("Conversation added event received:", conversation.id);
       useChatStore.getState().upsertConversation(conversation);
     };
 

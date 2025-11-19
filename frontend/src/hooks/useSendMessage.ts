@@ -23,40 +23,8 @@ type SendMessageOverrides = {
 export const useSendMessage = () => {
   const fetchChatStream = useChatStream();
 
-  const createOptimisticUserMessage = (
-    optimisticId: string,
-    conversationId: string,
-    content: string,
-    userMessage: MessageType,
-    createdAt: Date,
-  ): IMessage => {
-    return {
-      id: optimisticId,
-      conversationId,
-      content,
-      role: "user",
-      status: "sending",
-      createdAt,
-      updatedAt: createdAt,
-      messageId: optimisticId,
-      fileIds: userMessage.fileIds,
-      fileData: userMessage.fileData,
-      toolName: userMessage.selectedTool ?? null,
-      toolCategory: userMessage.toolCategory ?? null,
-      workflowId: userMessage.selectedWorkflow?.id ?? null,
-      optimistic: true,
-      metadata: {
-        originalMessage: userMessage,
-      },
-    };
-  };
-
   return useCallback(
-    async (
-      content: string,
-      conversationId?: string | null,
-      overrides?: SendMessageOverrides,
-    ) => {
+    async (content: string, overrides?: SendMessageOverrides) => {
       const trimmedContent = content.trim();
       if (!trimmedContent) {
         return;
@@ -85,6 +53,7 @@ export const useSendMessage = () => {
       const isoTimestamp = fetchDate();
       const createdAt = new Date(isoTimestamp);
       const optimisticId = uuidv4();
+      const conversationId = useChatStore.getState().activeConversationId;
 
       const userMessage: MessageType = {
         type: "user",
@@ -99,13 +68,13 @@ export const useSendMessage = () => {
         selectedCalendarEvent: selectedCalendarEvent ?? undefined,
       };
 
-      // For new conversations: Store optimistic message in Zustand only (not IndexedDB)
-      // This prevents IndexedDB pollution if message isn't properly cleared
-      // Once conversation_id is received, this will be moved to IndexedDB with real ID
+      // For new conversations: use Zustand optimistic message (no conversationId yet)
+      // For existing conversations: persist directly to IndexedDB with optimistic ID
       if (!conversationId) {
-        // Add optimistic message to Zustand for immediate UI display
-        useChatStore.getState().addOptimisticMessage({
+        // New conversation - use Zustand optimistic message
+        useChatStore.getState().setOptimisticMessage({
           id: optimisticId,
+          conversationId: null,
           content: trimmedContent,
           role: "user",
           createdAt,
@@ -114,10 +83,8 @@ export const useSendMessage = () => {
           toolName: selectedTool,
           toolCategory: selectedToolCategory,
           workflowId: selectedWorkflow?.id ?? null,
-          metadata: { originalMessage: userMessage },
         });
 
-        // Stream will handle persisting to IndexedDB once conversation_id arrives
         await fetchChatStream(
           trimmedContent,
           [userMessage],
@@ -126,33 +93,37 @@ export const useSendMessage = () => {
           selectedToolCategory,
           selectedWorkflow,
           selectedCalendarEvent,
-          optimisticId, // Pass optimistic ID for replacement
+          optimisticId,
         );
         return;
       }
 
-      // For existing conversations: Persist optimistic message to IndexedDB immediately
-      // This is safe because we already have a valid conversation ID
-      try {
-        await db.putMessage(
-          createOptimisticUserMessage(
-            optimisticId,
-            conversationId,
-            trimmedContent,
-            userMessage,
-            createdAt,
-          ),
-        );
-      } catch (error) {
-        console.error("Failed to persist optimistic message:", error);
-      }
-
-      const streamingUserMessage: MessageType = {
-        ...userMessage,
-        loading: false,
+      // For existing conversations: persist to IndexedDB immediately with optimistic ID
+      // Backend will send real ID which will replace this optimistic message
+      const optimisticMessage: IMessage = {
+        id: optimisticId,
+        conversationId,
+        content: trimmedContent,
+        role: "user",
+        status: "sending",
+        createdAt,
+        updatedAt: createdAt,
+        messageId: optimisticId,
+        fileIds: normalizedFiles.map((file) => file.fileId),
+        fileData: normalizedFiles,
+        toolName: selectedTool,
+        toolCategory: selectedToolCategory,
+        workflowId: selectedWorkflow?.id ?? null,
+        optimistic: true,
       };
-
       try {
+        await db.putMessage(optimisticMessage);
+
+        const streamingUserMessage: MessageType = {
+          ...userMessage,
+          loading: false,
+        };
+
         await fetchChatStream(
           trimmedContent,
           [streamingUserMessage],
@@ -167,6 +138,6 @@ export const useSendMessage = () => {
         console.error("[useSendMessage] Stream failed:", error);
       }
     },
-    [fetchChatStream, createOptimisticUserMessage],
+    [fetchChatStream],
   );
 };

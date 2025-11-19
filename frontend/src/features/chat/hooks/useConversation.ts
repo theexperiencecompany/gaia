@@ -2,17 +2,11 @@ import { useMemo } from "react";
 
 import { useChatStore } from "@/stores/chatStore";
 import { MessageType } from "@/types/features/convoTypes";
+import { IMessage } from "@/lib/db/chatDb";
 
-interface MessageMetadata {
-  originalMessage?: MessageType;
-}
-
-const mapStoredMessageToConversationMessage = (message: any): MessageType => {
-  const metadata = (message.metadata ?? {}) as MessageMetadata;
-  if (metadata.originalMessage) {
-    return metadata.originalMessage;
-  }
-
+const mapStoredMessageToConversationMessage = (
+  message: IMessage,
+): MessageType => {
   return {
     type: message.role === "user" ? "user" : "bot",
     response: message.content,
@@ -34,38 +28,46 @@ export const useConversation = () => {
   const messagesByConversation = useChatStore(
     (state) => state.messagesByConversation,
   );
-  // Get optimistic messages for new conversations (before conversation ID exists)
-  const optimisticMessages = useChatStore((state) => state.optimisticMessages);
+  // Get single optimistic message for new conversations (before conversation ID exists)
+  const optimisticMessage = useChatStore((state) => state.optimisticMessage);
 
-  const convoMessages = useMemo(() => {
-    // For new conversations (no active conversation ID), show only optimistic messages
-    if (!activeConversationId) {
-      // Map optimistic messages to MessageType format for UI display
-      return optimisticMessages.map((optMsg): MessageType => {
-        const metadata = (optMsg.metadata ?? {}) as MessageMetadata;
-        if (metadata.originalMessage) {
-          return metadata.originalMessage;
-        }
+    const convoMessages = useMemo(() => {
+      // Get messages from IndexedDB for the active conversation
+      const dbMessages = activeConversationId
+        ? (messagesByConversation[activeConversationId] ?? [])
+        : [];
 
-        return {
-          type: optMsg.role === "user" ? "user" : "bot",
-          response: optMsg.content,
-          message_id: optMsg.id,
-          date: optMsg.createdAt?.toISOString(),
-          fileIds: optMsg.fileIds,
-          fileData: optMsg.fileData,
-          selectedTool: optMsg.toolName ?? undefined,
-          toolCategory: optMsg.toolCategory ?? undefined,
+      // Convert IndexedDB messages to MessageType
+      const messages = dbMessages.map(mapStoredMessageToConversationMessage);
+
+      // Only add optimistic message for NEW conversations (no activeConversationId)
+      // For existing conversations, messages are already in IndexedDB with optimistic flag
+      if (
+        optimisticMessage &&
+        !activeConversationId &&
+        optimisticMessage.conversationId === null
+      ) {
+        const optimisticMsg: MessageType = {
+          type:
+            optimisticMessage.role === "user"
+              ? ("user" as const)
+              : ("bot" as const),
+          response: optimisticMessage.content,
+          message_id: optimisticMessage.id,
+          date: optimisticMessage.createdAt?.toISOString(),
+          fileIds: optimisticMessage.fileIds,
+          fileData: optimisticMessage.fileData,
+          selectedTool: optimisticMessage.toolName ?? undefined,
+          toolCategory: optimisticMessage.toolCategory ?? undefined,
           selectedWorkflow: undefined,
           loading: false,
-        } as MessageType;
-      });
-    }
+        };
 
-    // For existing conversations, get messages from IndexedDB (via chatStore)
-    const messages = messagesByConversation[activeConversationId] ?? [];
-    return messages.map(mapStoredMessageToConversationMessage);
-  }, [activeConversationId, messagesByConversation, optimisticMessages]);
+        return [...messages, optimisticMsg];
+      }
+
+      return messages;
+    }, [activeConversationId, messagesByConversation, optimisticMessage]);
 
   const updateConvoMessages = (
     updater: MessageType[] | ((oldMessages: MessageType[]) => MessageType[]),

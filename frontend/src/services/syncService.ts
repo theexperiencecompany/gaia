@@ -64,9 +64,6 @@ const mapApiMessagesToStored = (
       toolName: message.selectedTool ?? null,
       toolCategory: message.toolCategory ?? null,
       workflowId: message.selectedWorkflow?.id ?? null,
-      metadata: {
-        originalMessage: message,
-      },
     } satisfies IMessage;
   });
 
