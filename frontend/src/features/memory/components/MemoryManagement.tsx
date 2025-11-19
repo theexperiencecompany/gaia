@@ -7,13 +7,7 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Tab, Tabs } from "@heroui/tabs";
-import {
-  ChevronDown,
-  List,
-  Network,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { ChevronDown, List, Network, Plus, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -51,6 +45,7 @@ export default function MemoryManagement({
   const [loading, setLoading] = useState(false);
   const [isAddMemoryModalOpen, setIsAddMemoryModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isClearing, setIsClearing] = useState(false);
   const [selectedTab, setSelectedTab] = useState("graph");
   const [selectedExportType, setSelectedExportType] = useState<Set<string>>(
     new Set(["png"]),
@@ -118,6 +113,8 @@ export default function MemoryManagement({
     });
 
     if (!confirmed) return;
+
+    setIsClearing(true);
     try {
       const response = await memoryApi.deleteAllMemories();
 
@@ -131,6 +128,8 @@ export default function MemoryManagement({
     } catch (error) {
       console.error("Error clearing memories:", error);
       toast.error("Failed to clear memories");
+    } finally {
+      setIsClearing(false);
     }
   }, [confirm]);
 
@@ -271,7 +270,12 @@ export default function MemoryManagement({
 
             <div className="flex gap-2">
               {memories.length > 0 && (
-                <Button color="danger" variant="flat" onPress={handleClearAll}>
+                <Button
+                  color="danger"
+                  variant="flat"
+                  onPress={handleClearAll}
+                  isLoading={isClearing}
+                >
                   Clear All
                 </Button>
               )}

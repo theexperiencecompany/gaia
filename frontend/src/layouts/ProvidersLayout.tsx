@@ -32,7 +32,7 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
         {/* <HydrationManager /> */}
         <LoginModal />
         <Toaster closeButton richColors position="top-right" theme="dark" />
-        <Suspense fallback={<SuspenseLoader />}>{children}</Suspense>
+        <Suspense fallback={<></>}>{children}</Suspense>
       </QueryProvider>
     </HeroUIProvider>
   );

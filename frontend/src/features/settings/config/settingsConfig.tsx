@@ -1,4 +1,3 @@
-
 import { BarChart3 } from "lucide-react";
 
 import {
@@ -49,7 +48,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
   },
   {
     key: "memory",
-    label: "Memory",
+    label: "Memories",
     icon: AiBrain01Icon,
     href: "/settings?section=memory",
   },
