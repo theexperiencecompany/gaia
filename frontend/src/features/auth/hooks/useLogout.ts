@@ -35,6 +35,13 @@ export const useLogout = () => {
       // Also invalidate all queries to ensure fresh data on next login
       await queryClient.invalidateQueries();
 
+      // Clear sessionStorage (including onboarding state)
+      try {
+        sessionStorage.clear();
+      } catch (error) {
+        console.warn("Failed to clear sessionStorage:", error);
+      }
+
       // Clear user state from Zustand store
       clearUser();
 
@@ -54,6 +61,13 @@ export const useLogout = () => {
         await del("reactQuery");
       } catch (persistError) {
         console.warn("Failed to clear persisted cache on error:", persistError);
+      }
+
+      // Clear sessionStorage even on error
+      try {
+        sessionStorage.clear();
+      } catch (sessionError) {
+        console.warn("Failed to clear sessionStorage on error:", sessionError);
       }
 
       clearUser();

@@ -20,15 +20,12 @@ import { defaultFont, getAllFontVariables } from "./fonts";
 
 // Dynamically determine the base URL based on environment
 const getMetadataBase = () => {
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return new URL(process.env.NEXT_PUBLIC_APP_URL);
-  }
+  // if (process.env.NEXT_PUBLIC_APP_URL)
+  //   return new URL(process.env.NEXT_PUBLIC_APP_URL);
 
-  if (process.env.VERCEL_URL) {
-    return new URL(`https://${process.env.VERCEL_URL}`);
-  }
+  // if (process.env.VERCEL_URL)
+  //   return new URL(`https://${process.env.VERCEL_URL}`);
 
-  // Fallback to production URL
   return new URL(siteConfig.url);
 };
 

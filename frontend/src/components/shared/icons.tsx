@@ -7,7 +7,7 @@ export interface IconProps extends React.SVGProps<SVGSVGElement> {}
 
 export const GlobalIcon: React.FC<IconProps> = ({ ...props }) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -215,7 +215,7 @@ export const SearchIcon: React.FC<IconProps> = (props) => (
 export const StarsIcon: React.FC<IconProps> = (props) => (
   <svg
     color="white"
-    fill="white"
+    fill="none"
     height={24}
     viewBox="0 0 24 24"
     width={24}
@@ -1479,7 +1479,7 @@ export const Notion: React.FC<IconProps> = (props) => {
       <path
         clipRule="evenodd"
         d="M61.35 0.227l-55.333 4.087C1.553 4.7 0 7.617 0 11.113v60.66c0 2.723 0.967 5.053 3.3 8.167l13.007 16.913c2.137 2.723 4.08 3.307 8.16 3.113l64.257 -3.89c5.433 -0.387 6.99 -2.917 6.99 -7.193V20.64c0 -2.21 -0.873 -2.847 -3.443 -4.733L74.167 3.143c-4.273 -3.107 -6.02 -3.5 -12.817 -2.917zM25.92 19.523c-5.247 0.353 -6.437 0.433 -9.417 -1.99L8.927 11.507c-0.77 -0.78 -0.383 -1.753 1.557 -1.947l53.193 -3.887c4.467 -0.39 6.793 1.167 8.54 2.527l9.123 6.61c0.39 0.197 1.36 1.36 0.193 1.36l-54.933 3.307 -0.68 0.047zM19.803 88.3V30.367c0 -2.53 0.777 -3.697 3.103 -3.893L86 22.78c2.14 -0.193 3.107 1.167 3.107 3.693v57.547c0 2.53 -0.39 4.67 -3.883 4.863l-60.377 3.5c-3.493 0.193 -5.043 -0.97 -5.043 -4.083zm59.6 -54.827c0.387 1.75 0 3.5 -1.75 3.7l-2.91 0.577v42.773c-2.527 1.36 -4.853 2.137 -6.797 2.137 -3.107 0 -3.883 -0.973 -6.21 -3.887l-19.03 -29.94v28.967l6.02 1.363s0 3.5 -4.857 3.5l-13.39 0.777c-0.39 -0.78 0 -2.723 1.357 -3.11l3.497 -0.97v-38.3L30.48 40.667c-0.39 -1.75 0.58 -4.277 3.3 -4.473l14.367 -0.967 19.8 30.327v-26.83l-5.047 -0.58c-0.39 -2.143 1.163 -3.7 3.103 -3.89l13.4 -0.78z"
-        fill="#000000"
+        fill="currentColor"
         fillRule="evenodd"
       />
     </svg>
@@ -1912,7 +1912,7 @@ export const ComputerPhoneSyncIcon: React.FC<IconProps> = (props) => (
 
 export const AccountSetting02Icon: React.FC<IconProps> = (props) => (
   <svg
-    color={"#9b9b9b"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -2547,7 +2547,7 @@ export const MoneyBag02Icon: React.FC<IconProps> = (props) => (
 
 export const HelpCircleIcon: React.FC<IconProps> = (props) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -2574,7 +2574,7 @@ export const HelpCircleIcon: React.FC<IconProps> = (props) => (
 
 export const BubbleChatQuestionIcon: React.FC<IconProps> = (props) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -2749,7 +2749,7 @@ export const StickyNote01Icon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const Route02Icon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -2860,7 +2860,11 @@ export const TriangleFilledIcon = (props: React.SVGProps<SVGSVGElement>) => (
     {...props}
   >
     <g fill="none" fillRule="evenodd" id="Page-1" stroke="none" strokeWidth="1">
-      <g fill="#000000" id="drop" transform="translate(32.000000, 42.666667)">
+      <g
+        fill="currentColor"
+        id="drop"
+        transform="translate(32.000000, 42.666667)"
+      >
         <path
           d="M246.312928,5.62892705 C252.927596,9.40873724 258.409564,14.8907053 262.189374,21.5053731 L444.667042,340.84129 C456.358134,361.300701 449.250007,387.363834 428.790595,399.054926 C422.34376,402.738832 415.04715,404.676552 407.622001,404.676552 L42.6666667,404.676552 C19.1025173,404.676552 7.10542736e-15,385.574034 7.10542736e-15,362.009885 C7.10542736e-15,354.584736 1.93772021,347.288125 5.62162594,340.84129 L188.099293,21.5053731 C199.790385,1.04596203 225.853517,-6.06216498 246.312928,5.62892705 Z"
           id="Combined-Shape"
@@ -2872,7 +2876,7 @@ export const TriangleFilledIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const VolumeOffIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -2913,7 +2917,7 @@ export const VolumeOffIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const FlowchartIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -3034,7 +3038,7 @@ export const Brain02Icon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const AiBrowserIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -3079,7 +3083,7 @@ export const AiBrowserIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const GoogleColouredIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -3109,7 +3113,7 @@ export const GoogleColouredIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const ChatBubbleAddIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -3129,7 +3133,7 @@ export const ChatBubbleAddIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const PencilRenameIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -3149,7 +3153,7 @@ export const PencilRenameIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const CheckmarkSquare03Icon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -3169,7 +3173,7 @@ export const CheckmarkSquare03Icon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const FlowchartIcon1 = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -3189,7 +3193,7 @@ export const FlowchartIcon1 = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const SaveIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -3213,7 +3217,7 @@ export const InboxIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3239,7 +3243,7 @@ export const Sent02Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3273,7 +3277,7 @@ export const LicenseDraftIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3305,7 +3309,7 @@ export const QuillWrite01Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3332,7 +3336,7 @@ export const LabelImportantIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3350,7 +3354,7 @@ export const TimeScheduleIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3381,7 +3385,7 @@ export const AiSearch02Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3415,7 +3419,7 @@ export const MagicWand05Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3444,7 +3448,7 @@ export const MapsIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3478,7 +3482,7 @@ export const Idea01Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3539,7 +3543,7 @@ export const BookOpen02Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3566,7 +3570,7 @@ export const CustomerService01Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3603,7 +3607,7 @@ export const CreditCardPosIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3633,7 +3637,7 @@ export const NewsIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3681,7 +3685,7 @@ export const Video01Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3712,7 +3716,7 @@ export const PencilEdit01Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3757,7 +3761,7 @@ export const UserCircle02Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3787,7 +3791,7 @@ export const CloudAngledZapIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3814,7 +3818,7 @@ export const CloudSnowIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3841,7 +3845,7 @@ export const CloudAngledRainIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3868,7 +3872,7 @@ export const CloudIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3888,7 +3892,7 @@ export const Sun03Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3912,7 +3916,7 @@ export const CloudLittleRainIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3938,7 +3942,7 @@ export const Moon02Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3958,7 +3962,7 @@ export const FastWindIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -3996,7 +4000,7 @@ export const DropletIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4021,7 +4025,7 @@ export const ThermometerWarmIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4047,7 +4051,7 @@ export const VisionIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4077,7 +4081,7 @@ export const CloudFogIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4115,7 +4119,7 @@ export const Tornado02Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4164,7 +4168,7 @@ export const Call02Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4183,7 +4187,7 @@ export const AiWebBrowsingIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={100}
     height={100}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4223,7 +4227,7 @@ export const Folder02Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4249,7 +4253,7 @@ export const Appointment01Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4292,7 +4296,7 @@ export const CalendarCheckOut02Icon = (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4333,7 +4337,7 @@ export const Calendar03Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4675,7 +4679,7 @@ export const CreditCardIcon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4829,7 +4833,7 @@ export const CursorMagicSelection02Icon = (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4916,7 +4920,7 @@ export const MessageAdd01Icon = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     width={24}
     height={24}
-    color={"#000000"}
+    color={"currentColor"}
     fill={"none"}
     {...props}
   >
@@ -4984,7 +4988,7 @@ export const RedditIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z" />
   </svg>
 );
-  
+
 export const MessageFavourite02Icon = (
   props: React.SVGProps<SVGSVGElement>,
 ) => (
@@ -5018,4 +5022,4 @@ export const MessageFavourite02Icon = (
       strokeLinecap="round"
     />
   </svg>
- );
+);

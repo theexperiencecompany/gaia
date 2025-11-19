@@ -78,7 +78,7 @@ export default function AccountSection({
   };
 
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full space-y-4">
       {/* Profile Section */}
       <SettingsCard>
         <div className="flex items-start space-x-3">
@@ -163,7 +163,7 @@ export default function AccountSection({
 
             {/* Email */}
             <LabeledField label="Email">
-              <Input value={user.email} readOnly />
+              <Input value={user.email} readOnly disabled isDisabled />
             </LabeledField>
           </div>
         </div>

@@ -3,7 +3,7 @@ Streamlined Dodo Payments integration service.
 Clean, simple, and maintainable.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.config.loggers import app_logger as logger
 from app.config.settings import settings
@@ -87,9 +87,13 @@ class DodoPaymentService:
         return plan_responses
 
     async def create_subscription(
-        self, user_id: str, product_id: str, quantity: int = 1
+        self,
+        user_id: str,
+        product_id: str,
+        quantity: int = 1,
+        discount_code: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Create subscription - only get payment link, store data after webhook."""
+        """Create subscription via Checkout Sessions; show promo code field and get hosted checkout url."""
         # Get user
         user = await users_collection.find_one({"_id": ObjectId(user_id)})
         if not user:
@@ -102,34 +106,44 @@ class DodoPaymentService:
         if existing:
             raise HTTPException(409, "Active subscription exists")
 
-        # Create with Dodo - get payment link only
+        # Create hosted checkout session (preferred over deprecated subscriptions.create)
         try:
-            subscription = self.client.subscriptions.create(
-                billing={
-                    "city": "N/A",
-                    "country": "IN",
-                    "state": "N/A",
-                    "street": "N/A",
-                    "zipcode": "000000",
-                },
-                customer={
+            params: Dict[str, Any] = {
+                "product_cart": [
+                    {
+                        "product_id": product_id,
+                        "quantity": quantity,
+                    }
+                ],
+                "customer": {
                     "email": user.get("email"),
                     "name": user.get("first_name") or user.get("name", "User"),
                 },
-                product_id=product_id,
-                quantity=quantity,
-                payment_link=True,
-                return_url=f"{settings.FRONTEND_URL}/payment/success",
-                metadata={"user_id": user_id, "product_id": product_id},
-            )
+                "billing_address": {
+                    "country": "IN",
+                },
+                "feature_flags": {
+                    # This renders the promo/discount code input on the hosted page
+                    "allow_discount_code": True,
+                },
+                "return_url": f"{settings.FRONTEND_URL}/payment/success",
+                "metadata": {"user_id": user_id, "product_id": product_id},
+                "subscription_data": {
+                    # Use product's stored price; override trial if needed
+                },
+            }
+            if discount_code:
+                # Pre-apply a known discount (customer can still edit it on the page)
+                params["discount_code"] = discount_code
+
+            checkout_session = self.client.checkout_sessions.create(**params)
         except Exception as e:
-            logger.debug(f"Error creating Dodo subscription: {e}")
+            logger.error(f"Error creating Dodo checkout session: {e}")
             raise HTTPException(502, f"Payment service error: {str(e)}")
 
-        # Return payment link without storing in database
         return {
-            "subscription_id": subscription.subscription_id,
-            "payment_link": getattr(subscription, "payment_link", None),
+            "subscription_id": checkout_session.session_id,
+            "payment_link": checkout_session.checkout_url,
             "status": "payment_link_created",
         }
 

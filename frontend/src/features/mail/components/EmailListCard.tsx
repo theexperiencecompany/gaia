@@ -81,7 +81,7 @@ export default function EmailListCard({
         className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
       >
         {/* Email List */}
-        <ScrollShadow className={`${maxHeight} divide-y divide-gray-700`}>
+        <ScrollShadow className={`${maxHeight} divide-y divide-zinc-800`}>
           {!!emails &&
             emails.length > 0 &&
             emails.map((email) => (

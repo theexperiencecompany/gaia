@@ -249,7 +249,7 @@ li {
 
 .sidebar div::-webkit-scrollbar {
   border-radius: 100px;
-  width: 9px;
+  width: 4px;
 }
 
 .sidebar div::-webkit-scrollbar-thumb {

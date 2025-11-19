@@ -3,24 +3,29 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
+import { useUser } from "@/features/auth/hooks/useUser";
+
 import { Plan, pricingApi } from "../api/pricingApi";
 
 export const usePricing = (initialPlans: Plan[] = []) => {
   const [error, setError] = useState<string | null>(null);
+  const user = useUser();
 
-  // Get all plans
+  // Get all plans (no authentication required)
   const {
     data: plans = [],
     isLoading: plansLoading,
     error: plansError,
+    isError: isPlansError,
   } = useQuery({
     queryKey: ["plans"],
     queryFn: () => pricingApi.getPlans(),
     staleTime: 5 * 60 * 1000, // 5 minutes
     initialData: initialPlans.length > 0 ? initialPlans : undefined,
+    retry: 2, // Retry failed requests
   });
 
-  // Get user subscription status
+  // Get user subscription status (only when authenticated)
   const {
     data: subscriptionStatus,
     isLoading: subscriptionLoading,
@@ -30,6 +35,8 @@ export const usePricing = (initialPlans: Plan[] = []) => {
     queryKey: ["subscription-status"],
     queryFn: () => pricingApi.getSubscriptionStatus(),
     staleTime: 1 * 60 * 1000, // 1 minute
+    enabled: !!user, // Only fetch when user is logged in
+    retry: false, // Don't retry on auth failures
   });
 
   // Verify payment status
@@ -68,15 +75,15 @@ export const usePricing = (initialPlans: Plan[] = []) => {
     plans,
     subscriptionStatus,
 
-    // Loading states
-    isLoading: plansLoading || subscriptionLoading,
+    // Loading states - plans can load independently of subscription
+    isLoading: plansLoading || (user && subscriptionLoading),
     plansLoading,
-    subscriptionLoading,
+    subscriptionLoading: user ? subscriptionLoading : false,
 
-    // Errors
-    error: error || plansError || subscriptionError,
+    // Errors - only show error if plans failed AND we have no data
+    error: error || (isPlansError && plans.length === 0 ? plansError : null),
     plansError,
-    subscriptionError,
+    subscriptionError: user ? subscriptionError : null,
 
     // Methods
     verifyPayment,
@@ -88,9 +95,13 @@ export const usePricing = (initialPlans: Plan[] = []) => {
 
 // Separate hook for just subscription status (for backward compatibility)
 export const useUserSubscriptionStatus = () => {
+  const user = useUser();
+
   return useQuery({
     queryKey: ["subscription-status"],
     queryFn: () => pricingApi.getSubscriptionStatus(),
     staleTime: 1 * 60 * 1000, // 1 minute
+    enabled: !!user, // Only fetch when user is logged in
+    retry: false, // Don't retry on auth failures
   });
 };

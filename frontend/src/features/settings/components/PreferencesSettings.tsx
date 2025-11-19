@@ -448,12 +448,13 @@ export default function PreferencesSettings({
           title="Clear Chat History"
           description="Permanently delete all your conversations and chat history"
           action={
-            <button
-              onClick={() => setModalAction("clear_chats")}
-              className="rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors duration-200 hover:bg-red-500/20"
+            <Button
+              variant="flat"
+              color="danger"
+              onPress={() => setModalAction("clear_chats")}
             >
               Clear All
-            </button>
+            </Button>
           }
         />
       </SettingsCardSimple>

@@ -14,9 +14,9 @@ from arq.connections import RedisSettings
 from bson import ObjectId
 
 # Constants
-EMAIL_QUERY = "newer_than:90d"
-MAX_RESULTS = 100
-BATCH_SIZE = 50
+EMAIL_QUERY = "in:inbox"
+MAX_RESULTS = 1000
+BATCH_SIZE = 100
 UNKNOWN_SENDER = "[Unknown]"
 NO_SUBJECT = "[No Subject]"
 
@@ -96,7 +96,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     processed_emails, failed_count = _process_email_content(emails)
 
     # Write emails to test file for inspection
-    await _write_emails_to_test_file(user_id, processed_emails)
+    # await _write_emails_to_test_file(user_id, processed_emails)
 
     successful_count = await _store_memories_batch(user_id, processed_emails)
 

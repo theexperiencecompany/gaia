@@ -16,7 +16,9 @@ export function SettingsOption({
   className = "",
 }: SettingsOptionProps) {
   return (
-    <div className={`flex items-center justify-between ${className}`}>
+    <div
+      className={`flex items-center justify-between ${className} mx-auto max-w-3xl`}
+    >
       <div className="flex items-center space-x-3">
         <div className="flex items-center justify-center rounded-xl bg-zinc-800 p-2">
           {icon}

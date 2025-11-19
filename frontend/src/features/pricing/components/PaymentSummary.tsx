@@ -12,7 +12,11 @@ import {
 } from "../utils/currencyConverter";
 
 export function PaymentSummary() {
-  const { data: subscriptionStatus, isLoading } = useUserSubscriptionStatus();
+  const {
+    data: subscriptionStatus,
+    isLoading,
+    error,
+  } = useUserSubscriptionStatus();
 
   if (isLoading) {
     return (
@@ -29,7 +33,25 @@ export function PaymentSummary() {
     );
   }
 
-  if (!subscriptionStatus?.is_subscribed || !subscriptionStatus.current_plan) {
+  // Handle error state
+  if (error) {
+    return (
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <h3 className="text-lg font-semibold">Subscription Status</h3>
+        </CardHeader>
+        <CardBody>
+          <p className="text-sm text-default-600">
+            Unable to load subscription information. Please try refreshing the
+            page.
+          </p>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  // Handle no subscription or no current plan
+  if (!subscriptionStatus || !subscriptionStatus.current_plan) {
     return (
       <Card className="w-full max-w-md">
         <CardHeader>
@@ -40,6 +62,13 @@ export function PaymentSummary() {
             You currently don't have an active subscription. Choose a plan above
             to get started.
           </p>
+          {subscriptionStatus?.subscription && (
+            <div className="mt-2 text-xs text-default-500">
+              <p>
+                Subscription Status: {subscriptionStatus.subscription.status}
+              </p>
+            </div>
+          )}
         </CardBody>
       </Card>
     );
@@ -72,7 +101,9 @@ export function PaymentSummary() {
       <CardBody className="space-y-4">
         <div>
           <h4 className="text-lg font-medium">{plan.name}</h4>
-          <p className="text-sm text-default-600">{plan.description}</p>
+          {plan.description && (
+            <p className="text-sm text-default-600">{plan.description}</p>
+          )}
         </div>
 
         <Divider />

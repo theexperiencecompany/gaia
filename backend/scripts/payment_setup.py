@@ -36,11 +36,10 @@ Example:
 
 import argparse
 import asyncio
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-
-import os
 
 # Ensure Infisical secrets are injected before importing settings
 try:
@@ -121,27 +120,13 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
         {
             "dodo_product_id": "",  # Free plan doesn't need Dodo product ID
             "name": "Free",
-            "description": "Get started with GAIA for free",
+            "description": "All tools & features included, start creating for free",
             "amount": 0,
             "currency": "USD",
             "duration": "monthly",
             "max_users": 1,
             "features": [
-                "Limited file uploads",
-                "Limited calendar management",
-                "Limited email actions",
-                "Limited AI image generation",
-                "Limited goal tracking",
-                "Limited web search",
-                "Limited deep research",
-                "Limited todo operations",
-                "Limited reminders",
-                "Limited weather checks",
-                "Limited webpage fetch",
-                "Limited document generation",
-                "Limited flowchart creation",
-                "Limited code execution",
-                "Limited Google Docs operations",
+                "Limited access to everything",
                 "Basic memory features",
                 "Standard support",
             ],
@@ -149,62 +134,33 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
         },
         {
             "dodo_product_id": monthly_product_id,  # Monthly plan
-            "name": "GAIA Pro",
-            "description": "For productivity nerds - billed monthly",
+            "name": "Pro",
+            "description": "A boost of extra access, because you deserve it",
             "amount": 1500,  # $15.00 in cents
             "currency": "USD",
             "duration": "monthly",
             "max_users": 1,
             "features": [
-                "Extended file uploads",
-                "Extended calendar management",
-                "Extended email actions",
-                "Extended AI image generation",
-                "Extended goal tracking",
-                "Extended web search",
-                "Extended deep research",
-                "Extended todo operations",
-                "Extended reminders",
-                "Extended weather checks",
-                "Extended webpage fetch",
-                "Extended document generation",
-                "Extended flowchart creation",
-                "Extended code execution",
-                "Extended Google Docs operations",
+                "Extended access to everything",
                 "Advanced memory features",
-                "Private Discord channels",
                 "Priority support",
+                "Private Discord access",
             ],
             "is_active": True,
         },
         {
             "dodo_product_id": yearly_product_id,  # Yearly plan
-            "name": "GAIA Pro",
-            "description": "For productivity nerds - billed annually (save 3 months - $45 off!)",
+            "name": "Pro",
+            "description": "A boost of extra access, because you deserve it",
             "amount": 13500,  # $135.00 in cents (3 months free)
             "currency": "USD",
             "duration": "yearly",
             "max_users": 1,
             "features": [
-                "Extended file uploads",
-                "Extended calendar management",
-                "Extended email actions",
-                "Extended AI image generation",
-                "Extended goal tracking",
-                "Extended web search",
-                "Extended deep research",
-                "Extended todo operations",
-                "Extended reminders",
-                "Extended weather checks",
-                "Extended webpage fetch",
-                "Extended document generation",
-                "Extended flowchart creation",
-                "Extended code execution",
-                "Extended Google Docs operations",
+                "Extended access to everything",
                 "Advanced memory features",
-                "Private Discord channels",
                 "Priority support",
-                "🎉 3 months FREE - Save $45",
+                "Private Discord access",
             ],
             "is_active": True,
         },

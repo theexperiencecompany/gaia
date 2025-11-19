@@ -1,13 +1,29 @@
-import { Button } from "@heroui/button";
+import { Button, ButtonGroup } from "@heroui/button";
 import { Card, CardBody } from "@heroui/card";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownTrigger,
+} from "@heroui/dropdown";
 import { Tab, Tabs } from "@heroui/tabs";
-import { List, Network, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  List,
+  Network,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { AiBrain01Icon } from "@/components/shared/icons";
+import {
+  AiBrain01Icon,
+  FileEmpty02Icon,
+  Image02Icon,
+} from "@/components/shared/icons";
 import {
   type Memory,
   memoryApi,
@@ -35,7 +51,14 @@ export default function MemoryManagement({
   const [loading, setLoading] = useState(false);
   const [isAddMemoryModalOpen, setIsAddMemoryModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [selectedTab, setSelectedTab] = useState("list");
+  const [selectedTab, setSelectedTab] = useState("graph");
+  const [selectedExportType, setSelectedExportType] = useState<Set<string>>(
+    new Set(["png"]),
+  );
+  const graphExportRef = useRef<{
+    exportAsSVG: () => void;
+    exportAsPNG: () => void;
+  }>(null);
   const { confirm, confirmationProps } = useConfirmation();
 
   const fetchMemories = useCallback(async () => {
@@ -111,6 +134,27 @@ export default function MemoryManagement({
     }
   }, [confirm]);
 
+  const handleExport = useCallback(() => {
+    const exportType = Array.from(selectedExportType)[0];
+    if (exportType === "svg") {
+      graphExportRef.current?.exportAsSVG();
+      toast.success("Exporting as SVG...");
+    } else {
+      graphExportRef.current?.exportAsPNG();
+      toast.success("Exporting as PNG...");
+    }
+  }, [selectedExportType]);
+
+  const selectedExportValue = Array.from(selectedExportType)[0];
+  const exportLabelsMap: Record<string, string> = {
+    png: "PNG",
+    svg: "SVG",
+  };
+  const exportDescriptionsMap: Record<string, string> = {
+    png: "Export graph as high-quality PNG image",
+    svg: "Export graph as scalable SVG vector",
+  };
+
   const MemoryCard = useCallback(
     ({ memory }: { memory: Memory }) => {
       // Format date to be more readable
@@ -173,108 +217,190 @@ export default function MemoryManagement({
 
   return (
     <div className={`flex h-full min-h-[70vh] flex-col gap-2 ${className}`}>
-      <div className="mb-4 flex items-center justify-end">
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            color="primary"
-            variant="flat"
-            startContent={<Plus className="h-4 w-4" />}
-            onPress={() => setIsAddMemoryModalOpen(true)}
-          >
-            Add Memory
-          </Button>
-          {memories.length > 0 && (
-            <Button
-              size="sm"
-              color="danger"
-              variant="flat"
-              onPress={handleClearAll}
-            >
-              Clear All
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Add memory Modal */}
       <AddMemoryModal
         isOpen={isAddMemoryModalOpen}
         onClose={() => setIsAddMemoryModalOpen(false)}
         onMemoryAdded={() => fetchMemories()}
       />
 
-      {loading ? (
-        <div className="flex h-40 items-center justify-center">
-          <Image
-            alt="GAIA Logo"
-            src={"/images/logos/logo.webp"}
-            width={30}
-            height={30}
-            className={`animate-spin`}
-          />
-        </div>
-      ) : memories.length === 0 ? (
+      {memories.length === 0 && !loading ? (
         <div className="flex h-40 flex-col items-center justify-center text-gray-500">
           <AiBrain01Icon className="mb-3 h-12 w-12 opacity-30" />
           <p>No memories yet</p>
           <p className="text-sm">
             Start a conversation and GAIA will remember important details
           </p>
+          <Button
+            size="sm"
+            color="primary"
+            variant="flat"
+            className="mt-4"
+            startContent={<Plus className="h-4 w-4" />}
+            onPress={() => setIsAddMemoryModalOpen(true)}
+          >
+            Add Memory
+          </Button>
         </div>
       ) : (
         <div className="flex flex-1 flex-col overflow-hidden">
-          <Tabs
-            selectedKey={selectedTab}
-            onSelectionChange={(key) => setSelectedTab(key as string)}
-            variant="underlined"
-            classNames={{
-              tabList:
-                "gap-6 w-full relative rounded-none p-0 border-b border-divider flex justify-center",
-              cursor: "w-full bg-primary",
-              tab: "max-w-fit px-0",
-              tabContent: "group-data-[selected=true]:text-primary",
-            }}
-          >
-            <Tab
-              key="list"
-              title={
-                <div className="flex items-center gap-2">
-                  <List className="h-4 w-4" />
-                  <span>List View</span>
-                </div>
-              }
+          <div className="flex items-center justify-between">
+            <Tabs
+              selectedKey={selectedTab}
+              onSelectionChange={(key) => setSelectedTab(key as string)}
+              variant="light"
             >
-              <div className="mt-4 max-h-[60vh] flex-1 space-y-2 overflow-y-auto pr-2">
-                {memories.map((memory) => (
-                  <MemoryCard key={memory.id} memory={memory} />
-                ))}
-              </div>
-            </Tab>
-            <Tab
-              key="graph"
-              title={
-                <div className="flex items-center gap-2">
-                  <Network className="h-4 w-4" />
-                  <span>Graph View</span>
-                </div>
-              }
-            >
-              <div
-                className="mt-4 flex-1"
-                style={{ height: "calc(100vh - 300px)" }}
+              <Tab
+                key="graph"
+                title={
+                  <div className="flex items-center gap-2">
+                    <Network className="h-4 w-4" />
+                    <span>Graph View</span>
+                  </div>
+                }
+              />
+              <Tab
+                key="list"
+                title={
+                  <div className="flex items-center gap-2">
+                    <List className="h-4 w-4" />
+                    <span>List View</span>
+                  </div>
+                }
+              />
+            </Tabs>
+
+            <div className="flex gap-2">
+              {memories.length > 0 && (
+                <Button color="danger" variant="flat" onPress={handleClearAll}>
+                  Clear All
+                </Button>
+              )}
+
+              {selectedTab === "graph" && (
+                <ButtonGroup variant="flat">
+                  <Button
+                    onPress={handleExport}
+                    startContent={
+                      selectedExportValue === "png" ? (
+                        <Image02Icon
+                          className="h-5 min-h-5 w-5 min-w-5"
+                          color="currentColor"
+                        />
+                      ) : (
+                        <FileEmpty02Icon
+                          className="h-5 min-h-5 w-5 min-w-5"
+                          color="currentColor"
+                        />
+                      )
+                    }
+                  >
+                    Export as {exportLabelsMap[selectedExportValue]}
+                  </Button>
+                  <Dropdown placement="bottom-end">
+                    <DropdownTrigger>
+                      <Button isIconOnly>
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                    </DropdownTrigger>
+                    <DropdownMenu
+                      disallowEmptySelection
+                      aria-label="Export options"
+                      className="max-w-[300px]"
+                      selectedKeys={selectedExportType}
+                      selectionMode="single"
+                      onSelectionChange={(keys) =>
+                        setSelectedExportType(keys as Set<string>)
+                      }
+                    >
+                      <DropdownItem
+                        key="png"
+                        description={exportDescriptionsMap.png}
+                        startContent={
+                          <Image02Icon
+                            className="h-6 min-h-6 w-6 min-w-6"
+                            color="currentColor"
+                          />
+                        }
+                      >
+                        {exportLabelsMap.png}
+                      </DropdownItem>
+                      <DropdownItem
+                        key="svg"
+                        description={exportDescriptionsMap.svg}
+                        startContent={
+                          <FileEmpty02Icon
+                            className="h-6 min-h-6 w-6 min-w-6"
+                            color="currentColor"
+                          />
+                        }
+                      >
+                        {exportLabelsMap.svg}
+                      </DropdownItem>
+                    </DropdownMenu>
+                  </Dropdown>
+                </ButtonGroup>
+              )}
+              <Button
+                color="primary"
+                startContent={<Plus className="h-4 w-4" />}
+                onPress={() => setIsAddMemoryModalOpen(true)}
               >
-                <MemoryGraph
-                  memories={memories}
-                  relations={relations}
-                  onNodeClick={(node) => {
-                    console.log("Node clicked:", node);
-                    // Add navigation logic here if needed
-                  }}
-                />
-              </div>
-            </Tab>
-          </Tabs>
+                Add Memory
+              </Button>
+            </div>
+          </div>
+
+          {/* Tab content */}
+          <div className="mt-4 flex-1">
+            {selectedTab === "list" && (
+              <>
+                {loading ? (
+                  <div className="space-y-2">
+                    {[...Array(5)].map((_, i) => (
+                      <Card key={i} className="bg-zinc-800 shadow-none">
+                        <CardBody>
+                          <div className="flex animate-pulse flex-col gap-2">
+                            <div className="h-4 w-3/4 rounded bg-zinc-700" />
+                            <div className="h-3 w-1/2 rounded bg-zinc-700" />
+                          </div>
+                        </CardBody>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="max-h-[80vh] space-y-2 overflow-y-auto pr-2">
+                    {memories.map((memory) => (
+                      <MemoryCard key={memory.id} memory={memory} />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {selectedTab === "graph" && (
+              <>
+                {loading ? (
+                  <div className="flex h-full items-center justify-center">
+                    <Image
+                      alt="GAIA Logo"
+                      src={"/images/logos/logo.webp"}
+                      width={30}
+                      height={30}
+                      className="animate-spin"
+                    />
+                  </div>
+                ) : (
+                  <div className="h-[80vh]">
+                    <MemoryGraph
+                      ref={graphExportRef}
+                      memories={memories}
+                      relations={relations}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 

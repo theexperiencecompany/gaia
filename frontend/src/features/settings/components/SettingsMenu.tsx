@@ -5,36 +5,53 @@ import {
   Dropdown,
   DropdownItem,
   DropdownMenu,
+  DropdownSection,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import { CircleArrowUp } from "lucide-react";
+import {
+  BookIcon,
+  ChevronRight,
+  CircleArrowUp,
+  LogOut,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
-import React, { ReactNode, useState } from "react";
+import { ReactNode, useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import {
   BookOpen01Icon,
-  Brain02Icon,
+  BubbleChatQuestionIcon,
   CustomerService01Icon,
-  DiscordIcon,
+  Github,
+  QuillWrite01Icon,
   Settings01Icon,
   ThreeDotsMenu,
-  TwitterIcon,
-  WhatsappIcon,
 } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { ContactSupportModal } from "@/features/support";
 import { useConfirmation } from "@/hooks/useConfirmation";
 
-// Only allow these values in our modal state.
+import { settingsPageItems, socialMediaItems } from "../config/settingsConfig";
+import { useNestedMenu } from "../hooks/useNestedMenu";
+import LogoutModal from "./LogoutModal";
+import { NestedMenuTooltip } from "./NestedMenuTooltip";
+
 export type ModalAction = "clear_chats" | "logout";
 
 interface MenuItem {
   key: string;
-  label: React.ReactNode;
-  color?: "danger";
+  label: string;
+  icon?: React.ElementType;
+  href?: string;
   action?: () => void;
+  color?: "danger" | "default";
+  external?: boolean;
+  hasSubmenu?: boolean;
+  iconColor?: string;
+  customClassNames?: {
+    title?: string;
+  };
 }
 
 export default function SettingsMenu({
@@ -53,132 +70,246 @@ export default function SettingsMenu({
   const whatsappLink = getLinkByLabel("WhatsApp");
   const twitterLink = getLinkByLabel("Twitter");
   const docsLink = getLinkByLabel("Documentation");
+  const githubLink = getLinkByLabel("GitHub");
   const [supportModalOpen, setSupportModalOpen] = useState(false);
+  const [modalAction, setModalAction] = useState<ModalAction | null>(null);
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
 
-  const items: MenuItem[] = [
+  const resourcesMenu = useNestedMenu();
+  const supportMenu = useNestedMenu();
+
+  const iconClasses = "w-[18px] h-[18px]";
+
+  const resourcesMenuItems = [
     {
-      key: "manage_memories",
-      label: (
-        <div className="flex items-center gap-2">
-          <BookOpen01Icon color="#9b9b9b" width={18} />
-          Documentation
-        </div>
-      ),
+      key: "documentation",
+      label: "Documentation",
+      icon: BookOpen01Icon,
       action: () => window.open(docsLink?.href, "_blank"),
     },
+    {
+      key: "changelog",
+      label: "Changelog",
+      icon: BookIcon,
+      action: () => router.push("/changelog"),
+    },
+    {
+      key: "blog",
+      label: "Blog",
+      icon: QuillWrite01Icon,
+      action: () => router.push("/blog"),
+    },
+    {
+      key: "roadmap",
+      label: "Roadmap",
+      icon: BookOpen01Icon,
+      action: () => window.open("https://roadmap.heygaia.ai", "_blank"),
+    },
+    {
+      key: "opensource",
+      label: "Open Source",
+      icon: Github,
+      action: () => window.open(githubLink?.href, "_blank"),
+    },
+  ];
 
-    // Only show Upgrade to Pro if user doesn't have active subscription
+  const supportMenuItems = [
+    {
+      key: "contact_support",
+      label: "Contact Support",
+      icon: CustomerService01Icon,
+      action: () => setSupportModalOpen(true),
+    },
+    {
+      key: "feature_request",
+      label: "Request a Feature",
+      icon: BubbleChatQuestionIcon,
+      action: () => setSupportModalOpen(true),
+    },
+  ];
+
+  const socialMediaColorMap: Record<string, string> = {
+    twitter: "#1da1f2",
+    discord: "#5865F2",
+    whatsapp: "#25d366",
+  };
+
+  const handleItemAction = (item: MenuItem) => {
+    if (item.href) {
+      router.push(item.href);
+    } else if (item.action) {
+      item.action();
+    } else if (item.external) {
+      const linkMap: Record<string, string | undefined> = {
+        discord: discordLink?.href,
+        whatsapp: whatsappLink?.href,
+        twitter: twitterLink?.href,
+        documentation: docsLink?.href,
+      };
+      const url = linkMap[item.key];
+      if (url) window.open(url, "_blank");
+    }
+  };
+
+  const menuSections = [
     ...(subscriptionStatus?.is_subscribed
       ? []
       : [
           {
-            key: "upgrade_to_pro",
-            label: (
-              <div className="flex items-center gap-2 text-primary">
-                <CircleArrowUp width={18} height={18} color="#00bbff" />
-                Upgrade to Pro
-              </div>
-            ),
-            action: () => router.push("/pricing"),
+            title: undefined,
+            showDivider: true,
+            items: [
+              {
+                key: "upgrade_to_pro",
+                label: "Upgrade to Pro",
+                action: () => router.push("/pricing"),
+                icon: CircleArrowUp,
+                iconColor: "#00bbff",
+                customClassNames: { title: "text-primary font-medium" },
+              },
+            ],
           },
         ]),
-
     {
-      key: "contact_support",
-      label: (
-        <div className="flex items-center gap-2">
-          <CustomerService01Icon color={"#9b9b9b"} width={18} />
-          Contact Support
-        </div>
-      ),
-      action: () => setSupportModalOpen(true),
-    },
-    // {
-    //   key: "feature_request",
-    //   label: (
-    //     <div className="flex items-center gap-2">
-    //       <BubbleChatQuestionIcon color={"#9b9b9b"} width={18} />
-    //       Feature Request
-    //     </div>
-    //   ),
-    //   action: () => setSupportModalOpen(true),
-    // },
-    {
-      key: "manage_memories",
-      label: (
-        <div className="flex items-center gap-2">
-          <Brain02Icon color="#9b9b9b" width={18} />
-          Memories
-        </div>
-      ),
-      action: () => router.push("/settings?section=memory"),
+      title: "Settings",
+      showDivider: true,
+      items: [
+        ...settingsPageItems.filter((item) => item.key !== "subscription"),
+      ],
     },
     {
-      key: "twitter",
-      label: (
-        <div className="flex items-center gap-2 text-[#1da1f2]">
-          <TwitterIcon />
-          Follow Us
-        </div>
-      ),
-      action: () => window.open(twitterLink?.href, "_blank"),
+      title: "Community",
+      showDivider: true,
+      items: socialMediaItems,
     },
     {
-      key: "discord",
-      label: (
-        <div className="flex items-center gap-2 text-[#5865F2]">
-          <DiscordIcon color="#5865F2" width={18} />
-          Join Discord
-        </div>
-      ),
-      action: () => window.open(discordLink?.href, "_blank"),
-    },
-    {
-      key: "whatsapp",
-      label: (
-        <div className="flex items-center gap-2 text-[#25d366]">
-          <WhatsappIcon color="#25d366" width={18} />
-          Join WhatsApp
-        </div>
-      ),
-      action: () => window.open(whatsappLink?.href, "_blank"),
-    },
-    {
-      key: "settings",
-      label: (
-        <div className="flex items-center gap-2">
-          <Settings01Icon color="#9b9b9b" width={18} />
-          Settings
-        </div>
-      ),
-      action: () => router.push("/settings"),
+      title: undefined,
+      showDivider: false,
+      items: [
+        {
+          key: "resources",
+          label: "Resources",
+          icon: BookOpen01Icon,
+          hasSubmenu: true,
+        },
+        {
+          key: "support",
+          label: "Support",
+          icon: CustomerService01Icon,
+          hasSubmenu: true,
+        },
+        {
+          key: "settings",
+          label: "Settings",
+          icon: Settings01Icon,
+          action: () => router.push("/settings"),
+        },
+        {
+          key: "logout",
+          label: "Sign Out",
+          icon: LogOut,
+          color: "danger" as const,
+          action: () => setModalAction("logout"),
+        },
+      ],
     },
   ];
 
   return (
     <>
-      <Dropdown className="text-foreground dark shadow-xl">
+      <Dropdown
+        placement="right"
+        className="bg-[#141414] text-foreground dark shadow-xl"
+        offset={21}
+      >
         <DropdownTrigger>{children}</DropdownTrigger>
-        <DropdownMenu aria-label="Dynamic Actions">
-          {items.map((item) => (
-            <DropdownItem
-              key={item.key}
-              className={item.color === "danger" ? "text-danger" : ""}
-              color={item.color === "danger" ? "danger" : "default"}
-              textValue={item.key}
-              onPress={item.action}
+        <DropdownMenu aria-label="Settings Menu" variant="faded">
+          {menuSections.map((section, index) => (
+            <DropdownSection
+              key={section.title || `section-${index}`}
+              title={section.title}
+              showDivider={section.showDivider}
+              classNames={{ divider: "bg-zinc-800/60" }}
             >
-              {item.label}
-            </DropdownItem>
+              {section.items.map((item: MenuItem) => {
+                const Icon = item.icon;
+                const iconColor =
+                  item.iconColor || socialMediaColorMap[item.key];
+
+                // Handle nested menus (Resources and Support)
+                if (item.hasSubmenu) {
+                  const menu =
+                    item.key === "resources" ? resourcesMenu : supportMenu;
+
+                  return (
+                    <DropdownItem
+                      key={item.key}
+                      textValue={item.label}
+                      variant="flat"
+                      onMouseEnter={menu.handleMouseEnter}
+                      onMouseLeave={menu.handleMouseLeave}
+                      className="text-zinc-400 transition hover:text-white"
+                      startContent={Icon && <Icon className={iconClasses} />}
+                      endContent={
+                        <ChevronRight className="h-4 w-4 text-zinc-500" />
+                      }
+                    >
+                      {item.label}
+                    </DropdownItem>
+                  );
+                }
+
+                return (
+                  <DropdownItem
+                    key={item.key}
+                    textValue={item.label}
+                    variant="flat"
+                    color={item.color}
+                    onPress={() => handleItemAction(item)}
+                    className={
+                      item.color === "danger"
+                        ? "text-danger"
+                        : iconColor
+                          ? "transition"
+                          : "text-zinc-400 transition hover:text-white"
+                    }
+                    style={iconColor ? { color: iconColor } : undefined}
+                    startContent={
+                      Icon && <Icon className={iconClasses} color={iconColor} />
+                    }
+                    classNames={item.customClassNames}
+                  >
+                    {item.label}
+                  </DropdownItem>
+                );
+              })}
+            </DropdownSection>
           ))}
         </DropdownMenu>
       </Dropdown>
+
+      <NestedMenuTooltip
+        isOpen={resourcesMenu.isOpen}
+        onOpenChange={resourcesMenu.setIsOpen}
+        itemRef={resourcesMenu.itemRef}
+        menuItems={resourcesMenuItems}
+        iconClasses={iconClasses}
+      />
+
+      <NestedMenuTooltip
+        isOpen={supportMenu.isOpen}
+        onOpenChange={supportMenu.setIsOpen}
+        itemRef={supportMenu.itemRef}
+        menuItems={supportMenuItems}
+        iconClasses={iconClasses}
+      />
 
       <ContactSupportModal
         isOpen={supportModalOpen}
         onOpenChange={() => setSupportModalOpen(false)}
       />
+
+      <LogoutModal modalAction={modalAction} setModalAction={setModalAction} />
 
       <ConfirmationDialog {...confirmationProps} />
     </>

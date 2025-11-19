@@ -13,13 +13,19 @@ import { posthog } from "@/lib";
 // Removed currency import - using USD only
 import { useDodoPayments } from "../hooks/useDodoPayments";
 
+interface Feature {
+  text: string;
+  icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+}
+
 interface PricingCardProps {
   title: string;
   type: "main" | "secondary";
   price: number; // Price in USD cents (already discounted if applicable)
   originalPrice?: number; // Original price before discount (for yearly plans)
+  description?: string; // Add description prop for subtitle
   featurestitle?: React.ReactNode;
-  features?: string[];
+  features?: (string | Feature)[]; // Can be array of strings or Feature objects
   durationIsMonth: boolean;
   className?: string;
   planId?: string; // Add planId prop for backend integration
@@ -32,6 +38,7 @@ export function PricingCard({
   type,
   price,
   originalPrice,
+  description,
   featurestitle,
   features,
   durationIsMonth,
@@ -124,27 +131,29 @@ export function PricingCard({
     await createSubscriptionAndRedirect(planId);
   };
 
+  // Determine button text based on plan type
+  const getButtonText = () => {
+    if (isCreatingSubscription) return "Creating subscription...";
+    if (isCurrentPlan && hasActiveSubscription) return "Current Plan";
+    if (hasActiveSubscription && !isCurrentPlan) return "Switch Plan";
+
+    // New button text format
+    if (price === 0) return "Go Free";
+    return "Go Pro";
+  };
+
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-3xl pt-4 ${className} bg-zinc-800/40 backdrop-blur-xl ${
-        isCurrentPlan && hasActiveSubscription
-          ? "ring-2 ring-green-500 ring-offset-2 ring-offset-zinc-950"
-          : ""
-      }`}
+      className={`relative w-full overflow-hidden rounded-3xl bg-white/10 backdrop-blur-sm ${className}`}
     >
-      {!durationIsMonth && freeMonths > 0 && (
-        <div className="absolute top-0 w-full bg-primary/20 p-1 text-center text-sm font-medium text-primary">
-          Get {freeMonths} month{freeMonths > 1 ? "s" : ""} free!
-        </div>
-      )}
-
-      <div className="flex h-full flex-col gap-4 p-6">
-        <div className="flex flex-row items-center justify-between border-none!">
+      {/* Outer Card - Title Section (z-index: 1) */}
+      <div className="relative z-[1] flex flex-col gap-2 border-none! p-6 pb-4">
+        <div className="flex flex-row items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">{title}</span>
+            <span className="text-2xl font-semibold">{title}</span>
             {isCurrentPlan && hasActiveSubscription && (
               <Chip
-                className="flex items-center gap-[2px] border-none! text-xs"
+                className="flex items-center gap-[2px] text-xs"
                 color="success"
                 variant="flat"
               >
@@ -152,19 +161,20 @@ export function PricingCard({
               </Chip>
             )}
           </div>
-          {!durationIsMonth && discountPercentage > 0 && !isCurrentPlan && (
-            <Chip
-              className="flex items-center gap-[2px] border-none! text-sm text-primary"
-              color="primary"
-              size="sm"
-              variant="flat"
-            >
-              <span>Save {discountPercentage}%</span>
-            </Chip>
-          )}
         </div>
+      </div>
 
-        <div className="m-0! flex flex-col gap-0 border-none!">
+      {/* Inner Nested Card - Price & Button (z-index: -1) */}
+      <div className="relative z-[-1] mx-4 mb-4 flex flex-col gap-4 overflow-hidden rounded-3xl bg-black/70 p-6 shadow-xl backdrop-blur-2xl">
+        {/* Description/Subtitle */}
+        {description && (
+          <p className="font-sm text-sm leading-relaxed text-zinc-200">
+            {description}
+          </p>
+        )}
+
+        {/* Price Section */}
+        <div className="relative z-[1] m-0! flex flex-col gap-0 border-none!">
           <div className="flex items-baseline gap-2 border-none!">
             {originalPriceFormatted && !durationIsMonth && (
               <span className="text-3xl font-normal text-red-500 line-through">
@@ -182,26 +192,8 @@ export function PricingCard({
           </span>
         </div>
 
-        <div className="mt-1 flex flex-1 flex-col gap-1">
-          {featurestitle}
-
-          {!!features &&
-            features.map((feature: string, index: number) => (
-              <div
-                key={index}
-                className="flex items-center gap-3 border-none! text-sm font-light"
-              >
-                <Tick02Icon
-                  height="20"
-                  width="20"
-                  className="min-h-[20px] min-w-[22px] text-primary"
-                />
-                {feature}
-              </div>
-            ))}
-        </div>
-
-        <div className="space-y-3">
+        {/* Button Section */}
+        <div className="relative z-[1] space-y-3">
           {paymentError && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-3">
               <p className="text-sm text-red-600">{paymentError}</p>
@@ -209,29 +201,46 @@ export function PricingCard({
           )}
 
           <RaisedButton
-            className={`w-full ${price === 0 ? "text-zinc-300!" : "text-black!"} `}
-            color={
-              // isCurrentPlan && hasActiveSubscription ? "success" : "primary"
-              price === 0 ? "#3b3b3b" : "#00bbff"
-            }
-            // variant={type === "main" ? "solid" : "flat"}s
+            className={`w-full ${price === 0 ? "text-zinc-400!" : "text-black!"} `}
+            color={price === 0 ? "#3b3b3b" : "#00bbff"}
             onClick={handleGetStarted}
-            // isLoading={isCreatingSubscription}
             disabled={
               isCreatingSubscription || (isCurrentPlan && hasActiveSubscription)
             }
           >
-            {isCreatingSubscription
-              ? "Creating subscription..."
-              : isCurrentPlan && hasActiveSubscription
-                ? "Active Plan"
-                : hasActiveSubscription && !isCurrentPlan
-                  ? "Switch Plan"
-                  : price === 0
-                    ? "Get started"
-                    : "Subscribe now"}
+            {getButtonText()}
           </RaisedButton>
         </div>
+      </div>
+
+      {/* Features Section - Back in Outer Card */}
+      <div className="relative z-[1] flex flex-1 flex-col gap-2 px-6 pb-6">
+        {featurestitle}
+
+        {!!features &&
+          features.map((feature, index) => {
+            // Handle both string and Feature object formats
+            const featureText =
+              typeof feature === "string" ? feature : feature.text;
+            const FeatureIcon =
+              typeof feature === "object" && feature.icon
+                ? feature.icon
+                : Tick02Icon;
+
+            return (
+              <div
+                key={index}
+                className="flex items-center gap-3 border-none! text-sm font-light"
+              >
+                <FeatureIcon
+                  height="16"
+                  width="16"
+                  className="min-h-[20px] min-w-[22px] text-white"
+                />
+                {featureText}
+              </div>
+            );
+          })}
       </div>
     </div>
   );

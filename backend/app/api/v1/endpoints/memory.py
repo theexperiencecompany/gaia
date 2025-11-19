@@ -1,7 +1,5 @@
 """Memory management API routes."""
 
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
@@ -120,28 +118,17 @@ async def clear_all_memories(
         raise HTTPException(status_code=400, detail="User ID not found")
 
     try:
-        # Get all memories and delete them one by one
-        # (Mem0 doesn't have a bulk delete, so we iterate)
-        all_memories = await memory_service.get_all_memories(user_id=user_id)
+        # Use the new delete_all_memories method from v2 API
+        success = await memory_service.delete_all_memories(user_id=user_id)
 
-        deleted_count = 0
-        # Create deletion tasks for all memories
-        deletion_tasks = []
-        for memory in all_memories.memories:
-            if memory.id:
-                task = memory_service.delete_memory(
-                    memory_id=memory.id, user_id=user_id
-                )
-                deletion_tasks.append(task)
-
-        # Execute all deletion tasks concurrently and collect results
-        if deletion_tasks:
-            results = await asyncio.gather(*deletion_tasks)
-            deleted_count = sum(1 for result in results if result)
-
-        return DeleteMemoryResponse(
-            success=True, message=f"Cleared {deleted_count} memories successfully"
-        )
+        if success:
+            return DeleteMemoryResponse(
+                success=True, message="All memories cleared successfully"
+            )
+        else:
+            return DeleteMemoryResponse(
+                success=False, message="Failed to clear memories"
+            )
     except Exception as e:
         return DeleteMemoryResponse(
             success=False, message=f"Failed to clear memories: {str(e)}"

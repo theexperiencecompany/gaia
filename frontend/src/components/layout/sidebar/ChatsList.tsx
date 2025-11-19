@@ -2,7 +2,7 @@
 
 import { isToday, isYesterday, subDays } from "date-fns";
 import { Loader } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Accordion,
@@ -134,28 +134,40 @@ export default function ChatsList() {
   const isLoading = loading;
   const isError = !!error;
 
-  // Calculate which accordions should be open by default - show ALL expanded
-  const getDefaultAccordionValues = () => {
-    const defaultValues: string[] = [];
+  // Calculate which accordions should be open - controlled state
+  const getAccordionValues = () => {
+    const values: string[] = [];
 
     // Add system conversations if they exist
     if (systemConversations.length > 0) {
-      defaultValues.push("system-conversations");
+      values.push("system-conversations");
     }
 
     // Add starred chats if they exist
     if (starredConversations.length > 0) {
-      defaultValues.push("starred-chats");
+      values.push("starred-chats");
     }
 
-    // Add ALL time frame sections - show everything expanded by default
+    // Add ALL time frame sections - show everything expanded
     const timeFrameValues = sortedTimeFrames.map(([timeFrame]) =>
       timeFrame.toLowerCase().replace(/\s+/g, "-"),
     );
-    defaultValues.push(...timeFrameValues);
+    values.push(...timeFrameValues);
 
-    return defaultValues;
+    return values;
   };
+
+  // Use controlled state for accordion values that updates with conversations
+  const [openAccordions, setOpenAccordions] = useState<string[]>([]);
+
+  // Update open accordions whenever conversations change
+  useEffect(() => {
+    setOpenAccordions(getAccordionValues());
+  }, [
+    systemConversations.length,
+    starredConversations.length,
+    sortedTimeFrames.length,
+  ]);
 
   return (
     <>
@@ -173,7 +185,8 @@ export default function ChatsList() {
         <Accordion
           type="multiple"
           className="w-full p-0"
-          defaultValue={getDefaultAccordionValues()}
+          value={openAccordions}
+          onValueChange={setOpenAccordions}
         >
           {/* System-generated conversations */}
           {systemConversations.length > 0 && (

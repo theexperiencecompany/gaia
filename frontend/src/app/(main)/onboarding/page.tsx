@@ -5,6 +5,7 @@ import {
   OnboardingComplete,
   OnboardingInput,
   OnboardingMessages,
+  OnboardingProgress,
 } from "@/features/onboarding/components";
 import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
 
@@ -19,11 +20,17 @@ export default function Onboarding() {
     handleInputChange,
     handleSubmit,
     handleLetsGo,
+    handleRestart,
   } = useOnboarding();
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#1a1a1a] backdrop-blur-2xl">
-      {/* <OnboardingBackground /> */}
+      {/* Progress Indicator - 3 steps: name, profession, connections */}
+      <OnboardingProgress
+        currentStep={onboardingState.currentQuestionIndex}
+        totalSteps={3}
+        onRestart={handleRestart}
+      />
 
       {/* Messages Container */}
       <div className="relative z-10 flex-1 overflow-y-auto px-4 pt-20 pb-10">

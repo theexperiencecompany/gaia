@@ -11,7 +11,7 @@ export function SettingsCardSimple({
 }: SettingsCardSimpleProps) {
   return (
     <div
-      className={`rounded-2xl bg-zinc-900 p-4 outline-1 outline-zinc-800 ${className}`}
+      className={`mx-auto max-w-3xl rounded-2xl bg-[#141414] p-4 ${className}`}
     >
       {children}
     </div>
