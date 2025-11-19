@@ -58,8 +58,16 @@ class DBEventEmitter extends EventEmitter {
     this.emit("messageUpdated", message);
   }
 
+  emitMessageDeleted(messageId: string, conversationId: string) {
+    this.emit("messageDeleted", messageId, conversationId);
+  }
+
   emitMessagesSynced(conversationId: string, messages: IMessage[]) {
     this.emit("messagesSynced", conversationId, messages);
+  }
+
+  emitMessageIdReplaced(oldId: string, newMessage: IMessage) {
+    this.emit("messageIdReplaced", oldId, newMessage);
   }
 
   emitConversationAdded(conversation: IConversation) {
@@ -230,10 +238,6 @@ export class ChatDexie extends Dexie {
         return;
       }
 
-      // Delete optimistic message
-      await this.messages.delete(optimisticId);
-
-      // Create new message with backend ID
       const updatedMessage: IMessage = {
         ...message,
         id: backendId,
@@ -242,9 +246,10 @@ export class ChatDexie extends Dexie {
         updatedAt: new Date(),
       };
 
+      await this.messages.delete(optimisticId);
       await this.messages.put(updatedMessage);
-
-      dbEventEmitter.emitMessageUpdated(updatedMessage);
+      
+      dbEventEmitter.emitMessageIdReplaced(optimisticId, updatedMessage);
     });
   }
 

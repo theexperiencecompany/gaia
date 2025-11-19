@@ -42,6 +42,7 @@ interface ChatState {
   ) => void;
   addOrUpdateMessage: (message: IMessage) => void;
   removeConversation: (conversationId: string) => void;
+  removeMessage: (messageId: string, conversationId: string) => void;
   setActiveConversationId: (id: string | null) => void;
   setConversationsLoadingStatus: (status: LoadingStatus) => void;
   // Optimistic message management for new conversations (single message only)
@@ -137,6 +138,19 @@ export const useChatStore = create<ChatState>((set) => ({
       };
     }),
 
+  removeMessage: (messageId, conversationId) =>
+    set((state) => {
+      const messages = state.messagesByConversation[conversationId] ?? [];
+      const filteredMessages = messages.filter((msg) => msg.id !== messageId);
+
+      return {
+        messagesByConversation: {
+          ...state.messagesByConversation,
+          [conversationId]: filteredMessages,
+        },
+      };
+    }),
+
   setActiveConversationId: (id) => set({ activeConversationId: id }),
 
   setConversationsLoadingStatus: (status) =>
@@ -189,6 +203,10 @@ export const useChatStoreSync = () => {
       useChatStore.getState().addOrUpdateMessage(message);
     };
 
+    const handleMessageDeleted = (messageId: string, conversationId: string) => {
+      useChatStore.getState().removeMessage(messageId, conversationId);
+    };
+
     const handleMessagesSynced = (
       conversationId: string,
       messages: IMessage[],
@@ -196,6 +214,15 @@ export const useChatStoreSync = () => {
       useChatStore
         .getState()
         .setMessagesForConversation(conversationId, messages);
+    };
+
+    const handleMessageIdReplaced = (oldId: string, newMessage: IMessage) => {
+      const state = useChatStore.getState();
+      const messages = state.messagesByConversation[newMessage.conversationId] ?? [];
+      const updatedMessages = messages.map((msg) => 
+        msg.id === oldId ? newMessage : msg
+      );
+      state.setMessagesForConversation(newMessage.conversationId, updatedMessages);
     };
 
     const handleConversationAdded = (conversation: IConversation) => {
@@ -208,7 +235,9 @@ export const useChatStoreSync = () => {
 
     dbEventEmitter.on("messageAdded", handleMessageAdded);
     dbEventEmitter.on("messageUpdated", handleMessageUpdated);
+    dbEventEmitter.on("messageDeleted", handleMessageDeleted);
     dbEventEmitter.on("messagesSynced", handleMessagesSynced);
+    dbEventEmitter.on("messageIdReplaced", handleMessageIdReplaced);
     dbEventEmitter.on("conversationAdded", handleConversationAdded);
     dbEventEmitter.on("conversationUpdated", handleConversationUpdated);
 
@@ -216,7 +245,9 @@ export const useChatStoreSync = () => {
       isActive = false;
       dbEventEmitter.off("messageAdded", handleMessageAdded);
       dbEventEmitter.off("messageUpdated", handleMessageUpdated);
+      dbEventEmitter.off("messageDeleted", handleMessageDeleted);
       dbEventEmitter.off("messagesSynced", handleMessagesSynced);
+      dbEventEmitter.off("messageIdReplaced", handleMessageIdReplaced);
       dbEventEmitter.off("conversationAdded", handleConversationAdded);
       dbEventEmitter.off("conversationUpdated", handleConversationUpdated);
     };
