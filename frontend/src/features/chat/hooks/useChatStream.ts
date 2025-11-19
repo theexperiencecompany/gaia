@@ -401,8 +401,6 @@ export const useChatStream = () => {
         return;
       }
 
-      console.log(refs.current);
-
       // Add to the accumulated response if there's new response content
       if (data.response) {
         refs.current.accumulatedResponse += data.response;
