@@ -20,6 +20,8 @@ const ChatPage = React.memo(function MainChat() {
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
 
+  console.log({ convoMessages });
+
   // Fetching status on chat-page to resolve caching issues when new integration is connected
   useFetchIntegrationStatus({
     refetchOnMount: "always",

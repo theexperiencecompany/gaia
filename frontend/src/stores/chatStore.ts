@@ -167,6 +167,7 @@ export const useChatStoreSync = () => {
     };
 
     const handleConversationAdded = (conversation: IConversation) => {
+      console.log("Conversation added event received:", conversation.id);
       useChatStore.getState().upsertConversation(conversation);
     };
 

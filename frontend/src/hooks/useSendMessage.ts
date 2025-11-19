@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
@@ -20,7 +20,23 @@ type SendMessageOverrides = {
 };
 
 export const useSendMessage = () => {
+  const hookIdRef = useRef(
+    `sendMessage-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  );
+  const hookId = hookIdRef.current;
+
   const fetchChatStream = useChatStream();
+
+  useEffect(() => {
+    console.log(`[useSendMessage:${hookId}] Hook MOUNTED`);
+    return () => {
+      console.log(`[useSendMessage:${hookId}] Hook UNMOUNTING`);
+    };
+  }, [hookId]);
+
+  useEffect(() => {
+    console.log(`[useSendMessage:${hookId}] fetchChatStream reference updated`);
+  }, [hookId, fetchChatStream]);
 
   return useCallback(
     async (
@@ -28,6 +44,12 @@ export const useSendMessage = () => {
       conversationId?: string | null,
       overrides?: SendMessageOverrides,
     ) => {
+      console.log(`[useSendMessage:${hookId}] sendMessage called:`, {
+        contentLength: content.length,
+        conversationId,
+        hasOverrides: !!overrides,
+      });
+
       const trimmedContent = content.trim();
       if (!trimmedContent) {
         return;
@@ -72,6 +94,9 @@ export const useSendMessage = () => {
       };
 
       if (!conversationId) {
+        console.log(
+          `[useSendMessage:${hookId}] No conversationId - creating new conversation`,
+        );
         await fetchChatStream(
           trimmedContent,
           [userMessage],
@@ -84,6 +109,10 @@ export const useSendMessage = () => {
         );
         return;
       }
+
+      console.log(
+        `[useSendMessage:${hookId}] Persisting optimistic message to IndexedDB`,
+      );
 
       const optimisticMessage: IMessage = {
         id: tempMessageId,
@@ -119,6 +148,9 @@ export const useSendMessage = () => {
       };
 
       try {
+        console.log(
+          `[useSendMessage:${hookId}] Starting stream with existing conversationId`,
+        );
         await fetchChatStream(
           trimmedContent,
           [streamingUserMessage],
@@ -129,6 +161,7 @@ export const useSendMessage = () => {
           selectedWorkflow,
           selectedCalendarEvent,
         );
+        console.log(`[useSendMessage:${hookId}] Stream completed successfully`);
       } catch {
         const failedMessage: IMessage = {
           ...optimisticMessage,
@@ -141,10 +174,8 @@ export const useSendMessage = () => {
         } catch {
           // Ignore persistence failures for failure state updates
         }
-
-        // db.putMessage will emit event that updates Zustand store automatically
       }
     },
-    [fetchChatStream],
+    [fetchChatStream, hookId],
   );
 };

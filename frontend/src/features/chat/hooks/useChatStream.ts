@@ -24,6 +24,12 @@ export const useChatStream = () => {
   const { convoMessages } = useConversation();
   const { setLoadingText, resetLoadingText } = useLoadingText();
 
+  // Generate unique ID for this hook instance
+  const hookIdRef = useRef(
+    `chatStream-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  );
+  const hookId = hookIdRef.current;
+
   // Add ref to track if a stream is already in progress
   const streamInProgressRef = useRef(false);
 
@@ -40,20 +46,15 @@ export const useChatStream = () => {
     },
   });
 
-  useEffect(() => {
-    refs.current.convoMessages = convoMessages;
-  }, [convoMessages]);
-
   // Cleanup stream on unmount
   useEffect(() => {
     return () => {
       if (streamInProgressRef.current) {
-        console.log("[useChatStream] Cleaning up stream on unmount");
         streamController.triggerSave();
         streamController.abort();
       }
     };
-  }, []);
+  }, [hookId]);
 
   // Reset all stream-related state
   const resetStreamState = () => {
@@ -81,11 +82,6 @@ export const useChatStream = () => {
     if (!existing) {
       const finalDescription = description || "New Chat";
 
-      console.log("[useChatStream] Adding new conversation to IndexedDB:", {
-        id: conversationId,
-        description: finalDescription,
-      });
-
       // Write to IndexedDB - event will update chatStore
       const newConversation: IConversation = {
         id: conversationId,
@@ -109,11 +105,6 @@ export const useChatStream = () => {
     conversationId: string,
     description: string,
   ) => {
-    console.log("[useChatStream] Updating conversation description:", {
-      id: conversationId,
-      description: description,
-    });
-
     // Update via IndexedDB atomically - event will update Zustand store
     try {
       await db.updateConversationFields(conversationId, {
@@ -142,11 +133,7 @@ export const useChatStream = () => {
 
       // Handle navigation for incomplete conversations
       if (response.conversation_id && !refs.current.newConversation.id) {
-        console.log(
-          "[useChatStream] Incomplete conversation saved:",
-          response.conversation_id,
-        );
-        // Navigation will be handled by the caller if needed
+        router.replace(`/c/${response.conversation_id}`);
       }
     } catch (saveError) {
       console.error("Failed to save incomplete conversation:", saveError);
@@ -186,18 +173,21 @@ export const useChatStream = () => {
   const handleStreamEvent = async (
     event: EventSourceMessage,
   ): Promise<void | string> => {
+    if (!streamInProgressRef.current) {
+      console.error(
+        `[useChatStream:${hookId}] ⚠️ STREAM FLAG IS FALSE! Stream was likely aborted or hook unmounted`,
+      );
+      return "Stream was aborted";
+    }
+
     try {
       const data = event.data === "[DONE]" ? null : JSON.parse(event.data);
-
-      if (data) {
-        console.log("[useChatStream] Stream event received:", data);
+      if (event.data === "[DONE]") {
+        return;
       }
-
-      if (event.data === "[DONE]") return;
 
       if (data.error) {
         // Immediately terminate the stream on error
-        console.error("Stream error received:", data.error);
         return data.error;
       }
 
@@ -232,12 +222,10 @@ export const useChatStream = () => {
         refs.current.newConversation.description =
           data.conversation_description;
 
-        // Update URL using Next.js router to avoid triggering pathname effects
-        // Use router.replace() instead of window.history to maintain React Router state
-        router.replace(`/c/${data.conversation_id}`);
+        window.history.replaceState({}, "", `/c/${data.conversation_id}`);
 
         // Add conversation to store immediately with temporary description
-        handleConversationCreation(
+        await handleConversationCreation(
           data.conversation_id,
           data.conversation_description,
         );
@@ -271,6 +259,8 @@ export const useChatStream = () => {
         return;
       }
 
+      console.log(refs.current);
+
       // Add to the accumulated response if there's new response content
       if (data.response) {
         refs.current.accumulatedResponse += data.response;
@@ -299,7 +289,12 @@ export const useChatStream = () => {
         response: refs.current.accumulatedResponse,
       });
     } catch (error) {
-      console.error("Error handling stream event:", error);
+      console.error("[useChatStream] Error handling stream event:", {
+        error,
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined,
+        eventData: event.data,
+      });
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
       return `Error processing stream data: ${errorMessage}`;
@@ -392,7 +387,7 @@ export const useChatStream = () => {
   ) => {
     if (streamInProgressRef.current) {
       console.warn(
-        "[useChatStream] Stream already in progress, ignoring new request",
+        `[useChatStream:${hookId}] Stream already in progress, ignoring new request`,
       );
       return;
     }
@@ -484,7 +479,10 @@ export const useChatStream = () => {
         selectedCalendarEvent,
       );
     } catch (error) {
-      console.error("Error initiating chat stream:", error);
+      console.error(
+        `[useChatStream:${hookId}] Error initiating chat stream:`,
+        error,
+      );
       resetStreamState(); // Reset state on any error
     } finally {
       streamInProgressRef.current = false;
