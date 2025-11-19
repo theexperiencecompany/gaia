@@ -6,11 +6,28 @@ import { db, dbEventEmitter } from "@/lib/db/chatDb";
 
 type LoadingStatus = "idle" | "loading" | "success" | "error";
 
+// Optimistic message for new conversations (before conversation ID is assigned)
+// These are stored in Zustand only to avoid IndexedDB pollution if not cleared properly
+interface OptimisticMessage {
+  id: string; // Temporary optimistic ID
+  content: string;
+  role: "user" | "assistant";
+  createdAt: Date;
+  fileIds?: string[];
+  fileData?: any[];
+  toolName?: string | null;
+  toolCategory?: string | null;
+  workflowId?: string | null;
+  metadata?: any;
+}
+
 interface ChatState {
   conversations: IConversation[];
   messagesByConversation: Record<string, IMessage[]>;
   activeConversationId: string | null;
   conversationsLoadingStatus: LoadingStatus;
+  // Optimistic messages for new conversations (not yet persisted to IndexedDB)
+  optimisticMessages: OptimisticMessage[];
   setConversations: (conversations: IConversation[]) => void;
   upsertConversation: (conversation: IConversation) => void;
   updateConversation: (
@@ -25,6 +42,10 @@ interface ChatState {
   removeConversation: (conversationId: string) => void;
   setActiveConversationId: (id: string | null) => void;
   setConversationsLoadingStatus: (status: LoadingStatus) => void;
+  // Optimistic message management for new conversations
+  addOptimisticMessage: (message: OptimisticMessage) => void;
+  removeOptimisticMessage: (id: string) => void;
+  clearOptimisticMessages: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -32,6 +53,8 @@ export const useChatStore = create<ChatState>((set) => ({
   messagesByConversation: {},
   activeConversationId: null,
   conversationsLoadingStatus: "idle",
+  // In-memory optimistic messages for new conversations (prevents IndexedDB pollution)
+  optimisticMessages: [],
 
   setConversations: (conversations) =>
     set({ conversations: [...conversations] }),
@@ -116,6 +139,22 @@ export const useChatStore = create<ChatState>((set) => ({
 
   setConversationsLoadingStatus: (status) =>
     set({ conversationsLoadingStatus: status }),
+
+  // Add optimistic message to Zustand (for new conversations only)
+  // These are temporary and will be replaced once conversation ID is confirmed
+  addOptimisticMessage: (message) =>
+    set((state) => ({
+      optimisticMessages: [...state.optimisticMessages, message],
+    })),
+
+  // Remove specific optimistic message by ID (when replaced with real message)
+  removeOptimisticMessage: (id) =>
+    set((state) => ({
+      optimisticMessages: state.optimisticMessages.filter((m) => m.id !== id),
+    })),
+
+  // Clear all optimistic messages (on navigation or error)
+  clearOptimisticMessages: () => set({ optimisticMessages: [] }),
 }));
 
 // Event-driven synchronization with IndexedDB

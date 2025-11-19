@@ -5,6 +5,7 @@ import { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEven
 import { useChatStream } from "@/features/chat/hooks/useChatStream";
 import { db, type IMessage } from "@/lib/db/chatDb";
 import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
+import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 import { MessageType } from "@/types/features/convoTypes";
@@ -98,34 +99,25 @@ export const useSendMessage = () => {
         selectedCalendarEvent: selectedCalendarEvent ?? undefined,
       };
 
-      debugger;
-
-      // Create optimistic user message immediately for instant UI feedback
-      // For new conversations: persist with temp conversation ID, will be updated when real conversation_id arrives
-      // For existing conversations: persist now, replace ID later
+      // For new conversations: Store optimistic message in Zustand only (not IndexedDB)
+      // This prevents IndexedDB pollution if message isn't properly cleared
+      // Once conversation_id is received, this will be moved to IndexedDB with real ID
       if (!conversationId) {
-        // New conversation - persist optimistic message with temporary conversation ID
-        const tempConversationId = `temp-${optimisticId}`;
+        // Add optimistic message to Zustand for immediate UI display
+        useChatStore.getState().addOptimisticMessage({
+          id: optimisticId,
+          content: trimmedContent,
+          role: "user",
+          createdAt,
+          fileIds: normalizedFiles.map((file) => file.fileId),
+          fileData: normalizedFiles,
+          toolName: selectedTool,
+          toolCategory: selectedToolCategory,
+          workflowId: selectedWorkflow?.id ?? null,
+          metadata: { originalMessage: userMessage },
+        });
 
-        try {
-          await db.putMessage(
-            createOptimisticUserMessage(
-              optimisticId,
-              tempConversationId,
-              trimmedContent,
-              userMessage,
-              createdAt,
-            ),
-          );
-        } catch (error) {
-          console.error(
-            "Failed to persist optimistic message for new conversation:",
-            error,
-          );
-        }
-
-        // Backend will create conversation and send IDs
-        // We'll update the message with real conversation_id and backend user_message_id
+        // Stream will handle persisting to IndexedDB once conversation_id arrives
         await fetchChatStream(
           trimmedContent,
           [userMessage],
@@ -139,7 +131,8 @@ export const useSendMessage = () => {
         return;
       }
 
-      // Existing conversation - persist optimistic message immediately
+      // For existing conversations: Persist optimistic message to IndexedDB immediately
+      // This is safe because we already have a valid conversation ID
       try {
         await db.putMessage(
           createOptimisticUserMessage(

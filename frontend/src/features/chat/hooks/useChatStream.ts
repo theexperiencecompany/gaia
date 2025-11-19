@@ -72,6 +72,9 @@ export const useChatStream = () => {
     resetLoadingText();
     streamController.clear();
     setAbortController(null);
+
+    // Clear any remaining optimistic messages (error/abort scenarios)
+    useChatStore.getState().clearOptimisticMessages();
   };
 
   const handleConversationCreation = async (
@@ -99,6 +102,10 @@ export const useChatStream = () => {
 
       try {
         await db.putConversation(newConversation);
+
+        // Clear optimistic messages from Zustand now that conversation has real ID
+        // Messages will be persisted to IndexedDB with real IDs below
+        useChatStore.getState().clearOptimisticMessages();
       } catch (error) {
         console.error("Failed to save conversation to IndexedDB:", error);
       }
@@ -272,20 +279,15 @@ export const useChatStream = () => {
         );
 
         // Persist user message with backend-generated ID for new conversations
-        // Replace the optimistic message (with temp conversation ID) with real IDs
+        // The optimistic message in Zustand is now replaced with a real message in IndexedDB
         if (
           refs.current.userMessage &&
           data.user_message_id &&
           refs.current.optimisticUserId
         ) {
           try {
-            // Delete the optimistic message with temp conversation ID
-            await db.replaceOptimisticMessage(
-              refs.current.optimisticUserId,
-              data.user_message_id,
-            );
-
-            // Put the message with real conversation_id and backend user_message_id
+            // Optimistic message was already cleared from Zustand in handleConversationCreation
+            // Now persist with real conversation ID and backend message ID to IndexedDB
             await db.putMessage(
               createIMessage(
                 data.user_message_id,
@@ -331,7 +333,8 @@ export const useChatStream = () => {
         // For existing conversations, we receive message IDs in first stream event
         const conversationId = useChatStore.getState().activeConversationId;
 
-        // Replace optimistic user message with backend ID
+        // Replace optimistic user message with backend ID (for existing conversations)
+        // Message was already persisted to IndexedDB with optimistic ID, now update it
         if (refs.current.optimisticUserId && conversationId) {
           try {
             await db.replaceOptimisticMessage(
