@@ -3,9 +3,7 @@ import { EventEmitter } from "events";
 
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import { FileData } from "@/types/shared";
-
-type MessageRole = "user" | "assistant" | "system";
-type MessageStatus = "sending" | "sent" | "failed";
+import { ToolDataEntry } from "@/config";
 
 export interface IConversation {
   id: string;
@@ -210,6 +208,23 @@ export class ChatDexie extends Dexie {
       const message = await this.messages.get(messageId);
       if (message) {
         updatedMessage = { ...message, content, updatedAt: new Date() };
+        await this.messages.put(updatedMessage);
+      }
+    });
+    if (updatedMessage) {
+      dbEventEmitter.emitMessageUpdated(updatedMessage);
+    }
+  }
+
+  public async updateMessage(
+    messageId: string,
+    updates: Partial<IMessage>,
+  ): Promise<void> {
+    let updatedMessage: IMessage | undefined;
+    await messageQueue.enqueue(async () => {
+      const message = await this.messages.get(messageId);
+      if (message) {
+        updatedMessage = { ...message, ...updates, updatedAt: new Date() };
         await this.messages.put(updatedMessage);
       }
     });

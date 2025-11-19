@@ -322,7 +322,7 @@ export const useChatStream = () => {
             if (refs.current.userMessage) {
               refs.current.userMessage.message_id = data.user_message_id;
             }
-            
+
             // Update status to "sent" after successful replacement
             await db.updateMessageStatus(data.user_message_id, "sent");
           } catch (error) {
@@ -393,23 +393,6 @@ export const useChatStream = () => {
       // Add to the accumulated response if there's new response content
       if (data.response) {
         refs.current.accumulatedResponse += data.response;
-
-        // Incrementally persist streaming content (works for both new and existing conversations)
-        if (refs.current.botMessage?.message_id) {
-          const conversationId =
-            refs.current.newConversation.id ||
-            useChatStore.getState().activeConversationId;
-          if (conversationId) {
-            try {
-              await db.updateMessageContent(
-                refs.current.botMessage.message_id,
-                refs.current.accumulatedResponse,
-              );
-            } catch (error) {
-              console.error("Failed to update streaming content:", error);
-            }
-          }
-        }
       }
 
       // Parse only the data that's actually present in this stream chunk
@@ -419,6 +402,23 @@ export const useChatStream = () => {
         ...streamUpdates,
         response: refs.current.accumulatedResponse,
       });
+
+      // Incrementally persist streaming content and tool data (works for both new and existing conversations)
+      if (refs.current.botMessage?.message_id) {
+        const conversationId =
+          refs.current.newConversation.id ||
+          useChatStore.getState().activeConversationId;
+        if (conversationId) {
+          try {
+            await db.updateMessage(refs.current.botMessage.message_id, {
+              content: refs.current.accumulatedResponse,
+              ...streamUpdates,
+            } as Partial<IMessage>);
+          } catch (error) {
+            console.error("Failed to update streaming content:", error);
+          }
+        }
+      }
     } catch (error) {
       console.error("[useChatStream] Error handling stream event:", {
         error,

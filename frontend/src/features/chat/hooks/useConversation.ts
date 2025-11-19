@@ -18,6 +18,7 @@ const mapStoredMessageToConversationMessage = (
     toolCategory: message.toolCategory ?? undefined,
     selectedWorkflow: undefined,
     loading: message.status === "sending",
+    ...message,
   } as MessageType;
 };
 
