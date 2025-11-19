@@ -30,16 +30,3 @@ Args:
 Returns:
     Formatted string with search results
 """
-
-GET_ALL_MEMORY = """
-Retrieve all memories for the user.
-
-This tool returns all stored memories for the user.
-Use it to browse through the complete knowledge base.
-
-Args:
-    config: Runtime configuration containing user context
-
-Returns:
-    Formatted string with all memory results
-"""

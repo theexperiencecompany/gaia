@@ -284,25 +284,26 @@ class MemoryService:
 
     async def store_memory(
         self,
-        content: str,
+        message: str,
         user_id: Optional[str],
         conversation_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        async_mode: bool = False,
+        async_mode: bool = True,
+        custom_instructions: Optional[str] = None,
     ) -> Optional[MemoryEntry]:
         """
         Store a single memory using Mem0 v2 API.
 
         Args:
-            content: Memory content to store
+            message: The memory content to store
             user_id: User identifier
             conversation_id: Optional conversation/run identifier
             metadata: Additional metadata
-            async_mode: If True, queue for background processing (faster but returns event_id).
-                       If False, process synchronously and return full memory (default).
+            async_mode: If True, queue for background processing (default: True, faster but returns event_id).
+                       If False, returns full memory content immediately.
+            custom_instructions: Project-specific guidelines for handling memories
 
         Returns:
-            MemoryEntry if successful, None otherwise.
             For async_mode=True, returns MemoryEntry with event_id and PENDING status.
             For async_mode=False, returns MemoryEntry with full memory content.
         """
@@ -322,7 +323,7 @@ class MemoryService:
             # Use v2 API to add memory
             # Messages format allows Mem0 to infer structured memories
             result = await client.add(
-                messages=[{"role": "user", "content": content}],
+                messages=[{"role": "user", "content": message}],
                 user_id=user_id,
                 metadata=metadata,
                 run_id=conversation_id,
@@ -368,6 +369,97 @@ class MemoryService:
         except Exception as e:
             self.logger.error(f"Error storing memory for user {user_id}: {e}")
             return None
+
+    async def store_memory_batch(
+        self,
+        messages: List[Dict[str, str]],
+        user_id: Optional[str],
+        conversation_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        async_mode: bool = True,
+        custom_instructions: Optional[str] = None,
+    ) -> bool:
+        """
+        Store multiple memories in a single API call using Mem0 v2 API.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content'
+            user_id: User identifier
+            conversation_id: Optional conversation/run identifier
+            metadata: Additional metadata
+            async_mode: If True, queue for background processing (default: True)
+            custom_instructions: Project-specific guidelines for handling memories
+
+        Returns:
+            True if successful, False otherwise
+        """
+        user_id = self._validate_user_id(user_id)
+        if not user_id:
+            return False
+
+        try:
+            # Prepare metadata
+            if metadata is None:
+                metadata = {}
+            metadata["timestamp"] = datetime.now().isoformat()
+
+            # Get client
+            client = await self._get_client()
+
+            # Use v2 API to add multiple memories in one call
+            result = await client.add(
+                messages=messages,
+                user_id=user_id,
+                metadata=metadata,
+                run_id=conversation_id,
+                async_mode=async_mode,
+                **(
+                    {"custom_instructions": custom_instructions}
+                    if custom_instructions
+                    else {}
+                ),
+            )
+
+            mode_str = "async" if async_mode else "sync"
+            self.logger.info(
+                f"Batch of {len(messages)} memories stored for user {user_id} (mode: {mode_str})"
+            )
+
+            # Log the raw response for debugging
+            self.logger.debug(f"Mem0 API raw response: {result}")
+
+            # v2 API response format: {"results": [...]}
+            if isinstance(result, dict) and "results" in result:
+                results_list = result["results"]
+                success_count = (
+                    len(results_list) if isinstance(results_list, list) else 0
+                )
+
+                # Log details about what was stored
+                if success_count == 0:
+                    self.logger.warning(
+                        f"Mem0 returned 0 memories from {len(messages)} messages. "
+                        f"Response: {result}"
+                    )
+                else:
+                    self.logger.info(f"Successfully stored {success_count} memories")
+                    # Log sample of events
+                    events = [r.get("event", "UNKNOWN") for r in results_list[:5]]
+                    self.logger.debug(f"Sample events: {events}")
+
+                return success_count > 0
+            elif isinstance(result, list):
+                self.logger.info(f"Successfully stored {len(result)} memories")
+                return len(result) > 0
+            else:
+                self.logger.warning(
+                    f"Unexpected response format from mem0 batch add: {type(result)}, value: {result}"
+                )
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error storing memory batch for user {user_id}: {e}")
+            return False
 
     async def search_memories(
         self,

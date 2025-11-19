@@ -368,11 +368,6 @@ const dummyTools = {
       category: "memory",
       required_integration: null,
     },
-    {
-      name: "get_all_memory",
-      category: "memory",
-      required_integration: null,
-    },
     // Development tools
     {
       name: "execute_code",

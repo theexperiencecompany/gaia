@@ -13,7 +13,6 @@ from langchain_core.tools import tool
 from app.templates.docstrings.memory_tool_docs import (
     ADD_MEMORY,
     SEARCH_MEMORY,
-    GET_ALL_MEMORY,
 )
 from app.decorators import with_doc
 from app.services.memory_service import memory_service
@@ -36,12 +35,17 @@ async def add_memory(
         return "Error: User ID is required but not found in configuration"
 
     memory = await memory_service.store_memory(
-        content=content, user_id=user_id, metadata=metadata
+        message=content, user_id=user_id, metadata=metadata, async_mode=True
     )
 
     if not memory:
         return "Failed to store memory"
 
+    # For async mode, return event_id and status
+    if hasattr(memory, "event_id") and memory.event_id:
+        return f"Memory queued for processing (Event ID: {memory.event_id}, Status: {memory.status})"
+
+    # Fallback for sync mode
     return f"Memory stored successfully with ID: {memory.id}"
 
 
@@ -78,31 +82,4 @@ async def search_memory(
     return formatted_results
 
 
-@tool
-@with_doc(GET_ALL_MEMORY)
-async def get_all_memory(
-    config: RunnableConfig,
-) -> str:
-    if not config:
-        return "Error: Configuration required but not provided"
-
-    user_id = config.get("metadata", {}).get("user_id")
-
-    if not user_id:
-        return "Error: User ID is required but not found in configuration"
-
-    results = await memory_service.get_all_memories(user_id=user_id)
-
-    if not results.memories:
-        return "No memories found"
-
-    # Format the results
-    formatted_results = f"All memories (total: {results.total_count}):\n\n"
-
-    for i, memory in enumerate(results.memories, 1):
-        formatted_results += f"{i}. {memory.content}\n\n"
-
-    return formatted_results
-
-
-tools = [add_memory, search_memory, get_all_memory]
+tools = [add_memory, search_memory]

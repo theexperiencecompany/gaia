@@ -14,7 +14,7 @@ from app.agents.core.nodes.delete_system_messages import (
 from app.agents.core.nodes.filter_messages import create_filter_messages_node
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
-from app.agents.tools.memory_tools import get_all_memory, search_memory
+from app.agents.tools.memory_tools import search_memory
 from app.config.loggers import langchain_logger as logger
 from app.override.langgraph_bigtool.create_agent import create_agent
 from langchain_core.language_models import LanguageModelLike
@@ -106,7 +106,7 @@ class SubAgentFactory:
 
             # Always include memory tools for subagents
             try:
-                initial_tool_ids.extend([get_all_memory.name, search_memory.name])
+                initial_tool_ids.extend([search_memory.name])
             except Exception as e:
                 logger.warning(
                     f"Failed to add memory tools to subagent: {e}. Continuing without memory tools."

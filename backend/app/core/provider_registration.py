@@ -46,7 +46,7 @@ from app.helpers.lifespan_helpers import (
     init_reminder_service,
     init_websocket_consumer,
     init_workflow_service,
-    setup_event_loop_policy,
+    # setup_event_loop_policy,
 )
 from app.services.composio.composio_service import init_composio_service
 from app.services.startup_validation import validate_startup_requirements
@@ -95,7 +95,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     initialize_chroma_tools_store()
     init_cloudinary()
     validate_startup_requirements()
-    setup_event_loop_policy()
+    # setup_event_loop_policy()
     init_posthog()
     logger.info(f"All lazy providers registered successfully for {context}")
 
