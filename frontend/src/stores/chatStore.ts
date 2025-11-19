@@ -2,8 +2,8 @@ import { useEffect } from "react";
 import { create } from "zustand";
 
 import type { IConversation, IMessage } from "@/lib/db/chatDb";
-import type { FileData } from "@/types/shared";
 import { db, dbEventEmitter } from "@/lib/db/chatDb";
+import type { FileData } from "@/types/shared";
 
 type LoadingStatus = "idle" | "loading" | "success" | "error";
 
