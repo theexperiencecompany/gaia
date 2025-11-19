@@ -38,7 +38,7 @@ export interface IMessage {
 }
 
 class MessageQueue {
-  private queue: Promise<any> = Promise.resolve();
+  private queue: Promise<unknown> = Promise.resolve();
 
   async enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.queue.then(operation);
@@ -50,6 +50,11 @@ class MessageQueue {
 export const messageQueue = new MessageQueue();
 
 class DBEventEmitter extends EventEmitter {
+  constructor() {
+    super();
+    this.setMaxListeners(1); // Enforce single listener per event
+  }
+
   emitMessageAdded(message: IMessage) {
     this.emit("messageAdded", message);
   }
@@ -106,16 +111,16 @@ export class ChatDexie extends Dexie {
   }
 
   public async putConversation(conversation: IConversation): Promise<string> {
-    return messageQueue.enqueue(async () => {
-      const existing = await this.conversations.get(conversation.id);
-      const id = await this.conversations.put(conversation);
-      if (existing) {
-        dbEventEmitter.emitConversationUpdated(conversation);
-      } else {
-        dbEventEmitter.emitConversationAdded(conversation);
-      }
-      return id;
+    const existing = await this.conversations.get(conversation.id);
+    const id = await messageQueue.enqueue(async () => {
+      return await this.conversations.put(conversation);
     });
+    if (existing) {
+      dbEventEmitter.emitConversationUpdated(conversation);
+    } else {
+      dbEventEmitter.emitConversationAdded(conversation);
+    }
+    return id;
   }
 
   public async putConversationsBulk(
@@ -148,12 +153,12 @@ export class ChatDexie extends Dexie {
     return Array.from(new Set(conversationIds)) as string[];
   }
 
-  public putMessage(message: IMessage): Promise<string> {
-    return messageQueue.enqueue(async () => {
-      const id = await this.messages.put(message);
-      dbEventEmitter.emitMessageAdded(message);
-      return id;
+  public async putMessage(message: IMessage): Promise<string> {
+    const id = await messageQueue.enqueue(async () => {
+      return await this.messages.put(message);
     });
+    dbEventEmitter.emitMessageAdded(message);
+    return id;
   }
 
   public async putMessagesBulk(messages: IMessage[]): Promise<string[]> {
@@ -200,46 +205,52 @@ export class ChatDexie extends Dexie {
     messageId: string,
     content: string,
   ): Promise<void> {
+    let updatedMessage: IMessage | undefined;
     await messageQueue.enqueue(async () => {
       const message = await this.messages.get(messageId);
       if (message) {
-        const updatedMessage = { ...message, content, updatedAt: new Date() };
+        updatedMessage = { ...message, content, updatedAt: new Date() };
         await this.messages.put(updatedMessage);
-        dbEventEmitter.emitMessageUpdated(updatedMessage);
       }
     });
+    if (updatedMessage) {
+      dbEventEmitter.emitMessageUpdated(updatedMessage);
+    }
   }
 
   public async updateMessageStatus(
     messageId: string,
     status: IMessage["status"],
   ): Promise<void> {
-    return messageQueue.enqueue(async () => {
+    let updatedMessage: IMessage | undefined;
+    await messageQueue.enqueue(async () => {
       await this.messages.update(messageId, {
         status,
         updatedAt: new Date(),
       });
-
-      const updatedMessage = await this.messages.get(messageId);
-      if (updatedMessage) {
-        dbEventEmitter.emitMessageUpdated(updatedMessage);
-      }
+      updatedMessage = await this.messages.get(messageId);
     });
+    if (updatedMessage) {
+      dbEventEmitter.emitMessageUpdated(updatedMessage);
+    }
   }
 
   public async replaceOptimisticMessage(
     optimisticId: string,
     backendId: string,
+    updatedData?: Partial<IMessage>,
   ): Promise<void> {
-    return messageQueue.enqueue(async () => {
+    let finalMessage: IMessage | undefined;
+    await messageQueue.enqueue(async () => {
       const message = await this.messages.get(optimisticId);
       if (!message) {
         console.warn(`Optimistic message ${optimisticId} not found`);
         return;
       }
 
-      const updatedMessage: IMessage = {
+      finalMessage = {
         ...message,
+        ...updatedData,
         id: backendId,
         messageId: backendId,
         optimistic: false,
@@ -247,10 +258,11 @@ export class ChatDexie extends Dexie {
       };
 
       await this.messages.delete(optimisticId);
-      await this.messages.put(updatedMessage);
-      
-      dbEventEmitter.emitMessageIdReplaced(optimisticId, updatedMessage);
+      await this.messages.put(finalMessage);
     });
+    if (finalMessage) {
+      dbEventEmitter.emitMessageIdReplaced(optimisticId, finalMessage);
+    }
   }
 
   public async syncMessages(
@@ -279,18 +291,42 @@ export class ChatDexie extends Dexie {
     );
   }
 
+  public async cleanupOrphanedOptimisticMessages(
+    maxAgeMinutes = 5,
+  ): Promise<number> {
+    const cutoffTime = Date.now() - maxAgeMinutes * 60 * 1000;
+    let deletedCount = 0;
+
+    await messageQueue.enqueue(async () => {
+      const allMessages = await this.messages.toArray();
+      const orphaned = allMessages.filter(
+        (m) => m.optimistic && m.createdAt.getTime() < cutoffTime,
+      );
+
+      for (const msg of orphaned) {
+        await this.messages.delete(msg.id);
+        deletedCount++;
+      }
+    });
+
+    return deletedCount;
+  }
+
   public async updateConversationFields(
     conversationId: string,
     updates: Partial<IConversation>,
   ): Promise<void> {
+    let updated: IConversation | undefined;
     await messageQueue.enqueue(async () => {
       const existing = await this.conversations.get(conversationId);
       if (existing) {
-        const updated = { ...existing, ...updates, updatedAt: new Date() };
+        updated = { ...existing, ...updates, updatedAt: new Date() };
         await this.conversations.put(updated);
-        dbEventEmitter.emitConversationUpdated(updated);
       }
     });
+    if (updated) {
+      dbEventEmitter.emitConversationUpdated(updated);
+    }
   }
 }
 

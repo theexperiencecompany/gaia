@@ -1,7 +1,8 @@
-import { create } from "zustand";
 import { useEffect } from "react";
+import { create } from "zustand";
 
 import type { IConversation, IMessage } from "@/lib/db/chatDb";
+import type { FileData } from "@/types/shared";
 import { db, dbEventEmitter } from "@/lib/db/chatDb";
 
 type LoadingStatus = "idle" | "loading" | "success" | "error";
@@ -15,11 +16,11 @@ interface OptimisticMessage {
   role: "user" | "assistant";
   createdAt: Date;
   fileIds?: string[];
-  fileData?: any[];
+  fileData?: FileData[];
   toolName?: string | null;
   toolCategory?: string | null;
   workflowId?: string | null;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 interface ChatState {
@@ -165,13 +166,30 @@ export const useChatStore = create<ChatState>((set) => ({
 }));
 
 // Event-driven synchronization with IndexedDB
+let syncInitialized = false; // Guard against multiple initializations
+
 export const useChatStoreSync = () => {
   useEffect(() => {
+    // Prevent multiple sync initializations
+    if (syncInitialized) {
+      console.warn("[chatStore] Sync already initialized, skipping");
+      return;
+    }
+    syncInitialized = true;
+
     let isActive = true;
 
     // Initial hydration from IndexedDB
     const hydrateFromIndexedDB = async () => {
       try {
+        // Clean up orphaned optimistic messages (older than 5 minutes)
+        const deletedCount = await db.cleanupOrphanedOptimisticMessages(5);
+        if (deletedCount > 0) {
+          console.log(
+            `[chatStore] Cleaned up ${deletedCount} orphaned optimistic messages`,
+          );
+        }
+
         // Load all conversations
         const conversations = await db.getAllConversations();
         if (isActive) {
@@ -184,7 +202,9 @@ export const useChatStoreSync = () => {
           if (!isActive) break;
           const messages = await db.getMessagesForConversation(conversationId);
           if (isActive && messages.length > 0) {
-            useChatStore.getState().setMessagesForConversation(conversationId, messages);
+            useChatStore
+              .getState()
+              .setMessagesForConversation(conversationId, messages);
           }
         }
       } catch (error) {
@@ -203,7 +223,10 @@ export const useChatStoreSync = () => {
       useChatStore.getState().addOrUpdateMessage(message);
     };
 
-    const handleMessageDeleted = (messageId: string, conversationId: string) => {
+    const handleMessageDeleted = (
+      messageId: string,
+      conversationId: string,
+    ) => {
       useChatStore.getState().removeMessage(messageId, conversationId);
     };
 
@@ -218,11 +241,15 @@ export const useChatStoreSync = () => {
 
     const handleMessageIdReplaced = (oldId: string, newMessage: IMessage) => {
       const state = useChatStore.getState();
-      const messages = state.messagesByConversation[newMessage.conversationId] ?? [];
-      const updatedMessages = messages.map((msg) => 
-        msg.id === oldId ? newMessage : msg
+      const messages =
+        state.messagesByConversation[newMessage.conversationId] ?? [];
+      const updatedMessages = messages.map((msg) =>
+        msg.id === oldId ? newMessage : msg,
       );
-      state.setMessagesForConversation(newMessage.conversationId, updatedMessages);
+      state.setMessagesForConversation(
+        newMessage.conversationId,
+        updatedMessages,
+      );
     };
 
     const handleConversationAdded = (conversation: IConversation) => {
@@ -243,6 +270,7 @@ export const useChatStoreSync = () => {
 
     return () => {
       isActive = false;
+      syncInitialized = false; // Reset flag on cleanup
       dbEventEmitter.off("messageAdded", handleMessageAdded);
       dbEventEmitter.off("messageUpdated", handleMessageUpdated);
       dbEventEmitter.off("messageDeleted", handleMessageDeleted);

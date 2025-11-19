@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 
+import { IMessage } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import { MessageType } from "@/types/features/convoTypes";
-import { IMessage } from "@/lib/db/chatDb";
 
 const mapStoredMessageToConversationMessage = (
   message: IMessage,

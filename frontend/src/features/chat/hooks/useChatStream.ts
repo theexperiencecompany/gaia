@@ -432,38 +432,42 @@ export const useChatStream = () => {
     }
   };
 
-  const handleStreamClose = async () => {
-    try {
-      if (!refs.current.botMessage) return;
+    const handleStreamClose = async () => {
+      try {
+        if (!refs.current.botMessage) return;
 
-      // Only update loading if it hasn't been set to false already
-      // (main_response_complete would have already set it to false)
-      setIsLoading(false);
-      resetLoadingText();
-      streamController.clear();
+        // Only update loading if it hasn't been set to false already
+        // (main_response_complete would have already set it to false)
+        setIsLoading(false);
+        resetLoadingText();
+        streamController.clear();
 
-      if (refs.current.botMessage && refs.current.newConversation.id) {
-        const botMessageId = refs.current.botMessage.message_id;
-        if (!botMessageId) return;
-
-        // Mark message as complete in database (message already exists from initial persistence)
-        try {
-          await db.updateMessageStatus(botMessageId, "sent");
-        } catch (error) {
-          console.error("Failed to mark bot message as sent:", error);
+        if (refs.current.botMessage && refs.current.newConversation.id) {
+          updateBotMessage({ loading: false });
         }
-      }
 
-      // Reset stream state after successful completion
-      streamInProgressRef.current = false;
-      refs.current.botMessage = null;
-      refs.current.currentStreamingMessages = [];
-      refs.current.newConversation = { id: null, description: null };
-    } catch (error) {
-      console.error("Error handling stream close:", error);
-      resetStreamState(); // Ensure state is reset even on error
-    }
-  };
+        // Update message status to 'sent' after successful stream completion
+        if (refs.current.botMessage?.message_id) {
+          try {
+            await db.updateMessageStatus(
+              refs.current.botMessage.message_id,
+              "sent",
+            );
+          } catch (error) {
+            console.error("Failed to update message status:", error);
+          }
+        }
+
+        // Reset stream state after successful completion
+        streamInProgressRef.current = false;
+        refs.current.botMessage = null;
+        refs.current.currentStreamingMessages = [];
+        refs.current.newConversation = { id: null, description: null };
+      } catch (error) {
+        console.error("Error handling stream close:", error);
+        resetStreamState(); // Ensure state is reset even on error
+      }
+    };
 
   const handleStreamError = (error: Error) => {
     // Reset stream state immediately

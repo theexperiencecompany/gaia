@@ -23,6 +23,9 @@ const mergeMessageLists = (
     if (!existing) {
       // New message from remote
       messageMap.set(msg.id, msg);
+    } else if (existing.optimistic) {
+      // Always replace optimistic messages with remote versions
+      messageMap.set(msg.id, msg);
     } else {
       // Message exists locally - prefer remote if it's newer
       const remoteTime = msg.updatedAt?.getTime() ?? msg.createdAt.getTime();
