@@ -37,6 +37,8 @@ export const useChatStream = () => {
   const refs = useRef({
     convoMessages,
     botMessage: null as MessageType | null,
+    userMessage: null as MessageType | null,
+    optimisticUserId: null as string | null,
     accumulatedResponse: "",
     userPrompt: "",
     currentStreamingMessages: [] as MessageType[], // Track messages for current streaming session
@@ -60,6 +62,8 @@ export const useChatStream = () => {
   const resetStreamState = () => {
     streamInProgressRef.current = false;
     refs.current.botMessage = null;
+    refs.current.userMessage = null;
+    refs.current.optimisticUserId = null;
     refs.current.accumulatedResponse = "";
     refs.current.userPrompt = "";
     refs.current.currentStreamingMessages = [];
@@ -140,6 +144,34 @@ export const useChatStream = () => {
     }
   };
 
+  const createIMessage = (
+    messageId: string,
+    conversationId: string,
+    content: string,
+    role: "user" | "assistant",
+    status: IMessage["status"],
+    sourceMessage: MessageType,
+  ): IMessage => {
+    return {
+      id: messageId,
+      conversationId,
+      content,
+      role,
+      status,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      messageId,
+      fileIds: sourceMessage.fileIds,
+      fileData: sourceMessage.fileData,
+      toolName: sourceMessage.selectedTool ?? null,
+      toolCategory: sourceMessage.toolCategory ?? null,
+      workflowId: sourceMessage.selectedWorkflow?.id ?? null,
+      metadata: {
+        originalMessage: sourceMessage,
+      },
+    };
+  };
+
   const updateBotMessage = (overrides: Partial<MessageType>) => {
     try {
       const baseMessage: MessageType = {
@@ -174,9 +206,6 @@ export const useChatStream = () => {
     event: EventSourceMessage,
   ): Promise<void | string> => {
     if (!streamInProgressRef.current) {
-      console.error(
-        `[useChatStream:${hookId}] ⚠️ STREAM FLAG IS FALSE! Stream was likely aborted or hook unmounted`,
-      );
       return "Stream was aborted";
     }
 
@@ -222,13 +251,123 @@ export const useChatStream = () => {
         refs.current.newConversation.description =
           data.conversation_description;
 
+        // Store backend-generated message IDs
+        if (data.bot_message_id && refs.current.botMessage) {
+          refs.current.botMessage.message_id = data.bot_message_id;
+        }
+
+        // Store user message ID
+        if (data.user_message_id && refs.current.userMessage) {
+          refs.current.userMessage.message_id = data.user_message_id;
+        }
+
+        // Update URL and set active conversation ID
         window.history.replaceState({}, "", `/c/${data.conversation_id}`);
+        useChatStore.getState().setActiveConversationId(data.conversation_id);
 
         // Add conversation to store immediately with temporary description
         await handleConversationCreation(
           data.conversation_id,
           data.conversation_description,
         );
+
+        // Persist user message with backend-generated ID for new conversations
+        // Replace the optimistic message (with temp conversation ID) with real IDs
+        if (
+          refs.current.userMessage &&
+          data.user_message_id &&
+          refs.current.optimisticUserId
+        ) {
+          try {
+            // Delete the optimistic message with temp conversation ID
+            await db.replaceOptimisticMessage(
+              refs.current.optimisticUserId,
+              data.user_message_id,
+            );
+
+            // Put the message with real conversation_id and backend user_message_id
+            await db.putMessage(
+              createIMessage(
+                data.user_message_id,
+                data.conversation_id,
+                refs.current.userMessage.response || "",
+                "user",
+                "sent",
+                refs.current.userMessage,
+              ),
+            );
+
+            refs.current.userMessage.message_id = data.user_message_id;
+            console.log(
+              `[New Conversation] Replaced optimistic message with backend ID ${data.user_message_id}`,
+            );
+          } catch (error) {
+            console.error("Failed to replace optimistic user message:", error);
+          }
+        }
+
+        // Now persist initial bot message with conversation ID
+        if (refs.current.botMessage && data.bot_message_id) {
+          try {
+            await db.putMessage(
+              createIMessage(
+                data.bot_message_id,
+                data.conversation_id,
+                "",
+                "assistant",
+                "sending",
+                refs.current.botMessage,
+              ),
+            );
+          } catch (error) {
+            console.error("Failed to persist initial bot message:", error);
+          }
+        }
+      } else if (
+        data.user_message_id &&
+        data.bot_message_id &&
+        !refs.current.newConversation.id
+      ) {
+        // For existing conversations, we receive message IDs in first stream event
+        const conversationId = useChatStore.getState().activeConversationId;
+
+        // Replace optimistic user message with backend ID
+        if (refs.current.optimisticUserId && conversationId) {
+          try {
+            await db.replaceOptimisticMessage(
+              refs.current.optimisticUserId,
+              data.user_message_id,
+            );
+            if (refs.current.userMessage) {
+              refs.current.userMessage.message_id = data.user_message_id;
+            }
+            console.log(
+              `Replaced optimistic ID ${refs.current.optimisticUserId} with backend ID ${data.user_message_id}`,
+            );
+          } catch (error) {
+            console.error("Failed to replace optimistic message:", error);
+          }
+        }
+
+        // Persist bot message for existing conversation
+        if (data.bot_message_id && refs.current.botMessage && conversationId) {
+          refs.current.botMessage.message_id = data.bot_message_id;
+
+          try {
+            await db.putMessage(
+              createIMessage(
+                data.bot_message_id,
+                conversationId,
+                "",
+                "assistant",
+                "sending",
+                refs.current.botMessage,
+              ),
+            );
+          } catch (error) {
+            console.error("Failed to persist initial bot message:", error);
+          }
+        }
       } else if (
         data.conversation_description &&
         refs.current.newConversation.id
@@ -265,18 +404,20 @@ export const useChatStream = () => {
       if (data.response) {
         refs.current.accumulatedResponse += data.response;
 
-        // Incrementally persist streaming content
-        if (
-          refs.current.botMessage?.message_id &&
-          refs.current.newConversation.id
-        ) {
-          try {
-            await db.updateMessageContent(
-              refs.current.botMessage.message_id,
-              refs.current.accumulatedResponse,
-            );
-          } catch (error) {
-            console.error("Failed to update streaming content:", error);
+        // Incrementally persist streaming content (works for both new and existing conversations)
+        if (refs.current.botMessage?.message_id) {
+          const conversationId =
+            refs.current.newConversation.id ||
+            useChatStore.getState().activeConversationId;
+          if (conversationId) {
+            try {
+              await db.updateMessageContent(
+                refs.current.botMessage.message_id,
+                refs.current.accumulatedResponse,
+              );
+            } catch (error) {
+              console.error("Failed to update streaming content:", error);
+            }
           }
         }
       }
@@ -315,39 +456,11 @@ export const useChatStream = () => {
         const botMessageId = refs.current.botMessage.message_id;
         if (!botMessageId) return;
 
-        // Mark message as complete in database
+        // Mark message as complete in database (message already exists from initial persistence)
         try {
           await db.updateMessageStatus(botMessageId, "sent");
         } catch (error) {
           console.error("Failed to mark bot message as sent:", error);
-        }
-
-        // Also ensure the final message is persisted with complete data
-        const botIMessage: IMessage = {
-          id: botMessageId,
-          conversationId: refs.current.newConversation.id,
-          content: refs.current.accumulatedResponse,
-          role: "assistant",
-          status: "sent",
-          createdAt: refs.current.botMessage.date
-            ? new Date(refs.current.botMessage.date)
-            : new Date(),
-          updatedAt: new Date(),
-          messageId: botMessageId,
-          fileIds: refs.current.botMessage.fileIds,
-          fileData: refs.current.botMessage.fileData,
-          toolName: refs.current.botMessage.selectedTool ?? null,
-          toolCategory: refs.current.botMessage.toolCategory ?? null,
-          workflowId: refs.current.botMessage.selectedWorkflow?.id ?? null,
-          metadata: {
-            originalMessage: { ...refs.current.botMessage, loading: false },
-          },
-        };
-
-        try {
-          await db.putMessage(botIMessage);
-        } catch (error) {
-          console.error("Failed to persist final bot message:", error);
         }
       }
 
@@ -378,17 +491,14 @@ export const useChatStream = () => {
   const streamFunction = async (
     inputText: string,
     currentMessages: MessageType[],
-    botMessageId: string,
     fileData: FileData[] = [],
     selectedTool: string | null = null,
     toolCategory: string | null = null,
     selectedWorkflow: WorkflowData | null = null,
     selectedCalendarEvent: SelectedCalendarEventData | null = null,
+    optimisticUserId?: string,
   ) => {
     if (streamInProgressRef.current) {
-      console.warn(
-        `[useChatStream:${hookId}] Stream already in progress, ignoring new request`,
-      );
       return;
     }
 
@@ -404,9 +514,14 @@ export const useChatStream = () => {
         ...currentMessages,
       ];
 
+      // Store user message and optimistic ID for later replacement
+      refs.current.userMessage =
+        currentMessages.find((m) => m.type === "user") || null;
+      refs.current.optimisticUserId = optimisticUserId || null;
+
       refs.current.botMessage = {
         type: "bot",
-        message_id: botMessageId,
+        message_id: "", // Will be set by backend
         response: "",
         date: fetchDate(),
         loading: true,
@@ -418,33 +533,7 @@ export const useChatStream = () => {
         selectedCalendarEvent,
       };
 
-      // Persist initial bot message state immediately
-      if (refs.current.newConversation.id) {
-        const initialBotMessage: IMessage = {
-          id: botMessageId,
-          conversationId: refs.current.newConversation.id,
-          content: "",
-          role: "assistant",
-          status: "sending",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          messageId: botMessageId,
-          fileIds: fileData.map((f) => f.fileId),
-          fileData,
-          toolName: selectedTool ?? null,
-          toolCategory: toolCategory ?? null,
-          workflowId: selectedWorkflow?.id ?? null,
-          metadata: {
-            originalMessage: refs.current.botMessage,
-          },
-        };
-
-        try {
-          await db.putMessage(initialBotMessage);
-        } catch (error) {
-          console.error("Failed to persist initial bot message:", error);
-        }
-      }
+      // User and bot message IDs and initial persistence will happen after receiving IDs from backend
 
       // Create abort controller for this stream
       const controller = new AbortController();
@@ -467,10 +556,10 @@ export const useChatStream = () => {
       await chatApi.fetchChatStream(
         inputText,
         [...refs.current.convoMessages, ...currentMessages],
-        undefined, // conversationId is will be fetched from the URL
+        undefined, // conversationId will be fetched from the URL
         handleStreamEvent,
         handleStreamClose,
-        handleStreamError, // Use the new error handler
+        handleStreamError,
         fileData,
         selectedTool,
         toolCategory,
@@ -479,10 +568,7 @@ export const useChatStream = () => {
         selectedCalendarEvent,
       );
     } catch (error) {
-      console.error(
-        `[useChatStream:${hookId}] Error initiating chat stream:`,
-        error,
-      );
+      console.error("Error initiating chat stream:", error);
       resetStreamState(); // Reset state on any error
     } finally {
       streamInProgressRef.current = false;

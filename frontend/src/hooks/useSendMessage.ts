@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
@@ -20,23 +20,35 @@ type SendMessageOverrides = {
 };
 
 export const useSendMessage = () => {
-  const hookIdRef = useRef(
-    `sendMessage-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-  );
-  const hookId = hookIdRef.current;
-
   const fetchChatStream = useChatStream();
 
-  useEffect(() => {
-    console.log(`[useSendMessage:${hookId}] Hook MOUNTED`);
-    return () => {
-      console.log(`[useSendMessage:${hookId}] Hook UNMOUNTING`);
+  const createOptimisticUserMessage = (
+    optimisticId: string,
+    conversationId: string,
+    content: string,
+    userMessage: MessageType,
+    createdAt: Date,
+  ): IMessage => {
+    return {
+      id: optimisticId,
+      conversationId,
+      content,
+      role: "user",
+      status: "sending",
+      createdAt,
+      updatedAt: createdAt,
+      messageId: optimisticId,
+      fileIds: userMessage.fileIds,
+      fileData: userMessage.fileData,
+      toolName: userMessage.selectedTool ?? null,
+      toolCategory: userMessage.toolCategory ?? null,
+      workflowId: userMessage.selectedWorkflow?.id ?? null,
+      optimistic: true,
+      metadata: {
+        originalMessage: userMessage,
+      },
     };
-  }, [hookId]);
-
-  useEffect(() => {
-    console.log(`[useSendMessage:${hookId}] fetchChatStream reference updated`);
-  }, [hookId, fetchChatStream]);
+  };
 
   return useCallback(
     async (
@@ -44,12 +56,6 @@ export const useSendMessage = () => {
       conversationId?: string | null,
       overrides?: SendMessageOverrides,
     ) => {
-      console.log(`[useSendMessage:${hookId}] sendMessage called:`, {
-        contentLength: content.length,
-        conversationId,
-        hasOverrides: !!overrides,
-      });
-
       const trimmedContent = content.trim();
       if (!trimmedContent) {
         return;
@@ -77,14 +83,13 @@ export const useSendMessage = () => {
 
       const isoTimestamp = fetchDate();
       const createdAt = new Date(isoTimestamp);
-      const tempMessageId = uuidv4();
-      const botMessageId = uuidv4();
+      const optimisticId = uuidv4();
 
       const userMessage: MessageType = {
         type: "user",
         response: trimmedContent,
         date: isoTimestamp,
-        message_id: tempMessageId,
+        message_id: optimisticId, // Temporary ID for optimistic UI
         fileIds: normalizedFiles.map((file) => file.fileId),
         fileData: normalizedFiles,
         selectedTool: selectedTool ?? undefined,
@@ -93,54 +98,61 @@ export const useSendMessage = () => {
         selectedCalendarEvent: selectedCalendarEvent ?? undefined,
       };
 
+      debugger;
+
+      // Create optimistic user message immediately for instant UI feedback
+      // For new conversations: persist with temp conversation ID, will be updated when real conversation_id arrives
+      // For existing conversations: persist now, replace ID later
       if (!conversationId) {
-        console.log(
-          `[useSendMessage:${hookId}] No conversationId - creating new conversation`,
-        );
+        // New conversation - persist optimistic message with temporary conversation ID
+        const tempConversationId = `temp-${optimisticId}`;
+
+        try {
+          await db.putMessage(
+            createOptimisticUserMessage(
+              optimisticId,
+              tempConversationId,
+              trimmedContent,
+              userMessage,
+              createdAt,
+            ),
+          );
+        } catch (error) {
+          console.error(
+            "Failed to persist optimistic message for new conversation:",
+            error,
+          );
+        }
+
+        // Backend will create conversation and send IDs
+        // We'll update the message with real conversation_id and backend user_message_id
         await fetchChatStream(
           trimmedContent,
           [userMessage],
-          botMessageId,
           normalizedFiles,
           selectedTool,
           selectedToolCategory,
           selectedWorkflow,
           selectedCalendarEvent,
+          optimisticId, // Pass optimistic ID for replacement
         );
         return;
       }
 
-      console.log(
-        `[useSendMessage:${hookId}] Persisting optimistic message to IndexedDB`,
-      );
-
-      const optimisticMessage: IMessage = {
-        id: tempMessageId,
-        conversationId,
-        content: trimmedContent,
-        role: "user",
-        status: "sending",
-        createdAt,
-        updatedAt: createdAt,
-        messageId: tempMessageId,
-        fileIds: userMessage.fileIds,
-        fileData: userMessage.fileData,
-        toolName: userMessage.selectedTool ?? null,
-        toolCategory: userMessage.toolCategory ?? null,
-        workflowId: userMessage.selectedWorkflow?.id ?? null,
-        metadata: {
-          originalMessage: userMessage,
-        },
-      };
-
+      // Existing conversation - persist optimistic message immediately
       try {
-        await db.putMessage(optimisticMessage);
-      } catch {
-        // Ignore local persistence errors to keep the UI responsive
+        await db.putMessage(
+          createOptimisticUserMessage(
+            optimisticId,
+            conversationId,
+            trimmedContent,
+            userMessage,
+            createdAt,
+          ),
+        );
+      } catch (error) {
+        console.error("Failed to persist optimistic message:", error);
       }
-
-      // db.putMessage will emit event that updates Zustand store automatically
-      // Status will be updated to "sent" after successful streaming or "failed" on error
 
       const streamingUserMessage: MessageType = {
         ...userMessage,
@@ -148,34 +160,20 @@ export const useSendMessage = () => {
       };
 
       try {
-        console.log(
-          `[useSendMessage:${hookId}] Starting stream with existing conversationId`,
-        );
         await fetchChatStream(
           trimmedContent,
           [streamingUserMessage],
-          botMessageId,
           normalizedFiles,
           selectedTool,
           selectedToolCategory,
           selectedWorkflow,
           selectedCalendarEvent,
+          optimisticId,
         );
-        console.log(`[useSendMessage:${hookId}] Stream completed successfully`);
-      } catch {
-        const failedMessage: IMessage = {
-          ...optimisticMessage,
-          status: "failed",
-          updatedAt: new Date(),
-        };
-
-        try {
-          await db.putMessage(failedMessage);
-        } catch {
-          // Ignore persistence failures for failure state updates
-        }
+      } catch (error) {
+        console.error("[useSendMessage] Stream failed:", error);
       }
     },
-    [fetchChatStream, hookId],
+    [fetchChatStream, createOptimisticUserMessage],
   );
 };

@@ -6,6 +6,7 @@ import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
+import { useChatStore } from "@/stores/chatStore";
 import {
   useComposerTextActions,
   usePendingPrompt,
@@ -19,8 +20,9 @@ const ChatPage = React.memo(function MainChat() {
   const { convoMessages } = useConversation();
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
-
-  console.log({ convoMessages });
+  const setActiveConversationId = useChatStore(
+    (state) => state.setActiveConversationId,
+  );
 
   // Fetching status on chat-page to resolve caching issues when new integration is connected
   useFetchIntegrationStatus({
@@ -38,6 +40,11 @@ const ChatPage = React.memo(function MainChat() {
     appendToInputRef,
     convoIdParam,
   } = useChatLayout();
+
+  // Set active conversation ID based on URL param
+  useEffect(() => {
+    setActiveConversationId(convoIdParam || null);
+  }, [convoIdParam, setActiveConversationId]);
 
   const {
     scrollContainerRef,

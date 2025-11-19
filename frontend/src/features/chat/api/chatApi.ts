@@ -286,27 +286,7 @@ export const chatApi = {
               content: response,
             })),
         }),
-        onopen: async (response) => {
-          console.log("[chatApi] Stream connection opened:", {
-            status: response.status,
-            statusText: response.statusText,
-            headers: Object.fromEntries(response.headers.entries()),
-          });
 
-          if (
-            response.ok &&
-            response.headers.get("content-type")?.includes("text/event-stream")
-          ) {
-            return; // Connection successful
-          } else {
-            const text = await response.text();
-            console.error("[chatApi] Stream connection failed:", {
-              status: response.status,
-              body: text,
-            });
-            throw new Error(`Stream failed: ${response.status} - ${text}`);
-          }
-        },
         onmessage(event) {
           const errorResult = onMessage(event);
 

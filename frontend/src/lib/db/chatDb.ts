@@ -23,10 +23,10 @@ export interface IMessage {
   id: string;
   conversationId: string;
   content: string;
-  role: MessageRole;
-  status?: MessageStatus;
+  role: "user" | "assistant" | "system";
+  status: "sending" | "sent" | "failed";
   createdAt: Date;
-  updatedAt?: Date;
+  updatedAt: Date;
   messageId?: string;
   fileIds?: string[];
   fileData?: FileData[];
@@ -34,6 +34,7 @@ export interface IMessage {
   toolCategory?: string | null;
   workflowId?: string | null;
   metadata?: Record<string, unknown>;
+  optimistic?: boolean; // Temporary message waiting for backend ID
 }
 
 class MessageQueue {
@@ -203,15 +204,47 @@ export class ChatDexie extends Dexie {
 
   public async updateMessageStatus(
     messageId: string,
-    status: MessageStatus,
+    status: IMessage["status"],
   ): Promise<void> {
-    await messageQueue.enqueue(async () => {
-      const message = await this.messages.get(messageId);
-      if (message) {
-        const updatedMessage = { ...message, status, updatedAt: new Date() };
-        await this.messages.put(updatedMessage);
+    return messageQueue.enqueue(async () => {
+      await this.messages.update(messageId, {
+        status,
+        updatedAt: new Date(),
+      });
+
+      const updatedMessage = await this.messages.get(messageId);
+      if (updatedMessage) {
         dbEventEmitter.emitMessageUpdated(updatedMessage);
       }
+    });
+  }
+
+  public async replaceOptimisticMessage(
+    optimisticId: string,
+    backendId: string,
+  ): Promise<void> {
+    return messageQueue.enqueue(async () => {
+      const message = await this.messages.get(optimisticId);
+      if (!message) {
+        console.warn(`Optimistic message ${optimisticId} not found`);
+        return;
+      }
+
+      // Delete optimistic message
+      await this.messages.delete(optimisticId);
+
+      // Create new message with backend ID
+      const updatedMessage: IMessage = {
+        ...message,
+        id: backendId,
+        messageId: backendId,
+        optimistic: false,
+        updatedAt: new Date(),
+      };
+
+      await this.messages.put(updatedMessage);
+
+      dbEventEmitter.emitMessageUpdated(updatedMessage);
     });
   }
 

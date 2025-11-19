@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
+from uuid import uuid4
 
 from app.agents.core.agent import call_agent
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
@@ -36,7 +37,12 @@ async def chat_stream(
         StreamingResponse: A streaming response containing the LLM's generated content
     """
     complete_message = ""
-    conversation_id, init_chunk = await initialize_conversation(body, user)
+    (
+        conversation_id,
+        init_chunk,
+        user_message_id,
+        bot_message_id,
+    ) = await initialize_conversation(body, user)
     is_new_conversation = init_chunk is not None
 
     # Dictionary to collect tool outputs during streaming
@@ -150,6 +156,8 @@ async def chat_stream(
         complete_message,
         tool_data,
         metadata=usage_metadata_callback.usage_metadata,
+        user_message_id=user_message_id,
+        bot_message_id=bot_message_id,
     )
 
 
@@ -204,7 +212,7 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
 
 async def initialize_conversation(
     body: MessageRequestWithHistory, user: dict
-) -> tuple[str, Optional[str]]:
+) -> tuple[str, Optional[str], str, str]:
     """
     Initialize a conversation or use an existing one.
 
@@ -217,6 +225,10 @@ async def initialize_conversation(
     """
     conversation_id = body.conversation_id or None
     init_chunk = None
+
+    # ALWAYS generate message IDs on backend for consistency
+    user_message_id = str(uuid4())
+    bot_message_id = str(uuid4())
 
     if conversation_id is None:
         last_message = body.messages[-1] if body.messages else None
@@ -239,11 +251,23 @@ async def initialize_conversation(
                 {
                     "conversation_id": conversation_id,
                     "conversation_description": conversation.get("description"),
+                    "user_message_id": user_message_id,
+                    "bot_message_id": bot_message_id,
                 }
             )
         }\n\n"""
 
-        return conversation_id, init_chunk
+        return conversation_id, init_chunk, user_message_id, bot_message_id
+
+    # For existing conversations, send message IDs as first stream event
+    init_chunk = f"""data: {
+        json.dumps(
+            {
+                "user_message_id": user_message_id,
+                "bot_message_id": bot_message_id,
+            }
+        )
+    }\n\n"""
 
     # Load files and old messages if conversation_id is provided
     uploaded_files = await get_files(
@@ -253,7 +277,7 @@ async def initialize_conversation(
 
     logger.info(f"{uploaded_files=}")
 
-    return conversation_id, init_chunk
+    return conversation_id, init_chunk, user_message_id, bot_message_id
 
 
 def update_conversation_messages(
@@ -264,6 +288,8 @@ def update_conversation_messages(
     complete_message: str,
     tool_data: Dict[str, Any] = {},
     metadata: Dict[str, Any] = {},
+    user_message_id: Optional[str] = None,
+    bot_message_id: Optional[str] = None,
 ) -> None:
     """
     Schedule conversation update in the background.
@@ -276,6 +302,8 @@ def update_conversation_messages(
         complete_message: Complete LLM-generated message
         tool_data: Structured tool output data to store with the message
         metadata: Token usage metadata from LLM calls by model
+        user_message_id: Optional pre-generated ID for user message
+        bot_message_id: Optional pre-generated ID for bot message
     """
     # Process token usage and calculate total cost in background
     if metadata and user.get("user_id"):
@@ -296,6 +324,10 @@ def update_conversation_messages(
         selectedWorkflow=body.selectedWorkflow,
     )
 
+    # Set message_id if provided from init_chunk
+    if user_message_id:
+        user_message.message_id = user_message_id
+
     # Create bot message with base properties
     bot_message = MessageModel(
         type="bot",
@@ -304,6 +336,10 @@ def update_conversation_messages(
         fileIds=body.fileIds,
         metadata=metadata,
     )
+
+    # Set message_id if provided from init_chunk
+    if bot_message_id:
+        bot_message.message_id = bot_message_id
 
     # Apply tool data fields to bot message if available
     if tool_data:
