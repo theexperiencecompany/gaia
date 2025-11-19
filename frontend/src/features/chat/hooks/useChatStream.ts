@@ -1,15 +1,15 @@
 import { EventSourceMessage } from "@microsoft/fetch-event-source";
-import { redirect } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { streamController } from "@/features/chat/utils/streamController";
-import { db, type IMessage } from "@/lib/db/chatDb";
+import { db, type IMessage, type IConversation } from "@/lib/db/chatDb";
 import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
+import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
-import { useConversationsStore } from "@/stores/conversationsStore";
 import { MessageType } from "@/types/features/convoTypes";
 import { WorkflowData } from "@/types/features/workflowTypes";
 import { FileData } from "@/types/shared";
@@ -19,11 +19,9 @@ import { useLoadingText } from "./useLoadingText";
 import { parseStreamData } from "./useStreamDataParser";
 
 export const useChatStream = () => {
+  const router = useRouter();
   const { setIsLoading, setAbortController } = useLoading();
-  const { updateConvoMessages, convoMessages } = useConversation();
-  const addConversation = useConversationsStore(
-    (state) => state.addConversation,
-  );
+  const { convoMessages } = useConversation();
   const { setLoadingText, resetLoadingText } = useLoadingText();
 
   // Add ref to track if a stream is already in progress
@@ -46,6 +44,17 @@ export const useChatStream = () => {
     refs.current.convoMessages = convoMessages;
   }, [convoMessages]);
 
+  // Cleanup stream on unmount
+  useEffect(() => {
+    return () => {
+      if (streamInProgressRef.current) {
+        console.log("[useChatStream] Cleaning up stream on unmount");
+        streamController.triggerSave();
+        streamController.abort();
+      }
+    };
+  }, []);
+
   // Reset all stream-related state
   const resetStreamState = () => {
     streamInProgressRef.current = false;
@@ -60,32 +69,39 @@ export const useChatStream = () => {
     setAbortController(null);
   };
 
-  const handleConversationCreation = (
+  const handleConversationCreation = async (
     conversationId: string,
     description: string | null,
   ) => {
-    const conversations = useConversationsStore.getState().conversations;
-    const alreadyExists = conversations.some(
-      (conv) => conv.conversation_id === conversationId,
-    );
+    // Check if conversation already exists in store
+    const existing = useChatStore
+      .getState()
+      .conversations.find((c) => c.id === conversationId);
 
-    if (!alreadyExists) {
+    if (!existing) {
       const finalDescription = description || "New Chat";
 
-      console.log("[useChatStream] Adding new conversation to store:", {
+      console.log("[useChatStream] Adding new conversation to IndexedDB:", {
         id: conversationId,
         description: finalDescription,
       });
 
-      addConversation({
-        _id: conversationId,
-        user_id: "",
-        conversation_id: conversationId,
+      // Write to IndexedDB - event will update chatStore
+      const newConversation: IConversation = {
+        id: conversationId,
+        title: finalDescription,
         description: finalDescription,
         starred: false,
-        is_system_generated: false,
-        createdAt: new Date().toISOString(),
-      });
+        isSystemGenerated: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      try {
+        await db.putConversation(newConversation);
+      } catch (error) {
+        console.error("Failed to save conversation to IndexedDB:", error);
+      }
     }
   };
 
@@ -98,17 +114,12 @@ export const useChatStream = () => {
       description: description,
     });
 
-    // Update via IndexedDB - event will update Zustand store
+    // Update via IndexedDB atomically - event will update Zustand store
     try {
-      const conversation = await db.getConversation(conversationId);
-      if (conversation) {
-        await db.putConversation({
-          ...conversation,
-          description: description,
-          title: description,
-          updatedAt: new Date(),
-        });
-      }
+      await db.updateConversationFields(conversationId, {
+        description: description,
+        title: description,
+      });
     } catch (error) {
       console.error("Failed to update conversation description:", error);
     }
@@ -131,7 +142,11 @@ export const useChatStream = () => {
 
       // Handle navigation for incomplete conversations
       if (response.conversation_id && !refs.current.newConversation.id) {
-        redirect(`/c/${response.conversation_id}`);
+        console.log(
+          "[useChatStream] Incomplete conversation saved:",
+          response.conversation_id,
+        );
+        // Navigation will be handled by the caller if needed
       }
     } catch (saveError) {
       console.error("Failed to save incomplete conversation:", saveError);
@@ -156,19 +171,8 @@ export const useChatStream = () => {
         ...overrides, // Apply new updates
       };
 
-      // Use the streaming messages if available, otherwise fall back to refs
-      const currentConvo = [...refs.current.currentStreamingMessages];
-
-      if (
-        currentConvo.length > 0 &&
-        currentConvo[currentConvo.length - 1].type === "bot"
-      ) {
-        currentConvo[currentConvo.length - 1] = refs.current.botMessage;
-      } else {
-        currentConvo.push(refs.current.botMessage);
-      }
-
-      updateConvoMessages(currentConvo);
+      // Bot message updates are persisted to IndexedDB during streaming
+      // Events will propagate to chatStore via event handlers
     } catch (error) {
       console.error("Error updating bot message:", error);
     }
@@ -228,8 +232,9 @@ export const useChatStream = () => {
         refs.current.newConversation.description =
           data.conversation_description;
 
-        // Update URL immediately when we get the conversation ID
-        window.history.replaceState({}, "", `/c/${data.conversation_id}`);
+        // Update URL using Next.js router to avoid triggering pathname effects
+        // Use router.replace() instead of window.history to maintain React Router state
+        router.replace(`/c/${data.conversation_id}`);
 
         // Add conversation to store immediately with temporary description
         handleConversationCreation(
@@ -304,15 +309,6 @@ export const useChatStream = () => {
   const handleStreamClose = async () => {
     try {
       if (!refs.current.botMessage) return;
-
-      // Create a shallow copy of the current bot message to preserve all existing data
-      const preservedBotMessage = { ...refs.current.botMessage };
-
-      // Update only the loading state while preserving everything else
-      updateBotMessage({
-        ...preservedBotMessage,
-        loading: false,
-      });
 
       // Only update loading if it hasn't been set to false already
       // (main_response_complete would have already set it to false)
@@ -394,6 +390,15 @@ export const useChatStream = () => {
     selectedWorkflow: WorkflowData | null = null,
     selectedCalendarEvent: SelectedCalendarEventData | null = null,
   ) => {
+    if (streamInProgressRef.current) {
+      console.warn(
+        "[useChatStream] Stream already in progress, ignoring new request",
+      );
+      return;
+    }
+
+    streamInProgressRef.current = true;
+
     try {
       refs.current.accumulatedResponse = "";
       refs.current.userPrompt = inputText;
@@ -481,6 +486,8 @@ export const useChatStream = () => {
     } catch (error) {
       console.error("Error initiating chat stream:", error);
       resetStreamState(); // Reset state on any error
+    } finally {
+      streamInProgressRef.current = false;
     }
   };
 

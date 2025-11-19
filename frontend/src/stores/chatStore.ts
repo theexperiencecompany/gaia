@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { useEffect } from "react";
 
 import type { IConversation, IMessage } from "@/lib/db/chatDb";
-import { dbEventEmitter } from "@/lib/db/chatDb";
+import { db, dbEventEmitter } from "@/lib/db/chatDb";
 
 type LoadingStatus = "idle" | "loading" | "success" | "error";
 
@@ -121,6 +121,34 @@ export const useChatStore = create<ChatState>((set) => ({
 // Event-driven synchronization with IndexedDB
 export const useChatStoreSync = () => {
   useEffect(() => {
+    let isActive = true;
+
+    // Initial hydration from IndexedDB
+    const hydrateFromIndexedDB = async () => {
+      try {
+        // Load all conversations
+        const conversations = await db.getAllConversations();
+        if (isActive) {
+          useChatStore.getState().setConversations(conversations);
+        }
+
+        // Load messages for all conversations
+        const conversationIds = await db.getConversationIdsWithMessages();
+        for (const conversationId of conversationIds) {
+          if (!isActive) break;
+          const messages = await db.getMessagesForConversation(conversationId);
+          if (isActive && messages.length > 0) {
+            useChatStore.getState().setMessagesForConversation(conversationId, messages);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to hydrate from IndexedDB:", error);
+      }
+    };
+
+    hydrateFromIndexedDB();
+
+    // Event handlers
     const handleMessageAdded = (message: IMessage) => {
       useChatStore.getState().addOrUpdateMessage(message);
     };
@@ -153,6 +181,7 @@ export const useChatStoreSync = () => {
     dbEventEmitter.on("conversationUpdated", handleConversationUpdated);
 
     return () => {
+      isActive = false;
       dbEventEmitter.off("messageAdded", handleMessageAdded);
       dbEventEmitter.off("messageUpdated", handleMessageUpdated);
       dbEventEmitter.off("messagesSynced", handleMessagesSynced);

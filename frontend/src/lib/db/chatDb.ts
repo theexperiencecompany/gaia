@@ -226,6 +226,34 @@ export class ChatDexie extends Dexie {
       });
     });
   }
+
+  public async clearAll(): Promise<void> {
+    await messageQueue.enqueue(() =>
+      (this as Dexie).transaction(
+        "rw",
+        this.conversations,
+        this.messages,
+        async () => {
+          await this.messages.clear();
+          await this.conversations.clear();
+        },
+      ),
+    );
+  }
+
+  public async updateConversationFields(
+    conversationId: string,
+    updates: Partial<IConversation>,
+  ): Promise<void> {
+    await messageQueue.enqueue(async () => {
+      const existing = await this.conversations.get(conversationId);
+      if (existing) {
+        const updated = { ...existing, ...updates, updatedAt: new Date() };
+        await this.conversations.put(updated);
+        dbEventEmitter.emitConversationUpdated(updated);
+      }
+    });
+  }
 }
 
 export const db = new ChatDexie();

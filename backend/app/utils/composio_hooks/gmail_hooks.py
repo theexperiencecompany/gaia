@@ -162,6 +162,7 @@ def gmail_fetch_after_hook(
                         "subject": msg.get("subject", ""),
                         "time": msg.get("time", ""),
                         "thread_id": msg.get("threadId", ""),
+                        "id": msg.get("id", ""),
                     }
                 )
 

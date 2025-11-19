@@ -6,7 +6,6 @@ import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
-import { useMessages } from "@/hooks/useMessages";
 import {
   useComposerTextActions,
   usePendingPrompt,
@@ -37,8 +36,6 @@ const ChatPage = React.memo(function MainChat() {
     appendToInputRef,
     convoIdParam,
   } = useChatLayout();
-
-  useMessages(convoIdParam);
 
   const {
     scrollContainerRef,

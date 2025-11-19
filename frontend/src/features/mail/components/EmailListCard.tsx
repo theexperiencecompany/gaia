@@ -86,7 +86,7 @@ export default function EmailListCard({
             emails.length > 0 &&
             emails.map((email) => (
               <Tooltip
-                key={email.thread_id}
+                key={email.id}
                 content={`Ask about this email from ${extractSenderName(email.from || "Unknown Sender")}`}
                 showArrow
                 color="foreground"

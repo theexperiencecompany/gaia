@@ -6,7 +6,6 @@ import { useChatStream } from "@/features/chat/hooks/useChatStream";
 import { db, type IMessage } from "@/lib/db/chatDb";
 import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
 import { useComposerStore } from "@/stores/composerStore";
-import { useConversationStore } from "@/stores/conversationStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 import { MessageType } from "@/types/features/convoTypes";
 import { WorkflowData } from "@/types/features/workflowTypes";
@@ -21,7 +20,6 @@ type SendMessageOverrides = {
 };
 
 export const useSendMessage = () => {
-  const addLegacyMessage = useConversationStore((state) => state.addMessage);
   const fetchChatStream = useChatStream();
 
   return useCallback(
@@ -73,8 +71,6 @@ export const useSendMessage = () => {
         selectedCalendarEvent: selectedCalendarEvent ?? undefined,
       };
 
-      addLegacyMessage(userMessage);
-
       if (!conversationId) {
         await fetchChatStream(
           trimmedContent,
@@ -115,30 +111,7 @@ export const useSendMessage = () => {
       }
 
       // db.putMessage will emit event that updates Zustand store automatically
-
-      const finalMessage: IMessage = {
-        ...optimisticMessage,
-        status: "sent",
-        updatedAt: new Date(),
-        metadata: {
-          originalMessage: {
-            ...userMessage,
-            loading: false,
-          },
-        },
-      };
-
-      try {
-        await db.replaceMessage(optimisticMessage.id, finalMessage);
-      } catch {
-        try {
-          await db.putMessage(finalMessage);
-        } catch {
-          // Ignore persistence failures when updating the final state
-        }
-      }
-
-      // db.replaceMessage/putMessage will emit events that update Zustand store automatically
+      // Status will be updated to "sent" after successful streaming or "failed" on error
 
       const streamingUserMessage: MessageType = {
         ...userMessage,
@@ -158,7 +131,7 @@ export const useSendMessage = () => {
         );
       } catch {
         const failedMessage: IMessage = {
-          ...finalMessage,
+          ...optimisticMessage,
           status: "failed",
           updatedAt: new Date(),
         };
@@ -172,6 +145,6 @@ export const useSendMessage = () => {
         // db.putMessage will emit event that updates Zustand store automatically
       }
     },
-    [addLegacyMessage, fetchChatStream],
+    [fetchChatStream],
   );
 };

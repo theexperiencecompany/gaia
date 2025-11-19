@@ -11,8 +11,9 @@ export const useBackgroundSync = () => {
     const runSync = async () => {
       try {
         await batchSyncConversations();
-      } catch {
-        // Ignore background sync errors to keep UI responsive
+      } catch (error) {
+        // Log error for debugging but don't show to user
+        console.error("[BackgroundSync] Sync failed:", error);
       }
     };
 
