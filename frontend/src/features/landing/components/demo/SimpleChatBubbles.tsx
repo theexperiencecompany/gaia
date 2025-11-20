@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { cn } from "@/lib/utils";
+import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 
 export function SimpleChatBubbleUser({
   children,
@@ -56,6 +57,13 @@ export function SimpleChatBubbleBot({
   className?: string;
   parentClassName?: string;
 }) {
+  // Handle NEW_MESSAGE_BREAK for multiple bubbles with single avatar
+  const childrenString = typeof children === "string" ? children : "";
+  const bubbles = childrenString
+    ? splitMessageByBreaks(childrenString)
+    : [children];
+  const hasMultipleBubbles = bubbles.length > 1;
+
   return (
     <div className={`relative mb-3 flex items-end gap-3 ${parentClassName}`}>
       <div className="relative z-[1] w-[35px]">
@@ -67,14 +75,41 @@ export function SimpleChatBubbleBot({
           className="rounded-full"
         />
       </div>
-      <div
-        className={cn(
-          "chat_bubble imessage-bubble imessage-from-them text-white",
-          className,
-        )}
-      >
-        {children}
-      </div>
+      {hasMultipleBubbles ? (
+        <div className="flex flex-col gap-1">
+          {bubbles.map((bubble, index) => {
+            const isFirst = index === 0;
+            const isLast = index === bubbles.length - 1;
+            const groupedClasses = isFirst
+              ? "imessage-grouped-first"
+              : isLast
+                ? "imessage-grouped-last"
+                : "imessage-grouped-middle";
+
+            return (
+              <div
+                key={index}
+                className={cn(
+                  "chat_bubble imessage-bubble imessage-from-them text-white",
+                  groupedClasses,
+                  className,
+                )}
+              >
+                {bubble}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div
+          className={cn(
+            "chat_bubble imessage-bubble imessage-from-them text-white",
+            className,
+          )}
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }

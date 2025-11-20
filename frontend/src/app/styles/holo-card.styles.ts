@@ -45,37 +45,37 @@ const holoGradient = keyframes`
   }
 `;
 
-export const StyledHoloCard = styled.div(
+export const StyledHoloCard = styled.div<{
+  $active: boolean;
+  $activeBackgroundPosition?: {
+    tp: number;
+    lp: number;
+  };
+  $activeRotation?: {
+    x: number;
+    y: number;
+  };
+  $url: string;
+  $animated: boolean;
+  $height: number;
+  $width: number;
+  $showSparkles: boolean;
+}>(
   ({
-    active,
-    activeBackgroundPosition,
-    activeRotation,
-    animated,
-    url,
-    height,
-    width,
-    showSparkles,
-  }: {
-    active: boolean;
-    activeBackgroundPosition: {
-      tp: number;
-      lp: number;
-    };
-    activeRotation: {
-      x: number;
-      y: number;
-    };
-    url: string;
-    animated: boolean;
-    height: number;
-    width: number;
-    showSparkles: boolean;
+    $active,
+    $activeBackgroundPosition,
+    $activeRotation,
+    $animated,
+    $url,
+    $height,
+    $width,
+    $showSparkles,
   }) => [
     css`
-      width: ${width}px;
-      height: ${height}px;
+      width: ${$width}px;
+      height: ${$height}px;
       background-color: #211799;
-      background-image: url(${url});
+      background-image: url(${$url});
       background-size: cover;
       background-repeat: no-repeat;
       background-position: center;
@@ -89,7 +89,8 @@ export const StyledHoloCard = styled.div(
       overflow: hidden;
       display: inline-block;
       vertical-align: middle;
-      transform: rotateX(${activeRotation.y}deg) rotateY(${activeRotation.x}deg);
+      transform: rotateX(${$activeRotation?.y ?? 0}deg)
+        rotateY(${$activeRotation?.x ?? 0}deg);
 
       &:before,
       &:after {
@@ -116,7 +117,7 @@ export const StyledHoloCard = styled.div(
         );
       }
     `,
-    showSparkles &&
+    $showSparkles &&
       `
       &:after {
         background-image: url('https://assets.codepen.io/13471/sparkles.gif'),
@@ -136,7 +137,7 @@ export const StyledHoloCard = styled.div(
         z-index: 1;
       }
     `,
-    active &&
+    $active &&
       `
   :before {
     opacity: 1;
@@ -149,10 +150,10 @@ export const StyledHoloCard = styled.div(
       #a79d66 52%,
       transparent 75%
     );
-    background-position: ${activeBackgroundPosition.lp}% ${activeBackgroundPosition.tp}%;
+    background-position: ${$activeBackgroundPosition?.lp ?? 50}% ${$activeBackgroundPosition?.tp ?? 50}%;
   }
 `,
-    animated &&
+    $animated &&
       css`
         transition: 1s;
         tranform: rotateX(0deg) rotateY(0deg);

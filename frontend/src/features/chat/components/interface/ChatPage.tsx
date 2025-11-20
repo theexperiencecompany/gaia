@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useConversation } from "@/features/chat/hooks/useConversation";
@@ -11,11 +11,9 @@ import {
   useComposerTextActions,
   usePendingPrompt,
 } from "@/stores/composerStore";
-
 import { useChatLayout, useScrollBehavior } from "./hooks";
 import { ChatWithMessages, NewChatLayout } from "./layouts";
 import ScrollToBottomButton from "./ScrollToBottomButton";
-import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
 
 const ChatPage = React.memo(function MainChat() {
   const { convoMessages } = useConversation();
@@ -83,7 +81,6 @@ const ChatPage = React.memo(function MainChat() {
   return (
     <div className="flex h-full flex-col">
       <FileDropModal isDragging={isDragging} />
-      <HoloCardModal isOpen={true} onClose={() => {}} />
 
       {hasMessages ? (
         <>

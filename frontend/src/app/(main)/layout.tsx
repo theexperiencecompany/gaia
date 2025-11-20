@@ -18,6 +18,10 @@ import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useUIStoreSidebar } from "@/stores/uiStore";
+import { useHoloCardModalStore } from "@/stores/holoCardModalStore";
+import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
+import OnboardingStepsCard from "@/features/onboarding/components/OnboardingStepsCard";
+import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
 
 const HeaderSidebarTrigger = () => {
   return (
@@ -39,6 +43,12 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
+  const {
+    open: isHoloCardModalOpen,
+    openModal: openHoloCardModal,
+    closeModal: closeHoloCardModal,
+  } = useHoloCardModalStore();
+  const [showOnboarding, setShowOnboarding] = useState(true);
 
   // Check if user needs onboarding
   useOnboardingGuard();
@@ -134,6 +144,23 @@ export default function MainLayout({ children }: { children: ReactNode }) {
 
         {/* Global Command Menu */}
         <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
+
+        {/* Onboarding Components */}
+        <HoloCardModal
+          isOpen={isHoloCardModalOpen}
+          onClose={closeHoloCardModal}
+        />
+        {showOnboarding && (
+          <div
+            className={`fixed z-40 w-70 space-y-3 ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
+          >
+            <ContextGatheringLoader
+              onComplete={openHoloCardModal}
+              duration={500}
+            />
+            <OnboardingStepsCard />
+          </div>
+        )}
       </SidebarProvider>
     </TooltipProvider>
   );

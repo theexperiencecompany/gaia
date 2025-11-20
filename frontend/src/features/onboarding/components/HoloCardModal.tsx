@@ -10,9 +10,15 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
+import {
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem,
+} from "@heroui/dropdown";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
-import { Select, SelectItem } from "@heroui/select";
 import { Slider } from "@heroui/slider";
+import { Tooltip } from "@heroui/tooltip";
 import {
   Download,
   Share2,
@@ -20,10 +26,15 @@ import {
   Dices,
   Link,
   RotateCcw,
+  Brain,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import ColorPicker from "react-best-gradient-color-picker";
 import { toast } from "sonner";
+import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
+import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
+import confetti from "canvas-confetti";
+import { Skeleton } from "@heroui/skeleton";
 
 interface FeatureModalProps {
   isOpen: boolean;
@@ -47,6 +58,50 @@ const HOUSES: Record<House, { image: string }> = {
       "https://i.pinimg.com/1200x/27/0a/74/270a74bdc412f9eeae4d2403ebc9bd63.jpg",
   },
 };
+
+const suggestedWorkflows = [
+  {
+    title: "Daily Email Summary",
+    description:
+      "Get a smart summary of your emails every morning with action items highlighted",
+    action_type: "workflow" as const,
+    integrations: ["gmail"],
+    steps: [{ tool_category: "gmail" }, { tool_category: "openai" }],
+  },
+  {
+    title: "Meeting Scheduler",
+    description:
+      "Automatically schedule meetings based on availability and preferences",
+    action_type: "workflow" as const,
+    integrations: ["google_calendar"],
+    steps: [{ tool_category: "google_calendar" }, { tool_category: "gmail" }],
+  },
+  {
+    title: "Task Automation",
+    description: "Create tasks from emails and calendar events automatically",
+    action_type: "workflow" as const,
+    integrations: ["gmail", "google_calendar"],
+    steps: [
+      { tool_category: "gmail" },
+      { tool_category: "google_calendar" },
+      { tool_category: "openai" },
+    ],
+  },
+  {
+    title: "Document Intelligence",
+    description: "Extract and summarize key information from your documents",
+    action_type: "workflow" as const,
+    integrations: ["google_drive"],
+    steps: [{ tool_category: "google_drive" }, { tool_category: "openai" }],
+  },
+  {
+    title: "Slack Digest",
+    description: "Get important Slack messages and threads summarized daily",
+    action_type: "workflow" as const,
+    integrations: ["slack"],
+    steps: [{ tool_category: "slack" }, { tool_category: "openai" }],
+  },
+];
 
 const generateRandomColor = () => {
   const hue = Math.floor(Math.random() * 360);
@@ -82,9 +137,21 @@ const generateRandomColor = () => {
 export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
   const [color, setColor] = useState(generateRandomColor());
   const [opacity, setOpacity] = useState(40);
-  const [isShareOpen, setIsShareOpen] = useState(false);
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState<House>("Bluehaven");
+  const hasShownConfetti = useRef(false);
+
+  useEffect(() => {
+    if (isOpen && !hasShownConfetti.current) {
+      hasShownConfetti.current = true;
+      confetti({
+        particleCount: 100,
+        spread: 200,
+        origin: { y: 0.6 },
+        colors: ["#00bbff", "#a855f7", "#ec4899", "#f59e0b"],
+      });
+    }
+  }, [isOpen]);
 
   const handleDownload = () => {
     toast.success("Download started");
@@ -111,7 +178,6 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
         toast.success("Link copied to clipboard");
         break;
     }
-    setIsShareOpen(false);
   };
 
   const handleRandomize = () => {
@@ -166,13 +232,11 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
 
     // Randomize opacity too
     setOpacity(30 + Math.floor(Math.random() * 50)); // 30-80%
-    toast.info("Color randomized!");
   };
 
   const handleResetColor = () => {
     setColor("rgba(0,0,0,0)");
     setOpacity(40);
-    toast.success("Color reset to transparent");
   };
 
   return (
@@ -180,160 +244,194 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
       isOpen={isOpen}
       onClose={onClose}
       size="5xl"
-      //   scrollBehavior="inside"
       isDismissable={true}
-      className="h-[80vh]"
+      className="h-[85vh] min-w-[95vw]"
       backdrop="blur"
+      scrollBehavior="inside"
     >
-      <ModalContent className="border-0! bg-transparent shadow-none outline-0!">
-        <ModalBody>
-          <div className="group relative flex h-full w-full flex-col items-center justify-center gap-4">
-            {/* <Select
-              label="Select House"
-              selectedKeys={[selectedHouse]}
-              onSelectionChange={(keys) => {
-                const selected = Array.from(keys)[0] as House;
-                setSelectedHouse(selected);
-              }}
-              className="max-w-xs"
-              variant="flat"
-            >
-              {Object.keys(HOUSES).map((house) => (
-                <SelectItem key={house}>{house}</SelectItem>
+      <ModalContent className="flex border-0! bg-zinc-900/95 shadow-none outline-0!">
+        <div className="grid h-full grid-cols-1 lg:grid-cols-3">
+          <div className="col-span-2 space-y-4 p-10 pr-0!">
+            <SimpleChatBubbleBot>
+              {
+                "I've put together some workflows to get you started.<NEW_MESSAGE_BREAK>Try any of these or create your own!"
+              }
+            </SimpleChatBubbleBot>
+
+            <div className="mt-5 grid w-full grid-cols-3 gap-2 pl-12">
+              {suggestedWorkflows.map((workflow, index) => (
+                <UseCaseCard
+                  key={index}
+                  title={workflow.title}
+                  description={workflow.description}
+                  action_type={workflow.action_type}
+                  integrations={workflow.integrations}
+                  steps={workflow.steps}
+                />
               ))}
-            </Select> */}
+            </div>
 
-            <div className="mb-3 text-zinc-300">Click to flip card</div>
-
-            <HoloCard
-              url={HOUSES[selectedHouse].image}
-              height={500}
-              width={350}
-              showSparkles={true}
-              overlayColor={color}
-              overlayOpacity={opacity}
-              houseName={selectedHouse}
-            />
+            <SimpleChatBubbleBot>
+              {
+                "Your very own GAIA Card is waiting on the right! 🎨✨<NEW_MESSAGE_BREAK>Go wild with the customization tools and show off your masterpiece to the world! 🚀"
+              }
+            </SimpleChatBubbleBot>
+            <div className="mt-2 ml-12">
+              <Button
+                variant="flat"
+                color="primary"
+                className="text-primary"
+                startContent={<TwitterIcon width={16} height={16} />}
+                onPress={() => handleShare("twitter")}
+              >
+                Share on Twitter
+              </Button>
+            </div>
           </div>
-        </ModalBody>
-        <ModalFooter className="flex justify-center">
-          <ButtonGroup>
-            <Button
-              isIconOnly
-              variant="flat"
-              onPress={handleDownload}
-              aria-label="Download"
-            >
-              <Download size={20} />
-            </Button>
 
-            <Popover
-              isOpen={isShareOpen}
-              onOpenChange={setIsShareOpen}
-              placement="top"
-            >
-              <PopoverTrigger>
-                <Button isIconOnly variant="flat" aria-label="Share">
-                  <Share2 size={20} />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="p-2">
-                <div className="flex flex-col gap-2">
-                  <Button
-                    size="sm"
-                    variant="light"
-                    startContent={<TwitterIcon width={16} height={16} />}
-                    onPress={() => handleShare("twitter")}
-                  >
-                    Twitter
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="light"
-                    startContent={<LinkedinIcon width={16} height={16} />}
-                    onPress={() => handleShare("linkedin")}
-                  >
-                    LinkedIn
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="light"
-                    startContent={<Link size={16} />}
-                    onPress={() => handleShare("copy")}
-                  >
-                    Copy Link
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
+          <div className="flex h-full flex-col items-center justify-center">
+            <div className="relative flex flex-col items-center gap-4">
+              <div className="text-sm text-zinc-400">Click to flip card</div>
+              <Suspense fallback={<Skeleton />}>
+                <HoloCard
+                  url={HOUSES[selectedHouse].image}
+                  height={470}
+                  width={330}
+                  showSparkles={true}
+                  overlayColor={color}
+                  overlayOpacity={opacity}
+                  houseName={selectedHouse}
+                />
+              </Suspense>
 
-            <Popover
-              isOpen={isColorPickerOpen}
-              onOpenChange={setIsColorPickerOpen}
-              placement="top"
-            >
-              <PopoverTrigger>
-                <Button isIconOnly variant="flat" aria-label="Color Picker">
-                  <Palette size={20} />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto bg-zinc-800 p-4">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-white/70">Color Picker</span>
-                    <Button
-                      size="sm"
-                      variant="light"
-                      isIconOnly
-                      onPress={handleResetColor}
-                      aria-label="Reset Color"
-                    >
-                      <RotateCcw size={16} />
-                    </Button>
-                  </div>
-                  <ColorPicker
-                    value={color}
-                    onChange={setColor}
-                    hidePresets={true}
-                    hideOpacity={true}
-                    hideEyeDrop={true}
-                    hideAdvancedSliders={true}
-                    hideColorGuide={true}
-                    hideInputType={true}
-                    width={300}
-                    height={100}
-                    hideGradientStop={true}
-                    className={"bg-transparent!"}
-                  />
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-white/70">Opacity</span>
-                      <span className="text-xs text-white/50">{opacity}%</span>
-                    </div>
-                    <Slider
-                      size="sm"
-                      step={1}
-                      minValue={0}
-                      maxValue={100}
-                      value={opacity}
-                      onChange={(value) => setOpacity(value as number)}
-                      className="max-w-md"
-                    />
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
+              <ButtonGroup className="mt-5">
+                <Tooltip content="Download your card" placement="top">
+                  <Button
+                    isIconOnly
+                    variant="flat"
+                    onPress={handleDownload}
+                    aria-label="Download"
+                  >
+                    <Download size={20} />
+                  </Button>
+                </Tooltip>
 
-            <Button
-              isIconOnly
-              variant="flat"
-              onPress={handleRandomize}
-              aria-label="Randomize"
-            >
-              <Dices size={20} />
-            </Button>
-          </ButtonGroup>
-        </ModalFooter>
+                <Tooltip content="Share your card" placement="top">
+                  <Dropdown placement="top">
+                    <DropdownTrigger>
+                      <Button isIconOnly variant="flat" aria-label="Share">
+                        <Share2 size={20} />
+                      </Button>
+                    </DropdownTrigger>
+                    <DropdownMenu aria-label="Share options">
+                      <DropdownItem
+                        key="twitter"
+                        startContent={<TwitterIcon width={16} height={16} />}
+                        onPress={() => handleShare("twitter")}
+                      >
+                        Twitter
+                      </DropdownItem>
+                      <DropdownItem
+                        key="linkedin"
+                        startContent={<LinkedinIcon width={16} height={16} />}
+                        onPress={() => handleShare("linkedin")}
+                      >
+                        LinkedIn
+                      </DropdownItem>
+                      <DropdownItem
+                        key="copy"
+                        startContent={<Link size={16} />}
+                        onPress={() => handleShare("copy")}
+                      >
+                        Copy Link
+                      </DropdownItem>
+                    </DropdownMenu>
+                  </Dropdown>
+                </Tooltip>
+
+                <Tooltip content="Customize colors" placement="top">
+                  <Popover
+                    isOpen={isColorPickerOpen}
+                    onOpenChange={setIsColorPickerOpen}
+                    placement="top"
+                  >
+                    <PopoverTrigger>
+                      <Button
+                        isIconOnly
+                        variant="flat"
+                        aria-label="Color Picker"
+                      >
+                        <Palette size={20} />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto bg-zinc-800 p-4">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-white/70">
+                            Color Picker
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="light"
+                            isIconOnly
+                            onPress={handleResetColor}
+                            aria-label="Reset Color"
+                          >
+                            <RotateCcw size={16} />
+                          </Button>
+                        </div>
+                        <ColorPicker
+                          value={color}
+                          onChange={setColor}
+                          hidePresets={true}
+                          hideOpacity={true}
+                          hideEyeDrop={true}
+                          hideAdvancedSliders={true}
+                          hideColorGuide={true}
+                          hideInputType={true}
+                          width={300}
+                          height={100}
+                          hideGradientStop={true}
+                          className={"bg-transparent!"}
+                        />
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-white/70">
+                              Opacity
+                            </span>
+                            <span className="text-xs text-white/50">
+                              {opacity}%
+                            </span>
+                          </div>
+                          <Slider
+                            size="sm"
+                            step={1}
+                            minValue={0}
+                            maxValue={100}
+                            value={opacity}
+                            onChange={(value) => setOpacity(value as number)}
+                            className="max-w-md"
+                          />
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </Tooltip>
+
+                <Tooltip content="Randomize colors" placement="top">
+                  <Button
+                    isIconOnly
+                    variant="flat"
+                    onPress={handleRandomize}
+                    aria-label="Randomize"
+                  >
+                    <Dices size={20} />
+                  </Button>
+                </Tooltip>
+              </ButtonGroup>
+            </div>
+          </div>
+        </div>
       </ModalContent>
     </Modal>
   );

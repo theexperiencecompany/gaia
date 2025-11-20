@@ -75,11 +75,11 @@ export const HoloCard = ({
     const h = card ? card.clientHeight : 0;
     const w = card ? card.clientWidth : 0;
 
-    var px = Math.abs(Math.floor((100 / w) * l) - 100);
-    var py = Math.abs(Math.floor((100 / h) * t) - 100);
+    const px = Math.abs(Math.floor((100 / w) * l) - 100);
+    const py = Math.abs(Math.floor((100 / h) * t) - 100);
 
-    var lp = 50 + (px - 50) / 1.5;
-    var tp = 50 + (py - 50) / 1.5;
+    const lp = 50 + (px - 50) / 1.5;
+    const tp = 50 + (py - 50) / 1.5;
 
     setActiveBackgroundPosition({ lp, tp });
   };
@@ -176,18 +176,18 @@ export const HoloCard = ({
             </div>
 
             <StyledHoloCard
-              url={url}
+              $url={url}
               ref={ref}
-              active={hover}
-              animated={animated}
-              activeRotation={activeRotation}
-              activeBackgroundPosition={activeBackgroundPosition}
+              $active={hover}
+              $animated={animated}
+              $activeRotation={activeRotation}
+              $activeBackgroundPosition={activeBackgroundPosition}
               onMouseMove={handleOnMouseOver}
               onTouchMove={handleOnMouseOver}
               onMouseOut={handleOnMouseOut}
-              height={height ?? 446}
-              width={width ?? 320}
-              showSparkles={showSparkles ?? true}
+              $height={height ?? 446}
+              $width={width ?? 320}
+              $showSparkles={showSparkles ?? true}
             >
               {children}
             </StyledHoloCard>
@@ -264,18 +264,18 @@ export const HoloCard = ({
             </div>
 
             <StyledHoloCard
-              url={url}
+              $url={url}
               ref={ref}
-              active={hover}
-              animated={animated}
-              activeRotation={activeRotation}
-              activeBackgroundPosition={activeBackgroundPosition}
+              $active={hover}
+              $animated={animated}
+              $activeRotation={activeRotation}
+              $activeBackgroundPosition={activeBackgroundPosition}
               onMouseMove={handleOnMouseOver}
               onTouchMove={handleOnMouseOver}
               onMouseOut={handleOnMouseOut}
-              height={height ?? 446}
-              width={width ?? 320}
-              showSparkles={showSparkles ?? true}
+              $height={height ?? 446}
+              $width={width ?? 320}
+              $showSparkles={showSparkles ?? true}
             >
               {children}
             </StyledHoloCard>
