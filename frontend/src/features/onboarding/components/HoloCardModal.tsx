@@ -28,80 +28,25 @@ import {
   RotateCcw,
   Brain,
 } from "lucide-react";
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense, useCallback } from "react";
 import ColorPicker from "react-best-gradient-color-picker";
 import { toast } from "sonner";
 import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
 import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
 import confetti from "canvas-confetti";
 import { Skeleton } from "@heroui/skeleton";
+import { useUser } from "@/features/auth/hooks/useUser";
+import {
+  usePersonalization,
+  House,
+} from "@/features/onboarding/hooks/usePersonalization";
+import { getHouseImage } from "@/features/onboarding/constants/houses";
+import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
 
 interface FeatureModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-type House = "Frostpeak" | "Greenvale" | "Mistgrove" | "Bluehaven";
-
-const HOUSES: Record<House, { image: string }> = {
-  Frostpeak: {
-    image:
-      "https://i.pinimg.com/1200x/bf/1a/99/bf1a99c4c2cd8f378b9e4493f71e7e64.jpg",
-  },
-  Greenvale: {
-    image:
-      "https://i.pinimg.com/1200x/3b/3e/11/3b3e1167fcfb0933070b6064ce9c72cd.jpg",
-  },
-  Mistgrove: { image: "/images/wallpapers/holo/mistgrove.png" },
-  Bluehaven: {
-    image:
-      "https://i.pinimg.com/1200x/27/0a/74/270a74bdc412f9eeae4d2403ebc9bd63.jpg",
-  },
-};
-
-const suggestedWorkflows = [
-  {
-    title: "Daily Email Summary",
-    description:
-      "Get a smart summary of your emails every morning with action items highlighted",
-    action_type: "workflow" as const,
-    integrations: ["gmail"],
-    steps: [{ tool_category: "gmail" }, { tool_category: "openai" }],
-  },
-  {
-    title: "Meeting Scheduler",
-    description:
-      "Automatically schedule meetings based on availability and preferences",
-    action_type: "workflow" as const,
-    integrations: ["google_calendar"],
-    steps: [{ tool_category: "google_calendar" }, { tool_category: "gmail" }],
-  },
-  {
-    title: "Task Automation",
-    description: "Create tasks from emails and calendar events automatically",
-    action_type: "workflow" as const,
-    integrations: ["gmail", "google_calendar"],
-    steps: [
-      { tool_category: "gmail" },
-      { tool_category: "google_calendar" },
-      { tool_category: "openai" },
-    ],
-  },
-  {
-    title: "Document Intelligence",
-    description: "Extract and summarize key information from your documents",
-    action_type: "workflow" as const,
-    integrations: ["google_drive"],
-    steps: [{ tool_category: "google_drive" }, { tool_category: "openai" }],
-  },
-  {
-    title: "Slack Digest",
-    description: "Get important Slack messages and threads summarized daily",
-    action_type: "workflow" as const,
-    integrations: ["slack"],
-    steps: [{ tool_category: "slack" }, { tool_category: "openai" }],
-  },
-];
 
 const generateRandomColor = () => {
   const hue = Math.floor(Math.random() * 360);
@@ -135,11 +80,47 @@ const generateRandomColor = () => {
 };
 
 export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
-  const [color, setColor] = useState(generateRandomColor());
+  const [color, setColor] = useState("rgba(0,0,0,0)");
   const [opacity, setOpacity] = useState(40);
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
-  const [selectedHouse, setSelectedHouse] = useState<House>("Bluehaven");
+  const [selectedHouse, setSelectedHouse] = useState<House>("bluehaven");
   const hasShownConfetti = useRef(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const user = useUser();
+
+  // Use centralized personalization hook
+  const { personalizationData, isLoading: isLoadingPersonalization } =
+    usePersonalization(isOpen);
+
+  // Debounced save function
+  const saveColors = useCallback((newColor: string, newOpacity: number) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      holoCardApi.updateHoloCardColors(newColor, newOpacity).catch((error) => {
+        console.error("Failed to save colors:", error);
+      });
+    }, 1000); // 1 second debounce
+  }, []);
+
+  // Update selected house when data arrives
+  useEffect(() => {
+    if (personalizationData?.house) {
+      setSelectedHouse(personalizationData.house);
+    }
+  }, [personalizationData]);
+
+  // Set color and opacity from backend when data arrives
+  useEffect(() => {
+    if (personalizationData?.overlay_color) {
+      setColor(personalizationData.overlay_color);
+    }
+    if (personalizationData?.overlay_opacity !== undefined) {
+      setOpacity(personalizationData.overlay_opacity);
+    }
+  }, [personalizationData]);
 
   useEffect(() => {
     if (isOpen && !hasShownConfetti.current) {
@@ -152,6 +133,15 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
       });
     }
   }, [isOpen]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleDownload = () => {
     toast.success("Download started");
@@ -218,25 +208,54 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
       return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, 1)`;
     };
 
+    let newColor: string;
     if (isGradient) {
       // Generate random gradient with vibrant colors
       const color1 = generateVibrantColor();
       const color2 = generateVibrantColor();
       const angle = Math.floor(Math.random() * 360);
 
-      setColor(`linear-gradient(${angle}deg, ${color1} 0%, ${color2} 100%)`);
+      newColor = `linear-gradient(${angle}deg, ${color1} 0%, ${color2} 100%)`;
     } else {
       // Generate random solid vibrant color
-      setColor(generateVibrantColor());
+      newColor = generateVibrantColor();
     }
 
     // Randomize opacity too
-    setOpacity(30 + Math.floor(Math.random() * 50)); // 30-80%
+    const newOpacity = 30 + Math.floor(Math.random() * 50); // 30-80%
+
+    setColor(newColor);
+    setOpacity(newOpacity);
+
+    // Save to backend
+    holoCardApi
+      .updateHoloCardColors(newColor, newOpacity)
+      .then(() => {
+        toast.success("Card colors updated!");
+      })
+      .catch((error) => {
+        console.error("Failed to save colors:", error);
+        toast.error("Failed to save colors");
+      });
   };
 
   const handleResetColor = () => {
-    setColor("rgba(0,0,0,0)");
-    setOpacity(40);
+    const defaultColor = "rgba(0,0,0,0)";
+    const defaultOpacity = 40;
+
+    setColor(defaultColor);
+    setOpacity(defaultOpacity);
+
+    // Save to backend
+    holoCardApi
+      .updateHoloCardColors(defaultColor, defaultOpacity)
+      .then(() => {
+        toast.success("Colors reset!");
+      })
+      .catch((error) => {
+        console.error("Failed to reset colors:", error);
+        toast.error("Failed to reset colors");
+      });
   };
 
   return (
@@ -252,22 +271,35 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
         <div className="grid h-full flex-1 grid-cols-1 items-center lg:grid-cols-3">
           <div className="col-span-2 space-y-4 p-10 pr-0!">
             <SimpleChatBubbleBot>
-              {
-                "I've put together some workflows to get you started.<NEW_MESSAGE_BREAK>Try any of these or create your own!"
-              }
+              {isLoadingPersonalization
+                ? "I'm preparing your personalized workflows...<NEW_MESSAGE_BREAK>Just a moment! ✨"
+                : "I've put together some workflows to get you started.<NEW_MESSAGE_BREAK>Try any of these or create your own!"}
             </SimpleChatBubbleBot>
 
             <div className="mt-5 grid w-full grid-cols-3 gap-2 pl-12">
-              {suggestedWorkflows.map((workflow, index) => (
-                <UseCaseCard
-                  key={index}
-                  title={workflow.title}
-                  description={workflow.description}
-                  action_type={workflow.action_type}
-                  integrations={workflow.integrations}
-                  steps={workflow.steps}
-                />
-              ))}
+              {isLoadingPersonalization ? (
+                <>
+                  <Skeleton className="h-32 rounded-lg" />
+                  <Skeleton className="h-32 rounded-lg" />
+                  <Skeleton className="h-32 rounded-lg" />
+                  <Skeleton className="h-32 rounded-lg" />
+                </>
+              ) : (
+                (personalizationData?.suggested_workflows || []).map(
+                  (workflow, index) => (
+                    <UseCaseCard
+                      key={workflow.id || index}
+                      title={workflow.title}
+                      description={workflow.description}
+                      action_type="workflow"
+                      integrations={workflow.steps
+                        .map((s) => s.tool_category)
+                        .filter((v, i, a) => a.indexOf(v) === i)}
+                      steps={workflow.steps}
+                    />
+                  ),
+                )
+              )}
             </div>
 
             <SimpleChatBubbleBot>
@@ -292,13 +324,24 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
               <div className="text-sm text-zinc-400">Click to flip card</div>
               <Suspense fallback={<Skeleton />}>
                 <HoloCard
-                  url={HOUSES[selectedHouse].image}
+                  url={getHouseImage(selectedHouse)}
                   height={470}
                   width={330}
                   showSparkles={true}
                   overlayColor={color}
                   overlayOpacity={opacity}
                   houseName={selectedHouse}
+                  userName={user.name || "User"}
+                  userTagline={
+                    personalizationData?.personality_phrase ||
+                    "Curious Adventurer"
+                  }
+                  userId={`#${personalizationData?.account_number || "00000"}`}
+                  joinDate={personalizationData?.member_since || "Nov 21, 2024"}
+                  userBio={
+                    personalizationData?.user_bio ||
+                    "A passionate individual exploring new possibilities and making an impact."
+                  }
                 />
               </Suspense>
 
@@ -380,7 +423,10 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                         </div>
                         <ColorPicker
                           value={color}
-                          onChange={setColor}
+                          onChange={(newColor) => {
+                            setColor(newColor);
+                            saveColors(newColor, opacity);
+                          }}
                           hidePresets={true}
                           hideOpacity={true}
                           hideEyeDrop={true}
@@ -407,7 +453,11 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                             minValue={0}
                             maxValue={100}
                             value={opacity}
-                            onChange={(value) => setOpacity(value as number)}
+                            onChange={(value) => {
+                              const newOpacity = value as number;
+                              setOpacity(newOpacity);
+                              saveColors(color, newOpacity);
+                            }}
                             className="max-w-md"
                           />
                         </div>

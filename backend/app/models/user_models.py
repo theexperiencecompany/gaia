@@ -84,6 +84,14 @@ class OnboardingData(BaseModel):
     preferences: Optional[OnboardingPreferences] = Field(
         None, description="User's onboarding preferences"
     )
+    house: Optional[str] = Field(None, description="Assigned house name")
+    personality_phrase: Optional[str] = Field(
+        None, description="LLM-generated personality phrase"
+    )
+    user_bio: Optional[str] = Field(None, description="LLM-generated bio paragraph")
+    suggested_workflows: Optional[list[str]] = Field(
+        default_factory=list, description="Workflow IDs suggested via RAG"
+    )
 
 
 class OnboardingRequest(BaseModel):

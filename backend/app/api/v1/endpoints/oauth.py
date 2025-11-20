@@ -55,6 +55,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, RedirectResponse
 from workos import WorkOSClient
+from app.services.post_onboarding_service import process_post_onboarding_personalization
 
 router = APIRouter()
 http_async_client = httpx.AsyncClient()
@@ -601,6 +602,7 @@ async def update_me(
 @router.post("/onboarding", response_model=OnboardingResponse)
 async def complete_user_onboarding(
     onboarding_data: OnboardingRequest,
+    background_tasks: BackgroundTasks,
     user: dict = Depends(get_current_user),
     tz_info: GET_USER_TZ_TYPE = Depends(get_user_timezone),
 ):
@@ -612,6 +614,17 @@ async def complete_user_onboarding(
         updated_user = await complete_onboarding(
             user["user_id"], onboarding_data, user_timezone=tz_info[0]
         )
+
+        # Check if personalization has already run (e.g. via email processor)
+        # If not, trigger it now (fallback for users without Gmail or if email processing is slow)
+        onboarding = updated_user.get("onboarding", {})
+        if not onboarding.get("house"):
+            logger.info(
+                f"Triggering post-onboarding personalization fallback for user {user['user_id']}"
+            )
+            background_tasks.add_task(
+                process_post_onboarding_personalization, user["user_id"]
+            )
 
         return OnboardingResponse(
             success=True, message="Onboarding completed successfully", user=updated_user
@@ -653,6 +666,203 @@ async def update_user_preferences(
     except Exception as e:
         logger.error(f"Error updating preferences: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update preferences")
+
+
+@router.get("/onboarding/personalization")
+async def get_onboarding_personalization(user: dict = Depends(get_current_user)):
+    """
+    Get personalization data (house, phrase, bio, workflows) for current authenticated user.
+    Used as fallback if WebSocket fails or to refetch data.
+    Returns default values if personalization hasn't completed yet.
+    """
+    try:
+        from app.db.mongodb.collections import users_collection, workflows_collection
+        from bson import ObjectId
+
+        user_id = user.get("user_id")
+        user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        onboarding = user_doc.get("onboarding", {})
+
+        # Check if personalization has been completed
+        has_personalization = bool(onboarding.get("house"))
+
+        # Get stored metadata or calculate if not stored (for older users)
+        account_number = onboarding.get("account_number")
+        member_since = onboarding.get("member_since")
+
+        if not account_number or not member_since:
+            created_at = user_doc.get("created_at")
+            if created_at:
+                count = await users_collection.count_documents(
+                    {"created_at": {"$lt": created_at}}
+                )
+                account_number = count + 1
+            else:
+                account_number = 1
+
+            member_since = (
+                created_at.strftime("%b %d, %Y") if created_at else "Nov 21, 2024"
+            )
+
+        # Fetch full workflow objects
+        workflow_ids = onboarding.get("suggested_workflows", [])
+        workflows = []
+        for wf_id in workflow_ids:
+            try:
+                query_id = ObjectId(wf_id) if ObjectId.is_valid(wf_id) else wf_id
+                wf = await workflows_collection.find_one({"_id": query_id})
+                if wf:
+                    workflows.append(
+                        {
+                            "id": str(wf["_id"]),
+                            "title": wf.get("title", ""),
+                            "description": wf.get("description", ""),
+                            "steps": wf.get("steps", []),
+                        }
+                    )
+            except Exception:
+                continue
+
+        return {
+            "has_personalization": has_personalization,
+            "house": onboarding.get("house", "Bluehaven"),
+            "personality_phrase": onboarding.get(
+                "personality_phrase", "Curious Adventurer"
+            ),
+            "user_bio": onboarding.get(
+                "user_bio",
+                "A passionate individual exploring new possibilities and making an impact.",
+            ),
+            "account_number": account_number,
+            "member_since": member_since,
+            "overlay_color": onboarding.get("overlay_color", "rgba(0,0,0,0)"),
+            "overlay_opacity": onboarding.get("overlay_opacity", 40),
+            "suggested_workflows": workflows,
+            "name": user_doc.get("name", "User"),
+            "holo_card_id": str(user_doc["_id"]),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching personalization: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="Failed to fetch personalization data"
+        )
+
+
+@router.get("/holo-card/{card_id}")
+async def get_public_holo_card(card_id: str):
+    """
+    Get public holo card data by card ID (user ID).
+    This endpoint is public and doesn't require authentication.
+    Returns basic profile info without sensitive data like workflows.
+    """
+    try:
+        from app.db.mongodb.collections import users_collection
+        from bson import ObjectId
+
+        if not ObjectId.is_valid(card_id):
+            raise HTTPException(status_code=400, detail="Invalid card ID")
+
+        user_doc = await users_collection.find_one({"_id": ObjectId(card_id)})
+
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="Card not found")
+
+        onboarding = user_doc.get("onboarding", {})
+
+        # Check if user has completed onboarding
+        if not onboarding.get("house"):
+            raise HTTPException(status_code=404, detail="Card not found")
+
+        # Get stored metadata or calculate if not stored (for older users)
+        account_number = onboarding.get("account_number")
+        member_since = onboarding.get("member_since")
+
+        if not account_number or not member_since:
+            created_at = user_doc.get("created_at")
+            if created_at:
+                count = await users_collection.count_documents(
+                    {"created_at": {"$lt": created_at}}
+                )
+                account_number = count + 1
+            else:
+                account_number = 1
+
+            member_since = (
+                created_at.strftime("%b %d, %Y") if created_at else "Nov 21, 2024"
+            )
+
+        return {
+            "house": onboarding.get("house"),
+            "personality_phrase": onboarding.get("personality_phrase"),
+            "user_bio": onboarding.get("user_bio"),
+            "account_number": account_number,
+            "member_since": member_since,
+            "name": user_doc.get("name"),
+            "overlay_color": onboarding.get("overlay_color", "rgba(0,0,0,0)"),
+            "overlay_opacity": onboarding.get("overlay_opacity", 40),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching holo card: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch holo card data")
+
+
+@router.patch("/holo-card/colors")
+async def update_holo_card_colors(
+    overlay_color: str = Form(..., description="Overlay color or gradient"),
+    overlay_opacity: int = Form(..., description="Overlay opacity (0-100)"),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Update holo card overlay color and opacity.
+    """
+    try:
+        user_id = user.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+
+        # Validate opacity range
+        if not 0 <= overlay_opacity <= 100:
+            raise HTTPException(
+                status_code=400, detail="Opacity must be between 0 and 100"
+            )
+
+        # Update user's onboarding data
+        result = await users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "onboarding.overlay_color": overlay_color,
+                    "onboarding.overlay_opacity": overlay_opacity,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
+        )
+
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return {
+            "success": True,
+            "message": "Holo card colors updated successfully",
+            "overlay_color": overlay_color,
+            "overlay_opacity": overlay_opacity,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating holo card colors: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update holo card colors")
 
 
 @router.patch("/timezone", response_model=dict)

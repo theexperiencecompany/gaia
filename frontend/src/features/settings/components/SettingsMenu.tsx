@@ -8,12 +8,7 @@ import {
   DropdownSection,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import {
-  BookIcon,
-  ChevronRight,
-  CircleArrowUp,
-  LogOut,
-} from "lucide-react";
+import { BookIcon, ChevronRight, CircleArrowUp, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ReactNode, useState } from "react";
 
@@ -103,7 +98,8 @@ export default function SettingsMenu({
       key: "roadmap",
       label: "Roadmap",
       icon: BookOpen01Icon,
-      action: () => window.open("https://roadmap.heygaia.ai", "_blank"),
+      action: () =>
+        window.open("https://gaia.featurebase.app/roadmap", "_blank"),
     },
     {
       key: "opensource",

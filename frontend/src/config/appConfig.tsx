@@ -166,7 +166,7 @@ export const appConfig = {
         description: "Follow us for updates",
       },
       {
-        href: "https://github.com/heygaia",
+        href: "https://github.com/theexperiencecompany",
         label: "GitHub",
         icon: <Github width={20} height={20} color="white" />,
         external: true,

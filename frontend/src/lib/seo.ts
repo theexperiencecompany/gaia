@@ -33,7 +33,7 @@ export const siteConfig = {
   ogImage: "/og-image.webp",
   links: {
     twitter: "https://x.com/trygaia",
-    github: "https://github.com/heygaia",
+    github: "https://github.com/theexperiencecompany",
     discord: "https://discord.heygaia.io",
     linkedin: "https://www.linkedin.com/company/heygaia",
     youtube: "https://youtube.com/@heygaia_io",

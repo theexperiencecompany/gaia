@@ -294,6 +294,20 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     if processing_complete:
         await _mark_processed(user_id, successful_stored + profiles_stored)
 
+        # Trigger post-onboarding personalization
+        try:
+            from app.services.post_onboarding_service import (
+                process_post_onboarding_personalization,
+            )
+
+            logger.info(
+                f"Triggering post-onboarding personalization for user {user_id}"
+            )
+            await process_post_onboarding_personalization(user_id)
+        except Exception as e:
+            logger.error(f"Post-onboarding personalization failed: {e}", exc_info=True)
+            # Don't fail the main process
+
     return {
         "total": total_fetched,
         "successful": successful_stored,

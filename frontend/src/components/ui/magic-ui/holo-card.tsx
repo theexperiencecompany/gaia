@@ -1,5 +1,6 @@
 import { StyledHoloCard } from "@/app/styles/holo-card.styles";
 import { Calendar03Icon } from "@/components/shared";
+import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
 import React, { useRef, useState } from "react";
 import Tilt from "react-parallax-tilt";
@@ -215,7 +216,7 @@ export const HoloCard = ({
               />
             )}
 
-            <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-between p-6 text-white">
+            <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-between p-3 text-white">
               <div className="flex w-full flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <div className="rounded-full bg-white/30 p-1 px-2 backdrop-blur-md">
@@ -228,7 +229,7 @@ export const HoloCard = ({
                     />
                   </div>
                   {houseName && (
-                    <div className="rounded-full bg-white/20 p-1 px-3 text-sm font-light text-white/70 backdrop-blur-md">
+                    <div className="rounded-full bg-white/20 p-1 px-3 font-serif text-xl font-light text-white/70 backdrop-blur-md">
                       {houseName}
                     </div>
                   )}
@@ -241,9 +242,7 @@ export const HoloCard = ({
                   <div className="mb-4 text-sm font-light text-white/80 italic">
                     {userTagline}
                   </div>
-                  <p className="text-sm leading-relaxed text-white/70">
-                    {userBio}
-                  </p>
+                  <p className="text-sm text-white/80">{userBio}</p>
                 </div>
               </div>
 

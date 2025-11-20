@@ -48,7 +48,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
     openModal: openHoloCardModal,
     closeModal: closeHoloCardModal,
   } = useHoloCardModalStore();
-  const [showOnboarding, setShowOnboarding] = useState(true);
 
   // Check if user needs onboarding
   useOnboardingGuard();
@@ -150,17 +149,16 @@ export default function MainLayout({ children }: { children: ReactNode }) {
           isOpen={isHoloCardModalOpen}
           onClose={closeHoloCardModal}
         />
-        {showOnboarding && (
-          <div
-            className={`fixed z-40 w-70 space-y-3 ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
-          >
-            <ContextGatheringLoader
-              onComplete={openHoloCardModal}
-              duration={500}
-            />
-            <OnboardingStepsCard />
-          </div>
-        )}
+
+        <div
+          className={`fixed z-40 w-70 space-y-3 ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
+        >
+          <ContextGatheringLoader
+            onComplete={openHoloCardModal}
+            duration={500}
+          />
+          <OnboardingStepsCard />
+        </div>
       </SidebarProvider>
     </TooltipProvider>
   );

@@ -41,7 +41,7 @@ const socialLinks = [
   },
   {
     ariaLabel: "GitHub",
-    href: "https://github.com/heygaia",
+    href: "https://github.com/theexperiencecompany",
     Icon: Github,
   },
   {

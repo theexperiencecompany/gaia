@@ -3,36 +3,67 @@
 import { RaisedButton } from "@/components";
 import { Spinner } from "@heroui/spinner";
 import { useEffect, useState } from "react";
+import { usePersonalization } from "@/features/onboarding/hooks/usePersonalization";
+import { X } from "lucide-react";
 
 interface ContextGatheringLoaderProps {
   onComplete: () => void;
   duration?: number;
 }
 
+const DISMISSED_KEY = "onboarding-dismissed";
+
 export default function ContextGatheringLoader({
   onComplete,
   duration = 5000,
 }: ContextGatheringLoaderProps) {
-  const [isComplete, setIsComplete] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [isDismissed, setIsDismissed] = useState(false);
+  const { isComplete } = usePersonalization(true);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsDismissed(localStorage.getItem(DISMISSED_KEY) === "true");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isComplete) {
+      setProgress(100);
+      return;
+    }
+
     const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsComplete(true);
-          return 100;
-        }
-        return prev + 1;
-      });
+      setProgress((prev) => (prev >= 90 ? 90 : prev + 1));
     }, duration / 100);
 
     return () => clearInterval(interval);
-  }, [duration]);
+  }, [duration, isComplete]);
+
+  const handleDismiss = () => {
+    localStorage.setItem(DISMISSED_KEY, "true");
+    setIsDismissed(true);
+  };
+
+  const handleShowMeAround = () => {
+    onComplete();
+    handleDismiss();
+  };
+
+  if (isDismissed) return null;
 
   return (
-    <div className="flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-4 shadow-xl backdrop-blur-sm">
+    <div className="relative flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-4 shadow-xl backdrop-blur-sm">
+      {isComplete && (
+        <button
+          onClick={handleDismiss}
+          className="absolute top-2 right-2 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-100"
+          aria-label="Dismiss"
+        >
+          <X size={16} />
+        </button>
+      )}
+
       {isComplete ? (
         <>
           <div className="flex flex-col items-start">
@@ -43,7 +74,7 @@ export default function ContextGatheringLoader({
           </div>
 
           <RaisedButton
-            onClick={onComplete}
+            onClick={handleShowMeAround}
             color="#00bbff"
             className="text-black!"
           >
@@ -56,7 +87,7 @@ export default function ContextGatheringLoader({
             <Spinner size="sm" variant="simple" />
             <div className="flex-1">
               <p className="text-xs font-medium text-zinc-300">
-                Gathering context for memory graph...
+                Gathering context for personalized card...
               </p>
             </div>
           </div>
