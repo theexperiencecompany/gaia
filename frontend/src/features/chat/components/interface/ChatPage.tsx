@@ -12,10 +12,10 @@ import {
   usePendingPrompt,
 } from "@/stores/composerStore";
 
-import FeatureModal from "./FeatureModal";
 import { useChatLayout, useScrollBehavior } from "./hooks";
 import { ChatWithMessages, NewChatLayout } from "./layouts";
 import ScrollToBottomButton from "./ScrollToBottomButton";
+import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
 
 const ChatPage = React.memo(function MainChat() {
   const { convoMessages } = useConversation();
@@ -83,7 +83,7 @@ const ChatPage = React.memo(function MainChat() {
   return (
     <div className="flex h-full flex-col">
       <FileDropModal isDragging={isDragging} />
-      <FeatureModal isOpen={true} onClose={() => {}} />
+      <HoloCardModal isOpen={true} onClose={() => {}} />
 
       {hasMessages ? (
         <>
