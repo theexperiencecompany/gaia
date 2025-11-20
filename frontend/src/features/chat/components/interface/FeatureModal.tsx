@@ -180,7 +180,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
       isOpen={isOpen}
       onClose={onClose}
       size="5xl"
-      scrollBehavior="inside"
+      //   scrollBehavior="inside"
       isDismissable={true}
       className="h-[80vh]"
       backdrop="blur"
@@ -188,7 +188,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
       <ModalContent className="border-0! bg-transparent shadow-none outline-0!">
         <ModalBody>
           <div className="group relative flex h-full w-full flex-col items-center justify-center gap-4">
-            <Select
+            {/* <Select
               label="Select House"
               selectedKeys={[selectedHouse]}
               onSelectionChange={(keys) => {
@@ -201,7 +201,10 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
               {Object.keys(HOUSES).map((house) => (
                 <SelectItem key={house}>{house}</SelectItem>
               ))}
-            </Select>
+            </Select> */}
+
+            <div className="mb-3 text-zinc-300">Click to flip card</div>
+
             <HoloCard
               url={HOUSES[selectedHouse].image}
               height={500}
