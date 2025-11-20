@@ -1,5 +1,6 @@
 "use client";
 
+import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Card } from "@heroui/card";
 import { Checkbox } from "@heroui/checkbox";
 import {
@@ -52,36 +53,53 @@ const steps: OnboardingStep[] = [
 
 export default function OnboardingStepsCard() {
   return (
-    <div className="flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-4 shadow-xl backdrop-blur-sm">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-2 shadow-xl backdrop-blur-sm">
+      {/* <div className="flex items-center justify-start">
         <h3 className="text-xs font-semibold text-zinc-100">Getting Started</h3>
         <span className="text-xs text-zinc-500">0/5</span>
-      </div>
+      </div> */}
 
-      <div className="space-y-1">
-        {steps.map((step, index) => (
-          <div key={step.id} className="relative flex w-full items-center">
-            {/* Vertical connecting line */}
-            {index !== steps.length - 1 && (
-              <div className="absolute top-6 left-[18px] h-[calc(100%+4px)] w-[2px] border-l-1 border-dashed border-zinc-500" />
-            )}
-
-            <div className="flex w-full items-center gap-2 rounded-xl hover:bg-zinc-700/50">
-              <Checkbox
-                isSelected={step.completed}
-                lineThrough
-                className="m-0! border-dotted!"
-                classNames={{
-                  wrapper: ` ${step.completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-800 "}`,
-                }}
-                radius="full"
-              >
-                <span className="text-sm text-zinc-300">{step.label}</span>
-              </Checkbox>
+      <Accordion defaultExpandedKeys={["1"]}>
+        <AccordionItem
+          key="1"
+          aria-label="Getting started"
+          classNames={{ trigger: "cursor-pointer" }}
+          title={
+            <div className="flex items-center justify-start gap-2 font-normal">
+              <h3 className="text-xs font-semibold text-zinc-100">
+                Getting Started
+              </h3>
+              <span className="text-xs text-zinc-500">0/5</span>
             </div>
+          }
+          isCompact
+        >
+          <div className="space-y-1">
+            {steps.map((step, index) => (
+              <div key={step.id} className="relative flex w-full items-center">
+                {/* Vertical connecting line */}
+                {index !== steps.length - 1 && (
+                  <div className="absolute top-6 left-[18px] h-[calc(100%+4px)] w-[2px] border-l-1 border-dashed border-zinc-500" />
+                )}
+
+                <div className="flex w-full items-center gap-2 rounded-xl hover:bg-zinc-700/50">
+                  <Checkbox
+                    isSelected={step.completed}
+                    lineThrough
+                    className="m-0! border-dotted!"
+                    classNames={{
+                      wrapper: ` ${step.completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-800 "}`,
+                    }}
+                    radius="full"
+                  >
+                    <span className="text-sm text-zinc-300">{step.label}</span>
+                  </Checkbox>
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </AccordionItem>
+      </Accordion>
     </div>
   );
 }

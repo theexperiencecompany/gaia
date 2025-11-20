@@ -145,9 +145,9 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     if (isOpen && !hasShownConfetti.current) {
       hasShownConfetti.current = true;
       confetti({
-        particleCount: 100,
-        spread: 200,
-        origin: { y: 0.6 },
+        particleCount: 300,
+        spread: 500,
+        origin: { y: 0.4 },
         colors: ["#00bbff", "#a855f7", "#ec4899", "#f59e0b"],
       });
     }
@@ -243,14 +243,13 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      size="5xl"
+      size="full"
       isDismissable={true}
-      className="h-[85vh] min-w-[95vw]"
       backdrop="blur"
       scrollBehavior="inside"
     >
-      <ModalContent className="flex border-0! bg-zinc-900/95 shadow-none outline-0!">
-        <div className="grid h-full grid-cols-1 lg:grid-cols-3">
+      <ModalContent className="flex border-0! bg-zinc-900/50 shadow-none outline-0!">
+        <div className="grid h-full flex-1 grid-cols-1 items-center lg:grid-cols-3">
           <div className="col-span-2 space-y-4 p-10 pr-0!">
             <SimpleChatBubbleBot>
               {
@@ -278,10 +277,9 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
             </SimpleChatBubbleBot>
             <div className="mt-2 ml-12">
               <Button
-                variant="flat"
                 color="primary"
-                className="text-primary"
-                startContent={<TwitterIcon width={16} height={16} />}
+                className="font-medium"
+                startContent={<TwitterIcon width={18} height={18} />}
                 onPress={() => handleShare("twitter")}
               >
                 Share on Twitter

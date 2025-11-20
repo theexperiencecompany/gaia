@@ -2,7 +2,6 @@
 
 import { RaisedButton } from "@/components";
 import { Spinner } from "@heroui/spinner";
-import { Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface ContextGatheringLoaderProps {
