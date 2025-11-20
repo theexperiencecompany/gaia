@@ -94,29 +94,33 @@ export const HoloCard = ({
 
       <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-end p-3 text-white transition">
         <div className="absolute top-4 left-0 flex w-full justify-between px-3">
-          <Image
-            src={"/images/logos/text_w_logo_black.webp"}
-            alt="GAIA Logo"
-            width={100}
-            height={30}
-            className="object-contain"
-          />
+          <div className="rounded-full bg-white/30 p-1 px-2 font-serif text-xl font-light text-white/70 backdrop-blur-md">
+            <Image
+              src="/images/logos/text_w_logo_white.webp"
+              alt="GAIA Logo"
+              width={100}
+              height={30}
+              className="object-contain"
+            />
+          </div>
           {houseName && (
-            <div className="rounded-full bg-black/10 p-1 px-4 font-serif text-xl font-light text-white/70 backdrop-blur-md">
+            <div className="rounded-full bg-white/20 p-1 px-4 font-serif text-xl font-light text-white/70 backdrop-blur-md">
               {houseName}
             </div>
           )}
         </div>
         <Image
-          src={"/images/logos/experience_logo.svg"}
+          src="/images/logos/experience_logo.svg"
           alt="Experience Logo"
           className="scale-125 opacity-10"
           fill
         />
 
-        <div className="relative flex w-full flex-col gap-1 overflow-hidden rounded-2xl bg-white/20 p-3 backdrop-blur-md">
-          <div className="font-serif text-4xl font-bold">{userName}</div>
-          <div className="mb-10 font-light">{userTagline}</div>
+        <div className="relative flex w-full flex-col gap-1 overflow-hidden rounded-2xl bg-black/20 p-3 backdrop-blur-md">
+          <div className="font-serif text-4xl font-bold text-white">
+            {userName}
+          </div>
+          <div className="mb-10 font-light text-white">{userTagline}</div>
 
           <div className="flex w-full items-center justify-between">
             <div className="flex flex-col items-start gap-1">
@@ -126,14 +130,14 @@ export const HoloCard = ({
 
             <div className="flex gap-2">
               {/* <Image
-                src={"/images/logos/logo.webp"}
+                src="/images/logos/logo.webp"
                 alt="GAIA Logo"
                 width={30}
                 height={30}
               /> */}
 
               <Image
-                src={"/images/logos/experience_logo.svg"}
+                src="/images/logos/experience_logo.svg"
                 alt="Experience Logo"
                 width={30}
                 height={30}
