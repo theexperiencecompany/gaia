@@ -7,6 +7,7 @@ import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { streamController } from "@/features/chat/utils/streamController";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
+import { streamState } from "@/lib/streamState";
 import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
@@ -44,6 +45,8 @@ export const useChatStream = () => {
 
   // Reset all stream-related state
   const resetStreamState = () => {
+    streamState.endStream();
+
     streamInProgressRef.current = false;
     refs.current.botMessage = null;
     refs.current.userMessage = null;
@@ -164,7 +167,11 @@ export const useChatStream = () => {
     };
   };
 
-  const handleProgressUpdate = (progressData: string | { message: string; tool_name?: string; tool_category?: string }) => {
+  const handleProgressUpdate = (
+    progressData:
+      | string
+      | { message: string; tool_name?: string; tool_category?: string },
+  ) => {
     if (typeof progressData === "string") {
       setLoadingText(progressData);
     } else if (typeof progressData === "object" && progressData.message) {
@@ -263,6 +270,10 @@ export const useChatStream = () => {
 
     refs.current.newConversation.id = conversation_id;
     refs.current.newConversation.description = conversation_description;
+
+    // CRITICAL: Update streamState with the new conversationId for sync protection
+    // This prevents background sync from syncing this conversation while it's being streamed
+    streamState.updateStreamConversationId(conversation_id);
 
     if (bot_message_id && refs.current.botMessage) {
       refs.current.botMessage.message_id = bot_message_id;
@@ -451,6 +462,7 @@ export const useChatStream = () => {
   };
 
   const handleStreamClose = async () => {
+    streamState.endStream();
     try {
       if (!refs.current.botMessage) return;
 
@@ -498,6 +510,7 @@ export const useChatStream = () => {
 
       // Reset stream state after successful completion
       streamInProgressRef.current = false;
+      streamState.endStream();
       refs.current.botMessage = null;
       refs.current.currentStreamingMessages = [];
       refs.current.newConversation = { id: null, description: null };
@@ -535,6 +548,12 @@ export const useChatStream = () => {
     }
 
     streamInProgressRef.current = true;
+
+    // Set global stream state with conversation ID for sync protection
+    const conversationId =
+      useChatStore.getState().activeConversationId ||
+      refs.current.newConversation.id;
+    streamState.startStream(conversationId);
 
     try {
       refs.current.accumulatedResponse = "";
@@ -604,6 +623,7 @@ export const useChatStream = () => {
       resetStreamState(); // Reset state on any error
     } finally {
       streamInProgressRef.current = false;
+      streamState.endStream();
     }
   };
 

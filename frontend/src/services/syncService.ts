@@ -4,6 +4,7 @@ import {
   type ConversationSyncItem,
 } from "@/features/chat/api/chatApi";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
+import { streamState } from "@/lib/streamState";
 import { MessageType } from "@/types/features/convoTypes";
 
 const MAX_SYNC_CONVERSATIONS = 100;
@@ -26,6 +27,10 @@ const mergeMessageLists = (
     } else if (existing.optimistic) {
       // Always replace optimistic messages with remote versions
       messageMap.set(msg.id, msg);
+    } else if (existing.status === "sending") {
+      // CRITICAL: Never overwrite messages currently being streamed
+      // Keep local version as it has the most up-to-date streaming content
+      return;
     } else {
       // Message exists locally - prefer remote if it's newer
       const remoteTime = msg.updatedAt?.getTime() ?? msg.createdAt.getTime();
@@ -138,6 +143,9 @@ const identifyStaleConversations = (
 };
 
 export const batchSyncConversations = async (): Promise<void> => {
+  // CRITICAL: Skip sync if there's an active stream to prevent data corruption
+  if (streamState.isStreaming()) return;
+
   try {
     const [remoteConversations, localConversations] = await Promise.all([
       chatApi
@@ -170,6 +178,9 @@ export const batchSyncConversations = async (): Promise<void> => {
       freshConversations.map(async (conversation) => {
         const conversationId = conversation.conversation_id;
         const messages = conversation.messages ?? [];
+
+        // Double-check: Skip syncing this conversation if it's currently being streamed
+        if (streamState.isStreamingConversation(conversationId)) return;
 
         const mappedConversation: IConversation = {
           id: conversationId,
