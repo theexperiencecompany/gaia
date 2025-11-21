@@ -153,6 +153,14 @@ export const useChatStream = () => {
       toolName: sourceMessage.selectedTool ?? null,
       toolCategory: sourceMessage.toolCategory ?? null,
       workflowId: sourceMessage.selectedWorkflow?.id ?? null,
+      selectedWorkflow: sourceMessage.selectedWorkflow ?? null,
+      selectedCalendarEvent: sourceMessage.selectedCalendarEvent ?? null,
+      tool_data: sourceMessage.tool_data ?? null,
+      follow_up_actions: sourceMessage.follow_up_actions ?? null,
+      image_data: sourceMessage.image_data ?? null,
+      memory_data: sourceMessage.memory_data ?? null,
+      pinned: sourceMessage.pinned ?? false,
+      isConvoSystemGenerated: sourceMessage.isConvoSystemGenerated ?? false,
     };
   };
 
@@ -298,14 +306,6 @@ export const useChatStream = () => {
       refs.current.botMessage.message_id = bot_message_id;
       await persistBotMessage(conversationId, bot_message_id);
     }
-
-    try {
-      await db.updateConversationFields(conversationId, {
-        updatedAt: new Date(),
-      });
-    } catch (error) {
-      console.error("Failed to update conversation timestamp:", error);
-    }
   };
 
   const handleStreamingContent = async (data: any) => {
@@ -369,6 +369,16 @@ export const useChatStream = () => {
       toolName: refs.current.botMessage.selectedTool ?? null,
       toolCategory: refs.current.botMessage.toolCategory ?? null,
       workflowId: refs.current.botMessage.selectedWorkflow?.id ?? null,
+      selectedWorkflow: refs.current.botMessage.selectedWorkflow ?? null,
+      selectedCalendarEvent:
+        refs.current.botMessage.selectedCalendarEvent ?? null,
+      tool_data: refs.current.botMessage.tool_data ?? null,
+      follow_up_actions: refs.current.botMessage.follow_up_actions ?? null,
+      image_data: refs.current.botMessage.image_data ?? null,
+      memory_data: refs.current.botMessage.memory_data ?? null,
+      pinned: refs.current.botMessage.pinned ?? false,
+      isConvoSystemGenerated:
+        refs.current.botMessage.isConvoSystemGenerated ?? false,
     };
 
     // Update store directly without DB write during streaming
@@ -452,10 +462,24 @@ export const useChatStream = () => {
 
         if (conversationId) {
           try {
-            // Write final complete message to IndexedDB
-            await db.updateMessage(refs.current.botMessage.message_id, {
-              content: refs.current.accumulatedResponse,
-              status: "sent",
+            // Get the complete message from store to ensure all streamed data is persisted
+            const messageFromStore = useChatStore
+              .getState()
+              .messagesByConversation[
+                conversationId
+              ]?.find((msg) => msg.id === refs.current.botMessage!.message_id);
+
+            if (messageFromStore) {
+              // Persist the complete message with final status
+              await db.putMessage({
+                ...messageFromStore,
+                status: "sent",
+                updatedAt: new Date(),
+              });
+            }
+
+            // Update conversation metadata only when stream ends
+            await db.updateConversationFields(conversationId, {
               updatedAt: new Date(),
             });
           } catch (error) {

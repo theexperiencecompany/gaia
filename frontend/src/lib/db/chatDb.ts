@@ -4,6 +4,9 @@ import { EventEmitter } from "events";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import { FileData } from "@/types/shared";
 import { ToolDataEntry } from "@/config";
+import { ImageData, MemoryData } from "@/types";
+import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
+import { WorkflowData } from "@/types/features/workflowTypes";
 
 export interface IConversation {
   id: string;
@@ -26,11 +29,27 @@ export interface IMessage {
   createdAt: Date;
   updatedAt: Date;
   messageId?: string;
+
+  // File data
   fileIds?: string[];
   fileData?: FileData[];
+
+  // Tool/workflow data
   toolName?: string | null;
   toolCategory?: string | null;
   workflowId?: string | null;
+  selectedWorkflow?: WorkflowData | null;
+  selectedCalendarEvent?: SelectedCalendarEventData | null;
+
+  // Rich content data from BaseMessageData
+  tool_data?: ToolDataEntry[] | null;
+  follow_up_actions?: string[] | null;
+  image_data?: ImageData | null;
+  memory_data?: MemoryData | null;
+
+  // Message metadata
+  pinned?: boolean;
+  isConvoSystemGenerated?: boolean;
   metadata?: Record<string, unknown>;
   optimistic?: boolean; // Temporary message waiting for backend ID
 }

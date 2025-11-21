@@ -16,9 +16,15 @@ const mapStoredMessageToConversationMessage = (
     fileData: message.fileData,
     selectedTool: message.toolName ?? undefined,
     toolCategory: message.toolCategory ?? undefined,
-    selectedWorkflow: undefined,
+    selectedWorkflow: message.selectedWorkflow ?? undefined,
+    selectedCalendarEvent: message.selectedCalendarEvent ?? undefined,
     loading: message.status === "sending",
-    ...message,
+    tool_data: message.tool_data ?? undefined,
+    follow_up_actions: message.follow_up_actions ?? undefined,
+    image_data: message.image_data ?? undefined,
+    memory_data: message.memory_data ?? undefined,
+    pinned: message.pinned ?? undefined,
+    isConvoSystemGenerated: message.isConvoSystemGenerated ?? undefined,
   } as MessageType;
 };
 

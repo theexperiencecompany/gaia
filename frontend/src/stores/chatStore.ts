@@ -182,14 +182,6 @@ export const useChatStoreSync = () => {
     // Initial hydration from IndexedDB
     const hydrateFromIndexedDB = async () => {
       try {
-        // Clean up orphaned optimistic messages (older than 5 minutes)
-        const deletedCount = await db.cleanupOrphanedOptimisticMessages(5);
-        if (deletedCount > 0) {
-          console.log(
-            `[chatStore] Cleaned up ${deletedCount} orphaned optimistic messages`,
-          );
-        }
-
         // Load all conversations
         const conversations = await db.getAllConversations();
         if (isActive) {

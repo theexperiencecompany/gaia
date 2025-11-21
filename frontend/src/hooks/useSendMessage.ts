@@ -114,6 +114,8 @@ export const useSendMessage = () => {
         toolName: selectedTool,
         toolCategory: selectedToolCategory,
         workflowId: selectedWorkflow?.id ?? null,
+        selectedWorkflow: selectedWorkflow,
+        selectedCalendarEvent: selectedCalendarEvent,
         optimistic: true,
       };
       try {
