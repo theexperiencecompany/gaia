@@ -18,7 +18,6 @@ import type {
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
 import type {
-  IntegrationListData,
   IntegrationConnectionData,
 } from "@/types/features/integrationTypes";
 import type {
