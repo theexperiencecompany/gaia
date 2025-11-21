@@ -18,6 +18,10 @@ import type {
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
 import type {
+  IntegrationListData,
+  IntegrationConnectionData,
+} from "@/types/features/integrationTypes";
+import type {
   ContactData,
   EmailFetchData,
   EmailSentData,
@@ -79,10 +83,8 @@ export const TOOL_REGISTRY = {
   todo_data: null as unknown as TodoToolData,
   goal_data: null as unknown as GoalDataMessageType,
   notification_data: null as unknown as { notifications: NotificationRecord[] },
-  integration_connection_required: null as unknown as {
-    integration_id: string;
-    message: string;
-  },
+  integration_connection_required: null as unknown as IntegrationConnectionData,
+  integration_list_data: null as unknown as Record<string, never>,
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;

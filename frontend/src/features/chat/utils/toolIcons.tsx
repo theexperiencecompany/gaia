@@ -4,6 +4,7 @@ import Image from "next/image";
 import {
   Brain02Icon,
   CheckmarkCircle02Icon,
+  ConnectIcon,
   FileEmpty02Icon,
   Image02Icon,
   SourceCodeCircleIcon,
@@ -248,6 +249,12 @@ const iconConfigs: Record<string, IconConfig> = {
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
     isImage: true,
+  },
+  integrations: {
+    isImage: false,
+    icon: ConnectIcon,
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
   },
 };
 
