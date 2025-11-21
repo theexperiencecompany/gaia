@@ -29,6 +29,7 @@ from app.models.user_models import (
     OnboardingResponse,
     UserUpdateResponse,
 )
+from bson import ObjectId
 from app.services.composio.composio_service import (
     COMPOSIO_SOCIAL_CONFIGS,
     get_composio_service,
@@ -55,7 +56,6 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, RedirectResponse
 from workos import WorkOSClient
-from app.services.post_onboarding_service import process_post_onboarding_personalization
 
 router = APIRouter()
 http_async_client = httpx.AsyncClient()
@@ -80,6 +80,23 @@ async def _queue_gmail_processing(user_id: str) -> None:
 
     except Exception as e:
         logger.error(f"Error queuing Gmail processing for user {user_id}: {e}")
+
+
+async def _queue_personalization(user_id: str) -> None:
+    """Queue post-onboarding personalization as an ARQ background task."""
+    try:
+        pool = await RedisPoolManager.get_pool()
+        job = await pool.enqueue_job("process_personalization_task", user_id)
+
+        if job:
+            logger.info(
+                f"Queued personalization for user {user_id} with job ID {job.job_id}"
+            )
+        else:
+            logger.error(f"Failed to queue personalization for user {user_id}")
+
+    except Exception as e:
+        logger.error(f"Error queuing personalization for user {user_id}: {e}")
 
 
 @lru_cache(maxsize=1)
@@ -608,23 +625,32 @@ async def complete_user_onboarding(
 ):
     """
     Complete user onboarding by storing preferences.
-    This endpoint should be called when the user completes the onboarding flow.
+
+    Flow:
+    - If user has Gmail connected: Email processor will trigger personalization after parsing
+    - If no Gmail: Queue personalization ARQ job directly
     """
     try:
         updated_user = await complete_onboarding(
             user["user_id"], onboarding_data, user_timezone=tz_info[0]
         )
 
-        # Check if personalization has already run (e.g. via email processor)
-        # If not, trigger it now (fallback for users without Gmail or if email processing is slow)
-        onboarding = updated_user.get("onboarding", {})
-        if not onboarding.get("house"):
+        # Check if user has Gmail connected
+        user_doc = await users_collection.find_one({"_id": ObjectId(user["user_id"])})
+        has_gmail = bool(
+            user_doc and user_doc.get("gmail") and user_doc["gmail"].get("access_token")
+        )
+
+        if has_gmail:
             logger.info(
-                f"Triggering post-onboarding personalization fallback for user {user['user_id']}"
+                f"User {user['user_id']} has Gmail - personalization will run after email processing"
             )
-            background_tasks.add_task(
-                process_post_onboarding_personalization, user["user_id"]
+        else:
+            # No Gmail, queue personalization directly
+            logger.info(
+                f"User {user['user_id']} has no Gmail - queueing personalization directly"
             )
+            background_tasks.add_task(_queue_personalization, user["user_id"])
 
         return OnboardingResponse(
             success=True, message="Onboarding completed successfully", user=updated_user

@@ -1,11 +1,11 @@
 "use client";
 
-import { ArrowUpRight } from "lucide-react";
 import { ReactNode } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 import { RunCountDisplay } from "./WorkflowCardComponents";
+import { ArrowUpRight } from "@/components/shared/icons";
 
 interface BaseWorkflowCardProps {
   title: string;

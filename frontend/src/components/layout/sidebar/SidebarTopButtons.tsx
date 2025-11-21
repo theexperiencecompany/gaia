@@ -11,7 +11,7 @@ import {
   CheckmarkCircle02Icon,
   ConnectIcon,
   MessageMultiple02Icon,
-  Target04Icon,
+  Target02Icon,
 } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
@@ -65,7 +65,7 @@ export default function SidebarTopButtons() {
     },
     {
       route: "/goals",
-      icon: <Target04Icon />,
+      icon: <Target02Icon />,
       label: "Goals",
     },
     {

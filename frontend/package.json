@@ -61,6 +61,8 @@
     "@heroui/tooltip": "2.2.13",
     "@heroui/user": "2.2.12",
     "@hookform/resolvers": "^5.2.1",
+    "@hugeicons/core-free-icons": "^2.0.0",
+    "@hugeicons/react": "^1.1.1",
     "@iconify/react": "^6.0.0",
     "@internationalized/date": "^3.8.2",
     "@lottiefiles/dotlottie-react": "^0.17.1",

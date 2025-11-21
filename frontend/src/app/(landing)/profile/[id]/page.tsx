@@ -26,6 +26,12 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (holoCardData) {
+      document.title = `${holoCardData.name} - GAIA Profile`;
+    }
+  }, [holoCardData]);
+
+  useEffect(() => {
     const fetchProfile = async () => {
       try {
         const data = await holoCardApi.getPublicHoloCard(cardId);

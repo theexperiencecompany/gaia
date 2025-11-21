@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { ArrowUpRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -11,6 +10,7 @@ import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflo
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { posthog } from "@/lib";
 import { useAppendToInput } from "@/stores/composerStore";
+import { ArrowUpRight } from "@/components/shared/icons";
 
 interface UseCaseCardProps {
   title: string;

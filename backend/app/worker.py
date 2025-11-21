@@ -13,6 +13,7 @@ from app.workers.tasks import (
     generate_workflow_steps,
     process_email_task,
     process_gmail_emails_to_memory,
+    process_personalization_task,
     process_reminder,
     process_workflow_generation_task,
     store_memories_batch,
@@ -28,6 +29,7 @@ WorkerSettings.functions = [
     execute_workflow_by_id,
     generate_workflow_steps,
     process_gmail_emails_to_memory,
+    process_personalization_task,
     store_memories_batch,
 ]
 

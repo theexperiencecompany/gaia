@@ -49,15 +49,7 @@ interface MenuItem {
   };
 }
 
-export default function SettingsMenu({
-  children = (
-    <Button isIconOnly aria-label="Three Dots Menu" variant="light">
-      <ThreeDotsMenu />
-    </Button>
-  ),
-}: {
-  children?: ReactNode;
-}) {
+export default function SettingsMenu({ children }: { children?: ReactNode }) {
   const router = useRouter();
   const { confirmationProps } = useConfirmation();
 

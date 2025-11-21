@@ -117,7 +117,7 @@ export const HoloCard = ({
           <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
             {overlayColor && (
               <div
-                className="pointer-events-none absolute inset-0 z-[1]"
+                className="pointer-events-none absolute inset-0 z-[3]"
                 style={{
                   background: overlayColor,
                   mixBlendMode: "overlay",
@@ -207,7 +207,7 @@ export const HoloCard = ({
           <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
             {overlayColor && (
               <div
-                className="pointer-events-none absolute inset-0 z-[1]"
+                className="pointer-events-none absolute inset-0 z-[3]"
                 style={{
                   background: overlayColor,
                   mixBlendMode: "overlay",

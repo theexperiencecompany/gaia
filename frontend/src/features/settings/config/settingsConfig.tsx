@@ -7,6 +7,7 @@ import {
   CreditCardIcon,
   DiscordIcon,
   MessageMultiple02Icon,
+  StarsIcon,
   TwitterIcon,
   WhatsappIcon,
 } from "@/components/shared/icons";
@@ -22,6 +23,12 @@ export interface SettingsMenuItem {
 }
 
 export const settingsPageItems: SettingsMenuItem[] = [
+  {
+    key: "profile",
+    label: "Profile Card",
+    icon: StarsIcon,
+    href: "/settings?section=profile",
+  },
   {
     key: "account",
     label: "Account",

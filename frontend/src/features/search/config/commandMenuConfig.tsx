@@ -11,7 +11,7 @@ import {
   NotificationIcon,
   PencilEdit01Icon,
   Settings01Icon,
-  Target04Icon,
+  Target02Icon,
   WhatsappIcon,
 } from "@/components/shared/icons";
 
@@ -53,7 +53,7 @@ export const PAGE_ITEMS: MenuItemConfig[] = [
   {
     id: "goals",
     label: "Goals",
-    icon: <Target04Icon width={18} height={18} color={undefined} />,
+    icon: <Target02Icon width={18} height={18} color={undefined} />,
     path: "/goals",
   },
   {

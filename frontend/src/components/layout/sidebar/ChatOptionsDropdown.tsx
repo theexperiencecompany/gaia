@@ -21,7 +21,7 @@ import { useRouter } from "next/navigation";
 import { ReactNode, SetStateAction, useCallback, useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { PencilRenameIcon } from "@/components/shared/icons";
+import { PencilEdit02Icon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -173,7 +173,7 @@ export default function ChatOptionsDropdown({
           </DropdownItem>
           <DropdownItem key="edit" textValue="Rename" onPress={openEditModal}>
             <div className="flex flex-row items-center justify-between gap-2">
-              <PencilRenameIcon color="white" width={16} />
+              <PencilEdit02Icon color="white" width={16} />
               Rename
             </div>
           </DropdownItem>
