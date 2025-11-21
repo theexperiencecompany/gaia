@@ -282,17 +282,16 @@ export class ChatDexie extends Dexie {
         return;
       }
 
-      finalMessage = {
-        ...message,
-        ...updatedData,
+      // Use atomic update to change only the ID fields, preserving everything else including createdAt
+      await this.messages.update(optimisticId, {
         id: backendId,
         messageId: backendId,
         optimistic: false,
         updatedAt: new Date(),
-      };
+        ...updatedData,
+      });
 
-      await this.messages.delete(optimisticId);
-      await this.messages.put(finalMessage);
+      finalMessage = await this.messages.get(backendId);
     });
     if (finalMessage) {
       dbEventEmitter.emitMessageIdReplaced(optimisticId, finalMessage);

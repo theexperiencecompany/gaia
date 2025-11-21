@@ -311,12 +311,18 @@ def update_conversation_messages(
             _process_token_usage_and_cost, user_id=user["user_id"], metadata=metadata
         )
 
+    # Get timestamps - user message slightly before bot message to ensure correct ordering
+    from datetime import timedelta
+
+    bot_timestamp = datetime.now(timezone.utc)
+    user_timestamp = bot_timestamp - timedelta(milliseconds=100)
+
     # Create user message - handle case where messages array might be empty due to tool selection
     user_content = body.messages[-1]["content"] if body.messages else body.message
     user_message = MessageModel(
         type="user",
         response=user_content,
-        date=datetime.now(timezone.utc).isoformat(),
+        date=user_timestamp.isoformat(),
         fileIds=body.fileIds,
         fileData=body.fileData,
         selectedTool=body.selectedTool,
@@ -332,7 +338,7 @@ def update_conversation_messages(
     bot_message = MessageModel(
         type="bot",
         response=complete_message,
-        date=datetime.now(timezone.utc).isoformat(),
+        date=bot_timestamp.isoformat(),
         fileIds=body.fileIds,
         metadata=metadata,
     )

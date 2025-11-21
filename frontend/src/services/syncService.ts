@@ -67,6 +67,13 @@ const mapApiMessagesToStored = (
       toolName: message.selectedTool ?? null,
       toolCategory: message.toolCategory ?? null,
       workflowId: message.selectedWorkflow?.id ?? null,
+      follow_up_actions: message.follow_up_actions,
+      image_data: message.image_data,
+      isConvoSystemGenerated: message.isConvoSystemGenerated,
+      memory_data: message.memory_data,
+      tool_data: message.tool_data,
+      selectedCalendarEvent: message.selectedCalendarEvent,
+      selectedWorkflow: message.selectedWorkflow,
     } satisfies IMessage;
   });
 
