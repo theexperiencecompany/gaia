@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
 from uuid import uuid4
 
@@ -312,8 +312,6 @@ def update_conversation_messages(
         )
 
     # Get timestamps - user message slightly before bot message to ensure correct ordering
-    from datetime import timedelta
-
     bot_timestamp = datetime.now(timezone.utc)
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
 
