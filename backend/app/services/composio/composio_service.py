@@ -317,13 +317,11 @@ class ComposioService:
 
             delete_tasks = []
             for account in active_accounts:
+                def _delete_account(acc=account):
+                    return self.composio.connected_accounts.delete(nanoid=acc.id)
+                
                 delete_tasks.append(
-                    loop.run_in_executor(
-                        None,
-                        lambda acc=account: self.composio.connected_accounts.delete(
-                            nanoid=acc.id
-                        ),
-                    )
+                    loop.run_in_executor(None, _delete_account)
                 )
 
             await asyncio.gather(*delete_tasks)
