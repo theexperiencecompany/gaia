@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
-import { Download } from "lucide-react";
 import React from "react";
+
+import { Download } from "@/icons";
 
 interface DownloadButtonProps {
   content: string;

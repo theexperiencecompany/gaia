@@ -1,10 +1,10 @@
 import { Button } from "@heroui/button";
-import { ChevronsUpDownIcon } from "lucide-react";
 import Image from "next/image";
 
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import SettingsMenu from "@/features/settings/components/SettingsMenu";
+import { ChevronsUpDown } from "@/icons";
 
 import { Avatar, AvatarFallback, AvatarImage } from "../../ui/shadcn/avatar";
 
@@ -17,7 +17,7 @@ export default function UserContainer() {
       <Button
         className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 bg-transparent px-2 py-6! hover:bg-zinc-800"
         endContent={
-          <ChevronsUpDownIcon
+          <ChevronsUpDown
             className="text-zinc-500 transition"
             width={20}
             height={20}

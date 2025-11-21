@@ -2,10 +2,14 @@
 
 import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/modal";
-import { Plus, Tag } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import Spinner from "@/components/ui/shadcn/spinner";
+import AddProjectModal from "@/features/todo/components/AddProjectModal";
+import TodoModal from "@/features/todo/components/TodoModal";
+import { useTodoData } from "@/features/todo/hooks/useTodoData";
+import { Plus, Tag } from "@/icons";
 import {
   Appointment01Icon,
   Calendar01Icon,
@@ -13,11 +17,7 @@ import {
   CalendarCheckOut02Icon,
   Folder02Icon,
   LabelImportantIcon,
-} from "@/components/shared/icons";
-import Spinner from "@/components/ui/shadcn/spinner";
-import AddProjectModal from "@/features/todo/components/AddProjectModal";
-import TodoModal from "@/features/todo/components/TodoModal";
-import { useTodoData } from "@/features/todo/hooks/useTodoData";
+} from "@/icons";
 import { Priority } from "@/types/features/todoTypes";
 
 type MenuItem = {

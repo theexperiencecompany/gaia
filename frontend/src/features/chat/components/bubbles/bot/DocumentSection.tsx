@@ -1,9 +1,9 @@
 import { Button } from "@heroui/button";
 import { Card, CardBody } from "@heroui/card";
 import { Chip } from "@heroui/chip";
-import { Download, FileText } from "lucide-react";
 import React from "react";
 
+import { Download, FileText } from "@/icons";
 import { DocumentData } from "@/types/features/convoTypes";
 
 interface DocumentSectionProps {

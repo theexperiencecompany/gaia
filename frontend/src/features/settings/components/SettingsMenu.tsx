@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import {
   Dropdown,
   DropdownItem,
@@ -8,24 +7,31 @@ import {
   DropdownSection,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import { BookIcon, ChevronRight, CircleArrowUp, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ReactNode, useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import {
-  BookOpen01Icon,
-  BubbleChatQuestionIcon,
-  CustomerService01Icon,
-  Github,
-  QuillWrite01Icon,
-  Settings01Icon,
-  ThreeDotsMenu,
-} from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { ContactSupportModal } from "@/features/support";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import {
+  BookBookmark02Icon,
+  BookOpen02Icon,
+  ChevronRight,
+  CircleArrowUp,
+  Layers01Icon,
+  LogOut,
+  MapsIcon,
+} from "@/icons";
+import {
+  BubbleChatQuestionIcon,
+  CustomerService01Icon,
+  Github,
+  GitPullRequestIcon,
+  QuillWrite01Icon,
+  Settings01Icon,
+} from "@/icons";
 
 import { settingsPageItems, socialMediaItems } from "../config/settingsConfig";
 import { useNestedMenu } from "../hooks/useNestedMenu";
@@ -71,14 +77,18 @@ export default function SettingsMenu({ children }: { children?: ReactNode }) {
     {
       key: "documentation",
       label: "Documentation",
-      icon: BookOpen01Icon,
+      icon: BookBookmark02Icon,
       action: () => window.open(docsLink?.href, "_blank"),
     },
     {
       key: "changelog",
       label: "Changelog",
-      icon: BookIcon,
-      action: () => router.push("/changelog"),
+      icon: Layers01Icon,
+      action: () =>
+        window.open(
+          "https://github.com/theexperiencecompany/gaia/releases",
+          "_blank",
+        ),
     },
     {
       key: "blog",
@@ -89,7 +99,7 @@ export default function SettingsMenu({ children }: { children?: ReactNode }) {
     {
       key: "roadmap",
       label: "Roadmap",
-      icon: BookOpen01Icon,
+      icon: MapsIcon,
       action: () =>
         window.open("https://gaia.featurebase.app/roadmap", "_blank"),
     },
@@ -105,13 +115,13 @@ export default function SettingsMenu({ children }: { children?: ReactNode }) {
     {
       key: "contact_support",
       label: "Contact Support",
-      icon: CustomerService01Icon,
+      icon: BubbleChatQuestionIcon,
       action: () => setSupportModalOpen(true),
     },
     {
       key: "feature_request",
       label: "Request a Feature",
-      icon: BubbleChatQuestionIcon,
+      icon: GitPullRequestIcon,
       action: () => setSupportModalOpen(true),
     },
   ];
@@ -177,7 +187,7 @@ export default function SettingsMenu({ children }: { children?: ReactNode }) {
         {
           key: "resources",
           label: "Resources",
-          icon: BookOpen01Icon,
+          icon: BookOpen02Icon,
           hasSubmenu: true,
         },
         {

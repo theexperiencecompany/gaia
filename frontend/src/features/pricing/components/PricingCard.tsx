@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import React from "react";
 import { toast } from "sonner";
 
-import { Tick02Icon } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/shadcn/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { Tick02Icon } from "@/icons";
 import { posthog } from "@/lib";
 
 // Removed currency import - using USD only

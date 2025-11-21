@@ -3,10 +3,10 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Select, SelectItem } from "@heroui/select";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import React, { useEffect } from "react";
 
 import { CalendarAdd01Icon, CalendarIcon } from "@/components/shared";
+import { ChevronLeft, ChevronRight } from "@/icons";
 import {
   useCreateEventAction,
   useDaysToShow,

@@ -2,12 +2,12 @@ import { Button } from "@heroui/button";
 import Image from "next/image";
 import { toast } from "sonner";
 
-import { Task01Icon } from "@/components/shared/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui";
 import { useUser } from "@/features/auth/hooks/useUser";
 import SelectedCalendarEventIndicator from "@/features/chat/components/composer/SelectedCalendarEventIndicator";
 import SelectedToolIndicator from "@/features/chat/components/composer/SelectedToolIndicator";
 import SelectedWorkflowIndicator from "@/features/chat/components/composer/SelectedWorkflowIndicator";
+import { Task01Icon } from "@/icons";
 import { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 

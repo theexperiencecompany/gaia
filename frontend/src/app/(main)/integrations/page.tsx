@@ -5,11 +5,11 @@ import { useCallback, useEffect, useState } from "react";
 
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
-import { ConnectIcon, MessageFavourite02Icon } from "@/components/shared/icons";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
+import { ConnectIcon, MessageFavourite02Icon } from "@/icons";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function IntegrationsPage() {

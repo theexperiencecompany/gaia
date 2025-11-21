@@ -1,8 +1,8 @@
 "use client";
 import { AnimatePresence, motion } from "framer-motion";
-import { CircleCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { CircleCheck } from "@/icons";
 import { cn } from "@/lib/utils";
 
 type LoadingState = {

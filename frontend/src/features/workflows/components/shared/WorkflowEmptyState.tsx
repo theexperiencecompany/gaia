@@ -1,8 +1,8 @@
 import { Button } from "@heroui/button";
 import { Card, CardBody } from "@heroui/card";
-import { Sparkles } from "lucide-react";
 
 import { WorkflowSquare03Icon } from "@/components";
+import { Sparkles } from "@/icons";
 
 interface WorkflowEmptyStateProps {
   onGenerateWorkflow?: () => void;

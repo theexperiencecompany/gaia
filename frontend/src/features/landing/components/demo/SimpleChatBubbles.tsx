@@ -3,8 +3,8 @@ import { ReactNode } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui";
 import { useUser } from "@/features/auth/hooks/useUser";
-import { cn } from "@/lib/utils";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
+import { cn } from "@/lib/utils";
 
 export function SimpleChatBubbleUser({
   children,

@@ -1,8 +1,8 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
-import { Download, Move, ZoomIn, ZoomOut } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+
+import { Download, Move, Undo, ZoomIn, ZoomOut } from "@/icons";
 
 interface FlowchartPreviewProps {
   children: React.ReactNode;
@@ -113,7 +113,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
         </Tooltip>
         <Tooltip content="Reset Zoom">
           <Button size="sm" onPress={resetZoom} isIconOnly>
-            <MagnifyingGlassIcon width={22} height={22} />
+            <Undo width={22} height={22} />
           </Button>
         </Tooltip>
         <Tooltip content="Zoom In">

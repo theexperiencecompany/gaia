@@ -7,17 +7,11 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Tab, Tabs } from "@heroui/tabs";
-import { ChevronDown, List, Network, Plus, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import {
-  AiBrain01Icon,
-  FileEmpty02Icon,
-  Image02Icon,
-} from "@/components/shared/icons";
 import {
   type Memory,
   memoryApi,
@@ -26,6 +20,8 @@ import {
 import AddMemoryModal from "@/features/memory/components/AddMemoryModal";
 import MemoryGraph from "@/features/memory/components/MemoryGraph";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { ChevronDown, List, NeuralNetworkIcon, Plus, Trash2 } from "@/icons";
+import { AiBrain01Icon, FileEmpty02Icon, Image02Icon } from "@/icons";
 
 export interface MemoryManagementProps {
   className?: string;
@@ -252,7 +248,7 @@ export default function MemoryManagement({
                 key="graph"
                 title={
                   <div className="flex items-center gap-2">
-                    <Network className="h-4 w-4" />
+                    <NeuralNetworkIcon className="h-4 w-4" />
                     <span>Graph View</span>
                   </div>
                 }

@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
 import { motion } from "framer-motion";
-import { RotateCcw } from "lucide-react";
+
+import { RotateCcw } from "@/icons";
 
 interface OnboardingProgressProps {
   currentStep: number;

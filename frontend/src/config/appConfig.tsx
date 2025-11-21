@@ -16,7 +16,7 @@ import {
   TwitterIcon,
   WhatsappIcon,
   YoutubeIcon,
-} from "@/components/shared/icons";
+} from "@/icons";
 
 export interface AppLink {
   label: string;

@@ -2,11 +2,11 @@ import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { Bell } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { NotificationItem } from "@/features/notification/components/NotificationItem";
+import { Bell } from "@/icons";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
   NotificationRecord,

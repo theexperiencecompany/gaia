@@ -4,11 +4,9 @@ import { Button } from "@heroui/button";
 import { Input, Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Switch } from "@heroui/switch";
-import { Repeat, Trash2 } from "lucide-react";
 import React from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { UserCircleIcon } from "@/components/shared/icons";
 import {
   Accordion,
   AccordionContent,
@@ -22,6 +20,8 @@ import {
 } from "@/features/calendar/components/NaturalLanguageDateInput";
 import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { Repeat, Trash2 } from "@/icons";
+import { UserCircleIcon } from "@/icons";
 import { CalendarItem } from "@/types/api/calendarApiTypes";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 

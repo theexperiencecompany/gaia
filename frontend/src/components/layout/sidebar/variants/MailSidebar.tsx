@@ -3,8 +3,8 @@
 import { Button } from "@heroui/button";
 import { useState } from "react";
 
-import { InboxIcon, QuillWrite01Icon } from "@/components/shared/icons";
 import MailCompose from "@/features/mail/components/MailCompose";
+import { InboxIcon, QuillWrite01Icon } from "@/icons";
 
 type MailItem = {
   label: string;

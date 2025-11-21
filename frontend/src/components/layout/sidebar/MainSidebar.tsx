@@ -10,8 +10,8 @@ import CalendarSidebar from "@/components/layout/sidebar/variants/CalendarSideba
 import EmailSidebar from "@/components/layout/sidebar/variants/MailSidebar";
 import SettingsSidebar from "@/components/layout/sidebar/variants/SettingsSidebar";
 import TodoSidebar from "@/components/layout/sidebar/variants/TodoSidebar";
-import { PencilEdit02Icon } from "@/components/shared/icons";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
+import { PencilEdit02Icon } from "@/icons";
 
 export default function Sidebar() {
   // const [open, setOpen] = useState<boolean>(false);

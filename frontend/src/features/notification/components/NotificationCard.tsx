@@ -1,9 +1,9 @@
 "use client";
 
 import { Card } from "@heroui/react";
-import { ChevronDown, Undo } from "lucide-react";
 
 import { Button } from "@/components/ui";
+import { ChevronDown, Undo } from "@/icons";
 import { Notification } from "@/types/notifications";
 import { getNotificationIcon } from "@/utils/notifications";
 

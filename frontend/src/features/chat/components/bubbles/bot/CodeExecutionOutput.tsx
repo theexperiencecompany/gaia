@@ -1,7 +1,7 @@
-import { CheckCircle, Terminal, XCircle } from "lucide-react";
 import React from "react";
 
 import CopyButton from "@/features/chat/components/code-block/CopyButton";
+import { CheckCircle, Terminal, XCircle } from "@/icons";
 
 interface CodeExecutionOutputProps {
   output?: {

@@ -3,14 +3,14 @@
 import { Kbd } from "@heroui/kbd";
 import { Command } from "cmdk";
 import { AnimatePresence, motion } from "framer-motion";
-import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { MessageMultiple02Icon } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { usePlatform } from "@/hooks/ui/usePlatform";
+import { Search } from "@/icons";
+import { MessageMultiple02Icon } from "@/icons";
 
 import { ComprehensiveSearchResponse, searchApi } from "../api/searchApi";
 import {

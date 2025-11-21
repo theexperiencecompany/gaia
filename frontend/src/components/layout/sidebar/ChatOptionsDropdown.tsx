@@ -15,17 +15,16 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { DotsVerticalIcon } from "@radix-ui/react-icons";
-import { ChevronDown, Star, Trash } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ReactNode, SetStateAction, useCallback, useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { PencilEdit02Icon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useDeleteConversation } from "@/hooks/useDeleteConversation";
+import { ChevronDown, MoreVerticalIcon, Star, Trash } from "@/icons";
+import { PencilEdit02Icon } from "@/icons";
 import { db } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 
@@ -152,7 +151,7 @@ export default function ChatOptionsDropdown({
             {logo2 ? (
               <ChevronDown width={25} />
             ) : (
-              <DotsVerticalIcon
+              <MoreVerticalIcon
                 className={
                   "transition-all " +
                   (buttonHovered

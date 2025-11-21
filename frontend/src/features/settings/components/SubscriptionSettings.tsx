@@ -4,7 +4,6 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
-import { CreditCard } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { CreditCardIcon } from "@/components";
@@ -14,6 +13,7 @@ import {
   formatUSDFromCents,
 } from "@/features/pricing/utils/currencyConverter";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
+import { CreditCard } from "@/icons";
 
 export function SubscriptionSettings() {
   const { data: subscriptionStatus, isLoading } = useUserSubscriptionStatus();

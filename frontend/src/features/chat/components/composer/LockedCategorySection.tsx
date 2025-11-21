@@ -1,9 +1,9 @@
 import { Button } from "@heroui/button";
-import { Lock } from "lucide-react";
 import React from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { Lock } from "@/icons";
 
 import { SlashCommandMatch } from "../../hooks/useSlashCommands";
 

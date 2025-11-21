@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 
-import { NewsIcon } from "@/components/shared/icons";
+import { NewsIcon } from "@/icons";
 import { useImageDialog } from "@/stores/uiStore";
 import {
   ImageResult,

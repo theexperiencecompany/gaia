@@ -2,13 +2,13 @@
 
 import { Skeleton } from "@heroui/skeleton";
 
+import { useUser } from "@/features/auth/hooks/useUser";
 import {
   Brain02Icon,
   CustomerService01Icon,
   DiscordIcon,
   StarsIcon,
-} from "@/components/shared/icons";
-import { useUser } from "@/features/auth/hooks/useUser";
+} from "@/icons";
 
 import type { Plan } from "../api/pricingApi";
 import { usePricing } from "../hooks/usePricing";

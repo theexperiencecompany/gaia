@@ -7,13 +7,12 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Tooltip } from "@heroui/tooltip";
-import { DotsVerticalIcon } from "@radix-ui/react-icons";
 import { useRouter } from "next/navigation";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { Calendar03Icon } from "@/components/shared/icons";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { Calendar03Icon, DotsVerticalIcon } from "@/icons";
 import { Goal } from "@/types/api/goalsApiTypes";
 import { parseDate2 } from "@/utils";
 

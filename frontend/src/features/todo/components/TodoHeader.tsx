@@ -8,7 +8,8 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import { CheckCircle, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+
+import { CheckCircle, MoreHorizontal, Plus, Trash2 } from "@/icons";
 
 interface TodoHeaderProps {
   title: string;

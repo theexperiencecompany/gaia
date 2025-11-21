@@ -1,12 +1,11 @@
 import { Button } from "@heroui/button";
-import { StarFilledIcon } from "@radix-ui/react-icons";
 import Link from "next/link";
 
 import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks/useGitHubStars";
 
-import { Github } from "../shared";
+import { Github, StarFilledIcon } from "../shared";
 
 export default function DesktopMenu({ scrolled }: { scrolled: boolean }) {
   const user = useUser();

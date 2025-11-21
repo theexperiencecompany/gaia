@@ -12,16 +12,16 @@ import RightSidebar from "@/components/layout/sidebar/RightSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/shadcn/sidebar";
 import { TooltipProvider } from "@/components/ui/shadcn/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
+import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
+import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
+import OnboardingStepsCard from "@/features/onboarding/components/OnboardingStepsCard";
 import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
+import { useHoloCardModalStore } from "@/stores/holoCardModalStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useUIStoreSidebar } from "@/stores/uiStore";
-import { useHoloCardModalStore } from "@/stores/holoCardModalStore";
-import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
-import OnboardingStepsCard from "@/features/onboarding/components/OnboardingStepsCard";
-import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
 
 const HeaderSidebarTrigger = () => {
   return (

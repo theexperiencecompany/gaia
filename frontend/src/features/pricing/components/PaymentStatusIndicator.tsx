@@ -1,8 +1,9 @@
 "use client";
 
 import { Spinner } from "@heroui/spinner";
-import { Check, CreditCard, Shield, Sparkles } from "lucide-react";
 import React from "react";
+
+import { Check, CreditCard, Shield, Sparkles } from "@/icons";
 
 import { type PaymentFlowStates } from "../hooks/usePaymentFlow";
 

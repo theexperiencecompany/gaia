@@ -1,5 +1,20 @@
 "use client";
 
+import { Button, ButtonGroup } from "@heroui/button";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownTrigger,
+} from "@heroui/dropdown";
+import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
+import { Skeleton } from "@heroui/skeleton";
+import { Slider } from "@heroui/slider";
+import { Tooltip } from "@heroui/tooltip";
+import { Suspense, useCallback,useEffect, useRef, useState } from "react";
+import ColorPicker from "react-best-gradient-color-picker";
+import { toast } from "sonner";
+
 import { HoloCard } from "@/components/ui/magic-ui/holo-card";
 import {
   holoCardApi,
@@ -9,30 +24,15 @@ import {
   getHouseImage,
   normalizeHouse,
 } from "@/features/onboarding/constants/houses";
-import { SettingsCard } from "@/features/settings/components/SettingsCard";
-import { Button, ButtonGroup } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
-import { Tooltip } from "@heroui/tooltip";
-import {
-  Dropdown,
-  DropdownTrigger,
-  DropdownMenu,
-  DropdownItem,
-} from "@heroui/dropdown";
-import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
-import { Slider } from "@heroui/slider";
 import {
   Copy,
-  ExternalLink,
-  Download,
-  Share2,
-  Palette,
   Dices,
+  Download,
+  ExternalLink,
+  Palette,
   RotateCcw,
-} from "lucide-react";
-import { Suspense, useEffect, useState, useRef, useCallback } from "react";
-import { toast } from "sonner";
-import ColorPicker from "react-best-gradient-color-picker";
+  Share2,
+} from "@/icons";
 
 export default function ProfileCardSettings() {
   const [holoCardData, setHoloCardData] = useState<HoloCardData | null>(null);
@@ -329,7 +329,7 @@ export default function ProfileCardSettings() {
                 >
                   <PopoverTrigger>
                     <Button isIconOnly variant="flat" aria-label="Color Picker">
-                      <Palette size={20} />
+                      <Palette width={20} height={20} />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto bg-zinc-800 p-4">

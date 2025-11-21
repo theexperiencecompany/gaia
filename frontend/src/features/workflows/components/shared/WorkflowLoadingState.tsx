@@ -1,7 +1,7 @@
 import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Sparkles } from "lucide-react";
 
 import { Skeleton } from "@/components/ui/shadcn/skeleton";
+import { Sparkles } from "@/icons";
 
 export default function WorkflowLoadingState() {
   return (

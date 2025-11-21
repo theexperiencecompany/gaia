@@ -6,7 +6,6 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { AlertCircle, File, Loader2, Plus, Upload, X } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +13,7 @@ import { toast } from "sonner";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
+import { AlertCircle, File, Loader2, Plus, Upload, X } from "@/icons";
 
 import { UploadedFilePreview } from "./FilePreview";
 

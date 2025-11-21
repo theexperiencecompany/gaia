@@ -1,8 +1,8 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { Mail, Phone } from "lucide-react";
 
 import { Gmail } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { Mail, Phone } from "@/icons";
 import { ContactData } from "@/types/features/mailTypes";
 
 interface ContactListCardProps {

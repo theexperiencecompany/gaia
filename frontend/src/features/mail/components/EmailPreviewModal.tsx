@@ -10,11 +10,11 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { mailApi as EmailsAPI } from "@/features/mail/api/mailApi";
+import { X } from "@/icons";
 
 import { NotificationsAPI } from "../../../services/api/notifications";
 

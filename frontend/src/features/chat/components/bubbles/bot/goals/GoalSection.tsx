@@ -1,5 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
 import {
   BarChart3,
   CheckCircle2,
@@ -7,10 +10,8 @@ import {
   Target,
   TrendingUp,
   Users,
-  Zap,
-} from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+  ZapIcon,
+} from "@/icons";
 
 import { GoalCard } from "./GoalCard";
 import type { GoalSectionProps } from "./types";
@@ -138,7 +139,7 @@ export default function GoalSection({
     ].includes(action)
   ) {
     const icons = {
-      creating: <Zap className="h-4 w-4 text-blue-500" />,
+      creating: <ZapIcon className="h-4 w-4 text-blue-500" />,
       fetching: <Clock className="h-4 w-4 text-blue-500" />,
       deleting: <Clock className="h-4 w-4 text-red-500" />,
       updating_progress: <TrendingUp className="h-4 w-4 text-green-500" />,

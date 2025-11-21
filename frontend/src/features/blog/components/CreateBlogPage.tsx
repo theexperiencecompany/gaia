@@ -8,7 +8,6 @@ import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { Textarea } from "@heroui/input";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CalendarIcon, FileTextIcon, UserIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -16,6 +15,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { teamApi, type TeamMember } from "@/features/team/api/teamApi";
+import { CalendarIcon, FileTextIcon, UserIcon } from "@/icons";
 
 import { blogApi } from "../api/blogApi";
 import { MarkdownPreview } from "./MarkdownPreview";

@@ -1,21 +1,22 @@
 "use client";
 
-import { HoloCard } from "@/components/ui/magic-ui/holo-card";
+import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
+import { Tooltip } from "@heroui/tooltip";
 import { useParams } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
-import {
-  getHouseImage,
-  normalizeHouse,
-} from "@/features/onboarding/constants/houses";
+import { Suspense,useEffect, useState } from "react";
+import { toast } from "sonner";
+
+import { HoloCard } from "@/components/ui/magic-ui/holo-card";
 import {
   holoCardApi,
   PublicHoloCardData,
 } from "@/features/onboarding/api/holoCardApi";
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
-import { Share2 } from "lucide-react";
-import { toast } from "sonner";
+import {
+  getHouseImage,
+  normalizeHouse,
+} from "@/features/onboarding/constants/houses";
+import { Share2 } from "@/icons";
 
 export default function ProfilePage() {
   const params = useParams();

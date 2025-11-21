@@ -7,7 +7,6 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/react";
-import { ChevronDown } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import React from "react";
@@ -17,6 +16,7 @@ import {
   isTooDark,
 } from "@/features/calendar/utils/calendarUtils";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
+import { ChevronDown } from "@/icons";
 import { useAppendToInput } from "@/stores/composerStore";
 import { CalendarItem } from "@/types/api/calendarApiTypes";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";

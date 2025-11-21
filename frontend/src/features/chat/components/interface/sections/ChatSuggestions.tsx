@@ -1,10 +1,10 @@
 import { Button } from "@heroui/button";
-import { ShuffleIcon } from "lucide-react";
 import React, { useCallback, useState } from "react";
 
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useSendMessage } from "@/hooks/useSendMessage";
+import { ShuffleIcon } from "@/icons";
 import { posthog } from "@/lib/posthog";
 import { useComposerTextActions } from "@/stores/composerStore";
 

@@ -1,5 +1,5 @@
-import { Menu02Icon, SidebarLeftIcon } from "@/components/shared/icons";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
+import { Menu02Icon, SidebarLeftIcon } from "@/icons";
 
 import { Button } from "../../ui/shadcn/button";
 

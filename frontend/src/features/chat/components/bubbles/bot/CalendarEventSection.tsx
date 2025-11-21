@@ -3,8 +3,8 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { CalendarAdd01Icon, Tick02Icon } from "@/components/shared/icons";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
+import { CalendarAdd01Icon, Tick02Icon } from "@/icons";
 import {
   CalendarEvent,
   SameDayEvent,

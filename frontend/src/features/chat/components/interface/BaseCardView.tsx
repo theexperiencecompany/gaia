@@ -1,10 +1,10 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import { RefreshCw } from "lucide-react";
 import Link from "next/link";
 import React from "react";
 
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
+import { RefreshCw } from "@/icons";
 
 interface BaseCardViewProps {
   title: string;

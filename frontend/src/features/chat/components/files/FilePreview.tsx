@@ -1,4 +1,7 @@
 import { Button } from "@heroui/button";
+import Image from "next/image";
+
+import Spinner from "@/components/ui/shadcn/spinner";
 import {
   File,
   FileArchive,
@@ -10,11 +13,8 @@ import {
   FileText,
   FileVideo,
   X,
-} from "lucide-react";
-import Image from "next/image";
-
-import { Pdf02Icon } from "@/components/shared/icons";
-import Spinner from "@/components/ui/shadcn/spinner";
+} from "@/icons";
+import { Pdf02Icon } from "@/icons";
 
 export interface UploadedFilePreview {
   id: string;

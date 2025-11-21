@@ -1,7 +1,6 @@
 "use client";
 
 import { Avatar } from "@heroui/avatar";
-import { Play, User } from "lucide-react";
 import { useState } from "react";
 
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
@@ -16,6 +15,7 @@ import { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplay } from "@/features/workflows/utils/triggerDisplay";
+import { Play, User } from "@/icons";
 
 interface UseCaseDetailClientProps {
   useCase: UseCase | null;

@@ -1,15 +1,9 @@
 "use client";
 
 import { Accordion, AccordionItem } from "@heroui/accordion";
-import { Card } from "@heroui/card";
 import { Checkbox } from "@heroui/checkbox";
-import {
-  Mail,
-  Calendar,
-  Workflow,
-  MessageSquare,
-  Sparkles,
-} from "lucide-react";
+
+import { CalendarIcon, Mail, MessageSquare, Sparkles,Workflow } from "@/icons";
 
 interface OnboardingStep {
   id: string;
@@ -28,7 +22,7 @@ const steps: OnboardingStep[] = [
   {
     id: "calendar",
     label: "Create a calendar event",
-    icon: <Calendar size={16} />,
+    icon: <CalendarIcon size={16} />,
     completed: false,
   },
   {

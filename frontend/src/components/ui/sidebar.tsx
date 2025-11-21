@@ -2,7 +2,6 @@
 
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
-import { PanelLeft } from "lucide-react";
 import * as React from "react";
 
 import { Button } from "@/components/ui/shadcn/button";
@@ -23,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/shadcn/tooltip";
 import { useIsMobile } from "@/hooks/ui/useMobile";
+import { PanelLeft } from "@/icons";
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";

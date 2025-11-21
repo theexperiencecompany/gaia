@@ -3,14 +3,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import React, { useState } from "react";
 
-import {
-  ConnectIcon,
-  Gmail,
-  GoogleCalendarIcon,
-} from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { ConnectIcon, Gmail, GoogleCalendarIcon } from "@/icons";
 
 interface OnboardingIntegrationButtonsProps {
   className?: string;

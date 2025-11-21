@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertTriangle, Clock, Crown } from "lucide-react";
 import { ReactNode } from "react";
 import { toast } from "sonner";
+
+import { AlertTriangle, Clock, Crown } from "@/icons";
 
 interface ToastConfig {
   duration: number;

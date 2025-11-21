@@ -1,13 +1,7 @@
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
-import { Check } from "lucide-react";
 import React from "react";
 
-import {
-  AttachmentIcon,
-  PlusSignIcon,
-  ToolIcon,
-} from "@/components/shared/icons";
 import { Button } from "@/components/ui/shadcn/button";
 import {
   DropdownMenu,
@@ -16,6 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/shadcn/dropdown-menu";
 import { useLoading } from "@/features/chat/hooks/useLoading";
+import { Check } from "@/icons";
+import { AttachmentIcon, PlusSignIcon, ToolIcon } from "@/icons";
 import { posthog } from "@/lib/posthog";
 import { cn } from "@/lib/utils";
 import { SearchMode } from "@/types/shared";

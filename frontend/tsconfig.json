@@ -23,7 +23,8 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@/src": ["./src/*"]
+      "@/src": ["./src/*"],
+      "@/icons": ["./src/components/shared/icons"]
     }
   },
   "include": [

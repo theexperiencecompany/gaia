@@ -13,7 +13,6 @@ function getTypedData<K extends ToolName>(
 }
 
 import { Chip } from "@heroui/chip";
-import { AlertTriangleIcon } from "lucide-react";
 import React from "react";
 
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
@@ -35,6 +34,7 @@ import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils"
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
+import { AlertTriangleIcon } from "@/icons";
 import {
   CalendarDeleteOptions,
   CalendarEditOptions,

@@ -1,21 +1,29 @@
-import React from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  AccountSetting02Icon as AccountSetting02IconSource,
   AiBrain01Icon as AiBrain01IconSource,
   AiBrowserIcon as AiBrowserIconSource,
   AiImageIcon as AiImageIconSource,
   AiSearch02Icon as AiSearch02IconSource,
   AiWebBrowsingIcon as AiWebBrowsingIconSource,
   Alert01Icon as Alert01IconSource,
-  Alert02Icon as Alert02IconSource,
+  AlertCircleIcon as AlertCircleIconSource,
   AppleIcon as AppleIconSource,
   Appointment01Icon as Appointment01IconSource,
+  Archive01Icon as Archive01IconSource,
+  ArrowDown01Icon as ArrowDown01IconSource,
+  ArrowDownDoubleIcon as ArrowDownDoubleIconSource,
   ArrowLeft01Icon as ArrowLeft01IconSource,
+  ArrowLeftDoubleIcon as ArrowLeftDoubleIconSource,
   ArrowRight01Icon as ArrowRight01IconSource,
+  ArrowRightDoubleIcon as ArrowRightDoubleIconSource,
+  ArrowTurnBackwardIcon as ArrowTurnBackwardIconSource,
+  ArrowUp02Icon as ArrowUp02IconSource,
+  ArrowUpDoubleIcon as ArrowUpDoubleIconSource,
+  ArrowUpDownIcon as ArrowUpDownIconSource,
   ArrowUpRight01Icon as ArrowUpRight01IconSource,
   AttachmentIcon as AttachmentIconSource,
+  Award01Icon as Award01IconSource,
   BlushBrush02Icon as BlushBrush02IconSource,
+  BookBookmark02Icon as BookBookmark02IconSource,
   BookOpen01Icon as BookOpen01IconSource,
   BookOpen02Icon as BookOpen02IconSource,
   Brain02Icon as Brain02IconSource,
@@ -29,38 +37,55 @@ import {
   CalendarCheckOut02Icon as CalendarCheckOut02IconSource,
   CalendarIcon as CalendarIconSource,
   Call02Icon as Call02IconSource,
+  Camera01Icon as Camera01IconSource,
   Cancel01Icon as Cancel01IconSource,
+  ChartHistogramIcon as ChartBarIconSource,
+  ChartIncreaseIcon as ChartIncreaseIconSource,
   ChatBotIcon as ChatBotIconSource,
+  CheckListIcon as CheckListIconSource,
   CheckmarkBadge01Icon as CheckmarkBadge01IconSource,
   CheckmarkCircle02Icon as CheckmarkCircle02IconSource,
   CheckmarkSquare03Icon as CheckmarkSquare03IconSource,
+  CircleArrowUp02Icon as ArrowUpCircleIconSource,
   CloudAngledRainIcon as CloudAngledRainIconSource,
   CloudAngledZapIcon as CloudAngledZapIconSource,
   CloudIcon as CloudIconSource,
   CloudLittleRainIcon as CloudLittleRainIconSource,
   CloudSnowIcon as CloudSnowIconSource,
+  CodeIcon as CodeIconSource,
+  Comment01Icon as Comment01IconSource,
   CommentAdd01Icon as CommentAdd01IconSource,
   ComputerIcon as ComputerIconSource,
   ComputerPhoneSyncIcon as ComputerPhoneSyncIconSource,
   ConnectIcon as ConnectIconSource,
+  Copy01Icon as Copy01IconSource,
   CreditCardIcon as CreditCardIconSource,
   CreditCardPosIcon as CreditCardPosIconSource,
   CursorMagicSelection03Icon as CursorMagicIconSource,
   CustomerService01Icon as CustomerService01IconSource,
   DashboardSquare01Icon as DashboardSquare01IconSource,
+  Delete02Icon as Delete02IconSource,
   DiscoverCircleIcon as DiscoverCircleIconSource,
   DocumentAttachmentIcon as DocumentAttachmentIconSource,
+  Download01Icon as Download01IconSource,
   DownloadSquare01Icon as DownloadSquare01IconSource,
   DropletIcon as DropletIconSource,
   FallingStarIcon as FallingStarIconSource,
   FastWindIcon as FastWindIconSource,
+  File01Icon as File01IconSource,
   FileEmpty02Icon as FileEmpty02IconSource,
   FileUploadIcon as FileUploadIconSource,
+  FilterIcon as FilterIconSource,
+  Flag01Icon as Flag01IconSource,
   FlowchartIcon as FlowchartIconSource,
   Folder02Icon as Folder02IconSource,
+  FolderOpenIcon as FolderOpenIconSource,
+  GitPullRequestIcon as GitPullRequestIconSource,
   GlobalIcon as GlobalIconSource,
   GlobalSearchIcon as GlobalSearchIconSource,
+  Globe02Icon as Globe02IconSource,
   GoogleIcon as GoogleIconSource,
+  GridIcon as GridIconSource,
   HelpCircleIcon as HelpCircleIconSource,
   Home01Icon as Home01IconSource,
   Idea01Icon as Idea01IconSource,
@@ -69,17 +94,27 @@ import {
   ImageAdd02Icon as ImageAdd02IconSource,
   ImageUploadIcon as ImageUploadIconSource,
   InboxIcon as InboxIconSource,
+  InformationCircleIcon as InformationCircleIconSource,
   InternetIcon as InternetIconSource,
   LabelImportantIcon as LabelImportantIconSource,
   LanguageSkillIcon as LanguageSkillIconSource,
+  Layers01Icon as Layers01IconSource,
+  Layout01Icon as Layout01IconSource,
+  Layout03Icon as ColumnsIconSource,
   LicenseDraftIcon as LicenseDraftIconSource,
   LinkBackwardIcon as LinkBackwardIconSource,
-  LinkedinIcon as LinkedinIconSource,
+  LinkSquare02Icon as LinkSquare02IconSource,
+  Loading02Icon as Loading02IconSource,
+  LockKeyIcon as LockKeyIconSource,
   LockPasswordIcon as LockPasswordIconSource,
+  Login01Icon as Login01IconSource,
   Logout02Icon as Logout02IconSource,
   MagicWand05Icon as MagicWand05IconSource,
   Mail01Icon as Mail01IconSource,
   MapsIcon as MapsIconSource,
+  Maximize02Icon as Maximize02IconSource,
+  MaximizeIcon as MaximizeIconSource,
+  Menu01Icon as ListIconSource,
   Menu01Icon as Menu01IconSource,
   Menu02Icon as Menu02IconSource,
   MessageAdd01Icon as MessageAdd01IconSource,
@@ -87,8 +122,15 @@ import {
   MessageMultiple02Icon as MessageMultiple02IconSource,
   Mic01Icon as Mic01IconSource,
   Mic02Icon as Mic02IconSource,
+  Minimize02Icon as Minimize02IconSource,
+  MinimizeIcon as MinimizeIconSource,
   MoneyBag02Icon as MoneyBag02IconSource,
   Moon02Icon as Moon02IconSource,
+  MoreHorizontalIcon as MoreHorizontalIconSource,
+  MoreVerticalIcon as MoreVerticalIconSource,
+  MoveIcon as MoveIconSource,
+  MusicNote01Icon as MusicNote01IconSource,
+  NeuralNetworkIcon as NeuralNetworkIconSource,
   NewsIcon as NewsIconSource,
   NoteDoneIcon as NoteDoneIconSource,
   NotificationIcon as NotificationIconSource,
@@ -102,37 +144,58 @@ import {
   PlusSignIcon as PlusSignIconSource,
   QuillWrite01Icon as QuillWrite01IconSource,
   RedditIcon as RedditIconSource,
+  Refresh01Icon as RefreshIconSource,
+  ReloadIcon as ReloadIconSource,
   RemoveCircleIcon as RemoveCircleIconSource,
+  RepeatIcon as RepeatIconSource,
   Route02Icon as Route02IconSource,
   SearchIcon as SearchIconSource,
+  SecurityCheckIcon as SecurityCheckIconSource,
   Sent02Icon as Sent02IconSource,
   SentIcon as SentIconSource,
   Settings01Icon as Settings01IconSource,
   Share05Icon as Share05IconSource,
+  Share08Icon as Share08IconSource,
+  ShuffleIcon as ShuffleIconSource,
   SidebarLeft01Icon as SidebarLeft01IconSource,
   SidebarLeftIcon as SidebarLeftIconSource,
   SidebarRight01Icon as SidebarRight01IconSource,
   SmartPhone01Icon as SmartPhone01IconSource,
+  SortingAZ01Icon as SortAscendingIconSource,
+  SortingZA01Icon as SortDescendingIconSource,
   SourceCodeCircleIcon as SourceCodeCircleIconSource,
+  SparklesIcon as SparklesIconSource,
+  SquareIcon as SquareIconSource,
   SquareLock02Icon as SquareLock02IconSource,
+  StarIcon as StarIconSource,
   StarsIcon as StarsIconSource,
   StickyNote01Icon as StickyNote01IconSource,
   Sun03Icon as Sun03IconSource,
+  SunriseIcon as SunRise01IconSource,
+  SunsetIcon as SunSet01IconSource,
+  Tag01Icon as HashIconSource,
+  Tag01Icon as Tag01IconSource,
   Target02Icon as Target02IconSource,
   Task01Icon as Task01IconSource,
   TaskDone01Icon as TaskDone01IconSource,
+  TextIcon as TextIconSource,
   ThermometerWarmIcon as ThermometerWarmIconSource,
   Tick02Icon as Tick02IconSource,
-  TimeScheduleIcon as TimeScheduleIconSource,
   Timer02Icon as Timer02IconSource,
+  TimeScheduleIcon as TimeScheduleIconSource,
   ToolsIcon as ToolsIconSource,
   Tornado02Icon as Tornado02IconSource,
   TranslateIcon as TranslateIconSource,
+  UnfoldMoreIcon as UnfoldMoreIconSource,
+  Upload01Icon as Upload01IconSource,
+  UserAdd01Icon as UserAdd01IconSource,
   UserCircle02Icon as UserCircle02IconSource,
   UserCircleIcon as UserCircleIconSource,
+  UserGroupIcon as UserGroupIconSource,
   UserIcon as UserIconSource,
   Video01Icon as Video01IconSource,
   ViewIcon as ViewIconSource,
+  ViewOffIcon as ViewOffIconSource,
   ViewOffSlashIcon as ViewOffSlashIconSource,
   VisionIcon as VisionIconSource,
   VoiceIcon as VoiceIconSource,
@@ -141,16 +204,20 @@ import {
   Watch02Icon as Watch02IconSource,
   WavingHand01Icon as WavingHand01IconSource,
   WorkflowSquare03Icon as WorkflowSquare03IconSource,
-  ZapIcon as ZapIconSource,
+  Wrench01Icon as Wrench01IconSource,
+  ZoomInAreaIcon as ZoomInAreaIconSource,
+  ZoomOutAreaIcon as ZoomOutAreaIconSource,
 } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import React from "react";
 
 export interface IconProps extends React.SVGProps<SVGSVGElement> {
   size?: number;
   color?: string;
-  strokeWidth?: number;
+  strokeWidth?: number | string;
 }
 
-const createIcon = (icon: any) => {
+const createIcon = (icon: IconSvgObject) => {
   const IconComponent: React.FC<IconProps> = ({
     size = 24,
     color = "currentColor",
@@ -161,13 +228,15 @@ const createIcon = (icon: any) => {
       icon={icon}
       size={size}
       color={color}
-      strokeWidth={strokeWidth}
+      strokeWidth={Number(strokeWidth)}
       {...props}
     />
   );
   return IconComponent;
 };
 
+export const BookBookmark02Icon = createIcon(BookBookmark02IconSource);
+export const LinkSquare02Icon = createIcon(LinkSquare02IconSource);
 export const GlobalIcon = createIcon(GlobalIconSource);
 export const PinIcon = createIcon(PinIconSource);
 export const DiscoverCircleIcon = createIcon(DiscoverCircleIconSource);
@@ -175,6 +244,8 @@ export const CalendarIcon = createIcon(CalendarIconSource);
 export const Calendar01Icon = createIcon(Calendar01IconSource);
 export const SearchIcon = createIcon(SearchIconSource);
 export const StarsIcon = createIcon(StarsIconSource);
+export const StarIcon = createIcon(StarIconSource);
+export const SparklesIcon = createIcon(SparklesIconSource);
 export const PlusSignIcon = createIcon(PlusSignIconSource);
 export const PencilEdit02Icon = createIcon(PencilEdit02IconSource);
 export const UserCircleIcon = createIcon(UserCircleIconSource);
@@ -205,11 +276,13 @@ export const Target02Icon = createIcon(Target02IconSource);
 export const LanguageSkillIcon = createIcon(LanguageSkillIconSource);
 export const NoteDoneIcon = createIcon(NoteDoneIconSource);
 export const Share05Icon = createIcon(Share05IconSource);
+export const Share08Icon = createIcon(Share08IconSource);
 export const DocumentAttachmentIcon = createIcon(DocumentAttachmentIconSource);
 export const LinkBackwardIcon = createIcon(LinkBackwardIconSource);
 export const ArrowUpRight01Icon = createIcon(ArrowUpRight01IconSource);
 export const FallingStarIcon = createIcon(FallingStarIconSource);
 export const SmartPhone01Icon = createIcon(SmartPhone01IconSource);
+export const CheckListIcon = createIcon(CheckListIconSource);
 export const ComputerIcon = createIcon(ComputerIconSource);
 export const Watch02Icon = createIcon(Watch02IconSource);
 export const Mail01Icon = createIcon(Mail01IconSource);
@@ -222,7 +295,6 @@ export const ArrowRight01Icon = createIcon(ArrowRight01IconSource);
 export const ArrowLeft01Icon = createIcon(ArrowLeft01IconSource);
 export const SourceCodeCircleIcon = createIcon(SourceCodeCircleIconSource);
 export const ComputerPhoneSyncIcon = createIcon(ComputerPhoneSyncIconSource);
-export const AccountSetting02Icon = createIcon(AccountSetting02IconSource);
 export const FileUploadIcon = createIcon(FileUploadIconSource);
 export const InternetIcon = createIcon(InternetIconSource);
 export const ImageAdd02Icon = createIcon(ImageAdd02IconSource);
@@ -236,13 +308,13 @@ export const ViewOffSlashIcon = createIcon(ViewOffSlashIconSource);
 export const ViewIcon = createIcon(ViewIconSource);
 export const LockPasswordIcon = createIcon(LockPasswordIconSource);
 export const IdentityCardIcon = createIcon(IdentityCardIconSource);
-export const Alert02Icon = createIcon(Alert02IconSource);
 export const PlayIcon = createIcon(PlayIconSource);
 export const BubbleChatIcon = createIcon(BubbleChatIconSource);
 export const UserIcon = createIcon(UserIconSource);
 export const MoneyBag02Icon = createIcon(MoneyBag02IconSource);
 export const HelpCircleIcon = createIcon(HelpCircleIconSource);
 export const BubbleChatQuestionIcon = createIcon(BubbleChatQuestionIconSource);
+export const GitPullRequestIcon = createIcon(GitPullRequestIconSource);
 export const CheckmarkCircle02Icon = createIcon(CheckmarkCircle02IconSource);
 export const PasswordValidationIcon = createIcon(PasswordValidationIconSource);
 export const TaskDone01Icon = createIcon(TaskDone01IconSource);
@@ -266,6 +338,7 @@ export const MagicWand05Icon = createIcon(MagicWand05IconSource);
 export const MapsIcon = createIcon(MapsIconSource);
 export const Idea01Icon = createIcon(Idea01IconSource);
 export const BookOpen02Icon = createIcon(BookOpen02IconSource);
+export const Layers01Icon = createIcon(Layers01IconSource);
 export const CustomerService01Icon = createIcon(CustomerService01IconSource);
 export const CreditCardPosIcon = createIcon(CreditCardPosIconSource);
 export const NewsIcon = createIcon(NewsIconSource);
@@ -300,7 +373,6 @@ export const FileEmpty02Icon = createIcon(FileEmpty02IconSource);
 export const ToolsIcon = createIcon(ToolsIconSource);
 export const CreditCardIcon = createIcon(CreditCardIconSource);
 export const ConnectIcon = createIcon(ConnectIconSource);
-export const ZapIcon = createIcon(ZapIconSource);
 export const PackageOpenIcon = createIcon(PackageOpenIconSource);
 export const RemoveCircleIcon = createIcon(RemoveCircleIconSource);
 export const MessageAdd01Icon = createIcon(MessageAdd01IconSource);
@@ -308,6 +380,228 @@ export const BookOpen01Icon = createIcon(BookOpen01IconSource);
 export const RedditIcon = createIcon(RedditIconSource);
 export const MessageFavourite02Icon = createIcon(MessageFavourite02IconSource);
 export const CursorMagicSelection03Icon = createIcon(CursorMagicIconSource);
+export const AlertCircleIcon = createIcon(AlertCircleIconSource);
+export const ArrowDown01Icon = createIcon(ArrowDown01IconSource);
+export const ArrowDownDoubleIcon = createIcon(ArrowDownDoubleIconSource);
+export const ArrowLeftDoubleIcon = createIcon(ArrowLeftDoubleIconSource);
+export const ArrowRightDoubleIcon = createIcon(ArrowRightDoubleIconSource);
+export const ArrowUp01Icon = createIcon(ArrowUp02IconSource);
+export const ArrowUp02Icon = createIcon(ArrowUp02IconSource);
+export const ArrowUpCircleIcon = createIcon(ArrowUpCircleIconSource);
+export const ArrowUpDoubleIcon = createIcon(ArrowUpDoubleIconSource);
+export const Camera01Icon = createIcon(Camera01IconSource);
+export const ChartBarIcon = createIcon(ChartBarIconSource);
+export const ChartIncreaseIcon = createIcon(ChartIncreaseIconSource);
+export const CodeIcon = createIcon(CodeIconSource);
+export const ColumnsIcon = createIcon(ColumnsIconSource);
+export const Comment01Icon = createIcon(Comment01IconSource);
+export const Copy01Icon = createIcon(Copy01IconSource);
+export const Delete02Icon = createIcon(Delete02IconSource);
+export const Download01Icon = createIcon(Download01IconSource);
+export const File01Icon = createIcon(File01IconSource);
+export const FilterIcon = createIcon(FilterIconSource);
+export const Flag01Icon = createIcon(Flag01IconSource);
+export const GridIcon = createIcon(GridIconSource);
+export const HashIcon = createIcon(HashIconSource);
+export const InformationCircleIcon = createIcon(InformationCircleIconSource);
+export const Layout01Icon = createIcon(Layout01IconSource);
+export const ListIcon = createIcon(ListIconSource);
+export const Loading02Icon = createIcon(Loading02IconSource);
+export const LockKeyIcon = createIcon(LockKeyIconSource);
+export const Login01Icon = createIcon(Login01IconSource);
+export const Maximize02Icon = createIcon(Maximize02IconSource);
+export const MaximizeIcon = createIcon(MaximizeIconSource);
+export const Minimize02Icon = createIcon(Minimize02IconSource);
+export const MinimizeIcon = createIcon(MinimizeIconSource);
+export const MoreHorizontalIcon = createIcon(MoreHorizontalIconSource);
+export const MoreVerticalIcon = createIcon(MoreVerticalIconSource);
+export const MusicNote01Icon = createIcon(MusicNote01IconSource);
+export const RefreshIcon = createIcon(RefreshIconSource);
+export const ReloadIcon = createIcon(ReloadIconSource);
+export const RepeatIcon = createIcon(RepeatIconSource);
+export const SecurityCheckIcon = createIcon(SecurityCheckIconSource);
+export const SortAscendingIcon = createIcon(SortAscendingIconSource);
+export const SortDescendingIcon = createIcon(SortDescendingIconSource);
+export const SunRise01Icon = createIcon(SunRise01IconSource);
+export const SunSet01Icon = createIcon(SunSet01IconSource);
+export const Tag01Icon = createIcon(Tag01IconSource);
+export const TextIcon = createIcon(TextIconSource);
+export const UnlockKeyIcon = createIcon(LockKeyIconSource);
+export const Upload01Icon = createIcon(Upload01IconSource);
+export const UserAdd01Icon = createIcon(UserAdd01IconSource);
+export const UserGroupIcon = createIcon(UserGroupIconSource);
+export const Award01Icon = createIcon(Award01IconSource);
+export const ShuffleIcon = createIcon(ShuffleIconSource);
+export const MoveIcon = createIcon(MoveIconSource);
+export const Archive01Icon = createIcon(Archive01IconSource);
+export const FolderOpenIcon = createIcon(FolderOpenIconSource);
+export const Wrench01Icon = createIcon(Wrench01IconSource);
+export const SquareIcon = createIcon(SquareIconSource);
+export const Globe02Icon = createIcon(Globe02IconSource);
+export const ArrowTurnBackwardIcon = createIcon(ArrowTurnBackwardIconSource);
+export const ZoomInAreaIcon = createIcon(ZoomInAreaIconSource);
+export const ZoomOutAreaIcon = createIcon(ZoomOutAreaIconSource);
+export const ArrowUpDownIcon = createIcon(ArrowUpDownIconSource);
+export const ChevronsUpDown = createIcon(UnfoldMoreIconSource);
+export const ViewOffIcon = createIcon(ViewOffIconSource);
+export const NeuralNetworkIcon = createIcon(NeuralNetworkIconSource);
+
+// Re-Exports
+export const AlertCircle = AlertCircleIcon;
+export const AlertTriangle = Alert01Icon;
+export const ArrowBigUp = ArrowUp02Icon;
+export const ArrowDown = ArrowDown01Icon;
+export const ArrowLeft = ArrowLeft01Icon;
+export const ArrowRight = ArrowRight01Icon;
+export const ArrowUp = ArrowUp01Icon;
+export const BarChart3 = ChartBarIcon;
+export const Bell = NotificationIcon;
+export const BookIcon = BookOpen01Icon;
+export const BotIcon = ChatBotIcon;
+export const Camera = Camera01Icon;
+export const Check = Tick02Icon;
+export const CheckCircle = CheckmarkCircle02Icon;
+export const CheckCircle2 = CheckmarkCircle02Icon;
+export const CheckIcon = CheckmarkCircle02Icon;
+export const CheckSquare = CheckmarkSquare03Icon;
+export const ChevronDown = ArrowDown01Icon;
+export const ChevronDownIcon = ArrowDown01Icon;
+export const ChevronLeft = ArrowLeft01Icon;
+export const ChevronLeftIcon = ArrowLeft01Icon;
+export const ChevronRight = ArrowRight01Icon;
+export const ChevronRightIcon = ArrowRight01Icon;
+export const ChevronUp = ArrowUp01Icon;
+export const ChevronUpIcon = ArrowUp01Icon;
+export const ChevronsDown = ArrowDownDoubleIcon;
+export const ChevronsLeft = ArrowLeftDoubleIcon;
+export const ChevronsRight = ArrowRightDoubleIcon;
+export const ChevronsUp = ArrowUpDoubleIcon;
+export const CircleArrowUp = ArrowUpCircleIcon;
+export const CircleCheck = CheckmarkCircle02Icon;
+export const CircleIcon = CheckmarkCircle02Icon;
+export const Clock = Timer02Icon;
+export const CloudFog = CloudIcon;
+export const Code = CodeIcon;
+export const Columns = ColumnsIcon;
+export const Copy = Copy01Icon;
+export const CreditCard = CreditCardIcon;
+export const Crown = CheckmarkBadge01Icon;
+export const Download = Download01Icon;
+export const Edit2 = PencilEdit01Icon;
+export const Edit3 = PencilEdit02Icon;
+export const ExternalLink = LinkSquare02Icon;
+export const Eye = ViewIcon;
+export const EyeOff = ViewOffIcon;
+export const File = File01Icon;
+export const Filter = FilterIcon;
+export const Flag = Flag01Icon;
+export const Folder = Folder02Icon;
+export const Grid = GridIcon;
+export const Hash = HashIcon;
+export const HazeIcon = CloudIcon;
+export const HelpCircle = HelpCircleIcon;
+export const Home = Home01Icon;
+export const Image = Image02Icon;
+export const Info = InformationCircleIcon;
+export const Layout = Layout01Icon;
+export const List = ListIcon;
+export const Loader = Watch02Icon;
+export const Loader2 = Loading02Icon;
+export const Lock = LockKeyIcon;
+export const LogIn = Login01Icon;
+export const LogOut = Logout02Icon;
+export const Mail = Mail01Icon;
+export const MapPinIcon = PinIcon;
+export const Maximize = MaximizeIcon;
+export const Maximize2 = Maximize02Icon;
+export const Menu = Menu01Icon;
+export const MessageCircle = BubbleChatIcon;
+export const MessageSquare = Comment01Icon;
+export const Minimize = MinimizeIcon;
+export const Minimize2 = Minimize02Icon;
+export const MinusIcon = RemoveCircleIcon;
+export const MoreHorizontal = MoreHorizontalIcon;
+export const MoreVertical = MoreVerticalIcon;
+export const DotsVerticalIcon = MoreVerticalIcon;
+export const Music = MusicNote01Icon;
+export const PanelLeft = SidebarLeftIcon;
+export const Pin = PinIcon;
+export const Play = PlayIcon;
+export const Plus = PlusSignIcon;
+export const RefreshCw = RefreshIcon;
+export const Repeat = RepeatIcon;
+export const RotateCcw = ReloadIcon;
+export const Search = SearchIcon;
+export const Settings = Settings01Icon;
+export const Share2 = Share08Icon;
+export const Shield = SecurityCheckIcon;
+export const SortAsc = SortAscendingIcon;
+export const SortDesc = SortDescendingIcon;
+export const Sparkles = StarsIcon;
+export const Star = StarsIcon;
+export const SunriseIcon = SunRise01Icon;
+export const SunsetIcon = SunSet01Icon;
+export const Tag = Tag01Icon;
+export const Text = TextIcon;
+export const ThermometerIcon = ThermometerWarmIcon;
+export const Trash = Delete02Icon;
+export const Trash2 = Delete02Icon;
+export const TrendingUp = ChartIncreaseIcon;
+export const Undo = ArrowLeft01Icon;
+export const Unlock = UnlockKeyIcon;
+export const Upload = Upload01Icon;
+export const User = UserIcon;
+export const UserPlus = UserAdd01Icon;
+export const Users = UserGroupIcon;
+export const Video = Video01Icon;
+export const Workflow = WorkflowSquare03Icon;
+export const X = Cancel01Icon;
+export const XCircle = RemoveCircleIcon;
+export const XIcon = RemoveCircleIcon;
+export const ArrowRightCircleIcon = ArrowRight01Icon;
+export const FileTextIcon = File01Icon;
+export const EyeIcon = ViewIcon;
+export const ChevronsDownUp = ArrowUpDownIcon;
+export const Terminal = SourceCodeCircleIcon;
+export const ExternalLinkIcon = ArrowUpRight01Icon;
+export const LinkIcon = LinkBackwardIcon;
+export const FileText = File01Icon;
+export const Target = Target02Icon;
+export const Trophy = Award01Icon;
+export const FolderOpen = Folder02Icon;
+export const GlobeIcon = GlobalIcon;
+export const Move = MoveIcon;
+export const Square = SquareIcon;
+export const FileUp = FileUploadIcon;
+export const FileArchive = File01Icon;
+export const FileAudio = MusicNote01Icon;
+export const FileCode = CodeIcon;
+export const FileImage = Image02Icon;
+export const FileJson = File01Icon;
+export const FileSpreadsheet = File01Icon;
+export const FileVideo = Video01Icon;
+export const HandMetal = WavingHand01Icon;
+export const LockIcon = LockKeyIcon;
+export const Send = SentIcon;
+export const WrenchIcon = Wrench01Icon;
+export const Phone = Call02Icon;
+export const CheckCircleIcon = CheckmarkCircle02Icon;
+export const ArchiveIcon = Archive01Icon;
+export const SquareCheck = CheckmarkSquare03Icon;
+export const Timer = Timer02Icon;
+export const ReplyAll = ArrowLeftDoubleIcon;
+export const CheckCheck = CheckmarkBadge01Icon;
+export const Link = LinkBackwardIcon;
+export const Brain = Brain02Icon;
+export const CircleArrowRight = ArrowRight01Icon;
+export const Plug = ConnectIcon;
+export const TriangleAlert = Alert01Icon;
+export const Globe = GlobalIcon;
+export const EyeOffIcon = ViewOffIcon;
+export const AlertTriangleIcon = Alert01Icon;
+export const Reply = ArrowTurnBackwardIcon;
+export const ZoomIn = ZoomInAreaIcon;
+export const ZoomOut = ZoomOutAreaIcon;
 
 export const GoogleColouredIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -375,6 +669,27 @@ export const ToolIcon = (props: React.SVGProps<SVGSVGElement>) => (
       strokeLinecap="round"
       strokeLinejoin="round"
     />
+  </svg>
+);
+
+export const Palette = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="21"
+    height="21"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" />
+    <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+    <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+    <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+    <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
   </svg>
 );
 
@@ -635,12 +950,97 @@ export const ArrowUpRight = (props: React.SVGProps<SVGSVGElement>) => (
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
     {...props}
   >
     <path d="M7 7h10v10" />
     <path d="M7 17 17 7" />
+  </svg>
+);
+
+export const ZapIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    width="100%"
+    height="100%"
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
+    <path
+      d="M13 2L4.09344 12.6879C3.74463 13.1064 3.57023 13.3157 3.56756 13.4925C3.56524 13.6461 3.63372 13.7923 3.75324 13.8889C3.89073 14 4.16316 14 4.70802 14H12L11 22L19.9065 11.3121C20.2553 10.8936 20.4297 10.6843 20.4324 10.5075C20.4347 10.3539 20.3663 10.2077 20.2467 10.1111C20.1092 10 19.8368 10 19.292 10H12L13 2Z"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+export const Dices: React.FC<IconProps> = (props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="21"
+    height="21"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <rect width="12" height="12" x="2" y="10" rx="2" ry="2" />
+    <path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6" />
+    <path d="M6 18h.01" />
+    <path d="M10 14h.01" />
+    <path d="M15 6h.01" />
+    <path d="M18 9h.01" />
+  </svg>
+);
+
+export const ThreeDotsMenu: React.FC<IconProps> = (props) => (
+  <svg
+    fill="#9b9b9b"
+    height={18}
+    id="Capa_1"
+    transform="rotate(90)"
+    version="1.1"
+    viewBox="0 0 32.055 32.055"
+    width={18}
+    xmlSpace="preserve"
+    xmlns="http://www.w3.org/2000/svg"
+    xmlnsXlink="http://www.w3.org/1999/xlink"
+    {...props}
+  >
+    <g id="SVGRepo_bgCarrier" strokeWidth="0" />
+    <g
+      id="SVGRepo_tracerCarrier"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <g id="SVGRepo_iconCarrier">
+      <g>
+        <path d="M3.968,12.061C1.775,12.061,0,13.835,0,16.027c0,2.192,1.773,3.967,3.968,3.967c2.189,0,3.966-1.772,3.966-3.967 C7.934,13.835,6.157,12.061,3.968,12.061z M16.233,12.061c-2.188,0-3.968,1.773-3.968,3.965c0,2.192,1.778,3.967,3.968,3.967 s3.97-1.772,3.97-3.967C20.201,13.835,18.423,12.061,16.233,12.061z M28.09,12.061c-2.192,0-3.969,1.774-3.969,3.967 c0,2.19,1.774,3.965,3.969,3.965c2.188,0,3.965-1.772,3.965-3.965S30.278,12.061,28.09,12.061z" />
+      </g>
+    </g>
+  </svg>
+);
+
+export const StarFilledIcon: React.FC<IconProps> = (props) => (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 15 15"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    {...props}
+  >
+    <path
+      d="M7.22303 0.665992C7.32551 0.419604 7.67454 0.419604 7.77702 0.665992L9.41343 4.60039C9.45663 4.70426 9.55432 4.77523 9.66645 4.78422L13.914 5.12475C14.18 5.14607 14.2878 5.47802 14.0852 5.65162L10.849 8.42374C10.7636 8.49692 10.7263 8.61176 10.7524 8.72118L11.7411 12.866C11.803 13.1256 11.5206 13.3308 11.2929 13.1917L7.6564 10.9705C7.5604 10.9119 7.43965 10.9119 7.34365 10.9705L3.70718 13.1917C3.47945 13.3308 3.19708 13.1256 3.25899 12.866L4.24769 8.72118C4.2738 8.61176 4.23648 8.49692 4.15105 8.42374L0.914889 5.65162C0.712228 5.47802 0.820086 5.14607 1.08608 5.12475L5.3336 4.78422C5.44573 4.77523 5.54342 4.70426 5.58662 4.60039L7.22303 0.665992Z"
+      fill="currentColor"
+    />
   </svg>
 );

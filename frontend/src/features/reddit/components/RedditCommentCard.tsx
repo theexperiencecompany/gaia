@@ -1,9 +1,9 @@
 "use client";
 
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { ArrowBigUp, User } from "lucide-react";
 
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { ArrowBigUp, User } from "@/icons";
 import { RedditCommentData } from "@/types/features/redditTypes";
 
 interface RedditCommentCardProps {

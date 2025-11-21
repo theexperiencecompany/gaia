@@ -1,14 +1,14 @@
 "use client";
 
 import { Tooltip } from "@heroui/react";
-import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 
-import { CheckmarkCircle02Icon } from "@/components/shared/icons";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import TodoModal from "@/features/todo/components/TodoModal";
+import { ChevronRight } from "@/icons";
+import { CheckmarkCircle02Icon } from "@/icons";
 import { useTodoStore } from "@/stores/todoStore";
 
 export default function TodosHeader() {

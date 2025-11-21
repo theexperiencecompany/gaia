@@ -1,17 +1,17 @@
 "use client";
 
 import { format } from "date-fns";
+import React from "react";
+
+import { Target02Icon } from "@/components";
 import {
-  Calendar,
+  CalendarIcon,
   CheckCircle2,
   ChevronRight,
   Target,
   Trophy,
   Users,
-} from "lucide-react";
-import React from "react";
-
-import { Target02Icon } from "@/components";
+} from "@/icons";
 
 import type {
   GoalCardActionsProps,
@@ -313,7 +313,7 @@ export function GoalCard({
 
       {goal.created_at && (
         <span className="flex items-center gap-1 rounded-full bg-zinc-800 px-3 py-1 text-xs font-medium text-zinc-400">
-          <Calendar className="h-3 w-3" />
+          <CalendarIcon className="h-3 w-3" />
           {formatDate(goal.created_at)}
         </span>
       )}

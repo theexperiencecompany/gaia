@@ -5,11 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { GoogleColouredIcon } from "@/components/shared/icons";
 import { FlickeringGrid } from "@/components/ui/magic-ui/flickering-grid";
 import { Button } from "@/components/ui/shadcn/button";
 import Spinner from "@/components/ui/shadcn/spinner";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { GoogleColouredIcon } from "@/icons";
 
 import { handleAuthButtonClick } from "../utils/authUtils";
 

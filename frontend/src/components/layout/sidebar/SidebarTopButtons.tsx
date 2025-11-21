@@ -1,24 +1,24 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { ZapIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
-import {
-  CalendarIcon,
-  CheckmarkCircle02Icon,
-  ConnectIcon,
-  MessageMultiple02Icon,
-  Target02Icon,
-} from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import {
   usePricing,
   useUserSubscriptionStatus,
 } from "@/features/pricing/hooks/usePricing";
+import { ZapIcon } from "@/icons";
+import {
+  Calendar03Icon,
+  CheckListIcon,
+  ConnectIcon,
+  MessageMultiple02Icon,
+  Target02Icon,
+} from "@/icons";
 import { posthog } from "@/lib";
 import { useRefreshTrigger } from "@/stores/notificationStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";
@@ -60,7 +60,7 @@ export default function SidebarTopButtons() {
   const buttonData = [
     {
       route: "/calendar",
-      icon: <CalendarIcon />,
+      icon: <Calendar03Icon />,
       label: "Calendar",
     },
     {
@@ -70,7 +70,7 @@ export default function SidebarTopButtons() {
     },
     {
       route: "/todos",
-      icon: <CheckmarkCircle02Icon />,
+      icon: <CheckListIcon />,
       label: "Todos",
     },
     {

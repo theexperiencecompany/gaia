@@ -1,15 +1,12 @@
 "use client";
 import { Button } from "@heroui/button";
-import { BotIcon, Star, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { FC, useEffect, useState } from "react";
 
-import {
-  BubbleConversationChatIcon,
-  Mail01Icon,
-} from "@/components/shared/icons";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
+import { BotIcon, Star, ZapIcon } from "@/icons";
+import { BubbleConversationChatIcon, Mail01Icon } from "@/icons";
 
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
@@ -57,7 +54,7 @@ export const ChatTab: FC<ChatTabProps> = ({
         return <Mail01Icon {...iconProps} />;
 
       if (systemPurpose === SystemPurpose.WORKFLOW_EXECUTION)
-        return <Zap {...iconProps} />;
+        return <ZapIcon {...iconProps} />;
 
       return <BotIcon {...iconProps} />;
     }

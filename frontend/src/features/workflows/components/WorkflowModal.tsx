@@ -16,26 +16,26 @@ import { Switch } from "@heroui/switch";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { DotsVerticalIcon } from "@radix-ui/react-icons";
-import {
-  AlertCircle,
-  ChevronDown,
-  ExternalLink,
-  Info,
-  Play,
-  RefreshCw,
-  Trash2,
-} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 
-import { CheckmarkCircle02Icon } from "@/components/shared/icons";
 import CustomSpinner from "@/components/ui/shadcn/spinner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import {
+  AlertCircle,
+  ChevronDown,
+  DotsVerticalIcon,
+  ExternalLink,
+  Info,
+  Play,
+  RefreshCw,
+  Trash2,
+} from "@/icons";
+import { CheckmarkCircle02Icon } from "@/icons";
 import { posthog } from "@/lib";
 
 import { Workflow, workflowApi } from "../api/workflowApi";

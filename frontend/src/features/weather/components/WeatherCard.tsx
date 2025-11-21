@@ -1,5 +1,14 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Switch } from "@heroui/switch";
+import React, { useMemo, useState } from "react";
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/shadcn/dropdown-menu";
 import {
   CloudFog,
   HazeIcon,
@@ -7,9 +16,7 @@ import {
   SunriseIcon,
   SunsetIcon,
   ThermometerIcon,
-} from "lucide-react";
-import React, { useMemo, useState } from "react";
-
+} from "@/icons";
 import {
   CloudAngledRainIcon,
   CloudAngledZapIcon,
@@ -23,14 +30,7 @@ import {
   Sun03Icon,
   Tornado02Icon,
   VisionIcon,
-} from "@/components/shared/icons";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/shadcn/dropdown-menu";
+} from "@/icons";
 import { WeatherData } from "@/types/features/convoTypes";
 
 import { WeatherDetailItem } from "./WeatherDetailItem";

@@ -2,20 +2,10 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import {
-  ArchiveIcon,
-  Square,
-  SquareCheck,
-  StarIcon,
-  Timer,
-  Trash,
-  X,
-} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { FixedSizeList as List, ListChildComponentProps } from "react-window";
 import InfiniteLoader from "react-window-infinite-loader";
 
-import { StarsIcon } from "@/components/shared/icons";
 import Spinner from "@/components/ui/shadcn/spinner";
 import { EmailFrom } from "@/features/mail/components/MailFrom";
 import ViewEmail from "@/features/mail/components/ViewMail";
@@ -28,6 +18,16 @@ import { useEmailViewer } from "@/features/mail/hooks/useEmailViewer";
 import { useInfiniteEmails } from "@/features/mail/hooks/useInfiniteEmails";
 import { formatTime } from "@/features/mail/utils/mailUtils";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
+import {
+  ArchiveIcon,
+  SparklesIcon,
+  Square,
+  SquareCheck,
+  StarIcon,
+  Timer,
+  Trash,
+  X,
+} from "@/icons";
 import { EmailData } from "@/types/features/mailTypes";
 
 function AIAnalysisIndicator({ hasAnalysis }: { hasAnalysis: boolean }) {
@@ -36,7 +36,7 @@ function AIAnalysisIndicator({ hasAnalysis }: { hasAnalysis: boolean }) {
   return (
     <Tooltip content="AI Analysis Available" color="primary">
       <div className="flex items-center justify-center">
-        <StarsIcon
+        <SparklesIcon
           width={16}
           height={16}
           color="#00bbff"

@@ -1,5 +1,4 @@
 import { Tooltip } from "@heroui/tooltip";
-import { GlobeIcon } from "lucide-react";
 import Image from "next/image";
 import { memo, ReactNode, useEffect, useRef, useState } from "react";
 
@@ -8,6 +7,7 @@ import {
   usePrefetchUrlMetadata,
   useUrlMetadata,
 } from "@/features/chat/hooks/useUrlMetadata";
+import { GlobeIcon } from "@/icons";
 
 // Global set to track failed image URLs across all instances
 const globalFailedUrls = new Set<string>();

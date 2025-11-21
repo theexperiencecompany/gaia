@@ -1,9 +1,10 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+
+import { Check, Copy } from "@/icons";
 
 interface ShareButtonProps {
   slug: string;

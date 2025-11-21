@@ -3,15 +3,12 @@
 import { Button } from "@heroui/button";
 import { useRouter } from "next/navigation";
 
-import {
-  CalendarAdd01Icon,
-  GoogleCalendarIcon,
-} from "@/components/shared/icons";
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
 import Spinner from "@/components/ui/shadcn/spinner";
 import CalendarSelector from "@/features/calendar/components/CalendarSelector";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { CalendarAdd01Icon, GoogleCalendarIcon } from "@/icons";
 
 export default function CalendarSidebar() {
   const router = useRouter();

@@ -2,7 +2,6 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import React, { useState } from "react";
 
-import { AiSearch02Icon } from "@/components/shared/icons";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +11,7 @@ import {
 } from "@/components/ui/shadcn/dialog";
 import Spinner from "@/components/ui/shadcn/spinner";
 import { mailApi } from "@/features/mail/api/mailApi";
+import { AiSearch02Icon } from "@/icons";
 
 import { EmailChip, EmailSuggestion } from "./EmailChip";
 

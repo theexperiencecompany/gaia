@@ -1,7 +1,6 @@
 "use client";
 
-import { Bell, Calendar, CheckSquare, Mail, Undo } from "lucide-react";
-
+import { Bell, CalendarIcon, CheckSquare, Mail, Undo } from "@/icons";
 import { NotificationSource } from "@/types/notifications";
 
 export const getNotificationIcon = (type: NotificationSource) => {
@@ -9,7 +8,7 @@ export const getNotificationIcon = (type: NotificationSource) => {
     case "ai_email_draft":
       return <Mail className="h-4 w-4" />;
     case "ai_calendar_event":
-      return <Calendar className="h-4 w-4" />;
+      return <CalendarIcon className="h-4 w-4" />;
     case "ai_todo_suggestion":
     case "ai_todo_added":
       return <CheckSquare className="h-4 w-4" />;
@@ -29,7 +28,7 @@ export const getActionIcon = (label: string) => {
     case "View Draft":
       return <Mail className="mr-2 h-4 w-4 text-white" />;
     case "View Event":
-      return <Calendar className="mr-2 h-4 w-4 text-white" />;
+      return <CalendarIcon className="mr-2 h-4 w-4 text-white" />;
     case "View Task":
       return <CheckSquare className="mr-2 h-4 w-4 text-white" />;
     case "Mark as Done":

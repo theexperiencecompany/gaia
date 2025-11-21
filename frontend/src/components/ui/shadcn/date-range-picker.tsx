@@ -1,7 +1,6 @@
 "use client";
 
 import { formatDateRange } from "little-date";
-import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
 import { type DateRange } from "react-day-picker";
 
@@ -13,6 +12,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/shadcn/popover";
+import { ChevronDownIcon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 interface DateRangePickerProps {

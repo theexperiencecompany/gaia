@@ -1,10 +1,10 @@
 "use client";
 
-import { Play, XIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Image from "next/image";
 import { useState } from "react";
 
+import { Play, XIcon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 type AnimationStyle =

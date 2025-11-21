@@ -3,11 +3,11 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
-import { Clock, Mail, Play, User } from "lucide-react";
 import Image from "next/image";
 
 import { CursorMagicSelection03Icon } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { Clock, Mail, Play, User } from "@/icons";
 import { formatRunCount } from "@/utils/formatters";
 
 import { Workflow } from "../../api/workflowApi";

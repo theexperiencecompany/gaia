@@ -1,9 +1,8 @@
-import { StyledHoloCard } from "@/app/styles/holo-card.styles";
-import { Calendar03Icon } from "@/components/shared";
-import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
 import React, { useRef, useState } from "react";
 import Tilt from "react-parallax-tilt";
+
+import { StyledHoloCard } from "@/app/styles/holo-card.styles";
 
 interface Props {
   children?: React.ReactNode;

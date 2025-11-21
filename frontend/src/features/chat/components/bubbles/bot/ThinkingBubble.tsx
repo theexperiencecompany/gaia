@@ -1,5 +1,6 @@
-import { Brain } from "lucide-react";
 import { useState } from "react";
+
+import { Brain } from "@/icons";
 
 interface ThinkingBubbleProps {
   thinkingContent: string;

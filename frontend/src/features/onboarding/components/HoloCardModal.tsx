@@ -1,47 +1,44 @@
 "use client";
 
-import { LinkedinIcon, TwitterIcon } from "@/components";
-import { HoloCard } from "@/components/ui/magic-ui/holo-card";
 import { Button, ButtonGroup } from "@heroui/button";
 import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
-import {
   Dropdown,
-  DropdownTrigger,
-  DropdownMenu,
   DropdownItem,
+  DropdownMenu,
+  DropdownTrigger,
 } from "@heroui/dropdown";
+import {
+  Modal,
+  ModalContent,
+} from "@heroui/modal";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
+import { Skeleton } from "@heroui/skeleton";
 import { Slider } from "@heroui/slider";
 import { Tooltip } from "@heroui/tooltip";
-import {
-  Download,
-  Share2,
-  Palette,
-  Dices,
-  Link,
-  RotateCcw,
-  Brain,
-} from "lucide-react";
-import { useState, useEffect, useRef, Suspense, useCallback } from "react";
+import confetti from "canvas-confetti";
+import { Suspense, useCallback,useEffect, useRef, useState } from "react";
 import ColorPicker from "react-best-gradient-color-picker";
 import { toast } from "sonner";
-import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
-import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
-import confetti from "canvas-confetti";
-import { Skeleton } from "@heroui/skeleton";
+
+import { LinkedinIcon, TwitterIcon } from "@/components";
+import { HoloCard } from "@/components/ui/magic-ui/holo-card";
 import { useUser } from "@/features/auth/hooks/useUser";
-import {
-  usePersonalization,
-  House,
-} from "@/features/onboarding/hooks/usePersonalization";
-import { getHouseImage } from "@/features/onboarding/constants/houses";
+import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
 import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
+import { getHouseImage } from "@/features/onboarding/constants/houses";
+import {
+  House,
+  usePersonalization,
+} from "@/features/onboarding/hooks/usePersonalization";
+import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
+import {
+  Dices,
+  Download,
+  Link,
+  Palette,
+  RotateCcw,
+  Share2,
+} from "@/icons";
 
 interface FeatureModalProps {
   isOpen: boolean;
@@ -402,7 +399,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                         variant="flat"
                         aria-label="Color Picker"
                       >
-                        <Palette size={20} />
+                        <Palette width={20} height={20} />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto bg-zinc-800 p-4">

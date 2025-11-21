@@ -8,10 +8,6 @@ import ContactSupport from "@/components/layout/sidebar/ContactSupport";
 import SidebarTopButtons from "@/components/layout/sidebar/SidebarTopButtons";
 import UserContainer from "@/components/layout/sidebar/UserContainer";
 import {
-  SidebarLeft01Icon,
-  SidebarRight01Icon,
-} from "@/components/shared/icons";
-import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -20,6 +16,7 @@ import {
   SidebarHeader,
   useSidebar,
 } from "@/components/ui/shadcn/sidebar";
+import { SidebarLeft01Icon, SidebarRight01Icon } from "@/icons";
 
 interface SidebarLayoutProps {
   children: ReactNode;

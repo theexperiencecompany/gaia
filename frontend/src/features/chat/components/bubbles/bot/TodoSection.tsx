@@ -1,8 +1,13 @@
 "use client";
 
 import { format } from "date-fns";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+import { Button } from "@/components/ui/shadcn/button";
+import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import {
-  Calendar,
+  CalendarIcon,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -10,12 +15,7 @@ import {
   FolderOpen,
   Hash,
   Play,
-} from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-
-import { Button } from "@/components/ui/shadcn/button";
-import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+} from "@/icons";
 import {
   TodoAction,
   TodoItem,
@@ -320,7 +320,7 @@ export default function TodoSection({
                               : "bg-zinc-800 text-zinc-400"
                           }`}
                         >
-                          <Calendar className="h-3 w-3" />
+                          <CalendarIcon className="h-3 w-3" />
                           {formatDueDate(todo.due_date)}
                         </span>
                       )}

@@ -1,9 +1,9 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Tab, Tabs } from "@heroui/tabs";
-import { ExternalLinkIcon, LinkIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 
-import { InternetIcon } from "@/components/shared/icons";
+import { ExternalLinkIcon, LinkIcon, SearchIcon } from "@/icons";
+import { InternetIcon } from "@/icons";
 import {
   DeepResearchResults,
   EnhancedWebResult,

@@ -1,8 +1,8 @@
-import { Lock } from "lucide-react";
 import React from "react";
 
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { Lock } from "@/icons";
 
 import { EnhancedToolInfo } from "../../types/enhancedTools";
 

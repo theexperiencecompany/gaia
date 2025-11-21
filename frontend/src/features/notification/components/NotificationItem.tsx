@@ -1,12 +1,12 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/react";
 import { formatDistanceToNow } from "date-fns";
-import { CheckCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { CheckCheck } from "@/icons";
 
 import {
   NotificationAction,

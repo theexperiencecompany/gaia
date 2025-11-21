@@ -5,12 +5,12 @@ import { Card, CardBody } from "@heroui/card";
 import { Chip } from "@heroui/chip";
 import { Progress } from "@heroui/progress";
 import { Tab, Tabs } from "@heroui/tabs";
-import { BarChart3, Calendar, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
 import Spinner from "@/components/ui/shadcn/spinner";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
+import { BarChart3, CalendarIcon, TrendingUp } from "@/icons";
 
 import { useUsageSummary } from "../hooks/useUsage";
 
@@ -82,7 +82,7 @@ export default function UsageSettings() {
                 key="day"
                 title={
                   <div className="flex items-center space-x-2">
-                    <Calendar size={16} />
+                    <CalendarIcon size={16} />
                     <span>Daily</span>
                   </div>
                 }

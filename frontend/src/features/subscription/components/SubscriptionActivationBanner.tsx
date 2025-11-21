@@ -1,9 +1,9 @@
 "use client";
 
-import { CheckCircle, Clock, CreditCard } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import { CheckCircle, Clock, CreditCard } from "@/icons";
 
 export function SubscriptionActivationBanner() {
   const { data: subscriptionStatus } = useUserSubscriptionStatus();

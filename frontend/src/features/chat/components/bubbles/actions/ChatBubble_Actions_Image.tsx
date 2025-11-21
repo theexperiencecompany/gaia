@@ -1,10 +1,10 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import { XIcon } from "lucide-react";
 import React from "react";
 import { toast } from "sonner";
 
-import { DownloadSquare01Icon } from "@/components/shared/icons";
+import { XIcon } from "@/icons";
+import { DownloadSquare01Icon } from "@/icons";
 import { ImageData } from "@/types/features/toolDataTypes";
 
 interface ChatBubbleActionsImageProps {

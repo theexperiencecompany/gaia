@@ -9,13 +9,13 @@ import {
   ModalHeader,
 } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { HelpCircle, MessageSquare } from "lucide-react";
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { PencilEdit01Icon, Separator } from "@/components";
 import { supportApi } from "@/features/support/api/supportApi";
+import { HelpCircle, MessageSquare } from "@/icons";
 import { SupportTicketData } from "@/types/features/supportTypes";
 
 // Support ticket validation schema

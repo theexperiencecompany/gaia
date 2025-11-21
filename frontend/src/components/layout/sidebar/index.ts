@@ -16,7 +16,6 @@ export * from "./right-variants/TodoSidebar";
 export * from "./RightSidebar";
 export * from "./SidebarTopButtons";
 export * from "./UserContainer";
-export * from "./variants/BrowserSidebar";
 export * from "./variants/CalendarSidebar";
 export * from "./variants/MailSidebar";
 export * from "./variants/SettingsSidebar";

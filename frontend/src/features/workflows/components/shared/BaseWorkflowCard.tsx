@@ -3,9 +3,9 @@
 import { ReactNode } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { ArrowUpRight } from "@/icons";
 
 import { RunCountDisplay } from "./WorkflowCardComponents";
-import { ArrowUpRight } from "@/components/shared/icons";
 
 interface BaseWorkflowCardProps {
   title: string;

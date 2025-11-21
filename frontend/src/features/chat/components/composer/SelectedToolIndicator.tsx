@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
 import React, { useEffect } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { X } from "@/icons";
 import { useComposerUI } from "@/stores/composerStore";
 
 interface SelectedToolIndicatorProps {

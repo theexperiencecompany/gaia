@@ -4,13 +4,13 @@ import { Input, Textarea } from "@heroui/input";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import DOMPurify from "dompurify";
-import { Plus, X } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { Gmail, PencilEdit01Icon, Separator } from "@/components";
 import { mailApi } from "@/features/mail/api/mailApi";
+import { Plus, X } from "@/icons";
 
 // Email validation schema
 const emailComposeSchema = z.object({

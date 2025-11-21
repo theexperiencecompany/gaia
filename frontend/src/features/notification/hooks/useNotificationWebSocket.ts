@@ -2,12 +2,12 @@ import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
 import { useUser } from "@/features/auth/hooks/useUser";
+import { wsManager } from "@/lib/websocket";
 import {
   NotificationRecord,
   NotificationUpdate,
   UseNotificationWebSocketOptions,
 } from "@/types/features/notificationTypes";
-import { wsManager } from "@/lib/websocket";
 
 interface WebSocketMessage {
   type:

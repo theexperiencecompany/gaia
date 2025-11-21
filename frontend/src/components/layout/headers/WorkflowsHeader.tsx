@@ -1,10 +1,10 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { ExternalLink, ZapIcon } from "lucide-react";
 import Link from "next/link";
 
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
+import { ExternalLink, ZapIcon } from "@/icons";
 
 interface WorkflowsHeaderProps {
   onCreateWorkflow: () => void;

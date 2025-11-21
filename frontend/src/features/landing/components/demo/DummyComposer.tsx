@@ -2,11 +2,8 @@ import { Button } from "@heroui/button";
 import { Textarea } from "@heroui/input";
 import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
-import { ArrowUp, ChevronRight } from "lucide-react";
-import { WrenchIcon } from "lucide-react";
 import React, { useRef, useState } from "react";
 
-import { AttachmentIcon, PlusSignIcon } from "@/components/shared/icons";
 import { Button as ShadcnButton } from "@/components/ui/shadcn/button";
 import {
   DropdownMenu,
@@ -15,6 +12,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/shadcn/dropdown-menu";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { ArrowUp, ChevronRight } from "@/icons";
+import { WrenchIcon } from "@/icons";
+import { AttachmentIcon, PlusSignIcon } from "@/icons";
 
 import DummySlashCommandDropdown from "./DummySlashCommandDropdown";
 

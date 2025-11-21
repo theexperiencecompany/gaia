@@ -1,6 +1,6 @@
-import { CircleArrowUp, ZapIcon } from "lucide-react";
 import { ReactNode } from "react";
 
+import { CircleArrowUp, ZapIcon } from "@/icons";
 import {
   Brain02Icon,
   CalendarIcon,
@@ -13,7 +13,7 @@ import {
   Settings01Icon,
   Target02Icon,
   WhatsappIcon,
-} from "@/components/shared/icons";
+} from "@/icons";
 
 // Menu item configuration
 export interface MenuItemConfig {

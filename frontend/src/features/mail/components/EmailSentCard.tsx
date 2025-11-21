@@ -1,7 +1,7 @@
 import { Chip } from "@heroui/chip";
-import { CheckCircleIcon } from "lucide-react";
 
 import { Gmail } from "@/components";
+import { CheckCircleIcon } from "@/icons";
 import { EmailSentData } from "@/types/features/mailTypes";
 
 interface EmailSentCardProps {

@@ -2,7 +2,8 @@
 
 import { Input } from "@heroui/react";
 import { format, isToday, isTomorrow, isYesterday } from "date-fns";
-import { Calendar, X } from "lucide-react";
+
+import { CalendarIcon, X } from "@/icons";
 
 import BaseFieldChip from "./BaseFieldChip";
 
@@ -64,7 +65,7 @@ export default function DateFieldChip({
       label="Due Date"
       value={displayValue}
       placeholder="Due date"
-      icon={<Calendar size={14} />}
+      icon={<CalendarIcon size={14} />}
       variant={value ? "success" : "default"}
       className={className}
     >
@@ -97,7 +98,7 @@ export default function DateFieldChip({
             }}
             className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
           >
-            <Calendar size={14} />
+            <CalendarIcon size={14} />
             Today
           </div>
           <div
@@ -107,7 +108,7 @@ export default function DateFieldChip({
             }}
             className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
           >
-            <Calendar size={14} />
+            <CalendarIcon size={14} />
             Tomorrow
           </div>
           <div
@@ -117,7 +118,7 @@ export default function DateFieldChip({
             }}
             className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
           >
-            <Calendar size={14} />
+            <CalendarIcon size={14} />
             In 3 days
           </div>
           <div
@@ -127,7 +128,7 @@ export default function DateFieldChip({
             }}
             className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
           >
-            <Calendar size={14} />
+            <CalendarIcon size={14} />
             Next week
           </div>
 

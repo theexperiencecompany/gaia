@@ -2,9 +2,9 @@
 
 import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/react";
-import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 
+import { ChevronDown } from "@/icons";
 import { cn } from "@/lib/utils";
 
 interface BaseFieldChipProps {

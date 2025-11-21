@@ -1,10 +1,10 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import * as React from "react";
 import { DayPicker } from "react-day-picker";
 
 import { buttonVariants } from "@/components/ui/shadcn/button";
+import { ChevronLeft, ChevronRight } from "@/icons";
 import { cn } from "@/lib/utils";
 
 function Calendar({

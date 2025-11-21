@@ -2,11 +2,11 @@
 
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
-import { Clock } from "lucide-react";
 import React from "react";
 
-import { BookIcon1 } from "@/components/shared/icons";
 import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
+import { Clock } from "@/icons";
+import { BookIcon1 } from "@/icons";
 import { NodeData } from "@/types/features/goalTypes";
 
 interface GoalSidebarProps {

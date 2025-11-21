@@ -1,6 +1,6 @@
-import { Bell, Info } from "lucide-react";
 import Image from "next/image";
 
+import { Bell, Info } from "@/icons";
 import {
   Brain02Icon,
   CheckmarkCircle02Icon,
@@ -8,7 +8,7 @@ import {
   Image02Icon,
   SourceCodeCircleIcon,
   Target02Icon,
-} from "@/components/shared/icons";
+} from "@/icons";
 
 import { useIconColorDetection } from "../hooks/useIconColorDetection";
 

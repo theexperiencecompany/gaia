@@ -1,7 +1,7 @@
 import { Chip } from "@heroui/chip";
-import { Eye, EyeOffIcon } from "lucide-react";
 
 import { isTooDark } from "@/features/calendar/utils/calendarUtils";
+import { Eye, EyeOffIcon } from "@/icons";
 import {
   CalendarChipProps,
   CalendarSelectorProps,

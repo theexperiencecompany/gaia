@@ -1,6 +1,7 @@
 import { Input } from "@heroui/input";
-import { Search } from "lucide-react";
 import React from "react";
+
+import { Search } from "@/icons";
 
 interface IntegrationsSearchInputProps {
   value: string;

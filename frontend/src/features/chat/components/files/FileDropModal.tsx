@@ -1,7 +1,8 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { File, FileUp, Upload } from "lucide-react";
+
+import { File, FileUp, Upload } from "@/icons";
 
 interface FileDropModalProps {
   isDragging: boolean;

@@ -7,9 +7,9 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { Send } from "lucide-react";
 import React, { Dispatch, SetStateAction, useEffect, useState } from "react";
 
+import { Send } from "@/icons";
 import { posthog } from "@/lib";
 
 export default function AddGoalDialog({

@@ -1,9 +1,9 @@
 import { Button } from "@heroui/button";
-import { Loader } from "lucide-react";
 // import Spinner from "@/components/ui/spinner";
 import * as React from "react";
 
-import { VolumeHighIcon, VolumeOffIcon } from "@/components/shared/icons";
+import { Loader } from "@/icons";
+import { VolumeHighIcon, VolumeOffIcon } from "@/icons";
 import { api } from "@/lib/api";
 
 export default function TextToSpeech({ text }: { text: string }) {

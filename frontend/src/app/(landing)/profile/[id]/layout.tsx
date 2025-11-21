@@ -1,4 +1,5 @@
 import { Metadata } from "next";
+
 import { PublicHoloCardData } from "@/features/onboarding/api/holoCardApi";
 import { normalizeHouse } from "@/features/onboarding/constants/houses";
 

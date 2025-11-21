@@ -3,16 +3,9 @@ import { ButtonGroup } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { EditorContent } from "@tiptap/react";
 import { TagInput } from "emblor";
-import { AlertCircle, Check, ChevronDown } from "lucide-react";
 import Image from "next/image";
 import { Drawer } from "vaul";
 
-import {
-  AiSearch02Icon,
-  BrushIcon,
-  Sent02Icon,
-  SentIcon,
-} from "@/components/shared/icons";
 import {
   Alert,
   AlertDescription,
@@ -26,6 +19,8 @@ import {
 } from "@/components/ui/shadcn/dropdown-menu";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useEmailComposition } from "@/features/mail/hooks/useEmailComposition";
+import { AlertCircle, Check, ChevronDown } from "@/icons";
+import { AiSearch02Icon, BrushIcon, Sent02Icon, SentIcon } from "@/icons";
 
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import { Button as ShadcnButton } from "../../../components/ui/shadcn/button";

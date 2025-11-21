@@ -10,10 +10,11 @@ import {
   ModalHeader,
 } from "@heroui/modal";
 import { Select, SelectItem } from "@heroui/select";
-import { Upload, X } from "lucide-react";
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+
+import { Upload, X } from "@/icons";
 
 import {
   ALLOWED_FILE_TYPES,

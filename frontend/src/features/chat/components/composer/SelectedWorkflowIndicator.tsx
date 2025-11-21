@@ -2,11 +2,11 @@
 
 import { Button } from "@heroui/button";
 import { motion } from "framer-motion";
-import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { SelectedWorkflowData } from "@/features/chat/hooks/useWorkflowSelection";
 import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflowCard";
+import { X } from "@/icons";
 
 interface SelectedWorkflowIndicatorProps {
   workflow: SelectedWorkflowData | null;

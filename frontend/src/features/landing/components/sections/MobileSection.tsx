@@ -1,8 +1,8 @@
 import Image from "next/image";
 
-import { Call02Icon, ChatBotIcon, VoiceIcon } from "@/components/shared/icons";
 import { Button } from "@/components/ui/shadcn/button";
 import { SectionHeading } from "@/features/landing/layouts/SectionHeader";
+import { Call02Icon, ChatBotIcon, VoiceIcon } from "@/icons";
 
 export default function MobileSection() {
   return (

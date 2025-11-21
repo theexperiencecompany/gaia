@@ -1,7 +1,8 @@
 "use client";
 
-import { ChevronLeft, Home } from "lucide-react";
 import React from "react";
+
+import { ChevronLeft, Home } from "@/icons";
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;

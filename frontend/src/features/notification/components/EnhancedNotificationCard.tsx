@@ -2,17 +2,17 @@
 
 import { Button as HeroButton } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
+import { useState } from "react";
+
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
   AlertCircle,
   CheckCheck,
   CheckCircle,
   Clock,
   ExternalLink,
-} from "lucide-react";
-import { useState } from "react";
-
-import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { useNotificationActions } from "@/hooks/useNotificationActions";
+} from "@/icons";
 import {
   ActionType,
   ModalConfig,

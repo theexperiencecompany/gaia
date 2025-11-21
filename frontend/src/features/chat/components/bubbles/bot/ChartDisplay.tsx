@@ -1,5 +1,4 @@
 import { Tab, Tabs } from "@heroui/tabs";
-import { BarChart3, Download, Maximize2, X } from "lucide-react";
 import React, { useState } from "react";
 import {
   Bar,
@@ -13,13 +12,14 @@ import {
   YAxis,
 } from "recharts";
 
-import { Image02Icon } from "@/components/shared/icons";
 import {
   ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/shadcn/chart";
+import { BarChart3, Download, Maximize2, X } from "@/icons";
+import { Image02Icon } from "@/icons";
 
 interface ChartData {
   id: string;

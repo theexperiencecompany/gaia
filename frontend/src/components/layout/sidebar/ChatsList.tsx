@@ -1,7 +1,6 @@
 "use client";
 
 import { isToday, isYesterday, subDays } from "date-fns";
-import { Loader } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -14,6 +13,7 @@ import {
   useConversationList,
   useFetchConversations,
 } from "@/features/chat/hooks/useConversationList";
+import { Loader } from "@/icons";
 import type { IConversation } from "@/lib/db/chatDb";
 
 import { ChatTab } from "./ChatTab";

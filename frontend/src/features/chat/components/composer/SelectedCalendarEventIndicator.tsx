@@ -1,10 +1,10 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
 import React from "react";
 
 import { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
+import { X } from "@/icons";
 
 interface SelectedCalendarEventIndicatorProps {
   event: SelectedCalendarEventData | null;

@@ -1,5 +1,4 @@
-import { HandMetal, LockIcon } from "lucide-react";
-
+import { HandMetal, LockIcon } from "@/icons";
 import {
   DiscordIcon,
   Github,
@@ -8,7 +7,7 @@ import {
   TwitterIcon,
   WhatsappIcon,
   YoutubeIcon,
-} from "@/components/shared/icons";
+} from "@/icons";
 
 const emailLinks = [
   {

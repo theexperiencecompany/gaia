@@ -5,10 +5,10 @@ import { useState } from "react";
 
 import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
-import { Target02Icon } from "@/components/shared/icons";
 import AddGoalDialog from "@/features/goals/components/AddGoalDialog";
 import { useGoals } from "@/features/goals/hooks/useGoals";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
+import { Target02Icon } from "@/icons";
 
 export default function GoalsHeader() {
   const [openDialog, setOpenDialog] = useState(false);

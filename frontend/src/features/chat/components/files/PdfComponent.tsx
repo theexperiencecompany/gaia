@@ -3,8 +3,8 @@ import "react-pdf/dist/Page/TextLayer.css";
 
 import { Document, Page, pdfjs } from "react-pdf";
 
-import { Pdf02Icon } from "@/components/shared/icons";
 import Spinner from "@/components/ui/shadcn/spinner";
+import { Pdf02Icon } from "@/icons";
 
 // Define interfaces for component props
 interface PdfContainerProps {

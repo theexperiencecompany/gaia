@@ -1,7 +1,6 @@
 "use client";
 
-import { Folder } from "lucide-react";
-
+import { Folder } from "@/icons";
 import { Project } from "@/types/features/todoTypes";
 
 import BaseFieldChip from "./BaseFieldChip";

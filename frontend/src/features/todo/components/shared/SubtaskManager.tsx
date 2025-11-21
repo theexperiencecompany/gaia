@@ -1,11 +1,11 @@
 "use client";
 
 import { Checkbox } from "@heroui/checkbox";
-import { Plus, X } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/shadcn/button";
 import { Input } from "@/components/ui/shadcn/input";
+import { Plus, X } from "@/icons";
 import { cn } from "@/lib/utils";
 import { SubTask } from "@/types/features/todoTypes";
 

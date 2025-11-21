@@ -1,9 +1,9 @@
-import { Loader2 } from "lucide-react";
 import React from "react";
 
 import { Gmail } from "@/components";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import EmailListCard from "@/features/mail/components/EmailListCard";
+import { Loader2 } from "@/icons";
 import { EmailData, EmailFetchData } from "@/types/features/mailTypes";
 
 interface UnreadEmailsViewProps {

@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { useEffect, useState } from "react";
 
-import { AiBrain01Icon } from "@/components/shared/icons";
+import { AiBrain01Icon } from "@/icons";
 
 interface MemoryResult {
   id: string;

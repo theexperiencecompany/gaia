@@ -2,11 +2,11 @@
 
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { CheckCircle, ExternalLink } from "lucide-react";
 import Link from "next/link";
 
 import { RedditIcon } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { CheckCircle, ExternalLink } from "@/icons";
 import {
   RedditCommentCreatedData,
   RedditPostCreatedData,

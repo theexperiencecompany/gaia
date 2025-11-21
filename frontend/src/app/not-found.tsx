@@ -1,6 +1,5 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -8,6 +7,7 @@ import { Home01Icon } from "@/components";
 import Footer from "@/components/navigation/Footer";
 import Navbar from "@/components/navigation/Navbar";
 import { RaisedButton } from "@/components/ui";
+import { ArrowLeft } from "@/icons";
 
 export default function PageNotFound() {
   const router = useRouter();

@@ -2,7 +2,6 @@
 
 import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/modal";
-import { RefreshCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
@@ -10,6 +9,7 @@ import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import { UseCase } from "@/features/use-cases/types";
 import { useHeader } from "@/hooks/layout/useHeader";
+import { RefreshCw } from "@/icons";
 
 import { CommunityWorkflow, Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";

@@ -1,7 +1,6 @@
 "use client";
 
-import { Flag } from "lucide-react";
-
+import { Flag } from "@/icons";
 import { Priority } from "@/types/features/todoTypes";
 
 import BaseFieldChip from "./BaseFieldChip";

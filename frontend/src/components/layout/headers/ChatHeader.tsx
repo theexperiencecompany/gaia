@@ -1,14 +1,14 @@
 "use client";
 
 import { Kbd } from "@heroui/kbd";
-import { Search } from "lucide-react";
 import Link from "next/link";
 
 import { SidebarHeaderButton } from "@/components";
-import { ChatBubbleAddIcon, PinIcon } from "@/components/shared/icons";
 import ModelPickerButton from "@/features/chat/components/composer/ModelPickerButton";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import { usePlatform } from "@/hooks/ui/usePlatform";
+import { Search } from "@/icons";
+import { ChatBubbleAddIcon, PinIcon } from "@/icons";
 
 export default function ChatHeader() {
   const { isMac, modifierKeyName } = usePlatform();

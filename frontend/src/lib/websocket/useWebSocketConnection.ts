@@ -1,6 +1,7 @@
 import { useEffect } from "react";
-import { wsManager } from "@/lib/websocket";
+
 import { useUser } from "@/features/auth/hooks/useUser";
+import { wsManager } from "@/lib/websocket";
 
 /**
  * Hook to initialize and manage the global WebSocket connection

@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { ReactNode, useEffect } from "react";
 
-import { Cancel01Icon } from "@/components/shared/icons";
+import { Cancel01Icon } from "@/icons";
 import {
   RightSidebarVariant,
   useRightSidebar,

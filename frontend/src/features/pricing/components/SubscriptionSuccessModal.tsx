@@ -2,8 +2,9 @@
 
 import { Button } from "@heroui/button";
 import { Modal, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
-import { ArrowRight, Check } from "lucide-react";
 import React, { useEffect, useState } from "react";
+
+import { ArrowRight, Check } from "@/icons";
 
 import UseCreateConfetti from "../../../hooks/ui/useCreateConfetti";
 

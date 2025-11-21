@@ -1,12 +1,12 @@
 "use client";
 
 import { Input } from "@heroui/input";
-import { Pin } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import Spinner from "@/components/ui/shadcn/spinner";
 import { PinCard } from "@/features/pins/components/PinCard";
 import { usePins } from "@/features/pins/hooks/usePins";
+import { Pin } from "@/icons";
 import { PinCardProps } from "@/types/features/pinTypes";
 
 export default function Pins() {

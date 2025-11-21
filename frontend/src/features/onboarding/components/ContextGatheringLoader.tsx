@@ -1,10 +1,11 @@
 "use client";
 
-import { RaisedButton } from "@/components";
 import { Spinner } from "@heroui/spinner";
 import { useEffect, useState } from "react";
+
+import { RaisedButton } from "@/components";
 import { usePersonalization } from "@/features/onboarding/hooks/usePersonalization";
-import { X } from "lucide-react";
+import { X } from "@/icons";
 
 interface ContextGatheringLoaderProps {
   onComplete: () => void;

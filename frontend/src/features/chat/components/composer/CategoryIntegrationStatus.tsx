@@ -1,6 +1,7 @@
 import { Chip } from "@heroui/chip";
-import { Lock } from "lucide-react";
 import React from "react";
+
+import { Lock } from "@/icons";
 
 import { useToolsWithIntegrations } from "../../hooks/useToolsWithIntegrations";
 

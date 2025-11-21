@@ -4,7 +4,6 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, VariantProps } from "class-variance-authority";
 import * as React from "react";
 
-import { SidebarLeft01Icon } from "@/components/shared/icons";
 import { Button } from "@/components/ui/shadcn/button";
 import { Input } from "@/components/ui/shadcn/input";
 import { Separator } from "@/components/ui/shadcn/separator";
@@ -23,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/shadcn/tooltip";
 import { useIsMobile } from "@/hooks/ui/useMobile";
+import { SidebarLeft01Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";

@@ -3,7 +3,6 @@
  */
 "use client";
 
-import { CalendarIcon } from "@radix-ui/react-icons";
 import {
   addHours,
   endOfDay,
@@ -19,7 +18,6 @@ import {
   startOfMinute,
   subHours,
 } from "date-fns";
-import { ChevronLeftIcon, ChevronRightIcon, XCircle } from "lucide-react";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DayPicker, Matcher } from "react-day-picker";
@@ -31,6 +29,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/shadcn/popover";
 import { ScrollArea } from "@/components/ui/shadcn/scroll-area";
+import {
+  CalendarIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  XCircle,
+} from "@/icons";
 import { cn } from "@/lib/utils";
 
 export type CalendarProps = Omit<

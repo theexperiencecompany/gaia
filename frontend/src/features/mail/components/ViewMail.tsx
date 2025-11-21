@@ -11,16 +11,16 @@ import Underline from "@tiptap/extension-underline";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import he from "he";
-import { Reply, ReplyAll, Send, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Drawer } from "vaul";
 
-import { MagicWand05Icon, StarsIcon } from "@/components/shared/icons";
 import Spinner from "@/components/ui/shadcn/spinner";
 import GmailBody from "@/features/mail/components/GmailBody";
 import { useEmailSummary } from "@/features/mail/hooks/useEmailAnalysis";
 import { parseEmail } from "@/features/mail/utils/mailUtils";
+import { Reply, ReplyAll, Send, XIcon } from "@/icons";
+import { MagicWand05Icon, StarsIcon } from "@/icons";
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import { EmailData, EmailImportanceSummary } from "@/types/features/mailTypes";
 

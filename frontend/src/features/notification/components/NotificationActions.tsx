@@ -1,12 +1,12 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
 import {
   LeadingActions,
   SwipeAction,
   TrailingActions,
 } from "react-swipeable-list";
 
+import { Trash2 } from "@/icons";
 import { Notification } from "@/types/notifications";
 import { getActionColor, getActionIcon } from "@/utils/notifications";
 

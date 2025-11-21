@@ -1,4 +1,3 @@
-import { Clock } from "lucide-react";
 import Twemoji from "react-twemoji";
 
 import {
@@ -7,6 +6,7 @@ import {
   getEventIcon,
   isTooDark,
 } from "@/features/calendar/utils/calendarUtils";
+import { Clock } from "@/icons";
 import {
   CalendarCardProps,
   GoogleCalendarEvent,

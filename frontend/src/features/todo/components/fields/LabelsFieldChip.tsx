@@ -2,8 +2,9 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Hash, Plus, X } from "lucide-react";
 import { useState } from "react";
+
+import { Hash, Plus, X } from "@/icons";
 
 import BaseFieldChip from "./BaseFieldChip";
 

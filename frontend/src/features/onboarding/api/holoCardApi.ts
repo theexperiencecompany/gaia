@@ -1,6 +1,6 @@
+import { PersonalizationData } from "@/features/onboarding/hooks/useOnboardingWebSocket";
 import { apiService } from "@/lib/api";
 import { api } from "@/lib/api/client";
-import { PersonalizationData } from "@/features/onboarding/hooks/useOnboardingWebSocket";
 
 export interface HoloCardData extends PersonalizationData {
   name: string;

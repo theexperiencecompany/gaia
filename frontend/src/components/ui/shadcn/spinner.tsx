@@ -1,5 +1,6 @@
-import { Loader } from "lucide-react";
 import Image from "next/image";
+
+import { Loader } from "@/icons";
 
 export default function Spinner({
   variant = "logo",

@@ -8,9 +8,9 @@ import { toast } from "sonner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflowCard";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
+import { ArrowUpRight } from "@/icons";
 import { posthog } from "@/lib";
 import { useAppendToInput } from "@/stores/composerStore";
-import { ArrowUpRight } from "@/components/shared/icons";
 
 interface UseCaseCardProps {
   title: string;

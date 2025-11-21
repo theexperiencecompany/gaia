@@ -1,14 +1,16 @@
 "use client";
 
 import { Card } from "@heroui/card";
-import { Loader2, CheckCircle2, XCircle, LucideIcon } from "lucide-react";
-import { useOnboardingStore, ContextStatus } from "@/stores/onboardingStore";
+import { FC } from "react";
+
+import { CheckCircle2, IconProps,Loader2, XCircle } from "@/icons";
+import { ContextStatus,useOnboardingStore } from "@/stores/onboardingStore";
 
 interface StatusConfig {
   text: string;
-  icon: LucideIcon | null;
   color: string;
   spin: boolean;
+  icon: FC<IconProps> | null;
 }
 
 const STATUS_CONFIG: Record<ContextStatus, StatusConfig> = {
@@ -60,7 +62,8 @@ export function ContextBuildingCard() {
       <div className="flex items-center gap-3">
         {Icon && (
           <Icon
-            size={20}
+            height={20}
+            width={20}
             className={`${config.color} ${config.spin ? "animate-spin" : ""}`}
           />
         )}
