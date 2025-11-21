@@ -8,7 +8,12 @@ from typing import Annotated, List, TypedDict
 
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
-from app.services.composio.composio_service import get_composio_service
+from app.services.oauth_service import (
+    check_integration_status as check_single_integration_status,
+)
+from app.services.oauth_service import (
+    check_multiple_integrations_status,
+)
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
@@ -47,17 +52,16 @@ async def list_integrations(
             return "Error: User ID not found in configuration."
 
         writer = get_stream_writer()
-        composio_service = get_composio_service()
 
-        # Get all providers from integrations
-        providers = [
-            integration.provider
+        # Get all integration IDs
+        integration_ids = [
+            integration.id
             for integration in OAUTH_INTEGRATIONS
-            if integration.managed_by == "composio"
+            if integration.available
         ]
 
-        # Check connection status for all providers
-        status_map = await composio_service.check_connection_status(providers, user_id)
+        # Check connection status using unified service
+        status_map = await check_multiple_integrations_status(integration_ids, user_id)
 
         # Build integrations list
         integrations_list: List[IntegrationInfo] = []
@@ -66,12 +70,8 @@ async def list_integrations(
             if not integration.available:
                 continue
 
-            # Determine connection status
-            is_connected = False
-            if integration.managed_by == "composio":
-                is_connected = status_map.get(integration.provider, False)
-            elif integration.managed_by == "self":
-                is_connected = False
+            # Get connection status from unified service
+            is_connected = status_map.get(integration.id, False)
 
             integrations_list.append(
                 {
@@ -127,7 +127,6 @@ async def connect_integration(
         if isinstance(integration_names, str):
             integration_names = [integration_names]
 
-        composio_service = get_composio_service()
         writer = get_stream_writer()
 
         results = []
@@ -162,14 +161,13 @@ async def connect_integration(
                 )
                 continue
 
-            # Check if already connected
-            if integration.managed_by == "composio":
-                status_map = await composio_service.check_connection_status(
-                    [integration.provider], user_id
-                )
-                if status_map.get(integration.provider, False):
-                    results.append(f"✅ {integration.name} is already connected!")
-                    continue
+            # Check if already connected using unified service
+            is_connected = await check_single_integration_status(
+                integration.id, user_id
+            )
+            if is_connected:
+                results.append(f"✅ {integration.name} is already connected!")
+                continue
 
             # Queue for connection
             connections_to_initiate.append(integration)
@@ -198,7 +196,7 @@ async def connect_integration(
 
 
 @tool
-async def check_integration_status(
+async def check_integrations_status(
     integration_names: Annotated[
         List[str],
         "List of integration names or IDs to check status for (e.g., ['gmail', 'notion'])",
@@ -224,7 +222,6 @@ async def check_integration_status(
         if not user_id:
             return "Error: User ID not found in configuration."
 
-        composio_service = get_composio_service()
         results = []
 
         for integration_name in integration_names:
@@ -244,15 +241,12 @@ async def check_integration_status(
                 results.append(f"❓ {integration_name}: Not found")
                 continue
 
-            if integration.managed_by == "composio":
-                status_map = await composio_service.check_connection_status(
-                    [integration.provider], user_id
-                )
-                is_connected = status_map.get(integration.provider, False)
-                status = "✅ Connected" if is_connected else "⚪ Not Connected"
-                results.append(f"{integration.name}: {status}")
-            else:
-                results.append(f"{integration.name}: Status check not available")
+            # Use unified status checker
+            is_connected = await check_single_integration_status(
+                integration.id, user_id
+            )
+            status = "✅ Connected" if is_connected else "⚪ Not Connected"
+            results.append(f"{integration.name}: {status}")
 
         return "\n".join(results)
 
@@ -265,5 +259,5 @@ async def check_integration_status(
 tools = [
     list_integrations,
     connect_integration,
-    check_integration_status,
+    check_integrations_status,
 ]

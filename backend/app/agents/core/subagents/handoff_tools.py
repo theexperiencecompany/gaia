@@ -26,7 +26,7 @@ from app.agents.prompts.subagent_prompts import (
 )
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import get_integration_by_id
-from app.services.composio.composio_service import get_composio_service
+from app.services.oauth_service import check_integration_status
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolCallId, tool
@@ -56,15 +56,13 @@ async def check_integration_connection(
     """
     try:
         integration = get_integration_by_id(integration_id)
-        if not integration or integration.managed_by != "composio":
+        if not integration:
             return None
 
-        composio_service = get_composio_service()
-        status_map = await composio_service.check_connection_status(
-            [integration.provider], user_id
-        )
+        # Use unified integration status checker
+        is_connected = await check_integration_status(integration_id, user_id)
 
-        if status_map.get(integration.provider, False):
+        if is_connected:
             return None
 
         # Not connected - stream prompt and return error

@@ -33,7 +33,10 @@ from app.services.composio.composio_service import (
     COMPOSIO_SOCIAL_CONFIGS,
     get_composio_service,
 )
-from app.services.oauth_service import store_user_info
+from app.services.oauth_service import (
+    get_all_integrations_status,
+    store_user_info,
+)
 from app.services.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
@@ -489,56 +492,31 @@ async def get_integrations_status(
     """
     Get the integration status for the current user based on OAuth scopes.
     """
-    composio_service = get_composio_service()
     try:
-        authorized_scopes = []
         user_id = user.get("user_id")
 
-        # Get token from repository for Google integrations
-        try:
-            if not user_id:
-                logger.warning("User ID not found in user object")
-                raise ValueError("User ID not found")
-
-            token = await token_repository.get_token(
-                str(user_id), "google", renew_if_expired=True
+        if not user_id:
+            logger.warning("User ID not found in user object")
+            return JSONResponse(
+                content={"integrations": [], "debug": {"error": "User ID not found"}},
+                status_code=400,
             )
-            authorized_scopes = str(token.get("scope", "")).split()
-        except Exception as e:
-            logger.warning(f"Error retrieving token from repository: {e}")
-            # Continue with empty scopes
 
-        # Batch check Composio providers
-        composio_status = {}
-        composio_status = await composio_service.check_connection_status(
-            list(COMPOSIO_SOCIAL_CONFIGS.keys()), str(user_id)
-        )
+        # Use unified status checker for all integrations
+        status_map = await get_all_integrations_status(str(user_id))
 
         # Build integration statuses
-        integration_statuses = []
-        for integration in OAUTH_INTEGRATIONS:
-            if integration.provider in composio_status:
-                # Use Composio status
-                is_connected = composio_status[integration.provider]
-            elif integration.provider == "google" and authorized_scopes:
-                # Check Google OAuth scopes
-                required_scopes = get_integration_scopes(integration.id)
-                is_connected = all(
-                    scope in authorized_scopes for scope in required_scopes
-                )
-            else:
-                is_connected = False
-
-            integration_statuses.append(
-                {"integrationId": integration.id, "connected": is_connected}
-            )
+        integration_statuses = [
+            {
+                "integrationId": integration_id,
+                "connected": status_map.get(integration_id, False),
+            }
+            for integration_id in status_map.keys()
+        ]
 
         return JSONResponse(
             content={
                 "integrations": integration_statuses,
-                "debug": {
-                    "authorized_scopes": authorized_scopes,
-                },
             }
         )
 
