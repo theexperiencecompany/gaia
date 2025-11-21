@@ -37,6 +37,10 @@ from app.services.oauth_service import (
     get_all_integrations_status,
     store_user_info,
 )
+from app.services.oauth_state_service import (
+    create_oauth_state,
+    validate_and_consume_oauth_state,
+)
 from app.services.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
@@ -213,12 +217,19 @@ async def login_integration(
             status_code=400, detail=f"Integration {integration_id} is not available yet"
         )
 
+    # Create secure state token for OAuth flow
+    state_token = await create_oauth_state(
+        user_id=user["user_id"],
+        redirect_path=redirect_path,
+        integration_id=integration_id,
+    )
+
     # Streamlined composio integration handling
     composio_providers = set([k for k in COMPOSIO_SOCIAL_CONFIGS.keys()])
     if integration.provider in composio_providers:
         provider_key = integration.provider
         url = await composio_service.connect_account(
-            provider_key, user["user_id"], frontend_redirect_path=redirect_path
+            provider_key, user["user_id"], state_token=state_token
         )
         return RedirectResponse(url=url["redirect_url"])
     elif integration.provider == "google":
@@ -253,6 +264,7 @@ async def login_integration(
             "prompt": "consent",  # Only force consent for additional scopes
             "include_granted_scopes": "true",  # Include previously granted scopes
             "login_hint": user.get("email"),
+            "state": state_token,  # Secure state token for CSRF protection
         }
         auth_url = f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
         return RedirectResponse(url=auth_url)
@@ -266,7 +278,7 @@ async def login_integration(
 @router.get("/composio/callback", response_class=RedirectResponse)
 async def composio_callback(
     status: str,
-    frontend_redirect_path: str,
+    state: str,
     background_tasks: BackgroundTasks,
     connectedAccountId: Optional[str] = None,
     error: Optional[str] = None,
@@ -276,7 +288,7 @@ async def composio_callback(
 
     Args:
         status: Connection status from Composio ('success' or 'failed')
-        frontend_redirect_path: Path to redirect user after processing
+        state: Secure state token for CSRF protection and redirect path
         background_tasks: FastAPI background tasks for async operations
         connectedAccountId: Unique identifier for the connected account (optional for failures)
         error: Error code from OAuth provider (optional)
@@ -284,6 +296,17 @@ async def composio_callback(
     Returns:
         RedirectResponse: Redirects user to frontend with appropriate status
     """
+    # Validate and consume state token
+    state_data = await validate_and_consume_oauth_state(state)
+    if not state_data:
+        logger.error(f"Invalid OAuth state token: {state}")
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}/redirect?oauth_error=invalid_state"
+        )
+
+    redirect_path = state_data["redirect_path"]
+    expected_user_id = state_data["user_id"]
+
     # Handle failed connection early
     if status != "success":
         error_type = "cancelled" if error == "access_denied" else "failed"
@@ -291,14 +314,14 @@ async def composio_callback(
             f"Composio connection failed: status={status}, error={error}, accountId={connectedAccountId}"
         )
         return RedirectResponse(
-            url=f"{settings.FRONTEND_URL}/{frontend_redirect_path}?oauth_error={error_type}"
+            url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error={error_type}"
         )
 
     # Ensure we have connectedAccountId for success status
     if not connectedAccountId:
         logger.error("Connected account ID missing for successful connection")
         return RedirectResponse(
-            url=f"{settings.FRONTEND_URL}/{frontend_redirect_path}?oauth_error=failed"
+            url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=failed"
         )
 
     composio_service = get_composio_service()
@@ -331,7 +354,16 @@ async def composio_callback(
                 f"Integration config not found for auth_config_id: {config_id}"
             )
             return RedirectResponse(
-                url=f"{settings.FRONTEND_URL}/redirect?oauth_error=failed"
+                url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=failed"
+            )
+
+        # Verify user_id matches the state token (security check)
+        if str(user_id) != expected_user_id:
+            logger.error(
+                f"User ID mismatch: state={expected_user_id}, account={user_id}"
+            )
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=user_mismatch"
             )
 
         # Setup triggers if available
@@ -365,9 +397,9 @@ async def composio_callback(
             f"integration={integration_config.id}, account={connectedAccountId}"
         )
         # Add oauth_success parameter to inform frontend of successful connection
-        separator = "&" if "?" in frontend_redirect_path else "?"
+        separator = "&" if "?" in redirect_path else "?"
         return RedirectResponse(
-            url=f"{settings.FRONTEND_URL}/{frontend_redirect_path}{separator}oauth_success=true"
+            url=f"{settings.FRONTEND_URL}{redirect_path}{separator}oauth_success=true"
         )
 
     except Exception as e:
@@ -385,24 +417,45 @@ async def composio_callback(
 async def callback(
     background_tasks: BackgroundTasks,
     code: Optional[str] = None,
+    state: Optional[str] = None,
     error: Optional[str] = None,
 ) -> RedirectResponse:
     try:
+        # Validate and consume state token first
+        state_data = None
+        redirect_path = "/redirect"  # Default fallback
+
+        if state:
+            state_data = await validate_and_consume_oauth_state(state)
+            if not state_data:
+                logger.error(f"Invalid OAuth state token: {state}")
+                return RedirectResponse(
+                    url=f"{settings.FRONTEND_URL}/redirect?oauth_error=invalid_state"
+                )
+            redirect_path = state_data["redirect_path"]
+        else:
+            # For backward compatibility with old flows without state
+            logger.warning("OAuth callback received without state token")
+
         # Handle OAuth errors (e.g., user canceled)
         if error:
             logger.warning(f"OAuth error: {error}")
             if error == "access_denied":
                 # User canceled OAuth flow
-                redirect_url = f"{settings.FRONTEND_URL}/redirect?oauth_error=cancelled"
+                redirect_url = (
+                    f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=cancelled"
+                )
             else:
                 # Other OAuth errors
-                redirect_url = f"{settings.FRONTEND_URL}/redirect?oauth_error={error}"
+                redirect_url = (
+                    f"{settings.FRONTEND_URL}{redirect_path}?oauth_error={error}"
+                )
             return RedirectResponse(url=redirect_url)
 
         # Check if we have the authorization code
         if not code:
             logger.error("No authorization code provided")
-            redirect_url = f"{settings.FRONTEND_URL}/redirect?oauth_error=no_code"
+            redirect_url = f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=no_code"
             return RedirectResponse(url=redirect_url)
 
         # Get tokens from authorization code
@@ -440,6 +493,15 @@ async def callback(
             },
         )
 
+        # Verify user_id matches the state token if we have one (security check)
+        if state_data and str(user_id) != state_data["user_id"]:
+            logger.error(
+                f"User ID mismatch: state={state_data['user_id']}, token={user_id}"
+            )
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=user_mismatch"
+            )
+
         # Invalidate OAuth status cache for this user
         try:
             cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
@@ -448,8 +510,11 @@ async def callback(
         except Exception as e:
             logger.warning(f"Failed to invalidate OAuth status cache: {e}")
 
-        # Redirect URL can include tokens if needed
-        redirect_url = f"{settings.FRONTEND_URL}/redirect"
+        # Redirect to the original page with success indicator
+        separator = "&" if "?" in redirect_path else "?"
+        redirect_url = (
+            f"{settings.FRONTEND_URL}{redirect_path}{separator}oauth_success=true"
+        )
         response = RedirectResponse(url=redirect_url)
 
         return response

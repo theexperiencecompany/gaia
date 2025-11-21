@@ -25,10 +25,15 @@ class ComposioService:
         )
 
     async def connect_account(
-        self, provider: str, user_id: str, frontend_redirect_path: Optional[str] = None
+        self, provider: str, user_id: str, state_token: Optional[str] = None
     ) -> dict:
         """
         Initiates connection flow for a given provider and user.
+
+        Args:
+            provider: The provider to connect (e.g., 'gmail', 'notion')
+            user_id: The user ID initiating the connection
+            state_token: Secure state token for OAuth flow (replaces frontend_redirect_path)
         """
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
@@ -39,10 +44,10 @@ class ComposioService:
             callback_url = (
                 add_query_param(
                     settings.COMPOSIO_REDIRECT_URI,
-                    "frontend_redirect_path",
-                    frontend_redirect_path,
+                    "state",
+                    state_token,
                 )
-                if frontend_redirect_path
+                if state_token
                 else settings.COMPOSIO_REDIRECT_URI
             )
 

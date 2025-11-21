@@ -14,6 +14,15 @@ export default function RedirectPage() {
     const handleRedirect = () => {
       // Check for OAuth errors
       const oauthError = searchParams.get("oauth_error");
+      const oauthSuccess = searchParams.get("oauth_success");
+
+      if (oauthSuccess) {
+        // Show success toast for successful OAuth connection
+        toast.success("Integration connected successfully!");
+        // Stay on current page or redirect to integrations page
+        // The frontend will automatically refresh integration status
+        return;
+      }
 
       if (oauthError) {
         // Handle OAuth errors with appropriate toasts
@@ -31,6 +40,16 @@ export default function RedirectPage() {
           case "no_code":
             toast.error(
               "Authentication failed. No authorization code received.",
+            );
+            break;
+          case "invalid_state":
+            toast.error(
+              "Authentication session expired or invalid. Please try again.",
+            );
+            break;
+          case "user_mismatch":
+            toast.error(
+              "Authentication security error. Please log out and try again.",
             );
             break;
           case "failed":
