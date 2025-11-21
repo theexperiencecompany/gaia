@@ -440,6 +440,14 @@ async def callback(
             },
         )
 
+        # Invalidate OAuth status cache for this user
+        try:
+            cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
+            await delete_cache(cache_key)
+            logger.info(f"OAuth status cache invalidated for user {user_id}")
+        except Exception as e:
+            logger.warning(f"Failed to invalidate OAuth status cache: {e}")
+
         # Redirect URL can include tokens if needed
         redirect_url = f"{settings.FRONTEND_URL}/redirect"
         response = RedirectResponse(url=redirect_url)
