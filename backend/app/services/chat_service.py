@@ -43,7 +43,7 @@ async def chat_stream(
         user_message_id,
         bot_message_id,
     ) = await initialize_conversation(body, user)
-    is_new_conversation = init_chunk is not None
+    is_new_conversation = body.conversation_id is None
 
     # Dictionary to collect tool outputs during streaming
     tool_data: Dict[str, Any] = {"tool_data": []}
