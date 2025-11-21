@@ -9,10 +9,8 @@ import { WorkflowData } from "@/types/features/workflowTypes";
 import { FileData } from "@/types/shared/fileTypes";
 
 import { TOOLS_MESSAGE_SCHEMA } from "./toolRegistry";
+import { MemoryData, ImageData } from "@/types";
 
-type ImageData = import("@/types/features/toolDataTypes").ImageData;
-
-type MemoryData = import("@/types/features/toolDataTypes").MemoryData;
 
 /**
  * BASE_MESSAGE_SCHEMA

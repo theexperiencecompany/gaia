@@ -156,6 +156,180 @@ export const useChatStream = () => {
     };
   };
 
+  const handleProgressUpdate = (progressData: any) => {
+    if (typeof progressData === "string") {
+      setLoadingText(progressData);
+    } else if (typeof progressData === "object" && progressData.message) {
+      setLoadingText(progressData.message, {
+        toolName: progressData.tool_name,
+        toolCategory: progressData.tool_category,
+      });
+    }
+  };
+
+  const handleImageGeneration = (data: any) => {
+    if (data.status === "generating_image") {
+      setLoadingText("Generating image...");
+      updateBotMessage({
+        image_data: { url: "", prompt: refs.current.userPrompt },
+        response: "",
+      });
+      return true;
+    }
+
+    if (data.image_data) {
+      updateBotMessage({
+        image_data: data.image_data,
+        loading: false,
+      });
+      return true;
+    }
+
+    return false;
+  };
+
+  const handleMainResponseComplete = () => {
+    setIsLoading(false);
+    resetLoadingText();
+    updateBotMessage({ loading: false });
+  };
+
+  const persistUserMessage = async (
+    conversationId: string,
+    messageId: string,
+  ) => {
+    if (!refs.current.userMessage || !refs.current.optimisticUserId) return;
+
+    try {
+      await db.putMessage(
+        createIMessage(
+          messageId,
+          conversationId,
+          refs.current.userMessage.response || "",
+          "user",
+          "sent",
+          refs.current.userMessage,
+        ),
+      );
+      refs.current.userMessage.message_id = messageId;
+    } catch (error) {
+      console.error("Failed to persist user message:", error);
+    }
+  };
+
+  const persistBotMessage = async (
+    conversationId: string,
+    messageId: string,
+  ) => {
+    if (!refs.current.botMessage) return;
+
+    try {
+      // Initial creation in IndexedDB - will trigger event to update store
+      await db.putMessage(
+        createIMessage(
+          messageId,
+          conversationId,
+          "", // Empty content initially
+          "assistant",
+          "sending",
+          refs.current.botMessage,
+        ),
+      );
+    } catch (error) {
+      console.error("Failed to persist initial bot message:", error);
+    }
+  };
+
+  const handleNewConversation = async (data: any) => {
+    const {
+      conversation_id,
+      conversation_description,
+      bot_message_id,
+      user_message_id,
+    } = data;
+
+    refs.current.newConversation.id = conversation_id;
+    refs.current.newConversation.description = conversation_description;
+
+    if (bot_message_id && refs.current.botMessage) {
+      refs.current.botMessage.message_id = bot_message_id;
+    }
+
+    if (user_message_id && refs.current.userMessage) {
+      refs.current.userMessage.message_id = user_message_id;
+    }
+
+    await handleConversationCreation(conversation_id, conversation_description);
+
+    if (user_message_id && refs.current.optimisticUserId) {
+      await persistUserMessage(conversation_id, user_message_id);
+    }
+
+    if (bot_message_id) {
+      await persistBotMessage(conversation_id, bot_message_id);
+    }
+
+    useChatStore.getState().clearOptimisticMessage();
+    window.history.replaceState({}, "", `/c/${conversation_id}`);
+    useChatStore.getState().setActiveConversationId(conversation_id);
+  };
+
+  const handleExistingConversationMessages = async (data: any) => {
+    const { user_message_id, bot_message_id } = data;
+    const conversationId = useChatStore.getState().activeConversationId;
+    if (!conversationId) return;
+
+    if (refs.current.optimisticUserId) {
+      try {
+        await db.replaceOptimisticMessage(
+          refs.current.optimisticUserId,
+          user_message_id,
+        );
+        if (refs.current.userMessage) {
+          refs.current.userMessage.message_id = user_message_id;
+        }
+        await db.updateMessageStatus(user_message_id, "sent");
+      } catch (error) {
+        console.error("Failed to replace optimistic message:", error);
+      }
+    }
+
+    if (bot_message_id && refs.current.botMessage) {
+      refs.current.botMessage.message_id = bot_message_id;
+      await persistBotMessage(conversationId, bot_message_id);
+    }
+
+    try {
+      await db.updateConversationFields(conversationId, {
+        updatedAt: new Date(),
+      });
+    } catch (error) {
+      console.error("Failed to update conversation timestamp:", error);
+    }
+  };
+
+  const handleStreamingContent = async (data: any) => {
+    if (data.response) {
+      refs.current.accumulatedResponse += data.response;
+    }
+
+    const streamUpdates = parseStreamData(data, refs.current.botMessage);
+
+    updateBotMessage({
+      ...streamUpdates,
+      response: refs.current.accumulatedResponse,
+    });
+
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+
+    // Update store directly during streaming (no DB writes to avoid race conditions)
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
+    }
+  };
+
   const updateBotMessage = (overrides: Partial<MessageType>) => {
     try {
       const baseMessage: MessageType = {
@@ -173,19 +347,34 @@ export const useChatStream = () => {
         ...refs.current.botMessage, // Keep existing data
         ...overrides, // Apply new updates
       };
-
-      // Bot message updates are persisted to IndexedDB during streaming
-      // Events will propagate to chatStore via event handlers
     } catch (error) {
       console.error("Error updating bot message:", error);
     }
   };
 
-  /**
-   * Handles the incoming stream event, updating the bot message and loading text.
-   * @param event - The EventSourceMessage received from the stream.
-   * @returns An error message if an error occurs, otherwise undefined.
-   */
+  const updateBotMessageInStore = (conversationId: string) => {
+    if (!refs.current.botMessage?.message_id) return;
+
+    const updatedMessage: IMessage = {
+      id: refs.current.botMessage.message_id,
+      conversationId,
+      content: refs.current.accumulatedResponse,
+      role: "assistant",
+      status: "sending",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      messageId: refs.current.botMessage.message_id,
+      fileIds: refs.current.botMessage.fileIds,
+      fileData: refs.current.botMessage.fileData,
+      toolName: refs.current.botMessage.selectedTool ?? null,
+      toolCategory: refs.current.botMessage.toolCategory ?? null,
+      workflowId: refs.current.botMessage.selectedWorkflow?.id ?? null,
+    };
+
+    // Update store directly without DB write during streaming
+    useChatStore.getState().addOrUpdateMessage(updatedMessage);
+  };
+
   const handleStreamEvent = async (
     event: EventSourceMessage,
   ): Promise<void | string> => {
@@ -195,176 +384,32 @@ export const useChatStream = () => {
 
     try {
       const data = event.data === "[DONE]" ? null : JSON.parse(event.data);
-      if (event.data === "[DONE]") {
-        return;
-      }
+      if (event.data === "[DONE]") return;
+      if (data.error) return data.error;
 
-      if (data.error) {
-        // Immediately terminate the stream on error
-        return data.error;
-      }
-
-      // Handle main response completion marker
       if (data.main_response_complete) {
-        setIsLoading(false); // Stop loading animation immediately
-        resetLoadingText(); // Clear any loading text
-
-        // Update the bot message to stop its individual loading state
-        updateBotMessage({
-          loading: false,
-        });
-
-        // Continue processing the stream for follow-up actions
+        handleMainResponseComplete();
         return;
       }
 
       if (data.progress) {
-        // Handle both old format (string) and new format (object with tool info)
-        if (typeof data.progress === "string") {
-          setLoadingText(data.progress);
-        } else if (typeof data.progress === "object" && data.progress.message) {
-          // Enhanced progress with tool information
-          setLoadingText(data.progress.message, {
-            toolName: data.progress.tool_name,
-            toolCategory: data.progress.tool_category,
-          });
-        }
+        handleProgressUpdate(data.progress);
       }
+
+      if (handleImageGeneration(data)) return;
+
       if (data.conversation_id) {
-        refs.current.newConversation.id = data.conversation_id;
-        refs.current.newConversation.description =
-          data.conversation_description;
-
-        // Store backend-generated message IDs
-        if (data.bot_message_id && refs.current.botMessage) {
-          refs.current.botMessage.message_id = data.bot_message_id;
-        }
-
-        // Store user message ID
-        if (data.user_message_id && refs.current.userMessage) {
-          refs.current.userMessage.message_id = data.user_message_id;
-        }
-
-        // Add conversation to store immediately with temporary description
-        await handleConversationCreation(
-          data.conversation_id,
-          data.conversation_description,
-        );
-
-        // For new conversations: persist user message with backend-generated ID
-        // The optimistic message in Zustand will be cleared after persistence
-        if (
-          refs.current.userMessage &&
-          data.user_message_id &&
-          refs.current.optimisticUserId
-        ) {
-          try {
-            // Persist user message with real conversation ID and backend message ID to IndexedDB
-            await db.putMessage(
-              createIMessage(
-                data.user_message_id,
-                data.conversation_id,
-                refs.current.userMessage.response || "",
-                "user",
-                "sent",
-                refs.current.userMessage,
-              ),
-            );
-
-            refs.current.userMessage.message_id = data.user_message_id;
-          } catch (error) {
-            console.error("Failed to persist user message:", error);
-          }
-        }
-
-        // Persist initial bot message with conversation ID
-        if (refs.current.botMessage && data.bot_message_id) {
-          try {
-            await db.putMessage(
-              createIMessage(
-                data.bot_message_id,
-                data.conversation_id,
-                refs.current.accumulatedResponse,
-                "assistant",
-                "sending",
-                refs.current.botMessage,
-              ),
-            );
-          } catch (error) {
-            console.error("Failed to persist initial bot message:", error);
-          }
-        }
-
-        // Clear optimistic messages AFTER persisting to IndexedDB but BEFORE redirect
-        // This ensures messages are available in the new conversation view
-        useChatStore.getState().clearOptimisticMessage();
-
-        // Now redirect - messages are already in IndexedDB for the new conversation
-        window.history.replaceState({}, "", `/c/${data.conversation_id}`);
-        useChatStore.getState().setActiveConversationId(data.conversation_id);
+        await handleNewConversation(data);
       } else if (
         data.user_message_id &&
         data.bot_message_id &&
         !refs.current.newConversation.id
       ) {
-        // For existing conversations, we receive message IDs in first stream event
-        const conversationId = useChatStore.getState().activeConversationId;
-
-        // Replace optimistic user message with backend ID (for existing conversations)
-        // Message was already persisted to IndexedDB with optimistic ID in useSendMessage
-        if (refs.current.optimisticUserId && conversationId) {
-          try {
-            // Replace the optimistic message with the backend-confirmed one
-            await db.replaceOptimisticMessage(
-              refs.current.optimisticUserId,
-              data.user_message_id,
-            );
-            if (refs.current.userMessage) {
-              refs.current.userMessage.message_id = data.user_message_id;
-            }
-
-            // Update status to "sent" after successful replacement
-            await db.updateMessageStatus(data.user_message_id, "sent");
-          } catch (error) {
-            console.error("Failed to replace optimistic message:", error);
-          }
-        }
-
-        // Persist bot message for existing conversation
-        if (data.bot_message_id && refs.current.botMessage && conversationId) {
-          refs.current.botMessage.message_id = data.bot_message_id;
-
-          try {
-            await db.putMessage(
-              createIMessage(
-                data.bot_message_id,
-                conversationId,
-                "",
-                "assistant",
-                "sending",
-                refs.current.botMessage,
-              ),
-            );
-          } catch (error) {
-            console.error("Failed to persist initial bot message:", error);
-          }
-        }
-
-        // Update conversation updatedAt timestamp
-        if (conversationId) {
-          try {
-            await db.updateConversationFields(conversationId, {
-              updatedAt: new Date(),
-            });
-          } catch (error) {
-            console.error("Failed to update conversation timestamp:", error);
-          }
-        }
+        await handleExistingConversationMessages(data);
       } else if (
         data.conversation_description &&
         refs.current.newConversation.id
       ) {
-        // Update the description when it arrives later (after LLM generation)
         refs.current.newConversation.description =
           data.conversation_description;
         handleConversationDescriptionUpdate(
@@ -373,52 +418,7 @@ export const useChatStream = () => {
         );
       }
 
-      if (data.status === "generating_image") {
-        setLoadingText("Generating image...");
-        updateBotMessage({
-          image_data: { url: "", prompt: refs.current.userPrompt },
-          response: "",
-        });
-        return;
-      }
-
-      if (data.image_data) {
-        updateBotMessage({
-          image_data: data.image_data,
-          loading: false,
-        });
-        return;
-      }
-
-      // Add to the accumulated response if there's new response content
-      if (data.response) {
-        refs.current.accumulatedResponse += data.response;
-      }
-
-      // Parse only the data that's actually present in this stream chunk
-      const streamUpdates = parseStreamData(data, refs.current.botMessage);
-
-      updateBotMessage({
-        ...streamUpdates,
-        response: refs.current.accumulatedResponse,
-      });
-
-      // Incrementally persist streaming content and tool data (works for both new and existing conversations)
-      if (refs.current.botMessage?.message_id) {
-        const conversationId =
-          refs.current.newConversation.id ||
-          useChatStore.getState().activeConversationId;
-        if (conversationId) {
-          try {
-            await db.updateMessage(refs.current.botMessage.message_id, {
-              content: refs.current.accumulatedResponse,
-              ...streamUpdates,
-            } as Partial<IMessage>);
-          } catch (error) {
-            console.error("Failed to update streaming content:", error);
-          }
-        }
-      }
+      await handleStreamingContent(data);
     } catch (error) {
       console.error("[useChatStream] Error handling stream event:", {
         error,
@@ -432,42 +432,48 @@ export const useChatStream = () => {
     }
   };
 
-    const handleStreamClose = async () => {
-      try {
-        if (!refs.current.botMessage) return;
+  const handleStreamClose = async () => {
+    try {
+      if (!refs.current.botMessage) return;
 
-        // Only update loading if it hasn't been set to false already
-        // (main_response_complete would have already set it to false)
-        setIsLoading(false);
-        resetLoadingText();
-        streamController.clear();
+      setIsLoading(false);
+      resetLoadingText();
+      streamController.clear();
 
-        if (refs.current.botMessage && refs.current.newConversation.id) {
-          updateBotMessage({ loading: false });
-        }
+      if (refs.current.botMessage && refs.current.newConversation.id) {
+        updateBotMessage({ loading: false });
+      }
 
-        // Update message status to 'sent' after successful stream completion
-        if (refs.current.botMessage?.message_id) {
+      // Persist final message state to IndexedDB after stream completion
+      if (refs.current.botMessage?.message_id) {
+        const conversationId =
+          refs.current.newConversation.id ||
+          useChatStore.getState().activeConversationId;
+
+        if (conversationId) {
           try {
-            await db.updateMessageStatus(
-              refs.current.botMessage.message_id,
-              "sent",
-            );
+            // Write final complete message to IndexedDB
+            await db.updateMessage(refs.current.botMessage.message_id, {
+              content: refs.current.accumulatedResponse,
+              status: "sent",
+              updatedAt: new Date(),
+            });
           } catch (error) {
-            console.error("Failed to update message status:", error);
+            console.error("Failed to persist final message:", error);
           }
         }
-
-        // Reset stream state after successful completion
-        streamInProgressRef.current = false;
-        refs.current.botMessage = null;
-        refs.current.currentStreamingMessages = [];
-        refs.current.newConversation = { id: null, description: null };
-      } catch (error) {
-        console.error("Error handling stream close:", error);
-        resetStreamState(); // Ensure state is reset even on error
       }
-    };
+
+      // Reset stream state after successful completion
+      streamInProgressRef.current = false;
+      refs.current.botMessage = null;
+      refs.current.currentStreamingMessages = [];
+      refs.current.newConversation = { id: null, description: null };
+    } catch (error) {
+      console.error("Error handling stream close:", error);
+      resetStreamState(); // Ensure state is reset even on error
+    }
+  };
 
   const handleStreamError = (error: Error) => {
     // Reset stream state immediately
