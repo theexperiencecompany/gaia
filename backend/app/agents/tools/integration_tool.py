@@ -8,11 +8,17 @@ from typing import Annotated, List, TypedDict
 
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.decorators import with_doc
 from app.services.oauth_service import (
     check_integration_status as check_single_integration_status,
 )
 from app.services.oauth_service import (
     check_multiple_integrations_status,
+)
+from app.templates.docstrings.integration_tool_docs import (
+    CHECK_INTEGRATIONS_STATUS,
+    CONNECT_INTEGRATION,
+    LIST_INTEGRATIONS,
 )
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -30,21 +36,14 @@ class IntegrationInfo(TypedDict):
 
 
 @tool
+@with_doc(LIST_INTEGRATIONS)
 async def list_integrations(
     config: RunnableConfig,
+    connected_only: Annotated[
+        bool,
+        "If true, only list connected integrations. If false, list all available integrations.",
+    ] = False,
 ) -> List[IntegrationInfo] | str:
-    """List all available integrations with their connection status and capabilities.
-
-    Use this tool when the user asks:
-    - "What integrations do you have?"
-    - "What can you connect to?"
-    - "What integrations are available?"
-    - "Show me all integrations"
-    - "What services can you work with?"
-
-    Returns:
-        A message confirming the list was shown.
-    """
     try:
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id") if configurable else None
@@ -73,6 +72,10 @@ async def list_integrations(
             # Get connection status from unified service
             is_connected = status_map.get(integration.id, False)
 
+            # Skip disconnected integrations if connected_only is True
+            if connected_only and not is_connected:
+                continue
+
             integrations_list.append(
                 {
                     "id": integration.id,
@@ -94,6 +97,7 @@ async def list_integrations(
 
 
 @tool
+@with_doc(CONNECT_INTEGRATION)
 async def connect_integration(
     integration_names: Annotated[
         List[str],
@@ -101,22 +105,6 @@ async def connect_integration(
     ],
     config: RunnableConfig,
 ) -> str:
-    """Connect one or more integrations for the user.
-
-    Use this tool when the user asks to:
-    - "Connect Gmail"
-    - "I want to link my Notion account"
-    - "Set up Twitter integration"
-    - "Connect my [service] account"
-    - "Connect Gmail and Notion"
-    - "Set up multiple integrations"
-
-    Args:
-        integration_names: List of integration names or IDs (e.g., ['gmail', 'notion', 'twitter'])
-
-    Returns:
-        A message indicating the connection status or showing the connection UI.
-    """
     try:
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id") if configurable else None
@@ -196,6 +184,7 @@ async def connect_integration(
 
 
 @tool
+@with_doc(CHECK_INTEGRATIONS_STATUS)
 async def check_integrations_status(
     integration_names: Annotated[
         List[str],
@@ -203,19 +192,6 @@ async def check_integrations_status(
     ],
     config: RunnableConfig,
 ) -> str:
-    """Check the connection status of specific integrations.
-
-    Use this tool when the user asks:
-    - "Is Gmail connected?"
-    - "Check if Notion is connected"
-    - "What's the status of my integrations?"
-
-    Args:
-        integration_names: List of integration names/IDs to check
-
-    Returns:
-        Status information for the requested integrations.
-    """
     try:
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id") if configurable else None
