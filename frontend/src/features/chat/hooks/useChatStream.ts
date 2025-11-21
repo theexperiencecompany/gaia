@@ -164,7 +164,7 @@ export const useChatStream = () => {
     };
   };
 
-  const handleProgressUpdate = (progressData: any) => {
+  const handleProgressUpdate = (progressData: string | { message: string; tool_name?: string; tool_category?: string }) => {
     if (typeof progressData === "string") {
       setLoadingText(progressData);
     } else if (typeof progressData === "object" && progressData.message) {
@@ -175,7 +175,7 @@ export const useChatStream = () => {
     }
   };
 
-  const handleImageGeneration = (data: any) => {
+  const handleImageGeneration = (data: Record<string, unknown>) => {
     if (data.status === "generating_image") {
       setLoadingText("Generating image...");
       updateBotMessage({
@@ -185,9 +185,9 @@ export const useChatStream = () => {
       return true;
     }
 
-    if (data.image_data) {
+    if (data.image_data && typeof data.image_data === "object") {
       updateBotMessage({
-        image_data: data.image_data,
+        image_data: data.image_data as MessageType["image_data"],
         loading: false,
       });
       return true;
@@ -248,7 +248,12 @@ export const useChatStream = () => {
     }
   };
 
-  const handleNewConversation = async (data: any) => {
+  const handleNewConversation = async (data: {
+    conversation_id: string;
+    conversation_description: string | null;
+    bot_message_id?: string;
+    user_message_id?: string;
+  }) => {
     const {
       conversation_id,
       conversation_description,
@@ -282,7 +287,10 @@ export const useChatStream = () => {
     useChatStore.getState().setActiveConversationId(conversation_id);
   };
 
-  const handleExistingConversationMessages = async (data: any) => {
+  const handleExistingConversationMessages = async (data: {
+    user_message_id: string;
+    bot_message_id: string;
+  }) => {
     const { user_message_id, bot_message_id } = data;
     const conversationId = useChatStore.getState().activeConversationId;
     if (!conversationId) return;
@@ -308,7 +316,7 @@ export const useChatStream = () => {
     }
   };
 
-  const handleStreamingContent = async (data: any) => {
+  const handleStreamingContent = async (data: Record<string, unknown>) => {
     if (data.response) {
       refs.current.accumulatedResponse += data.response;
     }
