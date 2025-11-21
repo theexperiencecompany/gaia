@@ -66,7 +66,8 @@ export default function ChatBubbleBot(
     image_data ||
     !!text ||
     (isConvoSystemGenerated &&
-      systemPurpose === SystemPurpose.EMAIL_PROCESSING);
+      systemPurpose === SystemPurpose.EMAIL_PROCESSING) ||
+    props.tool_data?.length;
 
   // Don't render the full bubble structure if only loading with no content
   // Let ChatRenderer's loading indicator handle it
