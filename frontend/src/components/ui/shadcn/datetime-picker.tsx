@@ -29,7 +29,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/shadcn/popover";
 import { ScrollArea } from "@/components/ui/shadcn/scroll-area";
-import { ArrowLeft01Icon, ArrowRight01Icon, CalendarIcon, RemoveCircleIcon,  } from '@/icons';
+import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  CalendarIcon,
+  Cancel01Icon,
+} from "@/icons";
 import { cn } from "@/lib/utils";
 
 export type CalendarProps = Omit<
@@ -180,7 +185,7 @@ export function DateTimePicker({
                   setOpen(false);
                 }}
               >
-                <RemoveCircleIcon className="size-4 text-zinc-400" />
+                <Cancel01Icon className="size-4 text-zinc-400" />
               </Button>
             )}
           </div>

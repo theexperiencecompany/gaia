@@ -7,7 +7,7 @@ import Image from "next/image";
 
 import { CursorMagicSelection03Icon } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { Mail01Icon, PlayIcon, Timer02Icon, UserIcon } from '@/icons';
+import { Mail01Icon, PlayIcon, Timer02Icon, UserCircle02Icon } from "@/icons";
 import { formatRunCount } from "@/utils/formatters";
 
 import { Workflow } from "../../api/workflowApi";
@@ -251,7 +251,7 @@ export function CreatorAvatar({
             className="rounded-full"
           />
         ) : (
-          <UserIcon className="h-4 w-4 text-zinc-400" />
+          <UserCircle02Icon className="h-4 w-4 text-zinc-400" />
         )}
       </div>
     </div>

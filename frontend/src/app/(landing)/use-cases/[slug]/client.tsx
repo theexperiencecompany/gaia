@@ -15,7 +15,7 @@ import { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplay } from "@/features/workflows/utils/triggerDisplay";
-import { PlayIcon, UserIcon } from '@/icons';
+import { PlayIcon, UserCircle02Icon } from "@/icons";
 
 interface UseCaseDetailClientProps {
   useCase: UseCase | null;
@@ -158,7 +158,7 @@ export default function UseCaseDetailClient({
                     name={creatorName}
                     size="sm"
                     fallback={
-                      <UserIcon className="h-4 w-4 text-primary-foreground" />
+                      <UserCircle02Icon className="h-4 w-4 text-primary-foreground" />
                     }
                   />
                 }

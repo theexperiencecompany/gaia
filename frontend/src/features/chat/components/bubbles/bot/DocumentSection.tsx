@@ -3,7 +3,7 @@ import { Card, CardBody } from "@heroui/card";
 import { Chip } from "@heroui/chip";
 import React from "react";
 
-import { Download01Icon, File01Icon } from '@/icons';
+import { Download01Icon, File01Icon } from "@/icons";
 import { DocumentData } from "@/types/features/convoTypes";
 
 interface DocumentSectionProps {
@@ -121,7 +121,7 @@ const DocumentSection: React.FC<DocumentSectionProps> = ({ document_data }) => {
               onClick={handleDownload}
               className="ml-3 flex-shrink-0"
             >
-              Download01Icon
+              Download
             </Button>
           </div>
         </CardBody>

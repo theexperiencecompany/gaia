@@ -138,7 +138,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
   }, []);
 
   const handleDownload = () => {
-    toast.success("Download01Icon started");
+    toast.success("Download started");
     // Add download logic here
   };
 
@@ -301,7 +301,16 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                 "Your very own GAIA Card is waiting on the right! 🎨✨<NEW_MESSAGE_BREAK>Go wild with the customization tools and show off your masterpiece to the world! 🚀"
               }
             </SimpleChatBubbleBot>
-            <div className="mt-2 ml-12">
+            <div className="mt-2 ml-12 space-x-2">
+              <Button
+                color="primary"
+                className="font-medium"
+                startContent={<TwitterIcon width={18} height={18} />}
+                onPress={() => handleShare("twitter")}
+              >
+                Let's Go!
+              </Button>
+
               <Button
                 color="primary"
                 className="font-medium"
@@ -340,7 +349,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
               </Suspense>
 
               <ButtonGroup className="mt-5">
-                <Tooltip content="Download01Icon your card" placement="top">
+                <Tooltip content="Download your card" placement="top">
                   <Button
                     isIconOnly
                     variant="flat"

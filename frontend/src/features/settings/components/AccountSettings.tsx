@@ -12,7 +12,12 @@ import ProfileCardSettings from "@/features/settings/components/ProfileCardSetti
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
 import { SettingsCardSimple } from "@/features/settings/components/SettingsCardSimple";
 import { SettingsOption } from "@/features/settings/components/SettingsOption";
-import { Camera01Icon, Logout02Icon, PencilEdit02Icon, UserIcon } from '@/icons';
+import {
+  Camera01Icon,
+  Logout02Icon,
+  PencilEdit02Icon,
+  UserCircle02Icon,
+} from "@/icons";
 
 import { ModalAction } from "./SettingsMenu";
 
@@ -106,7 +111,7 @@ export default function AccountSection({
                   </>
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
-                    <UserIcon className="h-8 w-8 text-zinc-400" />
+                    <UserCircle02Icon className="h-8 w-8 text-zinc-400" />
                   </div>
                 )}
                 <div className="bg-opacity-50 absolute inset-0 flex items-center justify-center bg-black opacity-0 transition-opacity duration-200 group-hover:opacity-100">
@@ -122,7 +127,7 @@ export default function AccountSection({
               />
             </div>
 
-            {/* UserIcon Info */}
+            {/* UserCircle02Icon Info */}
             <div className="flex-1 space-y-4">
               {/* Name */}
               <LabeledField label="Name">

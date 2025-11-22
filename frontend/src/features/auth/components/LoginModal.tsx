@@ -8,9 +8,10 @@ import {
   useLoginModal,
   useLoginModalActions,
 } from "@/features/auth/hooks/useLoginModal";
-import { UserIcon } from "@/icons";
+import { Login02Icon } from "@/icons";
 
 import { Button } from "../../../components/ui/shadcn/button";
+import { RaisedButton } from "@/components/ui";
 
 export default function LoginModal() {
   const isOpen = useLoginModal();
@@ -25,25 +26,26 @@ export default function LoginModal() {
       isOpen={isOpen}
       onOpenChange={(v) => setLoginModalOpen(v)}
       isDismissable={false}
+      backdrop="blur"
       isKeyboardDismissDisabled
       hideCloseButton
     >
-      <ModalContent className="p-7">
+      <ModalContent className="p-4">
         <ModalBody>
-          <div className="mb-3 space-y-2 text-center">
+          <div className="mb-3 space-y-3 text-center">
             <div className="text-5xl font-medium">Login</div>
             <div className="text-md text-foreground-600">
               Please login to continue your journey with GAIA.
             </div>
           </div>
-          <Button
-            size="lg"
-            className="text-md w-full gap-2 rounded-full bg-primary px-4 text-primary-foreground hover:bg-primary/90"
+          <RaisedButton
+            color="#00bbff"
+            className="text-md w-full text-primary-foreground!"
             onClick={handleAuthLogin}
           >
-            <UserIcon size={18} />
+            <Login02Icon width={22} height={22} />
             Sign in
-          </Button>
+          </RaisedButton>
         </ModalBody>
       </ModalContent>
     </Modal>

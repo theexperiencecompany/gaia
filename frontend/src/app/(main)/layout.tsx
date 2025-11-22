@@ -12,6 +12,7 @@ import RightSidebar from "@/components/layout/sidebar/RightSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/shadcn/sidebar";
 import { TooltipProvider } from "@/components/ui/shadcn/tooltip";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
+import { useUser } from "@/features/auth/hooks/useUser";
 import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
 import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
 import OnboardingStepsCard from "@/features/onboarding/components/OnboardingStepsCard";
@@ -33,6 +34,7 @@ const HeaderSidebarTrigger = () => {
 
 export default function MainLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const user = useUser();
   const { isOpen, isMobileOpen, setOpen, setMobileOpen } = useUIStoreSidebar();
   const {
     content: rightSidebarContent,
@@ -52,6 +54,14 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   // Check if user needs onboarding
   useOnboardingGuard();
   useBackgroundSync();
+
+  // Determine visibility of onboarding UI elements:
+  // - hasCompletedInitialOnboarding: User finished name/profession/connections flow
+  // - shouldShowPersonalizationCard: Show context gathering card only if onboarding is complete
+  // - shouldShowGettingStartedCard: Always show for now (will be controlled later)
+  const hasCompletedInitialOnboarding = user.onboarding?.completed === true;
+  const shouldShowPersonalizationCard = hasCompletedInitialOnboarding;
+  const shouldShowGettingStartedCard = hasCompletedInitialOnboarding;
 
   // Auto-close sidebar on mobile when pathname changes
   useEffect(() => {
@@ -150,15 +160,17 @@ export default function MainLayout({ children }: { children: ReactNode }) {
           onClose={closeHoloCardModal}
         />
 
-        <div
-          className={`fixed z-40 w-70 space-y-3 ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
-        >
-          <ContextGatheringLoader
-            onComplete={openHoloCardModal}
-            duration={500}
-          />
-          <OnboardingStepsCard />
-        </div>
+        {/* Onboarding assistance cards - shown after completing initial onboarding */}
+        {(shouldShowPersonalizationCard || shouldShowGettingStartedCard) && (
+          <div
+            className={`fixed z-40 w-70 space-y-3 ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
+          >
+            {shouldShowPersonalizationCard && (
+              <ContextGatheringLoader onComplete={openHoloCardModal} />
+            )}
+            {shouldShowGettingStartedCard && <OnboardingStepsCard />}
+          </div>
+        )}
       </SidebarProvider>
     </TooltipProvider>
   );

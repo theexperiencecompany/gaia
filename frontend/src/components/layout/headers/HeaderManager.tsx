@@ -63,5 +63,11 @@ export default function HeaderManager() {
     return null;
   }, [pathname]);
 
-  return <>{header || defaultHeader}</>;
+  // Memoize the final header to prevent unnecessary re-renders
+  const finalHeader = useMemo(
+    () => header || defaultHeader,
+    [header, defaultHeader],
+  );
+
+  return <>{finalHeader}</>;
 }

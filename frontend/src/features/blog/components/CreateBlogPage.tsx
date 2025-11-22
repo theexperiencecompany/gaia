@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { teamApi, type TeamMember } from "@/features/team/api/teamApi";
-import { CalendarIcon, File01Icon, UserIcon } from '@/icons';
+import { CalendarIcon, File01Icon, UserCircle02Icon } from "@/icons";
 
 import { blogApi } from "../api/blogApi";
 import { MarkdownPreview } from "./MarkdownPreview";
@@ -297,7 +297,7 @@ Happy writing! 🚀`,
               <Autocomplete
                 placeholder="Search and select authors"
                 startContent={
-                  <UserIcon className="h-4 w-4 text-foreground-400" />
+                  <UserCircle02Icon className="h-4 w-4 text-foreground-400" />
                 }
                 onSelectionChange={(key) => {
                   if (key) handleAuthorSelect(key as string);

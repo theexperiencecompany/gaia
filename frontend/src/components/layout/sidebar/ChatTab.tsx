@@ -72,7 +72,7 @@ export const ChatTab: FC<ChatTabProps> = ({
       onMouseOver={() => setButtonHovered(true)}
     >
       <Button
-        className={`w-full justify-start text-sm ${
+        className={`w-full justify-start px-2 text-sm ${
           isActive ? "text-primary" : "text-zinc-400"
         }`}
         size="sm"

@@ -3,8 +3,13 @@
 import { Card } from "@heroui/card";
 import { FC } from "react";
 
-import { CheckmarkCircle02Icon, IconProps, Loading02Icon, RemoveCircleIcon } from '@/icons';
-import { ContextStatus,useOnboardingStore } from "@/stores/onboardingStore";
+import {
+  CheckmarkCircle02Icon,
+  IconProps,
+  Loading02Icon,
+  Cancel01Icon,
+} from "@/icons";
+import { ContextStatus, useOnboardingStore } from "@/stores/onboardingStore";
 
 interface StatusConfig {
   text: string;
@@ -41,7 +46,7 @@ const STATUS_CONFIG: Record<ContextStatus, StatusConfig> = {
   },
   error: {
     text: "Error occurred",
-    icon: RemoveCircleIcon,
+    icon: Cancel01Icon,
     color: "text-red-400",
     spin: false,
   },

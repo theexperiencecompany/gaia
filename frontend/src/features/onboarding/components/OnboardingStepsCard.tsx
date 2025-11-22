@@ -11,6 +11,17 @@ import {
   WorkflowCircle03Icon,
 } from "@/icons";
 
+/**
+ * OnboardingStepsCard - Getting Started checklist
+ *
+ * This component handles the THIRD phase of user guidance:
+ * 1. Initial Onboarding (name/profession/connections) - /onboarding page
+ * 2. Personalization (house, bio) - ContextGatheringLoader component
+ * 3. Getting Started (create email, calendar, workflow, chat) - THIS COMPONENT ✓
+ *
+ * Currently always shown. Future: track completion state and allow dismissal.
+ */
+
 interface OnboardingStep {
   id: string;
   label: string;

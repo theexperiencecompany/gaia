@@ -18,8 +18,12 @@ import { SettingsCard } from "@/features/settings/components/SettingsCard";
 import { SettingsCardSimple } from "@/features/settings/components/SettingsCardSimple";
 import { SettingsOption } from "@/features/settings/components/SettingsOption";
 import { StatusIndicator } from "@/features/settings/components/StatusIndicator";
-import { Delete02Icon } from '@/icons';
-import { MessageMultiple02Icon, PencilEdit01Icon, UserIcon } from "@/icons";
+import { Delete02Icon } from "@/icons";
+import {
+  MessageMultiple02Icon,
+  PencilEdit01Icon,
+  UserCircle02Icon,
+} from "@/icons";
 import {
   formatTimezoneDisplay,
   getCurrentBrowserTimezone,
@@ -271,7 +275,7 @@ export default function PreferencesSettings({
   return (
     <div className="w-full space-y-6">
       <SettingsCard
-        icon={<UserIcon className="h-5 w-5 text-zinc-400" />}
+        icon={<UserCircle02Icon className="h-5 w-5 text-zinc-400" />}
         title="Personal"
       >
         <div className="space-y-3">

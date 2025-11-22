@@ -34,13 +34,15 @@ export default function CalendarSidebar() {
   // Show connect button if calendar is not connected
   if (!isCalendarConnected) {
     return (
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 pt-10">
         <IntegrationConnectCard
           icon={<GoogleCalendarIcon width={32} height={32} />}
           title="Connect Your Calendar"
           description="Manage events and view your schedule"
-          buttonText="Connect Google Calendar"
+          buttonText="Connect"
           integrationId="google_calendar"
+          outlined
+          small
         />
       </div>
     );

@@ -2,7 +2,7 @@
 import { Chip } from "@heroui/chip";
 import React from "react";
 
-import { RemoveCircleIcon } from '@/icons';
+import { Cancel01Icon } from "@/icons";
 
 export interface EmailSuggestion {
   id: string;
@@ -25,7 +25,7 @@ export const EmailChip: React.FC<EmailChipProps> = ({
     <Chip
       variant={selected ? "solid" : "flat"}
       color="primary"
-      endContent={selected && <RemoveCircleIcon fill="black" color="#00bbff" />}
+      endContent={selected && <Cancel01Icon fill="black" color="#00bbff" />}
       onClick={() => onToggle(suggestion)}
       className={`cursor-pointer select-none ${selected ? "" : "text-primary"}`}
     >

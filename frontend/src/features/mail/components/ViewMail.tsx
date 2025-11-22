@@ -22,7 +22,7 @@ import { parseEmail } from "@/features/mail/utils/mailUtils";
 import {
   ArrowLeftDoubleIcon,
   ArrowTurnBackwardIcon,
-  RemoveCircleIcon,
+  Cancel01Icon,
   SentIcon,
 } from "@/icons";
 import { MagicWand05Icon, StarsIcon } from "@/icons";
@@ -307,7 +307,7 @@ export default function ViewEmail({
             <div className="mb-2 flex w-full justify-end">
               <Tooltip content="Close" color="foreground">
                 <div className="cursor-pointer">
-                  <RemoveCircleIcon width={18} onClick={onOpenChange} />
+                  <Cancel01Icon width={18} onClick={onOpenChange} />
                 </div>
               </Tooltip>
             </div>
@@ -476,7 +476,7 @@ export default function ViewEmail({
                       isIconOnly
                       onPress={handleCancelReply}
                     >
-                      <RemoveCircleIcon size={16} />
+                      <Cancel01Icon size={16} />
                     </Button>
                   </div>
 

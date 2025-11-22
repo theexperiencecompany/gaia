@@ -136,7 +136,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
   return (
     <BaseCardView
       title="Upcoming events"
-      icon={<CalendarUpload01Icon className="h-6 w-6 text-zinc-400" />}
+      icon={<CalendarUpload01Icon className="h-6 w-6 text-zinc-500" />}
       isFetching={isFetching}
       error={error}
       isEmpty={!hasEvents}
@@ -145,7 +145,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
       isConnected={isConnected}
       connectIntegrationId="google_calendar"
       onConnect={onConnect}
-      connectButtonText="Connect Google Calendar"
+      connectButtonText="Connect"
       connectTitle="Connect Your Calendar"
       connectDescription="Manage events and view your schedule"
       connectIcon={<GoogleCalendarIcon width={32} height={32} />}

@@ -29,13 +29,15 @@ export default function IntegrationsPage() {
   // Set header
   useEffect(() => {
     setHeader(
-      <HeaderTitle
-        icon={<ConnectIcon width={20} height={20} />}
-        text="Integrations"
-      />,
+      <div className="py-2">
+        <HeaderTitle
+          icon={<ConnectIcon width={20} height={20} />}
+          text="Integrations"
+        />
+      </div>,
     );
     return () => setHeader(null);
-  }, [setHeader]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Set sidebar to sidebar mode (not sheet)
   useEffect(() => {

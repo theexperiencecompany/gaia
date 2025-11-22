@@ -3,13 +3,27 @@
 import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/modal";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+  ReactElement,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import { UseCase } from "@/features/use-cases/types";
 import { useHeader } from "@/hooks/layout/useHeader";
-import { RedoIcon } from "@/icons";
+import {
+  Compass01Icon,
+  DiscoverCircleIcon,
+  IconProps,
+  RedoIcon,
+} from "@/icons";
 
 import { CommunityWorkflow, Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
@@ -18,6 +32,7 @@ import CreateWorkflowModal from "./CreateWorkflowModal";
 import EditWorkflowModal from "./EditWorkflowModal";
 import WorkflowCard from "./WorkflowCard";
 import { WorkflowListSkeleton } from "./WorkflowSkeletons";
+import React from "react";
 
 export default function WorkflowPage() {
   const pageRef = useRef(null);
@@ -94,10 +109,18 @@ export default function WorkflowPage() {
     }
   }, []);
 
-  useEffect(() => {
-    setHeader(<WorkflowsHeader onCreateWorkflow={onOpen} />);
+  // Memoize the header component to prevent recreating on every render
+  const headerComponent = useMemo(
+    () => <WorkflowsHeader onCreateWorkflow={onOpen} />,
+    [onOpen],
+  );
+
+  // Use useLayoutEffect to set header synchronously before paint (faster)
+  // Don't include setHeader in deps - it's stable from Zustand
+  useLayoutEffect(() => {
+    setHeader(headerComponent);
     return () => setHeader(null);
-  }, [setHeader, onOpen]);
+  }, [headerComponent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadExploreWorkflows();
@@ -161,7 +184,7 @@ export default function WorkflowPage() {
 
     if (error) {
       return (
-        <div className="flex flex-col items-center justify-center space-y-4 py-12">
+        <div className="flex flex-col items-center justify-center space-y-4 py-1">
           <p className="text-foreground-400">{error}</p>
           <Button
             size="sm"
@@ -198,11 +221,15 @@ export default function WorkflowPage() {
     title: string,
     description: string,
     children: ReactNode,
+    icon?: ReactElement<IconProps>,
   ) => (
     <div className="mt-12 flex flex-col gap-3">
-      <div className="space-y-2">
-        <h2 className="text-2xl font-medium text-zinc-100">{title}</h2>
-        <p className="font-light text-zinc-400">{description}</p>
+      <div className="flex flex-col space-y-1">
+        <div className="flex items-center gap-2">
+          {icon && <span> {React.cloneElement(icon)}</span>}
+          <h2 className="text-2xl font-medium text-zinc-100">{title}</h2>
+        </div>
+        <p className="font-light text-zinc-500">{description}</p>
       </div>
       {children}
     </div>

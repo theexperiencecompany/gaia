@@ -1,4 +1,4 @@
-import { useCallback,useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { apiService } from "@/lib/api";
@@ -38,6 +38,7 @@ export const usePersonalization = (
   const [personalizationData, setPersonalizationData] =
     useState<PersonalizationData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasPersonalization, setHasPersonalization] = useState(false);
 
   // Fetch personalization data from API
   const fetchPersonalization = useCallback(async () => {
@@ -49,15 +50,21 @@ export const usePersonalization = (
         { silent: true },
       );
 
-      // Only set if personalization is complete
+      console.log("[Personalization] Fetched data:", data);
+
+      // Check if personalization is complete (has house assignment)
       if (data.has_personalization) {
         setPersonalizationData(data);
+        setHasPersonalization(true);
         setIsLoading(false);
       } else {
+        // Not ready yet, keep checking
+        setHasPersonalization(false);
         setIsLoading(true);
       }
     } catch (error) {
       console.error("Failed to fetch personalization:", error);
+      setHasPersonalization(false);
       setIsLoading(true);
     }
   }, [enabled]);
@@ -67,15 +74,36 @@ export const usePersonalization = (
     fetchPersonalization();
   }, [fetchPersonalization]);
 
+  // Poll for personalization completion if not yet complete
+  // This is a fallback in case WebSocket doesn't trigger
+  useEffect(() => {
+    if (!enabled || hasPersonalization) return;
+
+    console.log("[Personalization] Starting polling interval");
+    const pollInterval = setInterval(() => {
+      console.log("[Personalization] Polling for completion...");
+      fetchPersonalization();
+    }, 3000); // Poll every 3 seconds
+
+    return () => {
+      console.log("[Personalization] Stopping polling interval");
+      clearInterval(pollInterval);
+    };
+  }, [enabled, hasPersonalization, fetchPersonalization]);
+
   // Listen for WebSocket updates
   useEffect(() => {
     if (!enabled) return;
 
     const handlePersonalizationComplete = (message: any) => {
       if (message.type === "onboarding_personalization_complete") {
-        console.log("Personalization complete via WebSocket:", message.data);
+        console.log(
+          "[Personalization] WebSocket event received:",
+          message.data,
+        );
         const data = { ...message.data, has_personalization: true };
         setPersonalizationData(data);
+        setHasPersonalization(true);
         setIsLoading(false);
         toast.success("Your personalized card is ready! 🎉");
       }
@@ -97,7 +125,7 @@ export const usePersonalization = (
   return {
     personalizationData,
     isLoading,
-    isComplete: !!personalizationData?.has_personalization,
+    isComplete: hasPersonalization,
     refetch: fetchPersonalization,
   };
 };

@@ -1,7 +1,11 @@
 import React from "react";
 
 import CopyButton from "@/features/chat/components/code-block/CopyButton";
-import { CheckmarkCircle02Icon, RemoveCircleIcon,SourceCodeCircleIcon } from '@/icons';
+import {
+  CheckmarkCircle02Icon,
+  Cancel01Icon,
+  SourceCodeCircleIcon,
+} from "@/icons";
 
 interface CodeExecutionOutputProps {
   output?: {
@@ -30,7 +34,7 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
       );
     }
     if (status === "error" || output?.error) {
-      return <RemoveCircleIcon className="h-3 w-3 text-red-400" />;
+      return <Cancel01Icon className="h-3 w-3 text-red-400" />;
     }
     if (status === "completed" && output && !output.error) {
       return <CheckmarkCircle02Icon className="h-3 w-3 text-green-400" />;

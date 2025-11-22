@@ -4,7 +4,8 @@ import { toast } from "sonner";
 
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
-import { PinIcon, Task01Icon } from "@/icons";
+import { Copy01Icon, PinIcon } from "@/icons";
+import { Tooltip } from "@heroui/react";
 
 interface ChatBubbleActionsProps {
   loading: boolean;
@@ -67,34 +68,31 @@ export default function ChatBubble_Actions({
   return (
     <>
       {!loading && (
-        <div className="flex w-fit items-center gap-2">
-          <Button
-            isIconOnly
-            className="h-fit w-fit rounded-md p-0"
-            style={{ minWidth: "22px" }}
-            variant="light"
-            onPress={copyToClipboard}
-          >
-            <Task01Icon className="cursor-pointer" height="20" width="20" />
-          </Button>
+        <div className="flex w-fit items-center pl-2">
+          <Tooltip content="Copy to clipboard" placement="bottom">
+            <Button
+              isIconOnly
+              className="aspect-square size-[30px] min-w-[30px] rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+              variant="light"
+              onPress={copyToClipboard}
+            >
+              <Copy01Icon className="cursor-pointer" height="20" width="20" />
+            </Button>
+          </Tooltip>
 
-          <Button
-            isIconOnly
-            className="h-fit w-fit rounded-md p-0"
-            variant="light"
-            onClick={handlePinToggle}
-            color={pinned ? "primary" : "default"}
-            // variant={pinned ? "solid" : "light"}
-            style={{ minWidth: "22px" }}
-          >
-            <PinIcon
-              className={`cursor-pointer`}
-              color={pinned ? "#00bbff" : "#9b9b9b"}
-              fill={pinned ? "#00bbff" : "transparent"}
-              height="20"
-              width="20"
-            />
-          </Button>
+          <Tooltip content="Pin message" placement="bottom">
+            <Button
+              isIconOnly
+              className="aspect-square size-[30px] min-w-[30px] rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+              variant="light"
+              radius="lg"
+              onPress={handlePinToggle}
+              color={pinned ? "primary" : "default"}
+            >
+              <PinIcon className={`cursor-pointer`} height="20" width="20" />
+            </Button>
+          </Tooltip>
+
           {/*
           <TranslateDropdown
             text={text}

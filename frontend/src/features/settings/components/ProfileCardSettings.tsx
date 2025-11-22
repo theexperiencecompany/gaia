@@ -100,7 +100,7 @@ export default function ProfileCardSettings() {
   };
 
   const handleDownload = () => {
-    toast.success("Download01Icon started");
+    toast.success("Download started");
     // Add download logic here
   };
 
@@ -259,7 +259,7 @@ export default function ProfileCardSettings() {
             </Suspense>
 
             <ButtonGroup className="mt-2">
-              <Tooltip content="Download01Icon your card" placement="top">
+              <Tooltip content="Download your card" placement="top">
                 <Button
                   isIconOnly
                   variant="flat"

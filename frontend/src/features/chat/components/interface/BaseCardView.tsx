@@ -56,7 +56,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
       <div className="flex flex-shrink-0 items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           {icon}
-          <h3 className="font-medium text-white">{title}</h3>
+          <h3 className="font-medium text-zinc-300">{title}</h3>
           {onRefresh && isConnected && (
             <Tooltip content="Refresh" showArrow placement="bottom">
               <Button
@@ -93,10 +93,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                 <IntegrationConnectCard
                   icon={connectIcon || icon}
                   title={connectTitle || `Connect ${title}`}
-                  description={
-                    connectDescription ||
-                    `Connect your account to view ${title.toLowerCase()}`
-                  }
+                  description={connectDescription || `Connect`}
                   buttonText={connectButtonText}
                   integrationId={connectIntegrationId}
                 />

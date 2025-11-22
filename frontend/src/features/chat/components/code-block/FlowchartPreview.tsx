@@ -2,7 +2,13 @@ import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { ArrowLeft01Icon, Download01Icon, MoveIcon, ZoomInAreaIcon, ZoomOutAreaIcon } from '@/icons';
+import {
+  ArrowLeft01Icon,
+  Download01Icon,
+  MoveIcon,
+  ZoomInAreaIcon,
+  ZoomOutAreaIcon,
+} from "@/icons";
 
 interface FlowchartPreviewProps {
   children: React.ReactNode;
@@ -135,7 +141,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
           </Button>
         </Tooltip>
 
-        <Tooltip content="Download01Icon Flowchart (.svg)">
+        <Tooltip content="Download Flowchart (.svg)">
           <Button size="sm" onPress={handleDownload} isIconOnly>
             <Download01Icon size={18} />
           </Button>

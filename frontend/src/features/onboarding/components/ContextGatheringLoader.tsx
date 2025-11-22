@@ -5,44 +5,74 @@ import { useEffect, useState } from "react";
 
 import { RaisedButton } from "@/components";
 import { usePersonalization } from "@/features/onboarding/hooks/usePersonalization";
-import { Cancel01Icon } from '@/icons';
+import { Cancel01Icon } from "@/icons";
+
+/**
+ * ContextGatheringLoader - Shows personalization progress
+ *
+ * This component handles the SECOND phase of onboarding:
+ * 1. Initial Onboarding (name/profession/connections) - handled on /onboarding page
+ * 2. Personalization (house assignment, bio generation) - THIS COMPONENT ✓
+ * 3. Getting Started steps (create email, calendar, etc.) - separate component
+ *
+ * The personalization happens in the background after initial onboarding is complete.
+ * This card shows progress and triggers the holo card modal when ready.
+ */
 
 interface ContextGatheringLoaderProps {
   onComplete: () => void;
-  duration?: number;
 }
 
-const DISMISSED_KEY = "onboarding-dismissed";
+const PERSONALIZATION_DISMISSED_KEY = "personalization-card-dismissed";
+const PROGRESS_INTERVAL_MS = 300; // Update progress every 300ms
 
 export default function ContextGatheringLoader({
   onComplete,
-  duration = 5000,
 }: ContextGatheringLoaderProps) {
   const [progress, setProgress] = useState(0);
   const [isDismissed, setIsDismissed] = useState(false);
-  const { isComplete } = usePersonalization(true);
+  const { isComplete: hasPersonalization, isLoading } =
+    usePersonalization(true);
 
+  console.log(
+    "[ContextGatheringLoader] hasPersonalization:",
+    hasPersonalization,
+    "isLoading:",
+    isLoading,
+  );
+
+  // Check if user previously dismissed the completed personalization card
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setIsDismissed(localStorage.getItem(DISMISSED_KEY) === "true");
+      const dismissed =
+        localStorage.getItem(PERSONALIZATION_DISMISSED_KEY) === "true";
+      console.log(
+        "[ContextGatheringLoader] Dismissed state from localStorage:",
+        dismissed,
+      );
+      setIsDismissed(dismissed);
     }
   }, []);
 
+  // Smooth progress animation
   useEffect(() => {
-    if (isComplete) {
+    if (hasPersonalization) {
       setProgress(100);
       return;
     }
 
     const interval = setInterval(() => {
-      setProgress((prev) => (prev >= 90 ? 90 : prev + 1));
-    }, duration / 100);
+      setProgress((prev) => {
+        if (prev >= 95) return 95; // Cap at 95% until actually complete
+        return prev + 1;
+      });
+    }, PROGRESS_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [duration, isComplete]);
+  }, [hasPersonalization]);
 
   const handleDismiss = () => {
-    localStorage.setItem(DISMISSED_KEY, "true");
+    localStorage.setItem(PERSONALIZATION_DISMISSED_KEY, "true");
     setIsDismissed(true);
   };
 
@@ -51,11 +81,12 @@ export default function ContextGatheringLoader({
     handleDismiss();
   };
 
+  // Only hide if user explicitly dismissed the completed personalization card
   if (isDismissed) return null;
 
   return (
     <div className="relative flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-4 shadow-xl backdrop-blur-sm">
-      {isComplete && (
+      {hasPersonalization && (
         <button
           onClick={handleDismiss}
           className="absolute top-2 right-2 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-100"
@@ -65,7 +96,7 @@ export default function ContextGatheringLoader({
         </button>
       )}
 
-      {isComplete ? (
+      {hasPersonalization ? (
         <>
           <div className="flex flex-col items-start">
             <p className="font-medium text-zinc-100">Your GAIA is ready</p>
@@ -95,7 +126,7 @@ export default function ContextGatheringLoader({
 
           <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-700">
             <div
-              className="h-full rounded-full bg-primary bg-gradient-to-r transition-all duration-200"
+              className="h-full rounded-full bg-primary bg-gradient-to-r transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
