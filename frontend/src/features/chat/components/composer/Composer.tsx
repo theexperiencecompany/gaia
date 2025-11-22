@@ -413,7 +413,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
   useImperativeHandle(appendToInputRef, () => appendToInput, [appendToInput]);
 
   return (
-    <div className="searchbar_container relative flex flex-col justify-center pb-1">
+    <div className="searchbar_container relative flex w-full flex-col justify-center pb-1">
       <IntegrationsBanner
         integrations={integrations}
         isLoading={integrationsLoading}

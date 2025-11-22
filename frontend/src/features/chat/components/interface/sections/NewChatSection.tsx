@@ -30,7 +30,7 @@ export const NewChatSection: React.FC<NewChatSectionProps> = ({
         <div className="flex flex-col items-center gap-2">
           <StarterText />
         </div>
-        <div className="mt-12 w-full max-w-2xl">
+        <div className="mt-12 w-full max-w-7xl">
           <Composer {...composerProps} />
         </div>
 

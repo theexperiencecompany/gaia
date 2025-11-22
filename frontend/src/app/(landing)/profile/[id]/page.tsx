@@ -7,15 +7,11 @@ import { useParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { HoloCard } from "@/components/ui/holo-card";
+import { HoloCard, HoloCardDisplayData } from "@/components/ui/holo-card";
 import {
   holoCardApi,
   PublicHoloCardData,
 } from "@/features/onboarding/api/holoCardApi";
-import {
-  getHouseImage,
-  normalizeHouse,
-} from "@/features/onboarding/constants/houses";
 import { Share08Icon } from "@/icons";
 
 export default function ProfilePage() {
@@ -54,26 +50,30 @@ export default function ProfilePage() {
     toast.success("Profile link copied to clipboard!");
   };
 
+  const displayData: HoloCardDisplayData | null = holoCardData ? {
+    house: holoCardData.house,
+    name: holoCardData.name,
+    personality_phrase: holoCardData.personality_phrase,
+    user_bio: holoCardData.user_bio,
+    account_number: `#${holoCardData.account_number}`,
+    member_since: holoCardData.member_since,
+    overlay_color: holoCardData.overlay_color || "rgba(0,0,0,0)",
+    overlay_opacity: holoCardData.overlay_opacity || 40,
+    holo_card_id: cardId
+  } : null;
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-black">
       <div className="flex flex-col items-center gap-8">
         {isLoading ? (
           <Skeleton className="h-[500px] w-[350px] rounded-2xl" />
-        ) : holoCardData ? (
+        ) : displayData ? (
           <Suspense fallback={<Skeleton className="h-[500px] w-[350px]" />}>
             <HoloCard
-              url={getHouseImage(holoCardData.house)}
+              data={displayData}
               height={600}
               width={400}
               showSparkles={true}
-              overlayColor={holoCardData.overlay_color || "rgba(0,0,0,0)"}
-              overlayOpacity={holoCardData.overlay_opacity || 40}
-              houseName={normalizeHouse(holoCardData.house)}
-              userName={holoCardData.name}
-              userTagline={holoCardData.personality_phrase}
-              userId={`#${holoCardData.account_number}`}
-              joinDate={holoCardData.member_since}
-              userBio={holoCardData.user_bio}
             />
           </Suspense>
         ) : (

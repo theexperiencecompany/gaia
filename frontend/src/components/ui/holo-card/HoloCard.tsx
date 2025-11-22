@@ -3,38 +3,16 @@ import React, { useRef, useState } from "react";
 import Tilt from "react-parallax-tilt";
 
 import { StyledHoloCard } from "@/app/styles/holo-card.styles";
-
-interface Props {
-  children?: React.ReactNode;
-  url: string;
-  height?: number;
-  width?: number;
-  showSparkles?: boolean;
-  overlayColor?: string;
-  overlayOpacity?: number;
-  houseName?: string;
-  userName?: string;
-  userTagline?: string;
-  userId?: string;
-  joinDate?: string;
-  userBio?: string;
-}
+import { getHouseImage } from "@/features/onboarding/constants/houses";
+import { HoloCardProps } from "./types";
 
 export const HoloCard = ({
+  data,
+  height = 446,
+  width = 320,
+  showSparkles = true,
   children,
-  url,
-  height,
-  width,
-  showSparkles,
-  overlayColor,
-  overlayOpacity = 40,
-  houseName,
-  userName = "Aryan Randeriya",
-  userTagline = "Curious Adventurer",
-  userId = "#11231",
-  joinDate = "Nov 20, 2024",
-  userBio = "A passionate developer exploring the intersection of AI and human experience. Building the future, one line of code at a time.",
-}: Props) => {
+}: HoloCardProps) => {
   const [hover, setHover] = useState(false);
   const [animated, setAnimated] = useState(true);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -47,6 +25,19 @@ export const HoloCard = ({
     x: 0,
   });
   const ref = useRef<HTMLInputElement>(null);
+
+  const {
+    house,
+    name,
+    personality_phrase,
+    user_bio,
+    account_number,
+    member_since,
+    overlay_color,
+    overlay_opacity = 40,
+  } = data;
+
+  const houseImage = getHouseImage(house as any); // Cast to any or specific House type if available, assuming string is fine for now or we import House type
 
   const handleCardClick = () => {
     setIsFlipped(!isFlipped);
@@ -113,8 +104,8 @@ export const HoloCard = ({
         style={{
           transformStyle: "preserve-3d",
           transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
-          height: `${height ?? 446}px`,
-          width: `${width ?? 320}px`,
+          height: `${height}px`,
+          width: `${width}px`,
         }}
       >
         {/* Front Side */}
@@ -126,13 +117,13 @@ export const HoloCard = ({
           }}
         >
           <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
-            {overlayColor && (
+            {overlay_color && (
               <div
                 className="pointer-events-none absolute inset-0 z-[3]"
                 style={{
-                  background: overlayColor,
+                  background: overlay_color,
                   mixBlendMode: "overlay",
-                  opacity: overlayOpacity / 100,
+                  opacity: overlay_opacity / 100,
                 }}
               />
             )}
@@ -148,9 +139,9 @@ export const HoloCard = ({
                     className="object-contain"
                   />
                 </div>
-                {houseName && (
+                {house && (
                   <div className="rounded-full bg-white/20 p-1 px-4 font-serif text-xl font-light text-white/70 backdrop-blur-md">
-                    {houseName}
+                    {house}
                   </div>
                 )}
               </div>
@@ -163,16 +154,16 @@ export const HoloCard = ({
 
               <div className="relative flex w-full flex-col gap-1 overflow-hidden rounded-2xl bg-black/20 p-3 backdrop-blur-md">
                 <div className="font-serif text-4xl font-bold text-white">
-                  {userName}
+                  {name}
                 </div>
                 <div className="mb-10 font-light text-white italic">
-                  {userTagline}
+                  {personality_phrase}
                 </div>
 
                 <div className="flex w-full items-center justify-between">
                   <div className="flex flex-col items-start gap-1">
-                    <span className="text-sm text-white/80">User {userId}</span>
-                    <span className="text-xs text-white/50">{joinDate}</span>
+                    <span className="text-sm text-white/80">User {account_number}</span>
+                    <span className="text-xs text-white/50">{member_since}</span>
                   </div>
 
                   <div className="flex gap-2">
@@ -188,7 +179,7 @@ export const HoloCard = ({
             </div>
 
             <StyledHoloCard
-              $url={url}
+              $url={houseImage}
               ref={ref}
               $active={hover}
               $animated={animated}
@@ -197,9 +188,9 @@ export const HoloCard = ({
               onMouseMove={handleOnMouseMove}
               onTouchMove={handleOnTouchMove}
               onMouseOut={handleOnMouseOut}
-              $height={height ?? 446}
-              $width={width ?? 320}
-              $showSparkles={showSparkles ?? true}
+              $height={height}
+              $width={width}
+              $showSparkles={showSparkles}
             >
               {children}
             </StyledHoloCard>
@@ -216,13 +207,13 @@ export const HoloCard = ({
           }}
         >
           <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
-            {overlayColor && (
+            {overlay_color && (
               <div
                 className="pointer-events-none absolute inset-0 z-[3]"
                 style={{
-                  background: overlayColor,
+                  background: overlay_color,
                   mixBlendMode: "overlay",
-                  opacity: overlayOpacity / 100,
+                  opacity: overlay_opacity / 100,
                 }}
               />
             )}
@@ -239,21 +230,21 @@ export const HoloCard = ({
                       className="object-contain"
                     />
                   </div>
-                  {houseName && (
+                  {house && (
                     <div className="rounded-full bg-white/20 p-1 px-3 font-serif text-xl font-light text-white/70 backdrop-blur-md">
-                      {houseName}
+                      {house}
                     </div>
                   )}
                 </div>
 
                 <div className="relative overflow-hidden rounded-2xl bg-black/20 p-4 backdrop-blur-md">
                   <div className="mb-2 font-serif text-2xl font-bold text-white">
-                    {userName}
+                    {name}
                   </div>
                   <div className="mb-4 text-sm font-light text-white/80 italic">
-                    {userTagline}
+                    {personality_phrase}
                   </div>
-                  <p className="text-sm text-white/80">{userBio}</p>
+                  <p className="text-sm text-white/80">{user_bio}</p>
                 </div>
               </div>
 
@@ -261,20 +252,20 @@ export const HoloCard = ({
                 <div className="flex flex-col gap-1">
                   <span className="text-xs text-white/50">Member Since</span>
                   <span className="text-sm font-medium text-white/80">
-                    {joinDate}
+                    {member_since}
                   </span>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span className="text-xs text-white/50">User ID</span>
                   <span className="text-sm font-medium text-white/80">
-                    {userId}
+                    {account_number}
                   </span>
                 </div>
               </div>
             </div>
 
             <StyledHoloCard
-              $url={url}
+              $url={houseImage}
               ref={ref}
               $active={hover}
               $animated={animated}
@@ -283,9 +274,9 @@ export const HoloCard = ({
               onMouseMove={handleOnMouseMove}
               onTouchMove={handleOnTouchMove}
               onMouseOut={handleOnMouseOut}
-              $height={height ?? 446}
-              $width={width ?? 320}
-              $showSparkles={showSparkles ?? true}
+              $height={height}
+              $width={width}
+              $showSparkles={showSparkles}
             >
               {children}
             </StyledHoloCard>
