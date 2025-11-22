@@ -22,13 +22,13 @@ import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DayPicker, Matcher } from "react-day-picker";
 
-import { Button, buttonVariants } from "@/components/ui/shadcn/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/shadcn/popover";
-import { ScrollArea } from "@/components/ui/shadcn/scroll-area";
+} from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,

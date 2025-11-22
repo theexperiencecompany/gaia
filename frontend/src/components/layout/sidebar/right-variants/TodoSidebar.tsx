@@ -6,13 +6,13 @@ import { formatDistanceToNow } from "date-fns";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
+import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { todoApi } from "@/features/todo/api/todoApi";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
 import WorkflowSection from "@/features/todo/components/WorkflowSection";
-import { Delete02Icon } from '@/icons';
+import { Delete02Icon } from "@/icons";
 import {
   Priority,
   Project,

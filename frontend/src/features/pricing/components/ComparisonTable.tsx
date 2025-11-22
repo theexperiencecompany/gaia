@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo } from "react";
 
-import { RaisedButton } from "@/components/ui/shadcn/raised-button";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   AiBrain01Icon,

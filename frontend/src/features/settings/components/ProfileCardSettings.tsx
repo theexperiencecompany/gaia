@@ -15,7 +15,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import ColorPicker from "react-best-gradient-color-picker";
 import { toast } from "sonner";
 
-import { HoloCard } from "@/components/ui/magic-ui/holo-card";
+import { HoloCard } from "@/components/ui/holo-card";
 import {
   holoCardApi,
   HoloCardData,
@@ -25,11 +25,11 @@ import {
   normalizeHouse,
 } from "@/features/onboarding/constants/houses";
 import {
-  PaintBoardIcon,
   Copy01Icon,
   Dices,
   Download01Icon,
   LinkSquare02Icon,
+  PaintBoardIcon,
   ReloadIcon,
   Share08Icon,
 } from "@/icons";

@@ -2,8 +2,8 @@ import React from "react";
 
 import CopyButton from "@/features/chat/components/code-block/CopyButton";
 import {
-  CheckmarkCircle02Icon,
   Cancel01Icon,
+  CheckmarkCircle02Icon,
   SourceCodeCircleIcon,
 } from "@/icons";
 

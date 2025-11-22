@@ -18,9 +18,9 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { GoalSidebar } from "@/components/layout/sidebar/right-variants/GoalSidebar";
-import { MultiStepLoader } from "@/components/ui/shadcn/multi-step-loader";
+import { MultiStepLoader } from "@/components/ui/multi-step-loader";
 import { goalsApi } from "@/features/goals/api/goalsApi";
-import { Alert01Icon } from '@/icons';
+import { Alert01Icon } from "@/icons";
 import { truncateTitle } from "@/lib/utils";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { Goal } from "@/types/api/goalsApiTypes";

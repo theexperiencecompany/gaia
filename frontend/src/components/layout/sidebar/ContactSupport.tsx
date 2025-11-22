@@ -5,7 +5,7 @@ import { useDisclosure } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
 
 import { ContactSupportModal } from "@/features/support";
-import { ChatQuestionIcon, QuestionIcon } from "@/icons";
+import { ChatQuestionIcon } from "@/icons";
 
 export default function ContactSupport() {
   const { isOpen, onOpen, onOpenChange } = useDisclosure();

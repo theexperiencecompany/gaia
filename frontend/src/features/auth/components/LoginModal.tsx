@@ -3,15 +3,13 @@
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { usePathname } from "next/navigation";
 
+import { RaisedButton } from "@/components/ui/raised-button";
 import { handleAuthLogin } from "@/features/auth/hooks/handleAuthLogin";
 import {
   useLoginModal,
   useLoginModalActions,
 } from "@/features/auth/hooks/useLoginModal";
 import { Login02Icon } from "@/icons";
-
-import { Button } from "../../../components/ui/shadcn/button";
-import { RaisedButton } from "@/components/ui";
 
 export default function LoginModal() {
   const isOpen = useLoginModal();

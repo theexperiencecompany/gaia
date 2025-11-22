@@ -4,16 +4,15 @@ import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useCallback, useEffect, useState } from "react";
 
+import {
+  StarAward01Icon,
+  WorkflowCircle03Icon,
+} from "@/components/shared/icons";
 import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
 import { type UseCase } from "@/features/use-cases/types";
 import { Workflow, workflowApi } from "@/features/workflows/api/workflowApi";
 import WorkflowCard from "@/features/workflows/components/WorkflowCard";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
-import {
-  StarAward01Icon,
-  StarIcon,
-  WorkflowCircle03Icon,
-} from "@/components/shared/icons";
 
 // Register GSAP plugin
 gsap.registerPlugin(ScrollTrigger);

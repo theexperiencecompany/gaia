@@ -2,6 +2,8 @@
 
 import { Spinner } from "@heroui/spinner";
 import { useEffect, useState } from "react";
+import { useEffect as useDebugEffect } from "react";
+import { toast } from "sonner";
 
 import { RaisedButton } from "@/components";
 import { useUser } from "@/features/auth/hooks/useUser";
@@ -9,11 +11,9 @@ import { Cancel01Icon } from "@/icons";
 import { apiService } from "@/lib/api";
 import { wsManager } from "@/lib/websocket";
 import {
-  useOnboardingPhaseStore,
   OnboardingPhase,
+  useOnboardingPhaseStore,
 } from "@/stores/onboardingStore";
-import { toast } from "sonner";
-import { useEffect as useDebugEffect } from "react";
 
 /**
  * ContextGatheringLoader - Personalization progress card

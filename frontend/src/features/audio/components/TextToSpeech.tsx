@@ -2,7 +2,7 @@ import { Button } from "@heroui/button";
 // import Spinner from "@/components/ui/spinner";
 import * as React from "react";
 
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import { VolumeHighIcon, VolumeOffIcon } from "@/icons";
 import { api } from "@/lib/api";
 

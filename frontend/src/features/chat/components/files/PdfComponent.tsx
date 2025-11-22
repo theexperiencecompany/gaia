@@ -3,7 +3,7 @@ import "react-pdf/dist/Page/TextLayer.css";
 
 import { Document, Page, pdfjs } from "react-pdf";
 
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import { Pdf02Icon } from "@/icons";
 
 // Define interfaces for component props

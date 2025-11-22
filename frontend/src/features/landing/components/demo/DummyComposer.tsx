@@ -4,13 +4,13 @@ import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
 import React, { useRef, useState } from "react";
 
-import { Button as ShadcnButton } from "@/components/ui/shadcn/button";
+import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/shadcn/dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { ArrowRight01Icon, ArrowUp02Icon } from "@/icons";
 import { Wrench01Icon } from "@/icons";

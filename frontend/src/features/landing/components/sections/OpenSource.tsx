@@ -3,10 +3,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { lazy, Suspense, useEffect, useState } from "react";
 
-import { RaisedButton } from "@/components/ui/shadcn/raised-button";
-import Spinner from "@/components/ui/shadcn/spinner";
+import { RaisedButton } from "@/components/ui/raised-button";
+import Spinner from "@/components/ui/spinner";
 import { useGitHubContributors } from "@/hooks/useGitHubContributors";
-import { ArrowRight01Icon, StarFilledIcon } from '@/icons';
+import { ArrowRight01Icon, StarFilledIcon } from "@/icons";
 
 import LargeHeader from "../shared/LargeHeader";
 

@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { useRouter } from "next/navigation";
 
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import CalendarSelector from "@/features/calendar/components/CalendarSelector";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";

@@ -1,9 +1,9 @@
 import Link from "next/link";
 
 import { Github } from "@/components";
-import ShinyText from "@/components/ui/shadcn/shimmering-chip";
+import ShinyText from "@/components/ui/shimmering-chip";
 import { useLatestRelease } from "@/hooks/useLatestRelease";
-import { ArrowRight01Icon } from '@/icons';
+import { ArrowRight01Icon } from "@/icons";
 import { MotionContainer } from "@/layouts/MotionContainer";
 
 import GetStartedButton from "../shared/GetStartedButton";
@@ -42,7 +42,11 @@ export default function HeroSection() {
           <Link href="/blog/public-beta">
             <div className="relative z-10 flex w-fit cursor-pointer items-center gap-2 rounded-full bg-zinc-900 p-1 px-4 text-sm font-light outline-1 outline-zinc-800 transition-colors hover:bg-zinc-800">
               <ShinyText text={`Public Beta`} speed={10} />
-              <ArrowRight01Icon width={15} height={15} className="text-zinc-400" />
+              <ArrowRight01Icon
+                width={15}
+                height={15}
+                className="text-zinc-400"
+              />
             </div>
           </Link>
         </div>

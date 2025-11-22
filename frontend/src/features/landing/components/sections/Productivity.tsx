@@ -3,7 +3,7 @@ import { Chip } from "@heroui/chip";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { RaisedButton } from "@/components/ui/shadcn/raised-button";
+import { RaisedButton } from "@/components/ui/raised-button";
 // import { CalendarDemo } from "@/features/calendar/components/Calendar";
 // import GoalsStepsContent from "./GoalsStepsContent";
 // import MailAnimationWrapper from "./MailAnimationWrapper";

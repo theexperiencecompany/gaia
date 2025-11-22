@@ -3,8 +3,8 @@
 import * as React from "react";
 import { DayPicker } from "react-day-picker";
 
-import { buttonVariants } from "@/components/ui/shadcn/button";
-import { ArrowLeft01Icon, ArrowRight01Icon } from '@/icons';
+import { buttonVariants } from "@/components/ui/button";
+import { ArrowLeft01Icon, ArrowRight01Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 function Calendar({

@@ -13,7 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from "@/components/ui/shadcn/sheet";
+} from "@/components/ui/sheet";
 import {
   auth,
   company,

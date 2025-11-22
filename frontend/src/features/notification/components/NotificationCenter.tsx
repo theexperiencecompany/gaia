@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { SidebarHeaderButton } from "@/components/";
-import { ScrollArea } from "@/components/ui/shadcn/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 
 import { NotificationIcon } from "../../../components/shared";

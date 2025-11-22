@@ -2,13 +2,13 @@ import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
 import React from "react";
 
-import { Button } from "@/components/ui/shadcn/button";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/shadcn/dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { Tick02Icon } from "@/icons";
 import { AttachmentIcon, PlusSignIcon, ToolsIcon } from "@/icons";

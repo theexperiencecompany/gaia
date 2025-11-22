@@ -7,7 +7,7 @@ import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import SettingsMenu from "@/features/settings/components/SettingsMenu";
 import { UnfoldLessIcon, UnfoldMoreIcon } from "@/icons";
 
-import { Avatar, AvatarFallback, AvatarImage } from "../../ui/shadcn/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
 
 export default function UserContainer() {
   const user = useUser();

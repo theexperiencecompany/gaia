@@ -7,7 +7,7 @@ import { Home01Icon } from "@/components";
 import Footer from "@/components/navigation/Footer";
 import Navbar from "@/components/navigation/Navbar";
 import { RaisedButton } from "@/components/ui";
-import { ArrowLeft01Icon } from '@/icons';
+import { ArrowLeft01Icon } from "@/icons";
 
 export default function PageNotFound() {
   const router = useRouter();

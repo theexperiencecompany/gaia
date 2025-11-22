@@ -6,7 +6,7 @@ import { useCallback, useMemo, useState } from "react";
 import { FixedSizeList as List, ListChildComponentProps } from "react-window";
 import InfiniteLoader from "react-window-infinite-loader";
 
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import { EmailFrom } from "@/features/mail/components/MailFrom";
 import ViewEmail from "@/features/mail/components/ViewMail";
 import { useEmailActions } from "@/features/mail/hooks/useEmailActions";
@@ -18,7 +18,16 @@ import { useEmailViewer } from "@/features/mail/hooks/useEmailViewer";
 import { useInfiniteEmails } from "@/features/mail/hooks/useInfiniteEmails";
 import { formatTime } from "@/features/mail/utils/mailUtils";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
-import { Archive01Icon, Cancel01Icon,CheckmarkSquare03Icon, Delete02Icon, SparklesIcon, SquareIcon, StarIcon, Timer02Icon,   } from '@/icons';
+import {
+  Archive01Icon,
+  Cancel01Icon,
+  CheckmarkSquare03Icon,
+  Delete02Icon,
+  SparklesIcon,
+  SquareIcon,
+  StarIcon,
+  Timer02Icon,
+} from "@/icons";
 import { EmailData } from "@/types/features/mailTypes";
 
 function AIAnalysisIndicator({ hasAnalysis }: { hasAnalysis: boolean }) {

@@ -4,10 +4,10 @@ import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
 import { useParams } from "next/navigation";
-import { Suspense,useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { HoloCard } from "@/components/ui/magic-ui/holo-card";
+import { HoloCard } from "@/components/ui/holo-card";
 import {
   holoCardApi,
   PublicHoloCardData,
@@ -16,7 +16,7 @@ import {
   getHouseImage,
   normalizeHouse,
 } from "@/features/onboarding/constants/houses";
-import { Share08Icon } from '@/icons';
+import { Share08Icon } from "@/icons";
 
 export default function ProfilePage() {
   const params = useParams();

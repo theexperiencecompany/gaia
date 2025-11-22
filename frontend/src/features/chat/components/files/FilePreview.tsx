@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import Image from "next/image";
 
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import {
   Cancel01Icon,
   CodeIcon,

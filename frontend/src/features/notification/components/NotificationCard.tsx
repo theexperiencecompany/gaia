@@ -2,8 +2,8 @@
 
 import { Card } from "@heroui/react";
 
-import { Button } from "@/components/ui";
-import { ArrowDown01Icon, ArrowLeft01Icon } from '@/icons';
+import { Button } from "@/components/ui/button";
+import { ArrowDown01Icon, ArrowLeft01Icon } from "@/icons";
 import { Notification } from "@/types/notifications";
 import { getNotificationIcon } from "@/utils/notifications";
 

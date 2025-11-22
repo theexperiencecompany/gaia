@@ -1,11 +1,11 @@
 import { Button } from "@heroui/button";
+import { Tooltip } from "@heroui/react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { Copy01Icon, PinIcon } from "@/icons";
-import { Tooltip } from "@heroui/react";
 
 interface ChatBubbleActionsProps {
   loading: boolean;

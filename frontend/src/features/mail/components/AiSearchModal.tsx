@@ -8,8 +8,8 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/shadcn/dialog";
-import Spinner from "@/components/ui/shadcn/spinner";
+} from "@/components/ui/dialog";
+import Spinner from "@/components/ui/spinner";
 import { mailApi } from "@/features/mail/api/mailApi";
 import { AiSearch02Icon } from "@/icons";
 

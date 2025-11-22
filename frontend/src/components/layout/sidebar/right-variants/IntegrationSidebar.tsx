@@ -5,7 +5,7 @@ import { Chip } from "@heroui/chip";
 import React from "react";
 
 import { Separator, SidebarHeader } from "@/components/ui";
-import { SidebarContent } from "@/components/ui/shadcn/sidebar";
+import { SidebarContent } from "@/components/ui/sidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";

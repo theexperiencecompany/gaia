@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
-import { RaisedButton } from "@/components/ui";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import {
   usePricing,

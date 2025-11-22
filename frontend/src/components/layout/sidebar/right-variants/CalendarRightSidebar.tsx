@@ -12,15 +12,15 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from "@/components/ui/shadcn/accordion";
-import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
+} from "@/components/ui/accordion";
+import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import {
   NaturalLanguageDateInput,
   NaturalLanguageDateRangeInput,
 } from "@/features/calendar/components/NaturalLanguageDateInput";
 import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { Delete02Icon,RepeatIcon } from '@/icons';
+import { Delete02Icon, RepeatIcon } from "@/icons";
 import { UserCircleIcon } from "@/icons";
 import { CalendarItem } from "@/types/api/calendarApiTypes";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";

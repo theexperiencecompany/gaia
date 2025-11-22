@@ -8,14 +8,14 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from "@/components/ui/shadcn/accordion";
+} from "@/components/ui/accordion";
+import Spinner from "@/components/ui/spinner";
 import {
   useConversationList,
   useFetchConversations,
 } from "@/features/chat/hooks/useConversationList";
 import type { IConversation } from "@/lib/db/chatDb";
 
-import Spinner from "@/components/ui/shadcn/spinner";
 import { ChatTab } from "./ChatTab";
 import { accordionItemStyles } from "./constants";
 

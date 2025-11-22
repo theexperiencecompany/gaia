@@ -18,8 +18,6 @@ interface Props {
   userId?: string;
   joinDate?: string;
   userBio?: string;
-  userSkills?: string[];
-  userRole?: string;
 }
 
 export const HoloCard = ({
@@ -36,8 +34,6 @@ export const HoloCard = ({
   userId = "#11231",
   joinDate = "Nov 20, 2024",
   userBio = "A passionate developer exploring the intersection of AI and human experience. Building the future, one line of code at a time.",
-  userSkills = ["Full-Stack Development", "AI/ML", "Product Design", "DevOps"],
-  userRole = "Senior Developer",
 }: Props) => {
   const [hover, setHover] = useState(false);
   const [animated, setAnimated] = useState(true);
@@ -56,24 +52,40 @@ export const HoloCard = ({
     setIsFlipped(!isFlipped);
   };
 
-  const handleOnMouseOver = (event: any) => {
+  const handleOnMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     setAnimated(false);
     setHover(true);
 
     const card = ref.current;
-
-    const l =
-      event.type === "touchmove"
-        ? event.touches[0].clientX
-        : event.nativeEvent.offsetX;
-
-    const t =
-      event.type === "touchmove"
-        ? event.touches[0].clientY
-        : event.nativeEvent.offsetY;
+    const l = event.nativeEvent.offsetX;
+    const t = event.nativeEvent.offsetY;
 
     const h = card ? card.clientHeight : 0;
     const w = card ? card.clientWidth : 0;
+
+    const px = Math.abs(Math.floor((100 / w) * l) - 100);
+    const py = Math.abs(Math.floor((100 / h) * t) - 100);
+
+    const lp = 50 + (px - 50) / 1.5;
+    const tp = 50 + (py - 50) / 1.5;
+
+    setActiveBackgroundPosition({ lp, tp });
+  };
+
+  const handleOnTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    setAnimated(false);
+    setHover(true);
+
+    const card = ref.current;
+    if (!card) return;
+
+    const touch = event.touches[0];
+    const rect = card.getBoundingClientRect();
+    const l = touch.clientX - rect.left;
+    const t = touch.clientY - rect.top;
+
+    const h = card.clientHeight;
+    const w = card.clientWidth;
 
     const px = Math.abs(Math.floor((100 / w) * l) - 100);
     const py = Math.abs(Math.floor((100 / h) * t) - 100);
@@ -182,8 +194,8 @@ export const HoloCard = ({
               $animated={animated}
               $activeRotation={activeRotation}
               $activeBackgroundPosition={activeBackgroundPosition}
-              onMouseMove={handleOnMouseOver}
-              onTouchMove={handleOnMouseOver}
+              onMouseMove={handleOnMouseMove}
+              onTouchMove={handleOnTouchMove}
               onMouseOut={handleOnMouseOut}
               $height={height ?? 446}
               $width={width ?? 320}
@@ -268,8 +280,8 @@ export const HoloCard = ({
               $animated={animated}
               $activeRotation={activeRotation}
               $activeBackgroundPosition={activeBackgroundPosition}
-              onMouseMove={handleOnMouseOver}
-              onTouchMove={handleOnMouseOver}
+              onMouseMove={handleOnMouseMove}
+              onTouchMove={handleOnTouchMove}
               onMouseOut={handleOnMouseOut}
               $height={height ?? 446}
               $width={width ?? 320}

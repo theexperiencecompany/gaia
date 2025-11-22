@@ -3,7 +3,7 @@
 import { ReactNode, Suspense } from "react";
 
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
-import { Toaster } from "@/components/ui/shadcn/sonner";
+import { Toaster } from "@/components/ui/sonner";
 import LoginModal from "@/features/auth/components/LoginModal";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";

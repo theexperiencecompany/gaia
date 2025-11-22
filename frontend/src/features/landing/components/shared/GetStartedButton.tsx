@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { RaisedButton } from "@/components/ui/shadcn/raised-button";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { posthog } from "@/lib";
 
 export default function GetStartedButton({

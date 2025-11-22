@@ -2,12 +2,12 @@ import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
 import { memo, ReactNode, useEffect, useRef, useState } from "react";
 
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import {
   usePrefetchUrlMetadata,
   useUrlMetadata,
 } from "@/features/chat/hooks/useUrlMetadata";
-import { GlobalIcon } from '@/icons';
+import { GlobalIcon } from "@/icons";
 
 // Global set to track failed image URLs across all instances
 const globalFailedUrls = new Set<string>();

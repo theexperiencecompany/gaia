@@ -4,10 +4,10 @@ import { Card } from "@heroui/card";
 import { FC } from "react";
 
 import {
+  Cancel01Icon,
   CheckmarkCircle02Icon,
   IconProps,
   Loading02Icon,
-  Cancel01Icon,
 } from "@/icons";
 import { ContextStatus, useOnboardingStore } from "@/stores/onboardingStore";
 

@@ -5,11 +5,11 @@ import { useDisclosure } from "@heroui/modal";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import AddProjectModal from "@/features/todo/components/AddProjectModal";
 import TodoModal from "@/features/todo/components/TodoModal";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
-import { PlusSignIcon, Tag01Icon } from '@/icons';
+import { PlusSignIcon, Tag01Icon } from "@/icons";
 import {
   Appointment01Icon,
   Calendar01Icon,

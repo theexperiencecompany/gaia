@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 
-import { RaisedButton } from "@/components/ui/shadcn/raised-button";
+import { RaisedButton } from "@/components/ui/raised-button";
 
 interface OnboardingCompleteProps {
   onLetsGo: () => void;

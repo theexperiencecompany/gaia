@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 
 import { TodoSidebar } from "@/components/layout/sidebar/right-variants/TodoSidebar";
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import TodoList from "@/features/todo/components/TodoList";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useUrlTodoSelection } from "@/features/todo/hooks/useUrlTodoSelection";

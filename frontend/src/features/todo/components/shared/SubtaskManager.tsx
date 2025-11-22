@@ -3,9 +3,9 @@
 import { Checkbox } from "@heroui/checkbox";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/shadcn/button";
-import { Input } from "@/components/ui/shadcn/input";
-import { Cancel01Icon,PlusSignIcon } from '@/icons';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Cancel01Icon, PlusSignIcon } from "@/icons";
 import { cn } from "@/lib/utils";
 import { SubTask } from "@/types/features/todoTypes";
 

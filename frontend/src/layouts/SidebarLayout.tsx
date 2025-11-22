@@ -15,7 +15,7 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   useSidebar,
-} from "@/components/ui/shadcn/sidebar";
+} from "@/components/ui/sidebar";
 import { SidebarLeft01Icon, SidebarRight01Icon } from "@/icons";
 
 interface SidebarLayoutProps {

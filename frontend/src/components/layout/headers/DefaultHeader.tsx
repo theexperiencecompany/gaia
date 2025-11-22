@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { Button } from "@/components/ui/shadcn/button";
+import { Button } from "@/components/ui/button";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import { BubbleChatAddIcon } from "@/icons";
 

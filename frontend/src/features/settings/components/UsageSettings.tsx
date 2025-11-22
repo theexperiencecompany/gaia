@@ -8,9 +8,9 @@ import { Tab, Tabs } from "@heroui/tabs";
 import Link from "next/link";
 import { useState } from "react";
 
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
-import { CalendarIcon, ChartIcon, ChartIncreaseIcon } from '@/icons';
+import { CalendarIcon, ChartIcon, ChartIncreaseIcon } from "@/icons";
 
 import { useUsageSummary } from "../hooks/useUsage";
 

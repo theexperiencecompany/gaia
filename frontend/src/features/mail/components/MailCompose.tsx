@@ -6,24 +6,20 @@ import { TagInput } from "emblor";
 import Image from "next/image";
 import { Drawer } from "vaul";
 
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/shadcn/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/shadcn/dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useEmailComposition } from "@/features/mail/hooks/useEmailComposition";
 import { AlertCircleIcon, ArrowDown01Icon, Tick02Icon } from "@/icons";
 import { AiSearch02Icon, BrushIcon, Sent02Icon, SentIcon } from "@/icons";
 
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
-import { Button as ShadcnButton } from "../../../components/ui/shadcn/button";
+import { Button as ShadcnButton } from "../../../components/ui/button";
 import { AiSearchModal } from "./AiSearchModal";
 
 interface MailComposeProps {

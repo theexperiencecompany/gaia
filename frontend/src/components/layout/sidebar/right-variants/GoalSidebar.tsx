@@ -4,8 +4,8 @@ import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
 import React from "react";
 
-import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
-import { Timer02Icon } from '@/icons';
+import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
+import { Timer02Icon } from "@/icons";
 import { BookIcon1 } from "@/icons";
 import { NodeData } from "@/types/features/goalTypes";
 

@@ -17,7 +17,7 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "@/components/ui/shadcn/chart";
+} from "@/components/ui/chart";
 import {
   Cancel01Icon,
   ChartIcon,

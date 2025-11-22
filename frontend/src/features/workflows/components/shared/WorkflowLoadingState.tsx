@@ -1,7 +1,7 @@
 import { Card, CardBody, CardHeader } from "@heroui/card";
 
-import { Skeleton } from "@/components/ui/shadcn/skeleton";
-import { StarsIcon } from '@/icons';
+import { Skeleton } from "@/components/ui/skeleton";
+import { StarsIcon } from "@/icons";
 
 export default function WorkflowLoadingState() {
   return (

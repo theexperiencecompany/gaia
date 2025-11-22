@@ -4,15 +4,15 @@ import { formatDateRange } from "little-date";
 import { useState } from "react";
 import { type DateRange } from "react-day-picker";
 
-import { Button } from "@/components/ui/shadcn/button";
-import { Calendar } from "@/components/ui/shadcn/calendar";
-import { Label } from "@/components/ui/shadcn/label";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/shadcn/popover";
-import { ArrowDown01Icon } from '@/icons';
+} from "@/components/ui/popover";
+import { ArrowDown01Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 interface DateRangePickerProps {

@@ -4,15 +4,14 @@ import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Checkbox } from "@heroui/checkbox";
 
 import {
-  CalendarAdd01Icon,
   BubbleChatAddIcon,
+  CalendarAdd01Icon,
   MailAdd01Icon,
-  StarsIcon,
   WorkflowCircle03Icon,
 } from "@/icons";
 import {
-  useOnboardingPhaseStore,
   OnboardingPhase,
+  useOnboardingPhaseStore,
 } from "@/stores/onboardingStore";
 
 /**

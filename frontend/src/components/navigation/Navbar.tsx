@@ -13,11 +13,11 @@ import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
-import { ArrowDown01Icon, StarFilledIcon } from '@/icons';
+import { ArrowDown01Icon, StarFilledIcon } from "@/icons";
 import { posthog } from "@/lib";
 
 import { Github } from "../shared";
-import { RaisedButton } from "../ui/shadcn/raised-button";
+import { RaisedButton } from "../ui/raised-button";
 import { NavbarMenu } from "./NavbarMenu";
 
 export default function Navbar() {

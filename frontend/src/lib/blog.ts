@@ -1,3 +1,5 @@
+"use server";
+
 import fs from "fs";
 import matter from "gray-matter";
 import path from "path";
@@ -36,7 +38,7 @@ export interface BlogPostFrontmatter {
 /**
  * Get all blog post slugs
  */
-export function getAllBlogSlugs(): string[] {
+export async function getAllBlogSlugs(): Promise<string[]> {
   try {
     const files = fs.readdirSync(postsDirectory);
     return files
@@ -52,7 +54,7 @@ export function getAllBlogSlugs(): string[] {
 /**
  * Get a single blog post by slug
  */
-export function getBlogPost(slug: string): BlogPost | null {
+export async function getBlogPost(slug: string): Promise<BlogPost | null> {
   try {
     const fullPath = path.join(postsDirectory, `${slug}.mdx`);
     const fileContents = fs.readFileSync(fullPath, "utf8");
@@ -80,11 +82,13 @@ export function getBlogPost(slug: string): BlogPost | null {
 /**
  * Get all blog posts sorted by date (newest first)
  */
-export function getAllBlogPosts(includeContent: boolean = false): BlogPost[] {
-  const slugs = getAllBlogSlugs();
-  const posts = slugs
-    .map((slug) => {
-      const post = getBlogPost(slug);
+export async function getAllBlogPosts(
+  includeContent: boolean = false,
+): Promise<BlogPost[]> {
+  const slugs = await getAllBlogSlugs();
+  const posts = await Promise.all(
+    slugs.map(async (slug) => {
+      const post = await getBlogPost(slug);
       if (!post) return null;
 
       // Optionally exclude content for better performance
@@ -93,7 +97,10 @@ export function getAllBlogPosts(includeContent: boolean = false): BlogPost[] {
       }
 
       return post;
-    })
+    }),
+  );
+
+  return posts
     .filter((post): post is BlogPost => post !== null)
     .sort((a, b) => {
       // Featured posts come first
@@ -103,6 +110,4 @@ export function getAllBlogPosts(includeContent: boolean = false): BlogPost[] {
       // Then sort by date, newest first
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
-
-  return posts;
 }

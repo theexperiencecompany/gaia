@@ -1,7 +1,7 @@
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
 import { Menu02Icon, SidebarLeftIcon } from "@/icons";
 
-import { Button } from "../../ui/shadcn/button";
+import { Button } from "../../ui/button";
 
 export interface CloseOpenSidebarBtnProps {
   isSidebarVisible?: boolean;

@@ -13,14 +13,13 @@ import {
   useRef,
   useState,
 } from "react";
+import React from "react";
 
 import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import { UseCase } from "@/features/use-cases/types";
 import { useHeader } from "@/hooks/layout/useHeader";
 import {
-  Compass01Icon,
-  DiscoverCircleIcon,
   IconProps,
   RedoIcon,
 } from "@/icons";
@@ -32,7 +31,6 @@ import CreateWorkflowModal from "./CreateWorkflowModal";
 import EditWorkflowModal from "./EditWorkflowModal";
 import WorkflowCard from "./WorkflowCard";
 import { WorkflowListSkeleton } from "./WorkflowSkeletons";
-import React from "react";
 
 export default function WorkflowPage() {
   const pageRef = useRef(null);

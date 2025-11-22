@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { FlickeringGrid } from "@/components/ui/magic-ui/flickering-grid";
-import { Button } from "@/components/ui/shadcn/button";
-import Spinner from "@/components/ui/shadcn/spinner";
+import { Button } from "@/components/ui/button";
+import { FlickeringGrid } from "@/components/ui/flickering-grid";
+import Spinner from "@/components/ui/spinner";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { GoogleColouredIcon } from "@/icons";
 

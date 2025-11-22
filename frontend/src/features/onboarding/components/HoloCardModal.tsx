@@ -18,7 +18,7 @@ import ColorPicker from "react-best-gradient-color-picker";
 import { toast } from "sonner";
 
 import { LinkedinIcon, TwitterIcon } from "@/components";
-import { HoloCard } from "@/components/ui/magic-ui/holo-card";
+import { HoloCard } from "@/components/ui/holo-card";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
 import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
@@ -29,13 +29,13 @@ import {
 } from "@/features/onboarding/hooks/usePersonalization";
 import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
 import {
-  PaintBoardIcon,
   Dices,
   Download01Icon,
   LinkBackwardIcon,
+  PaintBoardIcon,
   ReloadIcon,
-  Share08Icon,
   Rocket01Icon,
+  Share08Icon,
 } from "@/icons";
 
 interface FeatureModalProps {
