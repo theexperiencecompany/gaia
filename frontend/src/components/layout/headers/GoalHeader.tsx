@@ -29,7 +29,7 @@ export default function GoalHeader() {
     <div className="flex w-full items-center justify-between">
       <div className="flex items-center gap-2 pl-2 text-zinc-500">
         <Link href={"/goals"} className="flex items-center gap-2">
-          <Target02Icon width={20} height={20} color={undefined} />
+          <Target02Icon width={20} height={20} />
           <span>Goals</span>
         </Link>
         {goal?.title && (

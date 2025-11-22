@@ -311,7 +311,7 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
                 key="static"
                 title={
                   <div className="flex items-center gap-2">
-                    <Image02Icon className="h-5 w-5" color={undefined} />
+                    <Image02Icon className="h-5 w-5" />
                     Static
                     <div className="flex aspect-square min-h-3 min-w-3 items-center justify-center rounded-full bg-primary/90 p-1.5 text-sm font-medium text-black">
                       {staticCharts.length}

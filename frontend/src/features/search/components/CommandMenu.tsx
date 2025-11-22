@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { SearchIcon } from '@/icons';
+import { SearchIcon } from "@/icons";
 import { MessageMultiple02Icon } from "@/icons";
 
 import { ComprehensiveSearchResponse, searchApi } from "../api/searchApi";
@@ -230,11 +230,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                               }}
                               className={COMMAND_MENU_STYLES.item}
                             >
-                              <MessageMultiple02Icon
-                                width={16}
-                                height={16}
-                                color={undefined}
-                              />
+                              <MessageMultiple02Icon width={16} height={16} />
                               <div
                                 className={COMMAND_MENU_STYLES.contentWrapper}
                               >
@@ -268,11 +264,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                               }}
                               className={COMMAND_MENU_STYLES.item}
                             >
-                              <SearchIcon
-                                width={16}
-                                height={16}
-                                color={undefined}
-                              />
+                              <SearchIcon width={16} height={16} />
                               <div
                                 className={COMMAND_MENU_STYLES.contentWrapper}
                               >

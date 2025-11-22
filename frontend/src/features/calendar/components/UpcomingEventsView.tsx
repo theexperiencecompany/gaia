@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 
-import { GoogleCalendarIcon } from "@/components";
+import { CalendarUpload01Icon, GoogleCalendarIcon } from "@/icons";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import { CalendarItem } from "@/types/api/calendarApiTypes";
@@ -136,7 +136,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
   return (
     <BaseCardView
       title="Upcoming events"
-      icon={<GoogleCalendarIcon className="h-5 w-5 text-zinc-500" />}
+      icon={<CalendarUpload01Icon className="h-6 w-6 text-zinc-400" />}
       isFetching={isFetching}
       error={error}
       isEmpty={!hasEvents}

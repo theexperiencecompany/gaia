@@ -87,7 +87,7 @@ export const EventCard = ({
             "Confirm"
           ) : status === "completed" ? (
             <>
-              {Icon && <Tick02Icon width={18} color={undefined} />}
+              {Icon && <Tick02Icon width={18} />}
               {completedLabel}
             </>
           ) : (

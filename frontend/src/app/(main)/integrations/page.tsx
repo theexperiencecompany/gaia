@@ -30,7 +30,7 @@ export default function IntegrationsPage() {
   useEffect(() => {
     setHeader(
       <HeaderTitle
-        icon={<ConnectIcon width={20} height={20} color={undefined} />}
+        icon={<ConnectIcon width={20} height={20} />}
         text="Integrations"
       />,
     );

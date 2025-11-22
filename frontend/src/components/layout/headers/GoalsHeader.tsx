@@ -28,7 +28,7 @@ export default function GoalsHeader() {
     <>
       <div className="flex w-full items-center justify-between">
         <HeaderTitle
-          icon={<Target02Icon width={20} height={20} color={undefined} />}
+          icon={<Target02Icon width={20} height={20} />}
           text="Goals"
         />
 

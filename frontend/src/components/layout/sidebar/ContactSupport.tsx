@@ -5,7 +5,7 @@ import { useDisclosure } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
 
 import { ContactSupportModal } from "@/features/support";
-import { BubbleChatQuestionIcon } from "@/icons";
+import { ChatQuestionIcon, QuestionIcon } from "@/icons";
 
 export default function ContactSupport() {
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
@@ -20,7 +20,7 @@ export default function ContactSupport() {
             radius="sm"
             onPress={onOpen}
           >
-            <BubbleChatQuestionIcon width={23} height={23} color={undefined} />
+            <ChatQuestionIcon width={20} height={20} />
             <div className="w-full py-2 text-left text-sm text-wrap">
               Need Support?
             </div>

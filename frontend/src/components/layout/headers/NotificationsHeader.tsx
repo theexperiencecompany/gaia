@@ -23,7 +23,7 @@ export default function NotificationsHeader({
     <div className="flex w-full items-center justify-between">
       <div className="flex w-full items-center justify-between">
         <HeaderTitle
-          icon={<NotificationIcon width={20} height={20} color={undefined} />}
+          icon={<NotificationIcon width={20} height={20} />}
           text="Notifications"
         />
 

@@ -1,9 +1,8 @@
 import React from "react";
 
-import { Gmail } from "@/components";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import EmailListCard from "@/features/mail/components/EmailListCard";
-import { Loading02Icon } from '@/icons';
+import { Loading02Icon, InboxUnreadIcon, Gmail } from "@/icons";
 import { EmailData, EmailFetchData } from "@/types/features/mailTypes";
 
 interface UnreadEmailsViewProps {
@@ -47,7 +46,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
   return (
     <BaseCardView
       title="Unread emails"
-      icon={<Gmail className="h-5 w-5 text-zinc-500" />}
+      icon={<InboxUnreadIcon className="h-6 w-6 text-zinc-400" />}
       isFetching={isFetching}
       error={error?.message}
       isEmpty={isEmpty}

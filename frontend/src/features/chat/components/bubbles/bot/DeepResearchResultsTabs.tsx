@@ -2,8 +2,12 @@ import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Tab, Tabs } from "@heroui/tabs";
 import { useState } from "react";
 
-import { ArrowUpRight01Icon, LinkBackwardIcon, SearchIcon } from '@/icons';
-import { InternetIcon } from "@/icons";
+import {
+  ArrowUpRight03Icon,
+  InternetIcon,
+  LinkBackwardIcon,
+  SearchIcon,
+} from "@/icons";
 import {
   DeepResearchResults,
   EnhancedWebResult,
@@ -83,7 +87,7 @@ export default function DeepResearchResultsTabs({
                 key="metadata"
                 title={
                   <div className="flex items-center space-x-2">
-                    <InternetIcon color={undefined} />
+                    <InternetIcon />
                     <span>Search Info</span>
                   </div>
                 }
@@ -150,7 +154,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
                 className="group relative block"
               >
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition group-hover:opacity-100">
-                  <ArrowUpRight01Icon className="h-8 w-8 text-white" />
+                  <ArrowUpRight03Icon className="h-8 w-8 text-white" />
                 </div>
               </a>
             </div>

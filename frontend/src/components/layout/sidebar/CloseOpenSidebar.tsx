@@ -28,13 +28,11 @@ function CloseOpenSidebarBtn({
         <Menu02Icon
           className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary"
           height="24"
-          color={undefined}
         />
       ) : (
         <SidebarLeftIcon
           className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary"
           height="24"
-          color={undefined}
         />
       )}
     </Button>

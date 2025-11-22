@@ -19,7 +19,12 @@ import Spinner from "@/components/ui/shadcn/spinner";
 import GmailBody from "@/features/mail/components/GmailBody";
 import { useEmailSummary } from "@/features/mail/hooks/useEmailAnalysis";
 import { parseEmail } from "@/features/mail/utils/mailUtils";
-import { ArrowLeftDoubleIcon, ArrowTurnBackwardIcon, RemoveCircleIcon,SentIcon } from '@/icons';
+import {
+  ArrowLeftDoubleIcon,
+  ArrowTurnBackwardIcon,
+  RemoveCircleIcon,
+  SentIcon,
+} from "@/icons";
 import { MagicWand05Icon, StarsIcon } from "@/icons";
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import { EmailData, EmailImportanceSummary } from "@/types/features/mailTypes";
@@ -52,12 +57,7 @@ function AISummary({
             variant="flat"
             color="primary"
           >
-            <StarsIcon
-              width={17}
-              height={17}
-              color={undefined}
-              fill={"#00bbff"}
-            />
+            <StarsIcon width={17} height={17} fill={"#00bbff"} />
             <span>Loading AI Analysis...</span>
           </Chip>
         </div>
@@ -81,12 +81,7 @@ function AISummary({
           variant="flat"
           color="primary"
         >
-          <StarsIcon
-            width={17}
-            height={17}
-            color={undefined}
-            fill={"#00bbff"}
-          />
+          <StarsIcon width={17} height={17} fill={"#00bbff"} />
           <span>GAIA AI Analysis</span>
         </Chip>
       </div>
@@ -320,7 +315,7 @@ export default function ViewEmail({
               <Button
                 color="primary"
                 className="font-medium"
-                startContent={<MagicWand05Icon color={undefined} />}
+                startContent={<MagicWand05Icon />}
                 isLoading={isLoadingAnalysis}
                 onPress={handleAnalyzeEmail}
                 isDisabled={isLoadingAnalysis}
@@ -466,7 +461,9 @@ export default function ViewEmail({
                 <div className="mt-4 border-t-2 border-zinc-700 pt-4">
                   <div className="mb-2 flex items-center justify-between">
                     <div className="text-sm">
-                      <span className="font-medium">ArrowTurnBackwardIcon to: </span>
+                      <span className="font-medium">
+                        ArrowTurnBackwardIcon to:{" "}
+                      </span>
                       <span className="text-gray-400">
                         {parseEmail(replyTo.from).name ||
                           parseEmail(replyTo.from).email}

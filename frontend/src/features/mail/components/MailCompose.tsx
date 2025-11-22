@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/shadcn/dropdown-menu";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useEmailComposition } from "@/features/mail/hooks/useEmailComposition";
-import { AlertCircleIcon, ArrowDown01Icon,Tick02Icon } from '@/icons';
+import { AlertCircleIcon, ArrowDown01Icon, Tick02Icon } from "@/icons";
 import { AiSearch02Icon, BrushIcon, Sent02Icon, SentIcon } from "@/icons";
 
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
@@ -124,7 +124,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                 color="primary"
                 onPress={() => setIsAiModalOpen(true)}
               >
-                <AiSearch02Icon color={undefined} width={19} />
+                <AiSearch02Icon width={19} />
               </Button>
             </div>
 
@@ -148,7 +148,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                         size="sm"
                       >
                         <div className="flex flex-row gap-1">
-                          <BrushIcon color={undefined} width={20} height={20} />
+                          <BrushIcon width={20} height={20} />
                           <span className="font-medium">
                             Writing Style:
                           </span>{" "}
@@ -158,7 +158,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                                 ?.label
                             }
                           </span>
-                          <ArrowDown01Icon color={undefined} width={20} />
+                          <ArrowDown01Icon width={20} />
                         </div>
                       </ShadcnButton>
                     </DropdownMenuTrigger>
@@ -176,7 +176,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                             {style.label}
                             {writingStyles.find((s) => s.id === writingStyle)
                               ?.label === style.label && (
-                              <Tick02Icon color={undefined} width={20} height={20} />
+                              <Tick02Icon width={20} height={20} />
                             )}
                           </div>
                         </DropdownMenuItem>
@@ -194,7 +194,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                         size="sm"
                       >
                         <div className="flex flex-row gap-1">
-                          <BrushIcon color={undefined} width={20} height={20} />
+                          <BrushIcon width={20} height={20} />
                           <span className="font-medium">
                             Content Length:
                           </span>{" "}
@@ -203,7 +203,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                               (opt) => opt.id === contentLength,
                             )?.label || "None"}
                           </span>
-                          <ArrowDown01Icon color={undefined} width={20} />
+                          <ArrowDown01Icon width={20} />
                         </div>
                       </ShadcnButton>
                     </DropdownMenuTrigger>
@@ -220,7 +220,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                           <div className="flex w-full items-center justify-between">
                             {option.label}
                             {contentLength === option.id && (
-                              <Tick02Icon color={undefined} width={20} />
+                              <Tick02Icon width={20} />
                             )}
                           </div>
                         </DropdownMenuItem>
@@ -238,14 +238,14 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                         size="sm"
                       >
                         <div className="flex flex-row gap-1">
-                          <BrushIcon color={undefined} width={20} height={20} />
+                          <BrushIcon width={20} height={20} />
                           <span className="font-medium">Clarity:</span>{" "}
                           <span>
                             {clarityOptions.find(
                               (opt) => opt.id === clarityOption,
                             )?.label || "None"}
                           </span>
-                          <ArrowDown01Icon color={undefined} width={20} />
+                          <ArrowDown01Icon width={20} />
                         </div>
                       </ShadcnButton>
                     </DropdownMenuTrigger>
@@ -262,7 +262,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                           <div className="flex w-full items-center justify-between">
                             {option.label}
                             {clarityOption === option.id && (
-                              <Tick02Icon color={undefined} width={20} />
+                              <Tick02Icon width={20} />
                             )}
                           </div>
                         </DropdownMenuItem>
@@ -312,11 +312,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                       {!loading && (
                         <>
                           AI Draft
-                          <SentIcon
-                            color={undefined}
-                            width={25}
-                            className="min-w-[25px]"
-                          />
+                          <SentIcon width={25} className="min-w-[25px]" />
                         </>
                       )}
                     </div>
@@ -328,7 +324,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                 <ButtonGroup color="primary">
                   <Button className="text-medium">
                     Send
-                    <Sent02Icon color={undefined} width={23} height={23} />
+                    <Sent02Icon width={23} height={23} />
                   </Button>
                 </ButtonGroup>
               </div>

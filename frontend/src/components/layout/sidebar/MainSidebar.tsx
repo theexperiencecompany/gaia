@@ -41,7 +41,7 @@ export default function Sidebar() {
           className="mb-4 flex justify-start text-sm font-medium text-primary"
           variant="flat"
         >
-          <BubbleChatAddIcon color={undefined} width={18} height={18} />
+          <BubbleChatAddIcon width={18} height={18} />
           New Chat
         </Button>
       </div>

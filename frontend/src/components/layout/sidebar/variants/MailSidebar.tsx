@@ -28,7 +28,7 @@ type MailButtonProps = {
 function MailButton({ label, Icon }: MailButtonProps) {
   return (
     <Button
-      startContent={<Icon color={undefined} width={21} height={21} />}
+      startContent={<Icon width={21} height={21} />}
       variant="light"
       radius="sm"
       size="sm"
@@ -67,7 +67,7 @@ export default function EmailSidebar() {
             onPress={() => setOpen(true)}
             variant="flat"
           >
-            <QuillWrite01Icon color={undefined} width={18} height={18} />
+            <QuillWrite01Icon width={18} height={18} />
             Compose Email
           </Button>
         </div>

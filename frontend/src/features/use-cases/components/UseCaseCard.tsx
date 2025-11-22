@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflowCard";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
-import { ArrowUpRight } from "@/icons";
+import { ArrowUpRight03Icon } from "@/icons";
 import { posthog } from "@/lib";
 import { useAppendToInput } from "@/stores/composerStore";
 
@@ -106,7 +106,7 @@ export default function UseCaseCard({
         className="w-fit text-primary"
         endContent={
           (isLoading ? undefined : action_type === "prompt") && (
-            <ArrowUpRight width={16} height={16} />
+            <ArrowUpRight03Icon width={16} height={16} />
           )
         }
         isLoading={isLoading}

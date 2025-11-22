@@ -3,7 +3,7 @@ import { Tooltip } from "@heroui/react";
 
 import { WorkflowSquare03Icon } from "@/components";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
-import { ReloadIcon, StarsIcon } from '@/icons';
+import { ReloadIcon, StarsIcon } from "@/icons";
 
 interface WorkflowHeaderProps {
   isRegenerating?: boolean;
@@ -20,9 +20,7 @@ export default function WorkflowHeader({
     <div className="flex w-full items-center justify-between">
       <div className="flex items-center gap-2">
         <HeaderTitle
-          icon={
-            <WorkflowSquare03Icon width={20} height={20} color={undefined} />
-          }
+          icon={<WorkflowSquare03Icon width={20} height={20} />}
           text="Workflow"
         />
         {isRegenerating && (

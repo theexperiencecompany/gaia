@@ -114,7 +114,7 @@ export const Gmail: React.FC<IconProps> = (props) => {
 
 export const BubbleConversationChatIcon: React.FC<IconProps> = (props) => (
   <svg
-    color={"#9b9b9b"}
+    color={"currentColor"}
     fill={"none"}
     height={24}
     viewBox="0 0 24 24"
@@ -348,34 +348,6 @@ export const Dices: React.FC<IconProps> = (props) => (
   </svg>
 );
 
-export const ThreeDotsMenu: React.FC<IconProps> = (props) => (
-  <svg
-    fill="#9b9b9b"
-    height={18}
-    id="Capa_1"
-    transform="rotate(90)"
-    version="1.1"
-    viewBox="0 0 32.055 32.055"
-    width={18}
-    xmlSpace="preserve"
-    xmlns="http://www.w3.org/2000/svg"
-    xmlnsXlink="http://www.w3.org/1999/xlink"
-    {...props}
-  >
-    <g id="SVGRepo_bgCarrier" strokeWidth="0" />
-    <g
-      id="SVGRepo_tracerCarrier"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <g id="SVGRepo_iconCarrier">
-      <g>
-        <path d="M3.968,12.061C1.775,12.061,0,13.835,0,16.027c0,2.192,1.773,3.967,3.968,3.967c2.189,0,3.966-1.772,3.966-3.967 C7.934,13.835,6.157,12.061,3.968,12.061z M16.233,12.061c-2.188,0-3.968,1.773-3.968,3.965c0,2.192,1.778,3.967,3.968,3.967 s3.97-1.772,3.97-3.967C20.201,13.835,18.423,12.061,16.233,12.061z M28.09,12.061c-2.192,0-3.969,1.774-3.969,3.967 c0,2.19,1.774,3.965,3.969,3.965c2.188,0,3.965-1.772,3.965-3.965S30.278,12.061,28.09,12.061z" />
-      </g>
-    </g>
-  </svg>
-);
-
 export const StarFilledIcon: React.FC<IconProps> = (props) => (
   <svg
     width="20"
@@ -389,23 +361,5 @@ export const StarFilledIcon: React.FC<IconProps> = (props) => (
       d="M7.22303 0.665992C7.32551 0.419604 7.67454 0.419604 7.77702 0.665992L9.41343 4.60039C9.45663 4.70426 9.55432 4.77523 9.66645 4.78422L13.914 5.12475C14.18 5.14607 14.2878 5.47802 14.0852 5.65162L10.849 8.42374C10.7636 8.49692 10.7263 8.61176 10.7524 8.72118L11.7411 12.866C11.803 13.1256 11.5206 13.3308 11.2929 13.1917L7.6564 10.9705C7.5604 10.9119 7.43965 10.9119 7.34365 10.9705L3.70718 13.1917C3.47945 13.3308 3.19708 13.1256 3.25899 12.866L4.24769 8.72118C4.2738 8.61176 4.23648 8.49692 4.15105 8.42374L0.914889 5.65162C0.712228 5.47802 0.820086 5.14607 1.08608 5.12475L5.3336 4.78422C5.44573 4.77523 5.54342 4.70426 5.58662 4.60039L7.22303 0.665992Z"
       fill="currentColor"
     />
-  </svg>
-);
-
-export const ChevronsUpDown: React.FC<IconProps> = (props) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    {...props}
-  >
-    <path d="m7 15 5 5 5-5" />
-    <path d="m7 9 5-5 5 5" />
   </svg>
 );

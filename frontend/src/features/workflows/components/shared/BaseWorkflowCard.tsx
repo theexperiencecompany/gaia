@@ -3,7 +3,7 @@
 import { ReactNode } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { ArrowUpRight } from "@/icons";
+import { ArrowUpRight03Icon } from "@/icons";
 
 import { RunCountDisplay } from "./WorkflowCardComponents";
 
@@ -83,7 +83,7 @@ export default function BaseWorkflowCard({
       onClick={onClick}
     >
       {showArrowIcon && onClick && (
-        <ArrowUpRight
+        <ArrowUpRight03Icon
           className="absolute top-4 right-4 text-foreground-400 opacity-0 transition group-hover:opacity-100"
           width={25}
           height={25}

@@ -7,7 +7,7 @@ import { useMemo } from "react";
 
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import TodoModal from "@/features/todo/components/TodoModal";
-import { ArrowRight01Icon } from '@/icons';
+import { ArrowRight01Icon } from "@/icons";
 import { CheckmarkCircle02Icon } from "@/icons";
 import { useTodoStore } from "@/stores/todoStore";
 
@@ -66,7 +66,7 @@ export default function TodosHeader() {
     <div className="flex w-full items-center justify-between">
       <div className="flex items-center gap-2 pl-2 text-zinc-500">
         <Link href={"/todos"} className="flex items-center gap-2">
-          <CheckmarkCircle02Icon width={20} height={20} color={undefined} />
+          <CheckmarkCircle02Icon width={20} height={20} />
           <span>Todos</span>
         </Link>
         {pageTitle !== "Inbox" && (

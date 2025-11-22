@@ -53,7 +53,13 @@ interface MenuItem {
   };
 }
 
-export default function SettingsMenu({ children }: { children?: ReactNode }) {
+export default function SettingsMenu({
+  children,
+  onOpenChange,
+}: {
+  children?: ReactNode;
+  onOpenChange?: (isOpen: boolean) => void;
+}) {
   const router = useRouter();
   const { confirmationProps } = useConfirmation();
 
@@ -217,6 +223,7 @@ export default function SettingsMenu({ children }: { children?: ReactNode }) {
         placement="right"
         className="bg-[#141414] text-foreground dark shadow-xl"
         offset={21}
+        onOpenChange={onOpenChange}
       >
         <DropdownTrigger>{children}</DropdownTrigger>
         <DropdownMenu aria-label="Settings Menu" variant="faded">

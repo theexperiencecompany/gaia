@@ -10,8 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/shadcn/dropdown-menu";
 import { useLoading } from "@/features/chat/hooks/useLoading";
-import { Tick02Icon } from '@/icons';
-import { AttachmentIcon, PlusSignIcon, ToolsIcon } from '@/icons';
+import { Tick02Icon } from "@/icons";
+import { AttachmentIcon, PlusSignIcon, ToolsIcon } from "@/icons";
 import { posthog } from "@/lib/posthog";
 import { cn } from "@/lib/utils";
 import { SearchMode } from "@/types/shared";
@@ -197,7 +197,6 @@ export default function ComposerLeft({
           >
             <ToolsIcon
               className="min-h-[20px] min-w-[20px] fill-zinc-400"
-              color={undefined}
               width={30}
               height={30}
             />

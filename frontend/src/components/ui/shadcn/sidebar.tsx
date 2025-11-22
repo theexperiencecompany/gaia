@@ -273,10 +273,7 @@ function SidebarTrigger({
       }}
       {...props}
     >
-      <SidebarLeft01Icon
-        color={undefined}
-        className="max-h-5 min-h-5 max-w-5 min-w-5"
-      />
+      <SidebarLeft01Icon className="max-h-5 min-h-5 max-w-5 min-w-5" />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   );

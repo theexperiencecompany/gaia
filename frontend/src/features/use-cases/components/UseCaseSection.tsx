@@ -9,6 +9,11 @@ import { type UseCase } from "@/features/use-cases/types";
 import { Workflow, workflowApi } from "@/features/workflows/api/workflowApi";
 import WorkflowCard from "@/features/workflows/components/WorkflowCard";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
+import {
+  StarAward01Icon,
+  StarIcon,
+  WorkflowCircle03Icon,
+} from "@/components/shared/icons";
 
 // Register GSAP plugin
 gsap.registerPlugin(ScrollTrigger);
@@ -228,6 +233,13 @@ export default function UseCaseSection({
             color={selectedCategory === category ? "primary" : "default"}
             className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
             size="lg"
+            startContent={
+              category === "featured" ? (
+                <StarAward01Icon width={18} height={18} />
+              ) : category === "workflows" ? (
+                <WorkflowCircle03Icon width={18} height={18} />
+              ) : undefined
+            }
             onClick={() => handleCategoryClick(category as string)}
           >
             {category === "all"

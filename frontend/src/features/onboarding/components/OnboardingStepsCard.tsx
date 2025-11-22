@@ -3,7 +3,13 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Checkbox } from "@heroui/checkbox";
 
-import { CalendarIcon, Comment01Icon, Mail01Icon, StarsIcon, WorkflowSquare03Icon } from '@/icons';
+import {
+  CalendarAdd01Icon,
+  BubbleChatAddIcon,
+  MailAdd01Icon,
+  StarsIcon,
+  WorkflowCircle03Icon,
+} from "@/icons";
 
 interface OnboardingStep {
   id: string;
@@ -16,31 +22,25 @@ const steps: OnboardingStep[] = [
   {
     id: "email",
     label: "Create an email",
-    icon: <Mail01Icon size={16} />,
+    icon: <MailAdd01Icon size={16} />,
     completed: true,
   },
   {
     id: "calendar",
     label: "Create a calendar event",
-    icon: <CalendarIcon size={16} />,
+    icon: <CalendarAdd01Icon size={16} />,
     completed: false,
   },
   {
     id: "workflow",
     label: "Create a workflow",
-    icon: <WorkflowSquare03Icon size={16} />,
+    icon: <WorkflowCircle03Icon size={16} />,
     completed: false,
   },
   {
     id: "chat",
     label: "Start a conversation",
-    icon: <Comment01Icon size={16} />,
-    completed: false,
-  },
-  {
-    id: "explore",
-    label: "Explore AI features",
-    icon: <StarsIcon size={16} />,
+    icon: <BubbleChatAddIcon size={16} />,
     completed: false,
   },
 ];
@@ -80,13 +80,20 @@ export default function OnboardingStepsCard() {
                   <Checkbox
                     isSelected={step.completed}
                     lineThrough
-                    className="m-0! border-dotted!"
+                    className="m-0! w-full! border-dotted!"
                     classNames={{
                       wrapper: ` ${step.completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-800 "}`,
+                      label: "w-[30vw]",
                     }}
                     radius="full"
                   >
-                    <span className="text-sm text-zinc-300">{step.label}</span>
+                    <div className="flex w-full items-center justify-between">
+                      <span className="text-sm text-zinc-300">
+                        {step.label}
+                      </span>
+                      <span></span>
+                      {step.icon}
+                    </div>
                   </Checkbox>
                 </div>
               </div>

@@ -223,10 +223,7 @@ const DummyComposer: React.FC = () => {
                   onClick={handleSlashButtonClick}
                   aria-label="Browse all tools"
                 >
-                  <Wrench01Icon
-                    className="min-h-[20px] min-w-[20px]"
-                    color={undefined}
-                  />
+                  <Wrench01Icon className="min-h-[20px] min-w-[20px]" />
                   {isSlashDropdownOpen && (
                     <span
                       className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary transition"

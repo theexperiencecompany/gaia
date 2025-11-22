@@ -56,7 +56,7 @@ export default function CalendarSidebar() {
         className="mb-4 flex justify-start text-sm font-medium text-primary"
         variant="flat"
       >
-        <CalendarAdd01Icon color={undefined} width={18} height={18} />
+        <CalendarAdd01Icon width={18} height={18} />
         New Event
       </Button>
 

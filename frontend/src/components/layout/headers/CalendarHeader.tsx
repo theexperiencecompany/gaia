@@ -6,7 +6,7 @@ import { Select, SelectItem } from "@heroui/select";
 import React, { useEffect } from "react";
 
 import { CalendarAdd01Icon, CalendarIcon } from "@/components/shared";
-import { ArrowLeft01Icon, ArrowRight01Icon } from '@/icons';
+import { ArrowLeft01Icon, ArrowRight01Icon } from "@/icons";
 import {
   useCreateEventAction,
   useDaysToShow,
@@ -85,7 +85,7 @@ export default function CalendarHeader() {
     <div className="flex w-full items-center justify-between">
       <div className="flex items-center gap-3">
         <HeaderTitle
-          icon={<CalendarIcon width={20} height={20} color={undefined} />}
+          icon={<CalendarIcon width={20} height={20} />}
           text={`Calendar${visibleMonth && visibleYear ? ` - ${visibleMonth} ${visibleYear}` : ""}`}
         />
 
