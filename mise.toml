@@ -15,7 +15,7 @@ python = "3.11"
 node = "22"
 "npm:mintlify" = "latest"
 prek = "latest"
-uv = "latest" 
+uv = "latest"
 
 [env]
 _.python.venv = { path = "backend/.venv", create = true }
@@ -91,6 +91,32 @@ run = ["mise -C backend format", "mise -C frontend format"]
 [tasks.clean]
 description = "Clean both backend and frontend"
 run = ["mise -C backend clean", "mise -C frontend clean"]
+
+# Pre-commit hooks (workspace mode)
+[tasks."pre-commit"]
+description = "Run all pre-commit checks for both backend and frontend (workspace mode)"
+run = "prek run --all-files"
+
+[tasks."pre-commit:install"]
+description = "Install pre-commit hooks using prek"
+run = "prek install"
+alias = "setup:precommit"
+
+[tasks."pre-commit:run"]
+description = "Run pre-commit hooks on staged files"
+run = "prek run"
+
+[tasks."pre-commit:backend"]
+description = "Run pre-commit checks for backend only"
+run = "prek run backend/"
+
+[tasks."pre-commit:frontend"]
+description = "Run pre-commit checks for frontend only"
+run = "prek run frontend/"
+
+[tasks."pre-commit:uninstall"]
+description = "Uninstall pre-commit hooks"
+run = "prek uninstall"
 
 [tasks.docs]
 description = "Run the mintlify documentation server"

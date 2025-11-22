@@ -23,9 +23,8 @@ export const useDeleteConversation = () => {
   return useCallback(
     async (conversationId: string) => {
       const snapshot = useChatStore.getState();
-      const conversation: IConversation | undefined = snapshot.conversations.find(
-        (item) => item.id === conversationId,
-      );
+      const conversation: IConversation | undefined =
+        snapshot.conversations.find((item) => item.id === conversationId);
       const messages: IMessage[] =
         snapshot.messagesByConversation[conversationId] ?? [];
 
@@ -36,10 +35,7 @@ export const useDeleteConversation = () => {
         chatApi.deleteConversation(conversationId),
       ]);
 
-      if (
-        dbResult.status === "fulfilled" &&
-        apiResult.status === "fulfilled"
-      ) {
+      if (dbResult.status === "fulfilled" && apiResult.status === "fulfilled") {
         return;
       }
 

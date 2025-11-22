@@ -179,4 +179,3 @@ export const getEventDurationText = (
     return "Duration unknown";
   }
 };
-

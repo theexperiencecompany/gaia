@@ -1,8 +1,4 @@
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-} from "@heroui/modal";
+import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import Image from "next/image";
 
 import { useImageDialog } from "@/stores/uiStore";

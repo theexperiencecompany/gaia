@@ -8,12 +8,7 @@ import {
   DropdownSection,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import {
-  BookIcon,
-  ChevronRight,
-  CircleArrowUp,
-  LogOut,
-} from "lucide-react";
+import { BookIcon, ChevronRight, CircleArrowUp, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ReactNode, useState } from "react";
 

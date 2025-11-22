@@ -1,6 +1,4 @@
-import {
-  CalendarEditOptions,
-} from "@/types/features/calendarTypes";
+import { CalendarEditOptions } from "@/types/features/calendarTypes";
 
 import { AnyCalendarEvent } from "./eventTypeGuards";
 

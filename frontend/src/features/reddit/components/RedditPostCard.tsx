@@ -1,11 +1,7 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
-import {
-  ArrowBigUp,
-  ExternalLink,
-  MessageCircle,
-} from "lucide-react";
+import { ArrowBigUp, ExternalLink, MessageCircle } from "lucide-react";
 
 import { RedditPostData } from "@/types/features/redditTypes";
 

@@ -35,7 +35,6 @@ export const ChatWithMessages: React.FC<ChatWithMessagesProps> = ({
   dragHandlers,
   composerProps,
 }) => {
-
   return (
     <div className="flex h-full flex-col">
       {/* Scrollable chat content */}

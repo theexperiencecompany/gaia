@@ -56,11 +56,23 @@ export default function RightSide({
       return `Send with ${formattedToolName}`;
     }
 
-    if (hasFiles && !hasText && !hasSelectedTool && !hasSelectedWorkflow && !hasSelectedCalendarEvent) {
+    if (
+      hasFiles &&
+      !hasText &&
+      !hasSelectedTool &&
+      !hasSelectedWorkflow &&
+      !hasSelectedCalendarEvent
+    ) {
       return `Send with ${uploadedFiles.length} file${uploadedFiles.length > 1 ? "s" : ""}`;
     }
 
-    if (!hasText && !hasSelectedTool && !hasSelectedWorkflow && !hasFiles && !hasSelectedCalendarEvent) {
+    if (
+      !hasText &&
+      !hasSelectedTool &&
+      !hasSelectedWorkflow &&
+      !hasFiles &&
+      !hasSelectedCalendarEvent
+    ) {
       return "Message requires content";
     }
 
@@ -90,7 +102,11 @@ export default function RightSide({
           color={
             isLoading
               ? "default"
-              : hasText || hasSelectedTool || hasSelectedWorkflow || hasFiles || hasSelectedCalendarEvent
+              : hasText ||
+                  hasSelectedTool ||
+                  hasSelectedWorkflow ||
+                  hasFiles ||
+                  hasSelectedCalendarEvent
                 ? "primary"
                 : "default"
           }
@@ -104,7 +120,11 @@ export default function RightSide({
           ) : (
             <ArrowUp
               color={
-                hasText || hasSelectedTool || hasSelectedWorkflow || hasFiles || hasSelectedCalendarEvent
+                hasText ||
+                hasSelectedTool ||
+                hasSelectedWorkflow ||
+                hasFiles ||
+                hasSelectedCalendarEvent
                   ? "black"
                   : "gray"
               }

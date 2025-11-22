@@ -38,43 +38,43 @@ export const useConversation = () => {
   // Get single optimistic message for new conversations (before conversation ID exists)
   const optimisticMessage = useChatStore((state) => state.optimisticMessage);
 
-    const convoMessages = useMemo(() => {
-      // Get messages from IndexedDB for the active conversation
-      const dbMessages = activeConversationId
-        ? (messagesByConversation[activeConversationId] ?? [])
-        : [];
+  const convoMessages = useMemo(() => {
+    // Get messages from IndexedDB for the active conversation
+    const dbMessages = activeConversationId
+      ? (messagesByConversation[activeConversationId] ?? [])
+      : [];
 
-      // Convert IndexedDB messages to MessageType
-      const messages = dbMessages.map(mapStoredMessageToConversationMessage);
+    // Convert IndexedDB messages to MessageType
+    const messages = dbMessages.map(mapStoredMessageToConversationMessage);
 
-      // Only add optimistic message for NEW conversations (no activeConversationId)
-      // For existing conversations, messages are already in IndexedDB with optimistic flag
-      if (
-        optimisticMessage &&
-        !activeConversationId &&
-        optimisticMessage.conversationId === null
-      ) {
-        const optimisticMsg: MessageType = {
-          type:
-            optimisticMessage.role === "user"
-              ? ("user" as const)
-              : ("bot" as const),
-          response: optimisticMessage.content,
-          message_id: optimisticMessage.id,
-          date: optimisticMessage.createdAt?.toISOString(),
-          fileIds: optimisticMessage.fileIds,
-          fileData: optimisticMessage.fileData,
-          selectedTool: optimisticMessage.toolName ?? undefined,
-          toolCategory: optimisticMessage.toolCategory ?? undefined,
-          selectedWorkflow: undefined,
-          loading: false,
-        };
+    // Only add optimistic message for NEW conversations (no activeConversationId)
+    // For existing conversations, messages are already in IndexedDB with optimistic flag
+    if (
+      optimisticMessage &&
+      !activeConversationId &&
+      optimisticMessage.conversationId === null
+    ) {
+      const optimisticMsg: MessageType = {
+        type:
+          optimisticMessage.role === "user"
+            ? ("user" as const)
+            : ("bot" as const),
+        response: optimisticMessage.content,
+        message_id: optimisticMessage.id,
+        date: optimisticMessage.createdAt?.toISOString(),
+        fileIds: optimisticMessage.fileIds,
+        fileData: optimisticMessage.fileData,
+        selectedTool: optimisticMessage.toolName ?? undefined,
+        toolCategory: optimisticMessage.toolCategory ?? undefined,
+        selectedWorkflow: undefined,
+        loading: false,
+      };
 
-        return [...messages, optimisticMsg];
-      }
+      return [...messages, optimisticMsg];
+    }
 
-      return messages;
-    }, [activeConversationId, messagesByConversation, optimisticMessage]);
+    return messages;
+  }, [activeConversationId, messagesByConversation, optimisticMessage]);
 
   const updateConvoMessages = (
     updater: MessageType[] | ((oldMessages: MessageType[]) => MessageType[]),

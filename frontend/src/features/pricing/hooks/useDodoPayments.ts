@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback,useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
 import { pricingApi } from "../api/pricingApi";

@@ -92,7 +92,7 @@ export const getTimeBasedGreeting = (userName?: string): string => {
 
   const randomIndex = Math.floor(Math.random() * greetings.length);
   const template = greetings[randomIndex];
-  
+
   // Handle name replacement
   if (!userName || userName.trim() === "") {
     return template.replace("{name}", "");

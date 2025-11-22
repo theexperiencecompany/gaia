@@ -20,8 +20,8 @@
     "lint": "next lint",
     "lint:fix": "next lint --fix",
     "lint:export": "next lint --print-config . > .eslint-test.json",
-    "prepare": "husky",
-    "generate-barrels": "barrelsby --delete --directory ./src --location branch --exclude \"(src/app|src/features)\""
+    "generate-barrels": "barrelsby --delete --directory ./src --location branch --exclude \"(src/app|src/features)\"",
+    "lint:all": "prettier --write . && next lint --fix"
   },
   "dependencies": {
     "@databuddy/sdk": "^2.0.0",
@@ -221,7 +221,6 @@
     "eslint": "^9.34.0",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "eslint-plugin-unused-imports": "^4.2.0",
-    "husky": "^9.1.7",
     "knip": "^5.63.0",
     "prettier": "^3.6.2",
     "schema-dts": "^1.1.5",

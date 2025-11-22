@@ -8,22 +8,23 @@ import { EmailsResponse } from "@/types/features/mailTypes";
  * Hook for handling infinite loading of emails
  */
 export const useInfiniteEmails = () => {
-  const { data, isLoading, fetchNextPage, hasNextPage, error } = useInfiniteQuery<
-    EmailsResponse,
-    Error,
-    InfiniteData<EmailsResponse>,
-    string[]
-  >({
-    queryKey: ["emails"],
-    queryFn: fetchEmails,
-    getNextPageParam: (lastPage) => lastPage.nextPageToken || undefined,
-    initialPageParam: undefined,
-    retry: 0, // Explicitly set to 0 to override global retry settings
-    refetchOnWindowFocus: false, // Prevent refetch on window focus
-    refetchOnReconnect: false, // Prevent refetch on network reconnect
-    refetchOnMount: false, // Prevent refetch on component mount
-    staleTime: Infinity, // Keep data fresh to prevent background refetching
-  });
+  const { data, isLoading, fetchNextPage, hasNextPage, error } =
+    useInfiniteQuery<
+      EmailsResponse,
+      Error,
+      InfiniteData<EmailsResponse>,
+      string[]
+    >({
+      queryKey: ["emails"],
+      queryFn: fetchEmails,
+      getNextPageParam: (lastPage) => lastPage.nextPageToken || undefined,
+      initialPageParam: undefined,
+      retry: 0, // Explicitly set to 0 to override global retry settings
+      refetchOnWindowFocus: false, // Prevent refetch on window focus
+      refetchOnReconnect: false, // Prevent refetch on network reconnect
+      refetchOnMount: false, // Prevent refetch on component mount
+      staleTime: Infinity, // Keep data fresh to prevent background refetching
+    });
 
   const emails = data
     ? data.pages.flatMap((page: EmailsResponse) => page.emails)

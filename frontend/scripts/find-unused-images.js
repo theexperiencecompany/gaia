@@ -34,8 +34,13 @@ for (const file of configFiles) {
   for (const image of imageFiles) {
     const relativePath = image.replace(publicDir, "");
     // For manifest files, also check without leading slash
-    const relativePathNoSlash = relativePath.startsWith("/") ? relativePath.slice(1) : relativePath;
-    if (content.includes(relativePath) || content.includes(relativePathNoSlash)) {
+    const relativePathNoSlash = relativePath.startsWith("/")
+      ? relativePath.slice(1)
+      : relativePath;
+    if (
+      content.includes(relativePath) ||
+      content.includes(relativePathNoSlash)
+    ) {
       usedImages.add(image);
     }
   }

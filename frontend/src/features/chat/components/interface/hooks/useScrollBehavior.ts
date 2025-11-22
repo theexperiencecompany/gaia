@@ -30,17 +30,20 @@ export const useScrollBehavior = (
     }
   }, []);
 
-  const handleScroll = useCallback((event: React.UIEvent) => {
-    if (!hasMessages) return;
+  const handleScroll = useCallback(
+    (event: React.UIEvent) => {
+      if (!hasMessages) return;
 
-    const target = event.target as HTMLDivElement;
-    const { scrollTop, scrollHeight, clientHeight } = target;
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    const isNearBottom = distanceFromBottom <= BOTTOM_THRESHOLD;
+      const target = event.target as HTMLDivElement;
+      const { scrollTop, scrollHeight, clientHeight } = target;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      const isNearBottom = distanceFromBottom <= BOTTOM_THRESHOLD;
 
-    setShouldAutoScroll(isNearBottom);
-    setShouldShowScrollButton(!isNearBottom && scrollHeight > clientHeight);
-  }, [hasMessages, BOTTOM_THRESHOLD]);
+      setShouldAutoScroll(isNearBottom);
+      setShouldShowScrollButton(!isNearBottom && scrollHeight > clientHeight);
+    },
+    [hasMessages, BOTTOM_THRESHOLD],
+  );
 
   // Auto-scroll when new messages arrive (only if user is at bottom)
   useEffect(() => {

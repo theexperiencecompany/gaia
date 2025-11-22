@@ -17,9 +17,7 @@ import type {
   CalendarFetchData,
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
-import type {
-  IntegrationConnectionData,
-} from "@/types/features/integrationTypes";
+import type { IntegrationConnectionData } from "@/types/features/integrationTypes";
 import type {
   ContactData,
   EmailFetchData,

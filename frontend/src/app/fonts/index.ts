@@ -3,7 +3,7 @@ import { instrumentSerif } from "./instrument-serif";
 import { inter } from "./inter";
 
 // Export fonts
-export { instrumentSerif,inter };
+export { instrumentSerif, inter };
 
 // Set Inter as the default font
 export const defaultFont = inter;

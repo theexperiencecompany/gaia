@@ -1,63 +1,25 @@
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.11.4
-    hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
-        stages: [pre-commit]
-      - id: ruff-format
-        stages: [pre-commit]
-
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-      - id: trailing-whitespace
-        files: ^backend/ # Only run on backend/
       - id: check-yaml
-        files: ^backend/
       - id: check-json
-        files: ^backend/
+        exclude: ^(frontend/.*tsconfig.*\.json|\.vscode/.*\.json)$
       - id: check-toml
-        files: ^backend/
       - id: check-merge-conflict
-        files: ^backend/
       - id: check-added-large-files
-        files: ^backend/
         exclude: ^mcp\.txt$
       - id: check-ast
-        files: ^backend/
       - id: check-docstring-first
-        files: ^backend/
       - id: check-case-conflict
       - id: detect-private-key
-        files: ^backend/
+      - id: check-json
+        exclude: ^(frontend/.*tsconfig.*\.json|\.vscode/.*\.json)$
 
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.8.3
-    hooks:
-      - id: bandit
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.9.0
-    # If have error of no optional types allowed, run command:
-    # uvx no_implicit_optional app
-    hooks:
-      - id: mypy
-        args: [--ignore-missing-imports]
-        # Install dependencies if you have issues of "Library stubs not installed"
-        additional_dependencies:
-          - types-redis
-          - types-requests
-          - types-pytz
-          - types-croniter
-
-  - repo: https://github.com/trailofbits/pip-audit
-    rev: v2.7.1
-    hooks:
-      - id: pip-audit
 
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.4.0
     hooks:
       - id: detect-secrets
-        exclude: ^(mcp\.txt|frontend/pnpm-lock\.yaml|docs/.*|.*\.env\.example)$
+        exclude: ^(frontend/pnpm-lock\.yaml|.*\.env\.example|docs/configuration/environment-variables.mdx)$
+

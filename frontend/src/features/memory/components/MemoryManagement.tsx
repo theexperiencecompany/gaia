@@ -7,13 +7,7 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Tab, Tabs } from "@heroui/tabs";
-import {
-  ChevronDown,
-  List,
-  Network,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { ChevronDown, List, Network, Plus, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";

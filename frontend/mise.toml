@@ -11,7 +11,7 @@ mprocs = "0.7.3"
 node = "22"
 
 [env]
-NEXT_PUBLIC_API_BASE_URL="http://localhost:8000/api/v1/"
+NEXT_PUBLIC_API_BASE_URL = "http://localhost:8000/api/v1/"
 
 [tasks.dev]
 description = "Run development server with Turbopack"
@@ -80,3 +80,36 @@ run = "pnpm knip"
 [tasks."lint:export"]
 description = "Export ESLint config for debugging"
 run = "pnpm lint:export"
+
+# Pre-commit tasks
+[tasks.precommit]
+description = "Run all prek checks (prettier, eslint, barrels, etc.)"
+run = "prek run --all-files"
+
+[tasks."precommit:prettier"]
+description = "Run prettier formatter (prek hook)"
+run = "prek run prettier"
+
+[tasks."precommit:eslint"]
+description = "Run eslint linter (prek hook)"
+run = "prek run eslint-frontend"
+
+[tasks."precommit:barrels"]
+description = "Generate barrel exports (prek hook)"
+run = "prek run generate-barrels"
+
+[tasks."precommit:trailing-whitespace"]
+description = "Check trailing whitespace (prek hook)"
+run = "prek run trailing-whitespace"
+
+[tasks."precommit:check-json"]
+description = "Check JSON files (prek hook)"
+run = "prek run check-json"
+
+[tasks."precommit:check-merge-conflict"]
+description = "Check for merge conflicts (prek hook)"
+run = "prek run check-merge-conflict"
+
+[tasks."precommit:detect-secrets"]
+description = "Detect secrets in codebase (prek hook)"
+run = "prek run detect-secrets"
