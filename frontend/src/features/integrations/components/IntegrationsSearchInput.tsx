@@ -1,7 +1,7 @@
 import { Input } from "@heroui/input";
 import React from "react";
 
-import { SearchIcon } from '@/icons';
+import { SearchIcon } from "@/icons";
 
 interface IntegrationsSearchInputProps {
   value: string;
@@ -22,7 +22,7 @@ export const IntegrationsSearchInput: React.FC<
         radius="full"
         startContent={<SearchIcon width={16} height={16} />}
         onValueChange={onChange}
-        placeholder="SearchIcon integrations..."
+        placeholder="Search integrations..."
       />
     </div>
   );

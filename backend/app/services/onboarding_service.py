@@ -1,17 +1,19 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+from bson import ObjectId
+from fastapi import HTTPException
+from pymongo import ReturnDocument
+
 from app.config.loggers import app_logger as logger
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import (
-    OnboardingData,
+    BioStatus,
+    OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
 )
 from app.utils.user_preferences_utils import format_user_preferences_for_agent
-from bson import ObjectId
-from fastapi import HTTPException
-from pymongo import ReturnDocument
 
 
 async def complete_onboarding(
@@ -52,6 +54,8 @@ async def complete_onboarding(
             "name": onboarding_data.name.strip(),
             "onboarding.completed": True,
             "onboarding.completed_at": datetime.now(timezone.utc),
+            "onboarding.phase": OnboardingPhase.PERSONALIZATION_PENDING,
+            "onboarding.bio_status": BioStatus.PENDING,
             "onboarding.preferences": preferences.model_dump(),
             "updated_at": datetime.now(timezone.utc),
         }

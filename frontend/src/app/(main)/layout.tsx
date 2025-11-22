@@ -20,7 +20,13 @@ import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
+import { apiService } from "@/lib/api";
+import { wsManager } from "@/lib/websocket";
 import { useHoloCardModalStore } from "@/stores/holoCardModalStore";
+import {
+  OnboardingPhase,
+  useOnboardingPhaseStore,
+} from "@/stores/onboardingStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useUIStoreSidebar } from "@/stores/uiStore";
 
@@ -50,23 +56,89 @@ export default function MainLayout({ children }: { children: ReactNode }) {
     openModal: openHoloCardModal,
     closeModal: closeHoloCardModal,
   } = useHoloCardModalStore();
+  const { phase: onboardingPhase, setPhase } = useOnboardingPhaseStore();
 
   // Check if user needs onboarding
   useOnboardingGuard();
   useBackgroundSync();
 
   // Determine visibility of onboarding UI elements:
-  // - hasCompletedInitialOnboarding: User finished name/profession/connections flow
-  // - shouldShowPersonalizationCard: Show context gathering card only if onboarding is complete
-  // - shouldShowGettingStartedCard: Always show for now (will be controlled later)
   const hasCompletedInitialOnboarding = user.onboarding?.completed === true;
-  const shouldShowPersonalizationCard = hasCompletedInitialOnboarding;
-  const shouldShowGettingStartedCard = hasCompletedInitialOnboarding;
+
+  // Initialize onboarding phase from backend on mount
+  useEffect(() => {
+    const initializePhase = async () => {
+      if (!hasCompletedInitialOnboarding) return;
+
+      try {
+        const data = await apiService.get<{ phase?: string }>(
+          "/oauth/onboarding/personalization",
+          { silent: true },
+        );
+
+        if (data.phase) {
+          console.log("[MainLayout] Initialized phase from API:", data.phase);
+          setPhase(data.phase as OnboardingPhase);
+        }
+      } catch (error) {
+        console.error("[MainLayout] Failed to fetch initial phase:", error);
+      }
+    };
+
+    initializePhase();
+  }, [hasCompletedInitialOnboarding, setPhase]);
+
+  // Listen for WebSocket phase updates
+  useEffect(() => {
+    const handlePhaseUpdate = (message: any) => {
+      if (message.type === "onboarding_phase_update" && message.data?.phase) {
+        console.log("[MainLayout] WebSocket phase update:", message.data.phase);
+        setPhase(message.data.phase as OnboardingPhase);
+      }
+    };
+
+    console.log(
+      "[MainLayout] Registering WebSocket listener for phase updates",
+    );
+    wsManager.on("onboarding_phase_update", handlePhaseUpdate);
+
+    return () => {
+      wsManager.off("onboarding_phase_update", handlePhaseUpdate);
+    };
+  }, [wsManager, setPhase]);
+
+  // Visibility logic based on phase from store
+  const shouldShowPersonalizationCard =
+    hasCompletedInitialOnboarding &&
+    onboardingPhase &&
+    (onboardingPhase === OnboardingPhase.PERSONALIZATION_PENDING ||
+      onboardingPhase === OnboardingPhase.PERSONALIZATION_COMPLETE);
+
+  const shouldShowGettingStartedCard =
+    hasCompletedInitialOnboarding &&
+    onboardingPhase &&
+    (onboardingPhase === OnboardingPhase.GETTING_STARTED ||
+      onboardingPhase === OnboardingPhase.COMPLETED);
+
+  // Log visibility decisions
+  useEffect(() => {
+    console.log("[MainLayout] Onboarding visibility state:", {
+      hasCompletedInitialOnboarding,
+      onboardingPhase,
+      shouldShowPersonalizationCard,
+      shouldShowGettingStartedCard,
+    });
+  }, [
+    hasCompletedInitialOnboarding,
+    onboardingPhase,
+    shouldShowPersonalizationCard,
+    shouldShowGettingStartedCard,
+  ]);
 
   // Auto-close sidebar on mobile when pathname changes
   useEffect(() => {
     if (isMobile && isMobileOpen) setMobileOpen(false);
-  }, [pathname, isMobile, isMobileOpen, setMobileOpen]);
+  }, [isMobile, isMobileOpen, setMobileOpen]);
 
   // Set default open state based on screen size
   useEffect(() => {

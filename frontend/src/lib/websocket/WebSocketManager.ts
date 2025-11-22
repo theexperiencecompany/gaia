@@ -51,7 +51,7 @@ class WebSocketManager {
       this.isIntentionalClose = false;
 
       this.ws.onopen = () => {
-        console.log("WebSocket connected");
+        console.log("[WebSocketManager] Connected successfully to:", this.url);
         this.reconnectAttempts = 0;
         this.connectionHandlers.forEach((handler) => handler());
       };
@@ -66,6 +66,8 @@ class WebSocketManager {
             return;
           }
 
+          console.log("[WebSocketManager] Received message:", message.type);
+
           // Notify all handlers for this message type
           const handlers = this.messageHandlers.get(message.type);
           if (handlers) {
@@ -78,18 +80,27 @@ class WebSocketManager {
             wildcardHandlers.forEach((handler) => handler(message));
           }
         } catch (error) {
-          console.error("Error parsing WebSocket message:", error);
+          console.error("[WebSocketManager] Error parsing message:", error);
           this.notifyError(error as Error);
         }
       };
 
       this.ws.onclose = (event) => {
-        console.log("WebSocket disconnected:", event.code, event.reason);
+        console.log(
+          "[WebSocketManager] Disconnected:",
+          event.code,
+          event.reason,
+          "intentional:",
+          this.isIntentionalClose,
+        );
         this.ws = null;
         this.disconnectionHandlers.forEach((handler) => handler());
 
         // Don't reconnect if close was intentional
         if (this.isIntentionalClose || event.code === 1000) {
+          console.log(
+            "[WebSocketManager] Not reconnecting (intentional close)",
+          );
           return;
         }
 
@@ -98,11 +109,11 @@ class WebSocketManager {
       };
 
       this.ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
+        console.error("[WebSocketManager] Connection error:", error);
         this.notifyError(new Error("WebSocket connection failed"));
       };
     } catch (error) {
-      console.error("Error creating WebSocket:", error);
+      console.error("[WebSocketManager] Error creating WebSocket:", error);
       this.notifyError(error as Error);
     }
   }
@@ -127,7 +138,10 @@ class WebSocketManager {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
     } else {
-      console.warn("WebSocket not connected, cannot send message");
+      console.warn(
+        "[WebSocketManager] Cannot send message - not connected. ReadyState:",
+        this.ws?.readyState,
+      );
     }
   }
 
@@ -178,7 +192,10 @@ class WebSocketManager {
 
   private attemptReconnect() {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error("Max reconnection attempts reached");
+      console.error(
+        "[WebSocketManager] Max reconnection attempts reached:",
+        this.maxReconnectAttempts,
+      );
       this.notifyError(new Error("Failed to reconnect to WebSocket"));
       return;
     }
@@ -187,7 +204,7 @@ class WebSocketManager {
     this.reconnectAttempts++;
 
     console.log(
-      `Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`,
+      `[WebSocketManager] Attempting to reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
     );
 
     this.reconnectTimeout = setTimeout(() => {

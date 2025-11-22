@@ -200,7 +200,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                   ref={inputRef}
                   value={search}
                   onValueChange={setSearch}
-                  placeholder="SearchIcon or run a command..."
+                  placeholder="Search or run a command..."
                   className={COMMAND_MENU_STYLES.input}
                 />
                 <Kbd keys={[modifierKeyName]}> K</Kbd>
@@ -211,7 +211,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                   {isSearching ? "Searching..." : "No results found."}
                 </Command.Empty>
 
-                {/* SearchIcon Results */}
+                {/* Search Results */}
                 {search && (
                   <>
                     {searchResults.conversations.length > 0 && (

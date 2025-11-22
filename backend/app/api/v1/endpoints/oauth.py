@@ -5,6 +5,20 @@ from urllib.parse import urlencode
 
 import httpx
 import pytz
+from bson import ObjectId
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
+from fastapi.responses import JSONResponse, RedirectResponse
+from workos import WorkOSClient
+
 from app.api.v1.dependencies.oauth_dependencies import (
     GET_USER_TZ_TYPE,
     get_current_user,
@@ -20,16 +34,18 @@ from app.config.oauth_config import (
 from app.config.settings import settings
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
+from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import users_collection
 from app.db.redis import delete_cache
 from app.models.oauth_models import IntegrationConfigResponse
 from app.models.user_models import (
+    BioStatus,
+    OnboardingPhaseUpdateRequest,
     OnboardingPreferences,
     OnboardingRequest,
     OnboardingResponse,
     UserUpdateResponse,
 )
-from bson import ObjectId
 from app.services.composio.composio_service import (
     COMPOSIO_SOCIAL_CONFIGS,
     get_composio_service,
@@ -43,19 +59,6 @@ from app.services.onboarding_service import (
 from app.services.user_service import update_user_profile
 from app.utils.oauth_utils import fetch_user_info_from_google, get_tokens_from_code
 from app.utils.redis_utils import RedisPoolManager
-from bson import ObjectId
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Depends,
-    File,
-    Form,
-    HTTPException,
-    Request,
-    UploadFile,
-)
-from fastapi.responses import JSONResponse, RedirectResponse
-from workos import WorkOSClient
 
 router = APIRouter()
 http_async_client = httpx.AsyncClient()
@@ -364,6 +367,49 @@ async def composio_callback(
         # Process Gmail emails to memory if this is a Gmail connection
         if integration_config.id == "gmail":
             logger.info(f"Starting Gmail email processing for user {user_id}")
+
+            # Check if user has completed onboarding and update bio_status to processing
+            try:
+                user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+                if user_doc and user_doc.get("onboarding", {}).get("completed"):
+                    current_bio_status = user_doc.get("onboarding", {}).get(
+                        "bio_status"
+                    )
+
+                    # If bio was generated without Gmail, update status to processing
+                    if current_bio_status in [BioStatus.NO_GMAIL, "no_gmail"]:
+                        await users_collection.update_one(
+                            {"_id": ObjectId(user_id)},
+                            {
+                                "$set": {
+                                    "onboarding.bio_status": BioStatus.PROCESSING,
+                                    "updated_at": datetime.now(timezone.utc),
+                                }
+                            },
+                        )
+                        logger.info(
+                            f"Updated bio_status to processing for user {user_id} "
+                            f"(was {current_bio_status})"
+                        )
+
+                        # Send WebSocket update to notify frontend
+                        try:
+                            await websocket_manager.send_to_user(
+                                user_id=user_id,
+                                message={
+                                    "type": "bio_status_update",
+                                    "data": {"bio_status": BioStatus.PROCESSING},
+                                },
+                            )
+                        except Exception as ws_error:
+                            logger.warning(
+                                f"Failed to send WebSocket update: {ws_error}"
+                            )
+            except Exception as e:
+                logger.error(
+                    f"Error updating bio_status for user {user_id}: {e}", exc_info=True
+                )
+
             background_tasks.add_task(_queue_gmail_processing, user_id)
 
         # Invalidate OAuth status cache for this user
@@ -635,11 +681,14 @@ async def complete_user_onboarding(
             user["user_id"], onboarding_data, user_timezone=tz_info[0]
         )
 
-        # Check if user has Gmail connected
-        user_doc = await users_collection.find_one({"_id": ObjectId(user["user_id"])})
-        has_gmail = bool(
-            user_doc and user_doc.get("gmail") and user_doc["gmail"].get("access_token")
+        # Check if user has Gmail connected via Composio
+        from app.services.composio.composio_service import get_composio_service
+
+        composio_service = get_composio_service()
+        connection_status = await composio_service.check_connection_status(
+            ["gmail"], user["user_id"]
         )
+        has_gmail = connection_status.get("gmail", False)
 
         if has_gmail:
             logger.info(
@@ -669,6 +718,75 @@ async def get_onboarding_status(user: dict = Depends(get_current_user)):
     """
     status = await get_user_onboarding_status(user["user_id"])
     return status
+
+
+@router.post("/onboarding/phase", response_model=dict)
+async def update_onboarding_phase(
+    request: OnboardingPhaseUpdateRequest, user: dict = Depends(get_current_user)
+):
+    """
+    Update the user's onboarding phase.
+    Used to track progress through onboarding stages.
+    """
+    try:
+        user_id = user.get("user_id")
+        phase = request.phase.value
+
+        logger.info(
+            f"[update_onboarding_phase] Updating phase to {phase} for user {user_id}"
+        )
+
+        # Update the phase in database
+        result = await users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "onboarding.phase": request.phase.value,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
+        )
+
+        if result.modified_count == 0:
+            logger.warning(
+                f"[update_onboarding_phase] No document modified for user {user_id}"
+            )
+            raise HTTPException(status_code=404, detail="User not found")
+
+        logger.info(
+            f"[update_onboarding_phase] Successfully updated phase to {phase} for user {user_id}, modified_count={result.modified_count}"
+        )
+
+        # Send WebSocket notification about phase update
+        try:
+            from app.websocket.websocket_manager import websocket_manager
+
+            await websocket_manager.send_to_user(
+                user_id=user_id,
+                message={
+                    "type": "onboarding_phase_update",
+                    "data": {"phase": phase},
+                },
+            )
+            logger.info(
+                f"[update_onboarding_phase] Sent WebSocket notification for phase update to {phase}"
+            )
+        except Exception as ws_error:
+            logger.warning(
+                f"[update_onboarding_phase] Failed to send WebSocket update: {ws_error}"
+            )
+
+        return {
+            "success": True,
+            "phase": phase,
+            "message": f"Onboarding phase updated to {phase}",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating onboarding phase: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update onboarding phase")
 
 
 @router.patch("/onboarding/preferences", response_model=dict)
@@ -702,10 +820,14 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
     Returns default values if personalization hasn't completed yet.
     """
     try:
-        from app.db.mongodb.collections import users_collection, workflows_collection
         from bson import ObjectId
 
+        from app.db.mongodb.collections import users_collection, workflows_collection
+
         user_id = user.get("user_id")
+        logger.info(
+            f"[get_onboarding_personalization] Fetching personalization for user {user_id}"
+        )
         user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
 
         if not user_doc:
@@ -713,16 +835,16 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
 
         onboarding = user_doc.get("onboarding", {})
         user_bio = onboarding.get("user_bio", "")
-
-        # Check if bio is a placeholder message
-        is_placeholder = (
-            not user_bio
-            or user_bio.startswith("Connect your Gmail")
-            or user_bio.startswith("Processing your insights")
+        # Check the phase to determine if personalization is complete
+        phase = onboarding.get("phase", "initial")
+        logger.info(
+            f"[get_onboarding_personalization] User {user_id} has phase: {phase}, bio_status: {onboarding.get('bio_status')}"
         )
-
-        # Personalization is complete only if house exists AND bio is not a placeholder
-        has_personalization = bool(onboarding.get("house")) and not is_placeholder
+        has_personalization = phase in [
+            "personalization_complete",
+            "getting_started",
+            "completed",
+        ]
 
         # Get stored metadata or calculate if not stored (for older users)
         account_number = onboarding.get("account_number")
@@ -761,20 +883,33 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             except Exception:
                 continue
 
-        # Determine what bio to show
+        # Determine what bio to show based on bio_status
+        bio_status = onboarding.get("bio_status", "pending")
         display_bio = user_bio
-        if is_placeholder:
-            # Check if user has Gmail to show appropriate message
-            integrations = user_doc.get("integrations", [])
-            has_gmail = any(i.get("id") == "gmail" for i in integrations)
+
+        # Override bio display based on status
+        if bio_status in ["processing", BioStatus.PROCESSING]:
+            display_bio = "Processing your insights... Please check back in a moment."
+        elif bio_status in ["pending", BioStatus.PENDING]:
+            # Check if user has Gmail via Composio to show appropriate message
+            from app.services.composio.composio_service import get_composio_service
+
+            composio_service = get_composio_service()
+            connection_status = await composio_service.check_connection_status(
+                ["gmail"], str(user_id)
+            )
+            has_gmail = connection_status.get("gmail", False)
             if has_gmail:
                 display_bio = (
                     "Processing your insights... Please check back in a moment."
                 )
             else:
-                display_bio = "Connect your Gmail to unlock your personalized GAIA bio"
+                display_bio = "Setting up your profile..."
+        # For "no_gmail" and "completed" status, use the actual bio content
+        # (no_gmail now has a default bio, completed has the full bio)
 
         return {
+            "phase": phase,
             "has_personalization": has_personalization,
             "house": onboarding.get("house", "Bluehaven"),
             "personality_phrase": onboarding.get(
@@ -807,8 +942,9 @@ async def get_public_holo_card(card_id: str):
     Returns basic profile info without sensitive data like workflows.
     """
     try:
-        from app.db.mongodb.collections import users_collection
         from bson import ObjectId
+
+        from app.db.mongodb.collections import users_collection
 
         if not ObjectId.is_valid(card_id):
             raise HTTPException(status_code=400, detail="Invalid card ID")

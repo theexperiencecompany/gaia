@@ -10,7 +10,7 @@ import { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
-import { Cancel01Icon,GridIcon, SearchIcon } from '@/icons';
+import { Cancel01Icon, GridIcon, SearchIcon } from "@/icons";
 import { posthog } from "@/lib/posthog";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
@@ -545,7 +545,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
               <div className="flex-1">
                 <Input
                   type="text"
-                  placeholder="SearchIcon tools..."
+                  placeholder="Search tools..."
                   value={searchQuery}
                   radius="full"
                   startContent={<SearchIcon size={16} />}

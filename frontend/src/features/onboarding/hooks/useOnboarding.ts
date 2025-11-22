@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { useUserActions } from "@/features/auth/hooks/useUser";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
@@ -15,6 +16,7 @@ export const useOnboarding = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const user = useUser();
+  const { setUser } = useUserActions();
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Force integration status refresh on this page to show connected state immediately
@@ -124,7 +126,6 @@ export const useOnboarding = () => {
       }, 500);
     }
   }, [
-    onboardingState.currentQuestionIndex,
     onboardingState.isProcessing,
     onboardingState.hasAnsweredCurrentQuestion,
   ]);
@@ -399,6 +400,19 @@ export const useOnboarding = () => {
         if (typeof window !== "undefined") {
           sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
         }
+
+        // Sync user store with the updated user data from backend
+        if (response.user) {
+          setUser({
+            name: response.user.name,
+            email: response.user.email,
+            profilePicture: response.user.picture,
+            timezone: response.user.timezone,
+            onboarding: response.user.onboarding,
+            selected_model: response.user.selected_model,
+          });
+        }
+        
         // Navigate to the main chat page
         router.push("/c");
       } else {

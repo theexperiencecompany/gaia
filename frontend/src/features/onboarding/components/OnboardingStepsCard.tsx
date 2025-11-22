@@ -10,6 +10,10 @@ import {
   StarsIcon,
   WorkflowCircle03Icon,
 } from "@/icons";
+import {
+  useOnboardingPhaseStore,
+  OnboardingPhase,
+} from "@/stores/onboardingStore";
 
 /**
  * OnboardingStepsCard - Getting Started checklist
@@ -19,7 +23,7 @@ import {
  * 2. Personalization (house, bio) - ContextGatheringLoader component
  * 3. Getting Started (create email, calendar, workflow, chat) - THIS COMPONENT ✓
  *
- * Currently always shown. Future: track completion state and allow dismissal.
+ * Shows when phase is GETTING_STARTED or COMPLETED.
  */
 
 interface OnboardingStep {
@@ -57,6 +61,23 @@ const steps: OnboardingStep[] = [
 ];
 
 export default function OnboardingStepsCard() {
+  const { phase } = useOnboardingPhaseStore();
+
+  // Only show this card when user is in getting_started or completed phase
+  if (
+    !phase ||
+    (phase !== OnboardingPhase.GETTING_STARTED &&
+      phase !== OnboardingPhase.COMPLETED)
+  ) {
+    console.log(
+      "[OnboardingStepsCard] Not showing card. Current phase:",
+      phase,
+    );
+    return null;
+  }
+
+  console.log("[OnboardingStepsCard] Showing card for phase:", phase);
+
   return (
     <div className="flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-2 shadow-xl backdrop-blur-sm">
       {/* <div className="flex items-center justify-start">

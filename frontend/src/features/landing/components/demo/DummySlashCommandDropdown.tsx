@@ -8,7 +8,7 @@ import React, { useMemo, useState } from "react";
 
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { Cancel01Icon,GridIcon, SearchIcon, Tick02Icon } from '@/icons';
+import { Cancel01Icon, GridIcon, SearchIcon, Tick02Icon } from "@/icons";
 
 // Dummy integrations data - all shown as connected
 const dummyIntegrations = [
@@ -640,7 +640,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
               <div className="flex-1">
                 <Input
                   type="text"
-                  placeholder="SearchIcon tools..."
+                  placeholder="Search tools..."
                   value={searchQuery}
                   size="sm"
                   radius="full"

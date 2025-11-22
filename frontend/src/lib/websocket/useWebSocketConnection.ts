@@ -15,7 +15,9 @@ export function useWebSocketConnection() {
     if (user?.email) {
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
       if (!apiBaseUrl) {
-        console.error("NEXT_PUBLIC_API_BASE_URL environment variable not set");
+        console.error(
+          "[WebSocket] NEXT_PUBLIC_API_BASE_URL environment variable not set",
+        );
         return;
       }
 
@@ -23,12 +25,21 @@ export function useWebSocketConnection() {
         apiBaseUrl.replace("http://", "ws://").replace("https://", "wss://") +
         "ws/connect";
 
+      console.log("[WebSocket] Configuring connection", {
+        apiBaseUrl,
+        wsUrl,
+        userEmail: user.email,
+      });
+
       wsManager.configure({ url: wsUrl });
       wsManager.connect();
 
       return () => {
+        console.log("[WebSocket] Disconnecting due to unmount or user change");
         wsManager.disconnect();
       };
+    } else {
+      console.log("[WebSocket] Not connecting - no user email available");
     }
   }, [user?.email]);
 
@@ -37,6 +48,7 @@ export function useWebSocketConnection() {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && user?.email) {
         if (!wsManager.isConnected) {
+          console.log("[WebSocket] Page became visible, reconnecting...");
           wsManager.connect();
         }
       }
@@ -47,6 +59,14 @@ export function useWebSocketConnection() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [user?.email]);
+
+  // Log connection status changes
+  useEffect(() => {
+    console.log("[WebSocket] Connection status:", {
+      isConnected: wsManager.isConnected,
+      hasUser: !!user?.email,
+    });
+  }, [wsManager.isConnected, user?.email]);
 
   return {
     isConnected: wsManager.isConnected,

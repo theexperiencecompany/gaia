@@ -8,9 +8,11 @@ export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
 
 export interface PersonalizationData {
   has_personalization?: boolean;
+  phase?: string;
   house: House;
   personality_phrase: string;
   user_bio: string;
+  bio_status?: "pending" | "processing" | "completed" | "no_gmail";
   account_number: number;
   member_since: string;
   name: string;
@@ -32,6 +34,17 @@ interface UsePersonalizationReturn {
   refetch: () => Promise<void>;
 }
 
+/**
+ * Hook to fetch and manage personalization data
+ *
+ * Data sources:
+ * - Initial load: Fetches from API on mount
+ * - Updates: WebSocket event when personalization completes
+ * - Manual refresh: Call refetch() function
+ *
+ * Relies on WebSocket for real-time updates
+ * and component remount for page navigation/reload.
+ */
 export const usePersonalization = (
   enabled: boolean = true,
 ): UsePersonalizationReturn => {
@@ -42,7 +55,10 @@ export const usePersonalization = (
 
   // Fetch personalization data from API
   const fetchPersonalization = useCallback(async () => {
-    if (!enabled) return;
+    if (!enabled) {
+      setIsLoading(false);
+      return;
+    }
 
     try {
       const data = await apiService.get<PersonalizationData>(
@@ -50,22 +66,22 @@ export const usePersonalization = (
         { silent: true },
       );
 
-      console.log("[Personalization] Fetched data:", data);
+      console.log("[usePersonalization] Fetched data:", data);
 
-      // Check if personalization is complete (has house assignment)
-      if (data.has_personalization) {
-        setPersonalizationData(data);
-        setHasPersonalization(true);
-        setIsLoading(false);
-      } else {
-        // Not ready yet, keep checking
-        setHasPersonalization(false);
-        setIsLoading(true);
-      }
+      // Check if personalization is complete based on phase
+      const isComplete =
+        data.phase &&
+        ["personalization_complete", "getting_started", "completed"].includes(
+          data.phase,
+        );
+
+      setPersonalizationData(data);
+      setHasPersonalization(!!isComplete);
+      setIsLoading(false);
     } catch (error) {
-      console.error("Failed to fetch personalization:", error);
+      console.error("[usePersonalization] Failed to fetch:", error);
       setHasPersonalization(false);
-      setIsLoading(true);
+      setIsLoading(false);
     }
   }, [enabled]);
 
@@ -74,39 +90,25 @@ export const usePersonalization = (
     fetchPersonalization();
   }, [fetchPersonalization]);
 
-  // Poll for personalization completion if not yet complete
-  // This is a fallback in case WebSocket doesn't trigger
-  useEffect(() => {
-    if (!enabled || hasPersonalization) return;
-
-    console.log("[Personalization] Starting polling interval");
-    const pollInterval = setInterval(() => {
-      console.log("[Personalization] Polling for completion...");
-      fetchPersonalization();
-    }, 3000); // Poll every 3 seconds
-
-    return () => {
-      console.log("[Personalization] Stopping polling interval");
-      clearInterval(pollInterval);
-    };
-  }, [enabled, hasPersonalization, fetchPersonalization]);
-
   // Listen for WebSocket updates
   useEffect(() => {
     if (!enabled) return;
 
     const handlePersonalizationComplete = (message: any) => {
-      if (message.type === "onboarding_personalization_complete") {
-        console.log(
-          "[Personalization] WebSocket event received:",
-          message.data,
-        );
-        const data = { ...message.data, has_personalization: true };
-        setPersonalizationData(data);
-        setHasPersonalization(true);
-        setIsLoading(false);
-        toast.success("Your personalized card is ready! 🎉");
-      }
+      if (message.type !== "onboarding_personalization_complete") return;
+
+      console.log("[usePersonalization] WebSocket event received");
+
+      const data: PersonalizationData = {
+        ...message.data,
+        has_personalization: true,
+      };
+
+      setPersonalizationData(data);
+      setHasPersonalization(true);
+      setIsLoading(false);
+
+      toast.success("Your personalized card is ready! 🎉");
     };
 
     wsManager.on(

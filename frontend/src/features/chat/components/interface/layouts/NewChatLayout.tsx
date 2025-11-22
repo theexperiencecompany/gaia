@@ -42,7 +42,7 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
       onScroll={handleScroll}
       {...dragHandlers}
     >
-      <div className="flex w-full flex-col items-center gap-16 px-4 pb-20">
+      <div className="flex w-full flex-col items-center gap-10 px-4 pb-20">
         <NewChatSection composerProps={composerProps} />
         <GridSection />
         <UseCaseSection dummySectionRef={dummySectionRef} />

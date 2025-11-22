@@ -4,14 +4,19 @@ import random
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+from bson import ObjectId
+from langchain_google_genai import ChatGoogleGenerativeAI
+
 from app.config.loggers import app_logger as logger
+from app.constants.profession_bios import get_random_bio_for_profession
 from app.core.websocket_manager import websocket_manager
 from app.db.chromadb import ChromaClient
 from app.db.mongodb.collections import users_collection, workflows_collection
 from app.models.memory_models import MemoryEntry
+from app.models.user_models import BioStatus, OnboardingPhase
 from app.services.memory_service import memory_service
-from bson import ObjectId
-from langchain_google_genai import ChatGoogleGenerativeAI
+from app.services.composio.composio_service import get_composio_service
+import asyncio
 
 HOUSES = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
 
@@ -151,7 +156,9 @@ Respond with ONLY the phrase, nothing else."""
         return "Curious Adventurer"
 
 
-async def generate_user_bio(user_id: str, memories: List[MemoryEntry]) -> str:
+async def generate_user_bio(
+    user_id: str, memories: List[MemoryEntry]
+) -> tuple[str, BioStatus]:
     """
     Generate user bio paragraph using LLM.
 
@@ -160,7 +167,7 @@ async def generate_user_bio(user_id: str, memories: List[MemoryEntry]) -> str:
         memories: User's memories
 
     Returns:
-        Generated bio paragraph
+        Tuple of (Generated bio paragraph, BioStatus)
     """
     profession = ""
     try:
@@ -170,18 +177,29 @@ async def generate_user_bio(user_id: str, memories: List[MemoryEntry]) -> str:
             user.get("onboarding", {}).get("preferences", {}).get("profession", "")
         )
 
-        # Check if user has Gmail integration
-        integrations = user.get("integrations", [])
-        has_gmail = any(i.get("id") == "gmail" for i in integrations)
+        # Check if user has Gmail integration via Composio
+
+        composio_service = get_composio_service()
+        connection_status = await composio_service.check_connection_status(
+            ["gmail"], str(user_id)
+        )
+        has_gmail = connection_status.get("gmail", False)
 
         # Check if memories exist
         if not memories:
             if has_gmail:
                 # Gmail connected but memories still processing
-                return "Processing your insights... Please check back in a moment."
+                return (
+                    "Processing your insights... Please check back in a moment.",
+                    BioStatus.PROCESSING,
+                )
             else:
-                # Gmail not connected
-                return "Connect your Gmail to unlock your personalized GAIA bio"
+                # Gmail not connected - use static profession-based bio
+                default_bio = get_random_bio_for_profession(name, profession or "other")
+                return (
+                    default_bio,
+                    BioStatus.NO_GMAIL,
+                )
 
         memory_summary = "\n".join([m.content for m in memories[:15]])
 
@@ -204,21 +222,32 @@ Respond with ONLY the paragraph, no introduction or formatting."""
         )
         bio = content.strip()
         logger.info(f"Generated bio for user {user_id}")
-        return bio
+        return bio, BioStatus.COMPLETED
 
     except Exception as e:
         logger.error(f"Error generating user bio: {e}", exc_info=True)
-        # On error, check if user has Gmail to return appropriate message
+        # On error, check if user has Gmail to return appropriate status
         try:
-            user = await users_collection.find_one({"_id": ObjectId(user_id)})
-            integrations = user.get("integrations", []) if user else []
-            has_gmail = any(i.get("id") == "gmail" for i in integrations)
+            composio_service = get_composio_service()
+            connection_status = await composio_service.check_connection_status(
+                ["gmail"], str(user_id)
+            )
+            has_gmail = connection_status.get("gmail", False)
             if has_gmail:
-                return "Processing your insights... Please check back in a moment."
+                return (
+                    "Processing your insights... Please check back in a moment.",
+                    BioStatus.PROCESSING,
+                )
             else:
-                return "Connect your Gmail to unlock your personalized GAIA bio"
+                return (
+                    "Connect your Gmail to unlock your personalized GAIA bio",
+                    BioStatus.NO_GMAIL,
+                )
         except:  # noqa: E722
-            return "Connect your Gmail to unlock your personalized GAIA bio"
+            return (
+                "Connect your Gmail to unlock your personalized GAIA bio",
+                BioStatus.NO_GMAIL,
+            )
 
 
 def assign_random_house() -> str:
@@ -328,6 +357,7 @@ async def save_personalization_data(
     house: str,
     personality_phrase: str,
     user_bio: str,
+    bio_status: BioStatus,
     workflow_ids: List[str],
     account_number: int,
     member_since: str,
@@ -342,6 +372,7 @@ async def save_personalization_data(
         house: Assigned house
         personality_phrase: Generated phrase
         user_bio: Generated bio
+        bio_status: Status of bio generation
         workflow_ids: Suggested workflow IDs
         account_number: User's account number
         member_since: Member since date
@@ -356,6 +387,8 @@ async def save_personalization_data(
                     "onboarding.house": house,
                     "onboarding.personality_phrase": personality_phrase,
                     "onboarding.user_bio": user_bio,
+                    "onboarding.bio_status": bio_status,
+                    "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE,
                     "onboarding.suggested_workflows": workflow_ids,
                     "onboarding.account_number": account_number,
                     "onboarding.member_since": member_since,
@@ -381,12 +414,17 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
     try:
         logger.info(f"Starting post-onboarding personalization for user {user_id}")
 
+        # Set bio status to processing
+        await users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"onboarding.bio_status": BioStatus.PROCESSING}},
+        )
+
         # Get user memories
         memories_result = await memory_service.get_all_memories(user_id=user_id)
         memories = memories_result.memories
 
         # Run all tasks in parallel where possible
-        import asyncio
 
         # Parallel tasks
         workflow_task = asyncio.create_task(suggest_workflows_via_rag(user_id, 4))
@@ -397,13 +435,16 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
         metadata_task = asyncio.create_task(get_user_metadata(user_id))
 
         # Wait for all
-        workflow_ids, personality_phrase, user_bio, metadata = await asyncio.gather(
+        workflow_ids, personality_phrase, bio_result, metadata = await asyncio.gather(
             workflow_task,
             personality_task,
             bio_task,
             metadata_task,
             return_exceptions=False,
         )
+
+        # Unpack bio result
+        user_bio, bio_status = bio_result
 
         # Always save personalization data
         # Even if bio is placeholder, we save it so user sees progress
@@ -424,6 +465,7 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
             house,
             personality_phrase,
             user_bio,
+            bio_status,
             workflow_ids,
             metadata["account_number"],
             metadata["member_since"],
