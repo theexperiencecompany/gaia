@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-import { Watch02Icon } from '@/icons';
+import { RedoIcon } from "@/icons";
 
 export default function Spinner({
   variant = "logo",
@@ -16,5 +16,5 @@ export default function Spinner({
       />
     );
 
-  return <Watch02Icon className="animate-spin text-[24px] text-[#9b9b9b]" />;
+  return <RedoIcon className="animate-spin text-[24px] text-zinc-700" />;
 }

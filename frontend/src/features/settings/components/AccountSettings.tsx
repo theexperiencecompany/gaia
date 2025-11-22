@@ -8,7 +8,6 @@ import { toast } from "sonner";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { LabeledField } from "@/features/settings/components/FormField";
-import ProfileCardSettings from "@/features/settings/components/ProfileCardSettings";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
 import { SettingsCardSimple } from "@/features/settings/components/SettingsCardSimple";
 import { SettingsOption } from "@/features/settings/components/SettingsOption";
@@ -197,8 +196,6 @@ export default function AccountSection({
           />
         </SettingsCardSimple>
       </div>
-
-      <ProfileCardSettings />
     </div>
   );
 }

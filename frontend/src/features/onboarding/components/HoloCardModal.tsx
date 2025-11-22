@@ -35,43 +35,13 @@ import {
   LinkBackwardIcon,
   ReloadIcon,
   Share08Icon,
+  Rocket01Icon,
 } from "@/icons";
 
 interface FeatureModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-const generateRandomColor = () => {
-  const hue = Math.floor(Math.random() * 360);
-  const saturation = 70 + Math.floor(Math.random() * 30);
-  const lightness = 40 + Math.floor(Math.random() * 30);
-
-  const h = hue / 360;
-  const s = saturation / 100;
-  const l = lightness / 100;
-
-  let r, g, b;
-  if (s === 0) {
-    r = g = b = l;
-  } else {
-    const hue2rgb = (p: number, q: number, t: number) => {
-      if (t < 0) t += 1;
-      if (t > 1) t -= 1;
-      if (t < 1 / 6) return p + (q - p) * 6 * t;
-      if (t < 1 / 2) return q;
-      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-      return p;
-    };
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    r = hue2rgb(p, q, h + 1 / 3);
-    g = hue2rgb(p, q, h);
-    b = hue2rgb(p, q, h - 1 / 3);
-  }
-
-  return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, 1)`;
-};
 
 export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
   const [color, setColor] = useState("rgba(0,0,0,0)");
@@ -159,7 +129,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
         break;
       case "copy":
         navigator.clipboard.writeText(url);
-        toast.success("LinkBackwardIcon copied to clipboard");
+        toast.success("Link copied to clipboard");
         break;
     }
   };
@@ -301,20 +271,19 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                 "Your very own GAIA Card is waiting on the right! 🎨✨<NEW_MESSAGE_BREAK>Go wild with the customization tools and show off your masterpiece to the world! 🚀"
               }
             </SimpleChatBubbleBot>
-            <div className="mt-2 ml-12 space-x-2">
+            <div className="mt-8 ml-12 space-x-2">
               <Button
                 color="primary"
                 className="font-medium"
-                startContent={<TwitterIcon width={18} height={18} />}
-                onPress={() => handleShare("twitter")}
+                endContent={<Rocket01Icon width={18} height={18} />}
+                onPress={onClose}
               >
                 Let's Go!
               </Button>
 
               <Button
-                color="primary"
                 className="font-medium"
-                startContent={<TwitterIcon width={18} height={18} />}
+                endContent={<TwitterIcon width={18} height={18} />}
                 onPress={() => handleShare("twitter")}
               >
                 Share on Twitter
@@ -387,7 +356,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                         startContent={<LinkBackwardIcon size={16} />}
                         onPress={() => handleShare("copy")}
                       >
-                        Copy LinkBackwardIcon
+                        Copy Link
                       </DropdownItem>
                     </DropdownMenu>
                   </Dropdown>

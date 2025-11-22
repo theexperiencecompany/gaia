@@ -295,13 +295,14 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
         await _mark_processed(user_id, successful_stored + profiles_stored)
 
         # Trigger post-onboarding personalization
+        # This will re-run even if it ran before, updating the bio with new memories
         try:
             from app.services.post_onboarding_service import (
                 process_post_onboarding_personalization,
             )
 
             logger.info(
-                f"Triggering post-onboarding personalization for user {user_id}"
+                f"Triggering post-onboarding personalization for user {user_id} after email processing"
             )
             await process_post_onboarding_personalization(user_id)
         except Exception as e:

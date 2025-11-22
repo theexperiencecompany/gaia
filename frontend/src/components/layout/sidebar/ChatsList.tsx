@@ -13,9 +13,9 @@ import {
   useConversationList,
   useFetchConversations,
 } from "@/features/chat/hooks/useConversationList";
-import { Watch02Icon } from '@/icons';
 import type { IConversation } from "@/lib/db/chatDb";
 
+import Spinner from "@/components/ui/shadcn/spinner";
 import { ChatTab } from "./ChatTab";
 import { accordionItemStyles } from "./constants";
 
@@ -173,7 +173,7 @@ export default function ChatsList() {
     <>
       {isLoading && conversations.length === 0 ? (
         <div className="flex items-center justify-center p-10">
-          <Watch02Icon className="animate-spin text-[#00bbff]" />
+          <Spinner />
         </div>
       ) : isError ? (
         <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">

@@ -712,9 +712,17 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             raise HTTPException(status_code=404, detail="User not found")
 
         onboarding = user_doc.get("onboarding", {})
+        user_bio = onboarding.get("user_bio", "")
 
-        # Check if personalization has been completed
-        has_personalization = bool(onboarding.get("house"))
+        # Check if bio is a placeholder message
+        is_placeholder = (
+            not user_bio
+            or user_bio.startswith("Connect your Gmail")
+            or user_bio.startswith("Processing your insights")
+        )
+
+        # Personalization is complete only if house exists AND bio is not a placeholder
+        has_personalization = bool(onboarding.get("house")) and not is_placeholder
 
         # Get stored metadata or calculate if not stored (for older users)
         account_number = onboarding.get("account_number")
@@ -753,16 +761,26 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             except Exception:
                 continue
 
+        # Determine what bio to show
+        display_bio = user_bio
+        if is_placeholder:
+            # Check if user has Gmail to show appropriate message
+            integrations = user_doc.get("integrations", [])
+            has_gmail = any(i.get("id") == "gmail" for i in integrations)
+            if has_gmail:
+                display_bio = (
+                    "Processing your insights... Please check back in a moment."
+                )
+            else:
+                display_bio = "Connect your Gmail to unlock your personalized GAIA bio"
+
         return {
             "has_personalization": has_personalization,
             "house": onboarding.get("house", "Bluehaven"),
             "personality_phrase": onboarding.get(
                 "personality_phrase", "Curious Adventurer"
             ),
-            "user_bio": onboarding.get(
-                "user_bio",
-                "A passionate individual exploring new possibilities and making an impact.",
-            ),
+            "user_bio": display_bio,
             "account_number": account_number,
             "member_since": member_since,
             "overlay_color": onboarding.get("overlay_color", "rgba(0,0,0,0)"),

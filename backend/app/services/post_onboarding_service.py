@@ -164,15 +164,24 @@ async def generate_user_bio(user_id: str, memories: List[MemoryEntry]) -> str:
     """
     profession = ""
     try:
-        # Check if memories exist
-        if not memories:
-            return "Connect your Gmail to unlock your personalized AI bio and insights."
-
         user = await users_collection.find_one({"_id": ObjectId(user_id)})
         name = user.get("name", "User")
         profession = (
             user.get("onboarding", {}).get("preferences", {}).get("profession", "")
         )
+
+        # Check if user has Gmail integration
+        integrations = user.get("integrations", [])
+        has_gmail = any(i.get("id") == "gmail" for i in integrations)
+
+        # Check if memories exist
+        if not memories:
+            if has_gmail:
+                # Gmail connected but memories still processing
+                return "Processing your insights... Please check back in a moment."
+            else:
+                # Gmail not connected
+                return "Connect your Gmail to unlock your personalized GAIA bio"
 
         memory_summary = "\n".join([m.content for m in memories[:15]])
 
@@ -199,7 +208,17 @@ Respond with ONLY the paragraph, no introduction or formatting."""
 
     except Exception as e:
         logger.error(f"Error generating user bio: {e}", exc_info=True)
-        return f"A passionate {profession if profession else 'individual'} exploring new possibilities and making an impact through their work."
+        # On error, check if user has Gmail to return appropriate message
+        try:
+            user = await users_collection.find_one({"_id": ObjectId(user_id)})
+            integrations = user.get("integrations", []) if user else []
+            has_gmail = any(i.get("id") == "gmail" for i in integrations)
+            if has_gmail:
+                return "Processing your insights... Please check back in a moment."
+            else:
+                return "Connect your Gmail to unlock your personalized GAIA bio"
+        except:  # noqa: E722
+            return "Connect your Gmail to unlock your personalized GAIA bio"
 
 
 def assign_random_house() -> str:
@@ -384,6 +403,13 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
             bio_task,
             metadata_task,
             return_exceptions=False,
+        )
+
+        # Always save personalization data
+        # Even if bio is placeholder, we save it so user sees progress
+        # Frontend checks if bio is placeholder via has_personalization flag
+        logger.info(
+            f"Saving personalization for user {user_id} with bio: {user_bio[:50]}..."
         )
 
         # Assign random house

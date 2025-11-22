@@ -4,6 +4,7 @@ import { Spinner } from "@heroui/spinner";
 import { useEffect, useState } from "react";
 
 import { RaisedButton } from "@/components";
+import { useUser } from "@/features/auth/hooks/useUser";
 import { usePersonalization } from "@/features/onboarding/hooks/usePersonalization";
 import { Cancel01Icon } from "@/icons";
 
@@ -23,7 +24,7 @@ interface ContextGatheringLoaderProps {
   onComplete: () => void;
 }
 
-const PERSONALIZATION_DISMISSED_KEY = "personalization-card-dismissed";
+const PERSONALIZATION_DISMISSED_PREFIX = "personalization-dismissed-";
 const PROGRESS_INTERVAL_MS = 300; // Update progress every 300ms
 
 export default function ContextGatheringLoader({
@@ -31,8 +32,11 @@ export default function ContextGatheringLoader({
 }: ContextGatheringLoaderProps) {
   const [progress, setProgress] = useState(0);
   const [isDismissed, setIsDismissed] = useState(false);
+  const user = useUser();
   const { isComplete: hasPersonalization, isLoading } =
     usePersonalization(true);
+
+  const dismissalKey = `${PERSONALIZATION_DISMISSED_PREFIX}${user.email || "unknown"}`;
 
   console.log(
     "[ContextGatheringLoader] hasPersonalization:",
@@ -42,17 +46,19 @@ export default function ContextGatheringLoader({
   );
 
   // Check if user previously dismissed the completed personalization card
+  // Only check dismissal if personalization is complete to avoid hiding loading state
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const dismissed =
-        localStorage.getItem(PERSONALIZATION_DISMISSED_KEY) === "true";
+    if (typeof window !== "undefined" && hasPersonalization) {
+      const dismissed = localStorage.getItem(dismissalKey) === "true";
       console.log(
         "[ContextGatheringLoader] Dismissed state from localStorage:",
         dismissed,
+        "for key:",
+        dismissalKey,
       );
       setIsDismissed(dismissed);
     }
-  }, []);
+  }, [dismissalKey, hasPersonalization]);
 
   // Smooth progress animation
   useEffect(() => {
@@ -72,7 +78,7 @@ export default function ContextGatheringLoader({
   }, [hasPersonalization]);
 
   const handleDismiss = () => {
-    localStorage.setItem(PERSONALIZATION_DISMISSED_KEY, "true");
+    localStorage.setItem(dismissalKey, "true");
     setIsDismissed(true);
   };
 
