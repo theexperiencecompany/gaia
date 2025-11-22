@@ -82,7 +82,7 @@ export const useOnboarding = () => {
     const oauthSuccess = searchParams.get("oauth_success");
     const oauthError = searchParams.get("oauth_error");
 
-    if (oauthSuccess === "true") {
+    if (oauthSuccess) {
       toast.success("Integration connected successfully!");
       // Refresh integration status to update button states
       refetchIntegrationStatus();
