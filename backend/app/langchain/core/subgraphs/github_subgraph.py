@@ -238,7 +238,9 @@ async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
     )
 
 
-async def create_github_subgraph(llm: LanguageModelLike) -> CompiledStateGraph:
+async def create_github_subgraph(
+    llm: LanguageModelLike,
+) -> dict[str, CompiledStateGraph]:
     """Factory function to create and compile the GitHub sub-agent subgraph.
 
     Args:
@@ -263,4 +265,4 @@ async def create_github_subgraph(llm: LanguageModelLike) -> CompiledStateGraph:
     graph = build_orchestrator_subgraph(config)
     logger.info("GitHub subgraph created successfully")
 
-    return graph
+    return {integration.subagent_config.agent_name: graph}

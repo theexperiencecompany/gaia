@@ -194,7 +194,7 @@ class ToolRegistry:
             require_integration=True,
             integration_name="google_calendar",
             is_delegated=True,
-            space="calendar",
+            space="google_calendar",
         )
 
         add_category(

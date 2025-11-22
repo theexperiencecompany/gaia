@@ -54,14 +54,16 @@ class ProviderSubAgents:
             f"using tool space: {config.tool_space or provider_id}"
         )
 
-        return await SubAgentFactory.create_provider_subagent(
+        graph = await SubAgentFactory.create_provider_subagent(
             provider=integration.provider,
             llm=llm,
-            tool_space=config.tool_space or provider_id,
-            name=config.agent_name or f"{provider_id}_agent",
+            tool_space=config.tool_space,
+            name=config.agent_name,
             use_direct_tools=use_direct_tools,
             disable_retrieve_tools=disable_retrieve_tools,
         )
+
+        return {config.agent_name: graph}
 
     @staticmethod
     async def create_gmail_agent(llm: LanguageModelLike):
@@ -148,25 +150,9 @@ class ProviderSubAgents:
             ProviderSubAgents.create_agent("clickup", llm),
             ProviderSubAgents.create_agent("instagram", llm),
         )
-        return {
-            "gmail_agent": results[0],
-            "calendar_agent": results[1],
-            "notion_agent": results[2],
-            "twitter_agent": results[3],
-            "linkedin_agent": results[4],
-            "github_agent": results[5],
-            "reddit_agent": results[6],
-            "airtable_agent": results[7],
-            "linear_agent": results[8],
-            "slack_agent": results[9],
-            "hubspot_agent": results[10],
-            "google_tasks_agent": results[11],
-            "google_sheets_agent": results[12],
-            "todoist_agent": results[13],
-            "google_meet_agent": results[14],
-            "google_maps_agent": results[15],
-            "asana_agent": results[16],
-            "trello_agent": results[17],
-            "clickup_agent": results[18],
-            "instagram_agent": results[19],
-        }
+
+        subagents = {}
+        for result in results:
+            subagents.update(result)
+
+        return subagents
