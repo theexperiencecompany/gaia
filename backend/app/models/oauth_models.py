@@ -73,6 +73,19 @@ class ComposioConfig(BaseModel):
     toolkit: str
 
 
+class SubAgentConfig(BaseModel):
+    """Configuration for sub-agent metadata."""
+
+    has_subagent: bool = False
+    agent_name: str
+    tool_space: str
+    handoff_tool_name: str
+    domain: str
+    capabilities: str
+    use_cases: str
+    system_prompt: str
+
+
 class OAuthIntegration(BaseModel):
     """OAuth integration configuration."""
 
@@ -96,6 +109,8 @@ class OAuthIntegration(BaseModel):
     associated_triggers: List[
         TriggerConfig
     ] = []  # Triggers associated with this integration
+    # Sub-agent configuration
+    subagent_config: Optional[SubAgentConfig] = None
 
 
 class IntegrationConfigResponse(BaseModel):

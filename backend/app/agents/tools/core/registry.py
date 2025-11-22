@@ -151,7 +151,7 @@ class ToolRegistry:
             tools=get_handoff_tools(
                 [
                     "gmail",
-                    "calendar",
+                    "google_calendar",
                     "notion",
                     "twitter",
                     "linkedin",
@@ -164,8 +164,6 @@ class ToolRegistry:
                     "googletasks",
                     "googlesheets",
                     "todoist",
-                    # "microsoft_teams",
-                    # "zoom",
                     "googlemeet",
                     "google_maps",
                     "asana",

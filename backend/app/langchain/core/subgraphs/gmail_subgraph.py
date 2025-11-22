@@ -11,6 +11,7 @@ from app.agents.prompts.gmail_node_prompts import (
     EMAIL_RETRIEVAL_PROMPT,
 )
 from app.config.loggers import langchain_logger as logger
+from app.config.oauth_config import get_integration_by_id
 from app.langchain.core.framework.plan_and_execute import (
     OrchestratorNodeConfig,
     OrchestratorSubgraphConfig,
@@ -137,9 +138,13 @@ async def create_gmail_subgraph(llm: LanguageModelLike) -> CompiledStateGraph:
     """
     logger.info("Creating Gmail subgraph using plan-and-execute framework")
 
+    integration = get_integration_by_id("gmail")
+    if not integration or not integration.subagent_config:
+        raise ValueError("Gmail integration or subagent config not found")
+
     config = OrchestratorSubgraphConfig(
-        provider_name="Gmail",
-        agent_name="gmail_agent",
+        provider_name=integration.provider,
+        agent_name=integration.subagent_config.agent_name,
         node_configs=await get_node_configs(),
         llm=llm,
     )

@@ -2,48 +2,39 @@
 OAuth Integration Configuration
 
 Single source of truth for all OAuth integration configurations in GAIA.
-Defines integrations, scopes, display properties, and relationships.
-
-OAuthScope: Defines OAuth permission scopes with URL and description.
-Used for: Backend permission validation, frontend permission displays.
-
-OAuthIntegration: Core integration definition with fields:
-- id: Unique identifier for API endpoints, database records, frontend routing
-- name: Human-readable name for frontend UI and user messages
-- description: Detailed explanation for integration cards and settings pages
-- icons: List of icon URLs for frontend UI components and different display sizes
-- category: Groups integrations for frontend filtering, slash commands, settings organization
-- provider: OAuth provider for flow routing, token management, API client selection
-- scopes: Required permissions for OAuth authorization and validation
-- available: Feature flag for frontend display logic and API availability
-- oauth_endpoints: Custom OAuth URLs for non-standard providers
-- is_special: Marks unified integrations for special frontend handling
-- display_priority: Numeric sort order for frontend lists and dropdowns
-- included_integrations: Child integration IDs for unified integrations
-- short_name: Quick access identifier for slash commands and convenience functions
-
-IntegrationConfigResponse: API model that converts backend fields to frontend camelCase.
-
-Used by:
-- google_scope_dependencies.py: Permission validation
-- integration_checker.py: User permission checking
-- oauth.py router: OAuth flows and status endpoints
-- Frontend components: Integration cards, settings, slash commands
-- Services: API client setup and token management
-
-Integration types:
-- Individual: Single service with own scopes (gmail, google_calendar)
-- Unified: Multiple services with combined scopes (google_workspace)
-- Coming soon: Placeholder with available=False (github, figma)
+Defines integrations, scopes, display properties, and subagent configurations.
 """
 
 from functools import cache
 from typing import Dict, List, Optional
 
+from app.agents.prompts.github_node_prompts import GITHUB_ORCHESTRATOR_PROMPT
+from app.agents.prompts.gmail_node_prompts import GMAIL_ORCHESTRATOR_PROMPT
+from app.agents.prompts.hubspot_node_prompts import HUBSPOT_ORCHESTRATOR_PROMPT
+from app.agents.prompts.subagent_prompts import (
+    AIRTABLE_AGENT_SYSTEM_PROMPT,
+    ASANA_AGENT_SYSTEM_PROMPT,
+    CALENDAR_AGENT_SYSTEM_PROMPT,
+    CLICKUP_AGENT_SYSTEM_PROMPT,
+    GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
+    GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
+    GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
+    GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
+    INSTAGRAM_AGENT_SYSTEM_PROMPT,
+    LINEAR_AGENT_SYSTEM_PROMPT,
+    LINKEDIN_AGENT_SYSTEM_PROMPT,
+    NOTION_AGENT_SYSTEM_PROMPT,
+    REDDIT_AGENT_SYSTEM_PROMPT,
+    SLACK_AGENT_SYSTEM_PROMPT,
+    TODOIST_AGENT_SYSTEM_PROMPT,
+    TRELLO_AGENT_SYSTEM_PROMPT,
+    TWITTER_AGENT_SYSTEM_PROMPT,
+)
 from app.models.oauth_models import (
     ComposioConfig,
     OAuthIntegration,
     OAuthScope,
+    SubAgentConfig,
     TriggerConfig,
 )
 
@@ -68,6 +59,16 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         ],
         short_name="calendar",
         managed_by="self",
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="calendar_agent",
+            tool_space="calendar",
+            handoff_tool_name="call_calendar_agent",
+            domain="calendar and event management",
+            capabilities="creating events, scheduling meetings, managing availability, setting reminders, updating calendar entries, and organizing schedules",
+            use_cases="scheduling meetings, managing calendar events, checking availability, or any calendar-related task",
+            system_prompt=CALENDAR_AGENT_SYSTEM_PROMPT,
+        ),
     ),
     OAuthIntegration(
         id="google_docs",
@@ -109,6 +110,16 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 config={"labelIds": "INBOX", "user_id": "me", "interval": 1},
             )
         ],
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="gmail_agent",
+            tool_space="gmail",
+            handoff_tool_name="call_gmail_agent",
+            domain="email",
+            capabilities="composing emails, sending messages, reading inbox, organizing with labels, managing drafts, handling attachments, searching emails, and automating email workflows",
+            use_cases="any email-related task including sending, reading, organizing, or automating email operations",
+            system_prompt=GMAIL_ORCHESTRATOR_PROMPT,
+        ),
     ),
     # Composio integrations
     OAuthIntegration(
@@ -122,7 +133,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="notion",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_DR3IWp9-Kezl", toolkit="NOTION"
+            auth_config_id="ac_DR3IWp9-Kezl",
+            toolkit="NOTION",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="notion_agent",
+            tool_space="notion",
+            handoff_tool_name="call_notion_agent",
+            domain="workspace and knowledge management",
+            capabilities="creating pages, building databases, updating content, organizing workspaces, managing properties, searching content, and structuring knowledge bases",
+            use_cases="creating pages, managing databases, organizing knowledge, or any Notion workspace operation",
+            system_prompt=NOTION_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -136,7 +158,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="twitter",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_vloH3fnhIeUa", toolkit="TWITTER"
+            auth_config_id="ac_vloH3fnhIeUa",
+            toolkit="TWITTER",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="twitter_agent",
+            tool_space="twitter",
+            handoff_tool_name="call_twitter_agent",
+            domain="social media",
+            capabilities="posting tweets, creating threads, replying to posts, liking content, retweeting, following users, analyzing engagement metrics, and managing Twitter presence",
+            use_cases="posting tweets, engaging with content, managing followers, or analyzing Twitter activity",
+            system_prompt=TWITTER_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -150,7 +183,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="sheets",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_18I3fRfWyXDu", toolkit="GOOGLESHEETS"
+            auth_config_id="ac_18I3fRfWyXDu",
+            toolkit="GOOGLESHEETS",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="google_sheets_agent",
+            tool_space="googlesheets",
+            handoff_tool_name="call_google_sheets_agent",
+            domain="spreadsheet management and data analysis",
+            capabilities="creating spreadsheets, updating data, managing formulas, organizing sheets, analyzing data, and building collaborative workbooks",
+            use_cases="spreadsheet management, data analysis, formula creation, or any Google Sheets operation",
+            system_prompt=GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -164,7 +208,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="linkedin",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_GMeJBELf3z_m", toolkit="LINKEDIN"
+            auth_config_id="ac_GMeJBELf3z_m",
+            toolkit="LINKEDIN",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="linkedin_agent",
+            tool_space="linkedin",
+            handoff_tool_name="call_linkedin_agent",
+            domain="professional networking",
+            capabilities="creating professional posts, managing connections, networking outreach, updating profile, engaging with content, job searching, and building professional presence",
+            use_cases="posting professional content, managing connections, networking, or any LinkedIn career-related activity",
+            system_prompt=LINKEDIN_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -178,7 +233,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="github",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_y2VK4j0ATiZo", toolkit="GITHUB"
+            auth_config_id="ac_y2VK4j0ATiZo",
+            toolkit="GITHUB",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="github_agent",
+            tool_space="github",
+            handoff_tool_name="call_github_agent",
+            domain="code repository and development workflow",
+            capabilities="managing repositories, creating issues, handling pull requests, managing branches, reviewing code, managing collaborators, and automating development workflows",
+            use_cases="repository management, issue tracking, pull requests, code review, or any GitHub development task",
+            system_prompt=GITHUB_ORCHESTRATOR_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -192,7 +258,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="reddit",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_7-hfiMVLhcDN", toolkit="REDDIT"
+            auth_config_id="ac_7-hfiMVLhcDN",
+            toolkit="REDDIT",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="reddit_agent",
+            tool_space="reddit",
+            handoff_tool_name="call_reddit_agent",
+            domain="community engagement and content sharing",
+            capabilities="posting content, commenting on posts, managing subreddits, searching communities, voting on content, and engaging with Reddit communities",
+            use_cases="posting to Reddit, engaging with communities, managing subreddit content, or analyzing Reddit activity",
+            system_prompt=REDDIT_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -206,7 +283,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="airtable",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_QPtQsXnIYm4C", toolkit="AIRTABLE"
+            auth_config_id="ac_QPtQsXnIYm4C",
+            toolkit="AIRTABLE",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="airtable_agent",
+            tool_space="airtable",
+            handoff_tool_name="call_airtable_agent",
+            domain="database and workflow management",
+            capabilities="creating bases, managing tables, updating records, organizing data, building automations, and structuring collaborative databases",
+            use_cases="managing Airtable bases, organizing data, creating records, or building database workflows",
+            system_prompt=AIRTABLE_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -220,7 +308,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="linear",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_mnrcEhhTXPVS", toolkit="LINEAR"
+            auth_config_id="ac_mnrcEhhTXPVS",
+            toolkit="LINEAR",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="linear_agent",
+            tool_space="linear",
+            handoff_tool_name="call_linear_agent",
+            domain="issue tracking and project management",
+            capabilities="creating issues, managing projects, tracking progress, assigning tasks, organizing sprints, and automating development workflows",
+            use_cases="issue management, project tracking, sprint planning, or any Linear development workflow task",
+            system_prompt=LINEAR_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -234,7 +333,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="slack",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_acm0K6K_kWxY", toolkit="SLACK"
+            auth_config_id="ac_acm0K6K_kWxY",
+            toolkit="SLACK",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="slack_agent",
+            tool_space="slack",
+            handoff_tool_name="call_slack_agent",
+            domain="team communication and collaboration",
+            capabilities="sending messages, managing channels, organizing conversations, sharing files, setting reminders, and automating team communication workflows",
+            use_cases="sending Slack messages, managing channels, team communication, or automating workspace workflows",
+            system_prompt=SLACK_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -248,7 +358,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="hubspot",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_rcnwYp1PRCVr", toolkit="HUBSPOT"
+            auth_config_id="ac_rcnwYp1PRCVr",
+            toolkit="HUBSPOT",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="hubspot_agent",
+            tool_space="hubspot",
+            handoff_tool_name="call_hubspot_agent",
+            domain="CRM and sales automation",
+            capabilities="managing contacts, tracking deals, organizing pipelines, automating marketing, managing customer relationships, and analyzing sales data",
+            use_cases="CRM management, sales tracking, contact organization, or marketing automation tasks",
+            system_prompt=HUBSPOT_ORCHESTRATOR_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -262,7 +383,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="tasks",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_xPSnVjKyHCDb", toolkit="GOOGLETASKS"
+            auth_config_id="ac_xPSnVjKyHCDb",
+            toolkit="GOOGLETASKS",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="google_tasks_agent",
+            tool_space="googletasks",
+            handoff_tool_name="call_google_tasks_agent",
+            domain="task and to-do list management",
+            capabilities="creating tasks, organizing to-do lists, managing task lists, setting due dates, marking tasks complete, and organizing personal productivity",
+            use_cases="managing tasks, organizing to-do lists, tracking personal productivity, or any Google Tasks operation",
+            system_prompt=GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -276,7 +408,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="todoist",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_TOjltL3O2kEB", toolkit="TODOIST"
+            auth_config_id="ac_TOjltL3O2kEB",
+            toolkit="TODOIST",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="todoist_agent",
+            tool_space="todoist",
+            handoff_tool_name="call_todoist_agent",
+            domain="task and project management",
+            capabilities="creating tasks, organizing projects, setting priorities, managing labels, tracking productivity, and building task workflows",
+            use_cases="task management, project organization, productivity tracking, or any Todoist operation",
+            system_prompt=TODOIST_AGENT_SYSTEM_PROMPT,
         ),
     ),
     # OAuthIntegration(
@@ -318,7 +461,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="meet",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_GsHKAmsiGvz1", toolkit="GOOGLEMEET"
+            auth_config_id="ac_GsHKAmsiGvz1",
+            toolkit="GOOGLEMEET",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="google_meet_agent",
+            tool_space="googlemeet",
+            handoff_tool_name="call_google_meet_agent",
+            domain="video conferencing and meeting management",
+            capabilities="scheduling meetings, managing video conferences, creating meeting links, and organizing virtual collaboration",
+            use_cases="scheduling video meetings, managing Google Meet conferences, or virtual collaboration tasks",
+            system_prompt=GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -332,7 +486,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="maps",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_vy6NqsFlzLuO", toolkit="GOOGLEMAPS"
+            auth_config_id="ac_vy6NqsFlzLuO",
+            toolkit="GOOGLEMAPS",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="google_maps_agent",
+            tool_space="google_maps",
+            handoff_tool_name="call_google_maps_agent",
+            domain="location and navigation services",
+            capabilities="searching locations, getting directions, finding places, analyzing geographic data, and managing location information",
+            use_cases="location search, getting directions, finding nearby places, or any Google Maps operation",
+            system_prompt=GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -346,7 +511,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="asana",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_gF2RuhulKw3I", toolkit="ASANA"
+            auth_config_id="ac_gF2RuhulKw3I",
+            toolkit="ASANA",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="asana_agent",
+            tool_space="asana",
+            handoff_tool_name="call_asana_agent",
+            domain="project and task management",
+            capabilities="creating tasks, managing projects, organizing workflows, assigning work, tracking progress, and building team collaboration systems",
+            use_cases="project management, task organization, team collaboration, or any Asana workflow operation",
+            system_prompt=ASANA_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -360,7 +536,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="trello",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_nMjBqOcjLTGW", toolkit="TRELLO"
+            auth_config_id="ac_nMjBqOcjLTGW",
+            toolkit="TRELLO",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="trello_agent",
+            tool_space="trello",
+            handoff_tool_name="call_trello_agent",
+            domain="visual project management",
+            capabilities="creating boards, managing cards, organizing lists, tracking workflows, assigning tasks, and building visual project systems",
+            use_cases="board management, card organization, visual task tracking, or any Trello operation",
+            system_prompt=TRELLO_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -374,7 +561,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="instagram",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_JP45uYkUcjVV", toolkit="INSTAGRAM"
+            auth_config_id="ac_JP45uYkUcjVV",
+            toolkit="INSTAGRAM",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="instagram_agent",
+            tool_space="instagram",
+            handoff_tool_name="call_instagram_agent",
+            domain="social media content and engagement",
+            capabilities="posting content, managing stories, engaging with followers, analyzing insights, and building social media presence",
+            use_cases="posting to Instagram, managing content, engaging with audience, or social media management tasks",
+            system_prompt=INSTAGRAM_AGENT_SYSTEM_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -388,7 +586,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="clickup",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_cyT9vqo3pcF3", toolkit="CLICKUP"
+            auth_config_id="ac_cyT9vqo3pcF3",
+            toolkit="CLICKUP",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="clickup_agent",
+            tool_space="clickup",
+            handoff_tool_name="call_clickup_agent",
+            domain="comprehensive project management",
+            capabilities="managing tasks, organizing projects, tracking time, building workflows, assigning work, and comprehensive productivity management",
+            use_cases="task management, project organization, time tracking, or any ClickUp operation",
+            system_prompt=CLICKUP_AGENT_SYSTEM_PROMPT,
         ),
     ),
 ]
@@ -411,13 +620,13 @@ def get_integration_scopes(integration_id: str) -> List[str]:
 
 @cache
 def get_short_name_mapping() -> Dict[str, str]:
-    """Get mapping of short names to integration IDs for convenience functions."""
+    """Get mapping of short names to integration IDs."""
     return {i.short_name: i.id for i in OAUTH_INTEGRATIONS if i.short_name}
 
 
 @cache
 def get_composio_social_configs() -> Dict[str, ComposioConfig]:
-    """Generate COMPOSIO_SOCIAL_CONFIGS dynamically from integrations managed by Composio."""
+    """Get COMPOSIO_SOCIAL_CONFIGS from integrations managed by Composio."""
     configs = {}
     for integration in OAUTH_INTEGRATIONS:
         if integration.managed_by == "composio" and integration.composio_config:

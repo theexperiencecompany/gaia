@@ -16,6 +16,7 @@ from app.agents.prompts.github_node_prompts import (
     REPOSITORY_MANAGEMENT_PROMPT,
 )
 from app.config.loggers import langchain_logger as logger
+from app.config.oauth_config import get_integration_by_id
 from app.langchain.core.framework.plan_and_execute import (
     OrchestratorNodeConfig,
     OrchestratorSubgraphConfig,
@@ -248,9 +249,13 @@ async def create_github_subgraph(llm: LanguageModelLike) -> CompiledStateGraph:
     """
     logger.info("Creating GitHub subgraph using plan-and-execute framework")
 
+    integration = get_integration_by_id("github")
+    if not integration or not integration.subagent_config:
+        raise ValueError("Github integration or subagent config not found")
+
     config = OrchestratorSubgraphConfig(
-        provider_name="GitHub",
-        agent_name="github_agent",
+        provider_name=integration.provider,
+        agent_name=integration.subagent_config.agent_name,
         node_configs=await get_node_configs(),
         llm=llm,
     )

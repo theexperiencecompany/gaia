@@ -1,8 +1,57 @@
 from typing import Annotated, Awaitable, Callable
 
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore
+
+
+async def map_tools_to_handoff_tools(
+    tool_names: list[str], current_tool_space: str = "general"
+) -> dict[str, str]:
+    """Map tool names to their corresponding handoff tools if they belong to a subagent.
+
+    Args:
+        tool_names: List of tool names selected by user
+        current_tool_space: The current agent's tool space (default: "general")
+
+    Returns:
+        Dict mapping original tool names to handoff tool names.
+        Only includes tools that should be delegated (not in current tool space).
+    """
+    from app.agents.tools.core.registry import get_tool_registry
+
+    tool_registry = await get_tool_registry()
+    tool_to_handoff = {}
+
+    # Build mapping of tool_space to handoff_tool_name
+    space_to_handoff = {}
+    for integration in OAUTH_INTEGRATIONS:
+        if integration.subagent_config and integration.subagent_config.has_subagent:
+            space = integration.subagent_config.tool_space
+            handoff = integration.subagent_config.handoff_tool_name
+            space_to_handoff[space] = handoff
+
+    for tool_name in tool_names:
+        category_name = tool_registry.get_category_of_tool(tool_name)
+        if not category_name:
+            continue
+
+        category = tool_registry.get_category(category_name)
+        if not category:
+            continue
+
+        # Only delegate if tool is delegated AND not in current tool space
+        if (
+            category.is_delegated
+            and category.space != "general"
+            and category.space != current_tool_space
+        ):
+            handoff_tool = space_to_handoff.get(category.space)
+            if handoff_tool:
+                tool_to_handoff[tool_name] = handoff_tool
+
+    return tool_to_handoff
 
 
 def get_retrieve_tools_function(
@@ -148,7 +197,20 @@ def get_retrieve_tools_function(
                 and tool_name not in tool_ids
                 and tool_name in available_tool_names
             ]
-            tool_ids.update(exact_tool_ids)
+
+            # Replace delegated tools with their handoff tools (unless in same tool_space)
+            handoff_replacements = await map_tools_to_handoff_tools(
+                exact_tool_ids, current_tool_space=tool_space
+            )
+
+            # Add non-delegated tools directly
+            for tool_name in exact_tool_ids:
+                if tool_name not in handoff_replacements:
+                    tool_ids.add(tool_name)
+
+            # Add handoff tools for delegated tools
+            tool_ids.update(handoff_replacements.values())
+            # tool_ids.update(exact_tool_ids)
 
         return list(tool_ids)
 

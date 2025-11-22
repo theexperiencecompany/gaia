@@ -15,6 +15,7 @@ from app.agents.prompts.hubspot_node_prompts import (
     TICKETS_PROMPT,
 )
 from app.config.loggers import langchain_logger as logger
+from app.config.oauth_config import get_integration_by_id
 from app.langchain.core.framework.plan_and_execute import (
     OrchestratorNodeConfig,
     OrchestratorSubgraphConfig,
@@ -264,9 +265,13 @@ async def create_hubspot_subgraph(llm: LanguageModelLike) -> CompiledStateGraph:
     """
     logger.info("Creating HubSpot subgraph using plan-and-execute framework")
 
+    integration = get_integration_by_id("hubspot")
+    if not integration or not integration.subagent_config:
+        raise ValueError("HubSpot integration or subagent config not found")
+
     config = OrchestratorSubgraphConfig(
-        provider_name="HubSpot",
-        agent_name="hubspot_agent",
+        provider_name=integration.provider,
+        agent_name=integration.subagent_config.agent_name,
         node_configs=await get_node_configs(),
         llm=llm,
     )
