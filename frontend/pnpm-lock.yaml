@@ -119,12 +119,6 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.2.1
         version: 5.2.1(react-hook-form@7.62.0(react@19.1.1))
-      '@hugeicons/core-free-icons':
-        specifier: ^2.0.0
-        version: 2.0.0
-      '@hugeicons/react':
-        specifier: ^1.1.1
-        version: 1.1.1(react@19.1.1)
       '@internationalized/date':
         specifier: ^3.8.2
         version: 3.9.0
@@ -254,6 +248,9 @@ importers:
       '@tanstack/react-virtual':
         specifier: ^3.13.12
         version: 3.13.12(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+      '@theexperiencecompany/gaia-icons':
+        specifier: ^1.1.0
+        version: 1.1.0(react@19.1.1)
       '@tiptap/core':
         specifier: ^2.26.1
         version: 2.26.1(@tiptap/pm@2.26.1)
@@ -1982,14 +1979,6 @@ packages:
     resolution: {integrity: sha512-u0+6X58gkjMcxur1wRWokA7XsiiBJ6aK17aPZxhkoYiK5J+HcTx0Vhu9ovXe6H+dVpO6cjrn2FkJTryXEMlryQ==}
     peerDependencies:
       react-hook-form: ^7.55.0
-
-  '@hugeicons/core-free-icons@2.0.0':
-    resolution: {integrity: sha512-OSfv5k0iB0yG61dcfK7jcf00AIK8EXyQOgtcNJzSBFvm88n9VOelkxihZHJnNwDUFpO/jZI3vZSVp6i1dmRvJQ==}
-
-  '@hugeicons/react@1.1.1':
-    resolution: {integrity: sha512-BAbFVtx0XZ/yF2poPLFn0N9Ji6ebV/MpI5+WRqooFp3smQDwpL+72m+BBs4KAM5djgWUpg12weyc5SJtTsOwsw==}
-    peerDependencies:
-      react: '>=16.0.0'
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -5028,6 +5017,11 @@ packages:
 
   '@tanstack/virtual-core@3.13.12':
     resolution: {integrity: sha512-1YBOJfRHV4sXUmWsFSf5rQor4Ss82G8dQWLRbnk3GA4jeP8hQt1hxXh0tmflpC0dz3VgEv/1+qwPyLeWkQuPFA==}
+
+  '@theexperiencecompany/gaia-icons@1.1.0':
+    resolution: {integrity: sha512-u39qvLK35UZumDE+szeRKcUKVsOBIyi9jPZg1Vst7rJFEmQudJ94GKhGqyo3HY6UHuTlOagIolBVIqMP6EOxfA==}
+    peerDependencies:
+      react: '>=16'
 
   '@tiptap/core@2.26.1':
     resolution: {integrity: sha512-fymyd/XZvYiHjBoLt1gxs024xP/LY26d43R1vluYq7AHBL/7DE3ywzy+1GEsGyAv5Je2L0KBhNIR/izbq3Kaqg==}
@@ -12248,12 +12242,6 @@ snapshots:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.62.0(react@19.1.1)
 
-  '@hugeicons/core-free-icons@2.0.0': {}
-
-  '@hugeicons/react@1.1.1(react@19.1.1)':
-    dependencies:
-      react: 19.1.1
-
   '@humanfs/core@0.19.1': {}
 
   '@humanfs/node@0.16.6':
@@ -16068,6 +16056,10 @@ snapshots:
   '@tanstack/virtual-core@3.11.3': {}
 
   '@tanstack/virtual-core@3.13.12': {}
+
+  '@theexperiencecompany/gaia-icons@1.1.0(react@19.1.1)':
+    dependencies:
+      react: 19.1.1
 
   '@tiptap/core@2.26.1(@tiptap/pm@2.26.1)':
     dependencies:

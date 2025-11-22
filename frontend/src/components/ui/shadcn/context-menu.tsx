@@ -3,7 +3,7 @@
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import * as React from "react";
 
-import { CheckIcon, ChevronRightIcon, CircleIcon } from "@/icons";
+import { ArrowRight01Icon, CheckmarkCircle02Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 function ContextMenu({
@@ -72,7 +72,7 @@ function ContextMenuSubTrigger({
       {...props}
     >
       {children}
-      <ChevronRightIcon className="ml-auto" />
+      <ArrowRight01Icon className="ml-auto" />
     </ContextMenuPrimitive.SubTrigger>
   );
 }
@@ -152,7 +152,7 @@ function ContextMenuCheckboxItem({
     >
       <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
         <ContextMenuPrimitive.ItemIndicator>
-          <CheckIcon className="size-4" />
+          <CheckmarkCircle02Icon className="size-4" />
         </ContextMenuPrimitive.ItemIndicator>
       </span>
       {children}
@@ -176,7 +176,7 @@ function ContextMenuRadioItem({
     >
       <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
         <ContextMenuPrimitive.ItemIndicator>
-          <CircleIcon className="size-2 fill-current" />
+          <CheckmarkCircle02Icon className="size-2 fill-current" />
         </ContextMenuPrimitive.ItemIndicator>
       </span>
       {children}

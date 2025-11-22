@@ -6,13 +6,7 @@ import { useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
-import {
-  AlertCircle,
-  CheckCheck,
-  CheckCircle,
-  Clock,
-  ExternalLink,
-} from "@/icons";
+import { AlertCircleIcon, CheckmarkBadge01Icon, CheckmarkCircle02Icon, LinkSquare02Icon,Timer02Icon,   } from '@/icons';
 import {
   ActionType,
   ModalConfig,
@@ -72,13 +66,13 @@ export const EnhancedNotificationCard = ({
   const getActionIcon = (actionType: ActionType) => {
     switch (actionType) {
       case "redirect":
-        return <ExternalLink className="h-3 w-3" strokeWidth={2.5} />;
+        return <LinkSquare02Icon className="h-3 w-3" strokeWidth={2.5} />;
       case "api_call":
-        return <CheckCircle className="h-3 w-3" strokeWidth={2.5} />;
+        return <CheckmarkCircle02Icon className="h-3 w-3" strokeWidth={2.5} />;
       case "workflow":
-        return <Clock className="h-3 w-3" strokeWidth={2.5} />;
+        return <Timer02Icon className="h-3 w-3" strokeWidth={2.5} />;
       case "modal":
-        return <AlertCircle className="h-3 w-3" strokeWidth={2.5} />;
+        return <AlertCircleIcon className="h-3 w-3" strokeWidth={2.5} />;
       default:
         return null;
     }
@@ -127,7 +121,7 @@ export const EnhancedNotificationCard = ({
                   variant="light"
                   isIconOnly
                 >
-                  <CheckCheck className="h-4 w-4 text-zinc-500" />
+                  <CheckmarkBadge01Icon className="h-4 w-4 text-zinc-500" />
                 </HeroButton>
               </Tooltip>
             )}
@@ -170,7 +164,7 @@ export const EnhancedNotificationCard = ({
                         <>
                           <span>{action.label}</span>
                           {isExecuted && (
-                            <CheckCircle
+                            <CheckmarkCircle02Icon
                               className="h-3 w-3"
                               strokeWidth={2.5}
                             />

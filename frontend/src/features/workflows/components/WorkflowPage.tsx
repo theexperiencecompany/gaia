@@ -9,7 +9,7 @@ import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import { UseCase } from "@/features/use-cases/types";
 import { useHeader } from "@/hooks/layout/useHeader";
-import { RefreshCw } from "@/icons";
+import { RedoIcon } from "@/icons";
 
 import { CommunityWorkflow, Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
@@ -167,7 +167,7 @@ export default function WorkflowPage() {
             size="sm"
             variant="flat"
             onPress={onRefetch}
-            startContent={<RefreshCw className="h-4 w-4" />}
+            startContent={<RedoIcon className="h-4 w-4" />}
           >
             Try Again
           </Button>

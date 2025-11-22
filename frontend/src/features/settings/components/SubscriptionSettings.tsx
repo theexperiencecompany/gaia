@@ -6,14 +6,13 @@ import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
 import { useRouter } from "next/navigation";
 
-import { CreditCardIcon } from "@/components";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import {
   convertToUSDCents,
   formatUSDFromCents,
 } from "@/features/pricing/utils/currencyConverter";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
-import { CreditCard } from "@/icons";
+import { CreditCardIcon } from "@/icons";
 
 export function SubscriptionSettings() {
   const { data: subscriptionStatus, isLoading } = useUserSubscriptionStatus();
@@ -26,7 +25,7 @@ export function SubscriptionSettings() {
   if (isLoading) {
     return (
       <SettingsCard
-        icon={<CreditCard className="h-5 w-5 text-blue-400" />}
+        icon={<CreditCardIcon className="h-5 w-5 text-blue-400" />}
         title="Subscription"
       >
         <div className="space-y-4">
@@ -109,7 +108,7 @@ export function SubscriptionSettings() {
 
   return (
     <SettingsCard
-      icon={<CreditCard className="h-5 w-5 text-blue-400" />}
+      icon={<CreditCardIcon className="h-5 w-5 text-blue-400" />}
       title="Subscription"
     >
       <div className="mb-4 flex justify-end">

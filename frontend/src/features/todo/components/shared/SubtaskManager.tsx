@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/shadcn/button";
 import { Input } from "@/components/ui/shadcn/input";
-import { Plus, X } from "@/icons";
+import { Cancel01Icon,PlusSignIcon } from '@/icons';
 import { cn } from "@/lib/utils";
 import { SubTask } from "@/types/features/todoTypes";
 
@@ -126,7 +126,7 @@ export default function SubtaskManager({
               : "hover:bg-zinc-750 bg-zinc-800 text-zinc-200"
           }`}
         >
-          <Plus size={16} />
+          <PlusSignIcon size={16} />
         </Button>
       </div>
 
@@ -170,7 +170,7 @@ export default function SubtaskManager({
                     onClick={handleCancelEdit}
                     className="h-7 w-7 rounded-md border-0 p-0 text-zinc-400 hover:bg-zinc-600 hover:text-zinc-200"
                   >
-                    <X size={12} />
+                    <Cancel01Icon size={12} />
                   </Button>
                 </div>
               ) : (
@@ -190,7 +190,7 @@ export default function SubtaskManager({
                     onClick={() => handleDeleteSubtask(subtask.id)}
                     className="h-7 w-7 rounded-md border-0 p-0 text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-600 hover:text-red-400"
                   >
-                    <X size={14} />
+                    <Cancel01Icon size={14} />
                   </Button>
                 </>
               )}

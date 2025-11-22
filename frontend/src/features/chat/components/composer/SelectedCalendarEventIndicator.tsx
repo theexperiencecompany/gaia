@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import React from "react";
 
 import { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
-import { X } from "@/icons";
+import { Cancel01Icon } from '@/icons';
 
 interface SelectedCalendarEventIndicatorProps {
   event: SelectedCalendarEventData | null;
@@ -89,7 +89,7 @@ export default function SelectedCalendarEventIndicator({
             whileTap={{ scale: 0.9 }}
             className="relative z-1 flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
           >
-            <X size={15} />
+            <Cancel01Icon size={15} />
           </motion.button>
         )}
       </motion.div>

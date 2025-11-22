@@ -1,6 +1,6 @@
 import fs from "fs";
-import path from "path";
 import { globSync } from "glob";
+import path from "path";
 
 const publicDir = path.join(process.cwd(), "public");
 

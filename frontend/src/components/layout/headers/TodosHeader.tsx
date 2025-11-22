@@ -7,7 +7,7 @@ import { useMemo } from "react";
 
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import TodoModal from "@/features/todo/components/TodoModal";
-import { ChevronRight } from "@/icons";
+import { ArrowRight01Icon } from '@/icons';
 import { CheckmarkCircle02Icon } from "@/icons";
 import { useTodoStore } from "@/stores/todoStore";
 
@@ -71,12 +71,12 @@ export default function TodosHeader() {
         </Link>
         {pageTitle !== "Inbox" && (
           <>
-            <ChevronRight width={18} height={17} />
+            <ArrowRight01Icon width={18} height={17} />
             <span className="text-zinc-300">{pageTitle}</span>
           </>
         )}
         <>
-          <ChevronRight width={18} height={17} />
+          <ArrowRight01Icon width={18} height={17} />
           <span className="text-sm text-zinc-400">
             {taskCount} {taskCount === 1 ? "task" : "tasks"}
           </span>

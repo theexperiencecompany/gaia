@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { memoryApi } from "@/features/memory/api/memoryApi";
-import { X } from "@/icons";
+import { Cancel01Icon } from '@/icons';
 
 interface AddMemoryFormProps {
   isOpen: boolean;
@@ -102,7 +102,7 @@ export default function AddMemoryForm({
           onPress={onClose}
           className="absolute top-2 right-2"
         >
-          <X className="h-4 w-4" />
+          <Cancel01Icon className="h-4 w-4" />
         </Button>
       </div>
 

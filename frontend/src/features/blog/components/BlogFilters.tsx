@@ -4,7 +4,7 @@ import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { useCallback, useMemo, useState } from "react";
 
-import { Search } from "@/icons";
+import { SearchIcon } from '@/icons';
 import type { BlogPost } from "@/lib/blog";
 
 interface BlogFiltersProps {
@@ -87,10 +87,10 @@ export function BlogFilters({ blogs, onFilterChange }: BlogFiltersProps) {
 
       <Input
         type="text"
-        placeholder="Search posts..."
+        placeholder="SearchIcon posts..."
         value={searchQuery}
         onValueChange={handleSearchChange}
-        startContent={<Search className="size-5 text-default-400" />}
+        startContent={<SearchIcon className="size-5 text-default-400" />}
         variant="flat"
         radius="full"
         className="w-full max-w-sm"

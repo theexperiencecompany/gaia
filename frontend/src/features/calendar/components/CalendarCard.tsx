@@ -6,7 +6,7 @@ import {
   getEventIcon,
   isTooDark,
 } from "@/features/calendar/utils/calendarUtils";
-import { Clock } from "@/icons";
+import { Timer02Icon } from '@/icons';
 import {
   CalendarCardProps,
   GoogleCalendarEvent,
@@ -64,7 +64,7 @@ const CalendarCard: React.FC<CalendarCardProps> = ({
           className="relative z-1 mt-2 flex items-center gap-1 text-sm"
           style={{ color: backgroundColor }}
         >
-          <Clock height={17} width={17} />
+          <Timer02Icon height={17} width={17} />
           {dateDisplay}
         </div>
       )}

@@ -13,7 +13,7 @@ import {
   useConversationList,
   useFetchConversations,
 } from "@/features/chat/hooks/useConversationList";
-import { Loader } from "@/icons";
+import { Watch02Icon } from '@/icons';
 import type { IConversation } from "@/lib/db/chatDb";
 
 import { ChatTab } from "./ChatTab";
@@ -173,7 +173,7 @@ export default function ChatsList() {
     <>
       {isLoading && conversations.length === 0 ? (
         <div className="flex items-center justify-center p-10">
-          <Loader className="animate-spin text-[#00bbff]" />
+          <Watch02Icon className="animate-spin text-[#00bbff]" />
         </div>
       ) : isError ? (
         <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">

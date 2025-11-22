@@ -15,7 +15,7 @@ import { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplay } from "@/features/workflows/utils/triggerDisplay";
-import { Play, User } from "@/icons";
+import { PlayIcon, UserIcon } from '@/icons';
 
 interface UseCaseDetailClientProps {
   useCase: UseCase | null;
@@ -158,7 +158,7 @@ export default function UseCaseDetailClient({
                     name={creatorName}
                     size="sm"
                     fallback={
-                      <User className="h-4 w-4 text-primary-foreground" />
+                      <UserIcon className="h-4 w-4 text-primary-foreground" />
                     }
                   />
                 }
@@ -172,7 +172,7 @@ export default function UseCaseDetailClient({
 
             {/* Run Count */}
             <MetaInfoCard
-              icon={<Play className="h-5 w-5 text-zinc-400" />}
+              icon={<PlayIcon className="h-5 w-5 text-zinc-400" />}
               label="Ran"
               value={runCountText}
             />

@@ -12,7 +12,7 @@ import ProfileCardSettings from "@/features/settings/components/ProfileCardSetti
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
 import { SettingsCardSimple } from "@/features/settings/components/SettingsCardSimple";
 import { SettingsOption } from "@/features/settings/components/SettingsOption";
-import { Camera, Edit3, LogOut, User } from "@/icons";
+import { Camera01Icon, Logout02Icon, PencilEdit02Icon, UserIcon } from '@/icons';
 
 import { ModalAction } from "./SettingsMenu";
 
@@ -106,11 +106,11 @@ export default function AccountSection({
                   </>
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
-                    <User className="h-8 w-8 text-zinc-400" />
+                    <UserIcon className="h-8 w-8 text-zinc-400" />
                   </div>
                 )}
                 <div className="bg-opacity-50 absolute inset-0 flex items-center justify-center bg-black opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                  <Camera className="h-6 w-6 text-white" />
+                  <Camera01Icon className="h-6 w-6 text-white" />
                 </div>
               </button>
               <input
@@ -122,7 +122,7 @@ export default function AccountSection({
               />
             </div>
 
-            {/* User Info */}
+            {/* UserIcon Info */}
             <div className="flex-1 space-y-4">
               {/* Name */}
               <LabeledField label="Name">
@@ -162,7 +162,7 @@ export default function AccountSection({
                     className="group flex w-full items-center justify-between rounded-xl bg-zinc-800 px-3 py-2.5 text-sm text-white transition-colors duration-200 hover:bg-zinc-700"
                   >
                     <span>{user?.name || "Loading..."}</span>
-                    <Edit3 className="h-4 w-4 text-zinc-400 transition-colors duration-200 group-hover:text-white" />
+                    <PencilEdit02Icon className="h-4 w-4 text-zinc-400 transition-colors duration-200 group-hover:text-white" />
                   </button>
                 )}
               </LabeledField>
@@ -177,7 +177,7 @@ export default function AccountSection({
 
         <SettingsCardSimple>
           <SettingsOption
-            icon={<LogOut className="h-5 w-5 text-red-500" />}
+            icon={<Logout02Icon className="h-5 w-5 text-red-500" />}
             title="Sign Out"
             description="Sign out of your account on this device"
             action={

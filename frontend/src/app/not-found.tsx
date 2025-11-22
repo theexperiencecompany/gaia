@@ -7,7 +7,7 @@ import { Home01Icon } from "@/components";
 import Footer from "@/components/navigation/Footer";
 import Navbar from "@/components/navigation/Navbar";
 import { RaisedButton } from "@/components/ui";
-import { ArrowLeft } from "@/icons";
+import { ArrowLeft01Icon } from '@/icons';
 
 export default function PageNotFound() {
   const router = useRouter();
@@ -37,7 +37,7 @@ export default function PageNotFound() {
             color="#00bbff"
             onClick={() => router.back()}
           >
-            <ArrowLeft width={18} height={18} />
+            <ArrowLeft01Icon width={18} height={18} />
             Go Back
           </RaisedButton>
         </div>

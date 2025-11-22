@@ -10,7 +10,7 @@ import { useState } from "react";
 
 import Spinner from "@/components/ui/shadcn/spinner";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
-import { BarChart3, CalendarIcon, TrendingUp } from "@/icons";
+import { CalendarIcon, ChartIcon, ChartIncreaseIcon } from '@/icons';
 
 import { useUsageSummary } from "../hooks/useUsage";
 
@@ -91,7 +91,7 @@ export default function UsageSettings() {
                 key="month"
                 title={
                   <div className="flex items-center space-x-2">
-                    <TrendingUp size={16} />
+                    <ChartIncreaseIcon size={16} />
                     <span>Monthly</span>
                   </div>
                 }
@@ -105,7 +105,7 @@ export default function UsageSettings() {
           {featuresWithPeriod.length === 0 ? (
             <Card>
               <CardBody className="py-8 text-center">
-                <BarChart3 className="text-muted-foreground/50 mx-auto h-10 w-10" />
+                <ChartIcon className="text-muted-foreground/50 mx-auto h-10 w-10" />
                 <h3 className="mt-3 text-base font-medium">
                   No limits configured
                 </h3>

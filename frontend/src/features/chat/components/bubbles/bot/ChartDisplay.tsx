@@ -18,8 +18,13 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/shadcn/chart";
-import { BarChart3, Download, Maximize2, X } from "@/icons";
-import { Image02Icon } from "@/icons";
+import {
+  Cancel01Icon,
+  ChartIcon,
+  Download01Icon,
+  Image02Icon,
+  MaximizeScreenIcon,
+} from "@/icons";
 
 interface ChartData {
   id: string;
@@ -161,14 +166,14 @@ const StaticChartItem: React.FC<{
           className="rounded-lg bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
           title="View fullscreen"
         >
-          <Maximize2 className="h-3.5 w-3.5" />
+          <MaximizeScreenIcon className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={onDownload}
           className="rounded-lg bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
           title="Download"
         >
-          <Download className="h-3.5 w-3.5" />
+          <Download01Icon className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
@@ -195,7 +200,7 @@ const DynamicChartItem: React.FC<{
           className="rounded-lg bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
           title="View fullscreen"
         >
-          <Maximize2 className="h-3.5 w-3.5" />
+          <MaximizeScreenIcon className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
@@ -230,14 +235,14 @@ const ChartModal: React.FC<{
             className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
             title="Download"
           >
-            <Download className="h-4 w-4" />
+            <Download01Icon className="h-4 w-4" />
           </button>
           <button
             onClick={onClose}
             className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
             title="Close"
           >
-            <X className="h-4 w-4" />
+            <Cancel01Icon className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -318,7 +323,7 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({ charts }) => {
                 key="dynamic"
                 title={
                   <div className="flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5" />
+                    <ChartIcon className="h-5 w-5" />
                     Dynamic
                     <div className="flex aspect-square min-h-3 min-w-3 items-center justify-center rounded-full bg-primary/90 p-1.5 text-sm font-medium text-black">
                       {dynamicCharts.length}

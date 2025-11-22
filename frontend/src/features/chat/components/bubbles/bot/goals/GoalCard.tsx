@@ -1,16 +1,14 @@
 "use client";
 
 import { format } from "date-fns";
-import React from "react";
 
-import { Target02Icon } from "@/components";
 import {
+  ArrowRight01Icon,
+  Award01Icon,
   CalendarIcon,
-  CheckCircle2,
-  ChevronRight,
-  Target,
-  Trophy,
-  Users,
+  CheckmarkCircle02Icon,
+  Target02Icon,
+  UserGroupIcon,
 } from "@/icons";
 
 import type {
@@ -103,7 +101,7 @@ function GoalCardHeader({
           onClick={onToggleExpand}
           className="rounded-lg p-2 transition-colors hover:bg-zinc-800"
         >
-          <ChevronRight
+          <ArrowRight01Icon
             className={`h-4 w-4 text-zinc-500 transition-transform ${
               isExpanded ? "rotate-90" : ""
             }`}
@@ -306,7 +304,7 @@ export function GoalCard({
         <span
           className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${getProgressBgColor(progress)} ${getProgressColor(progress)}`}
         >
-          <Users className="h-3 w-3" />
+          <UserGroupIcon className="h-3 w-3" />
           {completedTasks.length}/{roadmapTasks.length} tasks
         </span>
       )}
@@ -320,7 +318,7 @@ export function GoalCard({
 
       {goal.todo_project_id && (
         <span className="flex items-center gap-1 rounded-full bg-zinc-800 px-3 py-1 text-xs font-medium text-zinc-400">
-          <Trophy className="h-3 w-3" />
+          <Award01Icon className="h-3 w-3" />
           Linked to Todos
         </span>
       )}
@@ -342,7 +340,7 @@ export function GoalCard({
               }`}
             >
               {node.data.isComplete && (
-                <CheckCircle2 className="h-2.5 w-2.5 text-white" />
+                <CheckmarkCircle02Icon className="h-2.5 w-2.5 text-white" />
               )}
             </div>
             <span
@@ -370,7 +368,7 @@ export function GoalCard({
         <GoalCardHeader
           title={goal.title}
           variant="compact"
-          icon={<Target className="h-4 w-4 text-primary" />}
+          icon={<Target02Icon className="h-4 w-4 text-primary" />}
           progress={progress}
         />
       </GoalCardContainer>

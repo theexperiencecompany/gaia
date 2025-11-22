@@ -6,7 +6,7 @@ import { Select, SelectItem } from "@heroui/select";
 import React, { useEffect } from "react";
 
 import { CalendarAdd01Icon, CalendarIcon } from "@/components/shared";
-import { ChevronLeft, ChevronRight } from "@/icons";
+import { ArrowLeft01Icon, ArrowRight01Icon } from '@/icons';
 import {
   useCreateEventAction,
   useDaysToShow,
@@ -129,11 +129,11 @@ export default function CalendarHeader() {
             variant="light"
             onPress={goToPreviousDay}
           >
-            <ChevronLeft className="h-5 w-5 text-zinc-400" />
+            <ArrowLeft01Icon className="h-5 w-5 text-zinc-400" />
           </Button>
 
           <Button isIconOnly size="sm" variant="light" onPress={goToNextDay}>
-            <ChevronRight className="h-5 w-5 text-zinc-400" />
+            <ArrowRight01Icon className="h-5 w-5 text-zinc-400" />
           </Button>
           <Button variant="flat" onPress={goToToday} size="sm" className="ml-">
             Today

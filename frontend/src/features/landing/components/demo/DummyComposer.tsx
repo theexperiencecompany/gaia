@@ -12,8 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/shadcn/dropdown-menu";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { ArrowUp, ChevronRight } from "@/icons";
-import { WrenchIcon } from "@/icons";
+import { ArrowRight01Icon, ArrowUp02Icon } from "@/icons";
+import { Wrench01Icon } from "@/icons";
 import { AttachmentIcon, PlusSignIcon } from "@/icons";
 
 import DummySlashCommandDropdown from "./DummySlashCommandDropdown";
@@ -119,7 +119,7 @@ const DummyComposer: React.FC = () => {
                   })}
                 </div>
               ))}
-              <ChevronRight width={18} height={18} className="ml-3" />
+              <ArrowRight01Icon width={18} height={18} className="ml-3" />
             </div>
           </div>
         </Button>
@@ -223,7 +223,7 @@ const DummyComposer: React.FC = () => {
                   onClick={handleSlashButtonClick}
                   aria-label="Browse all tools"
                 >
-                  <WrenchIcon
+                  <Wrench01Icon
                     className="min-h-[20px] min-w-[20px]"
                     color={undefined}
                   />
@@ -245,7 +245,11 @@ const DummyComposer: React.FC = () => {
               className="h-9 w-9 rounded-full bg-primary p-0 text-xl hover:bg-primary/90 disabled:opacity-50"
               aria-label="Send message"
             >
-              <ArrowUp width={40} height={40} className="min-h-5 min-w-5" />
+              <ArrowUp02Icon
+                width={40}
+                height={40}
+                className="min-h-5 min-w-5"
+              />
             </ShadcnButton>
           </div>
         </div>

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { SelectedWorkflowData } from "@/features/chat/hooks/useWorkflowSelection";
 import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflowCard";
-import { X } from "@/icons";
+import { Cancel01Icon } from '@/icons';
 
 interface SelectedWorkflowIndicatorProps {
   workflow: SelectedWorkflowData | null;
@@ -39,7 +39,7 @@ export default function SelectedWorkflowIndicator({
       onPress={() => onRemove()}
       className="text-zinc-400 hover:text-zinc-200"
     >
-      <X className="h-4 w-4" />
+      <Cancel01Icon className="h-4 w-4" />
     </Button>
   ) : undefined;
 

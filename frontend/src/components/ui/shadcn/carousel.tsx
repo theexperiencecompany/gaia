@@ -6,7 +6,7 @@ import useEmblaCarousel, {
 import * as React from "react";
 
 import { Button } from "@/components/ui/shadcn/button";
-import { ArrowLeft, ArrowRight } from "@/icons";
+import { ArrowLeft01Icon, ArrowRight01Icon } from '@/icons';
 import { cn } from "@/lib/utils";
 
 type CarouselApi = UseEmblaCarouselType[1];
@@ -195,7 +195,7 @@ function CarouselPrevious({
       onClick={scrollPrev}
       {...props}
     >
-      <ArrowLeft />
+      <ArrowLeft01Icon />
       <span className="sr-only">Previous slide</span>
     </Button>
   );
@@ -225,7 +225,7 @@ function CarouselNext({
       onClick={scrollNext}
       {...props}
     >
-      <ArrowRight />
+      <ArrowRight01Icon />
       <span className="sr-only">Next slide</span>
     </Button>
   );

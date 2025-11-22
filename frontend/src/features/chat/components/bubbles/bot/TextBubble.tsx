@@ -34,7 +34,7 @@ import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils"
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
-import { AlertTriangleIcon } from "@/icons";
+import { Alert01Icon } from '@/icons';
 import {
   CalendarDeleteOptions,
   CalendarEditOptions,
@@ -420,7 +420,7 @@ export default function TextBubble({
                   color="warning"
                   size="sm"
                   startContent={
-                    <AlertTriangleIcon
+                    <Alert01Icon
                       className="text-warning-500"
                       height={17}
                     />

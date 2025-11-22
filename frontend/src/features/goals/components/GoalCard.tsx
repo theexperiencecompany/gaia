@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { Calendar03Icon, DotsVerticalIcon } from "@/icons";
+import { Calendar03Icon, MoreVerticalIcon } from '@/icons';
 import { Goal } from "@/types/api/goalsApiTypes";
 import { parseDate2 } from "@/utils";
 
@@ -66,7 +66,7 @@ export function GoalCard({
             >
               <DropdownTrigger>
                 <Button isIconOnly variant="flat" size="sm">
-                  <DotsVerticalIcon />
+                  <MoreVerticalIcon />
                 </Button>
               </DropdownTrigger>
               <DropdownMenu aria-label="Static Actions" className="dark">

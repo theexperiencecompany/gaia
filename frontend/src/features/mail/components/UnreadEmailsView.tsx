@@ -3,7 +3,7 @@ import React from "react";
 import { Gmail } from "@/components";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import EmailListCard from "@/features/mail/components/EmailListCard";
-import { Loader2 } from "@/icons";
+import { Loading02Icon } from '@/icons';
 import { EmailData, EmailFetchData } from "@/types/features/mailTypes";
 
 interface UnreadEmailsViewProps {
@@ -64,7 +64,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
     >
       {isLoading ? (
         <div className="flex h-full items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+          <Loading02Icon className="h-8 w-8 animate-spin text-zinc-500" />
         </div>
       ) : (
         <EmailListCard

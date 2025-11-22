@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import React, { FC, useEffect, useState } from "react";
 
 import { SystemPurpose } from "@/features/chat/api/chatApi";
-import { BotIcon, Star, ZapIcon } from "@/icons";
+import { ChatBotIcon, StarsIcon, ZapIcon } from "@/icons";
 import { BubbleConversationChatIcon, Mail01Icon } from "@/icons";
 
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
@@ -56,12 +56,13 @@ export const ChatTab: FC<ChatTabProps> = ({
       if (systemPurpose === SystemPurpose.WORKFLOW_EXECUTION)
         return <ZapIcon {...iconProps} />;
 
-      return <BotIcon {...iconProps} />;
+      return <ChatBotIcon {...iconProps} />;
     }
 
-    if (starred) return <Star className={ICON_SIZE} {...iconProps} />;
+    if (starred) return <StarsIcon className={ICON_SIZE} {...iconProps} />;
 
-    return <BubbleConversationChatIcon className={ICON_SIZE} {...iconProps} />;
+    // return <BubbleConversationChatIcon className={ICON_SIZE} {...iconProps} />;
+    return undefined;
   };
 
   return (
@@ -80,10 +81,13 @@ export const ChatTab: FC<ChatTabProps> = ({
         variant="light"
         color={isActive ? "primary" : "default"}
         onPress={() => setButtonHovered(false)}
-        startContent={React.cloneElement(getIcon(), {
-          width: 18,
-          height: 18,
-        })}
+        startContent={
+          getIcon() &&
+          React.cloneElement(getIcon()!, {
+            width: 18,
+            height: 18,
+          })
+        }
       >
         {name.replace('"', "")}
       </Button>

@@ -2,7 +2,7 @@
 
 import { Chip } from "@heroui/chip";
 
-import { ArrowBigUp, ExternalLink, MessageCircle } from "@/icons";
+import { ArrowUp02Icon, BubbleChatIcon,LinkSquare02Icon } from '@/icons';
 import { RedditPostData } from "@/types/features/redditTypes";
 
 interface RedditPostCardProps {
@@ -100,7 +100,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300"
           >
-            <ExternalLink className="h-3 w-3" />
+            <LinkSquare02Icon className="h-3 w-3" />
             <span className="truncate">{post.url}</span>
           </a>
         )}
@@ -109,7 +109,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
         <div className="flex items-center gap-4 pt-2">
           {/* Upvotes */}
           <div className="flex items-center gap-1.5 text-sm">
-            <ArrowBigUp height={18} width={18} className="text-[#FF4500]" />
+            <ArrowUp02Icon height={18} width={18} className="text-[#FF4500]" />
             <span className="font-medium text-[#FF4500]">
               {formatNumber(post.score)}
             </span>
@@ -122,7 +122,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
 
           {/* Comments */}
           <div className="flex items-center gap-1.5 text-sm text-gray-400">
-            <MessageCircle className="h-4 w-4" />
+            <BubbleChatIcon className="h-4 w-4" />
             <span>{formatNumber(post.num_comments)}</span>
           </div>
 

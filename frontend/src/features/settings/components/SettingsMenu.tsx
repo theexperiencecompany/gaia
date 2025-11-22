@@ -16,19 +16,17 @@ import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { ContactSupportModal } from "@/features/support";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import {
+  ArrowRight01Icon,
   BookBookmark02Icon,
   BookOpen02Icon,
-  ChevronRight,
-  CircleArrowUp,
-  Layers01Icon,
-  LogOut,
-  MapsIcon,
-} from "@/icons";
-import {
   BubbleChatQuestionIcon,
+  CircleArrowUp02Icon,
   CustomerService01Icon,
   Github,
   GitPullRequestIcon,
+  Layers01Icon,
+  Logout02Icon,
+  MapsIcon,
   QuillWrite01Icon,
   Settings01Icon,
 } from "@/icons";
@@ -161,7 +159,7 @@ export default function SettingsMenu({ children }: { children?: ReactNode }) {
                 key: "upgrade_to_pro",
                 label: "Upgrade to Pro",
                 action: () => router.push("/pricing"),
-                icon: CircleArrowUp,
+                icon: CircleArrowUp02Icon,
                 iconColor: "#00bbff",
                 customClassNames: { title: "text-primary font-medium" },
               },
@@ -205,7 +203,7 @@ export default function SettingsMenu({ children }: { children?: ReactNode }) {
         {
           key: "logout",
           label: "Sign Out",
-          icon: LogOut,
+          icon: Logout02Icon,
           color: "danger" as const,
           action: () => setModalAction("logout"),
         },
@@ -249,7 +247,7 @@ export default function SettingsMenu({ children }: { children?: ReactNode }) {
                       className="text-zinc-400 transition hover:text-white"
                       startContent={Icon && <Icon className={iconClasses} />}
                       endContent={
-                        <ChevronRight className="h-4 w-4 text-zinc-500" />
+                        <ArrowRight01Icon className="h-4 w-4 text-zinc-500" />
                       }
                     >
                       {item.label}

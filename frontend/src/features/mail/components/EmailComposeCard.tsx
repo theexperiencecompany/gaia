@@ -10,7 +10,7 @@ import { z } from "zod";
 
 import { Gmail, PencilEdit01Icon, Separator } from "@/components";
 import { mailApi } from "@/features/mail/api/mailApi";
-import { Plus, X } from "@/icons";
+import { Cancel01Icon,PlusSignIcon } from '@/icons';
 
 // Email validation schema
 const emailComposeSchema = z.object({
@@ -182,7 +182,7 @@ function RecipientSelectionModal({
                 onClick={() => handleSuggestionToggle(email)}
                 endContent={
                   selectedEmails.includes(email) ? (
-                    <X className="h-3 w-3" />
+                    <Cancel01Icon className="h-3 w-3" />
                   ) : null
                 }
               >
@@ -212,7 +212,7 @@ function RecipientSelectionModal({
               onPress={handleAddCustomEmail}
               isIconOnly
             >
-              <Plus className="h-4 w-4" />
+              <PlusSignIcon className="h-4 w-4" />
             </Button>
           </div>
 

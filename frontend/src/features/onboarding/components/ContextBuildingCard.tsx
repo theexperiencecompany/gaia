@@ -3,7 +3,7 @@
 import { Card } from "@heroui/card";
 import { FC } from "react";
 
-import { CheckCircle2, IconProps,Loader2, XCircle } from "@/icons";
+import { CheckmarkCircle02Icon, IconProps, Loading02Icon, RemoveCircleIcon } from '@/icons';
 import { ContextStatus,useOnboardingStore } from "@/stores/onboardingStore";
 
 interface StatusConfig {
@@ -17,31 +17,31 @@ const STATUS_CONFIG: Record<ContextStatus, StatusConfig> = {
   idle: { text: "Waiting...", icon: null, color: "text-white/50", spin: false },
   gathering: {
     text: "Gathering context...",
-    icon: Loader2,
+    icon: Loading02Icon,
     color: "text-blue-400",
     spin: true,
   },
   parsing_emails: {
     text: "Parsing emails...",
-    icon: Loader2,
+    icon: Loading02Icon,
     color: "text-blue-400",
     spin: true,
   },
   building_graph: {
     text: "Building memory graph...",
-    icon: Loader2,
+    icon: Loading02Icon,
     color: "text-purple-400",
     spin: true,
   },
   complete: {
     text: "Context ready!",
-    icon: CheckCircle2,
+    icon: CheckmarkCircle02Icon,
     color: "text-green-400",
     spin: false,
   },
   error: {
     text: "Error occurred",
-    icon: XCircle,
+    icon: RemoveCircleIcon,
     color: "text-red-400",
     spin: false,
   },

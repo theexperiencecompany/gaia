@@ -6,7 +6,7 @@ import {
   TrailingActions,
 } from "react-swipeable-list";
 
-import { Trash2 } from "@/icons";
+import { Delete02Icon } from '@/icons';
 import { Notification } from "@/types/notifications";
 import { getActionColor, getActionIcon } from "@/utils/notifications";
 
@@ -77,7 +77,7 @@ export const NotificationTrailingActions = ({
         onClick={() => onAction(notification, "dismiss")}
       >
         <div className="flex h-full w-full items-center justify-center rounded-r-3xl bg-red-600/90 px-4">
-          <Trash2 className="mr-2 h-4 w-4 text-white" />
+          <Delete02Icon className="mr-2 h-4 w-4 text-white" />
           <span className="text-white">Dismiss</span>
         </div>
       </SwipeAction>

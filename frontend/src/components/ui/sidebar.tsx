@@ -22,7 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/shadcn/tooltip";
 import { useIsMobile } from "@/hooks/ui/useMobile";
-import { PanelLeft } from "@/icons";
+import { SidebarLeftIcon } from '@/icons';
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
@@ -296,7 +296,7 @@ const SidebarTrigger = React.forwardRef<
       }}
       {...props}
     >
-      <PanelLeft />
+      <SidebarLeftIcon />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   );

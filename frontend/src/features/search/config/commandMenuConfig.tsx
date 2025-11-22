@@ -1,10 +1,10 @@
 import { ReactNode } from "react";
 
-import { CircleArrowUp, ZapIcon } from "@/icons";
 import {
   Brain02Icon,
   CalendarIcon,
   CheckmarkCircle02Icon,
+  CircleArrowUp02Icon,
   ConnectIcon,
   DiscordIcon,
   MessageMultiple02Icon,
@@ -13,6 +13,7 @@ import {
   Settings01Icon,
   Target02Icon,
   WhatsappIcon,
+  ZapIcon,
 } from "@/icons";
 
 // Menu item configuration
@@ -94,7 +95,7 @@ export const ACTION_ITEMS: MenuItemConfig[] = [
   {
     id: "upgrade_to_pro",
     label: "Upgrade to Pro",
-    icon: <CircleArrowUp width={18} height={18} color="#00bbff" />,
+    icon: <CircleArrowUp02Icon width={18} height={18} color="#00bbff" />,
     path: "/pricing",
     hideWhenSubscribed: true,
   },

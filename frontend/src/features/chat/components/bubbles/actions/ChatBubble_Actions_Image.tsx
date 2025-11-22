@@ -3,7 +3,7 @@ import { Tooltip } from "@heroui/tooltip";
 import React from "react";
 import { toast } from "sonner";
 
-import { XIcon } from "@/icons";
+import { RemoveCircleIcon } from '@/icons';
 import { DownloadSquare01Icon } from "@/icons";
 import { ImageData } from "@/types/features/toolDataTypes";
 
@@ -62,7 +62,7 @@ export default function ChatBubble_Actions_Image({
     <div className="flex w-fit items-center gap-2">
       {fullWidth && setOpenImage ? (
         <Button variant="flat" onPress={() => setOpenImage(false)}>
-          <XIcon height="22" />
+          <RemoveCircleIcon height="22" />
           <span>Cancel</span>
         </Button>
       ) : (

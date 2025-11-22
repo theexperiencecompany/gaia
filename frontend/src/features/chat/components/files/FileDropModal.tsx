@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 
-import { File, FileUp, Upload } from "@/icons";
+import { File01Icon, FileUploadIcon, Upload01Icon } from '@/icons';
 
 interface FileDropModalProps {
   isDragging: boolean;
@@ -45,7 +45,7 @@ export function FileDropModal({
                   ease: "easeInOut",
                 }}
               >
-                <Upload size={36} strokeWidth={1.5} />
+                <Upload01Icon size={36} strokeWidth={1.5} />
               </motion.div>
 
               <h3 className="mb-2 text-2xl font-bold text-foreground">
@@ -58,12 +58,12 @@ export function FileDropModal({
 
               <div className="text-muted-foreground mt-2 flex flex-wrap items-center justify-center gap-2 text-xs">
                 <div className="flex items-center rounded-full bg-zinc-800 px-3 py-1">
-                  <FileUp size={12} className="mr-1" />
+                  <FileUploadIcon size={12} className="mr-1" />
                   <span>Max {maxFileSize}MB</span>
                 </div>
 
                 <div className="flex items-center rounded-full bg-zinc-800 px-3 py-1">
-                  <File size={12} className="mr-1" />
+                  <File01Icon size={12} className="mr-1" />
                   <span>
                     {acceptedFileTypes.includes("*")
                       ? "All file types"

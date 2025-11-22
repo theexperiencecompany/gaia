@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import Link from "next/link";
 
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
-import { ExternalLink, ZapIcon } from "@/icons";
+import { LinkSquare02Icon, ZapIcon } from '@/icons';
 
 interface WorkflowsHeaderProps {
   onCreateWorkflow: () => void;
@@ -24,7 +24,7 @@ export default function WorkflowsHeader({
           <Button
             variant="light"
             className="text-zinc-400"
-            endContent={<ExternalLink width={16} height={16} />}
+            endContent={<LinkSquare02Icon width={16} height={16} />}
           >
             Browse Use Cases
           </Button>

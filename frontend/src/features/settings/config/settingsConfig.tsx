@@ -1,7 +1,7 @@
-import { BarChart3 } from "@/icons";
 import {
   AiBrain01Icon,
   BookOpen01Icon,
+  ChartLineData02Icon,
   CreditCardIcon,
   DiscordIcon,
   MessageMultiple02Icon,
@@ -43,7 +43,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
   {
     key: "usage",
     label: "Usage",
-    icon: BarChart3,
+    icon: ChartLineData02Icon,
     href: "/settings?section=usage",
   },
   {

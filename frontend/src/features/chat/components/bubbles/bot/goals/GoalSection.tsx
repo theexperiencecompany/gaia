@@ -3,15 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import {
-  BarChart3,
-  CheckCircle2,
-  Clock,
-  Target,
-  TrendingUp,
-  Users,
-  ZapIcon,
-} from "@/icons";
+import { ChartIcon, ChartIncreaseIcon, CheckmarkCircle02Icon, Target02Icon, Timer02Icon, UserGroupIcon, ZapIcon,  } from '@/icons';
 
 import { GoalCard } from "./GoalCard";
 import type { GoalSectionProps } from "./types";
@@ -51,7 +43,7 @@ export default function GoalSection({
     return (
       <div className="mt-3 w-fit min-w-[300px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
         <div className="flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-red-500" />
+          <CheckmarkCircle02Icon className="h-4 w-4 text-red-500" />
           <p className="text-sm text-red-400">{error}</p>
         </div>
       </div>
@@ -63,7 +55,7 @@ export default function GoalSection({
     return (
       <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
         <div className="mb-3 flex items-center gap-2 text-sm">
-          <BarChart3 className="h-4 w-4 text-primary" />
+          <ChartIcon className="h-4 w-4 text-primary" />
           Goal Progress Overview
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -140,17 +132,17 @@ export default function GoalSection({
   ) {
     const icons = {
       creating: <ZapIcon className="h-4 w-4 text-blue-500" />,
-      fetching: <Clock className="h-4 w-4 text-blue-500" />,
-      deleting: <Clock className="h-4 w-4 text-red-500" />,
-      updating_progress: <TrendingUp className="h-4 w-4 text-green-500" />,
-      generating_roadmap: <Users className="h-4 w-4 text-primary" />,
+      fetching: <Timer02Icon className="h-4 w-4 text-blue-500" />,
+      deleting: <Timer02Icon className="h-4 w-4 text-red-500" />,
+      updating_progress: <ChartIncreaseIcon className="h-4 w-4 text-green-500" />,
+      generating_roadmap: <UserGroupIcon className="h-4 w-4 text-primary" />,
     };
 
     return (
       <div className="mt-3 w-fit rounded-2xl rounded-bl-none bg-zinc-800 p-4">
         <div className="flex items-center gap-2">
           {icons[action as keyof typeof icons] || (
-            <Clock className="h-4 w-4 text-blue-500" />
+            <Timer02Icon className="h-4 w-4 text-blue-500" />
           )}
           <p className="text-sm">{message}</p>
         </div>
@@ -163,7 +155,7 @@ export default function GoalSection({
     return (
       <div className="mt-3 w-fit min-w-[350px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
         <div className="mb-3 flex items-center gap-2">
-          <Users className="h-4 w-4 text-primary" />
+          <UserGroupIcon className="h-4 w-4 text-primary" />
           <p className="text-sm text-zinc-300">{message}</p>
         </div>
         <button
@@ -197,7 +189,7 @@ export default function GoalSection({
       <div className="mt-3 w-fit min-w-[450px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm">
-            <Target className="h-4 w-4 text-primary" />
+            <Target02Icon className="h-4 w-4 text-primary" />
             {action === "search"
               ? "Search Results"
               : action === "roadmap_generated"
@@ -234,7 +226,7 @@ export default function GoalSection({
   if (action === "list" && (!goals || goals.length === 0)) {
     return (
       <div className="mt-3 w-fit min-w-[300px] rounded-2xl rounded-bl-none bg-zinc-800 p-6 text-center">
-        <Target className="mx-auto h-8 w-8 text-zinc-600" />
+        <Target02Icon className="mx-auto h-8 w-8 text-zinc-600" />
         <p className="mt-2 text-sm text-zinc-300">No goals found</p>
         {message && <p className="mt-1 text-xs text-zinc-500">{message}</p>}
       </div>
@@ -255,10 +247,10 @@ export default function GoalSection({
         ? "text-green-500"
         : "text-blue-500";
     const icon = isDeleteAction
-      ? CheckCircle2
+      ? CheckmarkCircle02Icon
       : isSuccessAction
-        ? CheckCircle2
-        : Target;
+        ? CheckmarkCircle02Icon
+        : Target02Icon;
     const IconComponent = icon;
 
     return (

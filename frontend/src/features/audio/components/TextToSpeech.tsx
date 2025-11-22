@@ -2,7 +2,7 @@ import { Button } from "@heroui/button";
 // import Spinner from "@/components/ui/spinner";
 import * as React from "react";
 
-import { Loader } from "@/icons";
+import { Watch02Icon } from '@/icons';
 import { VolumeHighIcon, VolumeOffIcon } from "@/icons";
 import { api } from "@/lib/api";
 
@@ -72,7 +72,7 @@ export default function TextToSpeech({ text }: { text: string }) {
       onPress={handleTextToSpeech}
     >
       {loading ? (
-        <Loader className="animate-spin text-[24px] text-[#9b9b9b]" />
+        <Watch02Icon className="animate-spin text-[24px] text-[#9b9b9b]" />
       ) : isPlaying ? (
         <VolumeOffIcon className="text-[18px] text-[#9b9b9b]" />
       ) : (

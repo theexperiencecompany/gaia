@@ -5,7 +5,7 @@ import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 
-import { EyeIcon } from "@/icons";
+import { ViewIcon } from '@/icons';
 
 interface MarkdownPreviewProps {
   content: string;
@@ -17,7 +17,7 @@ export function MarkdownPreview({ content, title }: MarkdownPreviewProps) {
     <Card className="max-h-96 overflow-hidden">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
-          <EyeIcon className="h-4 w-4 text-primary" />
+          <ViewIcon className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-medium">Preview</h3>
         </div>
       </CardHeader>

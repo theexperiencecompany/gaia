@@ -20,8 +20,16 @@ import {
 import AddMemoryModal from "@/features/memory/components/AddMemoryModal";
 import MemoryGraph from "@/features/memory/components/MemoryGraph";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { ChevronDown, List, NeuralNetworkIcon, Plus, Trash2 } from "@/icons";
-import { AiBrain01Icon, FileEmpty02Icon, Image02Icon } from "@/icons";
+import {
+  AiBrain01Icon,
+  ArrowDown01Icon,
+  Delete02Icon,
+  FileEmpty02Icon,
+  Image02Icon,
+  ListViewIcon,
+  NeuralNetworkIcon,
+  PlusSignIcon,
+} from "@/icons";
 
 export interface MemoryManagementProps {
   className?: string;
@@ -177,7 +185,7 @@ export default function MemoryManagement({
                   onPress={() => handleDeleteMemory(memory.id)}
                   isLoading={deletingId === memory.id}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Delete02Icon className="h-4 w-4" />
                 </Button>
               </div>
 
@@ -230,7 +238,7 @@ export default function MemoryManagement({
             color="primary"
             variant="flat"
             className="mt-4"
-            startContent={<Plus className="h-4 w-4" />}
+            startContent={<PlusSignIcon className="h-4 w-4" />}
             onPress={() => setIsAddMemoryModalOpen(true)}
           >
             Add Memory
@@ -257,7 +265,7 @@ export default function MemoryManagement({
                 key="list"
                 title={
                   <div className="flex items-center gap-2">
-                    <List className="h-4 w-4" />
+                    <ListViewIcon className="h-4 w-4" />
                     <span>List View</span>
                   </div>
                 }
@@ -299,7 +307,7 @@ export default function MemoryManagement({
                   <Dropdown placement="bottom-end">
                     <DropdownTrigger>
                       <Button isIconOnly>
-                        <ChevronDown className="h-4 w-4" />
+                        <ArrowDown01Icon className="h-4 w-4" />
                       </Button>
                     </DropdownTrigger>
                     <DropdownMenu
@@ -342,7 +350,7 @@ export default function MemoryManagement({
               )}
               <Button
                 color="primary"
-                startContent={<Plus className="h-4 w-4" />}
+                startContent={<PlusSignIcon className="h-4 w-4" />}
                 onPress={() => setIsAddMemoryModalOpen(true)}
               >
                 Add Memory

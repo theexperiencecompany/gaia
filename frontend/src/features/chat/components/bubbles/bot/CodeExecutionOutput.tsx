@@ -1,7 +1,7 @@
 import React from "react";
 
 import CopyButton from "@/features/chat/components/code-block/CopyButton";
-import { CheckCircle, Terminal, XCircle } from "@/icons";
+import { CheckmarkCircle02Icon, RemoveCircleIcon,SourceCodeCircleIcon } from '@/icons';
 
 interface CodeExecutionOutputProps {
   output?: {
@@ -30,12 +30,12 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
       );
     }
     if (status === "error" || output?.error) {
-      return <XCircle className="h-3 w-3 text-red-400" />;
+      return <RemoveCircleIcon className="h-3 w-3 text-red-400" />;
     }
     if (status === "completed" && output && !output.error) {
-      return <CheckCircle className="h-3 w-3 text-green-400" />;
+      return <CheckmarkCircle02Icon className="h-3 w-3 text-green-400" />;
     }
-    return <Terminal className="h-3 w-3 text-gray-400" />;
+    return <SourceCodeCircleIcon className="h-3 w-3 text-gray-400" />;
   };
 
   const getStatusText = () => {

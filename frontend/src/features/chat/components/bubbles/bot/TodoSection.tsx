@@ -6,16 +6,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/shadcn/button";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import {
-  CalendarIcon,
-  Check,
-  CheckCircle2,
-  ChevronRight,
-  Flag,
-  FolderOpen,
-  Hash,
-  Play,
-} from "@/icons";
+import { ArrowRight01Icon, CalendarIcon, CheckmarkCircle02Icon, Flag01Icon, Folder02Icon, GridIcon, PlayIcon,Tick02Icon,   } from '@/icons';
 import {
   TodoAction,
   TodoItem,
@@ -35,19 +26,19 @@ interface TodoSectionProps {
 const priorityConfig = {
   [Priority.HIGH]: {
     color: "danger" as const,
-    icon: <Flag className="h-3 w-3" />,
+    icon: <Flag01Icon className="h-3 w-3" />,
     bgColor: "bg-red-500/10",
     textColor: "text-red-500",
   },
   [Priority.MEDIUM]: {
     color: "warning" as const,
-    icon: <Flag className="h-3 w-3" />,
+    icon: <Flag01Icon className="h-3 w-3" />,
     bgColor: "bg-yellow-500/10",
     textColor: "text-yellow-500",
   },
   [Priority.LOW]: {
     color: "primary" as const,
-    icon: <Flag className="h-3 w-3" />,
+    icon: <Flag01Icon className="h-3 w-3" />,
     bgColor: "bg-blue-500/10",
     textColor: "text-blue-500",
   },
@@ -269,7 +260,7 @@ export default function TodoSection({
                     onClick={(e) => e.stopPropagation()}
                   >
                     {todo.completed && (
-                      <Check className="h-2.5 w-2.5 text-white" />
+                      <Tick02Icon className="h-2.5 w-2.5 text-white" />
                     )}
                   </button>
 
@@ -292,7 +283,7 @@ export default function TodoSection({
                           }}
                           className="rounded p-1 hover:bg-zinc-900/70"
                         >
-                          <ChevronRight
+                          <ArrowRight01Icon
                             className={`h-4 w-4 text-zinc-500 transition-transform ${
                               isExpanded ? "rotate-90" : ""
                             }`}
@@ -335,7 +326,7 @@ export default function TodoSection({
                               }}
                             />
                           ) : (
-                            <FolderOpen className="h-3 w-3" />
+                            <Folder02Icon className="h-3 w-3" />
                           )}
                           {todo.project.name}
                         </span>
@@ -346,7 +337,7 @@ export default function TodoSection({
                           key={label}
                           className="flex items-center gap-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400"
                         >
-                          <Hash className="h-3 w-3" />
+                          <GridIcon className="h-3 w-3" />
                           {label}
                         </span>
                       ))}
@@ -387,7 +378,7 @@ export default function TodoSection({
                                   }`}
                                 >
                                   {subtask.completed && (
-                                    <Check className="h-2.5 w-2.5 text-white" />
+                                    <Tick02Icon className="h-2.5 w-2.5 text-white" />
                                   )}
                                 </div>
                                 <span
@@ -419,7 +410,7 @@ export default function TodoSection({
                                 handleRunWorkflow(todo);
                               }}
                             >
-                              <Play className="mr-1 h-3 w-3" />
+                              <PlayIcon className="mr-1 h-3 w-3" />
                               Run Workflow
                             </Button>
                           </div>
@@ -441,7 +432,7 @@ export default function TodoSection({
   if (action === "list" && (!todos || todos.length === 0)) {
     return (
       <div className="mt-3 w-fit min-w-[300px] rounded-2xl rounded-bl-none bg-zinc-800 p-6 text-center">
-        <CheckCircle2 className="mx-auto h-8 w-8 text-zinc-600" />
+        <CheckmarkCircle02Icon className="mx-auto h-8 w-8 text-zinc-600" />
         <p className="mt-2 text-sm text-zinc-300">No tasks found</p>
         {message && <p className="mt-1 text-xs text-zinc-500">{message}</p>}
       </div>
@@ -456,7 +447,7 @@ export default function TodoSection({
     return (
       <div className="mt-3 w-fit rounded-2xl rounded-bl-none bg-zinc-800 p-4">
         <div className="flex items-center gap-2">
-          <CheckCircle2 className={`h-4 w-4 ${iconColor}`} />
+          <CheckmarkCircle02Icon className={`h-4 w-4 ${iconColor}`} />
           <p className="text-sm">{message}</p>
         </div>
       </div>

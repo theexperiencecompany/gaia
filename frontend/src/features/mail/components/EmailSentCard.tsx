@@ -1,7 +1,7 @@
 import { Chip } from "@heroui/chip";
 
 import { Gmail } from "@/components";
-import { CheckCircleIcon } from "@/icons";
+import { CheckmarkCircle02Icon } from '@/icons';
 import { EmailSentData } from "@/types/features/mailTypes";
 
 interface EmailSentCardProps {
@@ -31,7 +31,7 @@ export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Gmail width={20} height={20} />
-          <CheckCircleIcon className="h-5 w-5 text-green-400" />
+          <CheckmarkCircle02Icon className="h-5 w-5 text-green-400" />
           <span className="text-sm font-medium text-green-400">Email Sent</span>
         </div>
         <Chip size="sm" variant="flat" color="success" className="text-xs">

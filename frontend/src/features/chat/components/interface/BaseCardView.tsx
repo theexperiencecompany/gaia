@@ -4,7 +4,7 @@ import Link from "next/link";
 import React from "react";
 
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
-import { RefreshCw } from "@/icons";
+import { RedoIcon } from "@/icons";
 
 interface BaseCardViewProps {
   title: string;
@@ -67,7 +67,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                 isDisabled={isFetching}
                 className="min-w-0 transition-all duration-200 hover:bg-zinc-800"
               >
-                <RefreshCw
+                <RedoIcon
                   className={`h-4 w-4 transition-transform duration-500 ${isFetching ? "animate-spin" : "hover:rotate-180"}`}
                 />
               </Button>

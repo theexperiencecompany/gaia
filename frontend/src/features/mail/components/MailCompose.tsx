@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/shadcn/dropdown-menu";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useEmailComposition } from "@/features/mail/hooks/useEmailComposition";
-import { AlertCircle, Check, ChevronDown } from "@/icons";
+import { AlertCircleIcon, ArrowDown01Icon,Tick02Icon } from '@/icons';
 import { AiSearch02Icon, BrushIcon, Sent02Icon, SentIcon } from "@/icons";
 
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
@@ -84,7 +84,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
 
             {error && (
               <Alert variant="destructive" className="bg-red-500/10">
-                <AlertCircle className="h-4 w-4" />
+                <AlertCircleIcon className="h-4 w-4" />
                 <AlertTitle>There was an error.</AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
@@ -158,7 +158,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                                 ?.label
                             }
                           </span>
-                          <ChevronDown color={undefined} width={20} />
+                          <ArrowDown01Icon color={undefined} width={20} />
                         </div>
                       </ShadcnButton>
                     </DropdownMenuTrigger>
@@ -176,7 +176,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                             {style.label}
                             {writingStyles.find((s) => s.id === writingStyle)
                               ?.label === style.label && (
-                              <Check color={undefined} width={20} height={20} />
+                              <Tick02Icon color={undefined} width={20} height={20} />
                             )}
                           </div>
                         </DropdownMenuItem>
@@ -203,7 +203,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                               (opt) => opt.id === contentLength,
                             )?.label || "None"}
                           </span>
-                          <ChevronDown color={undefined} width={20} />
+                          <ArrowDown01Icon color={undefined} width={20} />
                         </div>
                       </ShadcnButton>
                     </DropdownMenuTrigger>
@@ -220,7 +220,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                           <div className="flex w-full items-center justify-between">
                             {option.label}
                             {contentLength === option.id && (
-                              <Check color={undefined} width={20} />
+                              <Tick02Icon color={undefined} width={20} />
                             )}
                           </div>
                         </DropdownMenuItem>
@@ -245,7 +245,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                               (opt) => opt.id === clarityOption,
                             )?.label || "None"}
                           </span>
-                          <ChevronDown color={undefined} width={20} />
+                          <ArrowDown01Icon color={undefined} width={20} />
                         </div>
                       </ShadcnButton>
                     </DropdownMenuTrigger>
@@ -262,7 +262,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                           <div className="flex w-full items-center justify-between">
                             {option.label}
                             {clarityOption === option.id && (
-                              <Check color={undefined} width={20} />
+                              <Tick02Icon color={undefined} width={20} />
                             )}
                           </div>
                         </DropdownMenuItem>

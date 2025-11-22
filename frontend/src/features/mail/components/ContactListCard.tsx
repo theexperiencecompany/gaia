@@ -2,7 +2,7 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 
 import { Gmail } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
-import { Mail, Phone } from "@/icons";
+import { Call02Icon,Mail01Icon } from '@/icons';
 import { ContactData } from "@/types/features/mailTypes";
 
 interface ContactListCardProps {
@@ -36,13 +36,13 @@ export default function ContactListCard({ contacts }: ContactListCardProps) {
               <div className="min-w-0 flex-1 space-y-1">
                 {contact.email && (
                   <div className="flex items-center gap-2 text-sm text-gray-400">
-                    <Mail className="h-3.5 w-3.5 flex-shrink-0" />
+                    <Mail01Icon className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="truncate">{contact.email}</span>
                   </div>
                 )}
                 {contact.phone && (
                   <div className="flex items-center gap-2 text-sm text-gray-400">
-                    <Phone className="h-3.5 w-3.5 flex-shrink-0" />
+                    <Call02Icon className="h-3.5 w-3.5 flex-shrink-0" />
                     <span>{contact.phone}</span>
                   </div>
                 )}

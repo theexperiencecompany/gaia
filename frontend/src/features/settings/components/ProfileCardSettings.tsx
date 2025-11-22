@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Skeleton } from "@heroui/skeleton";
 import { Slider } from "@heroui/slider";
 import { Tooltip } from "@heroui/tooltip";
-import { Suspense, useCallback,useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import ColorPicker from "react-best-gradient-color-picker";
 import { toast } from "sonner";
 
@@ -25,13 +25,13 @@ import {
   normalizeHouse,
 } from "@/features/onboarding/constants/houses";
 import {
-  Copy,
+  PaintBoardIcon,
+  Copy01Icon,
   Dices,
-  Download,
-  ExternalLink,
-  Palette,
-  RotateCcw,
-  Share2,
+  Download01Icon,
+  LinkSquare02Icon,
+  ReloadIcon,
+  Share08Icon,
 } from "@/icons";
 
 export default function ProfileCardSettings() {
@@ -100,7 +100,7 @@ export default function ProfileCardSettings() {
   };
 
   const handleDownload = () => {
-    toast.success("Download started");
+    toast.success("Download01Icon started");
     // Add download logic here
   };
 
@@ -220,7 +220,7 @@ export default function ProfileCardSettings() {
               onPress={handleCopyLink}
               size="sm"
             >
-              <Copy size={16} />
+              <Copy01Icon size={16} />
             </Button>
           </Tooltip>
           <Tooltip content="View full profile">
@@ -230,7 +230,7 @@ export default function ProfileCardSettings() {
               onPress={handleOpenProfile}
               size="sm"
             >
-              <ExternalLink size={16} />
+              <LinkSquare02Icon size={16} />
             </Button>
           </Tooltip>
         </ButtonGroup>
@@ -259,14 +259,14 @@ export default function ProfileCardSettings() {
             </Suspense>
 
             <ButtonGroup className="mt-2">
-              <Tooltip content="Download your card" placement="top">
+              <Tooltip content="Download01Icon your card" placement="top">
                 <Button
                   isIconOnly
                   variant="flat"
                   onPress={handleDownload}
                   aria-label="Download"
                 >
-                  <Download size={20} />
+                  <Download01Icon size={20} />
                 </Button>
               </Tooltip>
 
@@ -274,7 +274,7 @@ export default function ProfileCardSettings() {
                 <Dropdown placement="top">
                   <DropdownTrigger>
                     <Button isIconOnly variant="flat" aria-label="Share">
-                      <Share2 size={20} />
+                      <Share08Icon size={20} />
                     </Button>
                   </DropdownTrigger>
                   <DropdownMenu aria-label="Share options">
@@ -312,7 +312,7 @@ export default function ProfileCardSettings() {
                     </DropdownItem>
                     <DropdownItem
                       key="copy"
-                      startContent={<Copy size={16} />}
+                      startContent={<Copy01Icon size={16} />}
                       onPress={() => handleShare("copy")}
                     >
                       Copy Link
@@ -329,7 +329,7 @@ export default function ProfileCardSettings() {
                 >
                   <PopoverTrigger>
                     <Button isIconOnly variant="flat" aria-label="Color Picker">
-                      <Palette width={20} height={20} />
+                      <PaintBoardIcon width={20} height={20} />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto bg-zinc-800 p-4">
@@ -345,7 +345,7 @@ export default function ProfileCardSettings() {
                           onPress={handleResetColor}
                           aria-label="Reset Color"
                         >
-                          <RotateCcw size={16} />
+                          <ReloadIcon size={16} />
                         </Button>
                       </div>
                       <ColorPicker

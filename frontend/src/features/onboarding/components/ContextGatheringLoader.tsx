@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { RaisedButton } from "@/components";
 import { usePersonalization } from "@/features/onboarding/hooks/usePersonalization";
-import { X } from "@/icons";
+import { Cancel01Icon } from '@/icons';
 
 interface ContextGatheringLoaderProps {
   onComplete: () => void;
@@ -61,7 +61,7 @@ export default function ContextGatheringLoader({
           className="absolute top-2 right-2 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-700 hover:text-zinc-100"
           aria-label="Dismiss"
         >
-          <X size={16} />
+          <Cancel01Icon size={16} />
         </button>
       )}
 

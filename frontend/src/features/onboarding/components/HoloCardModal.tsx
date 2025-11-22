@@ -7,16 +7,13 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import {
-  Modal,
-  ModalContent,
-} from "@heroui/modal";
+import { Modal, ModalContent } from "@heroui/modal";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Skeleton } from "@heroui/skeleton";
 import { Slider } from "@heroui/slider";
 import { Tooltip } from "@heroui/tooltip";
 import confetti from "canvas-confetti";
-import { Suspense, useCallback,useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import ColorPicker from "react-best-gradient-color-picker";
 import { toast } from "sonner";
 
@@ -32,12 +29,12 @@ import {
 } from "@/features/onboarding/hooks/usePersonalization";
 import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
 import {
+  PaintBoardIcon,
   Dices,
-  Download,
-  Link,
-  Palette,
-  RotateCcw,
-  Share2,
+  Download01Icon,
+  LinkBackwardIcon,
+  ReloadIcon,
+  Share08Icon,
 } from "@/icons";
 
 interface FeatureModalProps {
@@ -141,7 +138,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
   }, []);
 
   const handleDownload = () => {
-    toast.success("Download started");
+    toast.success("Download01Icon started");
     // Add download logic here
   };
 
@@ -162,7 +159,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
         break;
       case "copy":
         navigator.clipboard.writeText(url);
-        toast.success("Link copied to clipboard");
+        toast.success("LinkBackwardIcon copied to clipboard");
         break;
     }
   };
@@ -343,14 +340,14 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
               </Suspense>
 
               <ButtonGroup className="mt-5">
-                <Tooltip content="Download your card" placement="top">
+                <Tooltip content="Download01Icon your card" placement="top">
                   <Button
                     isIconOnly
                     variant="flat"
                     onPress={handleDownload}
                     aria-label="Download"
                   >
-                    <Download size={20} />
+                    <Download01Icon size={20} />
                   </Button>
                 </Tooltip>
 
@@ -358,7 +355,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                   <Dropdown placement="top">
                     <DropdownTrigger>
                       <Button isIconOnly variant="flat" aria-label="Share">
-                        <Share2 size={20} />
+                        <Share08Icon size={20} />
                       </Button>
                     </DropdownTrigger>
                     <DropdownMenu aria-label="Share options">
@@ -378,10 +375,10 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                       </DropdownItem>
                       <DropdownItem
                         key="copy"
-                        startContent={<Link size={16} />}
+                        startContent={<LinkBackwardIcon size={16} />}
                         onPress={() => handleShare("copy")}
                       >
-                        Copy Link
+                        Copy LinkBackwardIcon
                       </DropdownItem>
                     </DropdownMenu>
                   </Dropdown>
@@ -399,7 +396,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                         variant="flat"
                         aria-label="Color Picker"
                       >
-                        <Palette width={20} height={20} />
+                        <PaintBoardIcon width={20} height={20} />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto bg-zinc-800 p-4">
@@ -415,7 +412,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                             onPress={handleResetColor}
                             aria-label="Reset Color"
                           >
-                            <RotateCcw size={16} />
+                            <ReloadIcon size={16} />
                           </Button>
                         </div>
                         <ColorPicker

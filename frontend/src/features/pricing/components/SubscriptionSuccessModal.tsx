@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Modal, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
 import React, { useEffect, useState } from "react";
 
-import { ArrowRight, Check } from "@/icons";
+import { ArrowRight01Icon, Tick02Icon } from '@/icons';
 
 import UseCreateConfetti from "../../../hooks/ui/useCreateConfetti";
 
@@ -57,7 +57,7 @@ export function SubscriptionSuccessModal({
         <ModalHeader className="flex flex-col gap-1 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full">
             <div className="flex aspect-square size-14 items-center justify-center rounded-full bg-primary">
-              <Check className="size-7 text-white" />
+              <Tick02Icon className="size-7 text-white" />
             </div>
           </div>
           <h2 className="text-2xl font-medium">Welcome to {planName}!</h2>
@@ -71,7 +71,7 @@ export function SubscriptionSuccessModal({
             color="primary"
             className="w-full font-medium"
             onPress={onNavigateToChat}
-            endContent={<ArrowRight className="h-4 w-4" />}
+            endContent={<ArrowRight01Icon className="h-4 w-4" />}
           >
             {countdown > 0 ? `Let's Chat! (${countdown}s)` : "Let's Chat!"}
           </Button>

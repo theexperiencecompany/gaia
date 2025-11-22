@@ -9,7 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { Search } from "@/icons";
+import { SearchIcon } from '@/icons';
 import { MessageMultiple02Icon } from "@/icons";
 
 import { ComprehensiveSearchResponse, searchApi } from "../api/searchApi";
@@ -51,7 +51,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     }
   }, [open]);
 
-  // Search with debouncing
+  // SearchIcon with debouncing
   const handleSearch = useCallback(async (query: string) => {
     if (!query.trim()) {
       setSearchResults({ conversations: [], messages: [], notes: [] });
@@ -195,12 +195,12 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
             >
               {/* Input */}
               <div className={COMMAND_MENU_STYLES.inputWrapper}>
-                <Search className={COMMAND_MENU_STYLES.searchIcon} />
+                <SearchIcon className={COMMAND_MENU_STYLES.searchIcon} />
                 <Command.Input
                   ref={inputRef}
                   value={search}
                   onValueChange={setSearch}
-                  placeholder="Search or run a command..."
+                  placeholder="SearchIcon or run a command..."
                   className={COMMAND_MENU_STYLES.input}
                 />
                 <Kbd keys={[modifierKeyName]}> K</Kbd>
@@ -211,7 +211,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                   {isSearching ? "Searching..." : "No results found."}
                 </Command.Empty>
 
-                {/* Search Results */}
+                {/* SearchIcon Results */}
                 {search && (
                   <>
                     {searchResults.conversations.length > 0 && (
@@ -268,7 +268,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                               }}
                               className={COMMAND_MENU_STYLES.item}
                             >
-                              <Search
+                              <SearchIcon
                                 width={16}
                                 height={16}
                                 color={undefined}

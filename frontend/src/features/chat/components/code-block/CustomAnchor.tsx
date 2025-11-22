@@ -7,7 +7,7 @@ import {
   usePrefetchUrlMetadata,
   useUrlMetadata,
 } from "@/features/chat/hooks/useUrlMetadata";
-import { GlobeIcon } from "@/icons";
+import { GlobalIcon } from '@/icons';
 
 // Global set to track failed image URLs across all instances
 const globalFailedUrls = new Set<string>();
@@ -92,7 +92,7 @@ const CustomAnchor = memo(
             </div>
           ) : error ? (
             <div className="flex items-center gap-2 p-3 text-red-400">
-              <GlobeIcon className="h-4 w-4" />
+              <GlobalIcon className="h-4 w-4" />
               <span className="text-sm">Failed to load preview</span>
             </div>
           ) : metadata ? (
@@ -133,7 +133,7 @@ const CustomAnchor = memo(
                       onError={() => handleImageError(metadata.favicon!)}
                     />
                   ) : (
-                    <GlobeIcon className="h-5 w-5 text-gray-400" />
+                    <GlobalIcon className="h-5 w-5 text-gray-400" />
                   )}
                   {metadata.website_name && (
                     <div className="truncate text-sm font-semibold">
@@ -169,7 +169,7 @@ const CustomAnchor = memo(
             </div>
           ) : (
             <div className="flex items-center gap-2 p-3">
-              <GlobeIcon className="h-4 w-4 text-gray-400" />
+              <GlobalIcon className="h-4 w-4 text-gray-400" />
               <span className="text-sm text-gray-400">
                 No preview available
               </span>

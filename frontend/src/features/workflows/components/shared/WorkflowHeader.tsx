@@ -3,7 +3,7 @@ import { Tooltip } from "@heroui/react";
 
 import { WorkflowSquare03Icon } from "@/components";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
-import { RotateCcw, Sparkles } from "@/icons";
+import { ReloadIcon, StarsIcon } from '@/icons';
 
 interface WorkflowHeaderProps {
   isRegenerating?: boolean;
@@ -27,7 +27,7 @@ export default function WorkflowHeader({
         />
         {isRegenerating && (
           <div className="flex items-center gap-1 text-xs text-blue-400">
-            <Sparkles className="h-3 w-3 animate-pulse" />
+            <StarsIcon className="h-3 w-3 animate-pulse" />
             <span>Regenerating...</span>
           </div>
         )}
@@ -40,7 +40,7 @@ export default function WorkflowHeader({
             size="sm"
             onPress={onGenerateWorkflow}
             startContent={
-              <RotateCcw
+              <ReloadIcon
                 className={`h-4 w-4 ${isRegenerating ? "animate-spin" : ""}`}
               />
             }

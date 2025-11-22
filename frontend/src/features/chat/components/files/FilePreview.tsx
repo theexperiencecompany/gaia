@@ -3,18 +3,14 @@ import Image from "next/image";
 
 import Spinner from "@/components/ui/shadcn/spinner";
 import {
-  File,
-  FileArchive,
-  FileAudio,
-  FileCode,
-  FileImage,
-  FileJson,
-  FileSpreadsheet,
-  FileText,
-  FileVideo,
-  X,
+  Cancel01Icon,
+  CodeIcon,
+  File01Icon,
+  Image02Icon,
+  MusicNote01Icon,
+  Pdf02Icon,
+  Video01Icon,
 } from "@/icons";
-import { Pdf02Icon } from "@/icons";
 
 export interface UploadedFilePreview {
   id: string;
@@ -37,7 +33,7 @@ export const getFileIcon = (fileType: string, fileName: string) => {
 
   // Image files
   if (fileType.startsWith("image/"))
-    return <FileImage className="h-6 w-6 text-zinc-800" />;
+    return <Image02Icon className="h-6 w-6 text-zinc-800" />;
 
   // Document files
   if (fileType === "application/pdf" || extension === "pdf")
@@ -48,7 +44,7 @@ export const getFileIcon = (fileType: string, fileName: string) => {
     fileType.includes("wordprocessing") ||
     fileType.includes("msword")
   )
-    return <FileText className="h-6 w-6 text-zinc-800" />;
+    return <File01Icon className="h-6 w-6 text-zinc-800" />;
 
   // Spreadsheet files
   if (
@@ -56,11 +52,11 @@ export const getFileIcon = (fileType: string, fileName: string) => {
     fileType.includes("spreadsheet") ||
     fileType.includes("excel")
   )
-    return <FileSpreadsheet className="h-6 w-6 text-zinc-800" />;
+    return <File01Icon className="h-6 w-6 text-zinc-800" />;
 
   // Code/text files
   if (["txt", "md"].includes(extension) || fileType === "text/plain")
-    return <FileText className="h-6 w-6 text-zinc-800" />;
+    return <File01Icon className="h-6 w-6 text-zinc-800" />;
 
   if (
     [
@@ -78,23 +74,23 @@ export const getFileIcon = (fileType: string, fileName: string) => {
     fileType.includes("javascript") ||
     fileType.includes("typescript")
   )
-    return <FileCode className="h-6 w-6 text-yellow-400" />;
+    return <CodeIcon className="h-6 w-6 text-yellow-400" />;
 
   if (["json", "xml", "yaml", "yml"].includes(extension))
-    return <FileJson className="h-6 w-6 text-zinc-400" />;
+    return <File01Icon className="h-6 w-6 text-zinc-400" />;
 
   // Media files
   if (
     fileType.startsWith("video/") ||
     ["mp4", "avi", "mov", "mkv"].includes(extension)
   )
-    return <FileVideo className="h-6 w-6 text-purple-400" />;
+    return <Video01Icon className="h-6 w-6 text-purple-400" />;
 
   if (
     fileType.startsWith("audio/") ||
     ["mp3", "wav", "ogg"].includes(extension)
   )
-    return <FileAudio className="h-6 w-6 text-pink-400" />;
+    return <MusicNote01Icon className="h-6 w-6 text-pink-400" />;
 
   // Archive files
   if (
@@ -102,10 +98,10 @@ export const getFileIcon = (fileType: string, fileName: string) => {
     fileType.includes("archive") ||
     fileType.includes("compressed")
   )
-    return <FileArchive className="h-6 w-6 text-amber-400" />;
+    return <File01Icon className="h-6 w-6 text-amber-400" />;
 
   // Default fallback
-  return <File className="h-6 w-6 text-zinc-400" />;
+  return <File01Icon className="h-6 w-6 text-zinc-400" />;
 };
 
 export const getFileExtension = (fileName: string) => {
@@ -172,7 +168,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ files, onRemove }) => {
               className="absolute top-0 right-0 z-10 h-6 w-6 min-w-0 scale-90 rounded-full opacity-0 transition-all group-hover:opacity-100"
               onPress={() => onRemove(file.id)}
             >
-              <X size={14} />
+              <Cancel01Icon size={14} />
             </Button>
 
             {file.type.startsWith("image/") ? (

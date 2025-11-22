@@ -3,7 +3,7 @@
 import { Card } from "@heroui/react";
 
 import { Button } from "@/components/ui";
-import { ChevronDown, Undo } from "@/icons";
+import { ArrowDown01Icon, ArrowLeft01Icon } from '@/icons';
 import { Notification } from "@/types/notifications";
 import { getNotificationIcon } from "@/utils/notifications";
 
@@ -79,10 +79,10 @@ export const NotificationCard = ({
                 >
                   {notification.actions.secondary.label}
                   {notification.actions.secondary.label === "Snooze" && (
-                    <ChevronDown className="ml-1 h-3 w-3" />
+                    <ArrowDown01Icon className="ml-1 h-3 w-3" />
                   )}
                   {notification.actions.secondary.label === "Undo" && (
-                    <Undo className="ml-1 h-3 w-3" />
+                    <ArrowLeft01Icon className="ml-1 h-3 w-3" />
                   )}
                 </Button>
               )}

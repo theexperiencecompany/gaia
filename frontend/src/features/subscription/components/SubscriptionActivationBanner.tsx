@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
-import { CheckCircle, Clock, CreditCard } from "@/icons";
+import { CheckmarkCircle02Icon, CreditCardIcon,Timer02Icon } from '@/icons';
 
 export function SubscriptionActivationBanner() {
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
@@ -51,7 +51,7 @@ export function SubscriptionActivationBanner() {
         <div className="flex items-start space-x-3">
           <div className="flex-shrink-0">
             <div className="relative">
-              <Clock className="h-5 w-5 text-blue-400" />
+              <Timer02Icon className="h-5 w-5 text-blue-400" />
               <div className="absolute -top-1 -right-1">
                 <div className="h-2 w-2 animate-pulse rounded-full bg-blue-400"></div>
               </div>
@@ -66,7 +66,7 @@ export function SubscriptionActivationBanner() {
               subscription now.
             </p>
             <div className="mt-2 flex items-center space-x-2">
-              <CreditCard className="h-3 w-3 text-blue-400" />
+              <CreditCardIcon className="h-3 w-3 text-blue-400" />
               <span className="text-xs text-blue-300">
                 Usually takes 10-30 seconds
               </span>
@@ -111,7 +111,7 @@ export function SubscriptionSuccessBanner() {
       <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4 shadow-lg backdrop-blur-sm">
         <div className="flex items-start space-x-3">
           <div className="flex-shrink-0">
-            <CheckCircle className="h-5 w-5 text-green-400" />
+            <CheckmarkCircle02Icon className="h-5 w-5 text-green-400" />
           </div>
           <div className="min-w-0 flex-1">
             <h4 className="text-sm font-medium text-green-300">

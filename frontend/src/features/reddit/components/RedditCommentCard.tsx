@@ -3,7 +3,7 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
-import { ArrowBigUp, User } from "@/icons";
+import { ArrowUp02Icon, UserIcon } from '@/icons';
 import { RedditCommentData } from "@/types/features/redditTypes";
 
 interface RedditCommentCardProps {
@@ -71,7 +71,7 @@ export default function RedditCommentCard({
               {/* Author & Meta */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-xs">
-                  <User className="h-3.5 w-3.5 text-gray-400" />
+                  <UserIcon className="h-3.5 w-3.5 text-gray-400" />
                   <span
                     className={`font-medium ${comment.is_submitter ? "text-blue-400" : "text-gray-300"}`}
                   >
@@ -90,7 +90,7 @@ export default function RedditCommentCard({
 
                 {/* Score */}
                 <div className="flex items-center gap-1 text-xs text-[#FF4500]">
-                  <ArrowBigUp width={18} height={18} />
+                  <ArrowUp02Icon width={18} height={18} />
                   <span className="font-medium">
                     {formatNumber(comment.score)}
                   </span>

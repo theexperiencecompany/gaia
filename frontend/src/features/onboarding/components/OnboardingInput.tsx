@@ -4,7 +4,7 @@ import { Input } from "@heroui/input";
 import { Kbd } from "@heroui/kbd";
 import { useEffect } from "react";
 
-import { ArrowUp } from "@/icons";
+import { ArrowUp02Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
@@ -133,7 +133,7 @@ export const OnboardingInput = ({
                     : "text-black",
                 )}
               >
-                <ArrowUp />
+                <ArrowUp02Icon />
               </Button>
             }
           />

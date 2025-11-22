@@ -23,7 +23,12 @@ import { chatApi } from "@/features/chat/api/chatApi";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useDeleteConversation } from "@/hooks/useDeleteConversation";
-import { ChevronDown, MoreVerticalIcon, Star, Trash } from "@/icons";
+import {
+  ArrowDown01Icon,
+  Delete02Icon,
+  MoreVerticalIcon,
+  StarIcon,
+} from "@/icons";
 import { PencilEdit02Icon } from "@/icons";
 import { db } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
@@ -149,7 +154,7 @@ export default function ChatOptionsDropdown({
           >
             {btnChildren}
             {logo2 ? (
-              <ChevronDown width={25} />
+              <ArrowDown01Icon width={25} />
             ) : (
               <MoreVerticalIcon
                 className={
@@ -166,7 +171,7 @@ export default function ChatOptionsDropdown({
         <DropdownMenu aria-label="Static Actions">
           <DropdownItem key="star" textValue="Star" onPress={handleStarToggle}>
             <div className="flex flex-row items-center justify-between gap-2">
-              <Star color="white" width={16} />
+              <StarIcon color="white" width={16} />
               {starred ? "Remove" : "Add"} star
             </div>
           </DropdownItem>
@@ -186,7 +191,10 @@ export default function ChatOptionsDropdown({
             onPress={handleDelete}
           >
             <div className="flex flex-row items-center justify-between gap-2">
-              <Trash color={dangerStateHovered ? "white" : "red"} width={16} />
+              <Delete02Icon
+                color={dangerStateHovered ? "white" : "red"}
+                width={16}
+              />
               Delete
             </div>
           </DropdownItem>

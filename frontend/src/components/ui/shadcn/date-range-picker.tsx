@@ -12,7 +12,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/shadcn/popover";
-import { ChevronDownIcon } from "@/icons";
+import { ArrowDown01Icon } from '@/icons';
 import { cn } from "@/lib/utils";
 
 interface DateRangePickerProps {
@@ -70,7 +70,7 @@ export function DateRangePicker({
                   includeTime: false,
                 })
               : placeholder}
-            <ChevronDownIcon className="size-4" />
+            <ArrowDown01Icon className="size-4" />
           </Button>
         </PopoverTrigger>
         <PopoverContent

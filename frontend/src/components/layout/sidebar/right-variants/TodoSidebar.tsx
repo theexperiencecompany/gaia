@@ -12,7 +12,7 @@ import { todoApi } from "@/features/todo/api/todoApi";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
 import WorkflowSection from "@/features/todo/components/WorkflowSection";
-import { Trash2 } from "@/icons";
+import { Delete02Icon } from '@/icons';
 import {
   Priority,
   Project,
@@ -267,7 +267,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             className="rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-all hover:bg-red-500/10 active:scale-95"
             aria-label="Delete todo"
           >
-            <Trash2 className="size-4" />
+            <Delete02Icon className="size-4" />
           </button>
         </div>
       </SidebarFooter>

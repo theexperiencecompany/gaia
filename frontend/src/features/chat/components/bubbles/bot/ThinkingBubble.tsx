@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { Brain } from "@/icons";
+import { Brain02Icon } from '@/icons';
 
 interface ThinkingBubbleProps {
   thinkingContent: string;
@@ -22,7 +22,7 @@ export default function ThinkingBubble({
           isExpanded ? "Hide thinking process" : "Show thinking process"
         }
       >
-        <Brain
+        <Brain02Icon
           className="transition-all duration-200 group-hover:scale-110"
           size={16}
         />

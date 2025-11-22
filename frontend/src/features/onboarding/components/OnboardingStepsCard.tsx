@@ -3,7 +3,7 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Checkbox } from "@heroui/checkbox";
 
-import { CalendarIcon, Mail, MessageSquare, Sparkles,Workflow } from "@/icons";
+import { CalendarIcon, Comment01Icon, Mail01Icon, StarsIcon, WorkflowSquare03Icon } from '@/icons';
 
 interface OnboardingStep {
   id: string;
@@ -16,7 +16,7 @@ const steps: OnboardingStep[] = [
   {
     id: "email",
     label: "Create an email",
-    icon: <Mail size={16} />,
+    icon: <Mail01Icon size={16} />,
     completed: true,
   },
   {
@@ -28,19 +28,19 @@ const steps: OnboardingStep[] = [
   {
     id: "workflow",
     label: "Create a workflow",
-    icon: <Workflow size={16} />,
+    icon: <WorkflowSquare03Icon size={16} />,
     completed: false,
   },
   {
     id: "chat",
     label: "Start a conversation",
-    icon: <MessageSquare size={16} />,
+    icon: <Comment01Icon size={16} />,
     completed: false,
   },
   {
     id: "explore",
     label: "Explore AI features",
-    icon: <Sparkles size={16} />,
+    icon: <StarsIcon size={16} />,
     completed: false,
   },
 ];

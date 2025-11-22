@@ -8,7 +8,7 @@ import React, { useMemo, useState } from "react";
 
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { Check, Hash, Search, X } from "@/icons";
+import { Cancel01Icon,GridIcon, SearchIcon, Tick02Icon } from '@/icons';
 
 // Dummy integrations data - all shown as connected
 const dummyIntegrations = [
@@ -131,7 +131,7 @@ const DummyIntegrationsCard: React.FC = () => {
 // Dummy data matching the complete tool registry from backend
 const dummyTools = {
   tools: [
-    // Search tools (core)
+    // SearchIcon tools (core)
     {
       name: "web_search_tool",
       category: "search",
@@ -640,11 +640,11 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
               <div className="flex-1">
                 <Input
                   type="text"
-                  placeholder="Search tools..."
+                  placeholder="SearchIcon tools..."
                   value={searchQuery}
                   size="sm"
                   radius="full"
-                  startContent={<Search size={16} />}
+                  startContent={<SearchIcon size={16} />}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   autoFocus
                 />
@@ -657,7 +657,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                 variant="flat"
                 aria-label="Close button dummy composer"
               >
-                <X size={14} />
+                <Cancel01Icon size={14} />
               </Button>
             </div>
           )}
@@ -684,7 +684,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                     }`}
                   >
                     {category === "all" ? (
-                      <Hash
+                      <GridIcon
                         size={16}
                         strokeWidth={2}
                         className="text-gray-400"
@@ -733,7 +733,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                           )}
                           {tool.required_integration && (
                             <div className="flex items-center gap-1">
-                              <Check className="h-3 w-3 text-green-400" />
+                              <Tick02Icon className="h-3 w-3 text-green-400" />
                               <span className="text-xs text-green-400">
                                 Connected
                               </span>

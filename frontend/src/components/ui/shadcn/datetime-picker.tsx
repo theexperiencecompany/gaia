@@ -29,12 +29,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/shadcn/popover";
 import { ScrollArea } from "@/components/ui/shadcn/scroll-area";
-import {
-  CalendarIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  XCircle,
-} from "@/icons";
+import { ArrowLeft01Icon, ArrowRight01Icon, CalendarIcon, RemoveCircleIcon,  } from '@/icons';
 import { cn } from "@/lib/utils";
 
 export type CalendarProps = Omit<
@@ -185,7 +180,7 @@ export function DateTimePicker({
                   setOpen(false);
                 }}
               >
-                <XCircle className="size-4 text-zinc-400" />
+                <RemoveCircleIcon className="size-4 text-zinc-400" />
               </Button>
             )}
           </div>
@@ -227,10 +222,10 @@ export function DateTimePicker({
             showOutsideDays={true}
             components={{
               IconLeft: ({ ...props }) => (
-                <ChevronLeftIcon className="size-4 text-zinc-400" {...props} />
+                <ArrowLeft01Icon className="size-4 text-zinc-400" {...props} />
               ),
               IconRight: ({ ...props }) => (
-                <ChevronRightIcon className="size-4 text-zinc-400" {...props} />
+                <ArrowRight01Icon className="size-4 text-zinc-400" {...props} />
               ),
             }}
             {...props}

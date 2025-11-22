@@ -4,7 +4,7 @@ import * as React from "react";
 import { DayPicker } from "react-day-picker";
 
 import { buttonVariants } from "@/components/ui/shadcn/button";
-import { ChevronLeft, ChevronRight } from "@/icons";
+import { ArrowLeft01Icon, ArrowRight01Icon } from '@/icons';
 import { cn } from "@/lib/utils";
 
 function Calendar({
@@ -64,10 +64,10 @@ function Calendar({
       }}
       components={{
         IconLeft: ({ className, ...props }) => (
-          <ChevronLeft className={cn("size-4", className)} {...props} />
+          <ArrowLeft01Icon className={cn("size-4", className)} {...props} />
         ),
         IconRight: ({ className, ...props }) => (
-          <ChevronRight className={cn("size-4", className)} {...props} />
+          <ArrowRight01Icon className={cn("size-4", className)} {...props} />
         ),
       }}
       {...props}

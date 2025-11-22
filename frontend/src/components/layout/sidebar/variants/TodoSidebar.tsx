@@ -9,7 +9,7 @@ import Spinner from "@/components/ui/shadcn/spinner";
 import AddProjectModal from "@/features/todo/components/AddProjectModal";
 import TodoModal from "@/features/todo/components/TodoModal";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
-import { Plus, Tag } from "@/icons";
+import { PlusSignIcon, Tag01Icon } from '@/icons';
 import {
   Appointment01Icon,
   Calendar01Icon,
@@ -210,7 +210,7 @@ export default function TodoSidebar() {
     labels.length > 0
       ? labels.slice(0, 5).map((label) => ({
           label: label.name,
-          icon: () => <Tag className="w-[20px]" strokeWidth={1.5} />,
+          icon: () => <Tag01Icon className="w-[20px]" strokeWidth={1.5} />,
           href: `/todos/label/${encodeURIComponent(label.name)}`,
           count: label.count,
         }))
@@ -305,7 +305,7 @@ export default function TodoSidebar() {
                   onPress={openAddProject}
                   className="h-6 w-6 min-w-6"
                 >
-                  <Plus className="h-3 w-3" />
+                  <PlusSignIcon className="h-3 w-3" />
                 </Button>
               }
               emptyState={{

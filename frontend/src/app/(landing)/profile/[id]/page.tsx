@@ -16,7 +16,7 @@ import {
   getHouseImage,
   normalizeHouse,
 } from "@/features/onboarding/constants/houses";
-import { Share2 } from "@/icons";
+import { Share08Icon } from '@/icons';
 
 export default function ProfilePage() {
   const params = useParams();
@@ -85,7 +85,7 @@ export default function ProfilePage() {
         {holoCardData && (
           <Tooltip content="Share profile">
             <Button isIconOnly variant="flat" onPress={handleShare} size="sm">
-              <Share2 size={18} />
+              <Share08Icon size={18} />
             </Button>
           </Tooltip>
         )}

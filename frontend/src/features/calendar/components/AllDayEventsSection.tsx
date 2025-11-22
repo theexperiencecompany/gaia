@@ -3,7 +3,7 @@
 import { Virtualizer } from "@tanstack/react-virtual";
 import { useMemo, useState } from "react";
 
-import { ChevronsDownUp, ChevronsUpDown } from "@/icons";
+import { ArrowUpDownIcon, ChevronsUpDown } from '@/icons';
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface AllDayEventsSectionProps {
@@ -199,7 +199,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
           {hasAnyAllDayEvents && (
             <span>
               {isExpanded ? (
-                <ChevronsDownUp className="h-3 w-3 text-zinc-400" />
+                <ArrowUpDownIcon className="h-3 w-3 text-zinc-400" />
               ) : (
                 <ChevronsUpDown className="h-3 w-3 text-zinc-400" />
               )}

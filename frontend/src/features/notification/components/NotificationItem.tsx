@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { CheckCheck } from "@/icons";
+import { CheckmarkBadge01Icon } from '@/icons';
 
 import {
   NotificationAction,
@@ -74,7 +74,7 @@ export const NotificationItem = ({
                 onPress={() => onMarkAsRead(notification.id)}
                 title="Mark as read"
               >
-                <CheckCheck className="h-3.5 w-3.5" />
+                <CheckmarkBadge01Icon className="h-3.5 w-3.5" />
               </Button>
             </Tooltip>
           </div>

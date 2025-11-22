@@ -11,7 +11,7 @@ import {
 } from "@heroui/dropdown";
 import { format } from "date-fns";
 
-import { Edit2, MoreVertical, Trash2 } from "@/icons";
+import { Delete02Icon,MoreVerticalIcon, PencilEdit01Icon } from '@/icons';
 import { CalendarIcon } from "@/icons";
 import { posthog } from "@/lib";
 import { Priority, Todo, TodoUpdate } from "@/types/features/todoTypes";
@@ -150,20 +150,20 @@ export default function TodoItem({
             <Dropdown>
               <DropdownTrigger>
                 <Button isIconOnly size="sm" variant="light">
-                  <MoreVertical className="h-4 w-4" />
+                  <MoreVerticalIcon className="h-4 w-4" />
                 </Button>
               </DropdownTrigger>
               <DropdownMenu aria-label="Todo actions">
                 <DropdownItem
                   key="edit"
-                  startContent={<Edit2 className="h-4 w-4" />}
+                  startContent={<PencilEdit01Icon className="h-4 w-4" />}
                   onPress={() => onEdit?.(todo)}
                 >
                   Edit
                 </DropdownItem>
                 <DropdownItem
                   key="delete"
-                  startContent={<Trash2 className="h-4 w-4" />}
+                  startContent={<Delete02Icon className="h-4 w-4" />}
                   className="text-danger"
                   color="danger"
                   onPress={() => {

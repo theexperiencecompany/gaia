@@ -18,7 +18,7 @@ import { SettingsCard } from "@/features/settings/components/SettingsCard";
 import { SettingsCardSimple } from "@/features/settings/components/SettingsCardSimple";
 import { SettingsOption } from "@/features/settings/components/SettingsOption";
 import { StatusIndicator } from "@/features/settings/components/StatusIndicator";
-import { Trash2 } from "@/icons";
+import { Delete02Icon } from '@/icons';
 import { MessageMultiple02Icon, PencilEdit01Icon, UserIcon } from "@/icons";
 import {
   formatTimezoneDisplay,
@@ -440,7 +440,7 @@ export default function PreferencesSettings({
 
       <SettingsCardSimple>
         <SettingsOption
-          icon={<Trash2 className="h-5 w-5 text-red-500" />}
+          icon={<Delete02Icon className="h-5 w-5 text-red-500" />}
           title="Clear Chat History"
           description="Permanently delete all your conversations and chat history"
           action={

@@ -16,7 +16,7 @@ import {
   isTooDark,
 } from "@/features/calendar/utils/calendarUtils";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
-import { ChevronDown } from "@/icons";
+import { ArrowDown01Icon } from '@/icons';
 import { useAppendToInput } from "@/stores/composerStore";
 import { CalendarItem } from "@/types/api/calendarApiTypes";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
@@ -106,7 +106,7 @@ export default function CalendarEventAIActions({
       <Dropdown placement="bottom-end">
         <DropdownTrigger>
           <Button isIconOnly>
-            <ChevronDown className="size-4" />
+            <ArrowDown01Icon className="size-4" />
           </Button>
         </DropdownTrigger>
         <DropdownMenu

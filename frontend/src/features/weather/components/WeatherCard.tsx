@@ -10,14 +10,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/shadcn/dropdown-menu";
 import {
-  CloudFog,
-  HazeIcon,
-  MapPinIcon,
-  SunriseIcon,
-  SunsetIcon,
-  ThermometerIcon,
-} from "@/icons";
-import {
   CloudAngledRainIcon,
   CloudAngledZapIcon,
   CloudFogIcon,
@@ -27,7 +19,11 @@ import {
   DropletIcon,
   FastWindIcon,
   Moon02Icon,
+  PinIcon,
   Sun03Icon,
+  SunriseIcon,
+  SunsetIcon,
+  ThermometerWarmIcon,
   Tornado02Icon,
   VisionIcon,
 } from "@/icons";
@@ -68,7 +64,7 @@ const getWeatherIcon = (main: string, className: string = "", fill = "") => {
     case "snow":
       return <CloudSnowIcon className={className} color={fill} />;
     case "haze":
-      return <HazeIcon className={className} color={fill} />;
+      return <CloudIcon className={className} color={fill} />;
     case "mist":
     case "smoke":
     case "dust":
@@ -77,7 +73,7 @@ const getWeatherIcon = (main: string, className: string = "", fill = "") => {
     case "squall":
       return <CloudFogIcon className={className} color={fill} />;
     case "fog":
-      return <CloudFog className={className} color={fill} />;
+      return <CloudIcon className={className} color={fill} />;
     case "tornado":
       return <Tornado02Icon className={className} color={fill} />;
     case "clear":
@@ -193,7 +189,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
         return {
           name: "Haze",
           icon: (
-            <HazeIcon className="h-16 w-16" fill="#FDE68A" color="#FDE68A" />
+            <CloudIcon className="h-16 w-16" fill="#FDE68A" color="#FDE68A" />
           ),
           gradient: "bg-linear-to-br from-amber-300/80 to-amber-500/80",
           colorCode: "#FDE68A", // amber-200
@@ -217,7 +213,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
         return {
           name: "Fog",
           icon: (
-            <CloudFog className="h-16 w-16" fill="#D1D5DB" color="#D1D5DB" />
+            <CloudIcon className="h-16 w-16" fill="#D1D5DB" color="#D1D5DB" />
           ),
           gradient: "bg-linear-to-br from-gray-400/80 to-gray-600/80",
           colorCode: "#D1D5DB", // gray-300
@@ -340,7 +336,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
       {/* Location Info */}
       <div className="mb-3 flex items-start justify-between gap-10">
         <div className="flex items-start">
-          <MapPinIcon className="relative top-1 mr-2 h-5 w-5" color={"white"} />
+          <PinIcon className="relative top-1 mr-2 h-5 w-5" color={"white"} />
           <div>
             <h2 className="flex items-center text-xl font-bold text-white">
               {weatherData.location.city}
@@ -361,7 +357,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 p-1 text-white hover:bg-white/20"
                 aria-label="Temperature settings"
               >
-                <ThermometerIcon className="h-5 w-5" />
+                <ThermometerWarmIcon className="h-5 w-5" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent

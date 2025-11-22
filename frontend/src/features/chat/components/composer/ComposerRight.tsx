@@ -5,7 +5,7 @@ import { Tooltip } from "@heroui/tooltip";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { ArrowUp, Square } from "@/icons";
+import { ArrowUp02Icon, SquareIcon } from "@/icons";
 
 interface RightSideProps {
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
@@ -92,9 +92,14 @@ export default function RightSide({
           onPress={handleButtonPress}
         >
           {isLoading ? (
-            <Square color="lightgray" width={17} height={17} fill="lightgray" />
+            <SquareIcon
+              color="lightgray"
+              width={17}
+              height={17}
+              fill="lightgray"
+            />
           ) : (
-            <ArrowUp
+            <ArrowUp02Icon
               color={
                 hasText || hasSelectedTool || hasSelectedWorkflow
                   ? "black"

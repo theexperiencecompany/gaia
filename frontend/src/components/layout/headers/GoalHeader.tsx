@@ -7,8 +7,8 @@ import { useEffect, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
-import { ChevronRight } from "@/icons";
-import { ChatBubbleAddIcon, Target02Icon } from "@/icons";
+import { ArrowRight01Icon } from "@/icons";
+import { BubbleChatAddIcon, Target02Icon } from "@/icons";
 import { Goal } from "@/types/api/goalsApiTypes";
 
 export default function GoalHeader() {
@@ -34,7 +34,7 @@ export default function GoalHeader() {
         </Link>
         {goal?.title && (
           <>
-            <ChevronRight width={18} height={17} />
+            <ArrowRight01Icon width={18} height={17} />
             <span className="text-zinc-300">{goal.title}</span>
           </>
         )}
@@ -46,7 +46,7 @@ export default function GoalHeader() {
             aria-label="Create new chat"
             tooltip="Create new chat"
           >
-            <ChatBubbleAddIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+            <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
           </SidebarHeaderButton>
         </Link>
         <NotificationCenter />

@@ -13,7 +13,7 @@ import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
-import { ChevronDown, StarFilledIcon } from "@/icons";
+import { ArrowDown01Icon, StarFilledIcon } from '@/icons';
 import { posthog } from "@/lib";
 
 import { Github } from "../shared";
@@ -188,7 +188,7 @@ export default function Navbar() {
                         {item.label.charAt(0).toUpperCase() +
                           item.label.slice(1)}
                       </span>
-                      <ChevronDown
+                      <ArrowDown01Icon
                         height={17}
                         width={17}
                         className={

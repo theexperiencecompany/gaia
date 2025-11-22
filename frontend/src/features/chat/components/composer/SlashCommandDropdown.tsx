@@ -10,7 +10,7 @@ import { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
-import { Hash, Search, X } from "@/icons";
+import { Cancel01Icon,GridIcon, SearchIcon } from '@/icons';
 import { posthog } from "@/lib/posthog";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
@@ -541,14 +541,14 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
           {/* Header section - Only show when opened via button */}
           {openedViaButton && (
             <div className="flex items-center gap-2 p-3">
-              {/* Search Input */}
+              {/* SearchIcon Input */}
               <div className="flex-1">
                 <Input
                   type="text"
-                  placeholder="Search tools..."
+                  placeholder="SearchIcon tools..."
                   value={searchQuery}
                   radius="full"
-                  startContent={<Search size={16} />}
+                  startContent={<SearchIcon size={16} />}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
@@ -560,7 +560,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                 radius="full"
                 variant="flat"
               >
-                <X size={14} />
+                <Cancel01Icon size={14} />
               </Button>
             </div>
           )}
@@ -584,7 +584,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                     }`}
                   >
                     {category === "all" ? (
-                      <Hash
+                      <GridIcon
                         size={16}
                         strokeWidth={2}
                         className="text-gray-400"

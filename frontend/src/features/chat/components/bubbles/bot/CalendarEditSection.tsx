@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { calendarApi } from "@/features/calendar/api/calendarApi";
-import { PencilEdit02Icon, Tick02Icon } from "@/icons";
+import { CalendarCheckIn01Icon, Tick02Icon } from "@/icons";
 import { CalendarEditOptions } from "@/types/features/calendarTypes";
 import { hasEventChanges } from "@/utils/calendar/eventHelpers";
 import { buildEditEventPayload } from "@/utils/calendar/eventPayloadBuilders";
@@ -119,7 +119,7 @@ export function CalendarEditSection({
                       variant="action"
                       buttonColor="primary"
                       completedLabel="Updated"
-                      icon={PencilEdit02Icon}
+                      icon={CalendarCheckIn01Icon}
                       onAction={() => handleEdit(event)}
                       isDotted={showChanges && status !== "completed"}
                     >

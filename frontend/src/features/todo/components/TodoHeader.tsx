@@ -9,7 +9,7 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 
-import { CheckCircle, MoreHorizontal, Plus, Trash2 } from "@/icons";
+import { CheckmarkCircle02Icon, Delete02Icon,MoreHorizontalIcon, PlusSignIcon } from '@/icons';
 
 interface TodoHeaderProps {
   title: string;
@@ -66,7 +66,7 @@ export default function TodoHeader({
               <Button
                 size="sm"
                 variant="flat"
-                startContent={<CheckCircle className="h-4 w-4" />}
+                startContent={<CheckmarkCircle02Icon className="h-4 w-4" />}
                 onPress={onBulkComplete}
               >
                 Complete
@@ -75,7 +75,7 @@ export default function TodoHeader({
                 size="sm"
                 variant="flat"
                 color="danger"
-                startContent={<Trash2 className="h-4 w-4" />}
+                startContent={<Delete02Icon className="h-4 w-4" />}
                 onPress={onBulkDelete}
               >
                 Delete
@@ -83,7 +83,7 @@ export default function TodoHeader({
               <Dropdown>
                 <DropdownTrigger>
                   <Button isIconOnly size="sm" variant="flat">
-                    <MoreHorizontal className="h-4 w-4" />
+                    <MoreHorizontalIcon className="h-4 w-4" />
                   </Button>
                 </DropdownTrigger>
                 <DropdownMenu aria-label="Bulk actions">
@@ -102,7 +102,7 @@ export default function TodoHeader({
                 onPress={onAddTodo}
                 className="text-primary"
               >
-                <Plus className="h-4 w-4" />
+                <PlusSignIcon className="h-4 w-4" />
               </Button>
             )
           )}

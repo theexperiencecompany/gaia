@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Check, Copy } from "@/icons";
+import { Copy01Icon, Tick02Icon } from "@/icons";
 
 interface ShareButtonProps {
   slug: string;
@@ -32,9 +32,9 @@ export default function ShareButton({ slug }: ShareButtonProps) {
       className="font-light text-zinc-400"
       startContent={
         copied ? (
-          <Check width={18} height={18} />
+          <Tick02Icon width={18} height={18} />
         ) : (
-          <Copy width={18} height={18} />
+          <Copy01Icon width={18} height={18} />
         )
       }
       onPress={handleCopyLink}

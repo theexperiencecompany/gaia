@@ -19,7 +19,7 @@ import Spinner from "@/components/ui/shadcn/spinner";
 import GmailBody from "@/features/mail/components/GmailBody";
 import { useEmailSummary } from "@/features/mail/hooks/useEmailAnalysis";
 import { parseEmail } from "@/features/mail/utils/mailUtils";
-import { Reply, ReplyAll, Send, XIcon } from "@/icons";
+import { ArrowLeftDoubleIcon, ArrowTurnBackwardIcon, RemoveCircleIcon,SentIcon } from '@/icons';
 import { MagicWand05Icon, StarsIcon } from "@/icons";
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import { EmailData, EmailImportanceSummary } from "@/types/features/mailTypes";
@@ -260,7 +260,7 @@ export default function ViewEmail({
       //   body: content,
       // });
 
-      toast.error("Reply functionality is not yet implemented");
+      toast.error("ArrowTurnBackwardIcon functionality is not yet implemented");
       setShowReplyEditor(false);
       editor.commands.setContent("<p></p>");
     } catch (error) {
@@ -312,7 +312,7 @@ export default function ViewEmail({
             <div className="mb-2 flex w-full justify-end">
               <Tooltip content="Close" color="foreground">
                 <div className="cursor-pointer">
-                  <XIcon width={18} onClick={onOpenChange} />
+                  <RemoveCircleIcon width={18} onClick={onOpenChange} />
                 </div>
               </Tooltip>
             </div>
@@ -336,18 +336,18 @@ export default function ViewEmail({
                 <Button
                   color="primary"
                   variant="flat"
-                  startContent={<Reply size={16} />}
+                  startContent={<ArrowTurnBackwardIcon size={16} />}
                   onPress={() => mail && handleReply(mail)}
                 >
-                  Reply
+                  ArrowTurnBackwardIcon
                 </Button>
                 <Button
                   color="primary"
                   variant="flat"
-                  startContent={<ReplyAll size={16} />}
+                  startContent={<ArrowLeftDoubleIcon size={16} />}
                   onPress={() => mail && handleReply(mail)}
                 >
-                  Reply All
+                  ArrowTurnBackwardIcon All
                 </Button>
               </div>
             </header>
@@ -425,10 +425,10 @@ export default function ViewEmail({
                             size="sm"
                             color="primary"
                             variant="flat"
-                            startContent={<Reply size={14} />}
+                            startContent={<ArrowTurnBackwardIcon size={14} />}
                             onPress={() => handleReply(message)}
                           >
-                            Reply
+                            ArrowTurnBackwardIcon
                           </Button>
                         </div>
                       </div>
@@ -461,12 +461,12 @@ export default function ViewEmail({
                 </>
               ) : null}
 
-              {/* Reply editor */}
+              {/* ArrowTurnBackwardIcon editor */}
               {showReplyEditor && replyTo && (
                 <div className="mt-4 border-t-2 border-zinc-700 pt-4">
                   <div className="mb-2 flex items-center justify-between">
                     <div className="text-sm">
-                      <span className="font-medium">Reply to: </span>
+                      <span className="font-medium">ArrowTurnBackwardIcon to: </span>
                       <span className="text-gray-400">
                         {parseEmail(replyTo.from).name ||
                           parseEmail(replyTo.from).email}
@@ -479,7 +479,7 @@ export default function ViewEmail({
                       isIconOnly
                       onPress={handleCancelReply}
                     >
-                      <XIcon size={16} />
+                      <RemoveCircleIcon size={16} />
                     </Button>
                   </div>
 
@@ -493,12 +493,12 @@ export default function ViewEmail({
                   <div className="mt-2 flex justify-end">
                     <Button
                       color="primary"
-                      startContent={<Send size={16} />}
+                      startContent={<SentIcon size={16} />}
                       onPress={handleSendReply}
                       isLoading={isSending}
                       isDisabled={isSending}
                     >
-                      {isSending ? "Sending..." : "Send Reply"}
+                      {isSending ? "Sending..." : "SentIcon Reply"}
                     </Button>
                   </div>
                 </div>

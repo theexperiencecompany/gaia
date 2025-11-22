@@ -2,7 +2,7 @@ import { Button } from "@heroui/button";
 import { Card, CardBody } from "@heroui/card";
 
 import { WorkflowSquare03Icon } from "@/components";
-import { Sparkles } from "@/icons";
+import { StarsIcon } from '@/icons';
 
 interface WorkflowEmptyStateProps {
   onGenerateWorkflow?: () => void;
@@ -21,7 +21,7 @@ export default function WorkflowEmptyState({
         <CardBody className="py-8 text-center">
           <div className="space-y-4">
             <div className="text-zinc-400">
-              <Sparkles className="mx-auto mb-2 h-8 w-8 text-zinc-500" />
+              <StarsIcon className="mx-auto mb-2 h-8 w-8 text-zinc-500" />
               <p className="text-sm">No workflow generated yet</p>
             </div>
             <Button
@@ -29,7 +29,7 @@ export default function WorkflowEmptyState({
               variant="flat"
               size="sm"
               onPress={onGenerateWorkflow}
-              startContent={<Sparkles className="h-4 w-4" />}
+              startContent={<StarsIcon className="h-4 w-4" />}
             >
               Generate Workflow
             </Button>

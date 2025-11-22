@@ -2,7 +2,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 
-import { CircleCheck } from "@/icons";
+import { CheckmarkCircle02Icon } from '@/icons';
 import { cn } from "@/lib/utils";
 
 type LoadingState = {
@@ -31,9 +31,9 @@ const LoaderCore = ({
             transition={{ duration: 0.5 }}
           >
             <div>
-              {index > value && <CircleCheck className="text-gray-600" />}
+              {index > value && <CheckmarkCircle02Icon className="text-gray-600" />}
               {index <= value && (
-                <CircleCheck
+                <CheckmarkCircle02Icon
                   className={cn(
                     "text-gray-600",
                     value === index && "text-green-500 opacity-100",

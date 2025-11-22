@@ -3,7 +3,7 @@ import React from "react";
 import { PrismAsyncLight } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
-import { Check, Copy } from "@/icons";
+import { Copy01Icon,Tick02Icon } from '@/icons';
 
 import DownloadButton from "./DownloadButton";
 import { getLanguageIcon } from "./languageIcons";
@@ -47,9 +47,9 @@ const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
             onPress={onCopy}
           >
             {copied ? (
-              <Check width={18} height={18} />
+              <Tick02Icon width={18} height={18} />
             ) : (
-              <Copy width={18} height={18} />
+              <Copy01Icon width={18} height={18} />
             )}
           </Button>
         </div>

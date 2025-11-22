@@ -1,6 +1,6 @@
 "use client";
 
-import { Folder } from "@/icons";
+import { Folder02Icon } from '@/icons';
 import { Project } from "@/types/features/todoTypes";
 
 import BaseFieldChip from "./BaseFieldChip";
@@ -37,7 +37,7 @@ export default function ProjectFieldChip({
       label="Project"
       value={displayValueWithColor || displayValue}
       placeholder="Project"
-      icon={!selectedProject ? <Folder size={14} /> : undefined}
+      icon={!selectedProject ? <Folder02Icon size={14} /> : undefined}
       variant={selectedProject ? "primary" : "default"}
       className={className}
     >

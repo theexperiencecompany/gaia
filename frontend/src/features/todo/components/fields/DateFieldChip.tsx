@@ -3,7 +3,7 @@
 import { Input } from "@heroui/react";
 import { format, isToday, isTomorrow, isYesterday } from "date-fns";
 
-import { CalendarIcon, X } from "@/icons";
+import { CalendarIcon, Cancel01Icon } from '@/icons';
 
 import BaseFieldChip from "./BaseFieldChip";
 
@@ -144,7 +144,7 @@ export default function DateFieldChip({
                 }}
                 className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
               >
-                <X size={14} />
+                <Cancel01Icon size={14} />
                 Clear date
               </div>
             </>
