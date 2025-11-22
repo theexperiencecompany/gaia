@@ -627,19 +627,15 @@ async def initialize_chroma_tools_store():
     for tool_name, tool in tool_dict.items():
         # Compute tool hash based on description and code
         try:
-            # Try to get source code if available
             code_source = inspect.getsource(tool)
-
-            # Normalize whitespace
             code_source = code_source.strip()
             code_source = "\n".join(line.rstrip() for line in code_source.split("\n"))
-
-            # Hash description + code
             content = f"{tool.description}::{code_source}"
-            tool_hash = hashlib.sha256(content.encode()).hexdigest()
         except (OSError, TypeError, AttributeError):
-            # Fallback to description-only hash
-            tool_hash = hashlib.sha256(tool.description.encode()).hexdigest()
+            # Fallback to description-only hash if source unavailable
+            content = f"{tool.name}::{tool.description}"
+
+        tool_hash = hashlib.sha256(content.encode()).hexdigest()
 
         tool_category = tool_registry.get_category(
             name=tool_registry.get_category_of_tool(tool.name)
@@ -731,9 +727,17 @@ async def initialize_chroma_tools_store():
 
     # Execute batch operations
     if put_ops:
-        await store.abatch(put_ops)
-        logger.info(f"Successfully updated {len(put_ops)} tools in ChromaDB")
+        # Process in batches to avoid "too many open files" from parallel embeddings
+        batch_size = 50
+        total_ops = len(put_ops)
 
-    return store
+        for i in range(0, total_ops, batch_size):
+            batch = put_ops[i : i + batch_size]
+            await store.abatch(batch)
+            logger.info(
+                f"Processed batch {i // batch_size + 1}/{(total_ops + batch_size - 1) // batch_size}"
+            )
+
+        logger.info(f"Successfully updated {total_ops} tools in ChromaDB")
 
     return store

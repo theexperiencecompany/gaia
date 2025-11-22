@@ -12,6 +12,7 @@ from app.agents.tools import (
     goal_tool,
     google_docs_tool,
     image_tool,
+    integration_tool,
     memory_tools,
     notification_tool,
     reminder_tool,
@@ -180,6 +181,7 @@ class ToolRegistry:
         add_category("goal_tracking", tools=goal_tool.tools)
         add_category("support", tools=[support_tool.create_support_ticket])
         add_category("memory", tools=memory_tools.tools)
+        add_category("integrations", tools=integration_tool.tools)
         add_category(
             "development",
             tools=[code_exec_tool.execute_code, flowchart_tool.create_flowchart],

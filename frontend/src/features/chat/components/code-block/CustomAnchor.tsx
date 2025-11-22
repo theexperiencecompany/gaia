@@ -37,8 +37,6 @@ const CustomAnchor = memo(
       () => new Set(globalFailedUrls),
     );
 
-    console.log(isStreaming);
-
     // Set up intersection observer to detect when element is in view
     useEffect(() => {
       const element = elementRef.current;

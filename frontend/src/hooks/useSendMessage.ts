@@ -7,18 +7,10 @@ import { db, type IMessage } from "@/lib/db/chatDb";
 import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
-import { useConversationStore } from "@/stores/conversationStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 import { MessageType } from "@/types/features/convoTypes";
 import { WorkflowData } from "@/types/features/workflowTypes";
 import fetchDate from "@/utils/date/dateUtils";
-
-type ChatStoreState = ReturnType<typeof useChatStore.getState>;
-
-const selectAddOrUpdateMessage = (state: ChatStoreState) =>
-  state.addOrUpdateMessage;
-const selectSetMessagesForConversation = (state: ChatStoreState) =>
-  state.setMessagesForConversation;
 
 type SendMessageOverrides = {
   files?: MessageType["fileData"];
@@ -29,24 +21,10 @@ type SendMessageOverrides = {
 };
 
 export const useSendMessage = () => {
-  const addOrUpdateMessage = useChatStore(selectAddOrUpdateMessage);
-  const setMessagesForConversation = useChatStore(
-    selectSetMessagesForConversation,
-  );
-  const addLegacyMessage = useConversationStore((state) => state.addMessage);
   const fetchChatStream = useChatStream();
 
   return useCallback(
-    async (
-      content: string,
-      conversationId?: string | null,
-      overrides?: SendMessageOverrides,
-    ) => {
-      const trimmedContent = content.trim();
-      if (!trimmedContent) {
-        return;
-      }
-
+    async (content: string, overrides?: SendMessageOverrides) => {
       const composerState = useComposerStore.getState();
       const workflowState = useWorkflowSelectionStore.getState();
       const calendarEventState = useCalendarEventSelectionStore.getState();
@@ -67,16 +45,29 @@ export const useSendMessage = () => {
         calendarEventState.selectedCalendarEvent ??
         null;
 
+      const trimmedContent = content.trim();
+      // Allow sending if there's text OR tool OR workflow OR calendar event OR files
+      const hasValidContent =
+        trimmedContent ||
+        selectedTool ||
+        selectedWorkflow ||
+        selectedCalendarEvent ||
+        normalizedFiles.length > 0;
+
+      if (!hasValidContent) {
+        return;
+      }
+
       const isoTimestamp = fetchDate();
       const createdAt = new Date(isoTimestamp);
-      const tempMessageId = uuidv4();
-      const botMessageId = uuidv4();
+      const optimisticId = uuidv4();
+      const conversationId = useChatStore.getState().activeConversationId;
 
       const userMessage: MessageType = {
         type: "user",
         response: trimmedContent,
         date: isoTimestamp,
-        message_id: tempMessageId,
+        message_id: optimisticId, // Temporary ID for optimistic UI
         fileIds: normalizedFiles.map((file) => file.fileId),
         fileData: normalizedFiles,
         selectedTool: selectedTool ?? undefined,
@@ -85,119 +76,78 @@ export const useSendMessage = () => {
         selectedCalendarEvent: selectedCalendarEvent ?? undefined,
       };
 
-      addLegacyMessage(userMessage);
-
+      // For new conversations: use Zustand optimistic message (no conversationId yet)
+      // For existing conversations: persist directly to IndexedDB with optimistic ID
       if (!conversationId) {
+        // New conversation - use Zustand optimistic message
+        useChatStore.getState().setOptimisticMessage({
+          id: optimisticId,
+          conversationId: null,
+          content: trimmedContent,
+          role: "user",
+          createdAt,
+          fileIds: normalizedFiles.map((file) => file.fileId),
+          fileData: normalizedFiles,
+          toolName: selectedTool,
+          toolCategory: selectedToolCategory,
+          workflowId: selectedWorkflow?.id ?? null,
+        });
+
         await fetchChatStream(
           trimmedContent,
           [userMessage],
-          botMessageId,
           normalizedFiles,
           selectedTool,
           selectedToolCategory,
           selectedWorkflow,
           selectedCalendarEvent,
+          optimisticId,
         );
         return;
       }
 
+      // For existing conversations: persist to IndexedDB immediately with optimistic ID
+      // Backend will send real ID which will replace this optimistic message
       const optimisticMessage: IMessage = {
-        id: tempMessageId,
+        id: optimisticId,
         conversationId,
         content: trimmedContent,
         role: "user",
         status: "sending",
         createdAt,
         updatedAt: createdAt,
-        messageId: tempMessageId,
-        fileIds: userMessage.fileIds,
-        fileData: userMessage.fileData,
-        toolName: userMessage.selectedTool ?? null,
-        toolCategory: userMessage.toolCategory ?? null,
-        workflowId: userMessage.selectedWorkflow?.id ?? null,
-        metadata: {
-          originalMessage: userMessage,
-        },
+        messageId: optimisticId,
+        fileIds: normalizedFiles.map((file) => file.fileId),
+        fileData: normalizedFiles,
+        toolName: selectedTool,
+        toolCategory: selectedToolCategory,
+        workflowId: selectedWorkflow?.id ?? null,
+        selectedWorkflow: selectedWorkflow,
+        selectedCalendarEvent: selectedCalendarEvent,
+        optimistic: true,
       };
-
       try {
         await db.putMessage(optimisticMessage);
-      } catch {
-        // Ignore local persistence errors to keep the UI responsive
-      }
 
-      addOrUpdateMessage(optimisticMessage);
+        const streamingUserMessage: MessageType = {
+          ...userMessage,
+          loading: false,
+        };
 
-      const finalMessage: IMessage = {
-        ...optimisticMessage,
-        status: "sent",
-        updatedAt: new Date(),
-        metadata: {
-          originalMessage: {
-            ...userMessage,
-            loading: false,
-          },
-        },
-      };
-
-      try {
-        await db.replaceMessage(optimisticMessage.id, finalMessage);
-      } catch {
-        try {
-          await db.putMessage(finalMessage);
-        } catch {
-          // Ignore persistence failures when updating the final state
-        }
-      }
-
-      const existingMessages =
-        useChatStore.getState().messagesByConversation[conversationId] ?? [];
-      const withoutOptimistic = existingMessages.filter(
-        (message) => message.id !== optimisticMessage.id,
-      );
-      setMessagesForConversation(conversationId, [
-        ...withoutOptimistic,
-        finalMessage,
-      ]);
-      addOrUpdateMessage(finalMessage);
-
-      const streamingUserMessage: MessageType = {
-        ...userMessage,
-        loading: false,
-      };
-
-      try {
         await fetchChatStream(
           trimmedContent,
           [streamingUserMessage],
-          botMessageId,
           normalizedFiles,
           selectedTool,
           selectedToolCategory,
           selectedWorkflow,
           selectedCalendarEvent,
+          optimisticId,
         );
-      } catch {
-        const failedMessage: IMessage = {
-          ...finalMessage,
-          status: "failed",
-          updatedAt: new Date(),
-        };
-
-        try {
-          await db.putMessage(failedMessage);
-        } catch {
-          // Ignore persistence failures for failure state updates
-        }
-
-        addOrUpdateMessage(failedMessage);
+      } catch (error) {
+        console.error("[useSendMessage] Stream failed:", error);
       }
     },
-    [
-      addLegacyMessage,
-      addOrUpdateMessage,
-      fetchChatStream,
-      setMessagesForConversation,
-    ],
+    [fetchChatStream],
   );
 };

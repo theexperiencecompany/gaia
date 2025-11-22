@@ -5,9 +5,7 @@ from typing import Optional
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
-from app.constants.keys import OAUTH_STATUS_KEY
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.decorators.caching import Cacheable
 from app.models.oauth_models import TriggerConfig
 from app.services.composio.langchain_composio_service import LangchainProvider
 from app.utils.composio_hooks.registry import (
@@ -27,10 +25,15 @@ class ComposioService:
         )
 
     async def connect_account(
-        self, provider: str, user_id: str, frontend_redirect_path: Optional[str] = None
+        self, provider: str, user_id: str, state_token: Optional[str] = None
     ) -> dict:
         """
         Initiates connection flow for a given provider and user.
+
+        Args:
+            provider: The provider to connect (e.g., 'gmail', 'notion')
+            user_id: The user ID initiating the connection
+            state_token: Secure state token for OAuth flow (replaces frontend_redirect_path)
         """
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
@@ -41,10 +44,10 @@ class ComposioService:
             callback_url = (
                 add_query_param(
                     settings.COMPOSIO_REDIRECT_URI,
-                    "frontend_redirect_path",
-                    frontend_redirect_path,
+                    "state",
+                    state_token,
                 )
-                if frontend_redirect_path
+                if state_token
                 else settings.COMPOSIO_REDIRECT_URI
             )
 
@@ -200,9 +203,6 @@ class ComposioService:
             logger.error(f"Error getting tool {tool_name}: {e}")
             return None
 
-    @Cacheable(
-        ttl=86400, key_pattern=f"{OAUTH_STATUS_KEY}:{{user_id}}"
-    )  # Cache for 1 day
     async def check_connection_status(
         self, providers: list[str], user_id: str
     ) -> dict[str, bool]:
@@ -271,6 +271,75 @@ class ComposioService:
                 f"Error retrieving connected account {connected_account_id}: {e}"
             )
             return None
+
+    async def delete_connected_account(
+        self, user_id: str, provider: str
+    ) -> dict[str, str]:
+        """
+        Delete a connected account for a given provider and user.
+
+        Args:
+            user_id: The user ID who owns the connected account
+            provider: The provider name (e.g., 'gmail', 'slack', 'github')
+
+        Returns:
+            dict with status message
+
+        Raises:
+            ValueError: If provider is not supported or no account found
+        """
+        if provider not in COMPOSIO_SOCIAL_CONFIGS:
+            raise ValueError(f"Provider '{provider}' not supported")
+
+        config = COMPOSIO_SOCIAL_CONFIGS[provider]
+
+        try:
+            loop = asyncio.get_event_loop()
+            user_accounts = await loop.run_in_executor(
+                None,
+                lambda: self.composio.connected_accounts.list(
+                    user_ids=[user_id],
+                    auth_config_ids=[config.auth_config_id],
+                    limit=100,
+                ),
+            )
+
+            active_accounts = [
+                acc
+                for acc in user_accounts.items
+                if acc.status == "ACTIVE" and not acc.auth_config.is_disabled
+            ]
+
+            if not active_accounts:
+                raise ValueError(
+                    f"No active connected account found for provider '{provider}' and user '{user_id}'"
+                )
+
+            delete_tasks = []
+            for account in active_accounts:
+
+                def _delete_account(acc=account):
+                    return self.composio.connected_accounts.delete(nanoid=acc.id)
+
+                delete_tasks.append(loop.run_in_executor(None, _delete_account))
+
+            await asyncio.gather(*delete_tasks)
+
+            logger.info(
+                f"Deleted {len(active_accounts)} connected account(s) for {provider} and user {user_id}"
+            )
+            return {
+                "status": "success",
+                "message": f"Successfully deleted {len(active_accounts)} account(s) for {provider}",
+            }
+
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error deleting connected account for {provider} and user {user_id}: {e}"
+            )
+            raise
 
     async def handle_subscribe_trigger(
         self, user_id: str, triggers: list[TriggerConfig]

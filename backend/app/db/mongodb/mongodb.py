@@ -1,13 +1,12 @@
 import sys
+from datetime import timezone
 from functools import lru_cache
 
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from pymongo.server_api import ServerApi
-
+import pymongo
 from app.config.loggers import mongo_logger as logger
 from app.config.settings import settings
-
-import pymongo
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo.server_api import ServerApi
 
 
 class MongoDB:
@@ -31,7 +30,9 @@ class MongoDB:
             sys.exit(1)
 
         try:
-            self.client = AsyncIOMotorClient(uri, server_api=ServerApi("1"))
+            self.client = AsyncIOMotorClient(
+                uri, server_api=ServerApi("1"), tz_aware=True, tzinfo=timezone.utc
+            )
             self.database = self.client.get_database(db_name)
 
         except Exception as e:

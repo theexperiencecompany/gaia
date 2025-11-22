@@ -44,26 +44,66 @@ export function SubscriptionSettings() {
         icon={<CreditCardIcon className="h-5 w-5 text-primary" />}
         title="Subscription"
       >
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-sm text-zinc-400">Plan</span>
-              <span className="font-medium text-white">Free</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-zinc-400">Price</span>
-              <span className="font-medium text-white">$0</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-zinc-400">Status</span>
-              <span className="font-medium text-white">Active</span>
+        <div className="flex flex-col items-start gap-4 sm:flex-row">
+          <div className="relative w-full flex-1 overflow-hidden rounded-2xl bg-zinc-800/40 p-6 backdrop-blur-xl">
+            <div className="flex h-full w-full flex-col gap-4">
+              {/* Header */}
+              <div className="flex flex-row items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-semibold text-white">
+                    Free
+                  </span>
+                  <Chip
+                    className="flex items-center gap-[2px] text-xs"
+                    color="success"
+                    variant="flat"
+                  >
+                    <span>Current Plan</span>
+                  </Chip>
+                </div>
+              </div>
+
+              {/* Price Section */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-5xl font-bold text-white">$0</span>
+                  <span className="text-2xl text-zinc-400">USD</span>
+                </div>
+                <span className="min-h-5 text-sm font-normal text-zinc-400">
+                  Forever free
+                </span>
+              </div>
+
+              {/* Plan Information */}
+              <div className="mt-2 flex-1 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-zinc-400">Status</span>
+                  <span className="font-sm text-sm text-white">Active</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-zinc-400">Billing</span>
+                  <span className="font-sm text-sm text-white">None</span>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="space-y-3">
+                <Button
+                  color="primary"
+                  className="w-full font-semibold text-black"
+                  onPress={handleUpgrade}
+                >
+                  Upgrade to Pro
+                </Button>
+              </div>
             </div>
           </div>
-
-          <div className="border-t border-zinc-700 pt-4">
-            <Button color="primary" className="w-full" onPress={handleUpgrade}>
-              Upgrade to Pro
-            </Button>
+          <div className="relative h-76 w-full flex-1 overflow-hidden rounded-2xl bg-zinc-800/40 p-0 backdrop-blur-xl">
+            <img
+              src="/images/wallpapers/field.webp"
+              alt="Subscription illustration"
+              className="h-full w-full object-cover"
+            />
           </div>
         </div>
       </SettingsCard>
@@ -111,42 +151,66 @@ export function SubscriptionSettings() {
       icon={<CreditCardIcon className="h-5 w-5 text-blue-400" />}
       title="Subscription"
     >
-      <div className="mb-4 flex justify-end">
-        <Chip
-          color={getStatusColor(subscription?.status || "unknown")}
-          variant="flat"
-          size="sm"
-        >
-          {getStatusText(subscription?.status || "unknown")}
-        </Chip>
-      </div>
-
-      <div className="space-y-4">
-        {/* Plan Details */}
-        <div className="space-y-3">
-          <div className="flex justify-between">
-            <span className="text-sm text-zinc-400">Plan</span>
-            <span className="font-medium text-white">{plan.name}</span>
+      <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-800/40 p-6 backdrop-blur-xl">
+        <div className="flex h-full flex-col gap-4">
+          {/* Header */}
+          <div className="flex flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-semibold text-white">
+                {plan.name}
+              </span>
+              <Chip
+                color={getStatusColor(subscription?.status || "unknown")}
+                variant="flat"
+                size="sm"
+                className="text-xs"
+              >
+                {getStatusText(subscription?.status || "unknown")}
+              </Chip>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-sm text-zinc-400">Price</span>
-            <span className="font-medium text-white">
-              {priceFormatted} / {plan.duration}
+
+          {/* Price Section */}
+          <div className="flex flex-col gap-0">
+            <div className="flex items-baseline gap-2">
+              <span className="text-5xl font-bold text-white">
+                {priceFormatted}
+              </span>
+              <span className="text-2xl text-zinc-400">USD</span>
+            </div>
+            <span className="min-h-5 text-sm font-normal text-zinc-400">
+              / per {plan.duration}
             </span>
           </div>
-          {subscriptionStatus.days_remaining !== undefined && (
-            <div className="flex justify-between">
-              <span className="text-sm text-zinc-400">Days remaining</span>
-              <span className="font-medium text-white">
-                {subscriptionStatus.days_remaining}
+
+          {/* Plan Information */}
+          <div className="mt-2 flex-1 space-y-3">
+            {plan.description && (
+              <div className="mb-3 text-sm text-zinc-300">
+                {plan.description}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-zinc-400">Billing Cycle</span>
+              <span className="font-medium text-white capitalize">
+                {plan.duration}
               </span>
             </div>
-          )}
-        </div>
 
-        <div className="border-t border-zinc-700 pt-4">
-          {/* Actions */}
-          <div className="flex flex-col gap-2">
+            {subscriptionStatus.days_remaining !== undefined &&
+              subscriptionStatus.days_remaining !== null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-zinc-400">Days Remaining</span>
+                  <span className="font-medium text-white">
+                    {subscriptionStatus.days_remaining} days
+                  </span>
+                </div>
+              )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="space-y-3">
             <Button
               color="primary"
               variant="flat"

@@ -59,19 +59,8 @@ export default function ChatsList() {
   const hasFetchedRef = useRef(false);
 
   useEffect(() => {
-    console.log("[ChatsList] useEffect triggered:", {
-      conversationsCount: apiConversations.length,
-      loading,
-      hasFetched: hasFetchedRef.current,
-      conversations: apiConversations.map((c) => ({
-        id: c.conversation_id,
-        desc: c.description,
-      })),
-    });
-
     // Only fetch once on initial mount if store is empty
     if (!hasFetchedRef.current && apiConversations.length === 0 && !loading) {
-      console.log("[ChatsList] Fetching conversations because store is empty");
       hasFetchedRef.current = true;
       fetchConversations(1, 20, false);
     }

@@ -4,6 +4,7 @@ import { InformationCircleIcon,NotificationIcon } from '@/icons';
 import {
   Brain02Icon,
   CheckmarkCircle02Icon,
+  ConnectIcon,
   FileEmpty02Icon,
   Image02Icon,
   SourceCodeCircleIcon,
@@ -51,7 +52,7 @@ const iconConfigs: Record<string, IconConfig> = {
   gmail: {
     icon: "/images/icons/gmail.svg",
     bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    iconColor: "text-zin`c-200",
     isImage: true,
   },
   productivity: {
@@ -248,6 +249,12 @@ const iconConfigs: Record<string, IconConfig> = {
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
     isImage: true,
+  },
+  integrations: {
+    isImage: false,
+    icon: ConnectIcon,
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
   },
 };
 

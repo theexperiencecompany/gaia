@@ -2,8 +2,9 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import React from "react";
+import React, { useState } from "react";
 
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { Separator, SidebarHeader } from "@/components/ui";
 import { SidebarContent } from "@/components/ui/sidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
@@ -14,17 +15,21 @@ import { Integration } from "@/features/integrations/types";
 interface IntegrationSidebarProps {
   integration: Integration;
   onConnect: (integrationId: string) => void;
+  onDisconnect?: (integrationId: string) => void;
   category?: string;
 }
 
 export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   integration,
   onConnect,
+  onDisconnect,
   category,
 }) => {
   const isConnected = integration.status === "connected";
   const isAvailable = !!integration.loginEndpoint;
   const { tools } = useToolsWithIntegrations();
+  const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
 
   // Get tools that belong to this integration or its included integrations
   const integrationTools = React.useMemo(() => {
@@ -43,6 +48,24 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const handleConnect = () => {
     if (isAvailable && !isConnected) {
       onConnect(integration.id);
+    }
+  };
+
+  const handleDisconnect = () => {
+    if (isConnected && onDisconnect) {
+      setShowDisconnectDialog(true);
+    }
+  };
+
+  const confirmDisconnect = async () => {
+    if (onDisconnect) {
+      setIsDisconnecting(true);
+      try {
+        await onDisconnect(integration.id);
+      } finally {
+        setIsDisconnecting(false);
+        setShowDisconnectDialog(false);
+      }
     }
   };
 
@@ -81,7 +104,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           </p>
         </div>
 
-        {!isConnected && (
+        {!isConnected ? (
           <Button
             color="primary"
             fullWidth
@@ -90,6 +113,19 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           >
             {isAvailable ? "Connect" : "Coming Soon"}
           </Button>
+        ) : (
+          onDisconnect && (
+            <Button
+              color="danger"
+              variant="light"
+              fullWidth
+              onPress={handleDisconnect}
+              isLoading={isDisconnecting}
+              isDisabled={isDisconnecting}
+            >
+              Disconnect
+            </Button>
+          )
         )}
         {integrationTools.length > 0 && (
           <>
@@ -132,6 +168,17 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           )}
         </div>
       </SidebarContent>
+
+      <ConfirmationDialog
+        isOpen={showDisconnectDialog}
+        title="Disconnect Integration"
+        message={`Are you sure you want to disconnect ${integration.name}? This will revoke access and you'll need to reconnect to use this integration again.`}
+        confirmText="Disconnect"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={confirmDisconnect}
+        onCancel={() => setShowDisconnectDialog(false)}
+      />
     </div>
   );
 };

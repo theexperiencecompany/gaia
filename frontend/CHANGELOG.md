@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.9.0 (2025-11-18)
+
+## What's Changed
+* fix: update integration identifiers for Google services to use lowerc… by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/317
+* fix: Bug fixes and production stability improvements by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/321
+* fix: Reddit tool improvements by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/322
+* release: v0.8.2 by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/325
+* chore: release master by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/326
+
+
+**Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.8.1...v0.9.0
+
+## 0.8.1 (2025-11-17)
+
+## What's Changed
+* chore: add pre-commit tasks, small cleanups, and typing fix by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/300
+* ci(workflow): switch to reusable workflow_call for build and deploy by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/302
+* ci(workflows): multiple github actions improvements by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/303
+* chore: remove uv.lock from git ignore by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/304
+* ci(tooling): migrate to prek and fix pre commit issues by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/305
+* ci(workflows): always auto-commit ESLint/prek fixes and simplify git push by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/306
+* ci(workflows): push prek auto-fixes back to PR branch by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/307
+* ci(workflows): cache pnpm for frontend and limit prek auto-commit to PRs by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/308
+* ci(workflows): always auto-commit prek fixes by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/309
+* ci(workflows): add concurrency to trigger-build job to prevent overlapping branch builds by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/310
+* ci(workflows): remove global and trigger-build concurrency controls by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/311
+* ci(workflows): upgrade setup-gcloud to v3 and standardize docker/login-action to v3 by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/312
+* ci(workflows): pin docker/setup-buildx-action to v3 by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/313
+* ci(workflows): discard local changes on GCP VM before pulling latest code by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/314
+* ci(workflows): stop containers before pulling and remove --no-deps in deploy job by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/315
+* chore: release master by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/301
+
+
+**Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.8.0...v0.8.1
+
 ## 0.8.0 (2025-11-14)
 
 ## What's Changed

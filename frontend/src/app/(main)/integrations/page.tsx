@@ -13,7 +13,8 @@ import { ConnectIcon, MessageFavourite02Icon } from "@/icons";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function IntegrationsPage() {
-  const { integrations, connectIntegration } = useIntegrations();
+  const { integrations, connectIntegration, disconnectIntegration } =
+    useIntegrations();
 
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
   const closeRightSidebar = useRightSidebar((state) => state.close);
@@ -53,10 +54,17 @@ export default function IntegrationsPage() {
 
       if (!selectedIntegration) return;
 
+      const handleDisconnect = async (id: string) => {
+        await disconnectIntegration(id);
+        // Close the sidebar after successful disconnect
+        setTimeout(() => closeRightSidebar(), 500);
+      };
+
       setRightSidebarContent(
         <IntegrationSidebar
           integration={selectedIntegration}
           onConnect={connectIntegration}
+          onDisconnect={handleDisconnect}
           category={selectedIntegration.name}
         />,
       );
@@ -67,6 +75,8 @@ export default function IntegrationsPage() {
       setRightSidebarContent,
       openRightSidebar,
       connectIntegration,
+      disconnectIntegration,
+      closeRightSidebar,
     ],
   );
 

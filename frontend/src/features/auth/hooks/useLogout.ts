@@ -5,15 +5,14 @@ import { useCallback } from "react";
 
 import { authApi } from "@/features/auth/api/authApi";
 import { useUserActions } from "@/features/auth/hooks/useUser";
-import { useConversationsStore } from "@/stores/conversationsStore";
+import { db } from "@/lib/db/chatDb";
 
 /**
  * Custom hook for handling user logout with complete cleanup
- * Clears React Query cache, persisted cache, user state, and conversations
+ * Clears React Query cache, persisted cache, user state, and IndexedDB
  */
 export const useLogout = () => {
   const { clearUser } = useUserActions();
-  const { clearConversations } = useConversationsStore();
   const queryClient = useQueryClient();
   const router = useRouter();
 
@@ -30,6 +29,13 @@ export const useLogout = () => {
         await del("reactQuery");
       } catch (error) {
         console.warn("Failed to clear persisted cache:", error);
+      }
+
+      // Clear IndexedDB conversations and messages
+      try {
+        await db.clearAll();
+      } catch (error) {
+        console.warn("Failed to clear IndexedDB:", error);
       }
 
       // Also invalidate all queries to ensure fresh data on next login
@@ -57,9 +63,6 @@ export const useLogout = () => {
 
       // Clear user state from Zustand store
       clearUser();
-
-      // Clear conversations from store
-      clearConversations();
 
       // Navigate to home page
       router.push("/");
@@ -95,10 +98,9 @@ export const useLogout = () => {
       }
 
       clearUser();
-      clearConversations();
       router.push("/");
     }
-  }, [queryClient, clearUser, clearConversations, router]);
+  }, [queryClient, clearUser, router]);
 
   return { logout };
 };

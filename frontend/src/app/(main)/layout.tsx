@@ -20,6 +20,7 @@ import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
+import { useChatStoreSync } from "@/stores/chatStore";
 import { apiService } from "@/lib/api";
 import { wsManager } from "@/lib/websocket";
 import { useHoloCardModalStore } from "@/stores/holoCardModalStore";
@@ -91,10 +92,8 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   // Listen for WebSocket phase updates
   useEffect(() => {
     const handlePhaseUpdate = (message: any) => {
-      if (message.type === "onboarding_phase_update" && message.data?.phase) {
-        console.log("[MainLayout] WebSocket phase update:", message.data.phase);
+      if (message.type === "onboarding_phase_update" && message.data?.phase)
         setPhase(message.data.phase as OnboardingPhase);
-      }
     };
 
     console.log(
@@ -120,20 +119,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
     (onboardingPhase === OnboardingPhase.GETTING_STARTED ||
       onboardingPhase === OnboardingPhase.COMPLETED);
 
-  // Log visibility decisions
-  useEffect(() => {
-    console.log("[MainLayout] Onboarding visibility state:", {
-      hasCompletedInitialOnboarding,
-      onboardingPhase,
-      shouldShowPersonalizationCard,
-      shouldShowGettingStartedCard,
-    });
-  }, [
-    hasCompletedInitialOnboarding,
-    onboardingPhase,
-    shouldShowPersonalizationCard,
-    shouldShowGettingStartedCard,
-  ]);
+  useChatStoreSync();
 
   // Auto-close sidebar on mobile when pathname changes
   useEffect(() => {

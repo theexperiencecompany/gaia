@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.9.1 (2025-11-18)
+
+## What's Changed
+* fix: Remove dummy data from explore workflows, workflows ui improvements & minor bug fixes by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/328
+* fix: gemini empty ai response by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/330
+* feat: enhance ComparisonTable with integration props and improve layout by @SahilSoni27 in https://github.com/theexperiencecompany/gaia/pull/332
+* release: v0.9.1 by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/333
+* fix: checkpointer posgresql issue by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/335
+
+## New Contributors
+* @SahilSoni27 made their first contribution in https://github.com/theexperiencecompany/gaia/pull/332
+
+**Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.9.0...v0.9.1
+
+## 0.9.0 (2025-11-17)
+
+## What's Changed
+* fix: update integration identifiers for Google services to use lowerc… by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/317
+* fix: Bug fixes and production stability improvements by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/321
+* fix: Reddit tool improvements by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/322
+* release: v0.8.2 by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/325
+
+
+**Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.8.1...v0.9.0
+
 ## 0.8.1 (2025-11-14)
 
 ## What's Changed

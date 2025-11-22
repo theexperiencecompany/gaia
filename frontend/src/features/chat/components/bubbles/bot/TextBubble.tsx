@@ -32,6 +32,7 @@ import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubbl
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
+import { IntegrationListSection } from "@/features/integrations";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
 import { Alert01Icon } from '@/icons';
@@ -56,6 +57,7 @@ import {
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
 import { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
+import { IntegrationConnectionData } from "@/types/features/integrationTypes";
 import {
   ContactData,
   EmailFetchData,
@@ -272,14 +274,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     return (
       <IntegrationConnectionPrompt
         key={`tool-integration-connection-${index}`}
-        integration_connection_required={
-          data as {
-            integration_id: string;
-            message: string;
-          }
-        }
+        integration_connection_required={data as IntegrationConnectionData}
       />
     );
+  },
+
+  integration_list_data: (data, index) => {
+    return <IntegrationListSection key={`tool-integration-list-${index}`} />;
   },
 
   reddit_data: (data) => {

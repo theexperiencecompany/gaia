@@ -6,7 +6,7 @@ import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
-import { useMessages } from "@/hooks/useMessages";
+import { useChatStore } from "@/stores/chatStore";
 import {
   useComposerTextActions,
   usePendingPrompt,
@@ -20,6 +20,9 @@ const ChatPage = React.memo(function MainChat() {
   const { convoMessages } = useConversation();
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
+  const setActiveConversationId = useChatStore(
+    (state) => state.setActiveConversationId,
+  );
 
   // Fetching status on chat-page to resolve caching issues when new integration is connected
   useFetchIntegrationStatus({
@@ -38,7 +41,16 @@ const ChatPage = React.memo(function MainChat() {
     convoIdParam,
   } = useChatLayout();
 
-  useMessages(convoIdParam);
+  // Set active conversation ID based on URL param
+  useEffect(() => {
+    setActiveConversationId(convoIdParam || null);
+
+    // Clear optimistic message when navigating to a different conversation
+    // This prevents stale optimistic message from showing in wrong conversations
+    return () => {
+      useChatStore.getState().clearOptimisticMessage();
+    };
+  }, [convoIdParam, setActiveConversationId]);
 
   const {
     scrollContainerRef,
