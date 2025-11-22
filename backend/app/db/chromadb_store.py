@@ -735,5 +735,3 @@ async def initialize_chroma_tools_store():
         logger.info(f"Successfully updated {len(put_ops)} tools in ChromaDB")
 
     return store
-
-    return store

@@ -27,7 +27,6 @@ import { useFetchConversations } from "@/features/chat/hooks/useConversationList
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useDeleteConversation } from "@/hooks/useDeleteConversation";
 import { db } from "@/lib/db/chatDb";
-import { useChatStore } from "@/stores/chatStore";
 
 export default function ChatOptionsDropdown({
   buttonHovered,
@@ -47,7 +46,6 @@ export default function ChatOptionsDropdown({
   const fetchConversations = useFetchConversations();
   const deleteConversation = useDeleteConversation();
   const { confirm, confirmationProps } = useConfirmation();
-  const updateConversation = useChatStore((state) => state.updateConversation);
   const [dangerStateHovered, setDangerStateHovered] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [newName, setNewName] = useState(chatName);
@@ -57,26 +55,17 @@ export default function ChatOptionsDropdown({
     const newStarredValue = starred === undefined ? true : !starred;
 
     try {
-      // Optimistically update the UI
-      updateConversation(chatId, { starred: newStarredValue });
-
-      // Make the API call
+      // Make the API call first
       await chatApi.toggleStarConversation(chatId, newStarredValue);
 
-      const conversation = await db.getConversation(chatId);
-      if (conversation) {
-        await db.putConversation({
-          ...conversation,
-          starred: newStarredValue,
-          updatedAt: new Date(),
-        });
-      }
+      // Update IndexedDB atomically - event will update Zustand store
+      await db.updateConversationFields(chatId, {
+        starred: newStarredValue,
+      });
 
       await fetchConversations();
     } catch (error) {
       console.error("Failed to update star", error);
-      // Revert the optimistic update on error
-      updateConversation(chatId, { starred: !newStarredValue });
     }
   };
 
@@ -90,15 +79,11 @@ export default function ChatOptionsDropdown({
     try {
       await chatApi.renameConversation(chatId, newName);
 
-      const conversation = await db.getConversation(chatId);
-      if (conversation) {
-        await db.putConversation({
-          ...conversation,
-          title: newName,
-          description: newName,
-          updatedAt: new Date(),
-        });
-      }
+      // Update IndexedDB atomically - event will update Zustand store
+      await db.updateConversationFields(chatId, {
+        title: newName,
+        description: newName,
+      });
 
       closeEditModal();
       await fetchConversations(1, 20, false);

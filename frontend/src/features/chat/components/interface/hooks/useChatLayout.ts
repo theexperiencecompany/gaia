@@ -51,7 +51,7 @@ export const useChatLayout = (): UseChatLayoutReturn => {
     const filteredMessages = filterEmptyMessagePairs(
       convoMessages,
       conversation?.is_system_generated || false,
-      conversation?.system_purpose,
+      conversation?.system_purpose || undefined,
     );
 
     return filteredMessages.length > 0;

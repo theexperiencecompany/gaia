@@ -396,11 +396,10 @@ async def composio_callback(
             f"Composio connection successful: user={user_id}, "
             f"integration={integration_config.id}, account={connectedAccountId}"
         )
-        # Add oauth_success parameter to inform frontend of successful connection
-        separator = "&" if "?" in redirect_path else "?"
-        return RedirectResponse(
-            url=f"{settings.FRONTEND_URL}{redirect_path}{separator}oauth_success=true"
-        )
+        # Add success parameter to URL
+        separator = "?" if "?" not in frontend_redirect_path else "&"
+        redirect_url = f"{settings.FRONTEND_URL}/{frontend_redirect_path}{separator}oauth_success={integration_config.id}"
+        return RedirectResponse(url=redirect_url)
 
     except Exception as e:
         logger.error(
@@ -604,6 +603,60 @@ async def get_integrations_status(
                 ]
             }
         )
+
+
+@router.delete("/integrations/{integration_id}")
+async def disconnect_integration(
+    integration_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Disconnect a connected integration for the current user.
+    Only supports Composio-managed integrations.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+
+    integration = get_integration_by_id(integration_id)
+    if not integration:
+        raise HTTPException(
+            status_code=404, detail=f"Integration {integration_id} not found"
+        )
+
+    if integration.managed_by != "composio":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Integration {integration_id} disconnect not supported. Only Composio-managed integrations can be disconnected via this endpoint.",
+        )
+
+    composio_service = get_composio_service()
+    try:
+        await composio_service.delete_connected_account(
+            user_id=str(user_id), provider=integration.provider
+        )
+
+        try:
+            cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
+            await delete_cache(cache_key)
+            logger.info(f"OAuth status cache invalidated for user {user_id}")
+        except Exception as e:
+            logger.warning(f"Failed to invalidate OAuth status cache: {e}")
+
+        return JSONResponse(
+            content={
+                "status": "success",
+                "message": f"Successfully disconnected {integration.name}",
+                "integrationId": integration_id,
+            }
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(
+            f"Error disconnecting integration {integration_id} for user {user_id}: {e}"
+        )
+        raise HTTPException(status_code=500, detail="Failed to disconnect integration")
 
 
 @router.patch("/me", response_model=UserUpdateResponse)

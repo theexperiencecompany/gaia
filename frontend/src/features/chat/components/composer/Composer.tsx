@@ -119,7 +119,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
     clearSelectedWorkflow();
 
     setIsLoading(true);
-    sendMessage("Run this workflow", conversationId, {
+    sendMessage("Run this workflow", {
       files: uploadedFileData,
       selectedWorkflow,
       selectedTool: selectedTool ?? null,
@@ -221,7 +221,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
       conversation_id: conversationId,
     });
 
-    sendMessage(inputText, conversationId, {
+    sendMessage(inputText, {
       files: uploadedFileData,
       selectedTool: selectedTool ?? null,
       selectedToolCategory: selectedToolCategory ?? null,

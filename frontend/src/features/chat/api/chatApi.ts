@@ -231,7 +231,9 @@ export const chatApi = {
     inputText: string,
     convoMessages: MessageType[],
     conversationId: string | null | undefined,
-    onMessage: (event: EventSourceMessage) => void | string,
+    onMessage: (
+      event: EventSourceMessage,
+    ) => void | string | Promise<void | string>,
     onClose: () => void,
     onError: (err: Error) => void,
     fileData: FileData[] = [],
@@ -284,17 +286,36 @@ export const chatApi = {
               content: response,
             })),
         }),
+
         onmessage(event) {
-          const error = onMessage(event);
+          const errorResult = onMessage(event);
 
           if (event.data === "[DONE]") {
             onClose();
             return;
           }
 
-          if (error) {
-            onError(new Error(error));
-            controller.abort();
+          // Handle both sync and async error returns
+          if (errorResult) {
+            if (errorResult instanceof Promise) {
+              errorResult.then((err) => {
+                if (err) {
+                  console.error(
+                    "[chatApi] Message handler returned async error:",
+                    err,
+                  );
+                  onError(new Error(err));
+                  controller.abort();
+                }
+              });
+            } else {
+              console.error(
+                "[chatApi] Message handler returned error:",
+                errorResult,
+              );
+              onError(new Error(errorResult));
+              controller.abort();
+            }
             return;
           }
         },
@@ -302,6 +323,11 @@ export const chatApi = {
           onClose();
         },
         onerror: (err) => {
+          console.error("[chatApi] Stream error:", {
+            error: err,
+            message: err.message,
+            stack: err.stack,
+          });
           onError(err);
           throw err; // This stops any retry attempts
         },

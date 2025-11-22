@@ -10,7 +10,7 @@ import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { useConversationsStore } from "@/stores/conversationsStore";
+import { db } from "@/lib/db/chatDb";
 
 import { ModalAction } from "./SettingsMenu";
 
@@ -25,7 +25,6 @@ export default function LogoutModal({
 }: LogoutModalProps) {
   const { clearUser } = useUserActions();
   const router = useRouter();
-  const { clearConversations } = useConversationsStore();
   const fetchConversations = useFetchConversations();
   const { updateConvoMessages } = useConversation();
   const { confirm, confirmationProps } = useConfirmation();
@@ -49,8 +48,8 @@ export default function LogoutModal({
 
       await chatApi.deleteAllConversations();
 
-      // Clear conversations in store immediately
-      clearConversations();
+      // Clear all conversations from IndexedDB
+      await db.clearAll();
 
       // Then fetch from the API to ensure sync with server
       await fetchConversations(1, 20, false);
