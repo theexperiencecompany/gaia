@@ -240,7 +240,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             {shouldShowPersonalizationCard && (
               <ContextGatheringLoader onComplete={openHoloCardModal} />
             )}
-            {shouldShowGettingStartedCard && <OnboardingStepsCard />}
+            {/* {shouldShowGettingStartedCard && <OnboardingStepsCard />} */}
           </div>
         )}
       </SidebarProvider>

@@ -90,9 +90,11 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     holo_card_id: personalizationData?.holo_card_id,
   };
 
-  const shareUrl = personalizationData?.holo_card_id
-    ? `${window.location.origin}/profile/${personalizationData.holo_card_id}`
-    : window.location.href;
+  const shareUrl =
+    !!window && personalizationData?.holo_card_id
+      ? `${window.location.origin}/profile/${personalizationData.holo_card_id}`
+      : window.location.href;
+
   const shareTitle = "Check out my Personal Card made using GAIA";
 
   return (

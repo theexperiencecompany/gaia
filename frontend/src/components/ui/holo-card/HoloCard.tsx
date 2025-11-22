@@ -1,5 +1,5 @@
 import Image from "next/image";
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState } from "react";
 import Tilt from "react-parallax-tilt";
 
 import { StyledHoloCard } from "@/app/styles/holo-card.styles";
@@ -167,174 +167,318 @@ export const HoloCard = ({
       >
         {/* Front Side */}
         <div style={frontStyle}>
-          <Tilt
-            className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl"
-            tiltEnable={!forceSide}
-            glareEnable={!forceSide}
-            scale={1}
-          >
-            {overlay_color && (
-              <div
-                className="pointer-events-none absolute inset-0 z-[3]"
-                style={{
-                  background: overlay_color,
-                  mixBlendMode: "overlay",
-                  opacity: overlay_opacity / 100,
-                }}
-              />
-            )}
+          {forceSide ? (
+            <div className="relative h-full w-full overflow-hidden rounded-2xl shadow-xl">
+              {overlay_color && (
+                <div
+                  className="pointer-events-none absolute inset-0 z-[3]"
+                  style={{
+                    background: overlay_color,
+                    mixBlendMode: "overlay",
+                    opacity: overlay_opacity / 100,
+                  }}
+                />
+              )}
 
-            <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-end p-3 text-white transition">
-              <div className="absolute top-4 left-0 flex w-full justify-between px-3">
-                <div className="rounded-full bg-white/30 p-1 px-2 font-serif text-xl font-light text-white/70 backdrop-blur-md">
-                  <Image
-                    src="/images/logos/text_w_logo_white.webp"
-                    alt="GAIA Logo"
-                    width={100}
-                    height={30}
-                    className="object-contain"
-                  />
-                </div>
-                {house && (
-                  <div className="rounded-full bg-white/20 p-1 px-4 font-serif text-xl font-light text-white/70 backdrop-blur-md">
-                    {house}
-                  </div>
-                )}
-              </div>
-              <Image
-                src="/images/logos/experience_logo.svg"
-                alt="Experience Logo"
-                className="scale-125 opacity-10"
-                fill
-              />
-
-              <div className="relative flex w-full flex-col gap-1 overflow-hidden rounded-2xl bg-black/20 p-3 backdrop-blur-md">
-                <div className="font-serif text-4xl font-bold text-white">
-                  {name}
-                </div>
-                <div className="mb-10 font-light text-white italic">
-                  {personality_phrase}
-                </div>
-
-                <div className="flex w-full items-center justify-between">
-                  <div className="flex flex-col items-start gap-1">
-                    <span className="text-sm text-white/80">User {account_number}</span>
-                    <span className="text-xs text-white/50">{member_since}</span>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Image
-                      src="/images/logos/experience_logo.svg"
-                      alt="Experience Logo"
-                      width={30}
-                      height={30}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <StyledHoloCard
-              $url={houseImage}
-              ref={ref}
-              $active={hover && !forceSide}
-              $animated={animated && !forceSide}
-              $activeRotation={activeRotation}
-              $activeBackgroundPosition={activeBackgroundPosition}
-              onMouseMove={!forceSide ? handleOnMouseMove : undefined}
-              onTouchMove={!forceSide ? handleOnTouchMove : undefined}
-              onMouseOut={!forceSide ? handleOnMouseOut : undefined}
-              $height={height}
-              $width={width}
-              $showSparkles={showSparkles}
-            >
-              {children}
-            </StyledHoloCard>
-          </Tilt>
-        </div>
-
-        {/* Back Side */}
-        <div style={backStyle}>
-          <Tilt
-            className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl"
-            tiltEnable={!forceSide}
-            glareEnable={!forceSide}
-            scale={1}
-          >
-            {overlay_color && (
-              <div
-                className="pointer-events-none absolute inset-0 z-[3]"
-                style={{
-                  background: overlay_color,
-                  mixBlendMode: "overlay",
-                  opacity: overlay_opacity / 100,
-                }}
-              />
-            )}
-
-            <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-between p-3 text-white">
-              <div className="flex w-full flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <div className="rounded-full bg-white/30 p-1 px-2 backdrop-blur-md">
+              <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-end p-3 text-white transition">
+                <div className="absolute top-4 left-0 flex w-full justify-between px-3">
+                  <div className="rounded-full bg-white/30 p-1 px-2 font-serif text-xl font-light text-white/70 backdrop-blur-md">
                     <Image
                       src="/images/logos/text_w_logo_white.webp"
                       alt="GAIA Logo"
-                      width={80}
-                      height={24}
+                      width={100}
+                      height={30}
                       className="object-contain"
                     />
                   </div>
                   {house && (
-                    <div className="rounded-full bg-white/20 p-1 px-3 font-serif text-xl font-light text-white/70 backdrop-blur-md">
+                    <div className="rounded-full bg-white/20 p-1 px-4 font-serif text-xl font-light text-white/70 backdrop-blur-md">
                       {house}
                     </div>
                   )}
                 </div>
+                <Image
+                  src="/images/logos/experience_logo.svg"
+                  alt="Experience Logo"
+                  className="scale-125 opacity-10"
+                  fill
+                />
 
-                <div className="relative overflow-hidden rounded-2xl bg-black/20 p-4 backdrop-blur-md">
-                  <div className="mb-2 font-serif text-2xl font-bold text-white">
+                <div className="relative flex w-full flex-col gap-1 overflow-hidden rounded-2xl bg-black/20 p-3 backdrop-blur-md">
+                  <div className="font-serif text-4xl font-bold text-white">
                     {name}
                   </div>
-                  <div className="mb-4 text-sm font-light text-white/80 italic">
+                  <div className="mb-10 font-light text-white italic">
                     {personality_phrase}
                   </div>
-                  <p className="text-sm text-white/80">{user_bio}</p>
+
+                  <div className="flex w-full items-center justify-between">
+                    <div className="flex flex-col items-start gap-1">
+                      <span className="text-sm text-white/80">User {account_number}</span>
+                      <span className="text-xs text-white/50">{member_since}</span>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Image
+                        src="/images/logos/experience_logo.svg"
+                        alt="Experience Logo"
+                        width={30}
+                        height={30}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex w-full items-center justify-between rounded-xl bg-black/20 p-3 backdrop-blur-md">
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-white/50">Member Since</span>
-                  <span className="text-sm font-medium text-white/80">
-                    {member_since}
-                  </span>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className="text-xs text-white/50">User ID</span>
-                  <span className="text-sm font-medium text-white/80">
-                    {account_number}
-                  </span>
-                </div>
-              </div>
+              <StyledHoloCard
+                $url={houseImage}
+                ref={ref}
+                $active={false}
+                $animated={false}
+                $activeRotation={activeRotation}
+                $activeBackgroundPosition={activeBackgroundPosition}
+                $height={height}
+                $width={width}
+                $showSparkles={showSparkles}
+              >
+                {children}
+              </StyledHoloCard>
             </div>
+          ) : (
+            <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
+              {overlay_color && (
+                <div
+                  className="pointer-events-none absolute inset-0 z-[3]"
+                  style={{
+                    background: overlay_color,
+                    mixBlendMode: "overlay",
+                    opacity: overlay_opacity / 100,
+                  }}
+                />
+              )}
 
-            <StyledHoloCard
-              $url={houseImage}
-              ref={ref}
-              $active={hover && !forceSide}
-              $animated={animated && !forceSide}
-              $activeRotation={activeRotation}
-              $activeBackgroundPosition={activeBackgroundPosition}
-              onMouseMove={!forceSide ? handleOnMouseMove : undefined}
-              onTouchMove={!forceSide ? handleOnTouchMove : undefined}
-              onMouseOut={!forceSide ? handleOnMouseOut : undefined}
-              $height={height}
-              $width={width}
-              $showSparkles={showSparkles}
-            >
-              {children}
-            </StyledHoloCard>
-          </Tilt>
+              <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-end p-3 text-white transition">
+                <div className="absolute top-4 left-0 flex w-full justify-between px-3">
+                  <div className="rounded-full bg-white/30 p-1 px-2 font-serif text-xl font-light text-white/70 backdrop-blur-md">
+                    <Image
+                      src="/images/logos/text_w_logo_white.webp"
+                      alt="GAIA Logo"
+                      width={100}
+                      height={30}
+                      className="object-contain"
+                    />
+                  </div>
+                  {house && (
+                    <div className="rounded-full bg-white/20 p-1 px-4 font-serif text-xl font-light text-white/70 backdrop-blur-md">
+                      {house}
+                    </div>
+                  )}
+                </div>
+                <Image
+                  src="/images/logos/experience_logo.svg"
+                  alt="Experience Logo"
+                  className="scale-125 opacity-10"
+                  fill
+                />
+
+                <div className="relative flex w-full flex-col gap-1 overflow-hidden rounded-2xl bg-black/20 p-3 backdrop-blur-md">
+                  <div className="font-serif text-4xl font-bold text-white">
+                    {name}
+                  </div>
+                  <div className="mb-10 font-light text-white italic">
+                    {personality_phrase}
+                  </div>
+
+                  <div className="flex w-full items-center justify-between">
+                    <div className="flex flex-col items-start gap-1">
+                      <span className="text-sm text-white/80">User {account_number}</span>
+                      <span className="text-xs text-white/50">{member_since}</span>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Image
+                        src="/images/logos/experience_logo.svg"
+                        alt="Experience Logo"
+                        width={30}
+                        height={30}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <StyledHoloCard
+                $url={houseImage}
+                ref={ref}
+                $active={hover}
+                $animated={animated}
+                $activeRotation={activeRotation}
+                $activeBackgroundPosition={activeBackgroundPosition}
+                onMouseMove={handleOnMouseMove}
+                onTouchMove={handleOnTouchMove}
+                onMouseOut={handleOnMouseOut}
+                $height={height}
+                $width={width}
+                $showSparkles={showSparkles}
+              >
+                {children}
+              </StyledHoloCard>
+            </Tilt>
+          )}
+        </div>
+
+        {/* Back Side */}
+        <div style={backStyle}>
+          {forceSide ? (
+            <div className="relative h-full w-full overflow-hidden rounded-2xl shadow-xl">
+              {overlay_color && (
+                <div
+                  className="pointer-events-none absolute inset-0 z-[3]"
+                  style={{
+                    background: overlay_color,
+                    mixBlendMode: "overlay",
+                    opacity: overlay_opacity / 100,
+                  }}
+                />
+              )}
+
+              <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-between p-3 text-white">
+                <div className="flex w-full flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <div className="rounded-full bg-white/30 p-1 px-2 backdrop-blur-md">
+                      <Image
+                        src="/images/logos/text_w_logo_white.webp"
+                        alt="GAIA Logo"
+                        width={80}
+                        height={24}
+                        className="object-contain"
+                      />
+                    </div>
+                    {house && (
+                      <div className="rounded-full bg-white/20 p-1 px-3 font-serif text-xl font-light text-white/70 backdrop-blur-md">
+                        {house}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="relative overflow-hidden rounded-2xl bg-black/20 p-4 backdrop-blur-md">
+                    <div className="mb-2 font-serif text-2xl font-bold text-white">
+                      {name}
+                    </div>
+                    <div className="mb-4 text-sm font-light text-white/80 italic">
+                      {personality_phrase}
+                    </div>
+                    <p className="text-sm text-white/80">{user_bio}</p>
+                  </div>
+                </div>
+
+                <div className="flex w-full items-center justify-between rounded-xl bg-black/20 p-3 backdrop-blur-md">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-white/50">Member Since</span>
+                    <span className="text-sm font-medium text-white/80">
+                      {member_since}
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-xs text-white/50">User ID</span>
+                    <span className="text-sm font-medium text-white/80">
+                      {account_number}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <StyledHoloCard
+                $url={houseImage}
+                ref={ref}
+                $active={false}
+                $animated={false}
+                $activeRotation={activeRotation}
+                $activeBackgroundPosition={activeBackgroundPosition}
+                $height={height}
+                $width={width}
+                $showSparkles={showSparkles}
+              >
+                {children}
+              </StyledHoloCard>
+            </div>
+          ) : (
+            <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
+              {overlay_color && (
+                <div
+                  className="pointer-events-none absolute inset-0 z-[3]"
+                  style={{
+                    background: overlay_color,
+                    mixBlendMode: "overlay",
+                    opacity: overlay_opacity / 100,
+                  }}
+                />
+              )}
+
+              <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-between p-3 text-white">
+                <div className="flex w-full flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <div className="rounded-full bg-white/30 p-1 px-2 backdrop-blur-md">
+                      <Image
+                        src="/images/logos/text_w_logo_white.webp"
+                        alt="GAIA Logo"
+                        width={80}
+                        height={24}
+                        className="object-contain"
+                      />
+                    </div>
+                    {house && (
+                      <div className="rounded-full bg-white/20 p-1 px-3 font-serif text-xl font-light text-white/70 backdrop-blur-md">
+                        {house}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="relative overflow-hidden rounded-2xl bg-black/20 p-4 backdrop-blur-md">
+                    <div className="mb-2 font-serif text-2xl font-bold text-white">
+                      {name}
+                    </div>
+                    <div className="mb-4 text-sm font-light text-white/80 italic">
+                      {personality_phrase}
+                    </div>
+                    <p className="text-sm text-white/80">{user_bio}</p>
+                  </div>
+                </div>
+
+                <div className="flex w-full items-center justify-between rounded-xl bg-black/20 p-3 backdrop-blur-md">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-white/50">Member Since</span>
+                    <span className="text-sm font-medium text-white/80">
+                      {member_since}
+                    </span>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-xs text-white/50">User ID</span>
+                    <span className="text-sm font-medium text-white/80">
+                      {account_number}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <StyledHoloCard
+                $url={houseImage}
+                ref={ref}
+                $active={hover}
+                $animated={animated}
+                $activeRotation={activeRotation}
+                $activeBackgroundPosition={activeBackgroundPosition}
+                onMouseMove={handleOnMouseMove}
+                onTouchMove={handleOnTouchMove}
+                onMouseOut={handleOnMouseOut}
+                $height={height}
+                $width={width}
+                $showSparkles={showSparkles}
+              >
+                {children}
+              </StyledHoloCard>
+            </Tilt>
+          )}
         </div>
       </div>
     </div>
