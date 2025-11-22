@@ -11,10 +11,7 @@ import {
   holoCardApi,
   HoloCardData,
 } from "@/features/onboarding/api/holoCardApi";
-import {
-  Copy01Icon,
-  LinkSquare02Icon,
-} from "@/icons";
+import { Copy01Icon, LinkSquare02Icon } from "@/icons";
 
 export default function ProfileCardSettings() {
   const [holoCardData, setHoloCardData] = useState<HoloCardData | null>(null);
@@ -48,17 +45,25 @@ export default function ProfileCardSettings() {
     window.open(url, "_blank");
   };
 
-  const displayData: HoloCardDisplayData | null = holoCardData ? {
-    house: holoCardData.house || "bluehaven",
-    name: holoCardData.name,
-    personality_phrase: holoCardData.personality_phrase,
-    user_bio: holoCardData.user_bio,
-    account_number: `#${holoCardData.account_number}`,
-    member_since: holoCardData.member_since,
-    overlay_color: holoCardData.overlay_color,
-    overlay_opacity: holoCardData.overlay_opacity,
-    holo_card_id: holoCardData.holo_card_id
-  } : null;
+  const handleConnectGmail = () => {
+    // TODO: Implement Gmail OAuth flow or redirect to integrations page
+    toast("Redirecting to Gmail connection...");
+    window.location.href = "/integrations?connect=gmail";
+  };
+
+  const displayData: HoloCardDisplayData | null = holoCardData
+    ? {
+        house: holoCardData.house || "bluehaven",
+        name: holoCardData.name,
+        personality_phrase: holoCardData.personality_phrase,
+        user_bio: holoCardData.user_bio,
+        account_number: `#${holoCardData.account_number}`,
+        member_since: holoCardData.member_since,
+        overlay_color: holoCardData.overlay_color,
+        overlay_opacity: holoCardData.overlay_opacity,
+        holo_card_id: holoCardData.holo_card_id,
+      }
+    : null;
 
   return (
     <div className="w-full space-y-4">
@@ -95,11 +100,28 @@ export default function ProfileCardSettings() {
         {isLoading ? (
           <Skeleton className="h-[400px] w-[280px] rounded-2xl" />
         ) : displayData ? (
-          <HoloCardEditor
-            initialData={displayData}
-            height={500}
-            width={370}
-          />
+          <div className="flex flex-col items-center gap-4">
+            <HoloCardEditor
+              initialData={displayData}
+              height={500}
+              width={370}
+            />
+            {displayData.user_bio &&
+              (displayData.user_bio.startsWith("Connect your Gmail") ||
+                displayData.user_bio.startsWith("Processing")) && (
+                <Button
+                  color="primary"
+                  size="lg"
+                  className="mt-4 rounded-xl px-6 py-3 text-base font-semibold"
+                  onPress={handleConnectGmail}
+                >
+                  Connect Gmail for a personalized bio
+                  <span className="mt-1 block text-xs font-normal text-zinc-300">
+                    Unlock your unique AI bio and insights
+                  </span>
+                </Button>
+              )}
+          </div>
         ) : null}
       </div>
     </div>

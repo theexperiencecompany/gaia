@@ -1,5 +1,5 @@
 import Image from "next/image";
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import Tilt from "react-parallax-tilt";
 
 import { StyledHoloCard } from "@/app/styles/holo-card.styles";
@@ -11,8 +11,9 @@ export const HoloCard = ({
   height = 446,
   width = 320,
   showSparkles = true,
+  forceSide,
   children,
-}: HoloCardProps) => {
+}: HoloCardProps & { forceSide?: "front" | "back" }) => {
   const [hover, setHover] = useState(false);
   const [animated, setAnimated] = useState(true);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -37,10 +38,14 @@ export const HoloCard = ({
     overlay_opacity = 40,
   } = data;
 
-  const houseImage = getHouseImage(house as any); // Cast to any or specific House type if available, assuming string is fine for now or we import House type
+  const houseImage = getHouseImage(house as any);
+
+
 
   const handleCardClick = () => {
-    setIsFlipped(!isFlipped);
+    if (!forceSide) {
+      setIsFlipped(!isFlipped);
+    }
   };
 
   const handleOnMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -93,30 +98,81 @@ export const HoloCard = ({
     setActiveRotation({ x: 0, y: 0 });
   };
 
+  const effectiveFlipped = forceSide ? forceSide === "back" : isFlipped;
+
+  // Static mode styles for download
+  const containerStyle = forceSide
+    ? {
+        perspective: "none",
+        transform: "none",
+      }
+    : {
+        perspective: "1000px",
+        cursor: "pointer",
+      };
+
+  const innerStyle = forceSide
+    ? {
+        transform: "none",
+        position: "relative" as const,
+        height: `${height}px`,
+        width: `${width}px`,
+      }
+    : {
+        transformStyle: "preserve-3d" as const,
+        transform: effectiveFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
+        height: `${height}px`,
+        width: `${width}px`,
+      };
+
+  const frontStyle = forceSide
+    ? {
+        display: forceSide === "front" ? "block" : "none",
+        position: "absolute" as const,
+        inset: 0,
+      }
+    : {
+        position: "absolute" as const,
+        inset: 0,
+        backfaceVisibility: "hidden" as const,
+        WebkitBackfaceVisibility: "hidden" as const,
+      };
+
+  const backStyle = forceSide
+    ? {
+        display: forceSide === "back" ? "block" : "none",
+        position: "absolute" as const,
+        inset: 0,
+        transform: "none", // Crucial: No rotation for static back view
+      }
+    : {
+        position: "absolute" as const,
+        inset: 0,
+        backfaceVisibility: "hidden" as const,
+        WebkitBackfaceVisibility: "hidden" as const,
+        transform: "rotateY(180deg)",
+      };
+
   return (
     <div
-      className="perspective-1000 cursor-pointer!"
+      className={forceSide ? "" : "perspective-1000"}
       onClick={handleCardClick}
-      style={{ perspective: "1000px" }}
+      style={containerStyle}
     >
       <div
-        className="relative transition-transform duration-700"
-        style={{
-          transformStyle: "preserve-3d",
-          transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
-          height: `${height}px`,
-          width: `${width}px`,
-        }}
+        className={
+          forceSide ? "relative" : "relative transition-transform duration-700"
+        }
+        style={innerStyle}
       >
         {/* Front Side */}
-        <div
-          className="absolute inset-0"
-          style={{
-            backfaceVisibility: "hidden",
-            WebkitBackfaceVisibility: "hidden",
-          }}
-        >
-          <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
+        <div style={frontStyle}>
+          <Tilt
+            className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl"
+            tiltEnable={!forceSide}
+            glareEnable={!forceSide}
+            scale={1}
+          >
             {overlay_color && (
               <div
                 className="pointer-events-none absolute inset-0 z-[3]"
@@ -181,13 +237,13 @@ export const HoloCard = ({
             <StyledHoloCard
               $url={houseImage}
               ref={ref}
-              $active={hover}
-              $animated={animated}
+              $active={hover && !forceSide}
+              $animated={animated && !forceSide}
               $activeRotation={activeRotation}
               $activeBackgroundPosition={activeBackgroundPosition}
-              onMouseMove={handleOnMouseMove}
-              onTouchMove={handleOnTouchMove}
-              onMouseOut={handleOnMouseOut}
+              onMouseMove={!forceSide ? handleOnMouseMove : undefined}
+              onTouchMove={!forceSide ? handleOnTouchMove : undefined}
+              onMouseOut={!forceSide ? handleOnMouseOut : undefined}
               $height={height}
               $width={width}
               $showSparkles={showSparkles}
@@ -198,15 +254,13 @@ export const HoloCard = ({
         </div>
 
         {/* Back Side */}
-        <div
-          className="absolute inset-0"
-          style={{
-            backfaceVisibility: "hidden",
-            WebkitBackfaceVisibility: "hidden",
-            transform: "rotateY(180deg)",
-          }}
-        >
-          <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
+        <div style={backStyle}>
+          <Tilt
+            className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl"
+            tiltEnable={!forceSide}
+            glareEnable={!forceSide}
+            scale={1}
+          >
             {overlay_color && (
               <div
                 className="pointer-events-none absolute inset-0 z-[3]"
@@ -267,13 +321,13 @@ export const HoloCard = ({
             <StyledHoloCard
               $url={houseImage}
               ref={ref}
-              $active={hover}
-              $animated={animated}
+              $active={hover && !forceSide}
+              $animated={animated && !forceSide}
               $activeRotation={activeRotation}
               $activeBackgroundPosition={activeBackgroundPosition}
-              onMouseMove={handleOnMouseMove}
-              onTouchMove={handleOnTouchMove}
-              onMouseOut={handleOnMouseOut}
+              onMouseMove={!forceSide ? handleOnMouseMove : undefined}
+              onTouchMove={!forceSide ? handleOnTouchMove : undefined}
+              onMouseOut={!forceSide ? handleOnMouseOut : undefined}
               $height={height}
               $width={width}
               $showSparkles={showSparkles}

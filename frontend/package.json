@@ -153,6 +153,7 @@
     "gray-matter": "^4.0.3",
     "gsap": "^3.13.0",
     "he": "^1.2.0",
+    "html-to-image": "^1.11.13",
     "idb-keyval": "^6.2.2",
     "import-in-the-middle": "^1.14.2",
     "input-otp": "^1.4.2",

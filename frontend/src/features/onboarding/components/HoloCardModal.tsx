@@ -18,6 +18,7 @@ import {
 } from "@/features/onboarding/hooks/usePersonalization";
 import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
 import { Rocket01Icon } from "@/icons";
+import { TwitterShareButton } from "react-share";
 
 interface FeatureModalProps {
   isOpen: boolean;
@@ -89,6 +90,11 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     holo_card_id: personalizationData?.holo_card_id,
   };
 
+  const shareUrl = personalizationData?.holo_card_id
+    ? `${window.location.origin}/profile/${personalizationData.holo_card_id}`
+    : window.location.href;
+  const shareTitle = "Check out my Personal Card made using GAIA";
+
   return (
     <Modal
       isOpen={isOpen}
@@ -148,13 +154,16 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                 Let's Go!
               </Button>
 
-              <Button
-                className="font-medium"
-                endContent={<TwitterIcon width={18} height={18} />}
-                onPress={() => handleShare("twitter")}
-              >
-                Share on Twitter
-              </Button>
+              <TwitterShareButton url={shareUrl} title={shareTitle}>
+                <Button
+                  className="font-medium"
+                  endContent={<TwitterIcon width={18} height={18} />}
+                  onPress={() => handleShare("twitter")}
+                >
+                  Share on Twitter
+                </Button>
+                Twitter
+              </TwitterShareButton>
             </div>
           </div>
 

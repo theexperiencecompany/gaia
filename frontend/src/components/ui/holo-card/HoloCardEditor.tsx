@@ -10,11 +10,13 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Slider } from "@heroui/slider";
 import { Tooltip } from "@heroui/tooltip";
+import { toPng } from "html-to-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ColorPicker from "react-best-gradient-color-picker";
+import { TwitterShareButton } from "react-share";
 import { toast } from "sonner";
-import { TwitterShareButton, LinkedinShareButton } from "react-share";
 
+import { TwitterIcon } from "@/components";
 import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
 import {
   Copy01Icon,
@@ -27,7 +29,6 @@ import {
 } from "@/icons";
 import { HoloCard } from "./HoloCard";
 import type { HoloCardDisplayData } from "./types";
-import { LinkedinIcon, TwitterIcon } from "@/components";
 
 interface HoloCardEditorProps {
   initialData: HoloCardDisplayData;
@@ -68,8 +69,9 @@ export const HoloCardEditor = ({
     saveTimeoutRef.current = setTimeout(() => {
       holoCardApi.updateHoloCardColors(newColor, newOpacity).catch((error) => {
         console.error("Failed to save colors:", error);
+        toast.error("Failed to save colors");
       });
-    }, 1000); // 1 second debounce
+    }, 1000);
   }, []);
 
   // Cleanup timeout on unmount
@@ -105,10 +107,24 @@ export const HoloCardEditor = ({
     saveColors(color, newOpacity);
   };
 
-  const handleDownload = () => {
-    toast.success("Download started");
-    // Add download logic here
-  };
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const handleDownload = useCallback(async () => {
+    if (cardRef.current === null) {
+      return;
+    }
+
+    try {
+      const dataUrl = await toPng(cardRef.current, { cacheBust: true });
+      const link = document.createElement("a");
+      link.download = `holo-card-${data.name || "user"}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error("Failed to download image", err);
+      toast.error("Failed to download image");
+    }
+  }, [data.name]);
 
   const handleShare = (platform: "twitter" | "linkedin" | "copy") => {
     if (!data.holo_card_id) {
@@ -247,15 +263,7 @@ export const HoloCardEditor = ({
     setData(newData);
     onUpdate?.(newData);
 
-    holoCardApi
-      .updateHoloCardColors(newColor, newOpacity)
-      .then(() => {
-        toast.success("Card colors updated!");
-      })
-      .catch((error) => {
-        console.error("Failed to save colors:", error);
-        toast.error("Failed to save colors");
-      });
+    saveColors(newColor, newOpacity);
   };
 
   const handleResetColor = () => {
@@ -273,15 +281,7 @@ export const HoloCardEditor = ({
     setData(newData);
     onUpdate?.(newData);
 
-    holoCardApi
-      .updateHoloCardColors(defaultColor, defaultOpacity)
-      .then(() => {
-        toast.success("Colors reset!");
-      })
-      .catch((error) => {
-        console.error("Failed to reset colors:", error);
-        toast.error("Failed to reset colors");
-      });
+    saveColors(defaultColor, defaultOpacity);
   };
 
   const shareUrl = data.holo_card_id
@@ -291,7 +291,14 @@ export const HoloCardEditor = ({
 
   return (
     <div className="flex flex-col items-center gap-4">
-      <HoloCard data={data} height={height} width={width} showSparkles={true} />
+      <div>
+        <HoloCard
+          data={data}
+          height={height}
+          width={width}
+          showSparkles={true}
+        />
+      </div>
 
       <ButtonGroup className="mt-2">
         <Tooltip content="Download your card" placement="top">
@@ -460,6 +467,40 @@ export const HoloCardEditor = ({
           </Button>
         </Tooltip>
       </ButtonGroup>
+      {/* Hidden container for download */}
+      <div
+        style={{
+          position: "fixed",
+          top: -10000,
+          left: -10000,
+          opacity: 0,
+          pointerEvents: "none",
+        }}
+      >
+        <div
+          ref={cardRef}
+          className="flex items-center gap-8 bg-transparent p-8"
+        >
+          <div style={{ width, height }}>
+            <HoloCard
+              data={data}
+              height={height}
+              width={width}
+              showSparkles={false}
+              forceSide="front"
+            />
+          </div>
+          <div style={{ width, height }}>
+            <HoloCard
+              data={data}
+              height={height}
+              width={width}
+              showSparkles={false}
+              forceSide="back"
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

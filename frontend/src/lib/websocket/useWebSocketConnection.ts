@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect } from "react";
 
 import { useUser } from "@/features/auth/hooks/useUser";
