@@ -35,11 +35,11 @@ run = "pnpm type"
 
 [tasks.lint]
 description = "Run ESLint"
-run = "pnpm lint"
+run = "pnpm check"
 
 [tasks."lint:fix"]
 description = "Run ESLint with auto-fix"
-run = "pnpm lint:fix"
+run = "pnpm fix"
 
 [tasks.format]
 description = "Format code with Prettier"
@@ -76,10 +76,6 @@ run = "ANALYZE=true pnpm build"
 [tasks.knip]
 description = "Find unused files and exports"
 run = "pnpm knip"
-
-[tasks."lint:export"]
-description = "Export ESLint config for debugging"
-run = "pnpm lint:export"
 
 # Pre-commit tasks
 [tasks.precommit]

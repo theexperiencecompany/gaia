@@ -15,13 +15,11 @@
     "build": "next build",
     "start": "next start",
     "type": "npx tsc --noEmit",
-    "format": "prettier --write .",
     "depcheck": "depcheck",
-    "lint": "next lint",
-    "lint:fix": "next lint --fix",
-    "lint:export": "next lint --print-config . > .eslint-test.json",
-    "generate-barrels": "barrelsby --delete --directory ./src --location branch --exclude \"(src/app|src/features)\"",
-    "lint:all": "prettier --write . && next lint --fix"
+    "check": "biome check .",
+    "fix": "biome check --write .",
+    "format": "biome format --write .",
+    "generate-barrels": "barrelsby --delete --directory ./src --location branch --exclude \"(src/app|src/features)\""
   },
   "dependencies": {
     "@databuddy/sdk": "^2.0.0",

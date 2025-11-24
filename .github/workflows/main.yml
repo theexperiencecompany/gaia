@@ -70,22 +70,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run ESLint with autofix
-        run: pnpm lint:fix
-
-      - name: Commit ESLint fixes (if any)
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-
-          if ! git diff --exit-code; then
-            echo "Files were modified by ESLint. Committing changes..."
-            git add .
-            git commit -m "ci(auto-fix): Apply ESLint formatting"
-            git push
-          else
-            echo "✅ No ESLint fixes needed"
-          fi
+      - name: Run Lint checker
+        run: pnpm check
 
       - name: Create Build
         env:
