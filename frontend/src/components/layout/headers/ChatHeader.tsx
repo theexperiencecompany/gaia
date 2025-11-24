@@ -27,8 +27,8 @@ export default function ChatHeader() {
   };
 
   return (
-    <div className="flex w-full justify-between">
-      <ModelPickerButton />
+    <div className="flex w-full justify-end">
+      {/* <ModelPickerButton /> */}
       <div className="relative flex items-center">
         <SidebarHeaderButton
           onClick={handleSearchClick}
