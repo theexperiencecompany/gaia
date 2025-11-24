@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 
 /**
@@ -10,7 +10,7 @@ import { useCallback } from "react";
 export function useUrlTodoSelection() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
+  const pathname = usePathname();
   // Get the currently selected todo ID from URL
   const selectedTodoId = searchParams.get("todoId");
 
@@ -32,13 +32,12 @@ export function useUrlTodoSelection() {
       }
 
       // Get current pathname and update URL
-      const currentPath = window.location.pathname;
       const newUrl = params.toString()
-        ? `${currentPath}?${params.toString()}`
-        : currentPath;
+        ? `${pathname}?${params.toString()}`
+        : pathname;
       router.replace(newUrl, { scroll: false });
     },
-    [router, searchParams],
+    [router, searchParams, pathname],
   );
 
   // Helper function to select a todo

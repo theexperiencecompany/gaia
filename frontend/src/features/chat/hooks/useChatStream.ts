@@ -1,4 +1,4 @@
-import { EventSourceMessage } from "@microsoft/fetch-event-source";
+import type { EventSourceMessage } from "@microsoft/fetch-event-source";
 import { useRouter } from "next/navigation";
 import { useRef } from "react";
 
@@ -8,12 +8,12 @@ import { useLoading } from "@/features/chat/hooks/useLoading";
 import { streamController } from "@/features/chat/utils/streamController";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
-import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
+import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
-import { MessageType } from "@/types/features/convoTypes";
-import { WorkflowData } from "@/types/features/workflowTypes";
-import { FileData } from "@/types/shared";
+import type { MessageType } from "@/types/features/convoTypes";
+import type { WorkflowData } from "@/types/features/workflowTypes";
+import type { FileData } from "@/types/shared";
 import fetchDate from "@/utils/date/dateUtils";
 
 import { useLoadingText } from "./useLoadingText";
@@ -406,7 +406,7 @@ export const useChatStream = () => {
 
   const handleStreamEvent = async (
     event: EventSourceMessage,
-  ): Promise<void | string> => {
+  ): Promise<undefined | string> => {
     if (!streamInProgressRef.current) {
       return "Stream was aborted";
     }
@@ -487,7 +487,7 @@ export const useChatStream = () => {
               .getState()
               .messagesByConversation[
                 conversationId
-              ]?.find((msg) => msg.id === refs.current.botMessage!.message_id);
+              ]?.find((msg) => msg.id === refs.current.botMessage?.message_id);
 
             if (messageFromStore) {
               // Persist the complete message with final status

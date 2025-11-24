@@ -83,6 +83,8 @@ export const integrationsApi = {
       );
     }
 
+    if (typeof window === "undefined") return;
+
     const frontendPath = window.location.pathname + window.location.search;
 
     // Use the backend API base URL for proper OAuth flow

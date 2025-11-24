@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect } from "react";
 
 import { authApi } from "@/features/auth/api/authApi";
@@ -13,12 +13,12 @@ const useFetchUser = () => {
   const { setUser, clearUser } = useUserActions();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const currentPath = usePathname();
 
   const fetchUserInfo = useCallback(async () => {
     try {
       const accessToken = searchParams.get("access_token");
       const refreshToken = searchParams.get("refresh_token");
-      const currentPath = window.location.pathname;
 
       const data = await authApi.fetchUserInfo();
 
@@ -48,7 +48,7 @@ const useFetchUser = () => {
       console.error("Error fetching user info:", e);
       clearUser();
     }
-  }, [searchParams, setUser, clearUser, router]);
+  }, [searchParams, setUser, clearUser, router, currentPath]);
 
   useEffect(() => {
     fetchUserInfo();
