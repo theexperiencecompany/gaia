@@ -207,6 +207,7 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.3.7",
     "@eslint/eslintrc": "^3.3.1",
     "@types/dagre": "^0.7.53",
     "@types/node": "^24.3.0",
