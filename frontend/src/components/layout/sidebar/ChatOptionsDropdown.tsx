@@ -90,7 +90,7 @@ export default function ChatOptionsDropdown({
       });
 
       closeEditModal();
-      await fetchConversations(1, 20, false);
+      await fetchConversations(1, 20);
     } catch (error) {
       console.error("Failed to update chat name", error);
     }
@@ -111,7 +111,7 @@ export default function ChatOptionsDropdown({
     try {
       router.push("/c");
       await deleteConversation(chatId);
-      await fetchConversations(1, 20, false);
+      await fetchConversations(1, 20);
     } catch (error) {
       console.error("Failed to delete chat", error);
     }

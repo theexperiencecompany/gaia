@@ -62,7 +62,7 @@ export default function ChatsList() {
     // Only fetch once on initial mount if store is empty
     if (!hasFetchedRef.current && apiConversations.length === 0 && !loading) {
       hasFetchedRef.current = true;
-      fetchConversations(1, 20, false);
+      fetchConversations(1, 20);
     }
   }, [apiConversations.length, loading, fetchConversations]);
 

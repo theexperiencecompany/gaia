@@ -56,9 +56,9 @@ export default function ChatBubble_Actions({
       toast.success(pinned ? "Message unpinned!" : "Message pinned!");
 
       // Fetch messages again to reflect the pin state
-      const updatedMessages = await chatApi.fetchMessages(convoIdParam);
+      await chatApi.fetchMessages(convoIdParam);
 
-      updateConvoMessages(updatedMessages);
+      updateConvoMessages();
     } catch (error) {
       toast.error("Could not pin this message");
       console.error("Could not pin this message", error);

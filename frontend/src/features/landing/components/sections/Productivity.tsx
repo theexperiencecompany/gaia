@@ -105,7 +105,6 @@ export default function Productivity() {
               title={useCase.title || ""}
               description={useCase.description || ""}
               action_type={useCase.action_type || "prompt"}
-              integrations={useCase.integrations || []}
               prompt={useCase.prompt}
               slug={useCase.slug}
               steps={useCase.steps}

@@ -30,7 +30,8 @@ export function useNotificationWebSocket(
   const isAuthenticated = !!user?.email;
 
   const handleMessage = useCallback(
-    (message: WebSocketMessage) => {
+    (msg: unknown) => {
+      const message = msg as WebSocketMessage;
       switch (message.type) {
         case "notification.delivered":
           if (message.notification && options.onNotification) {

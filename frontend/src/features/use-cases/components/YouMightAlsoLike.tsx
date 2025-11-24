@@ -89,7 +89,6 @@ export default function YouMightAlsoLike({
                 title={(item as UseCase).title}
                 description={(item as UseCase).description}
                 action_type={(item as UseCase).action_type}
-                integrations={(item as UseCase).integrations}
                 prompt={(item as UseCase).prompt}
                 slug={(item as UseCase).slug}
               />

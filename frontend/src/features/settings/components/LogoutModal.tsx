@@ -52,9 +52,9 @@ export default function LogoutModal({
       await db.clearAll();
 
       // Then fetch from the API to ensure sync with server
-      await fetchConversations(1, 20, false);
+      await fetchConversations(1, 20);
 
-      updateConvoMessages([]);
+      updateConvoMessages();
       // Toast is already shown by the API service
     } catch (error) {
       // Error toast is already shown by the API service

@@ -16,7 +16,6 @@ interface UseCaseCardProps {
   title: string;
   description: string;
   action_type: "prompt" | "workflow";
-  integrations: string[];
   prompt?: string;
   slug?: string;
   steps?: Array<{
@@ -31,7 +30,6 @@ export default function UseCaseCard({
   title,
   description,
   action_type,
-  integrations,
   prompt,
   slug,
   steps,
@@ -49,7 +47,6 @@ export default function UseCaseCard({
         title,
         slug,
         action_type,
-        integrations,
       });
       router.push(`/use-cases/${slug}`);
     }
@@ -60,7 +57,6 @@ export default function UseCaseCard({
     posthog.capture("use_cases:action_executed", {
       title,
       action_type,
-      integrations,
       has_prompt: !!prompt,
     });
 
@@ -122,7 +118,6 @@ export default function UseCaseCard({
       title={title}
       description={description}
       steps={steps}
-      integrations={integrations}
       footerContent={footerContent}
       onClick={slug ? handleCardClick : undefined}
       showArrowIcon={false}

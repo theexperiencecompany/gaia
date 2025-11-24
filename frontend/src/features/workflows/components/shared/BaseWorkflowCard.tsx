@@ -26,13 +26,13 @@ export default function BaseWorkflowCard({
   description,
   steps = [],
   onClick,
-  showArrowIcon = false,
   headerRight,
   footerContent,
+  showArrowIcon = false,
   triggerContent,
   totalExecutions = 0,
   hideExecutions = false,
-  useBlurEffect = false,
+  useBlurEffect = false
 }: BaseWorkflowCardProps) {
   const renderToolIcons = () => {
     const categories = [...new Set(steps.map((step) => step.tool_category))];

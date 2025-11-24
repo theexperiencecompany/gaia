@@ -36,7 +36,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
   // Update selected house when data arrives
   useEffect(() => {
     if (personalizationData?.house) {
-      setSelectedHouse(personalizationData.house);
+      setSelectedHouse(personalizationData.house as House);
     }
   }, [personalizationData]);
 
@@ -130,9 +130,6 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                       title={workflow.title}
                       description={workflow.description}
                       action_type="workflow"
-                      integrations={workflow.steps
-                        .map((s) => s.tool_category)
-                        .filter((v, i, a) => a.indexOf(v) === i)}
                       steps={workflow.steps}
                     />
                   ),
