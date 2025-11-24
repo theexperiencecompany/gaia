@@ -15,9 +15,12 @@
     "build": "next build",
     "start": "next start",
     "type": "npx tsc --noEmit",
+    "type-check": "npm run type",
     "depcheck": "depcheck",
     "check": "biome check .",
     "fix": "biome check --write .",
+    "lint": "npm run check",
+    "lint:fix": "npm run fix",
     "format": "biome format --write .",
     "generate-barrels": "barrelsby --delete --directory ./src --location branch --exclude \"(src/app|src/features)\""
   },
