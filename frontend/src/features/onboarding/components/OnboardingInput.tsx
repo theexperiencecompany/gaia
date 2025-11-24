@@ -2,9 +2,9 @@ import { Autocomplete, AutocompleteItem } from "@heroui/autocomplete";
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Kbd } from "@heroui/kbd";
-import { ArrowUp } from "lucide-react";
 import { useEffect } from "react";
 
+import { ArrowUp02Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
@@ -133,7 +133,7 @@ export const OnboardingInput = ({
                     : "text-black",
                 )}
               >
-                <ArrowUp />
+                <ArrowUp02Icon />
               </Button>
             }
           />

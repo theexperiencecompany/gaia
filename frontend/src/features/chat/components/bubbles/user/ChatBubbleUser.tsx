@@ -1,8 +1,5 @@
-import { Button } from "@heroui/button";
 import Image from "next/image";
-import { toast } from "sonner";
 
-import { Task01Icon } from "@/components/shared/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui";
 import { useUser } from "@/features/auth/hooks/useUser";
 import SelectedCalendarEventIndicator from "@/features/chat/components/composer/SelectedCalendarEventIndicator";
@@ -11,6 +8,7 @@ import SelectedWorkflowIndicator from "@/features/chat/components/composer/Selec
 import { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
+import ChatBubble_Actions from "../actions/ChatBubble_Actions";
 import ChatBubbleFilePreview from "./ChatBubbleFilePreview";
 
 export default function ChatBubbleUser({
@@ -32,15 +30,6 @@ export default function ChatBubbleUser({
     !!selectedCalendarEvent;
 
   const user = useUser();
-
-  const copyToClipboard = () => {
-    if (text) {
-      navigator.clipboard.writeText(text);
-      toast.info("Copied to clipboard", {
-        description: `${text.slice(0, 30)}...`,
-      });
-    }
-  };
 
   if (!hasContent) return null;
 
@@ -81,24 +70,20 @@ export default function ChatBubbleUser({
         )}
 
         <div
-          className={`flex flex-col items-end justify-end transition-all ${disableActions ? "hidden" : "opacity-0 group-hover:opacity-100"}`}
+          className={`flex flex-col items-end justify-end gap-1 pb-3 transition-all ${disableActions ? "hidden" : "opacity-0 group-hover:opacity-100"}`}
         >
           {date && (
-            <span className="flex flex-col pt-2 text-xs text-zinc-400 select-text">
+            <span className="flex flex-col text-xs text-zinc-400 select-text">
               {parseDate(date)}
             </span>
           )}
 
           {text && !disableActions && (
-            <Button
-              isIconOnly
-              className="h-fit w-fit rounded-md p-0"
-              style={{ minWidth: "22px" }}
-              variant="light"
-              onPress={copyToClipboard}
-            >
-              <Task01Icon className="cursor-pointer" height="22" width="22" />
-            </Button>
+            <ChatBubble_Actions
+              loading={false}
+              text={text}
+              message_id={message_id}
+            />
           )}
         </div>
       </div>

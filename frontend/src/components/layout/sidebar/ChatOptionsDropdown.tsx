@@ -15,17 +15,21 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { DotsVerticalIcon } from "@radix-ui/react-icons";
-import { ChevronDown, Star, Trash } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ReactNode, SetStateAction, useCallback, useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { PencilRenameIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useDeleteConversation } from "@/hooks/useDeleteConversation";
+import {
+  ArrowDown01Icon,
+  Delete02Icon,
+  MoreVerticalIcon,
+  StarIcon,
+} from "@/icons";
+import { PencilEdit02Icon } from "@/icons";
 import { db } from "@/lib/db/chatDb";
 
 export default function ChatOptionsDropdown({
@@ -86,7 +90,7 @@ export default function ChatOptionsDropdown({
       });
 
       closeEditModal();
-      await fetchConversations(1, 20, false);
+      await fetchConversations(1, 20);
     } catch (error) {
       console.error("Failed to update chat name", error);
     }
@@ -107,7 +111,7 @@ export default function ChatOptionsDropdown({
     try {
       router.push("/c");
       await deleteConversation(chatId);
-      await fetchConversations(1, 20, false);
+      await fetchConversations(1, 20);
     } catch (error) {
       console.error("Failed to delete chat", error);
     }
@@ -135,9 +139,9 @@ export default function ChatOptionsDropdown({
           >
             {btnChildren}
             {logo2 ? (
-              <ChevronDown width={25} />
+              <ArrowDown01Icon width={25} />
             ) : (
-              <DotsVerticalIcon
+              <MoreVerticalIcon
                 className={
                   "transition-all " +
                   (buttonHovered
@@ -152,13 +156,13 @@ export default function ChatOptionsDropdown({
         <DropdownMenu aria-label="Static Actions">
           <DropdownItem key="star" textValue="Star" onPress={handleStarToggle}>
             <div className="flex flex-row items-center justify-between gap-2">
-              <Star color="white" width={16} />
+              <StarIcon color="white" width={16} />
               {starred ? "Remove" : "Add"} star
             </div>
           </DropdownItem>
           <DropdownItem key="edit" textValue="Rename" onPress={openEditModal}>
             <div className="flex flex-row items-center justify-between gap-2">
-              <PencilRenameIcon color="white" width={16} />
+              <PencilEdit02Icon color="white" width={16} />
               Rename
             </div>
           </DropdownItem>
@@ -172,7 +176,10 @@ export default function ChatOptionsDropdown({
             onPress={handleDelete}
           >
             <div className="flex flex-row items-center justify-between gap-2">
-              <Trash color={dangerStateHovered ? "white" : "red"} width={16} />
+              <Delete02Icon
+                color={dangerStateHovered ? "white" : "red"}
+                width={16}
+              />
               Delete
             </div>
           </DropdownItem>

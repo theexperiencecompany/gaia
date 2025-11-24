@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { Menu01Icon } from "@/components/shared/icons";
 import {
   Sheet,
   SheetContent,
@@ -14,7 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from "@/components/ui/shadcn/sheet";
+} from "@/components/ui/sheet";
 import {
   auth,
   company,
@@ -24,6 +23,7 @@ import {
   resources,
 } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { Menu01Icon } from "@/icons";
 
 export default function MobileMenu() {
   const [sheetOpen, setSheetOpen] = useState(false);

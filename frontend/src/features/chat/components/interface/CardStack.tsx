@@ -2,8 +2,9 @@
 
 import { Button } from "@heroui/button";
 import { motion } from "framer-motion";
-import { ArrowUpRight } from "lucide-react";
 import { ReactNode, useEffect, useRef, useState } from "react";
+
+import { ArrowUpRight } from "@/icons";
 
 interface CardStackProps<T> {
   title?: string;

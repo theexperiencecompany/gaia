@@ -3,3 +3,4 @@
  */
 
 export * from "./api/index";
+export * from "./syncService";

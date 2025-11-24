@@ -13,7 +13,6 @@ function getTypedData<K extends ToolName>(
 }
 
 import { Chip } from "@heroui/chip";
-import { AlertTriangleIcon } from "lucide-react";
 import React from "react";
 
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
@@ -36,6 +35,7 @@ import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import { IntegrationListSection } from "@/features/integrations";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
+import { Alert01Icon } from "@/icons";
 import {
   CalendarDeleteOptions,
   CalendarEditOptions,
@@ -421,10 +421,7 @@ export default function TextBubble({
                   color="warning"
                   size="sm"
                   startContent={
-                    <AlertTriangleIcon
-                      className="text-warning-500"
-                      height={17}
-                    />
+                    <Alert01Icon className="text-warning-500" height={17} />
                   }
                   variant="flat"
                 >

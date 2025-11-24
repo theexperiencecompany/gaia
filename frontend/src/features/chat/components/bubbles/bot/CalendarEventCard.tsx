@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { ReactNode } from "react";
 
-import { Tick02Icon } from "@/components/shared/icons";
+import { Tick02Icon } from "@/icons";
 
 export type EventStatus = "idle" | "loading" | "completed";
 export type EventVariant = "display" | "action";
@@ -87,7 +87,7 @@ export const EventCard = ({
             "Confirm"
           ) : status === "completed" ? (
             <>
-              {Icon && <Tick02Icon width={18} color={undefined} />}
+              {Icon && <Tick02Icon width={18} />}
               {completedLabel}
             </>
           ) : (

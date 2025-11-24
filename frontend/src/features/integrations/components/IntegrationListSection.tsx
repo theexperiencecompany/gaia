@@ -1,20 +1,13 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { PlugZap } from "lucide-react";
-import React from "react";
 
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { ConnectIcon } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations";
 
-interface IntegrationListSectionProps {
-  integration_list_data?: unknown;
-}
-
-function IntegrationListSection({
-  integration_list_data,
-}: IntegrationListSectionProps) {
+function IntegrationListSection() {
   const { integrations, connectIntegration } = useIntegrations();
 
   // Separate connected and not connected integrations
@@ -123,7 +116,7 @@ function IntegrationListSection({
 
   return (
     <CollapsibleListWrapper
-      icon={<PlugZap size={20} />}
+      icon={<ConnectIcon size={20} />}
       count={total_count}
       label="Integration"
       isCollapsible={true}

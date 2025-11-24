@@ -8,7 +8,6 @@ import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { Textarea } from "@heroui/input";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CalendarIcon, FileTextIcon, UserIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -16,6 +15,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { teamApi, type TeamMember } from "@/features/team/api/teamApi";
+import { CalendarIcon, File01Icon, UserCircle02Icon } from "@/icons";
 
 import { blogApi } from "../api/blogApi";
 import { MarkdownPreview } from "./MarkdownPreview";
@@ -202,7 +202,7 @@ Happy writing! 🚀`,
       <div className="container mx-auto flex min-h-screen max-w-2xl items-center justify-center px-4 py-8">
         <Card className="text-center">
           <CardBody className="py-12">
-            <FileTextIcon className="mx-auto mb-4 h-12 w-12 text-foreground-400" />
+            <File01Icon className="mx-auto mb-4 h-12 w-12 text-foreground-400" />
             <h1 className="mb-2 text-xl font-bold">
               Blog Management Not Configured
             </h1>
@@ -234,7 +234,7 @@ Happy writing! 🚀`,
       <Card className="shadow-lg">
         <CardHeader className="pb-6">
           <div className="flex items-center gap-3">
-            <FileTextIcon className="h-6 w-6 text-primary" />
+            <File01Icon className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold">Create New Blog Post</h1>
           </div>
           <p className="mt-2 text-foreground-600">
@@ -297,7 +297,7 @@ Happy writing! 🚀`,
               <Autocomplete
                 placeholder="Search and select authors"
                 startContent={
-                  <UserIcon className="h-4 w-4 text-foreground-400" />
+                  <UserCircle02Icon className="h-4 w-4 text-foreground-400" />
                 }
                 onSelectionChange={(key) => {
                   if (key) handleAuthorSelect(key as string);
@@ -368,7 +368,7 @@ Happy writing! 🚀`,
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="flex h-12 w-12 items-center justify-center rounded bg-primary/10">
-                        <FileTextIcon className="h-6 w-6 text-primary" />
+                        <File01Icon className="h-6 w-6 text-primary" />
                       </div>
                       <div>
                         <p className="font-medium">{selectedFile.name}</p>
@@ -403,7 +403,7 @@ Happy writing! 🚀`,
                     className="flex cursor-pointer flex-col items-center gap-3"
                   >
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground-100">
-                      <FileTextIcon className="h-6 w-6 text-foreground-400" />
+                      <File01Icon className="h-6 w-6 text-foreground-400" />
                     </div>
                     <div>
                       <p className="font-medium">Click to upload image</p>

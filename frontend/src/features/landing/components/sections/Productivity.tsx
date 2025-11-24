@@ -3,7 +3,7 @@ import { Chip } from "@heroui/chip";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { RaisedButton } from "@/components/ui/shadcn/raised-button";
+import { RaisedButton } from "@/components/ui/raised-button";
 // import { CalendarDemo } from "@/features/calendar/components/Calendar";
 // import GoalsStepsContent from "./GoalsStepsContent";
 // import MailAnimationWrapper from "./MailAnimationWrapper";
@@ -105,7 +105,6 @@ export default function Productivity() {
               title={useCase.title || ""}
               description={useCase.description || ""}
               action_type={useCase.action_type || "prompt"}
-              integrations={useCase.integrations || []}
               prompt={useCase.prompt}
               slug={useCase.slug}
               steps={useCase.steps}

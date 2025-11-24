@@ -4,13 +4,13 @@ import { Input, Textarea } from "@heroui/input";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import DOMPurify from "dompurify";
-import { Plus, X } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { Gmail, PencilEdit01Icon, Separator } from "@/components";
 import { mailApi } from "@/features/mail/api/mailApi";
+import { Cancel01Icon, PlusSignIcon } from "@/icons";
 
 // Email validation schema
 const emailComposeSchema = z.object({
@@ -182,7 +182,7 @@ function RecipientSelectionModal({
                 onClick={() => handleSuggestionToggle(email)}
                 endContent={
                   selectedEmails.includes(email) ? (
-                    <X className="h-3 w-3" />
+                    <Cancel01Icon className="h-3 w-3" />
                   ) : null
                 }
               >
@@ -212,7 +212,7 @@ function RecipientSelectionModal({
               onPress={handleAddCustomEmail}
               isIconOnly
             >
-              <Plus className="h-4 w-4" />
+              <PlusSignIcon className="h-4 w-4" />
             </Button>
           </div>
 

@@ -1,15 +1,12 @@
 "use client";
 import { Button } from "@heroui/button";
-import { BotIcon, Star, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { FC, useEffect, useState } from "react";
 
-import {
-  BubbleConversationChatIcon,
-  Mail01Icon,
-} from "@/components/shared/icons";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
+import { ChatBotIcon, StarsIcon, ZapIcon } from "@/icons";
+import { Mail01Icon } from "@/icons";
 
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
@@ -57,14 +54,15 @@ export const ChatTab: FC<ChatTabProps> = ({
         return <Mail01Icon {...iconProps} />;
 
       if (systemPurpose === SystemPurpose.WORKFLOW_EXECUTION)
-        return <Zap {...iconProps} />;
+        return <ZapIcon {...iconProps} />;
 
-      return <BotIcon {...iconProps} />;
+      return <ChatBotIcon {...iconProps} />;
     }
 
-    if (starred) return <Star className={ICON_SIZE} {...iconProps} />;
+    if (starred) return <StarsIcon className={ICON_SIZE} {...iconProps} />;
 
-    return <BubbleConversationChatIcon className={ICON_SIZE} {...iconProps} />;
+    // return <BubbleConversationChatIcon className={ICON_SIZE} {...iconProps} />;
+    return undefined;
   };
 
   return (
@@ -74,7 +72,7 @@ export const ChatTab: FC<ChatTabProps> = ({
       onMouseOver={() => setButtonHovered(true)}
     >
       <Button
-        className={`w-full justify-start text-sm ${
+        className={`w-full justify-start px-2 text-sm ${
           isActive ? "text-primary" : "text-zinc-400"
         }`}
         size="sm"
@@ -83,10 +81,13 @@ export const ChatTab: FC<ChatTabProps> = ({
         variant="light"
         color={isActive ? "primary" : "default"}
         onPress={() => setButtonHovered(false)}
-        startContent={React.cloneElement(getIcon(), {
-          width: 18,
-          height: 18,
-        })}
+        startContent={
+          getIcon() &&
+          React.cloneElement(getIcon()!, {
+            width: 18,
+            height: 18,
+          })
+        }
       >
         {name.replace('"', "")}
       </Button>

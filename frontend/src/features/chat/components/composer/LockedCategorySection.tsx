@@ -1,9 +1,9 @@
 import { Button } from "@heroui/button";
-import { Lock } from "lucide-react";
 import React from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { SquareLock01Icon } from "@/icons";
 
 import { SlashCommandMatch } from "../../hooks/useSlashCommands";
 
@@ -48,7 +48,7 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
       <div className="flex items-center justify-between rounded-xl bg-zinc-800 p-2">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/20">
-            <Lock className="h-4 w-4 text-red-400" />
+            <SquareLock01Icon className="h-4 w-4 text-red-400" />
           </div>
           <div>
             <div className="text-sm font-medium text-zinc-200">

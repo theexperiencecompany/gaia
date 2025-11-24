@@ -6,7 +6,6 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { AlertCircle, File, Loader2, Plus, Upload, X } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +13,14 @@ import { toast } from "sonner";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
+import {
+  AlertCircleIcon,
+  Cancel01Icon,
+  File01Icon,
+  Loading02Icon,
+  PlusSignIcon,
+  Upload01Icon,
+} from "@/icons";
 
 import { UploadedFilePreview } from "./FilePreview";
 
@@ -100,10 +107,10 @@ export default function FileUpload({
 
   const validateFile = (file: File): string | undefined => {
     if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-      return "File type not supported";
+      return "File01Icon type not supported";
     }
     if (file.size > MAX_FILE_SIZE) {
-      return `File exceeds maximum size of ${MAX_FILE_SIZE / (1024 * 1024)}MB`;
+      return `File01Icon exceeds maximum size of ${MAX_FILE_SIZE / (1024 * 1024)}MB`;
     }
     return undefined;
   };
@@ -343,7 +350,7 @@ export default function FileUpload({
           >
             {files.length === 0 ? (
               <>
-                <Upload
+                <Upload01Icon
                   className={`mb-4 h-10 w-10 ${isDragging ? "text-primary" : "text-zinc-500"}`}
                 />
                 <p className="mb-2 text-sm font-medium text-white">
@@ -359,7 +366,7 @@ export default function FileUpload({
               </>
             ) : isUploading ? (
               <>
-                <Loader2 className="mb-4 h-10 w-10 animate-spin text-primary" />
+                <Loading02Icon className="mb-4 h-10 w-10 animate-spin text-primary" />
                 <p className="mb-2 text-sm font-medium text-white">
                   Uploading files...
                 </p>
@@ -382,7 +389,7 @@ export default function FileUpload({
                         isDisabled={isUploading}
                         className="flex items-center gap-1"
                       >
-                        <Plus size={14} />
+                        <PlusSignIcon size={14} />
                         Add More
                       </Button>
                     )}
@@ -414,7 +421,7 @@ export default function FileUpload({
                         onPress={() => removeFile(index)}
                         isDisabled={isUploading}
                       >
-                        <X size={14} />
+                        <Cancel01Icon size={14} />
                       </Button>
 
                       {fileWithPreview.previewUrl ? (
@@ -429,7 +436,7 @@ export default function FileUpload({
                         </div>
                       ) : (
                         <div className="mr-3 flex h-12 w-12 items-center justify-center rounded-lg bg-zinc-700">
-                          <File className="h-6 w-6 text-zinc-400" />
+                          <File01Icon className="h-6 w-6 text-zinc-400" />
                         </div>
                       )}
 
@@ -439,7 +446,7 @@ export default function FileUpload({
                             {fileWithPreview.file.name}
                           </p>
                           {fileWithPreview.error && (
-                            <AlertCircle
+                            <AlertCircleIcon
                               size={14}
                               className="ml-1 shrink-0 text-red-500"
                             />

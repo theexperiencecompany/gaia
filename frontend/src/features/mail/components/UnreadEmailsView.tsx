@@ -1,9 +1,8 @@
-import { Loader2 } from "lucide-react";
 import React from "react";
 
-import { Gmail } from "@/components";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import EmailListCard from "@/features/mail/components/EmailListCard";
+import { Gmail, InboxUnreadIcon, Loading02Icon } from "@/icons";
 import { EmailData, EmailFetchData } from "@/types/features/mailTypes";
 
 interface UnreadEmailsViewProps {
@@ -48,7 +47,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
   return (
     <BaseCardView
       title="Unread emails"
-      icon={<Gmail className="h-5 w-5 text-zinc-500" />}
+      icon={<InboxUnreadIcon className="h-6 w-6 text-zinc-500" />}
       isFetching={isFetching}
       error={error?.message}
       isEmpty={isEmpty}
@@ -57,7 +56,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
       isConnected={isConnected}
       connectIntegrationId="gmail"
       onConnect={onConnect}
-      connectButtonText="Connect Gmail"
+      connectButtonText="Connect"
       connectTitle="Connect Your Gmail"
       connectDescription="Access and manage your emails"
       connectIcon={<Gmail width={32} height={32} />}
@@ -65,7 +64,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
     >
       {isLoading ? (
         <div className="flex h-full items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-zinc-500" />
+          <Loading02Icon className="h-8 w-8 animate-spin text-zinc-500" />
         </div>
       ) : (
         <EmailListCard

@@ -9,13 +9,13 @@ import {
   ModalFooter,
   useDisclosure,
 } from "@heroui/react";
-import { Plus } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useModalForm } from "@/hooks/ui/useModalForm";
+import { PlusSignIcon } from "@/icons";
 import { posthog } from "@/lib";
 import { Priority, Todo, TodoCreate } from "@/types/features/todoTypes";
 
@@ -241,7 +241,7 @@ export default function TodoModal({
         color="primary"
         size="sm"
         variant="flat"
-        startContent={<Plus className="h-4 w-4 outline-0" />}
+        startContent={<PlusSignIcon className="h-4 w-4 outline-0" />}
         onPress={onOpen}
       >
         {buttonText}

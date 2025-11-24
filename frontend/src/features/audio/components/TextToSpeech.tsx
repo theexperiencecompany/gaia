@@ -1,9 +1,9 @@
 import { Button } from "@heroui/button";
-import { Loader } from "lucide-react";
 // import Spinner from "@/components/ui/spinner";
 import * as React from "react";
 
-import { VolumeHighIcon, VolumeOffIcon } from "@/components/shared/icons";
+import Spinner from "@/components/ui/spinner";
+import { VolumeHighIcon, VolumeOffIcon } from "@/icons";
 import { api } from "@/lib/api";
 
 export default function TextToSpeech({ text }: { text: string }) {
@@ -72,7 +72,7 @@ export default function TextToSpeech({ text }: { text: string }) {
       onPress={handleTextToSpeech}
     >
       {loading ? (
-        <Loader className="animate-spin text-[24px] text-[#9b9b9b]" />
+        <Spinner />
       ) : isPlaying ? (
         <VolumeOffIcon className="text-[18px] text-[#9b9b9b]" />
       ) : (

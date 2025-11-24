@@ -1,27 +1,37 @@
 import { Button } from "@heroui/button";
-import { ChevronsUpDownIcon } from "lucide-react";
 import Image from "next/image";
+import React from "react";
 
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import SettingsMenu from "@/features/settings/components/SettingsMenu";
+import { UnfoldLessIcon, UnfoldMoreIcon } from "@/icons";
 
-import { Avatar, AvatarFallback, AvatarImage } from "../../ui/shadcn/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
 
 export default function UserContainer() {
   const user = useUser();
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const [isOpen, setIsOpen] = React.useState(false);
 
   return (
-    <SettingsMenu>
+    <SettingsMenu onOpenChange={setIsOpen}>
       <Button
         className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 bg-transparent px-2 py-6! hover:bg-zinc-800"
         endContent={
-          <ChevronsUpDownIcon
-            className="text-zinc-500 transition"
-            width={20}
-            height={20}
-          />
+          isOpen ? (
+            <UnfoldLessIcon
+              className="text-zinc-500 transition"
+              width={20}
+              height={20}
+            />
+          ) : (
+            <UnfoldMoreIcon
+              className="text-zinc-500 transition"
+              width={20}
+              height={20}
+            />
+          )
         }
       >
         <div className="flex items-center gap-3">

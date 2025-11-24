@@ -76,9 +76,7 @@ export const useConversation = () => {
     return messages;
   }, [activeConversationId, messagesByConversation, optimisticMessage]);
 
-  const updateConvoMessages = (
-    updater: MessageType[] | ((oldMessages: MessageType[]) => MessageType[]),
-  ): void => {
+  const updateConvoMessages = (): void => {
     console.warn(
       "updateConvoMessages is deprecated. Use IndexedDB directly via chatStore.",
     );

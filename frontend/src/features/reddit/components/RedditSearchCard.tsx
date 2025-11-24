@@ -1,11 +1,11 @@
 "use client";
 
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { ArrowBigUp, MessageCircle } from "lucide-react";
 import Link from "next/link";
 
 import { RedditIcon } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { ArrowUp02Icon, BubbleChatIcon } from "@/icons";
 import { RedditSearchData } from "@/types/features/redditTypes";
 
 interface RedditSearchCardProps {
@@ -91,13 +91,13 @@ export default function RedditSearchCard({
                 {/* Stats */}
                 <div className="flex items-center gap-3 text-xs">
                   <div className="flex items-center gap-1 text-[#FF4500]">
-                    <ArrowBigUp width={18} height={18} />
+                    <ArrowUp02Icon width={18} height={18} />
                     <span className="font-medium">
                       {formatNumber(post.score)}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 text-gray-400">
-                    <MessageCircle className="h-3.5 w-3.5" />
+                    <BubbleChatIcon className="h-3.5 w-3.5" />
                     <span>{formatNumber(post.num_comments)}</span>
                   </div>
                 </div>

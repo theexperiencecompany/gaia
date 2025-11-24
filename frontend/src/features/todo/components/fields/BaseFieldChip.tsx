@@ -2,9 +2,9 @@
 
 import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/react";
-import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 
+import { ArrowDown01Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 interface BaseFieldChipProps {
@@ -96,7 +96,7 @@ export default function BaseFieldChip({
               <span className="text-zinc-400">{placeholder}</span>
             )}
           </span>
-          <ChevronDown
+          <ArrowDown01Icon
             size={14}
             className={cn("transition-transform", isOpen && "rotate-180")}
           />

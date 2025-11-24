@@ -12,7 +12,7 @@ async def store_user_message_memory(user_id: str, message: str, conversation_id:
     """Store user message in memory and return formatted data if successful."""
     try:
         result = await memory_service.store_memory(
-            content=message,
+            message=message,
             user_id=user_id,
             conversation_id=conversation_id,
             metadata={
@@ -20,12 +20,13 @@ async def store_user_message_memory(user_id: str, message: str, conversation_id:
                 "conversation_id": conversation_id,
                 "type": "user_message",
             },
+            async_mode=True,
         )
 
         if result:
             return {
                 "type": "memory_stored",
-                "content": f"Stored message: {message[:50]}...",
+                "content": f"Stored message: {message}...",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "conversation_id": conversation_id,
             }

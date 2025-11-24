@@ -1,14 +1,13 @@
 "use client";
 
 import { Kbd } from "@heroui/kbd";
-import { Search } from "lucide-react";
 import Link from "next/link";
 
 import { SidebarHeaderButton } from "@/components";
-import { ChatBubbleAddIcon, PinIcon } from "@/components/shared/icons";
 import ModelPickerButton from "@/features/chat/components/composer/ModelPickerButton";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import { usePlatform } from "@/hooks/ui/usePlatform";
+import { BubbleChatAddIcon, PinIcon, SearchIcon } from "@/icons";
 
 export default function ChatHeader() {
   const { isMac, modifierKeyName } = usePlatform();
@@ -35,12 +34,12 @@ export default function ChatHeader() {
           aria-label="Search"
           tooltip={
             <div className="flex items-center gap-2">
-              Search
+              SearchIcon
               <Kbd keys={[modifierKeyName]}> K</Kbd>
             </div>
           }
         >
-          <Search className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-400 group-hover:text-primary" />
+          <SearchIcon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-400 group-hover:text-primary" />
         </SidebarHeaderButton>
         <Link href={"/pins"}>
           <SidebarHeaderButton
@@ -55,7 +54,7 @@ export default function ChatHeader() {
             aria-label="Create new chat"
             tooltip="Create new chat"
           >
-            <ChatBubbleAddIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+            <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
           </SidebarHeaderButton>
         </Link>
         <NotificationCenter />

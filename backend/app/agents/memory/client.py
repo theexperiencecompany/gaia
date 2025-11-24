@@ -24,10 +24,9 @@ class MemoryClientManager:
             )
 
             # Enable graph memory in project settings
-            # This allows relationship extraction between entities
             if not self._graph_enabled:
                 try:
-                    await client.update_project(enable_graph=True, version="v2")
+                    await client.project.update(enable_graph=True)
                     self._graph_enabled = True
                 except Exception as e:
                     # Log but don't fail if graph setup fails

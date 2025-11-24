@@ -2,11 +2,11 @@ import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { Bell } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { NotificationItem } from "@/features/notification/components/NotificationItem";
+import { NotificationIcon } from "@/icons";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
   NotificationRecord,
@@ -88,7 +88,7 @@ export default function NotificationListSection({
             aria-label="Notifications"
             title={
               <div className="flex items-center gap-3">
-                <Bell className="h-5 w-5 text-zinc-400" />
+                <NotificationIcon className="h-5 w-5 text-zinc-400" />
                 <div className="flex flex-col">
                   <span className="text-sm font-medium">{title}</span>
                 </div>
@@ -96,7 +96,7 @@ export default function NotificationListSection({
             }
           >
             <div className="flex flex-col items-center justify-center p-8 text-center">
-              <Bell className="mb-4 h-10 w-10 text-zinc-600" />
+              <NotificationIcon className="mb-4 h-10 w-10 text-zinc-600" />
               <p className="font-medium text-zinc-300">
                 No notifications found
               </p>
@@ -118,7 +118,7 @@ export default function NotificationListSection({
           aria-label="Notifications"
           title={
             <div className="flex items-center gap-3">
-              <Bell className="h-5 w-5 text-zinc-400" />
+              <NotificationIcon className="h-5 w-5 text-zinc-400" />
               <div className="flex flex-col">
                 <span className="text-sm font-medium">{title}</span>
               </div>

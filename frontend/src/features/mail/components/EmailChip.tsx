@@ -1,7 +1,8 @@
 // components/mail/EmailChip.tsx
 import { Chip } from "@heroui/chip";
-import { XCircle } from "lucide-react";
 import React from "react";
+
+import { Cancel01Icon } from "@/icons";
 
 export interface EmailSuggestion {
   id: string;
@@ -24,7 +25,7 @@ export const EmailChip: React.FC<EmailChipProps> = ({
     <Chip
       variant={selected ? "solid" : "flat"}
       color="primary"
-      endContent={selected && <XCircle fill="black" color="#00bbff" />}
+      endContent={selected && <Cancel01Icon fill="black" color="#00bbff" />}
       onClick={() => onToggle(suggestion)}
       className={`cursor-pointer select-none ${selected ? "" : "text-primary"}`}
     >

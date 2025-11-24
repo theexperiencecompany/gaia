@@ -1,8 +1,9 @@
 "use client";
 
-import { AlertTriangle, Clock, Crown } from "lucide-react";
 import { ReactNode } from "react";
 import { toast } from "sonner";
+
+import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@/icons";
 
 interface ToastConfig {
   duration: number;
@@ -32,7 +33,11 @@ export const showRateLimitToast = ({
 }: RateLimitToastProps = {}) => {
   // Determine the appropriate icon and styling based on error type
   const isUpgradeRequired = planRequired && showUpgradeButton;
-  const Icon = isUpgradeRequired ? Crown : resetTime ? Clock : AlertTriangle;
+  const Icon = isUpgradeRequired
+    ? CheckmarkBadge01Icon
+    : resetTime
+      ? Timer02Icon
+      : Alert01Icon;
 
   // Auto-generate message if not provided
   if (!message) {

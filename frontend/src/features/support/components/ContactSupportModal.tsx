@@ -10,10 +10,11 @@ import {
   ModalHeader,
 } from "@heroui/modal";
 import { Select, SelectItem } from "@heroui/select";
-import { Upload, X } from "lucide-react";
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+
+import { Cancel01Icon, Upload01Icon } from "@/icons";
 
 import {
   ALLOWED_FILE_TYPES,
@@ -197,9 +198,9 @@ export default function ContactSupportModal({
                 isRequired
               />
 
-              {/* File Upload Section */}
+              {/* File Upload01Icon Section */}
               <div className="space-y-3">
-                {/* Upload Area - Entire area is clickable */}
+                {/* Upload01Icon Area - Entire area is clickable */}
                 <div
                   className={`cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all duration-200 ${
                     dragActive
@@ -225,7 +226,7 @@ export default function ContactSupportModal({
                     <div
                       className={`rounded-full p-4 ${dragActive ? "bg-blue-100" : "bg-zinc-700"} transition-colors`}
                     >
-                      <Upload
+                      <Upload01Icon
                         className={`h-8 w-8 ${dragActive ? "text-blue-600" : "text-gray-400"} transition-colors`}
                       />
                     </div>
@@ -236,7 +237,7 @@ export default function ContactSupportModal({
                       >
                         {dragActive
                           ? "Drop your images here"
-                          : "Upload Images (Optional)"}
+                          : "Upload01Icon Images (Optional)"}
                       </p>
                       <p className="text-sm text-zinc-400">
                         {dragActive
@@ -300,7 +301,7 @@ export default function ContactSupportModal({
                             onClick={() => removeFile(index)}
                             className="absolute top-2 right-2 rounded-full bg-red-500 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-600"
                           >
-                            <X className="h-3 w-3" />
+                            <Cancel01Icon className="h-3 w-3" />
                           </button>
                         </div>
                       ))}

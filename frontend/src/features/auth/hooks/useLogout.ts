@@ -48,6 +48,19 @@ export const useLogout = () => {
         console.warn("Failed to clear sessionStorage:", error);
       }
 
+      // Clear localStorage items related to onboarding
+      try {
+        // Clear all personalization dismissal keys (for all users)
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith("personalization-dismissed-")) {
+            localStorage.removeItem(key);
+          }
+        });
+        localStorage.removeItem("gaia-onboarding-state"); // In case it was stored there
+      } catch (error) {
+        console.warn("Failed to clear localStorage items:", error);
+      }
+
       // Clear user state from Zustand store
       clearUser();
 
@@ -71,6 +84,17 @@ export const useLogout = () => {
         sessionStorage.clear();
       } catch (sessionError) {
         console.warn("Failed to clear sessionStorage on error:", sessionError);
+      }
+
+      // Clear localStorage items even on error
+      try {
+        localStorage.removeItem("personalization-card-dismissed");
+        localStorage.removeItem("gaia-onboarding-state");
+      } catch (localError) {
+        console.warn(
+          "Failed to clear localStorage items on error:",
+          localError,
+        );
       }
 
       clearUser();

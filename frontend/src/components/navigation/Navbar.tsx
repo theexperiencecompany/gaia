@@ -1,9 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { StarFilledIcon } from "@radix-ui/react-icons";
 import AnimatedNumber from "animated-number-react";
-import { ChevronDown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -15,10 +13,11 @@ import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
+import { ArrowDown01Icon, StarFilledIcon } from "@/icons";
 import { posthog } from "@/lib";
 
 import { Github } from "../shared";
-import { RaisedButton } from "../ui/shadcn/raised-button";
+import { RaisedButton } from "../ui/raised-button";
 import { NavbarMenu } from "./NavbarMenu";
 
 export default function Navbar() {
@@ -189,7 +188,7 @@ export default function Navbar() {
                         {item.label.charAt(0).toUpperCase() +
                           item.label.slice(1)}
                       </span>
-                      <ChevronDown
+                      <ArrowDown01Icon
                         height={17}
                         width={17}
                         className={

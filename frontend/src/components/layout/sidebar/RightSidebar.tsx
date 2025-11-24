@@ -1,11 +1,11 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect } from "react";
 
-import { Cancel01Icon } from "@/components/shared/icons";
+import { Cancel01Icon } from "@/icons";
 import {
-  RightSidebarVariant,
+  type RightSidebarVariant,
   useRightSidebar,
 } from "@/stores/rightSidebarStore";
 
@@ -30,9 +30,11 @@ export default function RightSidebar({
         close();
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
+    if (typeof window !== "undefined")
+      window.addEventListener("keydown", handleKeyDown);
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
+      if (typeof window !== "undefined")
+        window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen, close]);
 

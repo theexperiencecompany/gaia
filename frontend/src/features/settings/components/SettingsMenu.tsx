@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import {
   Dropdown,
   DropdownItem,
@@ -8,24 +7,29 @@ import {
   DropdownSection,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import { BookIcon, ChevronRight, CircleArrowUp, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ReactNode, useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import {
-  BookOpen01Icon,
-  BubbleChatQuestionIcon,
-  CustomerService01Icon,
-  Github,
-  QuillWrite01Icon,
-  Settings01Icon,
-  ThreeDotsMenu,
-} from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { ContactSupportModal } from "@/features/support";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import {
+  ArrowRight01Icon,
+  BookBookmark02Icon,
+  BookOpen02Icon,
+  BubbleChatQuestionIcon,
+  CircleArrowUp02Icon,
+  CustomerService01Icon,
+  Github,
+  GitPullRequestIcon,
+  Layers01Icon,
+  Logout02Icon,
+  MapsIcon,
+  QuillWrite01Icon,
+  Settings01Icon,
+} from "@/icons";
 
 import { settingsPageItems, socialMediaItems } from "../config/settingsConfig";
 import { useNestedMenu } from "../hooks/useNestedMenu";
@@ -50,13 +54,11 @@ interface MenuItem {
 }
 
 export default function SettingsMenu({
-  children = (
-    <Button isIconOnly aria-label="Three Dots Menu" variant="light">
-      <ThreeDotsMenu />
-    </Button>
-  ),
+  children,
+  onOpenChange,
 }: {
   children?: ReactNode;
+  onOpenChange?: (isOpen: boolean) => void;
 }) {
   const router = useRouter();
   const { confirmationProps } = useConfirmation();
@@ -79,14 +81,18 @@ export default function SettingsMenu({
     {
       key: "documentation",
       label: "Documentation",
-      icon: BookOpen01Icon,
+      icon: BookBookmark02Icon,
       action: () => window.open(docsLink?.href, "_blank"),
     },
     {
       key: "changelog",
       label: "Changelog",
-      icon: BookIcon,
-      action: () => router.push("/changelog"),
+      icon: Layers01Icon,
+      action: () =>
+        window.open(
+          "https://github.com/theexperiencecompany/gaia/releases",
+          "_blank",
+        ),
     },
     {
       key: "blog",
@@ -97,8 +103,9 @@ export default function SettingsMenu({
     {
       key: "roadmap",
       label: "Roadmap",
-      icon: BookOpen01Icon,
-      action: () => window.open("https://roadmap.heygaia.ai", "_blank"),
+      icon: MapsIcon,
+      action: () =>
+        window.open("https://gaia.featurebase.app/roadmap", "_blank"),
     },
     {
       key: "opensource",
@@ -112,13 +119,13 @@ export default function SettingsMenu({
     {
       key: "contact_support",
       label: "Contact Support",
-      icon: CustomerService01Icon,
+      icon: BubbleChatQuestionIcon,
       action: () => setSupportModalOpen(true),
     },
     {
       key: "feature_request",
       label: "Request a Feature",
-      icon: BubbleChatQuestionIcon,
+      icon: GitPullRequestIcon,
       action: () => setSupportModalOpen(true),
     },
   ];
@@ -158,7 +165,7 @@ export default function SettingsMenu({
                 key: "upgrade_to_pro",
                 label: "Upgrade to Pro",
                 action: () => router.push("/pricing"),
-                icon: CircleArrowUp,
+                icon: CircleArrowUp02Icon,
                 iconColor: "#00bbff",
                 customClassNames: { title: "text-primary font-medium" },
               },
@@ -184,7 +191,7 @@ export default function SettingsMenu({
         {
           key: "resources",
           label: "Resources",
-          icon: BookOpen01Icon,
+          icon: BookOpen02Icon,
           hasSubmenu: true,
         },
         {
@@ -202,7 +209,7 @@ export default function SettingsMenu({
         {
           key: "logout",
           label: "Sign Out",
-          icon: LogOut,
+          icon: Logout02Icon,
           color: "danger" as const,
           action: () => setModalAction("logout"),
         },
@@ -216,6 +223,7 @@ export default function SettingsMenu({
         placement="right"
         className="bg-[#141414] text-foreground dark shadow-xl"
         offset={21}
+        onOpenChange={onOpenChange}
       >
         <DropdownTrigger>{children}</DropdownTrigger>
         <DropdownMenu aria-label="Settings Menu" variant="faded">
@@ -246,7 +254,7 @@ export default function SettingsMenu({
                       className="text-zinc-400 transition hover:text-white"
                       startContent={Icon && <Icon className={iconClasses} />}
                       endContent={
-                        <ChevronRight className="h-4 w-4 text-zinc-500" />
+                        <ArrowRight01Icon className="h-4 w-4 text-zinc-500" />
                       }
                     >
                       {item.label}

@@ -3,15 +3,12 @@
 import { Button } from "@heroui/button";
 import { useRouter } from "next/navigation";
 
-import {
-  CalendarAdd01Icon,
-  GoogleCalendarIcon,
-} from "@/components/shared/icons";
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import CalendarSelector from "@/features/calendar/components/CalendarSelector";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { CalendarAdd01Icon, GoogleCalendarIcon } from "@/icons";
 
 export default function CalendarSidebar() {
   const router = useRouter();
@@ -37,13 +34,15 @@ export default function CalendarSidebar() {
   // Show connect button if calendar is not connected
   if (!isCalendarConnected) {
     return (
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 pt-10">
         <IntegrationConnectCard
           icon={<GoogleCalendarIcon width={32} height={32} />}
           title="Connect Your Calendar"
           description="Manage events and view your schedule"
-          buttonText="Connect Google Calendar"
+          buttonText="Connect"
           integrationId="google_calendar"
+          outlined
+          small
         />
       </div>
     );
@@ -59,7 +58,7 @@ export default function CalendarSidebar() {
         className="mb-4 flex justify-start text-sm font-medium text-primary"
         variant="flat"
       >
-        <CalendarAdd01Icon color={undefined} width={18} height={18} />
+        <CalendarAdd01Icon width={18} height={18} />
         New Event
       </Button>
 

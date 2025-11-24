@@ -1,21 +1,17 @@
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
-import { Check } from "lucide-react";
 import React from "react";
 
-import {
-  AttachmentIcon,
-  PlusSignIcon,
-  ToolIcon,
-} from "@/components/shared/icons";
-import { Button } from "@/components/ui/shadcn/button";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/shadcn/dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 import { useLoading } from "@/features/chat/hooks/useLoading";
+import { Tick02Icon } from "@/icons";
+import { AttachmentIcon, PlusSignIcon, ToolsIcon } from "@/icons";
 import { posthog } from "@/lib/posthog";
 import { cn } from "@/lib/utils";
 import { SearchMode } from "@/types/shared";
@@ -161,7 +157,7 @@ export default function ComposerLeft({
                   </div>
                   <div>
                     {currentMode === item.id && (
-                      <Check className="min-h-[20px] min-w-[20px] text-primary" />
+                      <Tick02Icon className="min-h-[20px] min-w-[20px] text-primary" />
                     )}
                   </div>
                 </div>
@@ -186,10 +182,10 @@ export default function ComposerLeft({
           <Button
             size="icon"
             className={cn(
-              "group relative flex h-9 w-9 items-center justify-center rounded-full border-none bg-zinc-700 p-0 text-zinc-400 hover:bg-zinc-600/90",
+              "group relative flex h-9 w-9 items-center justify-center rounded-full border-none bg-zinc-700 fill-zinc-400 p-0 text-zinc-400 hover:bg-zinc-600/90",
               isLoading ? "cursor-wait!" : "",
               isSlashCommandDropdownOpen &&
-                "border-primary/50 bg-primary/20 text-primary",
+                "border-primary/50 bg-primary/20 text-primary hover:bg-primary/40",
             )}
             disabled={isLoading}
             onClick={() => {
@@ -199,9 +195,8 @@ export default function ComposerLeft({
               onOpenSlashCommandDropdown?.();
             }}
           >
-            <ToolIcon
-              className="min-h-[20px] min-w-[20px]"
-              color={undefined}
+            <ToolsIcon
+              className="min-h-[23px] min-w-[23px]"
               width={30}
               height={30}
             />

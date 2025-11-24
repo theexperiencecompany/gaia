@@ -1,7 +1,8 @@
 "use client";
 
-import { ChevronLeft, Home } from "lucide-react";
 import React from "react";
+
+import { ArrowLeft01Icon, Home01Icon } from "@/icons";
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -48,14 +49,14 @@ class ErrorBoundary extends React.Component<
               className="flex gap-2 rounded-lg bg-black p-2 px-3 text-white transition-background hover:bg-[#00000086]"
               onClick={() => (window.location.href = "/")}
             >
-              <Home width={20} />
+              <Home01Icon width={20} />
               <span>Home</span>
             </button>
             <button
               className="flex gap-2 rounded-lg bg-white p-2 px-3 font-medium text-black transition-background hover:bg-[#ffffff86]"
               onClick={() => window.history.back()}
             >
-              <ChevronLeft width={20} /> Back
+              <ArrowLeft01Icon width={20} /> Back
             </button>
           </div>
         </div>

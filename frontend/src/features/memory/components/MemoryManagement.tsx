@@ -7,17 +7,11 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Tab, Tabs } from "@heroui/tabs";
-import { ChevronDown, List, Network, Plus, Trash2 } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import {
-  AiBrain01Icon,
-  FileEmpty02Icon,
-  Image02Icon,
-} from "@/components/shared/icons";
 import {
   type Memory,
   memoryApi,
@@ -26,6 +20,16 @@ import {
 import AddMemoryModal from "@/features/memory/components/AddMemoryModal";
 import MemoryGraph from "@/features/memory/components/MemoryGraph";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import {
+  AiBrain01Icon,
+  ArrowDown01Icon,
+  Delete02Icon,
+  FileEmpty02Icon,
+  Image02Icon,
+  ListViewIcon,
+  NeuralNetworkIcon,
+  PlusSignIcon,
+} from "@/icons";
 
 export interface MemoryManagementProps {
   className?: string;
@@ -45,6 +49,7 @@ export default function MemoryManagement({
   const [loading, setLoading] = useState(false);
   const [isAddMemoryModalOpen, setIsAddMemoryModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isClearing, setIsClearing] = useState(false);
   const [selectedTab, setSelectedTab] = useState("graph");
   const [selectedExportType, setSelectedExportType] = useState<Set<string>>(
     new Set(["png"]),
@@ -112,6 +117,8 @@ export default function MemoryManagement({
     });
 
     if (!confirmed) return;
+
+    setIsClearing(true);
     try {
       const response = await memoryApi.deleteAllMemories();
 
@@ -125,6 +132,8 @@ export default function MemoryManagement({
     } catch (error) {
       console.error("Error clearing memories:", error);
       toast.error("Failed to clear memories");
+    } finally {
+      setIsClearing(false);
     }
   }, [confirm]);
 
@@ -176,7 +185,7 @@ export default function MemoryManagement({
                   onPress={() => handleDeleteMemory(memory.id)}
                   isLoading={deletingId === memory.id}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Delete02Icon className="h-4 w-4" />
                 </Button>
               </div>
 
@@ -229,7 +238,7 @@ export default function MemoryManagement({
             color="primary"
             variant="flat"
             className="mt-4"
-            startContent={<Plus className="h-4 w-4" />}
+            startContent={<PlusSignIcon className="h-4 w-4" />}
             onPress={() => setIsAddMemoryModalOpen(true)}
           >
             Add Memory
@@ -247,7 +256,7 @@ export default function MemoryManagement({
                 key="graph"
                 title={
                   <div className="flex items-center gap-2">
-                    <Network className="h-4 w-4" />
+                    <NeuralNetworkIcon className="h-4 w-4" />
                     <span>Graph View</span>
                   </div>
                 }
@@ -256,7 +265,7 @@ export default function MemoryManagement({
                 key="list"
                 title={
                   <div className="flex items-center gap-2">
-                    <List className="h-4 w-4" />
+                    <ListViewIcon className="h-4 w-4" />
                     <span>List View</span>
                   </div>
                 }
@@ -265,7 +274,12 @@ export default function MemoryManagement({
 
             <div className="flex gap-2">
               {memories.length > 0 && (
-                <Button color="danger" variant="flat" onPress={handleClearAll}>
+                <Button
+                  color="danger"
+                  variant="flat"
+                  onPress={handleClearAll}
+                  isLoading={isClearing}
+                >
                   Clear All
                 </Button>
               )}
@@ -293,7 +307,7 @@ export default function MemoryManagement({
                   <Dropdown placement="bottom-end">
                     <DropdownTrigger>
                       <Button isIconOnly>
-                        <ChevronDown className="h-4 w-4" />
+                        <ArrowDown01Icon className="h-4 w-4" />
                       </Button>
                     </DropdownTrigger>
                     <DropdownMenu
@@ -336,7 +350,7 @@ export default function MemoryManagement({
               )}
               <Button
                 color="primary"
-                startContent={<Plus className="h-4 w-4" />}
+                startContent={<PlusSignIcon className="h-4 w-4" />}
                 onPress={() => setIsAddMemoryModalOpen(true)}
               >
                 Add Memory

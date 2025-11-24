@@ -30,7 +30,6 @@ NOTE: Type/linting errors in this file are expected since it's copied from exter
 
 import asyncio
 import inspect
-import re
 from typing import Any, Awaitable, Callable, Union
 
 from langchain_core.language_models import LanguageModelLike
@@ -51,10 +50,6 @@ HookType = Union[
     Callable[[State, RunnableConfig, BaseStore], Awaitable[State]],
 ]
 
-# Pre-compiled regex patterns for subagent handoff detection
-_SUBAGENT_TOOL_PATTERN = re.compile(r"call_(\w+)_agent")
-_SUBAGENT_TRANSFER_PATTERN = re.compile(r"Successfully transferred to (\w+)")
-
 
 def _clean_consecutive_ai_messages(messages: list) -> list:
     """
@@ -62,7 +57,7 @@ def _clean_consecutive_ai_messages(messages: list) -> list:
 
     THE PROBLEM:
     When a subagent completes its task and returns to the main agent, it creates:
-    1. ToolMessage(name="call_reddit_agent", content="Successfully transferred to reddit")
+    1. ToolMessage(name="call_reddit_agent", content="Successfully transferred to reddit", is_handoff_toolcall=True)
     2. AIMessage(content="Result from Reddit", visible_to={main_agent, reddit_agent})
 
     This creates two consecutive AI responses in the message history:
@@ -73,12 +68,12 @@ def _clean_consecutive_ai_messages(messages: list) -> list:
     reject consecutive AIMessages with empty responses or validation errors.
 
     THE FIX:
-    When we detect the handoff pattern (ToolMessage → AIMessage with dual visibility),
+    When we detect the handoff pattern using the is_handoff_toolcall flag,
     we replace the ToolMessage's placeholder content with the AIMessage's actual result,
     then discard the AIMessage. This maintains the conversation flow while preventing
     consecutive AI responses.
 
-    Pattern: ToolMessage("transfer") + AIMessage(result) → ToolMessage(result)
+    Pattern: ToolMessage("transfer", is_handoff_toolcall=True) + AIMessage(result) → ToolMessage(result)
 
     This ensures Gemini sees: AIMessage → ToolMessage → AIMessage (valid pattern)
     Instead of: AIMessage → ToolMessage → AIMessage → AIMessage (invalid pattern)
@@ -100,24 +95,14 @@ def _clean_consecutive_ai_messages(messages: list) -> list:
             i += 1
             continue
 
-        tool_match = _SUBAGENT_TOOL_PATTERN.match(msg.name or "")
-        transfer_match = _SUBAGENT_TRANSFER_PATTERN.match(msg.content or "")  # type: ignore[call-arg]
-
-        if not (tool_match and transfer_match):
+        is_handoff = msg.additional_kwargs.get("is_handoff_toolcall", False)
+        if not is_handoff:
             cleaned_messages.append(msg)
             i += 1
             continue
 
         next_msg = messages[i + 1]
-        if not isinstance(next_msg, AIMessage):
-            cleaned_messages.append(msg)
-            i += 1
-            continue
-
-        visible_to = next_msg.additional_kwargs.get("visible_to", set())
-        subagent_name = f"{tool_match.group(1)}_agent"
-
-        if "main_agent" in visible_to and subagent_name in visible_to:
+        if isinstance(next_msg, AIMessage):
             cleaned_messages.append(
                 msg.model_copy(update={"content": next_msg.content})
             )
@@ -400,22 +385,28 @@ def create_agent(
     # TODO: Remove this conditional edge if issue #19 is resolved in langgraph_bigtool
     # This is a temporary fix to prevent redundant LLM calls after subagent handoff
     def should_continue_after_tool(state: State):
-        # CRITICAL: Prevent LLM call after subagent handoff
-        # Issue: https://github.com/langchain-ai/langgraph-bigtool/issues/19
-        #
-        # When a subagent is called (e.g., "call_gmail_agent"), it adds a ToolMessage
-        # with content like "Successfully transferred to gmail". Without this check,
-        # the main agent would unnecessarily invoke the LLM again after the handoff.
-        # This optimization prevents redundant LLM calls.
+        """
+        Prevent redundant LLM call after subagent handoff.
+
+        When a subagent is called, it adds a ToolMessage with is_handoff_toolcall=True.
+        Without this check, the main agent would unnecessarily invoke the LLM again
+        after the handoff. This optimization prevents redundant LLM calls.
+        """
         messages = state["messages"]
-        last_message = messages[-1]
+        messages_visible_to_agent = [
+            msg
+            for msg in messages
+            if isinstance(msg, (AIMessage, ToolMessage))
+            and agent_name in msg.additional_kwargs.get("visible_to", set())
+        ]
+
+        last_message = messages_visible_to_agent[-1]
 
         if isinstance(last_message, ToolMessage):
-            tool_name = last_message.name or "Unknown"
-            content = last_message.content or ""
-            match_tool = re.match(r"call_(\w+)_agent", tool_name)
-            match_content = re.match(r"Successfully transferred to (\w+)", content)  # type: ignore[call-arg]
-            if match_tool and match_content:
+            is_handoff = last_message.additional_kwargs.get(
+                "is_handoff_toolcall", False
+            )
+            if is_handoff:
                 return END
 
         return "agent"

@@ -1,9 +1,9 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/react";
-import { RotateCcw, Sparkles } from "lucide-react";
 
 import { WorkflowSquare03Icon } from "@/components";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
+import { ReloadIcon, StarsIcon } from "@/icons";
 
 interface WorkflowHeaderProps {
   isRegenerating?: boolean;
@@ -20,14 +20,12 @@ export default function WorkflowHeader({
     <div className="flex w-full items-center justify-between">
       <div className="flex items-center gap-2">
         <HeaderTitle
-          icon={
-            <WorkflowSquare03Icon width={20} height={20} color={undefined} />
-          }
+          icon={<WorkflowSquare03Icon width={20} height={20} />}
           text="Workflow"
         />
         {isRegenerating && (
           <div className="flex items-center gap-1 text-xs text-blue-400">
-            <Sparkles className="h-3 w-3 animate-pulse" />
+            <StarsIcon className="h-3 w-3 animate-pulse" />
             <span>Regenerating...</span>
           </div>
         )}
@@ -40,7 +38,7 @@ export default function WorkflowHeader({
             size="sm"
             onPress={onGenerateWorkflow}
             startContent={
-              <RotateCcw
+              <ReloadIcon
                 className={`h-4 w-4 ${isRegenerating ? "animate-spin" : ""}`}
               />
             }

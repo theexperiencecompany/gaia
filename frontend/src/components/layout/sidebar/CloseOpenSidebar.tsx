@@ -1,7 +1,7 @@
-import { Menu02Icon, SidebarLeftIcon } from "@/components/shared/icons";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
+import { Menu02Icon, SidebarLeftIcon } from "@/icons";
 
-import { Button } from "../../ui/shadcn/button";
+import { Button } from "../../ui/button";
 
 export interface CloseOpenSidebarBtnProps {
   isSidebarVisible?: boolean;
@@ -28,13 +28,11 @@ function CloseOpenSidebarBtn({
         <Menu02Icon
           className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary"
           height="24"
-          color={undefined}
         />
       ) : (
         <SidebarLeftIcon
           className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary"
           height="24"
-          color={undefined}
         />
       )}
     </Button>

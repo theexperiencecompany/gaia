@@ -2,8 +2,9 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { Hash, Plus, X } from "lucide-react";
 import { useState } from "react";
+
+import { Cancel01Icon, GridIcon, PlusSignIcon } from "@/icons";
 
 import BaseFieldChip from "./BaseFieldChip";
 
@@ -42,7 +43,7 @@ export default function LabelsFieldChip({
       label="Labels"
       value={displayValue}
       placeholder="Labels"
-      icon={<Hash size={14} />}
+      icon={<GridIcon size={14} />}
       variant={value.length > 0 ? "primary" : "default"}
       className={className}
     >
@@ -53,7 +54,7 @@ export default function LabelsFieldChip({
             <div className="mb-1">
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <Hash
+                  <GridIcon
                     size={14}
                     className="absolute top-1/2 left-3 z-10 -translate-y-1/2 transform text-zinc-500"
                   />
@@ -94,7 +95,7 @@ export default function LabelsFieldChip({
                       : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
                   }`}
                 >
-                  <Plus size={14} />
+                  <PlusSignIcon size={14} />
                 </Button>
               </div>
             </div>
@@ -107,7 +108,7 @@ export default function LabelsFieldChip({
                     key={label}
                     className="flex items-center gap-1 rounded-md bg-zinc-800 px-2 py-1 text-sm text-zinc-300 hover:bg-zinc-700"
                   >
-                    <Hash size={12} />
+                    <GridIcon size={12} />
                     {label}
                     <Button
                       variant="light"
@@ -115,7 +116,7 @@ export default function LabelsFieldChip({
                       onPress={() => handleRemoveLabel(label)}
                       className="h-4 w-4 min-w-4 border-0 p-0 text-zinc-400 hover:text-zinc-200"
                     >
-                      <X size={10} />
+                      <Cancel01Icon size={10} />
                     </Button>
                   </div>
                 ))}
@@ -134,7 +135,7 @@ export default function LabelsFieldChip({
                 }}
                 className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
               >
-                <X size={14} />
+                <Cancel01Icon size={14} />
                 Clear all labels
               </div>
             </>

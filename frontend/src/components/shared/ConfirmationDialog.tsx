@@ -11,7 +11,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/shadcn/alert-dialog";
+} from "@/components/ui/alert-dialog";
 
 interface ConfirmationDialogProps {
   isOpen: boolean;

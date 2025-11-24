@@ -24,7 +24,7 @@ export interface GoogleLoginResponse {
 export const authApi = {
   // Fetch current user info
   fetchUserInfo: async (): Promise<UserInfo> => {
-    return apiService.get<UserInfo>("/oauth/me", {
+    return apiService.get<UserInfo>("/user/me", {
       silent: true,
     });
   },
@@ -38,7 +38,7 @@ export const authApi = {
 
   // Update user profile (name/picture)
   updateProfile: async (formData: FormData): Promise<UserInfo> => {
-    return apiService.patch<UserInfo>("/oauth/me", formData, {
+    return apiService.patch<UserInfo>("/user/me", formData, {
       successMessage: "Profile updated successfully",
       errorMessage: "Failed to update profile",
     });
@@ -48,7 +48,7 @@ export const authApi = {
   updateName: async (name: string): Promise<UserInfo> => {
     const formData = new FormData();
     formData.append("name", name);
-    return apiService.patch<UserInfo>("/oauth/name", formData, {
+    return apiService.patch<UserInfo>("/user/name", formData, {
       successMessage: "Name updated successfully",
       errorMessage: "Failed to update name",
     });
@@ -57,7 +57,7 @@ export const authApi = {
   // Logout user
   logout: async (): Promise<void> => {
     const response = await apiService.post<{ logout_url: string }>(
-      "/oauth/logout",
+      "/user/logout",
       {},
       {
         successMessage: "Logged out successfully",
@@ -76,7 +76,7 @@ export const authApi = {
     name: string;
     profession: string;
   }): Promise<{ success: boolean; message: string; user?: UserInfo }> => {
-    return apiService.post("/oauth/onboarding", onboardingData, {
+    return apiService.post("/onboarding", onboardingData, {
       successMessage: "Welcome! Your preferences have been saved.",
       errorMessage: "Failed to complete onboarding",
     });
@@ -88,7 +88,7 @@ export const authApi = {
     response_style?: string;
     custom_instructions?: string | null;
   }): Promise<{ success: boolean; message: string; user?: UserInfo }> => {
-    return apiService.patch("/oauth/onboarding/preferences", preferences, {
+    return apiService.patch("/onboarding/preferences", preferences, {
       silent: true,
     });
   },
@@ -99,7 +99,7 @@ export const authApi = {
   ): Promise<{ success: boolean; message: string; timezone: string }> => {
     const formData = new FormData();
     formData.append("timezone", timezone);
-    return apiService.patch("/oauth/timezone", formData, {
+    return apiService.patch("/user/timezone", formData, {
       silent: true,
     });
   },

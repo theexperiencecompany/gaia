@@ -2,21 +2,11 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import {
-  ArchiveIcon,
-  Square,
-  SquareCheck,
-  StarIcon,
-  Timer,
-  Trash,
-  X,
-} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { FixedSizeList as List, ListChildComponentProps } from "react-window";
 import InfiniteLoader from "react-window-infinite-loader";
 
-import { StarsIcon } from "@/components/shared/icons";
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import { EmailFrom } from "@/features/mail/components/MailFrom";
 import ViewEmail from "@/features/mail/components/ViewMail";
 import { useEmailActions } from "@/features/mail/hooks/useEmailActions";
@@ -28,6 +18,16 @@ import { useEmailViewer } from "@/features/mail/hooks/useEmailViewer";
 import { useInfiniteEmails } from "@/features/mail/hooks/useInfiniteEmails";
 import { formatTime } from "@/features/mail/utils/mailUtils";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
+import {
+  Archive01Icon,
+  Cancel01Icon,
+  CheckmarkSquare03Icon,
+  Delete02Icon,
+  SparklesIcon,
+  SquareIcon,
+  StarIcon,
+  Timer02Icon,
+} from "@/icons";
 import { EmailData } from "@/types/features/mailTypes";
 
 function AIAnalysisIndicator({ hasAnalysis }: { hasAnalysis: boolean }) {
@@ -36,7 +36,7 @@ function AIAnalysisIndicator({ hasAnalysis }: { hasAnalysis: boolean }) {
   return (
     <Tooltip content="AI Analysis Available" color="primary">
       <div className="flex items-center justify-center">
-        <StarsIcon
+        <SparklesIcon
           width={16}
           height={16}
           color="#00bbff"
@@ -238,9 +238,9 @@ export default function MailsPage() {
             }}
           >
             {selectedEmails.has(email.id) ? (
-              <SquareCheck className="h-5 w-5 cursor-pointer text-primary" />
+              <CheckmarkSquare03Icon className="h-5 w-5 cursor-pointer text-primary" />
             ) : (
-              <Square className="h-5 w-5 cursor-pointer opacity-60 hover:opacity-100" />
+              <SquareIcon className="h-5 w-5 cursor-pointer opacity-60 hover:opacity-100" />
             )}
           </div>
 
@@ -292,13 +292,13 @@ export default function MailsPage() {
                       handleToggleStarStatus(e, email),
                   },
                   {
-                    icon: ArchiveIcon,
+                    icon: Archive01Icon,
                     label: "Archive",
                     onClick: (e: React.MouseEvent) =>
                       handleArchiveEmail(e, email),
                   },
                   {
-                    icon: Trash,
+                    icon: Delete02Icon,
                     label: "Move to Trash",
                     iconProps: { color: "red" },
                     onClick: (e: React.MouseEvent) =>
@@ -306,8 +306,8 @@ export default function MailsPage() {
                   },
                   {
                     icon: email?.labelIds?.includes("UNREAD")
-                      ? SquareCheck
-                      : Square,
+                      ? CheckmarkSquare03Icon
+                      : SquareIcon,
                     label: email?.labelIds?.includes("UNREAD")
                       ? "Mark as Read"
                       : "Mark as Unread",
@@ -315,7 +315,7 @@ export default function MailsPage() {
                       handleToggleReadStatus(e, email),
                   },
                   {
-                    icon: Timer,
+                    icon: Timer02Icon,
                     label: "Set Reminder",
                     onClick: (e: React.MouseEvent) => e.stopPropagation(),
                   },
@@ -356,7 +356,7 @@ export default function MailsPage() {
               color="default"
               variant="flat"
               onPress={clearSelections}
-              startContent={<X size={16} />}
+              startContent={<Cancel01Icon size={16} />}
             >
               Clear selection
             </Button>
@@ -371,7 +371,7 @@ export default function MailsPage() {
                 onPress={bulkMarkAsRead}
                 isIconOnly
               >
-                <SquareCheck size={16} />
+                <CheckmarkSquare03Icon size={16} />
               </Button>
             </Tooltip>
             <Tooltip content="Mark as unread">
@@ -382,7 +382,7 @@ export default function MailsPage() {
                 onPress={bulkMarkAsUnread}
                 isIconOnly
               >
-                <Square size={16} />
+                <SquareIcon size={16} />
               </Button>
             </Tooltip>
             <Tooltip content="Star">
@@ -404,7 +404,7 @@ export default function MailsPage() {
                 onPress={bulkArchiveEmails}
                 isIconOnly
               >
-                <ArchiveIcon size={16} />
+                <Archive01Icon size={16} />
               </Button>
             </Tooltip>
             <Tooltip content="Move to trash">
@@ -415,7 +415,7 @@ export default function MailsPage() {
                 onPress={bulkTrashEmails}
                 isIconOnly
               >
-                <Trash size={16} />
+                <Delete02Icon size={16} />
               </Button>
             </Tooltip>
           </div>

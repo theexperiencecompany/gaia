@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 
-import { NewsIcon } from "@/components/shared/icons";
+import { NewsIcon } from "@/icons";
 import { useImageDialog } from "@/stores/uiStore";
 import {
   ImageResult,
@@ -236,7 +236,6 @@ function NewsResults({ news }: NewsResultsProps) {
         >
           <div className="flex flex-row items-center gap-2 text-primary transition-all hover:text-white">
             <NewsIcon
-              color={undefined}
               height={20}
               width={20}
               className="size-[20px] min-w-[20px]"

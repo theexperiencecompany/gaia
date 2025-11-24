@@ -1,7 +1,7 @@
 import { Chip } from "@heroui/chip";
-import { Eye, EyeOffIcon } from "lucide-react";
 
 import { isTooDark } from "@/features/calendar/utils/calendarUtils";
+import { ViewIcon, ViewOffIcon } from "@/icons";
 import {
   CalendarChipProps,
   CalendarSelectorProps,
@@ -30,9 +30,9 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
         }
         endContent={
           selected ? (
-            <Eye className="mr-1" width={17} height={17} />
+            <ViewIcon className="mr-1" width={17} height={17} />
           ) : (
-            <EyeOffIcon className="mr-1" width={17} height={17} />
+            <ViewOffIcon className="mr-1" width={17} height={17} />
           )
         }
         style={{

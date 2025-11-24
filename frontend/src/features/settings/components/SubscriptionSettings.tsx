@@ -4,16 +4,16 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
-import { CreditCard } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 
-import { CreditCardIcon } from "@/components";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import {
   convertToUSDCents,
   formatUSDFromCents,
 } from "@/features/pricing/utils/currencyConverter";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
+import { CreditCardIcon } from "@/icons";
 
 export function SubscriptionSettings() {
   const { data: subscriptionStatus, isLoading } = useUserSubscriptionStatus();
@@ -26,7 +26,7 @@ export function SubscriptionSettings() {
   if (isLoading) {
     return (
       <SettingsCard
-        icon={<CreditCard className="h-5 w-5 text-blue-400" />}
+        icon={<CreditCardIcon className="h-5 w-5 text-blue-400" />}
         title="Subscription"
       >
         <div className="space-y-4">
@@ -100,7 +100,8 @@ export function SubscriptionSettings() {
             </div>
           </div>
           <div className="relative h-76 w-full flex-1 overflow-hidden rounded-2xl bg-zinc-800/40 p-0 backdrop-blur-xl">
-            <img
+            <Image
+              fill
               src="/images/wallpapers/field.webp"
               alt="Subscription illustration"
               className="h-full w-full object-cover"
@@ -149,7 +150,7 @@ export function SubscriptionSettings() {
 
   return (
     <SettingsCard
-      icon={<CreditCard className="h-5 w-5 text-blue-400" />}
+      icon={<CreditCardIcon className="h-5 w-5 text-blue-400" />}
       title="Subscription"
     >
       <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-800/40 p-6 backdrop-blur-xl">

@@ -8,7 +8,6 @@ import { Button } from "@/components";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { useHeader } from "@/hooks/layout/useHeader";
 
-import BrowserHeader from "./BrowserHeader";
 import CalendarHeader from "./CalendarHeader";
 import ChatHeader from "./ChatHeader";
 import GoalHeader from "./GoalHeader";
@@ -52,7 +51,6 @@ export default function HeaderManager() {
   const defaultHeader = useMemo(() => {
     if (pathname.startsWith("/calendar")) return <CalendarHeader />;
     if (pathname.startsWith("/c")) return <ChatHeader />;
-    if (pathname.startsWith("/browser")) return <BrowserHeader />;
     if (pathname.startsWith("/todos"))
       return (
         <Suspense fallback={<SuspenseLoader />}>
@@ -65,5 +63,11 @@ export default function HeaderManager() {
     return null;
   }, [pathname]);
 
-  return <>{header || defaultHeader}</>;
+  // Memoize the final header to prevent unnecessary re-renders
+  const finalHeader = useMemo(
+    () => header || defaultHeader,
+    [header, defaultHeader],
+  );
+
+  return <>{finalHeader}</>;
 }

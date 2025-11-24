@@ -1,6 +1,6 @@
 import { memo } from "react";
 
-import Spinner from "../ui/shadcn/spinner";
+import Spinner from "../ui/spinner";
 
 // Lightweight CSS-only loader to reduce JS execution time
 const SuspenseLoader = memo(function SuspenseLoader({

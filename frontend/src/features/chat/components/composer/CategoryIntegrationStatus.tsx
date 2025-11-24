@@ -1,6 +1,7 @@
 import { Chip } from "@heroui/chip";
-import { Lock } from "lucide-react";
 import React from "react";
+
+import { SquareLock01Icon } from "@/icons";
 
 import { useToolsWithIntegrations } from "../../hooks/useToolsWithIntegrations";
 
@@ -31,7 +32,7 @@ export const CategoryIntegrationStatus: React.FC<
         className="flex aspect-square w-fit items-center justify-center"
         radius="full"
       >
-        <Lock className="h-3 w-3" />
+        <SquareLock01Icon className="h-3 w-3" />
       </Chip>
     );
 };

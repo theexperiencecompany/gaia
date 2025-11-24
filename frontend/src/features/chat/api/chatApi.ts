@@ -1,13 +1,13 @@
 import {
-  EventSourceMessage,
+  type EventSourceMessage,
   fetchEventSource,
 } from "@microsoft/fetch-event-source";
 
 import { apiService } from "@/lib/api";
-import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
-import { MessageType } from "@/types/features/convoTypes";
-import { WorkflowData } from "@/types/features/workflowTypes";
-import { FileData } from "@/types/shared";
+import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
+import type { MessageType } from "@/types/features/convoTypes";
+import type { WorkflowData } from "@/types/features/workflowTypes";
+import type { FileData } from "@/types/shared";
 
 export interface FileUploadResponse {
   fileId: string;
@@ -233,7 +233,7 @@ export const chatApi = {
     conversationId: string | null | undefined,
     onMessage: (
       event: EventSourceMessage,
-    ) => void | string | Promise<void | string>,
+    ) => undefined | string | Promise<undefined | string>,
     onClose: () => void,
     onError: (err: Error) => void,
     fileData: FileData[] = [],
@@ -244,17 +244,13 @@ export const chatApi = {
     selectedCalendarEvent: SelectedCalendarEventData | null = null,
   ) => {
     const controller = externalController || new AbortController();
-
     // Extract fileIds from fileData for backward compatibility
     const fileIds = fileData.map((file) => file.fileId);
 
     // If conversationId is not provided, try to extract it from the URL
-    if (conversationId === undefined) {
-      const path = window.location.pathname;
-      const match = path.match(/\/c\/([^/]+)(?:\/|$)/);
-      if (match) {
-        conversationId = match[1];
-      }
+    if (conversationId === undefined && typeof window !== "undefined") {
+      const match = window.location.pathname.match(/\/c\/([^/]+)(?:\/|$)/);
+      if (match) conversationId = match[1];
     }
 
     await fetchEventSource(

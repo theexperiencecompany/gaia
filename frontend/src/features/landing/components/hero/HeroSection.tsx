@@ -1,9 +1,9 @@
-import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 
 import { Github } from "@/components";
-import ShinyText from "@/components/ui/shadcn/shimmering-chip";
+import ShinyText from "@/components/ui/shimmering-chip";
 import { useLatestRelease } from "@/hooks/useLatestRelease";
+import { ArrowRight01Icon } from "@/icons";
 import { MotionContainer } from "@/layouts/MotionContainer";
 
 import GetStartedButton from "../shared/GetStartedButton";
@@ -16,13 +16,6 @@ export default function HeroSection() {
 
   return (
     <div className="relative w-screen flex-col gap-8 pb-14">
-      {/* <div className="relative mt-28 w-screen flex-col gap-8 py-16 sm:pb-10"> */}
-
-      {/* <div className="particles absolute top-0 z-1 h-screen w-full overflow-hidden bg-[#00bbff50] bg-[radial-gradient(circle_at_center,_#00bbff50_0%,_#00bbff50_40%,_#01bbff0d_75%,_transparent_100%)]">
-
-        <div className="vignette absolute h-[351%] w-full bg-[radial-gradient(circle,_rgba(0,0,0,0)_0%,_rgba(0,0,0,0)_47%,_#000_80%)]" />
-      </div> */}
-
       <MotionContainer
         className="relative z-2 flex h-full flex-col items-center justify-start gap-4 bg-transparent"
         staggerDelay={0.07}
@@ -42,7 +35,11 @@ export default function HeroSection() {
           <Link href="/blog/public-beta">
             <div className="relative z-10 flex w-fit cursor-pointer items-center gap-2 rounded-full bg-zinc-900 p-1 px-4 text-sm font-light outline-1 outline-zinc-800 transition-colors hover:bg-zinc-800">
               <ShinyText text={`Public Beta`} speed={10} />
-              <ArrowRight width={15} height={15} className="text-zinc-400" />
+              <ArrowRight01Icon
+                width={15}
+                height={15}
+                className="text-zinc-400"
+              />
             </div>
           </Link>
         </div>
@@ -63,7 +60,7 @@ export default function HeroSection() {
 
           {/* <Link href={"/manifesto"}>
             <Button className="rounded-xl bg-black/20 px-8! py-5 text-sm! font-light text-zinc-300 backdrop-blur-2xl! transition-all! duration-200 hover:scale-110 hover:bg-black/40">
-              Read the Manifesto <ArrowRight width={20} height={20} />
+              Read the Manifesto <ArrowRight01Icon width={20} height={20} />
             </Button>
           </Link> */}
         </div>

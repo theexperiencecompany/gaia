@@ -1,6 +1,6 @@
-import { Bell, Info } from "lucide-react";
 import Image from "next/image";
 
+import { InformationCircleIcon, NotificationIcon } from "@/icons";
 import {
   Brain02Icon,
   CheckmarkCircle02Icon,
@@ -9,7 +9,7 @@ import {
   Image02Icon,
   SourceCodeCircleIcon,
   Target02Icon,
-} from "@/components/shared/icons";
+} from "@/icons";
 
 import { useIconColorDetection } from "../hooks/useIconColorDetection";
 
@@ -128,22 +128,22 @@ const iconConfigs: Record<string, IconConfig> = {
     isImage: true,
   },
   notifications: {
-    icon: Bell,
+    icon: NotificationIcon,
     bgColor: "bg-yellow-500/20 backdrop-blur",
     iconColor: "text-yellow-400",
   },
   webpage: {
-    icon: Info,
+    icon: InformationCircleIcon,
     bgColor: "bg-purple-500/20 backdrop-blur",
     iconColor: "text-purple-400",
   },
   support: {
-    icon: Info,
+    icon: InformationCircleIcon,
     bgColor: "bg-blue-500/20 backdrop-blur",
     iconColor: "text-blue-400",
   },
   general: {
-    icon: Info,
+    icon: InformationCircleIcon,
     bgColor: "bg-gray-500/20 backdrop-blur",
     iconColor: "text-gray-400",
   },
@@ -290,7 +290,7 @@ export const getToolCategoryIcon = (
     size: restProps.size || 16,
     width: restProps.width || 20,
     height: restProps.height || 20,
-    strokeWidth: restProps.strokeWidth || 2,
+    strokeWidth: restProps.strokeWidth || 0,
     className: restProps.className,
   };
 

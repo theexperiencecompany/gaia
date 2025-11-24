@@ -12,7 +12,7 @@ import {
 } from "@heroui/modal";
 import { useRef, useState } from "react";
 
-import { Cancel01Icon, Mic02Icon, Tick02Icon } from "@/components/shared/icons";
+import { Cancel01Icon, Mic02Icon, Tick02Icon } from "@/icons";
 
 // Define props type for the MicrophoneBtn component
 interface MicrophoneBtnProps {

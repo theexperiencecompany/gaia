@@ -26,6 +26,7 @@ venv/
 
 .idea
 
+debug_logs/
 
 .terraform/
 .terraform

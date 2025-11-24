@@ -1,15 +1,15 @@
-import { BarChart3 } from "lucide-react";
-
 import {
-  AccountSetting02Icon,
   AiBrain01Icon,
   BookOpen01Icon,
+  ChartLineData02Icon,
   CreditCardIcon,
   DiscordIcon,
   MessageMultiple02Icon,
+  SparklesIcon,
   TwitterIcon,
+  UserCircleIcon,
   WhatsappIcon,
-} from "@/components/shared/icons";
+} from "@/icons";
 
 export interface SettingsMenuItem {
   key: string;
@@ -23,9 +23,15 @@ export interface SettingsMenuItem {
 
 export const settingsPageItems: SettingsMenuItem[] = [
   {
+    key: "profile",
+    label: "Profile Card",
+    icon: SparklesIcon,
+    href: "/settings?section=profile",
+  },
+  {
     key: "account",
     label: "Account",
-    icon: AccountSetting02Icon,
+    icon: UserCircleIcon,
     href: "/settings?section=account",
   },
   {
@@ -37,7 +43,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
   {
     key: "usage",
     label: "Usage",
-    icon: BarChart3,
+    icon: ChartLineData02Icon,
     href: "/settings?section=usage",
   },
   {
@@ -48,7 +54,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
   },
   {
     key: "memory",
-    label: "Memory",
+    label: "Memories",
     icon: AiBrain01Icon,
     href: "/settings?section=memory",
   },

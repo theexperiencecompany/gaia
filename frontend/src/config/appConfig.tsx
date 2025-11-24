@@ -16,7 +16,7 @@ import {
   TwitterIcon,
   WhatsappIcon,
   YoutubeIcon,
-} from "@/components/shared/icons";
+} from "@/icons";
 
 export interface AppLink {
   label: string;
@@ -50,7 +50,7 @@ export const appConfig = {
       {
         href: "/",
         label: "Home",
-        icon: <Home01Icon width={20} height={20} color={undefined} />,
+        icon: <Home01Icon width={20} height={20} color={"currentColor"} />,
         description: "Return to the home page",
       },
     ] as AppLink[],
@@ -64,7 +64,7 @@ export const appConfig = {
           <BubbleConversationChatIcon
             width={20}
             height={20}
-            color={undefined}
+            color={"currentColor"}
           />
         ),
         requiresAuth: false,
@@ -73,19 +73,21 @@ export const appConfig = {
       {
         href: "/use-cases",
         label: "Use Cases",
-        icon: <Idea01Icon width={20} height={20} color={undefined} />,
+        icon: <Idea01Icon width={20} height={20} color={"currentColor"} />,
         description: "Discover workflows and AI prompts",
       },
       {
         href: "/pricing",
         label: "Pricing",
-        icon: <CreditCardPosIcon width={20} height={20} color={undefined} />,
+        icon: (
+          <CreditCardPosIcon width={20} height={20} color={"currentColor"} />
+        ),
         description: "Choose the perfect plan for your needs",
       },
       {
         href: "/roadmap",
         label: "Roadmap",
-        icon: <MapsIcon width={20} height={20} color={undefined} />,
+        icon: <MapsIcon width={20} height={20} color={"currentColor"} />,
         external: true,
         description: "See what's coming next",
       },
@@ -95,27 +97,29 @@ export const appConfig = {
       {
         href: "/blog",
         label: "Blog",
-        icon: <QuillWrite01Icon width={20} height={20} color={undefined} />,
+        icon: (
+          <QuillWrite01Icon width={20} height={20} color={"currentColor"} />
+        ),
         description: "Read the latest updates and insights",
       },
       {
         href: "/docs",
         label: "Documentation",
-        icon: <BookOpen02Icon width={20} height={20} color={undefined} />,
+        icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
         external: true,
         description: "Comprehensive documentation and guides",
       },
       {
         href: "/request-feature",
         label: "Request a Feature",
-        icon: <Idea01Icon width={20} height={20} color={undefined} />,
+        icon: <Idea01Icon width={20} height={20} color={"currentColor"} />,
         external: true,
         description: "Request new features and vote on ideas",
       },
       {
         href: "/status",
         label: "Status",
-        icon: <GlobalIcon width={20} height={20} color={undefined} />,
+        icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
         external: true,
         description: "Check the status of GAIA services",
       },
@@ -125,26 +129,26 @@ export const appConfig = {
       {
         href: "/manifesto",
         label: "Manifesto",
-        icon: <GlobalIcon width={20} height={20} color={undefined} />,
+        icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
         description: "Learn about our mission",
       },
       {
         href: "/contact",
         label: "Contact",
-        icon: <HeartHandIcon width={20} height={20} color={undefined} />,
+        icon: <HeartHandIcon width={20} height={20} color={"currentColor"} />,
         description: "Get in touch with our team",
       },
       {
         href: "/terms",
         label: "Terms",
-        icon: <BookOpen02Icon width={20} height={20} color={undefined} />,
+        icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
         description: "Terms of service and usage",
         hideFooter: true,
       },
       {
         href: "/privacy",
         label: "Privacy",
-        icon: <BookOpen02Icon width={20} height={20} color={undefined} />,
+        icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
         description: "Our privacy policy",
         hideFooter: true,
       },
@@ -166,7 +170,7 @@ export const appConfig = {
         description: "Follow us for updates",
       },
       {
-        href: "https://github.com/heygaia",
+        href: "https://github.com/theexperiencecompany",
         label: "GitHub",
         icon: <Github width={20} height={20} color="white" />,
         external: true,
@@ -210,7 +214,7 @@ export const appConfig = {
       {
         href: "/c",
         label: "Chat",
-        icon: <BubbleConversationChatIcon width={17} color={undefined} />,
+        icon: <BubbleConversationChatIcon width={17} color={"currentColor"} />,
         requiresAuth: true,
       },
     ] as AppLink[],

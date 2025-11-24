@@ -4,6 +4,10 @@ import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useCallback, useEffect, useState } from "react";
 
+import {
+  StarAward01Icon,
+  WorkflowCircle03Icon,
+} from "@/components/shared/icons";
 import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
 import { type UseCase } from "@/features/use-cases/types";
 import { Workflow, workflowApi } from "@/features/workflows/api/workflowApi";
@@ -18,13 +22,11 @@ export default function UseCaseSection({
   hideUserWorkflows = false,
   centered = true,
   exploreWorkflows: propExploreWorkflows,
-  isLoadingExplore: propIsLoadingExplore = false,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
   centered?: boolean;
   exploreWorkflows?: UseCase[];
-  isLoadingExplore?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -35,13 +37,11 @@ export default function UseCaseSection({
   const [localExploreWorkflows, setLocalExploreWorkflows] = useState<UseCase[]>(
     [],
   );
-  const [localIsLoadingExplore, setLocalIsLoadingExplore] = useState(false);
 
   // Fetch explore workflows if not provided as props
   useEffect(() => {
     if (!propExploreWorkflows || propExploreWorkflows.length === 0) {
       const fetchExploreWorkflows = async () => {
-        setLocalIsLoadingExplore(true);
         try {
           const resp = await workflowApi.getExploreWorkflows(50, 0);
           const converted = resp.workflows.map((w) => ({
@@ -61,8 +61,6 @@ export default function UseCaseSection({
           setLocalExploreWorkflows(converted);
         } catch (error) {
           console.error("Error fetching explore workflows:", error);
-        } finally {
-          setLocalIsLoadingExplore(false);
         }
       };
 
@@ -228,6 +226,13 @@ export default function UseCaseSection({
             color={selectedCategory === category ? "primary" : "default"}
             className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
             size="lg"
+            startContent={
+              category === "featured" ? (
+                <StarAward01Icon width={18} height={18} />
+              ) : category === "workflows" ? (
+                <WorkflowCircle03Icon width={18} height={18} />
+              ) : undefined
+            }
             onClick={() => handleCategoryClick(category as string)}
           >
             {category === "all"
@@ -271,7 +276,6 @@ export default function UseCaseSection({
                       title={useCase.title || ""}
                       description={useCase.description || ""}
                       action_type={useCase.action_type || "prompt"}
-                      integrations={useCase.integrations || []}
                       prompt={useCase.prompt}
                       slug={useCase.slug}
                       steps={useCase.steps}

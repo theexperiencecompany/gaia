@@ -5,11 +5,11 @@ import { useCallback, useEffect, useState } from "react";
 
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
-import { ConnectIcon, MessageFavourite02Icon } from "@/components/shared/icons";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
+import { ConnectIcon, MessageFavourite02Icon } from "@/icons";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function IntegrationsPage() {
@@ -30,13 +30,15 @@ export default function IntegrationsPage() {
   // Set header
   useEffect(() => {
     setHeader(
-      <HeaderTitle
-        icon={<ConnectIcon width={20} height={20} color={undefined} />}
-        text="Integrations"
-      />,
+      <div className="py-2">
+        <HeaderTitle
+          icon={<ConnectIcon width={20} height={20} />}
+          text="Integrations"
+        />
+      </div>,
     );
     return () => setHeader(null);
-  }, [setHeader]);
+  }, []);
 
   // Set sidebar to sidebar mode (not sheet)
   useEffect(() => {

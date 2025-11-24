@@ -1,8 +1,28 @@
 import re
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, field_validator
+
+
+class OnboardingPhase(str, Enum):
+    """Tracks the current phase of user onboarding"""
+
+    INITIAL = "initial"  # Name, profession, timezone entered
+    PERSONALIZATION_PENDING = "personalization_pending"  # Waiting for bio, house, etc.
+    PERSONALIZATION_COMPLETE = "personalization_complete"  # House, bio generated
+    GETTING_STARTED = "getting_started"  # User clicked "Show me around"
+    COMPLETED = "completed"  # All onboarding finished
+
+
+class BioStatus(str, Enum):
+    """Tracks the status of bio generation"""
+
+    PENDING = "pending"  # Not yet started
+    PROCESSING = "processing"  # Actively generating from memories
+    COMPLETED = "completed"  # Successfully generated
+    NO_GMAIL = "no_gmail"  # No Gmail connected, showing placeholder
 
 
 class UserUpdateRequest(BaseModel):
@@ -81,9 +101,31 @@ class OnboardingData(BaseModel):
     completed_at: Optional[datetime] = Field(
         None, description="Timestamp when onboarding was completed"
     )
+    phase: OnboardingPhase = Field(
+        default=OnboardingPhase.INITIAL, description="Current onboarding phase"
+    )
     preferences: Optional[OnboardingPreferences] = Field(
         None, description="User's onboarding preferences"
     )
+    house: Optional[str] = Field(None, description="Assigned house name")
+    personality_phrase: Optional[str] = Field(
+        None, description="LLM-generated personality phrase"
+    )
+    user_bio: Optional[str] = Field(None, description="LLM-generated bio paragraph")
+    bio_status: BioStatus = Field(
+        default=BioStatus.PENDING, description="Status of bio generation"
+    )
+    suggested_workflows: Optional[list[str]] = Field(
+        default_factory=list, description="Workflow IDs suggested via RAG"
+    )
+    overlay_color: Optional[str] = Field(
+        None, description="Personalization overlay color"
+    )
+    overlay_opacity: Optional[int] = Field(
+        None, description="Personalization overlay opacity"
+    )
+    account_number: Optional[int] = Field(None, description="User's account number")
+    member_since: Optional[str] = Field(None, description="Member since date string")
 
 
 class OnboardingRequest(BaseModel):
@@ -146,3 +188,17 @@ class OnboardingResponse(BaseModel):
     success: bool = Field(..., description="Whether onboarding was successful")
     message: str = Field(..., description="Response message")
     user: Optional[Dict[str, Any]] = Field(None, description="Updated user data")
+
+
+class OnboardingPhaseUpdateRequest(BaseModel):
+    phase: OnboardingPhase = Field(
+        ..., description="The onboarding phase to transition to"
+    )
+
+    @field_validator("phase")
+    @classmethod
+    def validate_phase_progression(cls, v):
+        """Ensure phase values are valid"""
+        # Phase validation is handled by the enum type
+        # Additional business logic validation should be in the service layer
+        return v

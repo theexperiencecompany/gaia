@@ -2,16 +2,16 @@
 
 import { Input } from "@heroui/input";
 import { parseDate } from "chrono-node";
-import { CalendarIcon } from "lucide-react";
 import React from "react";
 
-import { Calendar } from "@/components/ui/shadcn/calendar";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/shadcn/popover";
-import { ScrollArea } from "@/components/ui/shadcn/scroll-area";
+} from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { CalendarIcon } from "@/icons";
 import { cn } from "@/lib/utils";
 import {
   formatDateLocal,

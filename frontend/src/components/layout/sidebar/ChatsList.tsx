@@ -1,7 +1,6 @@
 "use client";
 
 import { isToday, isYesterday, subDays } from "date-fns";
-import { Loader } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -9,7 +8,8 @@ import {
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from "@/components/ui/shadcn/accordion";
+} from "@/components/ui/accordion";
+import Spinner from "@/components/ui/spinner";
 import {
   useConversationList,
   useFetchConversations,
@@ -62,7 +62,7 @@ export default function ChatsList() {
     // Only fetch once on initial mount if store is empty
     if (!hasFetchedRef.current && apiConversations.length === 0 && !loading) {
       hasFetchedRef.current = true;
-      fetchConversations(1, 20, false);
+      fetchConversations(1, 20);
     }
   }, [apiConversations.length, loading, fetchConversations]);
 
@@ -162,7 +162,7 @@ export default function ChatsList() {
     <>
       {isLoading && conversations.length === 0 ? (
         <div className="flex items-center justify-center p-10">
-          <Loader className="animate-spin text-[#00bbff]" />
+          <Spinner />
         </div>
       ) : isError ? (
         <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">

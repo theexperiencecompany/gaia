@@ -1,12 +1,12 @@
 "use client";
 
 import { Input } from "@heroui/input";
-import { Pin } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import { PinCard } from "@/features/pins/components/PinCard";
 import { usePins } from "@/features/pins/hooks/usePins";
+import { PinIcon } from "@/icons";
 import { PinCardProps } from "@/types/features/pinTypes";
 
 export default function Pins() {
@@ -53,7 +53,7 @@ export default function Pins() {
               ) : (
                 <div className="flex h-[90vh] flex-col items-center justify-center text-center">
                   <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-zinc-800">
-                    <Pin className="h-8 w-8 text-zinc-500" />
+                    <PinIcon className="h-8 w-8 text-zinc-500" />
                   </div>
                   <div>
                     <h3 className="text-lg font-medium text-white">
@@ -64,7 +64,7 @@ export default function Pins() {
                     <p className="mt-1 text-sm text-zinc-400">
                       {searchQuery.trim().length > 0
                         ? "Try adjusting your search terms or clear the filter"
-                        : "Pin important messages during conversations to find them easily later"}
+                        : "PinIcon important messages during conversations to find them easily later"}
                     </p>
                   </div>
                 </div>

@@ -4,10 +4,12 @@
 
 export * from "./calendar/eventExtractors";
 export * from "./calendar/eventGrouping";
+export * from "./calendar/eventHelpers";
 export * from "./calendar/eventPayloadBuilders";
 export * from "./calendar/eventTypeGuards";
 export * from "./colorUtils";
 export * from "./date/calendarDateUtils";
+export * from "./date/dateTimeLocalUtils";
 export * from "./date/dateUtils";
 export * from "./date/timezoneUtils";
 export * from "./formatters";

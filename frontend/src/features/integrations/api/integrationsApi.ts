@@ -17,7 +17,7 @@ export const integrationsApi = {
   getIntegrationConfig: async (): Promise<IntegrationConfigResponse> => {
     try {
       const response = (await apiService.get(
-        "/oauth/integrations/config",
+        "/integrations/config",
       )) as IntegrationConfigResponse;
       return response;
     } catch (error) {
@@ -30,7 +30,7 @@ export const integrationsApi = {
    */
   getIntegrationStatus: async (): Promise<IntegrationStatusResponse> => {
     try {
-      const response = (await apiService.get("/oauth/integrations/status", {
+      const response = (await apiService.get("/integrations/status", {
         silent: true,
       })) as {
         integrations: Array<{
@@ -83,6 +83,8 @@ export const integrationsApi = {
       );
     }
 
+    if (typeof window === "undefined") return;
+
     const frontendPath = window.location.pathname + window.location.search;
 
     // Use the backend API base URL for proper OAuth flow
@@ -99,7 +101,7 @@ export const integrationsApi = {
   disconnectIntegration: async (integrationId: string): Promise<void> => {
     try {
       await apiService.delete(
-        `/oauth/integrations/${integrationId}`,
+        `/integrations/${integrationId}`,
         {},
         {
           successMessage: "Integration disconnected successfully",

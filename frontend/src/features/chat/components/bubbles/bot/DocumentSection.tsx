@@ -1,9 +1,9 @@
 import { Button } from "@heroui/button";
 import { Card, CardBody } from "@heroui/card";
 import { Chip } from "@heroui/chip";
-import { Download, FileText } from "lucide-react";
 import React from "react";
 
+import { Download01Icon, File01Icon } from "@/icons";
 import { DocumentData } from "@/types/features/convoTypes";
 
 interface DocumentSectionProps {
@@ -87,7 +87,7 @@ const DocumentSection: React.FC<DocumentSectionProps> = ({ document_data }) => {
           <div className="flex items-center justify-between">
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <div className="flex-shrink-0">
-                <FileText className="text-primary" size={24} />
+                <File01Icon className="text-primary" size={24} />
               </div>
 
               <div className="min-w-0 flex-1">
@@ -117,7 +117,7 @@ const DocumentSection: React.FC<DocumentSectionProps> = ({ document_data }) => {
               color="primary"
               variant="flat"
               size="sm"
-              startContent={<Download size={16} />}
+              startContent={<Download01Icon size={16} />}
               onClick={handleDownload}
               className="ml-3 flex-shrink-0"
             >

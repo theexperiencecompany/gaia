@@ -2,12 +2,7 @@ import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
 import Link from "next/link";
 
-import {
-  DiscordIcon,
-  Github,
-  TwitterIcon,
-  WhatsappIcon,
-} from "@/components/shared/icons";
+import { DiscordIcon, Github, TwitterIcon, WhatsappIcon } from "@/icons";
 
 import { SplitTextBlur } from "../hero/SplitTextBlur";
 import GetStartedButton from "../shared/GetStartedButton";

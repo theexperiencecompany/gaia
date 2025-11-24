@@ -1,8 +1,14 @@
 "use client";
 
 import { Spinner } from "@heroui/spinner";
-import { Check, CreditCard, Shield, Sparkles } from "lucide-react";
 import React from "react";
+
+import {
+  CreditCardIcon,
+  SecurityCheckIcon,
+  StarsIcon,
+  Tick02Icon,
+} from "@/icons";
 
 import { type PaymentFlowStates } from "../hooks/usePaymentFlow";
 
@@ -32,7 +38,7 @@ export function PaymentStatusIndicator({
     return (
       <div className={`flex items-center gap-2 text-green-500 ${className}`}>
         <div className="flex h-4 w-4 items-center justify-center rounded-full bg-green-500/20">
-          <Check className="h-2.5 w-2.5" />
+          <Tick02Icon className="h-2.5 w-2.5" />
         </div>
         <span className="text-sm font-medium">Subscription Active</span>
       </div>
@@ -54,7 +60,7 @@ export function PaymentStatusIndicator({
     return (
       <div className={`flex items-center gap-2 text-purple-500 ${className}`}>
         <div className="flex h-4 w-4 items-center justify-center rounded-full bg-purple-500/20">
-          <Shield className="h-2.5 w-2.5" />
+          <SecurityCheckIcon className="h-2.5 w-2.5" />
         </div>
         <span className="text-sm font-medium">Processing payment...</span>
       </div>
@@ -65,7 +71,7 @@ export function PaymentStatusIndicator({
     return (
       <div className={`flex items-center gap-2 text-orange-500 ${className}`}>
         <div className="flex h-4 w-4 items-center justify-center rounded-full bg-orange-500/20">
-          <CreditCard className="h-2.5 w-2.5" />
+          <CreditCardIcon className="h-2.5 w-2.5" />
         </div>
         <span className="text-sm font-medium">Preparing payment...</span>
       </div>
@@ -90,28 +96,28 @@ export function PaymentStatusSteps({
     {
       id: "initiate",
       label: "Initiating Payment",
-      icon: CreditCard,
+      icon: CreditCardIcon,
       isActive: isInitiating,
       isCompleted: isProcessing || isVerifying || isComplete,
     },
     {
       id: "process",
       label: "Processing Payment",
-      icon: Shield,
+      icon: SecurityCheckIcon,
       isActive: isProcessing,
       isCompleted: isVerifying || isComplete,
     },
     {
       id: "verify",
       label: "Activating Subscription",
-      icon: Sparkles,
+      icon: StarsIcon,
       isActive: isVerifying,
       isCompleted: isComplete,
     },
     {
       id: "complete",
       label: "Complete",
-      icon: Check,
+      icon: Tick02Icon,
       isActive: isComplete,
       isCompleted: isComplete,
     },

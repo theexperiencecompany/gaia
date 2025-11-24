@@ -5,7 +5,7 @@ import { Chip } from "@heroui/chip";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import AddGoalDialog from "@/features/goals/components/AddGoalDialog";
 import { GoalCard } from "@/features/goals/components/GoalCard";
 import { useGoals } from "@/features/goals/hooks/useGoals";

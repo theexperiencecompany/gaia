@@ -5,7 +5,6 @@ import {
   SelectSection,
   SharedSelection,
 } from "@heroui/react";
-import { Icon } from "@iconify/react";
 import Image from "next/image";
 import React, { useMemo } from "react";
 
@@ -132,7 +131,7 @@ const ModelPickerButton: React.FC = () => {
         isEnabled: false,
       }}
       startContent={
-        currentModel?.logo_url ? (
+        currentModel?.logo_url && (
           <Image
             src={currentModel.logo_url}
             alt={currentModel.name}
@@ -140,8 +139,6 @@ const ModelPickerButton: React.FC = () => {
             width={40}
             className={`h-4 w-4 object-contain`}
           />
-        ) : (
-          <Icon icon="lucide:cpu" className="h-3 w-3 shrink-0 text-zinc-400" />
         )
       }
       renderValue={(items) => {
@@ -169,18 +166,13 @@ const ModelPickerButton: React.FC = () => {
                 description: "text-zinc-400 mt-1",
               }}
               startContent={
-                model.logo_url ? (
+                model.logo_url && (
                   <Image
                     src={model.logo_url}
                     alt={model.name}
                     height={40}
                     width={40}
                     className={`h-4 w-4 object-contain`}
-                  />
-                ) : (
-                  <Icon
-                    icon="lucide:cpu"
-                    className="h-4 w-4 shrink-0 text-zinc-400"
                   />
                 )
               }

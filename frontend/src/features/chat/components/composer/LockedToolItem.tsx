@@ -1,21 +1,19 @@
-import { Lock } from "lucide-react";
 import React from "react";
 
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { SquareLock01Icon } from "@/icons";
 
 import { EnhancedToolInfo } from "../../types/enhancedTools";
 
 interface LockedToolItemProps {
   tool: EnhancedToolInfo;
   onConnect?: () => void;
-  showDescription?: boolean;
 }
 
 export const LockedToolItem: React.FC<LockedToolItemProps> = ({
   tool,
   onConnect,
-  showDescription = true,
 }) => {
   return (
     <div
@@ -41,7 +39,11 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
               </span>
 
               <div className="flex w-fit items-center gap-2">
-                <Lock width={15} height={15} className="text-zinc-500" />
+                <SquareLock01Icon
+                  width={15}
+                  height={15}
+                  className="text-zinc-500"
+                />
                 <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
                   {formatToolName(tool.category)}
                 </span>

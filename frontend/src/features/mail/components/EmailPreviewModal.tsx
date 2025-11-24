@@ -10,11 +10,11 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { mailApi as EmailsAPI } from "@/features/mail/api/mailApi";
+import { Cancel01Icon } from "@/icons";
 
 import { NotificationsAPI } from "../../../services/api/notifications";
 
@@ -229,7 +229,7 @@ export function EmailPreviewModal({
                             onClick={() => removeEmailChip(chip.email)}
                             className="ml-1 rounded-full p-0.5 transition-colors hover:bg-white/20"
                           >
-                            <X size={12} />
+                            <Cancel01Icon size={12} />
                           </button>
                         )
                       }

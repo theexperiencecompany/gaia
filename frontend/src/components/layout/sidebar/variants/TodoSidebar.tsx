@@ -2,10 +2,14 @@
 
 import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/modal";
-import { Plus, Tag } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import Spinner from "@/components/ui/spinner";
+import AddProjectModal from "@/features/todo/components/AddProjectModal";
+import TodoModal from "@/features/todo/components/TodoModal";
+import { useTodoData } from "@/features/todo/hooks/useTodoData";
+import { PlusSignIcon, Tag01Icon } from "@/icons";
 import {
   Appointment01Icon,
   Calendar01Icon,
@@ -13,11 +17,7 @@ import {
   CalendarCheckOut02Icon,
   Folder02Icon,
   LabelImportantIcon,
-} from "@/components/shared/icons";
-import Spinner from "@/components/ui/shadcn/spinner";
-import AddProjectModal from "@/features/todo/components/AddProjectModal";
-import TodoModal from "@/features/todo/components/TodoModal";
-import { useTodoData } from "@/features/todo/hooks/useTodoData";
+} from "@/icons";
 import { Priority } from "@/types/features/todoTypes";
 
 type MenuItem = {
@@ -210,7 +210,7 @@ export default function TodoSidebar() {
     labels.length > 0
       ? labels.slice(0, 5).map((label) => ({
           label: label.name,
-          icon: () => <Tag className="w-[20px]" strokeWidth={1.5} />,
+          icon: () => <Tag01Icon className="w-[20px]" strokeWidth={1.5} />,
           href: `/todos/label/${encodeURIComponent(label.name)}`,
           count: label.count,
         }))
@@ -305,7 +305,7 @@ export default function TodoSidebar() {
                   onPress={openAddProject}
                   className="h-6 w-6 min-w-6"
                 >
-                  <Plus className="h-3 w-3" />
+                  <PlusSignIcon className="h-3 w-3" />
                 </Button>
               }
               emptyState={{

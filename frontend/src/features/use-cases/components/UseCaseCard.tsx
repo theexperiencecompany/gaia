@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { ArrowUpRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -9,6 +8,7 @@ import { toast } from "sonner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflowCard";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
+import { ArrowUpRight03Icon } from "@/icons";
 import { posthog } from "@/lib";
 import { useAppendToInput } from "@/stores/composerStore";
 
@@ -16,7 +16,6 @@ interface UseCaseCardProps {
   title: string;
   description: string;
   action_type: "prompt" | "workflow";
-  integrations: string[];
   prompt?: string;
   slug?: string;
   steps?: Array<{
@@ -31,7 +30,6 @@ export default function UseCaseCard({
   title,
   description,
   action_type,
-  integrations,
   prompt,
   slug,
   steps,
@@ -49,7 +47,6 @@ export default function UseCaseCard({
         title,
         slug,
         action_type,
-        integrations,
       });
       router.push(`/use-cases/${slug}`);
     }
@@ -60,7 +57,6 @@ export default function UseCaseCard({
     posthog.capture("use_cases:action_executed", {
       title,
       action_type,
-      integrations,
       has_prompt: !!prompt,
     });
 
@@ -106,7 +102,7 @@ export default function UseCaseCard({
         className="w-fit text-primary"
         endContent={
           (isLoading ? undefined : action_type === "prompt") && (
-            <ArrowUpRight width={16} height={16} />
+            <ArrowUpRight03Icon width={16} height={16} />
           )
         }
         isLoading={isLoading}
@@ -122,7 +118,6 @@ export default function UseCaseCard({
       title={title}
       description={description}
       steps={steps}
-      integrations={integrations}
       footerContent={footerContent}
       onClick={slug ? handleCardClick : undefined}
       showArrowIcon={false}

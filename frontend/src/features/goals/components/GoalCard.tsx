@@ -7,13 +7,12 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Tooltip } from "@heroui/tooltip";
-import { DotsVerticalIcon } from "@radix-ui/react-icons";
 import { useRouter } from "next/navigation";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { Calendar03Icon } from "@/components/shared/icons";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { Calendar03Icon, MoreVerticalIcon } from "@/icons";
 import { Goal } from "@/types/api/goalsApiTypes";
 import { parseDate2 } from "@/utils";
 
@@ -67,7 +66,7 @@ export function GoalCard({
             >
               <DropdownTrigger>
                 <Button isIconOnly variant="flat" size="sm">
-                  <DotsVerticalIcon />
+                  <MoreVerticalIcon />
                 </Button>
               </DropdownTrigger>
               <DropdownMenu aria-label="Static Actions" className="dark">
@@ -123,7 +122,7 @@ export function GoalCard({
 
           <Tooltip content="Created on" size="sm" showArrow placement="bottom">
             <div className="flex cursor-default items-center gap-1 text-xs text-zinc-500">
-              <Calendar03Icon width={16} color={undefined} />
+              <Calendar03Icon width={16} />
               {parseDate2(goal?.created_at || new Date().toISOString())}
             </div>
           </Tooltip>

@@ -8,10 +8,6 @@ import ContactSupport from "@/components/layout/sidebar/ContactSupport";
 import SidebarTopButtons from "@/components/layout/sidebar/SidebarTopButtons";
 import UserContainer from "@/components/layout/sidebar/UserContainer";
 import {
-  SidebarLeft01Icon,
-  SidebarRight01Icon,
-} from "@/components/shared/icons";
-import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -19,7 +15,8 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   useSidebar,
-} from "@/components/ui/shadcn/sidebar";
+} from "@/components/ui/sidebar";
+import { SidebarLeft01Icon, SidebarRight01Icon } from "@/icons";
 
 interface SidebarLayoutProps {
   children: ReactNode;
@@ -36,15 +33,9 @@ export const CustomSidebarTrigger = () => {
       tooltip={open ? "Collapse Sidebar" : "Open Sidebar"}
     >
       {open ? (
-        <SidebarLeft01Icon
-          className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-400 transition group-hover/btn:text-primary"
-          color={undefined}
-        />
+        <SidebarLeft01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-400 transition group-hover/btn:text-primary" />
       ) : (
-        <SidebarRight01Icon
-          className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-400 transition group-hover/btn:text-primary"
-          color={undefined}
-        />
+        <SidebarRight01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-400 transition group-hover/btn:text-primary" />
       )}
     </SidebarHeaderButton>
   );

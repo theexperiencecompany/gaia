@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
-import { Download } from "lucide-react";
 import React from "react";
+
+import { Download01Icon } from "@/icons";
 
 interface DownloadButtonProps {
   content: string;
@@ -73,7 +74,7 @@ const DownloadButton: React.FC<DownloadButtonProps> = ({
       variant="light"
       onPress={handleDownload}
     >
-      <Download width={18} height={18} />
+      <Download01Icon width={18} height={18} />
     </Button>
   );
 };

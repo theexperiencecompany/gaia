@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 
 /**
@@ -13,6 +13,7 @@ export function useUrlEmailSelection() {
 
   // Get the currently selected email ID from URL
   const selectedEmailId = searchParams.get("emailId");
+  const pathname = usePathname();
 
   // Helper function to update URL with email ID
   const updateEmailInUrl = useCallback(
@@ -32,13 +33,12 @@ export function useUrlEmailSelection() {
       }
 
       // Get current pathname and update URL
-      const currentPath = window.location.pathname;
       const newUrl = params.toString()
-        ? `${currentPath}?${params.toString()}`
-        : currentPath;
+        ? `${pathname}?${params.toString()}`
+        : pathname;
       router.replace(newUrl, { scroll: false });
     },
-    [router, searchParams],
+    [router, searchParams, pathname],
   );
 
   // Helper function to select an email

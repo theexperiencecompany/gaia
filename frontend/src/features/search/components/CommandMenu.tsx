@@ -3,14 +3,14 @@
 import { Kbd } from "@heroui/kbd";
 import { Command } from "cmdk";
 import { AnimatePresence, motion } from "framer-motion";
-import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { MessageMultiple02Icon } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { usePlatform } from "@/hooks/ui/usePlatform";
+import { SearchIcon } from "@/icons";
+import { MessageMultiple02Icon } from "@/icons";
 
 import { ComprehensiveSearchResponse, searchApi } from "../api/searchApi";
 import {
@@ -51,7 +51,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     }
   }, [open]);
 
-  // Search with debouncing
+  // SearchIcon with debouncing
   const handleSearch = useCallback(async (query: string) => {
     if (!query.trim()) {
       setSearchResults({ conversations: [], messages: [], notes: [] });
@@ -195,7 +195,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
             >
               {/* Input */}
               <div className={COMMAND_MENU_STYLES.inputWrapper}>
-                <Search className={COMMAND_MENU_STYLES.searchIcon} />
+                <SearchIcon className={COMMAND_MENU_STYLES.searchIcon} />
                 <Command.Input
                   ref={inputRef}
                   value={search}
@@ -230,11 +230,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                               }}
                               className={COMMAND_MENU_STYLES.item}
                             >
-                              <MessageMultiple02Icon
-                                width={16}
-                                height={16}
-                                color={undefined}
-                              />
+                              <MessageMultiple02Icon width={16} height={16} />
                               <div
                                 className={COMMAND_MENU_STYLES.contentWrapper}
                               >
@@ -268,11 +264,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                               }}
                               className={COMMAND_MENU_STYLES.item}
                             >
-                              <Search
-                                width={16}
-                                height={16}
-                                color={undefined}
-                              />
+                              <SearchIcon width={16} height={16} />
                               <div
                                 className={COMMAND_MENU_STYLES.contentWrapper}
                               >

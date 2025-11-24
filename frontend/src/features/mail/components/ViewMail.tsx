@@ -11,16 +11,21 @@ import Underline from "@tiptap/extension-underline";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import he from "he";
-import { Reply, ReplyAll, Send, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Drawer } from "vaul";
 
-import { MagicWand05Icon, StarsIcon } from "@/components/shared/icons";
-import Spinner from "@/components/ui/shadcn/spinner";
+import Spinner from "@/components/ui/spinner";
 import GmailBody from "@/features/mail/components/GmailBody";
 import { useEmailSummary } from "@/features/mail/hooks/useEmailAnalysis";
 import { parseEmail } from "@/features/mail/utils/mailUtils";
+import {
+  ArrowLeftDoubleIcon,
+  ArrowTurnBackwardIcon,
+  Cancel01Icon,
+  SentIcon,
+} from "@/icons";
+import { MagicWand05Icon, StarsIcon } from "@/icons";
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import { EmailData, EmailImportanceSummary } from "@/types/features/mailTypes";
 
@@ -52,12 +57,7 @@ function AISummary({
             variant="flat"
             color="primary"
           >
-            <StarsIcon
-              width={17}
-              height={17}
-              color={undefined}
-              fill={"#00bbff"}
-            />
+            <StarsIcon width={17} height={17} fill={"#00bbff"} />
             <span>Loading AI Analysis...</span>
           </Chip>
         </div>
@@ -81,12 +81,7 @@ function AISummary({
           variant="flat"
           color="primary"
         >
-          <StarsIcon
-            width={17}
-            height={17}
-            color={undefined}
-            fill={"#00bbff"}
-          />
+          <StarsIcon width={17} height={17} fill={"#00bbff"} />
           <span>GAIA AI Analysis</span>
         </Chip>
       </div>
@@ -260,7 +255,7 @@ export default function ViewEmail({
       //   body: content,
       // });
 
-      toast.error("Reply functionality is not yet implemented");
+      toast.error("ArrowTurnBackwardIcon functionality is not yet implemented");
       setShowReplyEditor(false);
       editor.commands.setContent("<p></p>");
     } catch (error) {
@@ -312,7 +307,7 @@ export default function ViewEmail({
             <div className="mb-2 flex w-full justify-end">
               <Tooltip content="Close" color="foreground">
                 <div className="cursor-pointer">
-                  <XIcon width={18} onClick={onOpenChange} />
+                  <Cancel01Icon width={18} onClick={onOpenChange} />
                 </div>
               </Tooltip>
             </div>
@@ -320,7 +315,7 @@ export default function ViewEmail({
               <Button
                 color="primary"
                 className="font-medium"
-                startContent={<MagicWand05Icon color={undefined} />}
+                startContent={<MagicWand05Icon />}
                 isLoading={isLoadingAnalysis}
                 onPress={handleAnalyzeEmail}
                 isDisabled={isLoadingAnalysis}
@@ -336,18 +331,18 @@ export default function ViewEmail({
                 <Button
                   color="primary"
                   variant="flat"
-                  startContent={<Reply size={16} />}
+                  startContent={<ArrowTurnBackwardIcon size={16} />}
                   onPress={() => mail && handleReply(mail)}
                 >
-                  Reply
+                  ArrowTurnBackwardIcon
                 </Button>
                 <Button
                   color="primary"
                   variant="flat"
-                  startContent={<ReplyAll size={16} />}
+                  startContent={<ArrowLeftDoubleIcon size={16} />}
                   onPress={() => mail && handleReply(mail)}
                 >
-                  Reply All
+                  ArrowTurnBackwardIcon All
                 </Button>
               </div>
             </header>
@@ -425,10 +420,10 @@ export default function ViewEmail({
                             size="sm"
                             color="primary"
                             variant="flat"
-                            startContent={<Reply size={14} />}
+                            startContent={<ArrowTurnBackwardIcon size={14} />}
                             onPress={() => handleReply(message)}
                           >
-                            Reply
+                            ArrowTurnBackwardIcon
                           </Button>
                         </div>
                       </div>
@@ -461,12 +456,14 @@ export default function ViewEmail({
                 </>
               ) : null}
 
-              {/* Reply editor */}
+              {/* ArrowTurnBackwardIcon editor */}
               {showReplyEditor && replyTo && (
                 <div className="mt-4 border-t-2 border-zinc-700 pt-4">
                   <div className="mb-2 flex items-center justify-between">
                     <div className="text-sm">
-                      <span className="font-medium">Reply to: </span>
+                      <span className="font-medium">
+                        ArrowTurnBackwardIcon to:{" "}
+                      </span>
                       <span className="text-gray-400">
                         {parseEmail(replyTo.from).name ||
                           parseEmail(replyTo.from).email}
@@ -479,7 +476,7 @@ export default function ViewEmail({
                       isIconOnly
                       onPress={handleCancelReply}
                     >
-                      <XIcon size={16} />
+                      <Cancel01Icon size={16} />
                     </Button>
                   </div>
 
@@ -493,12 +490,12 @@ export default function ViewEmail({
                   <div className="mt-2 flex justify-end">
                     <Button
                       color="primary"
-                      startContent={<Send size={16} />}
+                      startContent={<SentIcon size={16} />}
                       onPress={handleSendReply}
                       isLoading={isSending}
                       isDisabled={isSending}
                     >
-                      {isSending ? "Sending..." : "Send Reply"}
+                      {isSending ? "Sending..." : "SentIcon Reply"}
                     </Button>
                   </div>
                 </div>

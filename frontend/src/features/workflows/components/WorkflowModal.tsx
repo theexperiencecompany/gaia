@@ -16,26 +16,26 @@ import { Switch } from "@heroui/switch";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { DotsVerticalIcon } from "@radix-ui/react-icons";
-import {
-  AlertCircle,
-  ChevronDown,
-  ExternalLink,
-  Info,
-  Play,
-  RefreshCw,
-  Trash2,
-} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 
-import { CheckmarkCircle02Icon } from "@/components/shared/icons";
-import CustomSpinner from "@/components/ui/shadcn/spinner";
+import CustomSpinner from "@/components/ui/spinner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import {
+  AlertCircleIcon,
+  ArrowDown01Icon,
+  Delete02Icon,
+  InformationCircleIcon,
+  LinkSquare02Icon,
+  MoreVerticalIcon,
+  PlayIcon,
+  RedoIcon,
+} from "@/icons";
+import { CheckmarkCircle02Icon } from "@/icons";
 import { posthog } from "@/lib";
 
 import { Workflow, workflowApi } from "../api/workflowApi";
@@ -631,14 +631,14 @@ export default function WorkflowModal({
                       <Dropdown placement="bottom-end" className="max-w-100">
                         <DropdownTrigger>
                           <Button variant="flat" size="sm" isIconOnly>
-                            <DotsVerticalIcon />
+                            <MoreVerticalIcon />
                           </Button>
                         </DropdownTrigger>
                         <DropdownMenu>
                           <DropdownItem
                             key="publish"
                             startContent={
-                              <Play className="relative top-1 h-4 w-4" />
+                              <PlayIcon className="relative top-1 h-4 w-4" />
                             }
                             classNames={{
                               description: "text-wrap",
@@ -696,7 +696,7 @@ export default function WorkflowModal({
                             <DropdownItem
                               key="marketplace"
                               startContent={
-                                <ExternalLink className="h-4 w-4" />
+                                <LinkSquare02Icon className="h-4 w-4" />
                               }
                               classNames={{
                                 description: "text-wrap",
@@ -716,7 +716,7 @@ export default function WorkflowModal({
                           <DropdownItem
                             key="delete"
                             color="danger"
-                            startContent={<Trash2 className="h-4 w-4" />}
+                            startContent={<Delete02Icon className="h-4 w-4" />}
                             classNames={{
                               description: "text-wrap",
                               base: "items-start!",
@@ -764,7 +764,7 @@ export default function WorkflowModal({
                           placement="top"
                           delay={500}
                         >
-                          <Info className="h-3.5 w-3.5 cursor-help text-zinc-500 hover:text-zinc-300" />
+                          <InformationCircleIcon className="h-3.5 w-3.5 cursor-help text-zinc-500 hover:text-zinc-300" />
                         </Tooltip>
                       </div>
                       <div className="w-full">
@@ -870,7 +870,7 @@ export default function WorkflowModal({
                           <Button
                             color="success"
                             variant="flat"
-                            startContent={<Play className="h-4 w-4" />}
+                            startContent={<PlayIcon className="h-4 w-4" />}
                             onPress={handleRunWorkflow}
                             size="sm"
                             isDisabled={
@@ -938,7 +938,7 @@ export default function WorkflowModal({
                       <div className="flex flex-col items-center justify-center py-8">
                         <div className="text-center">
                           <div className="mb-4">
-                            <AlertCircle className="mx-auto h-12 w-12 text-danger" />
+                            <AlertCircleIcon className="mx-auto h-12 w-12 text-danger" />
                           </div>
                           <h3 className="text-lg font-medium text-danger">
                             Generation Failed
@@ -991,12 +991,12 @@ export default function WorkflowModal({
                                     isDisabled={isRegeneratingSteps}
                                     endContent={
                                       !isRegeneratingSteps && (
-                                        <ChevronDown className="h-3 w-3" />
+                                        <ArrowDown01Icon className="h-3 w-3" />
                                       )
                                     }
                                     startContent={
                                       !isRegeneratingSteps && (
-                                        <RefreshCw className="h-4 w-4" />
+                                        <RedoIcon className="h-4 w-4" />
                                       )
                                     }
                                   >
@@ -1059,7 +1059,7 @@ export default function WorkflowModal({
                                 color="primary"
                                 isLoading={isRegeneratingSteps}
                                 isDisabled={isRegeneratingSteps}
-                                startContent={<RefreshCw className="h-4 w-4" />}
+                                startContent={<RedoIcon className="h-4 w-4" />}
                                 onPress={handleInitialGeneration}
                               >
                                 Generate Steps
@@ -1068,7 +1068,7 @@ export default function WorkflowModal({
                           </div>
                           <div className="flex flex-col items-center justify-center py-8 text-center">
                             <div className="mb-4 rounded-full bg-zinc-800/50 p-3">
-                              <RefreshCw className="h-6 w-6 text-zinc-500" />
+                              <RedoIcon className="h-6 w-6 text-zinc-500" />
                             </div>
                             <p className="text-sm text-zinc-400">
                               Click "Generate Steps" to create your first
@@ -1084,7 +1084,7 @@ export default function WorkflowModal({
             </div>
           ) : creationPhase === "error" ? (
             <div className="flex flex-col items-center justify-center space-y-4 py-8">
-              <AlertCircle className="h-12 w-12 text-danger" />
+              <AlertCircleIcon className="h-12 w-12 text-danger" />
               <div className="text-center">
                 <h3 className="text-lg font-medium text-danger">
                   {mode === "create" ? "Creation" : "Update"} Failed

@@ -5,10 +5,10 @@ import { useState } from "react";
 
 import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
-import { Target02Icon, Target04Icon } from "@/components/shared/icons";
 import AddGoalDialog from "@/features/goals/components/AddGoalDialog";
 import { useGoals } from "@/features/goals/hooks/useGoals";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
+import { Target02Icon } from "@/icons";
 
 export default function GoalsHeader() {
   const [openDialog, setOpenDialog] = useState(false);
@@ -28,7 +28,7 @@ export default function GoalsHeader() {
     <>
       <div className="flex w-full items-center justify-between">
         <HeaderTitle
-          icon={<Target02Icon width={20} height={20} color={undefined} />}
+          icon={<Target02Icon width={20} height={20} />}
           text="Goals"
         />
 
@@ -38,7 +38,7 @@ export default function GoalsHeader() {
             tooltip="Create new goal"
             onClick={() => setOpenDialog(true)}
           >
-            <Target04Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+            <Target02Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
           </SidebarHeaderButton>
           <NotificationCenter />
         </div>

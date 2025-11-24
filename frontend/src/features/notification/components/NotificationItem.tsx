@@ -1,12 +1,12 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/react";
 import { formatDistanceToNow } from "date-fns";
-import { CheckCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { CheckmarkBadge01Icon } from "@/icons";
 
 import {
   NotificationAction,
@@ -74,7 +74,7 @@ export const NotificationItem = ({
                 onPress={() => onMarkAsRead(notification.id)}
                 title="Mark as read"
               >
-                <CheckCheck className="h-3.5 w-3.5" />
+                <CheckmarkBadge01Icon className="h-3.5 w-3.5" />
               </Button>
             </Tooltip>
           </div>

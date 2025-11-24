@@ -58,7 +58,10 @@ async def create_memory(
         raise HTTPException(status_code=400, detail="User ID not found")
 
     memory_entry = await memory_service.store_memory(
-        content=request.content, user_id=user_id, metadata=request.metadata
+        message=request.content,
+        user_id=user_id,
+        metadata=request.metadata,
+        async_mode=False,
     )
 
     if memory_entry:

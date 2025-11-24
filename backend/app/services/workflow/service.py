@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from app.config.loggers import general_logger as logger
+from app.db.chromadb import ChromaClient
 from app.db.mongodb.collections import workflows_collection
 from app.decorators.caching import Cacheable
 from app.models.workflow_models import (
@@ -19,14 +20,15 @@ from app.models.workflow_models import (
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
 )
-from .generation_service import WorkflowGenerationService
-from .queue_service import WorkflowQueueService
-from .scheduler import workflow_scheduler
 from app.utils.workflow_utils import (
     ensure_trigger_config_object,
     handle_workflow_error,
     transform_workflow_document,
 )
+
+from .generation_service import WorkflowGenerationService
+from .queue_service import WorkflowQueueService
+from .scheduler import workflow_scheduler
 from .validators import WorkflowValidator
 
 
@@ -74,6 +76,28 @@ class WorkflowService:
                 raise ValueError("Failed to create workflow in database")
 
             logger.info(f"Created workflow {workflow.id} for user {user_id}")
+
+            # Store in ChromaDB for semantic search
+            try:
+                chroma = await ChromaClient.get_langchain_client(
+                    "workflows", create_if_not_exists=True
+                )
+                content = (
+                    f"{workflow.title} | {workflow.description} | {trigger_config.type}"
+                )
+                chroma.add_texts(
+                    texts=[content],
+                    metadatas=[
+                        {
+                            "user_id": user_id,
+                            "workflow_id": str(workflow.id),
+                            "trigger_type": trigger_config.type,
+                        }
+                    ],
+                    ids=[str(workflow.id)],
+                )
+            except Exception as e:
+                logger.warning(f"Failed to store workflow in ChromaDB: {e}")
 
             if not workflow.id:
                 raise ValueError("Workflow ID is required")

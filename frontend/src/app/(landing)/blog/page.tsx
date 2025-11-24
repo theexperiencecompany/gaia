@@ -22,7 +22,7 @@ export const metadata: Metadata = generatePageMetadata({
 
 export default async function BlogPage() {
   try {
-    const blogs = getAllBlogPosts(false);
+    const blogs = await getAllBlogPosts(false);
 
     return (
       <div className="flex min-h-screen w-screen justify-center py-28">

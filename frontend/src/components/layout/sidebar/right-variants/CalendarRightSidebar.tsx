@@ -4,24 +4,24 @@ import { Button } from "@heroui/button";
 import { Input, Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Switch } from "@heroui/switch";
-import { Repeat, Trash2 } from "lucide-react";
 import React from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { UserCircleIcon } from "@/components/shared/icons";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from "@/components/ui/shadcn/accordion";
-import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
+} from "@/components/ui/accordion";
+import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import {
   NaturalLanguageDateInput,
   NaturalLanguageDateRangeInput,
 } from "@/features/calendar/components/NaturalLanguageDateInput";
 import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { Delete02Icon, RepeatIcon } from "@/icons";
+import { UserCircleIcon } from "@/icons";
 import { CalendarItem } from "@/types/api/calendarApiTypes";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
@@ -108,8 +108,12 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    if (typeof window !== "undefined")
+      window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      if (typeof window !== "undefined")
+        window.removeEventListener("keydown", handleKeyDown);
+    };
   }, [selectedEvent, isCreating, confirm, summary, onDelete]);
 
   // Set default calendar when calendars are loaded and creating
@@ -229,7 +233,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                   popoverContent: "bg-zinc-900 border border-zinc-800",
                   label: "text-zinc-400",
                 }}
-                startContent={<Repeat className="size-4 text-zinc-500" />}
+                startContent={<RepeatIcon className="size-4 text-zinc-500" />}
               >
                 <SelectItem key="none" textValue="Does not repeat">
                   Does not repeat
@@ -257,7 +261,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
               {recurrenceType === "custom" && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-zinc-400">
-                    Repeat on
+                    RepeatIcon on
                   </label>
                   <div className="flex flex-wrap gap-2">
                     {[
@@ -353,7 +357,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
           {!isCreating && selectedEvent?.recurrence && (
             <div className="rounded-lg border border-zinc-800/50 bg-zinc-800/20 p-3">
               <div className="flex items-center gap-2 text-sm">
-                <Repeat className="size-4 text-zinc-500" />
+                <RepeatIcon className="size-4 text-zinc-500" />
                 <span className="font-medium text-zinc-400">
                   {formatRecurrence(selectedEvent.recurrence)}
                 </span>
@@ -449,7 +453,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                 className="cursor-pointer rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-all hover:bg-red-500/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Delete event"
               >
-                <Trash2 className="size-4" />
+                <Delete02Icon className="size-4" />
               </button>
             </>
           )}

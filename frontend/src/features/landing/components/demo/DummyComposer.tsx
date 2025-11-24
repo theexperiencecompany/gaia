@@ -2,19 +2,19 @@ import { Button } from "@heroui/button";
 import { Textarea } from "@heroui/input";
 import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
-import { ArrowUp, ChevronRight } from "lucide-react";
-import { WrenchIcon } from "lucide-react";
 import React, { useRef, useState } from "react";
 
-import { AttachmentIcon, PlusSignIcon } from "@/components/shared/icons";
-import { Button as ShadcnButton } from "@/components/ui/shadcn/button";
+import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/shadcn/dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { ArrowRight01Icon, ArrowUp02Icon } from "@/icons";
+import { Wrench01Icon } from "@/icons";
+import { AttachmentIcon, PlusSignIcon } from "@/icons";
 
 import DummySlashCommandDropdown from "./DummySlashCommandDropdown";
 
@@ -119,7 +119,7 @@ const DummyComposer: React.FC = () => {
                   })}
                 </div>
               ))}
-              <ChevronRight width={18} height={18} className="ml-3" />
+              <ArrowRight01Icon width={18} height={18} className="ml-3" />
             </div>
           </div>
         </Button>
@@ -223,10 +223,7 @@ const DummyComposer: React.FC = () => {
                   onClick={handleSlashButtonClick}
                   aria-label="Browse all tools"
                 >
-                  <WrenchIcon
-                    className="min-h-[20px] min-w-[20px]"
-                    color={undefined}
-                  />
+                  <Wrench01Icon className="min-h-[20px] min-w-[20px]" />
                   {isSlashDropdownOpen && (
                     <span
                       className="absolute top-0 right-0 h-2 w-2 rounded-full bg-primary transition"
@@ -245,7 +242,11 @@ const DummyComposer: React.FC = () => {
               className="h-9 w-9 rounded-full bg-primary p-0 text-xl hover:bg-primary/90 disabled:opacity-50"
               aria-label="Send message"
             >
-              <ArrowUp width={40} height={40} className="min-h-5 min-w-5" />
+              <ArrowUp02Icon
+                width={40}
+                height={40}
+                className="min-h-5 min-w-5"
+              />
             </ShadcnButton>
           </div>
         </div>

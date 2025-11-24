@@ -2,11 +2,11 @@
 
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
-import { Clock } from "lucide-react";
 import React from "react";
 
-import { BookIcon1 } from "@/components/shared/icons";
-import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
+import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
+import { Timer02Icon } from "@/icons";
+import { BookIcon1 } from "@/icons";
 import { NodeData } from "@/types/features/goalTypes";
 
 interface GoalSidebarProps {
@@ -54,7 +54,7 @@ export const GoalSidebar: React.FC<GoalSidebarProps> = ({
                 size="lg"
                 startContent={
                   <div className="flex items-center gap-1 text-sm">
-                    <Clock width={18} />
+                    <Timer02Icon width={18} />
                     <span>Estimated Time:</span>
                   </div>
                 }

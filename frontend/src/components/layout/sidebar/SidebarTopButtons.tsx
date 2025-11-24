@@ -1,21 +1,24 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { ZapIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
+import { RaisedButton } from "@/components/ui/raised-button";
+import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import {
-  CalendarIcon,
-  CheckmarkCircle02Icon,
+  usePricing,
+  useUserSubscriptionStatus,
+} from "@/features/pricing/hooks/usePricing";
+import {
+  Calendar03Icon,
+  CheckListIcon,
   ConnectIcon,
   MessageMultiple02Icon,
-  Target04Icon,
-} from "@/components/shared/icons";
-import { RaisedButton } from "@/components/ui";
-import { useNotifications } from "@/features/notification/hooks/useNotifications";
-import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+  Target02Icon,
+  ZapIcon,
+} from "@/icons";
 import { posthog } from "@/lib";
 import { useRefreshTrigger } from "@/stores/notificationStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";
@@ -23,6 +26,7 @@ import { NotificationStatus } from "@/types/features/notificationTypes";
 export default function SidebarTopButtons() {
   const pathname = usePathname();
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const { plans } = usePricing();
   const refreshTrigger = useRefreshTrigger();
   const { notifications, refetch } = useNotifications({
     status: NotificationStatus.DELIVERED,
@@ -30,6 +34,11 @@ export default function SidebarTopButtons() {
   });
 
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const monthlyPlan = plans.find(
+    (p) => p.name === "Pro" && p.duration === "monthly",
+  );
+  const price = monthlyPlan ? monthlyPlan.amount / 100 : 15;
 
   useEffect(() => {
     refetch();
@@ -51,17 +60,17 @@ export default function SidebarTopButtons() {
   const buttonData = [
     {
       route: "/calendar",
-      icon: <CalendarIcon />,
+      icon: <Calendar03Icon />,
       label: "Calendar",
     },
     {
       route: "/goals",
-      icon: <Target04Icon />,
+      icon: <Target02Icon />,
       label: "Goals",
     },
     {
       route: "/todos",
-      icon: <CheckmarkCircle02Icon />,
+      icon: <CheckListIcon />,
       label: "Todos",
     },
     {
@@ -112,10 +121,10 @@ export default function SidebarTopButtons() {
               </div>
             </div> */}
 
-            <div className="font-medium">GAIA Pro</div>
+            <div className="font-medium">Go on, You Deserve This</div>
             <p className="text-xs text-zinc-400">
-              Unlock almost unlimited usage, priority support, and more — all
-              for just $15 per month.
+              Unlock near-unlimited usage and priority support for ${price} a
+              month
             </p>
 
             <RaisedButton

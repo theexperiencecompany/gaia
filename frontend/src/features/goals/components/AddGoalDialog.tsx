@@ -7,9 +7,9 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { Send } from "lucide-react";
 import React, { Dispatch, SetStateAction, useEffect, useState } from "react";
 
+import { SentIcon } from "@/icons";
 import { posthog } from "@/lib";
 
 export default function AddGoalDialog({
@@ -75,7 +75,7 @@ export default function AddGoalDialog({
                 color="primary"
                 onPress={handleAddGoal}
               >
-                <Send />
+                <SentIcon />
               </Button>
             }
             label="What goal do you want to achieve?"

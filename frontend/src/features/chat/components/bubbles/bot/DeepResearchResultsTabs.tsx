@@ -1,9 +1,13 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Tab, Tabs } from "@heroui/tabs";
-import { ExternalLinkIcon, LinkIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 
-import { InternetIcon } from "@/components/shared/icons";
+import {
+  ArrowUpRight03Icon,
+  InternetIcon,
+  LinkBackwardIcon,
+  SearchIcon,
+} from "@/icons";
 import {
   DeepResearchResults,
   EnhancedWebResult,
@@ -83,7 +87,7 @@ export default function DeepResearchResultsTabs({
                 key="metadata"
                 title={
                   <div className="flex items-center space-x-2">
-                    <InternetIcon color={undefined} />
+                    <InternetIcon />
                     <span>Search Info</span>
                   </div>
                 }
@@ -123,7 +127,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
 
           <div className="mb-2 flex flex-wrap items-center gap-x-4 text-sm text-foreground-500">
             <span className="flex items-center gap-1">
-              <LinkIcon width={13} height={13} />
+              <LinkBackwardIcon width={13} height={13} />
               <a
                 href={result.url}
                 className="max-w-xs truncate hover:text-primary hover:underline"
@@ -150,7 +154,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
                 className="group relative block"
               >
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition group-hover:opacity-100">
-                  <ExternalLinkIcon className="h-8 w-8 text-white" />
+                  <ArrowUpRight03Icon className="h-8 w-8 text-white" />
                 </div>
               </a>
             </div>

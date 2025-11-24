@@ -2,11 +2,11 @@
 
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { CheckCircle, ExternalLink } from "lucide-react";
 import Link from "next/link";
 
 import { RedditIcon } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { CheckmarkCircle02Icon, LinkSquare02Icon } from "@/icons";
 import {
   RedditCommentCreatedData,
   RedditPostCreatedData,
@@ -37,7 +37,7 @@ export default function RedditCreatedCard({
         {allItems.map((item, index) => (
           <div key={index} className="space-y-3 p-3">
             <div className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-400" />
+              <CheckmarkCircle02Icon className="h-5 w-5 text-green-400" />
               <span className="text-sm font-semibold text-green-400">
                 {item.type === "post"
                   ? "Post Created Successfully!"
@@ -71,7 +71,7 @@ export default function RedditCreatedCard({
                   className="ml-auto flex items-center gap-1.5 text-xs text-[#FF4500] transition-colors hover:text-orange-300"
                 >
                   View on Reddit
-                  <ExternalLink className="h-3.5 w-3.5" />
+                  <LinkSquare02Icon className="h-3.5 w-3.5" />
                 </Link>
               )}
               {item.type === "post" &&
@@ -83,7 +83,7 @@ export default function RedditCreatedCard({
                     className="ml-auto flex items-center gap-1.5 text-xs text-[#FF4500] transition-colors hover:text-orange-300"
                   >
                     View on Reddit
-                    <ExternalLink className="h-3.5 w-3.5" />
+                    <LinkSquare02Icon className="h-3.5 w-3.5" />
                   </Link>
                 )}
             </div>

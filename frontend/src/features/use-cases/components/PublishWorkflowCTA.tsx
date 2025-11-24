@@ -1,4 +1,4 @@
-import { RaisedButton } from "@/components/ui";
+import { RaisedButton } from "@/components/ui/raised-button";
 
 export default function PublishWorkflowCTA() {
   return (

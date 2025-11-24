@@ -1,5 +1,4 @@
-import { HandMetal, LockIcon } from "lucide-react";
-
+import { SquareLock01Icon, WavingHand01Icon } from "@/icons";
 import {
   DiscordIcon,
   Github,
@@ -8,7 +7,7 @@ import {
   TwitterIcon,
   WhatsappIcon,
   YoutubeIcon,
-} from "@/components/shared/icons";
+} from "@/icons";
 
 const emailLinks = [
   {
@@ -19,12 +18,12 @@ const emailLinks = [
   {
     href: "mailto:ceo@heygaia.io",
     label: "ceo@heygaia.io",
-    Icon: HandMetal,
+    Icon: WavingHand01Icon,
   },
   {
     href: "mailto:security@heygaia.io",
     label: "security@heygaia.io",
-    Icon: LockIcon,
+    Icon: SquareLock01Icon,
   },
 ];
 
@@ -41,7 +40,7 @@ const socialLinks = [
   },
   {
     ariaLabel: "GitHub",
-    href: "https://github.com/heygaia",
+    href: "https://github.com/theexperiencecompany",
     Icon: Github,
   },
   {

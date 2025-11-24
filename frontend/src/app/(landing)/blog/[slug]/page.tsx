@@ -10,7 +10,7 @@ interface PageProps {
 export const revalidate = 3600; // Revalidate every hour
 
 export async function generateStaticParams() {
-  const slugs = getAllBlogSlugs();
+  const slugs = await getAllBlogSlugs();
   return slugs.map((slug) => ({
     slug,
   }));
@@ -23,7 +23,7 @@ export async function generateMetadata({
 
   try {
     // Read blog post from markdown file
-    const blog = getBlogPost(slug);
+    const blog = await getBlogPost(slug);
     if (!blog) {
       return {
         title: "Blog Post Not Found",
@@ -56,7 +56,7 @@ export default async function BlogPostPage({ params }: PageProps) {
 
   try {
     // Read blog post from markdown file
-    const blog = getBlogPost(slug);
+    const blog = await getBlogPost(slug);
 
     if (!blog) {
       return (

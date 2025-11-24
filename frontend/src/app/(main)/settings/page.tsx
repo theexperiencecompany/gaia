@@ -7,6 +7,7 @@ import AccountSettings from "@/features/settings/components/AccountSettings";
 import LogoutModal from "@/features/settings/components/LogoutModal";
 import MemorySettings from "@/features/settings/components/MemorySettings";
 import PreferencesSettings from "@/features/settings/components/PreferencesSettings";
+import ProfileCardSettings from "@/features/settings/components/ProfileCardSettings";
 import { ModalAction } from "@/features/settings/components/SettingsMenu";
 import { SubscriptionSettings } from "@/features/settings/components/SubscriptionSettings";
 import UsageSettings from "@/features/settings/components/UsageSettings";
@@ -28,6 +29,8 @@ export default function SettingsPage() {
     switch (section) {
       case "account":
         return <AccountSettings setModalAction={setModalAction} />;
+      case "profile":
+        return <ProfileCardSettings />;
       case "subscription":
         return <SubscriptionSettings />;
       case "usage":
@@ -37,7 +40,7 @@ export default function SettingsPage() {
       case "memory":
         return <MemorySettings />;
       default:
-        return <AccountSettings setModalAction={setModalAction} />;
+        return <ProfileCardSettings />;
     }
   };
 

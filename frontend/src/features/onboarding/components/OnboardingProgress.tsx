@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
 import { motion } from "framer-motion";
-import { RotateCcw } from "lucide-react";
+
+import { ReloadIcon } from "@/icons";
 
 interface OnboardingProgressProps {
   currentStep: number;
@@ -57,7 +58,7 @@ export const OnboardingProgress = ({
           className="fixed right-3 bottom-3"
           aria-label="Restart onboarding"
         >
-          <RotateCcw size={14} />
+          <ReloadIcon size={14} />
           Restart Onboarding
         </Button>
       )}

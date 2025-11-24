@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
 import React, { useEffect } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { Cancel01Icon } from "@/icons";
 import { useComposerUI } from "@/stores/composerStore";
 
 interface SelectedToolIndicatorProps {
@@ -74,7 +74,7 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
               whileTap={{ scale: 0.9 }}
               className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
             >
-              <X size={15} />
+              <Cancel01Icon size={15} />
             </motion.button>
           )}
         </motion.div>

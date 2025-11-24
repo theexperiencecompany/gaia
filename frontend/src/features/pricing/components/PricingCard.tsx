@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import React from "react";
 import { toast } from "sonner";
 
-import { Tick02Icon } from "@/components/shared/icons";
-import { RaisedButton } from "@/components/ui/shadcn/raised-button";
+import { RaisedButton } from "@/components/ui/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { Tick02Icon } from "@/icons";
 import { posthog } from "@/lib";
 
 // Removed currency import - using USD only
@@ -20,7 +20,6 @@ interface Feature {
 
 interface PricingCardProps {
   title: string;
-  type: "main" | "secondary";
   price: number; // Price in USD cents (already discounted if applicable)
   originalPrice?: number; // Original price before discount (for yearly plans)
   description?: string; // Add description prop for subtitle
@@ -35,7 +34,6 @@ interface PricingCardProps {
 
 export function PricingCard({
   title,
-  type,
   price,
   originalPrice,
   description,
@@ -47,21 +45,6 @@ export function PricingCard({
   isCurrentPlan,
   hasActiveSubscription,
 }: PricingCardProps) {
-  // Use the price directly from backend (already discounted if applicable)
-  const finalPrice = price;
-
-  // Calculate discount info if original price is provided
-  const discountPercentage =
-    originalPrice && originalPrice > price
-      ? Math.round(((originalPrice - price) / originalPrice) * 100)
-      : 0;
-
-  // Calculate free months for yearly plan (assuming monthly price is originalPrice/12)
-  const freeMonths =
-    originalPrice && !durationIsMonth && originalPrice > price
-      ? Math.round((originalPrice - price) / (originalPrice / 12))
-      : 0;
-
   // Always display in USD format - convert from smallest unit (cents)
   const formatUSDPrice = (amountInCents: number) => {
     if (amountInCents === 0) return { formatted: "$0", currency: "USD" };
@@ -72,7 +55,7 @@ export function PricingCard({
     };
   };
 
-  const finalPriceFormatted = formatUSDPrice(finalPrice);
+  const finalPriceFormatted = formatUSDPrice(price);
   const originalPriceFormatted = originalPrice
     ? formatUSDPrice(originalPrice)
     : null;

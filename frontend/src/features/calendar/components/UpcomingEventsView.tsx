@@ -1,8 +1,8 @@
 import React, { useMemo } from "react";
 
-import { GoogleCalendarIcon } from "@/components";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
+import { CalendarUpload01Icon, GoogleCalendarIcon } from "@/icons";
 import { CalendarItem } from "@/types/api/calendarApiTypes";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
@@ -136,7 +136,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
   return (
     <BaseCardView
       title="Upcoming events"
-      icon={<GoogleCalendarIcon className="h-5 w-5 text-zinc-500" />}
+      icon={<CalendarUpload01Icon className="h-6 w-6 text-zinc-500" />}
       isFetching={isFetching}
       error={error}
       isEmpty={!hasEvents}
@@ -145,7 +145,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
       isConnected={isConnected}
       connectIntegrationId="google_calendar"
       onConnect={onConnect}
-      connectButtonText="Connect Google Calendar"
+      connectButtonText="Connect"
       connectTitle="Connect Your Calendar"
       connectDescription="Manage events and view your schedule"
       connectIcon={<GoogleCalendarIcon width={32} height={32} />}

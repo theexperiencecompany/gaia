@@ -1,19 +1,20 @@
-import { CircleArrowUp, ZapIcon } from "lucide-react";
 import { ReactNode } from "react";
 
 import {
   Brain02Icon,
   CalendarIcon,
   CheckmarkCircle02Icon,
+  CircleArrowUp02Icon,
   ConnectIcon,
   DiscordIcon,
   MessageMultiple02Icon,
   NotificationIcon,
   PencilEdit01Icon,
   Settings01Icon,
-  Target04Icon,
+  Target02Icon,
   WhatsappIcon,
-} from "@/components/shared/icons";
+  ZapIcon,
+} from "@/icons";
 
 // Menu item configuration
 export interface MenuItemConfig {
@@ -41,44 +42,44 @@ export const PAGE_ITEMS: MenuItemConfig[] = [
   {
     id: "notifications",
     label: "Notifications",
-    icon: <NotificationIcon width={18} height={18} color={undefined} />,
+    icon: <NotificationIcon width={18} height={18} />,
     path: "/notifications",
   },
   {
     id: "calendar",
     label: "Calendar",
-    icon: <CalendarIcon width={18} height={18} color={undefined} />,
+    icon: <CalendarIcon width={18} height={18} />,
     path: "/calendar",
   },
   {
     id: "goals",
     label: "Goals",
-    icon: <Target04Icon width={18} height={18} color={undefined} />,
+    icon: <Target02Icon width={18} height={18} />,
     path: "/goals",
   },
   {
     id: "todos",
     label: "Todos",
-    icon: <CheckmarkCircle02Icon width={18} height={18} color={undefined} />,
+    icon: <CheckmarkCircle02Icon width={18} height={18} />,
     path: "/todos",
   },
 
   {
     id: "integrations",
     label: "Integrations",
-    icon: <ConnectIcon width={18} height={18} color={undefined} />,
+    icon: <ConnectIcon width={18} height={18} />,
     path: "/integrations",
   },
   {
     id: "workflows",
     label: "Workflows",
-    icon: <ZapIcon width={18} height={18} color={undefined} />,
+    icon: <ZapIcon width={18} height={18} />,
     path: "/workflows",
   },
   {
     id: "chats",
     label: "Chats",
-    icon: <MessageMultiple02Icon width={18} height={18} color={undefined} />,
+    icon: <MessageMultiple02Icon width={18} height={18} />,
     path: "/c",
   },
 ];
@@ -88,13 +89,13 @@ export const ACTION_ITEMS: MenuItemConfig[] = [
   {
     id: "new_chat",
     label: "Create a New Chat",
-    icon: <PencilEdit01Icon width={18} height={18} color={undefined} />,
+    icon: <PencilEdit01Icon width={18} height={18} />,
     action: "new_chat",
   },
   {
     id: "upgrade_to_pro",
     label: "Upgrade to Pro",
-    icon: <CircleArrowUp width={18} height={18} color="#00bbff" />,
+    icon: <CircleArrowUp02Icon width={18} height={18} color="#00bbff" />,
     path: "/pricing",
     hideWhenSubscribed: true,
   },
@@ -105,7 +106,7 @@ export const USER_ITEMS: MenuItemConfig[] = [
   {
     id: "memories",
     label: "Memories",
-    icon: <Brain02Icon width={18} height={18} color={undefined} />,
+    icon: <Brain02Icon width={18} height={18} />,
     path: "/settings?section=memory",
   },
   {
@@ -123,7 +124,7 @@ export const USER_ITEMS: MenuItemConfig[] = [
   {
     id: "settings",
     label: "Settings",
-    icon: <Settings01Icon width={18} height={18} color={undefined} />,
+    icon: <Settings01Icon width={18} height={18} />,
     path: "/settings",
     shortcut: "⌘,",
   },

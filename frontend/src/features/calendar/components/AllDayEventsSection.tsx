@@ -1,9 +1,9 @@
 "use client";
 
 import { Virtualizer } from "@tanstack/react-virtual";
-import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { UnfoldLessIcon, UnfoldMoreIcon } from "@/icons";
 import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface AllDayEventsSectionProps {
@@ -199,9 +199,9 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
           {hasAnyAllDayEvents && (
             <span>
               {isExpanded ? (
-                <ChevronsDownUp className="h-3 w-3 text-zinc-400" />
+                <UnfoldLessIcon className="h-3 w-3 text-zinc-400" />
               ) : (
-                <ChevronsUpDown className="h-3 w-3 text-zinc-400" />
+                <UnfoldMoreIcon className="h-3 w-3 text-zinc-400" />
               )}
             </span>
           )}

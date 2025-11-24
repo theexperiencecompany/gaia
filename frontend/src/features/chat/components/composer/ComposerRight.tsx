@@ -1,11 +1,11 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
-import { ArrowUp, Square } from "lucide-react";
 
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
+import { ArrowUp02Icon, StopIcon } from "@/icons";
 import { useComposerFiles } from "@/stores/composerStore";
 
 interface RightSideProps {
@@ -116,9 +116,14 @@ export default function RightSide({
           onPress={handleButtonPress}
         >
           {isLoading ? (
-            <Square color="lightgray" width={17} height={17} fill="lightgray" />
+            <StopIcon
+              color="lightgray"
+              width={20}
+              height={20}
+              fill="lightgray"
+            />
           ) : (
-            <ArrowUp
+            <ArrowUp02Icon
               color={
                 hasText ||
                 hasSelectedTool ||

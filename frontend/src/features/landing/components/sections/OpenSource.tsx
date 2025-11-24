@@ -1,13 +1,12 @@
 import { Avatar, AvatarGroup } from "@heroui/avatar";
-import { StarFilledIcon } from "@radix-ui/react-icons";
-import { ArrowRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { lazy, Suspense, useEffect, useState } from "react";
 
-import { RaisedButton } from "@/components/ui/shadcn/raised-button";
-import Spinner from "@/components/ui/shadcn/spinner";
+import { RaisedButton } from "@/components/ui/raised-button";
+import Spinner from "@/components/ui/spinner";
 import { useGitHubContributors } from "@/hooks/useGitHubContributors";
+import { ArrowRight01Icon, StarFilledIcon } from "@/icons";
 
 import LargeHeader from "../shared/LargeHeader";
 
@@ -159,7 +158,7 @@ export default function OpenSource() {
               color="#292929"
             >
               Read Docs
-              <ArrowRight width={15} />
+              <ArrowRight01Icon width={15} />
             </RaisedButton>
           </Link>
           <Link

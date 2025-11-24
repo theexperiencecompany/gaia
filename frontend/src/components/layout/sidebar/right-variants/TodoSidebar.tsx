@@ -3,16 +3,16 @@
 import { Checkbox } from "@heroui/checkbox";
 import { Input, Textarea } from "@heroui/input";
 import { formatDistanceToNow } from "date-fns";
-import { Trash2 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { SidebarContent, SidebarFooter } from "@/components/ui/shadcn/sidebar";
+import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { todoApi } from "@/features/todo/api/todoApi";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
 import WorkflowSection from "@/features/todo/components/WorkflowSection";
+import { Delete02Icon } from "@/icons";
 import {
   Priority,
   Project,
@@ -267,7 +267,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             className="rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-all hover:bg-red-500/10 active:scale-95"
             aria-label="Delete todo"
           >
-            <Trash2 className="size-4" />
+            <Delete02Icon className="size-4" />
           </button>
         </div>
       </SidebarFooter>

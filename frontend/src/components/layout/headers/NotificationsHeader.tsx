@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Tab, Tabs } from "@heroui/tabs";
 
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
-import { NotificationIcon } from "@/components/shared/icons";
+import { NotificationIcon } from "@/icons";
 
 interface NotificationsHeaderProps {
   selectedTab: string;
@@ -23,7 +23,7 @@ export default function NotificationsHeader({
     <div className="flex w-full items-center justify-between">
       <div className="flex w-full items-center justify-between">
         <HeaderTitle
-          icon={<NotificationIcon width={20} height={20} color={undefined} />}
+          icon={<NotificationIcon width={20} height={20} />}
           text="Notifications"
         />
 

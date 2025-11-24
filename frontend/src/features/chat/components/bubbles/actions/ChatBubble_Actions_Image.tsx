@@ -1,10 +1,9 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import { XIcon } from "lucide-react";
 import React from "react";
 import { toast } from "sonner";
 
-import { DownloadSquare01Icon } from "@/components/shared/icons";
+import { Cancel01Icon, DownloadSquare01Icon } from "@/icons";
 import { ImageData } from "@/types/features/toolDataTypes";
 
 interface ChatBubbleActionsImageProps {
@@ -36,7 +35,7 @@ export default function ChatBubble_Actions_Image({
       const blob = await response.blob();
 
       // Create URL from blob
-      const blobUrl = window.URL.createObjectURL(blob);
+      const blobUrl = window?.URL.createObjectURL(blob);
 
       // Create download link
       const downloadLink = document.createElement("a");
@@ -59,10 +58,10 @@ export default function ChatBubble_Actions_Image({
   };
 
   return (
-    <div className="flex w-fit items-center gap-2">
+    <div className="flex w-fit items-center gap-2 pl-1">
       {fullWidth && setOpenImage ? (
         <Button variant="flat" onPress={() => setOpenImage(false)}>
-          <XIcon height="22" />
+          <Cancel01Icon height="22" />
           <span>Cancel</span>
         </Button>
       ) : (
@@ -79,7 +78,7 @@ export default function ChatBubble_Actions_Image({
           className={`w-fit ${
             fullWidth
               ? "px-3 py-2"
-              : "bg-transparent p-0 data-[hover=true]:bg-transparent"
+              : "bg-transparent p-0 text-zinc-500 data-[hover=true]:bg-transparent"
           } h-fit rounded-lg`}
           color="primary"
           isIconOnly={!fullWidth}
@@ -87,10 +86,7 @@ export default function ChatBubble_Actions_Image({
           variant={fullWidth ? "solid" : "light"}
           onPress={downloadFromSrc}
         >
-          <DownloadSquare01Icon
-            className={`cursor-pointer ${fullWidth ? "text-black" : ""}`}
-            height="22"
-          />
+          <DownloadSquare01Icon className={`cursor-pointer`} height="22" />
           <span className="text-black">{fullWidth ? "Download" : ""}</span>
         </Button>
       </Tooltip>

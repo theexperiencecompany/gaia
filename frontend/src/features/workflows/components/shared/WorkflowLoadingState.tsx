@@ -1,13 +1,13 @@
 import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Sparkles } from "lucide-react";
 
-import { Skeleton } from "@/components/ui/shadcn/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StarsIcon } from "@/icons";
 
 export default function WorkflowLoadingState() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Sparkles className="h-5 w-5 animate-pulse text-blue-400" />
+        <StarsIcon className="h-5 w-5 animate-pulse text-blue-400" />
         <h3 className="text-lg font-semibold text-zinc-100">Workflow</h3>
       </div>
       <Card className="border-zinc-700 bg-zinc-800">

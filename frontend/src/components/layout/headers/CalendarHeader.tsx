@@ -3,10 +3,10 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Select, SelectItem } from "@heroui/select";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import React, { useEffect } from "react";
 
 import { CalendarAdd01Icon, CalendarIcon } from "@/components/shared";
+import { ArrowLeft01Icon, ArrowRight01Icon } from "@/icons";
 import {
   useCreateEventAction,
   useDaysToShow,
@@ -85,7 +85,7 @@ export default function CalendarHeader() {
     <div className="flex w-full items-center justify-between">
       <div className="flex items-center gap-3">
         <HeaderTitle
-          icon={<CalendarIcon width={20} height={20} color={undefined} />}
+          icon={<CalendarIcon width={20} height={20} />}
           text={`Calendar${visibleMonth && visibleYear ? ` - ${visibleMonth} ${visibleYear}` : ""}`}
         />
 
@@ -129,11 +129,11 @@ export default function CalendarHeader() {
             variant="light"
             onPress={goToPreviousDay}
           >
-            <ChevronLeft className="h-5 w-5 text-zinc-400" />
+            <ArrowLeft01Icon className="h-5 w-5 text-zinc-400" />
           </Button>
 
           <Button isIconOnly size="sm" variant="light" onPress={goToNextDay}>
-            <ChevronRight className="h-5 w-5 text-zinc-400" />
+            <ArrowRight01Icon className="h-5 w-5 text-zinc-400" />
           </Button>
           <Button variant="flat" onPress={goToToday} size="sm" className="ml-">
             Today
