@@ -14,6 +14,24 @@ from app.models.user_models import (
     OnboardingRequest,
 )
 from app.utils.user_preferences_utils import format_user_preferences_for_agent
+from app.utils.redis_utils import RedisPoolManager
+
+
+async def _queue_gmail_processing(user_id: str) -> None:
+    """Queue Gmail email processing as an ARQ background task."""
+    try:
+        pool = await RedisPoolManager.get_pool()
+        job = await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
+
+        if job:
+            logger.info(
+                f"Queued Gmail processing for user {user_id} with job ID {job.job_id}"
+            )
+        else:
+            logger.error(f"Failed to queue Gmail processing for user {user_id}")
+
+    except Exception as e:
+        logger.error(f"Error queuing Gmail processing for user {user_id}: {e}")
 
 
 async def complete_onboarding(

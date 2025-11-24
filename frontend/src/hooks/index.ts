@@ -4,12 +4,10 @@
 
 export * from "./useBackgroundSync";
 export * from "./useConfirmation";
-export * from "./useConversations";
 export * from "./useDeleteConversation";
 export * from "./useGitHubContributors";
 export * from "./useGitHubStars";
 export * from "./useLatestRelease";
-export * from "./useMessages";
 export * from "./useNotificationActions";
 export * from "./useSendMessage";
 export * from "./api/useAxiosInterceptor";

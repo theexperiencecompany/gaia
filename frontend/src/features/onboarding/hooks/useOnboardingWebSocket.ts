@@ -88,7 +88,7 @@ export const useOnboardingWebSocket = (
     const checkStatus = async () => {
       try {
         const data = await apiService.get<PersonalizationData>(
-          "/oauth/onboarding/personalization",
+          "/onboarding/personalization",
           { silent: true },
         );
 

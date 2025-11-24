@@ -88,7 +88,7 @@ export default function ContextGatheringLoader({
     async (): Promise<PersonalizationData | null> => {
       try {
         const data = await apiService.get<PersonalizationData>(
-          "/oauth/onboarding/personalization",
+          "/onboarding/personalization",
           { silent: true },
         );
 
@@ -272,7 +272,7 @@ export default function ContextGatheringLoader({
       );
 
       // Update backend phase
-      const response = await apiService.post("/oauth/onboarding/phase", {
+      const response = await apiService.post("/onboarding/phase", {
         phase: OnboardingPhase.GETTING_STARTED,
       });
 

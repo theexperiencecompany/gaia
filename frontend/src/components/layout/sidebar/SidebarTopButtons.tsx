@@ -11,13 +11,12 @@ import {
   usePricing,
   useUserSubscriptionStatus,
 } from "@/features/pricing/hooks/usePricing";
-import { ZapIcon } from "@/icons";
 import {
   Calendar03Icon,
   CheckListIcon,
   ConnectIcon,
   MessageMultiple02Icon,
-  Target02Icon,
+  Target02Icon, ZapIcon
 } from "@/icons";
 import { posthog } from "@/lib";
 import { useRefreshTrigger } from "@/stores/notificationStore";

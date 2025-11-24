@@ -17,7 +17,7 @@ export async function generateMetadata({
       process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
     const response = await fetch(
-      `${tempUrl || backendUrl}/api/v1/oauth/holo-card/${cardId}`,
+      `${tempUrl || backendUrl}/api/v1/user/holo-card/${cardId}`,
       {
         headers: {
           "Content-Type": "application/json",

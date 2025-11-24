@@ -12,12 +12,14 @@ from app.api.v1.endpoints import (
     file,
     goals,
     image,
+    integrations,
     mail,
     memory,
     models,
     notes,
     notification,
     oauth,
+    onboarding,
     payments,
     reminders,
     search,
@@ -26,6 +28,7 @@ from app.api.v1.endpoints import (
     todos,
     tools,
     usage,
+    user,
     webhook_composio,
     websocket,
     workflows,
@@ -43,6 +46,11 @@ router.include_router(notes.router, tags=["Notes/Memories"])
 router.include_router(memory.router, tags=["Memory"], prefix="/memory")
 router.include_router(goals.router, tags=["Goals"])
 router.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
+router.include_router(
+    integrations.router, prefix="/integrations", tags=["Integrations"]
+)
+router.include_router(onboarding.router, prefix="/onboarding", tags=["Onboarding"])
+router.include_router(user.router, prefix="/user", tags=["User"])
 router.include_router(mail.router, tags=["Mail"])
 router.include_router(blog.router, tags=["Blog"])
 router.include_router(team.router, tags=["Team"])

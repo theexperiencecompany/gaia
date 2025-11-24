@@ -73,7 +73,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
 
       try {
         const data = await apiService.get<{ phase?: string }>(
-          "/oauth/onboarding/personalization",
+          "/onboarding/personalization",
           { silent: true },
         );
 

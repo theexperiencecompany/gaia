@@ -84,7 +84,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let blogPages: MetadataRoute.Sitemap = [];
   try {
     // Read blogs from markdown files instead of API
-    const blogs = getAllBlogPosts(false);
+    const blogs = await getAllBlogPosts(false);
     // Commented out - Old API-based blog fetching
     // const blogs = await blogApi.getBlogs(false);
     blogPages = blogs.map((blog) => ({

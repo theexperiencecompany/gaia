@@ -21,7 +21,7 @@ export interface PublicHoloCardData {
 export const holoCardApi = {
   // Get current user's holo card data (authenticated) - includes workflows
   getMyHoloCard: async (): Promise<HoloCardData> => {
-    return apiService.get<HoloCardData>("/oauth/onboarding/personalization", {
+    return apiService.get<HoloCardData>("/onboarding/personalization", {
       silent: true,
     });
   },
@@ -29,7 +29,7 @@ export const holoCardApi = {
   // Get public holo card data by card ID (no auth required) - no workflows
   getPublicHoloCard: async (cardId: string): Promise<PublicHoloCardData> => {
     const response = await api.get<PublicHoloCardData>(
-      `/oauth/holo-card/${cardId}`,
+      `/user/holo-card/${cardId}`,
     );
     return response.data;
   },
@@ -43,7 +43,7 @@ export const holoCardApi = {
     formData.append("overlay_color", overlayColor);
     formData.append("overlay_opacity", overlayOpacity.toString());
 
-    return apiService.patch("/oauth/holo-card/colors", formData, {
+    return apiService.patch("/user/holo-card/colors", formData, {
       errorMessage: "Failed to update holo card colors",
     });
   },

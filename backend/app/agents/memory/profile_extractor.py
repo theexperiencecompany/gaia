@@ -291,7 +291,7 @@ def validate_username(username: str, platform: str) -> bool:
     if platform not in PLATFORM_CONFIG:
         return False
 
-    pattern = PLATFORM_CONFIG[platform]["regex_pattern"]
+    pattern: str = PLATFORM_CONFIG[platform]["regex_pattern"]  # type: ignore
     return bool(re.match(pattern, username.strip()))
 
 
@@ -309,7 +309,7 @@ def build_profile_url(username: str, platform: str) -> str:
     if platform not in PLATFORM_CONFIG:
         return ""
 
-    template = PLATFORM_CONFIG[platform]["url_template"]
+    template: str = PLATFORM_CONFIG[platform]["url_template"]  # type: ignore
     return template.format(username=username)
 
 
@@ -390,7 +390,7 @@ def _deduplicate_emails(emails: List[Dict]) -> List[Dict]:
         return SequenceMatcher(None, text1, text2).ratio()
 
     unique_emails = []
-    normalized_bodies = []
+    normalized_bodies: List[str] = []
 
     for email in emails:
         # Get full email body (not truncated)

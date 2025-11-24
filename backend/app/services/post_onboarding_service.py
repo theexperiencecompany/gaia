@@ -12,7 +12,7 @@ from app.constants.profession_bios import get_random_bio_for_profession
 from app.core.websocket_manager import websocket_manager
 from app.db.chromadb import ChromaClient
 from app.db.mongodb.collections import users_collection, workflows_collection
-from app.models.memory_models import MemoryEntry
+from app.models.memory_models import MemoryEntry, MemorySearchResult
 from app.models.user_models import BioStatus, OnboardingPhase
 from app.services.memory_service import memory_service
 from app.services.composio.composio_service import get_composio_service
@@ -34,7 +34,9 @@ async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
     """
     try:
         # Get user memories
-        memories = await memory_service.get_all_memories(user_id=user_id)
+        memories: MemorySearchResult = await memory_service.get_all_memories(
+            user_id=user_id
+        )
 
         if not memories.memories:
             logger.info(
@@ -55,7 +57,7 @@ async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
         results = chroma_client.similarity_search(query_text, k=10)
 
         # Extract workflow IDs and verify they're public
-        workflow_ids = []
+        workflow_ids: List[str] = []
         for doc in results:
             wf_id = doc.metadata.get("workflow_id")
             if not wf_id:
@@ -69,8 +71,9 @@ async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
                 )
                 if workflow and len(workflow_ids) < limit:
                     workflow_ids.append(str(wf_id))
-            except Exception:
-                continue
+            except Exception as e:
+                logger.warning(f"Error verifying workflow {wf_id}: {e}")
+                continue  # nosec B112
 
         # Fill with defaults if needed
         if len(workflow_ids) < limit:
@@ -252,7 +255,7 @@ Respond with ONLY the paragraph, no introduction or formatting."""
 
 def assign_random_house() -> str:
     """Randomly select a house."""
-    return random.choice(HOUSES)
+    return random.choice(HOUSES)  # nosec B311
 
 
 def generate_random_color() -> tuple[str, int]:
@@ -263,21 +266,21 @@ def generate_random_color() -> tuple[str, int]:
         Tuple of (color_string, opacity_percentage)
     """
     # 50% chance of gradient vs solid color
-    is_gradient = random.random() > 0.5
+    is_gradient = random.random() > 0.5  # nosec B311
 
     def generate_vibrant_color() -> str:
         """Generate a vibrant color in RGBA format."""
-        hue = random.randint(0, 360)
-        saturation = random.randint(70, 100)
-        lightness = random.randint(40, 70)
+        hue = random.randint(0, 360)  # nosec B311
+        saturation = random.randint(70, 100)  # nosec B311
+        lightness = random.randint(40, 70)  # nosec B311
 
         # Convert HSL to RGB
-        h = hue / 360
-        s = saturation / 100
-        l = lightness / 100
+        hue_2 = hue / 360
+        saturation_2 = saturation / 100
+        lightness_2 = lightness / 100
 
-        if s == 0:
-            r = g = b = l
+        if saturation_2 == 0:
+            r = g = b = lightness_2
         else:
 
             def hue2rgb(p: float, q: float, t: float) -> float:
@@ -293,11 +296,15 @@ def generate_random_color() -> tuple[str, int]:
                     return p + (q - p) * (2 / 3 - t) * 6
                 return p
 
-            q = l * (1 + s) if l < 0.5 else l + s - l * s
-            p = 2 * l - q
-            r = hue2rgb(p, q, h + 1 / 3)
-            g = hue2rgb(p, q, h)
-            b = hue2rgb(p, q, h - 1 / 3)
+            q = (
+                lightness_2 * (1 + saturation_2)
+                if lightness_2 < 0.5
+                else lightness_2 + saturation_2 - lightness_2 * saturation_2
+            )
+            p = 2 * lightness_2 - q
+            r = hue2rgb(p, q, hue_2 + 1 / 3)
+            g = hue2rgb(p, q, hue_2)
+            b = hue2rgb(p, q, hue_2 - 1 / 3)
 
         return f"rgba({round(r * 255)}, {round(g * 255)}, {round(b * 255)}, 1)"
 
@@ -305,14 +312,14 @@ def generate_random_color() -> tuple[str, int]:
         # Generate random gradient
         color1 = generate_vibrant_color()
         color2 = generate_vibrant_color()
-        angle = random.randint(0, 360)
+        angle = random.randint(0, 360)  # nosec B311
         color_string = f"linear-gradient({angle}deg, {color1} 0%, {color2} 100%)"
     else:
         # Generate solid color
         color_string = generate_vibrant_color()
 
     # Random opacity between 30-80%
-    opacity = random.randint(30, 80)
+    opacity = random.randint(30, 80)  # nosec B311
 
     return color_string, opacity
 

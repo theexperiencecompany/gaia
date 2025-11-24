@@ -101,7 +101,7 @@ async def _search_platform_emails_parallel(user_id: str) -> Dict[str, List[Dict]
     )
 
     # Build platform -> emails mapping
-    platform_emails = {}
+    platform_emails: Dict[str, List[Dict]] = {}
     for (platform, _), result in zip(search_tasks, results):
         if isinstance(result, Exception):
             logger.error(f"Search failed for {platform}: {result}")
@@ -484,7 +484,9 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
         crawl_semaphore = asyncio.Semaphore(20)  # Limit concurrent crawls
         platform_tasks = []
         discovered_profile_tasks = []  # Track discovery tasks
-        crawled_urls = set()  # Global deduplication: track all URLs already crawled
+        crawled_urls: set[str] = (
+            set()
+        )  # Global deduplication: track all URLs already crawled
 
         for platform, emails in platforms_with_emails.items():
             task = asyncio.create_task(
@@ -739,7 +741,7 @@ async def _discover_and_store_linked_profiles(
         source_domain = None
         for platform, config in PLATFORM_CONFIG.items():
             if platform == source_platform:
-                source_domain = config["url_template"].split("/")[2]
+                source_domain = str(config["url_template"]).split("/")[2]
                 break
 
         # Extract links from content using platform config
@@ -748,8 +750,8 @@ async def _discover_and_store_linked_profiles(
                 continue  # Skip same platform
 
             # Build regex pattern from URL template
-            url_template = config["url_template"]
-            regex_pattern = config["regex_pattern"]
+            url_template: str = config["url_template"]  # type: ignore[assignment]
+            regex_pattern: str = config["regex_pattern"]  # type: ignore[assignment]
 
             # Skip if same domain (e.g., github.com profile linking to github.com)
             platform_domain = url_template.split("/")[2]
