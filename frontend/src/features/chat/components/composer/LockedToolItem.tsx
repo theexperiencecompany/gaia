@@ -9,13 +9,11 @@ import { EnhancedToolInfo } from "../../types/enhancedTools";
 interface LockedToolItemProps {
   tool: EnhancedToolInfo;
   onConnect?: () => void;
-  showDescription?: boolean;
 }
 
 export const LockedToolItem: React.FC<LockedToolItemProps> = ({
   tool,
   onConnect,
-  showDescription = true,
 }) => {
   return (
     <div

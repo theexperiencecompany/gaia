@@ -1,31 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import {
+  isPersonalizationCompleteMessage,
+  type PersonalizationData,
+} from "@/features/onboarding/types/websocket";
 import { apiService } from "@/lib/api";
 import { wsManager } from "@/lib/websocket";
 
 export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
-
-export interface PersonalizationData {
-  has_personalization?: boolean;
-  phase?: string;
-  house: House;
-  personality_phrase: string;
-  user_bio: string;
-  bio_status?: "pending" | "processing" | "completed" | "no_gmail";
-  account_number: number;
-  member_since: string;
-  name: string;
-  holo_card_id: string;
-  overlay_color?: string;
-  overlay_opacity?: number;
-  suggested_workflows: Array<{
-    id: string;
-    title: string;
-    description: string;
-    steps: Array<{ tool_category: string }>;
-  }>;
-}
 
 interface UsePersonalizationReturn {
   personalizationData: PersonalizationData | null;
@@ -94,8 +77,8 @@ export const usePersonalization = (
   useEffect(() => {
     if (!enabled) return;
 
-    const handlePersonalizationComplete = (message: any) => {
-      if (message.type !== "onboarding_personalization_complete") return;
+    const handlePersonalizationComplete = (message: unknown) => {
+      if (!isPersonalizationCompleteMessage(message)) return;
 
       console.log("[usePersonalization] WebSocket event received");
 

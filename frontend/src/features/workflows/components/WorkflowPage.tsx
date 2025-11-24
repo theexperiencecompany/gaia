@@ -282,7 +282,6 @@ export default function WorkflowPage() {
               dummySectionRef={pageRef}
               hideUserWorkflows={true}
               exploreWorkflows={exploreWorkflows}
-              isLoadingExplore={isLoadingExplore}
             />,
           )}
 

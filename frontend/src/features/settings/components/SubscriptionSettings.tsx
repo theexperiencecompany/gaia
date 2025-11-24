@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
@@ -99,7 +100,8 @@ export function SubscriptionSettings() {
             </div>
           </div>
           <div className="relative h-76 w-full flex-1 overflow-hidden rounded-2xl bg-zinc-800/40 p-0 backdrop-blur-xl">
-            <img
+            <Image
+              fill
               src="/images/wallpapers/field.webp"
               alt="Subscription illustration"
               className="h-full w-full object-cover"

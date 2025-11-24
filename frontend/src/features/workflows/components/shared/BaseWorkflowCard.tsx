@@ -11,7 +11,6 @@ interface BaseWorkflowCardProps {
   title: string;
   description: string;
   steps?: Array<{ tool_category: string }>;
-  integrations?: string[];
   onClick?: () => void;
   showArrowIcon?: boolean;
   headerRight?: ReactNode;
@@ -26,7 +25,6 @@ export default function BaseWorkflowCard({
   title,
   description,
   steps = [],
-  integrations = [],
   onClick,
   showArrowIcon = false,
   headerRight,

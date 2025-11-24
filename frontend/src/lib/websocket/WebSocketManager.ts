@@ -3,7 +3,7 @@
  * Single WebSocket connection for the entire application
  */
 
-type MessageHandler = (message: any) => void;
+type MessageHandler = (message: unknown) => void;
 type ConnectionHandler = () => void;
 type ErrorHandler = (error: Error) => void;
 
@@ -134,7 +134,7 @@ class WebSocketManager {
     this.reconnectAttempts = 0;
   }
 
-  send(data: any) {
+  send(data: unknown) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
     } else {

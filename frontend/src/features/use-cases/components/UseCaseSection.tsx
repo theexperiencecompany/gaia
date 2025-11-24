@@ -22,13 +22,11 @@ export default function UseCaseSection({
   hideUserWorkflows = false,
   centered = true,
   exploreWorkflows: propExploreWorkflows,
-  isLoadingExplore: propIsLoadingExplore = false,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
   centered?: boolean;
   exploreWorkflows?: UseCase[];
-  isLoadingExplore?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -39,13 +37,11 @@ export default function UseCaseSection({
   const [localExploreWorkflows, setLocalExploreWorkflows] = useState<UseCase[]>(
     [],
   );
-  const [localIsLoadingExplore, setLocalIsLoadingExplore] = useState(false);
 
   // Fetch explore workflows if not provided as props
   useEffect(() => {
     if (!propExploreWorkflows || propExploreWorkflows.length === 0) {
       const fetchExploreWorkflows = async () => {
-        setLocalIsLoadingExplore(true);
         try {
           const resp = await workflowApi.getExploreWorkflows(50, 0);
           const converted = resp.workflows.map((w) => ({
@@ -65,8 +61,6 @@ export default function UseCaseSection({
           setLocalExploreWorkflows(converted);
         } catch (error) {
           console.error("Error fetching explore workflows:", error);
-        } finally {
-          setLocalIsLoadingExplore(false);
         }
       };
 

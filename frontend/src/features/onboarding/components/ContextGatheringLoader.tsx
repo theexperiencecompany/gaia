@@ -7,6 +7,13 @@ import { toast } from "sonner";
 
 import { RaisedButton } from "@/components";
 import { useUser } from "@/features/auth/hooks/useUser";
+import type {
+  PersonalizationData,
+} from "@/features/onboarding/types/websocket";
+import {
+  isBioStatusUpdateMessage,
+  isPersonalizationCompleteMessage,
+} from "@/features/onboarding/types/websocket";
 import { Cancel01Icon } from "@/icons";
 import { apiService } from "@/lib/api";
 import { wsManager } from "@/lib/websocket";
@@ -35,29 +42,13 @@ interface ContextGatheringLoaderProps {
   onComplete: () => void;
 }
 
-type BioStatus = "pending" | "processing" | "completed" | "no_gmail";
-
-interface PersonalizationData {
-  phase?: string;
-  bio_status?: BioStatus;
-  has_personalization?: boolean;
-  house?: string;
-  personality_phrase?: string;
-  user_bio?: string;
-  account_number?: number;
-  member_since?: string;
-  name?: string;
-  holo_card_id?: string;
-  overlay_color?: string;
-  overlay_opacity?: number;
-}
-
 const LOADING_MESSAGES = [
   "Creating your personalized space...",
   "Assigning your GAIA house...",
   "Generating your personality profile...",
   "Preparing your workspace...",
 ] as const;
+
 
 const MAX_PROGRESS_TIME_SECONDS = 30;
 const MESSAGE_ROTATION_INTERVAL_SECONDS = 3;
@@ -73,7 +64,6 @@ export default function ContextGatheringLoader({
   const [fetchError, setFetchError] = useState(false);
   const [messageIndex, setMessageIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [wsConnected, setWsConnected] = useState(false);
 
   const dismissalKey = `personalization-dismissed-${user.email || "unknown"}`;
   const isPersonalizationComplete =
@@ -83,9 +73,11 @@ export default function ContextGatheringLoader({
     phase === OnboardingPhase.GETTING_STARTED ||
     phase === OnboardingPhase.COMPLETED;
 
-  // Fetch personalization data from API
-  const fetchPersonalization =
-    async (): Promise<PersonalizationData | null> => {
+
+
+  // Initialize: Fetch data and check if should hide
+  useEffect(() => {
+    const fetchPersonalization = async (): Promise<PersonalizationData | null> => {
       try {
         const data = await apiService.get<PersonalizationData>(
           "/onboarding/personalization",
@@ -108,8 +100,6 @@ export default function ContextGatheringLoader({
       }
     };
 
-  // Initialize: Fetch data and check if should hide
-  useEffect(() => {
     const initialize = async () => {
       console.log("[ContextGatheringLoader] Starting initialization...");
       const data = await fetchPersonalization();
@@ -145,12 +135,12 @@ export default function ContextGatheringLoader({
     };
 
     initialize();
-  }, []);
+  }, [dismissalKey, setPhase]);
 
   // WebSocket: Listen for completion event
   useEffect(() => {
-    const handlePersonalizationComplete = (message: any) => {
-      if (message.type !== "onboarding_personalization_complete") return;
+    const handlePersonalizationComplete = (message: unknown) => {
+      if (!isPersonalizationCompleteMessage(message)) return;
 
       console.log(
         "[ContextGatheringLoader] WebSocket event received:",
@@ -169,8 +159,8 @@ export default function ContextGatheringLoader({
       toast.success("Your personalized GAIA is ready! 🎉");
     };
 
-    const handleBioStatusUpdate = (message: any) => {
-      if (message.type !== "bio_status_update") return;
+    const handleBioStatusUpdate = (message: unknown) => {
+      if (!isBioStatusUpdateMessage(message)) return;
 
       console.log(
         "[ContextGatheringLoader] Bio status update received:",
@@ -178,7 +168,7 @@ export default function ContextGatheringLoader({
       );
 
       // If bio status changed to processing, reset the personalization state
-      if (message.data?.bio_status === "processing") {
+      if (message.data.bio_status === "processing") {
         setPhase(OnboardingPhase.PERSONALIZATION_PENDING);
         setPersonalizationData((prev) => ({
           ...prev,
@@ -208,13 +198,12 @@ export default function ContextGatheringLoader({
       );
       wsManager.off("bio_status_update", handleBioStatusUpdate);
     };
-  }, []);
+  }, [setPhase]);
 
   // Monitor WebSocket connection status
   useDebugEffect(() => {
     const checkConnection = () => {
       const isConnected = wsManager.isConnected;
-      setWsConnected(isConnected);
       console.log("[ContextGatheringLoader] WebSocket status check:", {
         isConnected,
         userEmail: user.email,

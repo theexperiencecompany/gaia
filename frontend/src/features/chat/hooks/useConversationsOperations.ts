@@ -10,7 +10,7 @@ export const useConversationsOperations = () => {
   );
 
   const fetchConversations = useCallback(
-    async (page = 1, limit = 20, append = true) => {
+    async (page = 1, limit = 20) => {
       setConversationsLoadingStatus("loading");
 
       try {

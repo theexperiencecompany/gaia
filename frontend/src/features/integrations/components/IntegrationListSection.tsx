@@ -3,9 +3,9 @@ import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { ConnectIcon } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations";
-import { ConnectIcon } from "@/components/shared/icons";
 
 
 function IntegrationListSection() {

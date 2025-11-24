@@ -5,20 +5,19 @@ import { Modal, ModalContent } from "@heroui/modal";
 import { Skeleton } from "@heroui/skeleton";
 import confetti from "canvas-confetti";
 import { useEffect, useRef, useState } from "react";
+import { TwitterShareButton } from "react-share";
 import { toast } from "sonner";
 
 import { TwitterIcon } from "@/components";
-import { HoloCardEditor, HoloCardDisplayData } from "@/components/ui/holo-card";
+import { HoloCardDisplayData,HoloCardEditor } from "@/components/ui/holo-card";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
-import { getHouseImage } from "@/features/onboarding/constants/houses";
 import {
   House,
   usePersonalization,
 } from "@/features/onboarding/hooks/usePersonalization";
 import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
 import { Rocket01Icon } from "@/icons";
-import { TwitterShareButton } from "react-share";
 
 interface FeatureModalProps {
   isOpen: boolean;

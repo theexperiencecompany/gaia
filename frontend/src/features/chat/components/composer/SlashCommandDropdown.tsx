@@ -160,7 +160,6 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
         <LockedToolItem
           tool={match.enhancedTool!}
           onConnect={onClose}
-          showDescription={false}
         />
       </div>
     );

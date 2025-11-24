@@ -151,7 +151,6 @@ export function PricingCards({
             price={priceInUSDCents} // Always in USD cents
             originalPrice={originalPriceInUSDCents}
             title={plan.name}
-            type={isPro ? "main" : "secondary"}
             isCurrentPlan={isCurrentPlan}
             hasActiveSubscription={hasActiveSubscription}
           />

@@ -15,14 +15,14 @@ import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
 import { useUser } from "@/features/auth/hooks/useUser";
 import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
 import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
-import OnboardingStepsCard from "@/features/onboarding/components/OnboardingStepsCard";
+import { isOnboardingPhaseUpdateMessage } from "@/features/onboarding/types/websocket";
 import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
-import { useChatStoreSync } from "@/stores/chatStore";
 import { apiService } from "@/lib/api";
 import { wsManager } from "@/lib/websocket";
+import { useChatStoreSync } from "@/stores/chatStore";
 import { useHoloCardModalStore } from "@/stores/holoCardModalStore";
 import {
   OnboardingPhase,
@@ -91,9 +91,10 @@ export default function MainLayout({ children }: { children: ReactNode }) {
 
   // Listen for WebSocket phase updates
   useEffect(() => {
-    const handlePhaseUpdate = (message: any) => {
-      if (message.type === "onboarding_phase_update" && message.data?.phase)
-        setPhase(message.data.phase as OnboardingPhase);
+    const handlePhaseUpdate = (message: unknown) => {
+      if (isOnboardingPhaseUpdateMessage(message) && message.data?.phase) {
+        setPhase(message.data.phase);
+      }
     };
 
     console.log(
@@ -104,7 +105,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
     return () => {
       wsManager.off("onboarding_phase_update", handlePhaseUpdate);
     };
-  }, [wsManager, setPhase]);
+  }, [setPhase]);
 
   // Visibility logic based on phase from store
   const shouldShowPersonalizationCard =

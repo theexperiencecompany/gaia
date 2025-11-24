@@ -6,7 +6,7 @@ import { Tooltip } from "@heroui/tooltip";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { HoloCardEditor, HoloCardDisplayData } from "@/components/ui/holo-card";
+import { HoloCardDisplayData,HoloCardEditor } from "@/components/ui/holo-card";
 import {
   holoCardApi,
   HoloCardData,

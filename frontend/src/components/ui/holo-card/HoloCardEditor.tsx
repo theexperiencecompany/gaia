@@ -27,6 +27,7 @@ import {
   ReloadIcon,
   Share08Icon,
 } from "@/icons";
+
 import { HoloCard } from "./HoloCard";
 import type { HoloCardDisplayData } from "./types";
 

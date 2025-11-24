@@ -4,6 +4,7 @@ import Tilt from "react-parallax-tilt";
 
 import { StyledHoloCard } from "@/app/styles/holo-card.styles";
 import { getHouseImage } from "@/features/onboarding/constants/houses";
+
 import { HoloCardProps } from "./types";
 
 export const HoloCard = ({
@@ -38,9 +39,7 @@ export const HoloCard = ({
     overlay_opacity = 40,
   } = data;
 
-  const houseImage = getHouseImage(house as any);
-
-
+  const houseImage = getHouseImage(house);
 
   const handleCardClick = () => {
     if (!forceSide) {
