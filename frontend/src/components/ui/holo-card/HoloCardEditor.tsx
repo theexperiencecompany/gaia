@@ -128,7 +128,7 @@ export const HoloCardEditor = ({
   }, [data.name]);
 
   const handleShare = (platform: "twitter" | "linkedin" | "copy") => {
-    if (!data.holo_card_id) {
+    if (!data.holo_card_id && typeof window !== "undefined") {
       // Fallback to current URL if no ID (e.g. during onboarding before full persistence if that happens, though usually we have it)
       // Or just warn
     }
