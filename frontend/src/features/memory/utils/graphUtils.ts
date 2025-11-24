@@ -1,9 +1,6 @@
-import * as d3 from "d3";
+import type * as d3 from "d3";
 
-import {
-  type Memory,
-  type MemoryRelation,
-} from "@/features/memory/api/memoryApi";
+import type { Memory, MemoryRelation } from "@/features/memory/api/memoryApi";
 
 export interface GraphNode extends d3.SimulationNodeDatum {
   id: string;

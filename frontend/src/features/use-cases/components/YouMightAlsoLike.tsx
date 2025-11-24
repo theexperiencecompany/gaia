@@ -4,11 +4,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import type { UseCase } from "@/features/use-cases/types";
-import { workflowApi } from "@/features/workflows/api/workflowApi";
-import {
+import type {
   CommunityWorkflow,
   Workflow,
 } from "@/features/workflows/api/workflowApi";
+import { workflowApi } from "@/features/workflows/api/workflowApi";
 import CommunityWorkflowCard from "@/features/workflows/components/CommunityWorkflowCard";
 
 import UseCaseCard from "./UseCaseCard";

@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import React, { ReactNode, useEffect, useState } from "react";
+import type React from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { useLoading } from "@/features/chat/hooks/useLoading";
 

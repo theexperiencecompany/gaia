@@ -1,9 +1,9 @@
 import {
-  type ToolDataEntry,
   TOOLS_MESSAGE_KEYS,
+  type ToolDataEntry,
 } from "@/config/registries/toolRegistry";
 import { posthog } from "@/lib/posthog";
-import { MessageType } from "@/types/features/convoTypes";
+import type { MessageType } from "@/types/features/convoTypes";
 
 export function parseStreamData(
   streamChunk: Partial<MessageType>,

@@ -13,7 +13,7 @@ import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { Calendar03Icon, MoreVerticalIcon } from "@/icons";
-import { Goal } from "@/types/api/goalsApiTypes";
+import type { Goal } from "@/types/api/goalsApiTypes";
 import { parseDate2 } from "@/utils";
 
 export function GoalCard({

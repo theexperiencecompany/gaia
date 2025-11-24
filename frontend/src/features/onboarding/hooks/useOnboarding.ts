@@ -3,12 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { authApi } from "@/features/auth/api/authApi";
-import { useUser } from "@/features/auth/hooks/useUser";
-import { useUserActions } from "@/features/auth/hooks/useUser";
+import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
-import { Message, OnboardingState } from "../types";
+import type { Message, OnboardingState } from "../types";
 
 const ONBOARDING_STORAGE_KEY = "gaia-onboarding-state";
 

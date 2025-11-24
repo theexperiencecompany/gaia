@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { calendarApi } from "@/features/calendar/api/calendarApi";
 import { Cancel01Icon, Tick02Icon } from "@/icons";
-import { CalendarDeleteOptions } from "@/types/features/calendarTypes";
+import type { CalendarDeleteOptions } from "@/types/features/calendarTypes";
 import { buildDeleteEventPayload } from "@/utils/calendar/eventPayloadBuilders";
 import { formatDateWithRelative } from "@/utils/date/calendarDateUtils";
 

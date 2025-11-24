@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
 import { integrationsApi } from "../api/integrationsApi";
-import { Integration, IntegrationStatus } from "../types";
+import type { Integration, IntegrationStatus } from "../types";
 
 export interface UseIntegrationsReturn {
   integrations: Integration[];

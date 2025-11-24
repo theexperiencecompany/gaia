@@ -1,9 +1,9 @@
 import { apiService } from "@/lib/api";
-import {
+import type {
   CalendarEventsResponse,
   CalendarItem,
 } from "@/types/api/calendarApiTypes";
-import {
+import type {
   EventCreatePayload,
   GoogleCalendar,
   GoogleCalendarEvent,

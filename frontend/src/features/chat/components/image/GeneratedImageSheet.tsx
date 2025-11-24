@@ -2,8 +2,8 @@ import Image from "next/image";
 
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import ChatBubble_Actions_Image from "@/features/chat/components/bubbles/actions/ChatBubble_Actions_Image";
-import { SetImageDataType } from "@/types/features/chatBubbleTypes";
-import { ImageData } from "@/types/features/convoTypes";
+import type { SetImageDataType } from "@/types/features/chatBubbleTypes";
+import type { ImageData } from "@/types/features/convoTypes";
 
 interface GeneratedImageSheetProps {
   openImage: boolean;

@@ -14,7 +14,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { todoApi } from "@/features/todo/api/todoApi";
-import { ProjectCreate } from "@/types/features/todoTypes";
+import type { ProjectCreate } from "@/types/features/todoTypes";
 
 interface AddProjectModalProps {
   open: boolean;

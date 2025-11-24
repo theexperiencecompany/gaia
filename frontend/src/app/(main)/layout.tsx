@@ -2,7 +2,7 @@
 
 import { useDrag } from "@use-gesture/react";
 import { usePathname } from "next/navigation";
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 export const dynamic = "force-dynamic";
 

@@ -18,11 +18,11 @@ import {
 } from "@/features/chat/utils/messageContentUtils";
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import {
+import type {
   ChatBubbleBotProps,
   SetImageDataType,
 } from "@/types/features/chatBubbleTypes";
-import { MessageType } from "@/types/features/convoTypes";
+import type { MessageType } from "@/types/features/convoTypes";
 
 export default function ChatRenderer() {
   const { convoMessages } = useConversation();

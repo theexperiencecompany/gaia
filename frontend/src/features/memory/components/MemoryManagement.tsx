@@ -14,8 +14,8 @@ import { toast } from "sonner";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import {
   type Memory,
-  memoryApi,
   type MemoryRelation,
+  memoryApi,
 } from "@/features/memory/api/memoryApi";
 import AddMemoryModal from "@/features/memory/components/AddMemoryModal";
 import MemoryGraph from "@/features/memory/components/MemoryGraph";

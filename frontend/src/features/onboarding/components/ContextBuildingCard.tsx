@@ -1,15 +1,18 @@
 "use client";
 
 import { Card } from "@heroui/card";
-import { FC } from "react";
+import type { FC } from "react";
 
 import {
   Cancel01Icon,
   CheckmarkCircle02Icon,
-  IconProps,
+  type IconProps,
   Loading02Icon,
 } from "@/icons";
-import { ContextStatus, useOnboardingStore } from "@/stores/onboardingStore";
+import {
+  type ContextStatus,
+  useOnboardingStore,
+} from "@/stores/onboardingStore";
 
 interface StatusConfig {
   text: string;

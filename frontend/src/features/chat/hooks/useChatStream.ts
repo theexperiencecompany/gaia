@@ -485,9 +485,9 @@ export const useChatStream = () => {
             // Get the complete message from store to ensure all streamed data is persisted
             const messageFromStore = useChatStore
               .getState()
-              .messagesByConversation[
-                conversationId
-              ]?.find((msg) => msg.id === refs.current.botMessage?.message_id);
+              .messagesByConversation[conversationId]?.find(
+                (msg) => msg.id === refs.current.botMessage?.message_id,
+              );
 
             if (messageFromStore) {
               // Persist the complete message with final status

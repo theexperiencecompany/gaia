@@ -1,4 +1,4 @@
-import { ProfessionOption, Question } from "../types";
+import type { ProfessionOption, Question } from "../types";
 
 export const professionOptions: ProfessionOption[] = [
   { label: "Student", value: "student" },

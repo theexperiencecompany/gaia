@@ -1,5 +1,6 @@
 import { Button } from "@heroui/button";
-import React, { useCallback, useState } from "react";
+import type React from "react";
+import { useCallback, useState } from "react";
 
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";

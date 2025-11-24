@@ -5,7 +5,7 @@ import { useUser } from "@/features/auth/hooks/useUser";
 import SelectedCalendarEventIndicator from "@/features/chat/components/composer/SelectedCalendarEventIndicator";
 import SelectedToolIndicator from "@/features/chat/components/composer/SelectedToolIndicator";
 import SelectedWorkflowIndicator from "@/features/chat/components/composer/SelectedWorkflowIndicator";
-import { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
+import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
 import ChatBubble_Actions from "../actions/ChatBubble_Actions";

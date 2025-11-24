@@ -3,7 +3,11 @@ import { toast } from "sonner";
 
 import { useUser } from "@/features/auth/hooks/useUser";
 
-import { fetchAvailableModels, ModelInfo, selectModel } from "../api/modelsApi";
+import {
+  fetchAvailableModels,
+  type ModelInfo,
+  selectModel,
+} from "../api/modelsApi";
 
 export const useModels = () => {
   return useQuery({

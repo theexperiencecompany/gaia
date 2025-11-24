@@ -1,10 +1,10 @@
 import {
-  CalendarEventSelectionOptions,
-  SelectedCalendarEventData,
+  type CalendarEventSelectionOptions,
+  type SelectedCalendarEventData,
   useCalendarEventSelectionStore,
 } from "@/stores/calendarEventSelectionStore";
 
-export { type CalendarEventSelectionOptions, type SelectedCalendarEventData };
+export type { CalendarEventSelectionOptions, SelectedCalendarEventData };
 
 export const useCalendarEventSelection = () => {
   const {

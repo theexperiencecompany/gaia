@@ -1,8 +1,9 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
-import React, { useState } from "react";
+import type React from "react";
+import { useState } from "react";
 
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
-import { CodeData } from "@/types/features/toolDataTypes";
+import type { CodeData } from "@/types/features/toolDataTypes";
 
 import ChartDisplay from "./ChartDisplay";
 import CodeExecutionOutput from "./CodeExecutionOutput";

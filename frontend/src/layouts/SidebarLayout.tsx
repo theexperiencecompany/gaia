@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import Image from "next/image";
 import Link from "next/link";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { SidebarHeaderButton } from "@/components";
 import ContactSupport from "@/components/layout/sidebar/ContactSupport";

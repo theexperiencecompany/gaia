@@ -3,7 +3,10 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import { useCallback, useMemo, useState } from "react";
-import { FixedSizeList as List, ListChildComponentProps } from "react-window";
+import {
+  FixedSizeList as List,
+  type ListChildComponentProps,
+} from "react-window";
 import InfiniteLoader from "react-window-infinite-loader";
 
 import Spinner from "@/components/ui/spinner";
@@ -28,7 +31,7 @@ import {
   StarIcon,
   Timer02Icon,
 } from "@/icons";
-import { EmailData } from "@/types/features/mailTypes";
+import type { EmailData } from "@/types/features/mailTypes";
 
 function AIAnalysisIndicator({ hasAnalysis }: { hasAnalysis: boolean }) {
   if (!hasAnalysis) return null;

@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 
 export * from "@theexperiencecompany/gaia-icons/solid-rounded";
 

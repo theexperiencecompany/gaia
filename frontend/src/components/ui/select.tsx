@@ -1,7 +1,7 @@
 "use client";
 
 import * as SelectPrimitive from "@radix-ui/react-select";
-import * as React from "react";
+import type * as React from "react";
 
 import { ArrowDown01Icon, ArrowUp02Icon, CheckmarkCircle02Icon } from "@/icons";
 import { cn } from "@/lib/utils";

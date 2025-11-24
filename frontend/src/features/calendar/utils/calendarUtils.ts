@@ -1,6 +1,6 @@
 import tinycolor from "tinycolor2";
 
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 // Group events by a date string like "day dayOfWeek"
 export function groupEventsByDate(

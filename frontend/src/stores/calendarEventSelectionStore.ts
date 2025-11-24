@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 export interface SelectedCalendarEventData {
   id: string;
@@ -23,9 +23,7 @@ export interface SelectedCalendarEventData {
   isAllDay?: boolean;
 }
 
-export interface CalendarEventSelectionOptions {
-  // Reserved for future options if needed
-}
+export type CalendarEventSelectionOptions = {};
 
 interface CalendarEventSelectionState {
   selectedCalendarEvent: SelectedCalendarEventData | null;

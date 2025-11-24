@@ -7,7 +7,7 @@ import Link from "next/link";
 import { RedditIcon } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { CheckmarkCircle02Icon, LinkSquare02Icon } from "@/icons";
-import {
+import type {
   RedditCommentCreatedData,
   RedditPostCreatedData,
 } from "@/types/features/redditTypes";

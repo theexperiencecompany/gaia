@@ -2,7 +2,7 @@ import { Chip } from "@heroui/chip";
 
 import { isTooDark } from "@/features/calendar/utils/calendarUtils";
 import { ViewIcon, ViewOffIcon } from "@/icons";
-import {
+import type {
   CalendarChipProps,
   CalendarSelectorProps,
 } from "@/types/features/calendarTypes";

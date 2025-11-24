@@ -3,9 +3,9 @@
 import { Button } from "@heroui/button";
 import { useDisclosure } from "@heroui/modal";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  ReactElement,
-  ReactNode,
+import React, {
+  type ReactElement,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -13,15 +13,18 @@ import {
   useRef,
   useState,
 } from "react";
-import React from "react";
 
 import WorkflowsHeader from "@/components/layout/headers/WorkflowsHeader";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
-import { UseCase } from "@/features/use-cases/types";
+import type { UseCase } from "@/features/use-cases/types";
 import { useHeader } from "@/hooks/layout/useHeader";
-import { IconProps, RedoIcon } from "@/icons";
+import { type IconProps, RedoIcon } from "@/icons";
 
-import { CommunityWorkflow, Workflow, workflowApi } from "../api/workflowApi";
+import {
+  type CommunityWorkflow,
+  type Workflow,
+  workflowApi,
+} from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
 import CommunityWorkflowCard from "./CommunityWorkflowCard";
 import CreateWorkflowModal from "./CreateWorkflowModal";

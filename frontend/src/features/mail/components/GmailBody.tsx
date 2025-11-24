@@ -2,7 +2,7 @@ import DOMPurify from "dompurify";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import Spinner from "@/components/ui/spinner";
-import { EmailData, EmailPart } from "@/types/features/mailTypes";
+import type { EmailData, EmailPart } from "@/types/features/mailTypes";
 
 export const decodeBase64 = (str: string): string => {
   try {

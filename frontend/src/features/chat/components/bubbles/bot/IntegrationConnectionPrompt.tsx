@@ -6,7 +6,7 @@ import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations";
 import { AlertCircleIcon } from "@/icons";
-import { IntegrationConnectionData } from "@/types/features/integrationTypes";
+import type { IntegrationConnectionData } from "@/types/features/integrationTypes";
 
 interface IntegrationConnectionPromptProps {
   integration_connection_required: IntegrationConnectionData;

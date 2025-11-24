@@ -1,14 +1,14 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback } from "react";
 
-import { Workflow } from "@/features/workflows/api/workflowApi";
+import type { Workflow } from "@/features/workflows/api/workflowApi";
 import {
-  SelectedWorkflowData,
+  type SelectedWorkflowData,
   useWorkflowSelectionStore,
-  WorkflowSelectionOptions,
+  type WorkflowSelectionOptions,
 } from "@/stores/workflowSelectionStore";
 
-export { type SelectedWorkflowData, type WorkflowSelectionOptions };
+export type { SelectedWorkflowData, WorkflowSelectionOptions };
 
 export const useWorkflowSelection = () => {
   const {

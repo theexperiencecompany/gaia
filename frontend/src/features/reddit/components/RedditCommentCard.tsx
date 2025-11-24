@@ -4,7 +4,7 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { ArrowUp02Icon, UserCircle02Icon } from "@/icons";
-import { RedditCommentData } from "@/types/features/redditTypes";
+import type { RedditCommentData } from "@/types/features/redditTypes";
 
 interface RedditCommentCardProps {
   comments?: RedditCommentData[] | null;

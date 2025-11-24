@@ -1,10 +1,10 @@
-import React from "react";
+import type React from "react";
 
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { SquareLock01Icon } from "@/icons";
 
-import { EnhancedToolInfo } from "../../types/enhancedTools";
+import type { EnhancedToolInfo } from "../../types/enhancedTools";
 
 interface LockedToolItemProps {
   tool: EnhancedToolInfo;

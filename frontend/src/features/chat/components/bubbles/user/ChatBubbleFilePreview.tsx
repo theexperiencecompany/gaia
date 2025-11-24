@@ -5,7 +5,7 @@ import {
   getFileIcon,
   getFormattedFileType,
 } from "@/features/chat/components/files/FilePreview";
-import { FileData } from "@/types/shared";
+import type { FileData } from "@/types/shared";
 
 interface ChatBubbleFilePreviewProps {
   files: FileData[];

@@ -1,5 +1,5 @@
-import { CalendarItem } from "@/types/api/calendarApiTypes";
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import type { CalendarItem } from "@/types/api/calendarApiTypes";
+import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 // Helper function to get event color dynamically
 export const getEventColor = (

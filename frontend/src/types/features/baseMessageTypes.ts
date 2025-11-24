@@ -1,25 +1,26 @@
 // Base message types to eliminate redundancy across chat bubble and conversation types
 
-import React, { Dispatch } from "react";
+import type React from "react";
+import type { Dispatch } from "react";
 
-import { BaseMessageData } from "@/config/registries/baseMessageRegistry";
-import { SystemPurpose } from "@/features/chat/api/chatApi";
+import type { BaseMessageData } from "@/config/registries/baseMessageRegistry";
+import type { SystemPurpose } from "@/features/chat/api/chatApi";
 
-import {
+import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
   CalendarOptions,
 } from "./calendarTypes";
-import {
+import type {
   ContactData,
   EmailComposeData,
   EmailSentData,
   EmailThreadData,
   PeopleSearchData,
 } from "./mailTypes";
-import { DeepResearchResults, SearchResults } from "./searchTypes";
-import { TodoToolData } from "./todoToolTypes";
-import {
+import type { DeepResearchResults, SearchResults } from "./searchTypes";
+import type { TodoToolData } from "./todoToolTypes";
+import type {
   CodeData,
   DocumentData,
   GoalDataMessageType,
@@ -27,7 +28,7 @@ import {
   ImageData,
   MemoryData,
 } from "./toolDataTypes";
-import { WeatherData } from "./weatherTypes";
+import type { WeatherData } from "./weatherTypes";
 
 // Type for image data used in UI callbacks
 export interface SetImageDataType {

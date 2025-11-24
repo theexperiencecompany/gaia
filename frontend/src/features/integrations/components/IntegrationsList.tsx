@@ -1,8 +1,7 @@
 import { Button } from "@heroui/button";
-import React from "react";
-
-import { useIntegrations } from "../hooks/useIntegrations";
+import type React from "react";
 import { useIntegrationSearch } from "../hooks/useIntegrationSearch";
+import { useIntegrations } from "../hooks/useIntegrations";
 import { IntegrationItem } from "./IntegrationsCard";
 import { IntegrationsSearchInput } from "./IntegrationsSearchInput";
 

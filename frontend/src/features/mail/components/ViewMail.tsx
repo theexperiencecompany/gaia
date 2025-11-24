@@ -23,11 +23,15 @@ import {
   ArrowLeftDoubleIcon,
   ArrowTurnBackwardIcon,
   Cancel01Icon,
+  MagicWand05Icon,
   SentIcon,
+  StarsIcon,
 } from "@/icons";
-import { MagicWand05Icon, StarsIcon } from "@/icons";
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
-import { EmailData, EmailImportanceSummary } from "@/types/features/mailTypes";
+import type {
+  EmailData,
+  EmailImportanceSummary,
+} from "@/types/features/mailTypes";
 
 import { useFetchEmailById } from "../hooks/useFetchEmailById";
 

@@ -1,5 +1,5 @@
 import PeopleSearchCard from "@/features/mail/components/PeopleSearchCard";
-import { PeopleSearchData } from "@/types/features/mailTypes";
+import type { PeopleSearchData } from "@/types/features/mailTypes";
 
 export default function PeopleSearchSection({
   people_search_data,

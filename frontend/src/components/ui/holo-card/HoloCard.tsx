@@ -1,11 +1,12 @@
 import Image from "next/image";
-import React, { useRef, useState } from "react";
+import type React from "react";
+import { useRef, useState } from "react";
 import Tilt from "react-parallax-tilt";
 
 import { StyledHoloCard } from "@/app/styles/holo-card.styles";
 import { getHouseImage } from "@/features/onboarding/constants/houses";
 
-import { HoloCardProps } from "./types";
+import type { HoloCardProps } from "./types";
 
 export const HoloCard = ({
   data,

@@ -1,12 +1,15 @@
 import {
   BASE_MESSAGE_KEYS,
   BASE_MESSAGE_SCHEMA,
-  BaseMessageData,
+  type BaseMessageData,
 } from "@/config/registries/baseMessageRegistry";
 import { TOOLS_MESSAGE_KEYS } from "@/config/registries/toolRegistry";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
-import { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
-import { ConversationMessage, MessageType } from "@/types/features/convoTypes";
+import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
+import type {
+  ConversationMessage,
+  MessageType,
+} from "@/types/features/convoTypes";
 
 /**
  * Check if text bubble should be shown (considering system-generated conversations)

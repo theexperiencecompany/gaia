@@ -14,9 +14,9 @@ import {
   Timer02Icon,
 } from "@/icons";
 import {
-  ActionType,
-  ModalConfig,
-  NotificationRecord,
+  type ActionType,
+  type ModalConfig,
+  type NotificationRecord,
   NotificationStatus,
 } from "@/types/features/notificationTypes";
 import { parseDate } from "@/utils/date/dateUtils";

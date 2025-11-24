@@ -2,12 +2,12 @@
 
 import { QueryClient } from "@tanstack/react-query";
 import {
-  PersistedClient,
-  Persister,
+  type PersistedClient,
+  type Persister,
   PersistQueryClientProvider,
 } from "@tanstack/react-query-persist-client";
 import { del, get, set } from "idb-keyval";
-import { ReactNode, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 /**
  * Creates an Indexed DB persister

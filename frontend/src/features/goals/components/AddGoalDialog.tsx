@@ -7,7 +7,8 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import React, { Dispatch, SetStateAction, useEffect, useState } from "react";
+import type React from "react";
+import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 
 import { SentIcon } from "@/icons";
 import { posthog } from "@/lib";

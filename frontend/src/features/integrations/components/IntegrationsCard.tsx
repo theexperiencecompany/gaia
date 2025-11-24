@@ -1,14 +1,14 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Selection } from "@heroui/react";
-import React from "react";
+import type { Selection } from "@heroui/react";
+import type React from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
-import { Integration } from "../types";
+import type { Integration } from "../types";
 
 interface IntegrationsCardProps {
   onClose?: () => void;

@@ -1,5 +1,5 @@
 import Image from "next/image";
-import React from "react";
+import type React from "react";
 
 import DummyComposer from "../demo/DummyComposer";
 import LargeHeader from "../shared/LargeHeader";

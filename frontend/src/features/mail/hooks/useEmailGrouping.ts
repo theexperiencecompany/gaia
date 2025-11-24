@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { EmailData } from "@/types/features/mailTypes";
+import type { EmailData } from "@/types/features/mailTypes";
 
 // Interface for our grouped items (either a section header or an email)
 export interface ListItem {

@@ -3,8 +3,8 @@ import * as d3 from "d3";
 import React, { useEffect, useRef, useState } from "react";
 
 import {
-  DummyLink,
-  DummyNode,
+  type DummyLink,
+  type DummyNode,
   memoryLinks,
   memoryNodes,
 } from "../../constants/data";

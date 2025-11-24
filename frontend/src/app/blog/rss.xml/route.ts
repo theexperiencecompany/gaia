@@ -16,7 +16,7 @@ export async function GET() {
         // Clean content for RSS (strip HTML, limit length)
         const description =
           blog.content
-            .replace(/[#*`\[\]()]/g, "")
+            .replace(/[#*`[\]()]/g, "")
             .replace(/\n/g, " ")
             .slice(0, 500)
             .trim() + "...";

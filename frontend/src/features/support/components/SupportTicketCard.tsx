@@ -9,14 +9,15 @@ import {
   ModalHeader,
 } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import React, { useState } from "react";
+import type React from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
 import { PencilEdit01Icon, Separator } from "@/components";
 import { supportApi } from "@/features/support/api/supportApi";
 import { Comment01Icon, HelpCircleIcon } from "@/icons";
-import { SupportTicketData } from "@/types/features/supportTypes";
+import type { SupportTicketData } from "@/types/features/supportTypes";
 
 // Support ticket validation schema
 const supportTicketSchema = z.object({

@@ -11,9 +11,9 @@ import { useUrlTodoSelection } from "@/features/todo/hooks/useUrlTodoSelection";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import {
   Priority,
-  Todo,
-  TodoFilters,
-  TodoUpdate,
+  type Todo,
+  type TodoFilters,
+  type TodoUpdate,
 } from "@/types/features/todoTypes";
 
 export default function TodosPage() {

@@ -1,6 +1,6 @@
-import React from "react";
+import type React from "react";
 
-import { SearchMode } from "@/types/shared";
+import type { SearchMode } from "@/types/shared";
 
 import ComposerLeft from "./ComposerLeft";
 import SearchbarRightSendBtn from "./ComposerRight";

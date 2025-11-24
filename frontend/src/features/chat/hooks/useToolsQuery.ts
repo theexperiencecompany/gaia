@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { fetchAvailableTools, ToolInfo } from "../api/toolsApi";
+import { fetchAvailableTools, type ToolInfo } from "../api/toolsApi";
 
 export interface UseToolsQueryReturn {
   tools: ToolInfo[];

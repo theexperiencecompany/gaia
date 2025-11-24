@@ -1,12 +1,12 @@
 import Image from "next/image";
-
-import { InformationCircleIcon, NotificationIcon } from "@/icons";
 import {
   Brain02Icon,
   CheckmarkCircle02Icon,
   ConnectIcon,
   FileEmpty02Icon,
   Image02Icon,
+  InformationCircleIcon,
+  NotificationIcon,
   SourceCodeCircleIcon,
   Target02Icon,
 } from "@/icons";
@@ -38,7 +38,7 @@ const normalizeCategoryName = (name: string): string => {
   return name
     .toLowerCase()
     .trim()
-    .replace(/[\s\-]+/g, "_") // Replace spaces and dashes with underscore
+    .replace(/[\s-]+/g, "_") // Replace spaces and dashes with underscore
     .replace(/_+/g, "_") // Replace multiple underscores with single underscore
     .replace(/^_|_$/g, ""); // Remove leading/trailing underscores
 };

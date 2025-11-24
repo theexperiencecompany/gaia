@@ -1,6 +1,6 @@
 import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
-import { memo, ReactNode, useEffect, useRef, useState } from "react";
+import { memo, type ReactNode, useEffect, useRef, useState } from "react";
 
 import Spinner from "@/components/ui/spinner";
 import {

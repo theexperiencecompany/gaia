@@ -1,5 +1,6 @@
 import { shuffle } from "lodash";
-import React, { useMemo } from "react";
+import type React from "react";
+import { useMemo } from "react";
 
 import { ArrowRight01Icon, Button } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";

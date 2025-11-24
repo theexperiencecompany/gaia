@@ -7,9 +7,8 @@ import { useEffect, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
-import { ArrowRight01Icon } from "@/icons";
-import { BubbleChatAddIcon, Target02Icon } from "@/icons";
-import { Goal } from "@/types/api/goalsApiTypes";
+import { ArrowRight01Icon, BubbleChatAddIcon, Target02Icon } from "@/icons";
+import type { Goal } from "@/types/api/goalsApiTypes";
 
 export default function GoalHeader() {
   const params = useParams();

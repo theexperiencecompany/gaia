@@ -8,7 +8,7 @@ import TodoList from "@/features/todo/components/TodoList";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useUrlTodoSelection } from "@/features/todo/hooks/useUrlTodoSelection";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
-import { Todo, TodoFilters, TodoUpdate } from "@/types/features/todoTypes";
+import type { Todo, TodoFilters, TodoUpdate } from "@/types/features/todoTypes";
 
 interface TodoListPageProps {
   filters?: TodoFilters;

@@ -1,13 +1,8 @@
 "use client";
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import type React from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CalendarGrid } from "@/features/calendar/components/CalendarGrid";
 import { DateStrip } from "@/features/calendar/components/DateStrip";
@@ -22,7 +17,7 @@ import {
   useDaysToShow,
   useSetVisibleMonthYear,
 } from "@/stores/calendarStore";
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface WeeklyCalendarViewProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;

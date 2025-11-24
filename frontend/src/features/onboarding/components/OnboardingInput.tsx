@@ -8,7 +8,7 @@ import { ArrowUp02Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
-import { OnboardingState } from "../types";
+import type { OnboardingState } from "../types";
 
 interface OnboardingInputProps {
   onboardingState: OnboardingState;

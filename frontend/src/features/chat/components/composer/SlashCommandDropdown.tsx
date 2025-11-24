@@ -1,12 +1,13 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { useVirtualizer, VirtualItem } from "@tanstack/react-virtual";
+import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname } from "next/navigation";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import type React from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
+import type { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
@@ -206,7 +207,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   // Determine max height based on current route
   const maxHeight = useMemo(() => {
     // Check if we're on a specific chat page (/c/:id)
-    const isChatIdPage = pathname?.match(/^\/c\/[^\/]+$/) && pathname !== "/c";
+    const isChatIdPage = pathname?.match(/^\/c\/[^/]+$/) && pathname !== "/c";
     return isChatIdPage ? "max-h-100" : "max-h-62";
   }, [pathname]);
 
@@ -276,15 +277,16 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
         }
         break;
 
-      case "ArrowLeft":
+      case "ArrowLeft": {
         e.preventDefault();
         const currentCategoryIndex = categories.indexOf(selectedCategory);
         const newLeftIndex = Math.max(0, currentCategoryIndex - 1);
         const newLeftCategory = categories[newLeftIndex];
         handleCategoryChange(newLeftCategory);
         break;
+      }
 
-      case "ArrowRight":
+      case "ArrowRight": {
         e.preventDefault();
         const currentRightIndex = categories.indexOf(selectedCategory);
         const newRightIndex = Math.min(
@@ -294,9 +296,10 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
         const newRightCategory = categories[newRightIndex];
         handleCategoryChange(newRightCategory);
         break;
+      }
 
       case "Enter":
-      case "Tab":
+      case "Tab": {
         e.preventDefault();
         // Only select unlocked items
         const unlockedFilteredMatches = currentFilteredMatches.filter(
@@ -312,6 +315,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
           }
         }
         break;
+      }
 
       case "Escape":
         e.preventDefault();

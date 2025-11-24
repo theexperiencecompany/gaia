@@ -12,7 +12,7 @@ import { useFetchConversations } from "@/features/chat/hooks/useConversationList
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { db } from "@/lib/db/chatDb";
 
-import { ModalAction } from "./SettingsMenu";
+import type { ModalAction } from "./SettingsMenu";
 
 interface LogoutModalProps {
   modalAction: ModalAction | null;

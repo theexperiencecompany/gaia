@@ -1,7 +1,7 @@
 "use client";
 
 import RedditPostCard from "@/features/reddit/components/RedditPostCard";
-import { RedditPostData } from "@/types/features/redditTypes";
+import type { RedditPostData } from "@/types/features/redditTypes";
 
 export default function RedditPostSection({
   reddit_post_data,

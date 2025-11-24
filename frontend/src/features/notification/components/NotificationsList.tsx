@@ -3,7 +3,7 @@
 import { Spinner } from "@heroui/spinner";
 import { useMemo } from "react";
 
-import {
+import type {
   ModalConfig,
   NotificationRecord,
 } from "@/types/features/notificationTypes";

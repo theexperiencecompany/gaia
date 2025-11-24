@@ -1,5 +1,5 @@
 import { Button } from "@heroui/button";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { Tick02Icon } from "@/icons";
 

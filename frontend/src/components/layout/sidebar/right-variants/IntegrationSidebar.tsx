@@ -10,7 +10,7 @@ import { SidebarContent } from "@/components/ui/sidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { Integration } from "@/features/integrations/types";
+import type { Integration } from "@/features/integrations/types";
 
 interface IntegrationSidebarProps {
   integration: Integration;

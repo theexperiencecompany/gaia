@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-import { Goal, GoalCreate, GoalUpdate } from "@/types/api/goalsApiTypes";
+import type { Goal, GoalCreate, GoalUpdate } from "@/types/api/goalsApiTypes";
 
 import { goalsApi } from "../api/goalsApi";
 

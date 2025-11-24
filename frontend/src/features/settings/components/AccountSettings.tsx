@@ -2,7 +2,8 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import React, { useRef, useState } from "react";
+import type React from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { authApi } from "@/features/auth/api/authApi";
@@ -18,7 +19,7 @@ import {
   UserCircle02Icon,
 } from "@/icons";
 
-import { ModalAction } from "./SettingsMenu";
+import type { ModalAction } from "./SettingsMenu";
 
 export default function AccountSection({
   setModalAction,

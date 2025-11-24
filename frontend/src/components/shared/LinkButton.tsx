@@ -1,4 +1,4 @@
-import { Button, ButtonProps } from "@heroui/button";
+import { Button, type ButtonProps } from "@heroui/button";
 import Link from "next/link";
 
 interface LinkButtonProps extends ButtonProps {

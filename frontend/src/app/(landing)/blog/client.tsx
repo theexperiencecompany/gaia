@@ -8,7 +8,7 @@ import JsonLd from "@/components/seo/JsonLd";
 import BlogMetadata from "@/features/blog/components/BlogMetadata";
 import MarkdownWrapper from "@/features/blog/components/MarkdownWrapper";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
-import { BlogPost } from "@/lib/blog";
+import type { BlogPost } from "@/lib/blog";
 
 interface BlogPostClientProps {
   blog: BlogPost;

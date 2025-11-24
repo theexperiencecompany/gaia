@@ -11,7 +11,7 @@ import { useNotifications } from "@/features/notification/hooks/useNotifications
 import { useHeader } from "@/hooks/layout/useHeader";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
-  ModalConfig,
+  type ModalConfig,
   NotificationStatus,
 } from "@/types/features/notificationTypes";
 

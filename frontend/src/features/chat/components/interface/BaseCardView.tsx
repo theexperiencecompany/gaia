@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import Link from "next/link";
-import React from "react";
+import type React from "react";
 
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
 import { RedoIcon } from "@/icons";

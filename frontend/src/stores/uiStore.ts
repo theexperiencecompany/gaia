@@ -1,9 +1,9 @@
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
 
-import { ImageResult } from "@/types/features/convoTypes";
+import type { ImageResult } from "@/types/features/convoTypes";
 
 export interface HeaderState {
   component: ReactNode | null;

@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 
 // Define the props for the component
 interface StartedButtonProps {

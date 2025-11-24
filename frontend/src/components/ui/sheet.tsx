@@ -1,7 +1,7 @@
 "use client";
 
 import * as SheetPrimitive from "@radix-ui/react-dialog";
-import * as React from "react";
+import type * as React from "react";
 
 import { Cancel01Icon } from "@/icons";
 import { cn } from "@/lib/utils";

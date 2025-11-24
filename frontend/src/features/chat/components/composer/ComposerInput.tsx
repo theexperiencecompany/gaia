@@ -7,7 +7,7 @@ import React, {
 } from "react";
 
 import {
-  SlashCommandMatch,
+  type SlashCommandMatch,
   useSlashCommands,
 } from "@/features/chat/hooks/useSlashCommands";
 
@@ -327,7 +327,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
             return true;
 
           case "Enter":
-          case "Tab":
+          case "Tab": {
             e.preventDefault();
             // Filter to only unlocked matches
             const unlockedFilteredMatches = currentFilteredMatches.filter(
@@ -346,6 +346,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
               }
             }
             return true;
+          }
 
           case "Escape":
             e.preventDefault();

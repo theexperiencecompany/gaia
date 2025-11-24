@@ -1,6 +1,6 @@
-import { useQuery, UseQueryOptions } from "@tanstack/react-query";
+import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 
-import { CalendarItem } from "@/types/api/calendarApiTypes";
+import type { CalendarItem } from "@/types/api/calendarApiTypes";
 
 import { calendarApi } from "../api/calendarApi";
 

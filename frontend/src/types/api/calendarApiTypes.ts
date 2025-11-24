@@ -1,4 +1,4 @@
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 export interface CalendarEventsResponse {
   events: GoogleCalendarEvent[];

@@ -5,13 +5,13 @@ import { toast } from "sonner";
 
 import { calendarApi } from "@/features/calendar/api/calendarApi";
 import { CalendarAdd01Icon, Tick02Icon } from "@/icons";
-import {
+import type {
   CalendarEvent,
   SameDayEvent,
   SingleTimeEvent,
   TimedEvent,
 } from "@/types/features/calendarTypes";
-import { CalendarOptions } from "@/types/features/convoTypes";
+import type { CalendarOptions } from "@/types/features/convoTypes";
 import { buildAddEventPayload } from "@/utils/calendar/eventPayloadBuilders";
 import {
   formatDateWithRelative,

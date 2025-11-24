@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 interface FeatureCardProps {
   imageSrc?: string;

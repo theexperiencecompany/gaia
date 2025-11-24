@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { supportApi, type SupportRequest } from "../api/supportApi";
+import { type SupportRequest, supportApi } from "../api/supportApi";
 import {
   ALLOWED_FILE_TYPES,
   FORM_VALIDATION,

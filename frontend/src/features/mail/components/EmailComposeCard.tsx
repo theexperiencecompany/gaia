@@ -4,7 +4,8 @@ import { Input, Textarea } from "@heroui/input";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import DOMPurify from "dompurify";
-import React, { useEffect, useState } from "react";
+import type React from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 

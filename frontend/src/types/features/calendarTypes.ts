@@ -16,7 +16,8 @@ export interface RecurrenceRule {
 export interface RecurrenceData {
   rrule: RecurrenceRule;
 }
-import { CalendarItem } from "@/types/api/calendarApiTypes";
+
+import type { CalendarItem } from "@/types/api/calendarApiTypes";
 
 export interface CalendarCardProps {
   event: GoogleCalendarEvent | CalendarEvent;

@@ -28,6 +28,7 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import {
   AlertCircleIcon,
   ArrowDown01Icon,
+  CheckmarkCircle02Icon,
   Delete02Icon,
   InformationCircleIcon,
   LinkSquare02Icon,
@@ -35,10 +36,9 @@ import {
   PlayIcon,
   RedoIcon,
 } from "@/icons";
-import { CheckmarkCircle02Icon } from "@/icons";
 import { posthog } from "@/lib";
 
-import { Workflow, workflowApi } from "../api/workflowApi";
+import { type Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflowCreation } from "../hooks";
 import {
   getDefaultFormValues,

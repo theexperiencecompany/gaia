@@ -1,8 +1,8 @@
-import { InfiniteData, useQueryClient } from "@tanstack/react-query";
+import { type InfiniteData, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { EmailsResponse } from "@/types/features/mailTypes";
+import type { EmailsResponse } from "@/types/features/mailTypes";
 
 import { mailApi } from "../api/mailApi";
 

@@ -1,6 +1,6 @@
-import { CalendarEditOptions } from "@/types/features/calendarTypes";
+import type { CalendarEditOptions } from "@/types/features/calendarTypes";
 
-import { AnyCalendarEvent } from "./eventTypeGuards";
+import type { AnyCalendarEvent } from "./eventTypeGuards";
 
 export type EventAction = "add" | "edit" | "delete";
 

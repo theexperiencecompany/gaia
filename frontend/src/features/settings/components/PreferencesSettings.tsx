@@ -4,7 +4,7 @@ import {
   Button,
   Select,
   SelectItem,
-  SharedSelection,
+  type SharedSelection,
   Textarea,
 } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -18,8 +18,8 @@ import { SettingsCard } from "@/features/settings/components/SettingsCard";
 import { SettingsCardSimple } from "@/features/settings/components/SettingsCardSimple";
 import { SettingsOption } from "@/features/settings/components/SettingsOption";
 import { StatusIndicator } from "@/features/settings/components/StatusIndicator";
-import { Delete02Icon } from "@/icons";
 import {
+  Delete02Icon,
   MessageMultiple02Icon,
   PencilEdit01Icon,
   UserCircle02Icon,
@@ -31,7 +31,7 @@ import {
   normalizeTimezone,
 } from "@/utils/timezoneUtils";
 
-import { ModalAction } from "./SettingsMenu";
+import type { ModalAction } from "./SettingsMenu";
 
 const responseStyleOptions = [
   { value: "brief", label: "Brief - Keep responses concise and to the point" },

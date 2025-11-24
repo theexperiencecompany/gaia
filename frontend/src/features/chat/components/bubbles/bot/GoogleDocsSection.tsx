@@ -1,8 +1,8 @@
 import { Button } from "@heroui/button";
 import Image from "next/image";
-import React from "react";
+import type React from "react";
 
-import { GoogleDocsData } from "@/types/features/toolDataTypes";
+import type { GoogleDocsData } from "@/types/features/toolDataTypes";
 
 interface GoogleDocsSectionProps {
   google_docs_data: GoogleDocsData;

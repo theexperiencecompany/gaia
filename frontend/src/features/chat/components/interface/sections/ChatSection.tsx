@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 
 import ChatRenderer from "@/features/chat/components/interface/ChatRenderer";
 

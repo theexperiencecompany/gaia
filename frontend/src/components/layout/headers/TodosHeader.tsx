@@ -7,8 +7,7 @@ import { useMemo } from "react";
 
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import TodoModal from "@/features/todo/components/TodoModal";
-import { ArrowRight01Icon } from "@/icons";
-import { CheckmarkCircle02Icon } from "@/icons";
+import { ArrowRight01Icon, CheckmarkCircle02Icon } from "@/icons";
 import { useTodoStore } from "@/stores/todoStore";
 
 export default function TodosHeader() {

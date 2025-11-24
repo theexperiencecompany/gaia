@@ -22,7 +22,7 @@ import {
   Upload01Icon,
 } from "@/icons";
 
-import { UploadedFilePreview } from "./FilePreview";
+import type { UploadedFilePreview } from "./FilePreview";
 
 interface FileUploadProps {
   open: boolean;

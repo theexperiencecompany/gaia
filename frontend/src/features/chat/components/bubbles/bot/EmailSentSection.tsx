@@ -1,5 +1,5 @@
 import EmailSentCard from "@/features/mail/components/EmailSentCard";
-import { EmailSentData } from "@/types/features/mailTypes";
+import type { EmailSentData } from "@/types/features/mailTypes";
 
 export default function EmailSentSection({
   email_sent_data,

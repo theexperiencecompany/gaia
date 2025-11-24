@@ -1,6 +1,6 @@
 "use client";
 
-import { Priority, Project } from "@/types/features/todoTypes";
+import type { Priority, Project } from "@/types/features/todoTypes";
 
 import {
   DateFieldChip,

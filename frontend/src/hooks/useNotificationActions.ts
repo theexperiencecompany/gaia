@@ -5,14 +5,14 @@ import { toast } from "sonner";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
-  ActionResult,
-  ActionResultData,
+  type ActionResult,
+  type ActionResultData,
   ActionStyle,
   ActionType,
-  ApiCallConfig,
-  ModalConfig,
-  NotificationAction,
-  RedirectConfig,
+  type ApiCallConfig,
+  type ModalConfig,
+  type NotificationAction,
+  type RedirectConfig,
 } from "@/types/features/notificationTypes";
 
 interface UseNotificationActionsOptions {

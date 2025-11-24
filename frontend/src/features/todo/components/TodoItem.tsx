@@ -10,11 +10,18 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { format } from "date-fns";
-
-import { Delete02Icon, MoreVerticalIcon, PencilEdit01Icon } from "@/icons";
-import { CalendarIcon } from "@/icons";
+import {
+  CalendarIcon,
+  Delete02Icon,
+  MoreVerticalIcon,
+  PencilEdit01Icon,
+} from "@/icons";
 import { posthog } from "@/lib";
-import { Priority, Todo, TodoUpdate } from "@/types/features/todoTypes";
+import {
+  Priority,
+  type Todo,
+  type TodoUpdate,
+} from "@/types/features/todoTypes";
 
 interface TodoItemProps {
   todo: Todo;

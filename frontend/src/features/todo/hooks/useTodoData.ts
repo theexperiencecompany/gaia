@@ -3,7 +3,7 @@
 import { useCallback, useEffect } from "react";
 
 import { useTodoStore } from "@/stores/todoStore";
-import { Priority, TodoFilters } from "@/types/features/todoTypes";
+import type { Priority, TodoFilters } from "@/types/features/todoTypes";
 
 interface UseTodoDataOptions {
   filters?: TodoFilters;

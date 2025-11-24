@@ -3,7 +3,7 @@ import { toast } from "sonner";
 
 import { useUser } from "@/features/auth/hooks/useUser";
 import { wsManager } from "@/lib/websocket";
-import {
+import type {
   NotificationRecord,
   NotificationUpdate,
   UseNotificationWebSocketOptions,

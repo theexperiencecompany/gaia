@@ -7,7 +7,7 @@ import {
   Mail01Icon,
   NotificationIcon,
 } from "@/icons";
-import { NotificationSource } from "@/types/notifications";
+import type { NotificationSource } from "@/types/notifications";
 
 export const getNotificationIcon = (type: NotificationSource) => {
   switch (type) {

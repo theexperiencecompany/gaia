@@ -173,7 +173,7 @@ export const getScheduleDescription = (cron: string): string => {
     case "weekly":
       return `Every ${dayNames[schedule.dayOfWeek!]} at ${formatTime(schedule.hour!, schedule.minute!)}`;
 
-    case "monthly":
+    case "monthly": {
       const ordinal =
         schedule.dayOfMonth === 1
           ? "1st"
@@ -183,6 +183,7 @@ export const getScheduleDescription = (cron: string): string => {
               ? "3rd"
               : `${schedule.dayOfMonth}th`;
       return `Monthly on the ${ordinal} at ${formatTime(schedule.hour!, schedule.minute!)}`;
+    }
 
     case "yearly":
       return `Yearly on ${monthNames[schedule.month! - 1]} ${schedule.dayOfMonth} at ${formatTime(schedule.hour!, schedule.minute!)}`;

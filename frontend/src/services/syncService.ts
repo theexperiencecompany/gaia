@@ -1,11 +1,11 @@
 import {
-  chatApi,
   type Conversation,
   type ConversationSyncItem,
+  chatApi,
 } from "@/features/chat/api/chatApi";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
-import { MessageType } from "@/types/features/convoTypes";
+import type { MessageType } from "@/types/features/convoTypes";
 
 const MAX_SYNC_CONVERSATIONS = 100;
 

@@ -1,6 +1,6 @@
 import { apiService } from "@/lib/api";
 
-import { Integration, IntegrationStatus } from "../types";
+import type { Integration, IntegrationStatus } from "../types";
 
 export interface IntegrationStatusResponse {
   integrations: IntegrationStatus[];

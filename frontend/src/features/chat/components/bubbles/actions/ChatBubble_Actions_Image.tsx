@@ -1,10 +1,10 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import React from "react";
+import type React from "react";
 import { toast } from "sonner";
 
 import { Cancel01Icon, DownloadSquare01Icon } from "@/icons";
-import { ImageData } from "@/types/features/toolDataTypes";
+import type { ImageData } from "@/types/features/toolDataTypes";
 
 interface ChatBubbleActionsImageProps {
   fullWidth?: boolean;

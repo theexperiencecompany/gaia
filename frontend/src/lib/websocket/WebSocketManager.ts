@@ -200,7 +200,7 @@ class WebSocketManager {
       return;
     }
 
-    const delay = this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts);
+    const delay = this.baseReconnectDelay * 2 ** this.reconnectAttempts;
     this.reconnectAttempts++;
 
     console.log(

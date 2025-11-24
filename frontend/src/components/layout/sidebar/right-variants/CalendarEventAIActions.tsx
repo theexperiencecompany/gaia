@@ -18,8 +18,8 @@ import {
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { ArrowDown01Icon } from "@/icons";
 import { useAppendToInput } from "@/stores/composerStore";
-import { CalendarItem } from "@/types/api/calendarApiTypes";
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import type { CalendarItem } from "@/types/api/calendarApiTypes";
+import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface CalendarEventAIActionsProps {
   selectedEvent: GoogleCalendarEvent;

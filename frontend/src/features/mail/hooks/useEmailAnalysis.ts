@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { mailApi } from "@/features/mail/api/mailApi";
-import { EmailImportanceSummary } from "@/types/features/mailTypes";
+import type { EmailImportanceSummary } from "@/types/features/mailTypes";
 
 /**
  * Hook to fetch email importance summary/analysis for a specific email

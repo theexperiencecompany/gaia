@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { ButtonGroup } from "@heroui/button";
+import { Button, ButtonGroup } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { EditorContent } from "@tiptap/react";
 import { TagInput } from "emblor";
@@ -15,8 +14,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useEmailComposition } from "@/features/mail/hooks/useEmailComposition";
-import { AlertCircleIcon, ArrowDown01Icon, Tick02Icon } from "@/icons";
-import { AiSearch02Icon, BrushIcon, Sent02Icon, SentIcon } from "@/icons";
+import {
+  AiSearch02Icon,
+  AlertCircleIcon,
+  ArrowDown01Icon,
+  BrushIcon,
+  Sent02Icon,
+  SentIcon,
+  Tick02Icon,
+} from "@/icons";
 
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import { Button as ShadcnButton } from "../../../components/ui/button";
@@ -145,9 +151,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                       >
                         <div className="flex flex-row gap-1">
                           <BrushIcon width={20} height={20} />
-                          <span className="font-medium">
-                            Writing Style:
-                          </span>{" "}
+                          <span className="font-medium">Writing Style:</span>{" "}
                           <span>
                             {
                               writingStyles.find((s) => s.id === writingStyle)
@@ -191,9 +195,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                       >
                         <div className="flex flex-row gap-1">
                           <BrushIcon width={20} height={20} />
-                          <span className="font-medium">
-                            Content Length:
-                          </span>{" "}
+                          <span className="font-medium">Content Length:</span>{" "}
                           <span>
                             {contentLengthOptions.find(
                               (opt) => opt.id === contentLength,

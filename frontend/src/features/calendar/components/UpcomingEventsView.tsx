@@ -1,10 +1,11 @@
-import React, { useMemo } from "react";
+import type React from "react";
+import { useMemo } from "react";
 
 import { getEventColor } from "@/features/calendar/utils/eventColors";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import { CalendarUpload01Icon, GoogleCalendarIcon } from "@/icons";
-import { CalendarItem } from "@/types/api/calendarApiTypes";
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import type { CalendarItem } from "@/types/api/calendarApiTypes";
+import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface UpcomingEventsViewProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;

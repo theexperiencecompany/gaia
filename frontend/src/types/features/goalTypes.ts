@@ -1,5 +1,5 @@
 // Legacy goal types - Use API types instead for new code
-import { Goal as ApiGoal } from "@/types/api/goalsApiTypes";
+import type { Goal as ApiGoal } from "@/types/api/goalsApiTypes";
 
 // For backward compatibility, export a GoalData type that extends the API Goal
 export interface GoalData extends ApiGoal {

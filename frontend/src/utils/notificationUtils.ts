@@ -1,4 +1,4 @@
-import { NotificationRecord } from "@/types/features/notificationTypes";
+import type { NotificationRecord } from "@/types/features/notificationTypes";
 
 import { getTimeGroup } from "./date/timezoneUtils";
 

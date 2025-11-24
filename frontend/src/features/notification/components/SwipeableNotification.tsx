@@ -1,12 +1,12 @@
 "use client";
 
 import {
+  Type as ListType,
   SwipeableList,
   SwipeableListItem,
-  Type as ListType,
 } from "react-swipeable-list";
 
-import { Notification } from "@/types/notifications";
+import type { Notification } from "@/types/notifications";
 
 import {
   NotificationLeadingActions,

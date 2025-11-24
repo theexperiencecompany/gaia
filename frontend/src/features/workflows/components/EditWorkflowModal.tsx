@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Workflow } from "../api/workflowApi";
+import type { Workflow } from "../api/workflowApi";
 import WorkflowModal from "./WorkflowModal";
 
 interface EditWorkflowModalProps {

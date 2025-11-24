@@ -1,4 +1,4 @@
-import React from "react";
+import type React from "react";
 
 import CopyButton from "@/features/chat/components/code-block/CopyButton";
 import {

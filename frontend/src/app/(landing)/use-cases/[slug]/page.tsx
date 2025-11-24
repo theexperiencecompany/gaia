@@ -4,7 +4,10 @@ import { notFound } from "next/navigation";
 import UseCaseDetailClient from "@/app/(landing)/use-cases/[slug]/client";
 import JsonLd from "@/components/seo/JsonLd";
 import type { UseCase } from "@/features/use-cases/types";
-import { Workflow, workflowApi } from "@/features/workflows/api/workflowApi";
+import {
+  type Workflow,
+  workflowApi,
+} from "@/features/workflows/api/workflowApi";
 import {
   generateUseCaseMetadata,
   generateUseCaseStructuredData,

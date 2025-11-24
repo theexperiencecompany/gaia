@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 
-import { CommunityWorkflow } from "../api/workflowApi";
+import type { CommunityWorkflow } from "../api/workflowApi";
 import BaseWorkflowCard from "./shared/BaseWorkflowCard";
 import {
   CreateWorkflowButton,

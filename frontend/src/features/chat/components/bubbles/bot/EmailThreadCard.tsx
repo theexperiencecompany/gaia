@@ -5,7 +5,7 @@ import DOMPurify from "dompurify";
 import { useEffect, useRef, useState } from "react";
 
 import { Gmail } from "@/components";
-import { EmailThreadData } from "@/types/features/mailTypes";
+import type { EmailThreadData } from "@/types/features/mailTypes";
 
 import { parseEmail } from "../../../../mail/utils/mailUtils";
 

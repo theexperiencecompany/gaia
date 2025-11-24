@@ -1,7 +1,7 @@
-import { useQuery, UseQueryOptions } from "@tanstack/react-query";
+import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 
 import { apiService } from "@/lib/api";
-import { EmailData } from "@/types/features/mailTypes";
+import type { EmailData } from "@/types/features/mailTypes";
 
 interface UnreadEmailsResponse {
   messages: EmailData[];

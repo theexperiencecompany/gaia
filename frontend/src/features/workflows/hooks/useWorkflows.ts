@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { Workflow, workflowApi } from "../api/workflowApi";
+import { type Workflow, workflowApi } from "../api/workflowApi";
 
 interface UseWorkflowsReturn {
   workflows: Workflow[];

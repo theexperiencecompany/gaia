@@ -1,7 +1,7 @@
 "use client";
 
-import { Virtualizer } from "@tanstack/react-virtual";
-import React from "react";
+import type { Virtualizer } from "@tanstack/react-virtual";
+import type React from "react";
 
 interface DateStripProps {
   dates: Date[];

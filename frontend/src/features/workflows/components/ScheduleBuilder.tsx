@@ -1,11 +1,10 @@
-import { Input } from "@heroui/input";
-import { Textarea } from "@heroui/input";
+import { Input, Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { useEffect, useState } from "react";
 
 import {
   buildCronExpression,
-  CronSchedule,
+  type CronSchedule,
   parseCronExpression,
 } from "../utils/cronUtils";
 

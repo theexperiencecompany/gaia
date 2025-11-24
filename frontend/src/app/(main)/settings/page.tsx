@@ -8,7 +8,7 @@ import LogoutModal from "@/features/settings/components/LogoutModal";
 import MemorySettings from "@/features/settings/components/MemorySettings";
 import PreferencesSettings from "@/features/settings/components/PreferencesSettings";
 import ProfileCardSettings from "@/features/settings/components/ProfileCardSettings";
-import { ModalAction } from "@/features/settings/components/SettingsMenu";
+import type { ModalAction } from "@/features/settings/components/SettingsMenu";
 import { SubscriptionSettings } from "@/features/settings/components/SubscriptionSettings";
 import UsageSettings from "@/features/settings/components/UsageSettings";
 

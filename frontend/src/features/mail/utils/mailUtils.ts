@@ -1,8 +1,8 @@
 "use client";
-import { QueryFunctionContext } from "@tanstack/react-query";
+import type { QueryFunctionContext } from "@tanstack/react-query";
 
 import { mailApi } from "@/features/mail/api/mailApi";
-import { EmailsResponse } from "@/types/features/mailTypes";
+import type { EmailsResponse } from "@/types/features/mailTypes";
 
 export function parseEmail(from: string | undefined): {
   name: string;

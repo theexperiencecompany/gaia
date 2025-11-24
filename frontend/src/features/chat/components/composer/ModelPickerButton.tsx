@@ -3,10 +3,11 @@ import {
   Select,
   SelectItem,
   SelectSection,
-  SharedSelection,
+  type SharedSelection,
 } from "@heroui/react";
 import Image from "next/image";
-import React, { useMemo } from "react";
+import type React from "react";
+import { useMemo } from "react";
 
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 

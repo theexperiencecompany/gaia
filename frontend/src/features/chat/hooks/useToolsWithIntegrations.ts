@@ -2,8 +2,8 @@ import { useMemo } from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
-import { ToolInfo } from "../api/toolsApi";
-import { EnhancedToolInfo } from "../types/enhancedTools";
+import type { ToolInfo } from "../api/toolsApi";
+import type { EnhancedToolInfo } from "../types/enhancedTools";
 import { useToolsQuery } from "./useToolsQuery";
 
 export interface UseToolsWithIntegrationsReturn {

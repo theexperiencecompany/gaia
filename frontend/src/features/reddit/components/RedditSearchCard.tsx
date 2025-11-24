@@ -6,7 +6,7 @@ import Link from "next/link";
 import { RedditIcon } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { ArrowUp02Icon, BubbleChatIcon } from "@/icons";
-import { RedditSearchData } from "@/types/features/redditTypes";
+import type { RedditSearchData } from "@/types/features/redditTypes";
 
 interface RedditSearchCardProps {
   posts?: RedditSearchData[] | null;

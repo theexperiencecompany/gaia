@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 
-import { Workflow } from "@/features/workflows/api/workflowApi";
+import type { Workflow } from "@/features/workflows/api/workflowApi";
 
 export interface SelectedWorkflowData {
   id: string;

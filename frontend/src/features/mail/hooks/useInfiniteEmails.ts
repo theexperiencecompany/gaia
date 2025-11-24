@@ -1,8 +1,8 @@
-import { InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
+import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 
 import { fetchEmails } from "@/features/mail/utils/mailUtils";
-import { EmailsResponse } from "@/types/features/mailTypes";
+import type { EmailsResponse } from "@/types/features/mailTypes";
 
 /**
  * Hook for handling infinite loading of emails

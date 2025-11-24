@@ -2,7 +2,7 @@
 
 import { Chip } from "@heroui/chip";
 import { useRouter } from "next/navigation";
-import React from "react";
+import type React from "react";
 import { toast } from "sonner";
 
 import { RaisedButton } from "@/components/ui/raised-button";

@@ -3,9 +3,9 @@ import { toast } from "sonner";
 
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
-  NotificationRecord,
+  type NotificationRecord,
   NotificationStatus,
-  UseNotificationsOptions,
+  type UseNotificationsOptions,
 } from "@/types/features/notificationTypes";
 
 interface UseAllNotificationsReturn {

@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 
-import { Todo, TodoUpdate } from "@/types/features/todoTypes";
+import type { Todo, TodoUpdate } from "@/types/features/todoTypes";
 
 import TodoItem from "./TodoItem";
 

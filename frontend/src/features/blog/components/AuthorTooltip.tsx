@@ -2,7 +2,7 @@ import { Avatar } from "@heroui/avatar";
 import { Tooltip } from "@heroui/tooltip";
 
 import { Github, LinkedinIcon, TwitterIcon } from "@/icons";
-import { Author } from "@/types";
+import type { Author } from "@/types";
 
 interface AuthorTooltipProps {
   author: Author;

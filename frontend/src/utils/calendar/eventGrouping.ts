@@ -1,4 +1,4 @@
-import { CalendarFetchData } from "@/types/features/calendarTypes";
+import type { CalendarFetchData } from "@/types/features/calendarTypes";
 
 import {
   extractDateFromFetchData,
@@ -7,7 +7,7 @@ import {
   getEventKey,
   getEventTimestamp,
 } from "./eventExtractors";
-import { AnyCalendarEvent } from "./eventTypeGuards";
+import type { AnyCalendarEvent } from "./eventTypeGuards";
 
 export interface GroupedEvent<T> {
   event: T;

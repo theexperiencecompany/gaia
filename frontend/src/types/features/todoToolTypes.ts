@@ -1,6 +1,6 @@
 // todo Tool Types for AI Assistant Integration
 
-import { Priority } from "./todoTypes";
+import type { Priority } from "./todoTypes";
 import type { Workflow } from "./workflowTypes";
 
 export interface TodoToolData {

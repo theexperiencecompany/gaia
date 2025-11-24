@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Cancel01Icon, PlusSignIcon } from "@/icons";
 import { cn } from "@/lib/utils";
-import { SubTask } from "@/types/features/todoTypes";
+import type { SubTask } from "@/types/features/todoTypes";
 
 interface SubtaskManagerProps {
   subtasks: SubTask[];

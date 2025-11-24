@@ -9,11 +9,14 @@ import { TwitterShareButton } from "react-share";
 import { toast } from "sonner";
 
 import { TwitterIcon } from "@/components";
-import { HoloCardDisplayData, HoloCardEditor } from "@/components/ui/holo-card";
+import {
+  type HoloCardDisplayData,
+  HoloCardEditor,
+} from "@/components/ui/holo-card";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
 import {
-  House,
+  type House,
   usePersonalization,
 } from "@/features/onboarding/hooks/usePersonalization";
 import UseCaseCard from "@/features/use-cases/components/UseCaseCard";

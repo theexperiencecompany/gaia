@@ -1,5 +1,5 @@
 import { Input } from "@heroui/input";
-import React from "react";
+import type React from "react";
 
 import { SearchIcon } from "@/icons";
 

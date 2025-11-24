@@ -1,8 +1,8 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 
-import { CalendarItem } from "@/types/api/calendarApiTypes";
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import type { CalendarItem } from "@/types/api/calendarApiTypes";
+import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface CalendarState {
   calendars: CalendarItem[];

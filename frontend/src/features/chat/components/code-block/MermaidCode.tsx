@@ -1,6 +1,6 @@
 import dynamic from "next/dynamic";
+import type { CSSProperties } from "react";
 import React from "react";
-import { CSSProperties } from "react";
 
 // Dynamic import for syntax highlighter - only load specific language
 const PrismAsyncLight = dynamic(

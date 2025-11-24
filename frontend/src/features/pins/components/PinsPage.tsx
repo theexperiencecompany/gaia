@@ -7,7 +7,7 @@ import Spinner from "@/components/ui/spinner";
 import { PinCard } from "@/features/pins/components/PinCard";
 import { usePins } from "@/features/pins/hooks/usePins";
 import { PinIcon } from "@/icons";
-import { PinCardProps } from "@/types/features/pinTypes";
+import type { PinCardProps } from "@/types/features/pinTypes";
 
 export default function Pins() {
   const { pins: fetchedResults, loading, fetchPins } = usePins();

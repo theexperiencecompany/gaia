@@ -8,7 +8,7 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { useRouter } from "next/navigation";
-import { ReactNode, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { getLinkByLabel } from "@/config/appConfig";

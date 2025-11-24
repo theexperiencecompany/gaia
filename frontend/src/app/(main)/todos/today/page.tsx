@@ -1,7 +1,7 @@
 "use client";
 
 import TodoListPage from "@/features/todo/components/TodoListPage";
-import { Todo } from "@/types/features/todoTypes";
+import type { Todo } from "@/types/features/todoTypes";
 
 export default function TodayTodosPage() {
   const filterTodayTodos = (todos: Todo[]) => {

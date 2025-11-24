@@ -10,11 +10,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLoading } from "@/features/chat/hooks/useLoading";
-import { Tick02Icon } from "@/icons";
-import { AttachmentIcon, PlusSignIcon, ToolsIcon } from "@/icons";
+import { AttachmentIcon, PlusSignIcon, Tick02Icon, ToolsIcon } from "@/icons";
 import { posthog } from "@/lib/posthog";
 import { cn } from "@/lib/utils";
-import { SearchMode } from "@/types/shared";
+import type { SearchMode } from "@/types/shared";
 
 interface SearchbarLeftDropdownProps {
   selectedMode: Set<SearchMode>;

@@ -1,7 +1,8 @@
 import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import React, { useState } from "react";
+import type React from "react";
+import { useState } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useFetchIntegrationStatus } from "@/features/integrations";

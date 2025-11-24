@@ -1,5 +1,5 @@
 import { Button } from "@heroui/button";
-import React from "react";
+import type React from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 

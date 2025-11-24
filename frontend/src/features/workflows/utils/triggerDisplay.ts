@@ -3,9 +3,9 @@
  */
 
 import { TRIGGER_CONFIG } from "@/config/registries/triggerRegistry";
-import { Integration } from "@/features/integrations/types";
+import type { Integration } from "@/features/integrations/types";
 
-import { Workflow } from "../api/workflowApi";
+import type { Workflow } from "../api/workflowApi";
 import { getScheduleDescription } from "./cronUtils";
 
 /**

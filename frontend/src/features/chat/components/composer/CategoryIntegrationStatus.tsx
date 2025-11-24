@@ -1,5 +1,5 @@
 import { Chip } from "@heroui/chip";
-import React from "react";
+import type React from "react";
 
 import { SquareLock01Icon } from "@/icons";
 

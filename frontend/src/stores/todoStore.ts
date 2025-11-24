@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
 import { todoApi } from "@/features/todo/api/todoApi";
-import {
+import type {
   Project,
   Todo,
   TodoCreate,

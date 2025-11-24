@@ -1,4 +1,4 @@
-import { Metadata } from "next";
+import type { Metadata } from "next";
 import type {
   Article,
   HowTo,
@@ -9,8 +9,8 @@ import type {
   WithContext,
 } from "schema-dts";
 
-import { UseCase } from "@/features/use-cases/types";
-import { BlogPost } from "@/lib/blog";
+import type { UseCase } from "@/features/use-cases/types";
+import type { BlogPost } from "@/lib/blog";
 import { siteConfig } from "@/lib/seo";
 
 /**

@@ -9,7 +9,7 @@ import { RaisedButton } from "@/components/ui/raised-button";
 // import MailAnimationWrapper from "./MailAnimationWrapper";
 // import TodosBentoContent from "./TodosBentoContent";
 import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
-import { UseCase } from "@/features/use-cases/types";
+import type { UseCase } from "@/features/use-cases/types";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 
 import LargeHeader from "../shared/LargeHeader";

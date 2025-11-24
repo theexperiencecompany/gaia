@@ -1,5 +1,5 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
-import { ReactNode, useState } from "react";
+import { type ReactNode, useState } from "react";
 
 interface CollapsibleListWrapperProps {
   children: ReactNode;

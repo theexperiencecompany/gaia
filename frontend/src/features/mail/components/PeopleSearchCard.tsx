@@ -3,7 +3,7 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Gmail } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { Call02Icon, Mail01Icon } from "@/icons";
-import { PeopleSearchData } from "@/types/features/mailTypes";
+import type { PeopleSearchData } from "@/types/features/mailTypes";
 
 interface PeopleSearchCardProps {
   people: PeopleSearchData[];

@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ArrowLeft01Icon,

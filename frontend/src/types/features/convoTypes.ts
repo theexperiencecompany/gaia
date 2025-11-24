@@ -1,7 +1,7 @@
 // Define the structure for each message in the conversation
 // This type represents an individual message, including details about whether it's from the user or bot,
 
-import {
+import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
   CalendarOptions,
@@ -18,8 +18,8 @@ import {
   TodoToolData,
   WeatherData,
 } from "./baseMessageTypes";
-import { CalendarEventDateTime } from "./calendarTypes";
-import {
+import type { CalendarEventDateTime } from "./calendarTypes";
+import type {
   EnhancedWebResult,
   ImageResult,
   NewsResult,

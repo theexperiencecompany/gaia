@@ -10,7 +10,7 @@ import {
   Tick02Icon,
 } from "@/icons";
 
-import { type PaymentFlowStates } from "../hooks/usePaymentFlow";
+import type { PaymentFlowStates } from "../hooks/usePaymentFlow";
 
 interface PaymentStatusIndicatorProps {
   states: PaymentFlowStates;

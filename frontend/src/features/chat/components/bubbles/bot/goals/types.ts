@@ -1,6 +1,6 @@
-import React from "react";
+import type React from "react";
 
-import { Goal as ApiGoal } from "@/types/api/goalsApiTypes";
+import type { Goal as ApiGoal } from "@/types/api/goalsApiTypes";
 
 // Re-export API types for consistency
 export type Goal = ApiGoal;

@@ -1,11 +1,11 @@
-import {
+import type {
   CalendarEventDateTime,
   CalendarFetchData,
   SameDayEvent,
 } from "@/types/features/calendarTypes";
 
 import {
-  AnyCalendarEvent,
+  type AnyCalendarEvent,
   isAddEvent,
   isDeleteEvent,
   isEditEvent,

@@ -1,5 +1,5 @@
 import SupportTicketCard from "@/features/support/components/SupportTicketCard";
-import { SupportTicketData } from "@/types/features/supportTypes";
+import type { SupportTicketData } from "@/types/features/supportTypes";
 
 export default function SupportTicketSection({
   support_ticket_data,

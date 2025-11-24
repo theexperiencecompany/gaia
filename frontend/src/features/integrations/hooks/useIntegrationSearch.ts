@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { Integration } from "../types";
+import type { Integration } from "../types";
 
 export const useIntegrationSearch = (integrations: Integration[]) => {
   const [searchQuery, setSearchQuery] = useState("");

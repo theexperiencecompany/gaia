@@ -1,4 +1,4 @@
-import { motion, MotionProps } from "framer-motion";
+import { type MotionProps, motion } from "framer-motion";
 import React, { Children, useMemo, useRef } from "react";
 
 import { useIntersectionObserver } from "@/hooks/ui/useIntersectionObserver";

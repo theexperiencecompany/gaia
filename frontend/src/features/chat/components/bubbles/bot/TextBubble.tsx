@@ -18,9 +18,9 @@ import React from "react";
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
   GROUPED_TOOLS,
-  ToolDataEntry,
-  ToolDataMap,
-  ToolName,
+  type ToolDataEntry,
+  type ToolDataMap,
+  type ToolName,
 } from "@/config/registries/toolRegistry";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
 import CalendarListFetchCard from "@/features/calendar/components/CalendarListFetchCard";
@@ -36,7 +36,7 @@ import { IntegrationListSection } from "@/features/integrations";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
 import { Alert01Icon } from "@/icons";
-import {
+import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
   CalendarOptions,
@@ -52,19 +52,19 @@ import {
   TodoToolData,
   WeatherData,
 } from "@/types";
-import {
+import type {
   CalendarFetchData,
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
-import { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
-import { IntegrationConnectionData } from "@/types/features/integrationTypes";
-import {
+import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
+import type { IntegrationConnectionData } from "@/types/features/integrationTypes";
+import type {
   ContactData,
   EmailFetchData,
   PeopleSearchData,
 } from "@/types/features/mailTypes";
-import { NotificationRecord } from "@/types/features/notificationTypes";
-import {
+import type { NotificationRecord } from "@/types/features/notificationTypes";
+import type {
   RedditCommentCreatedData,
   RedditCommentData,
   RedditData,
@@ -72,7 +72,7 @@ import {
   RedditPostData,
   RedditSearchData,
 } from "@/types/features/redditTypes";
-import { SupportTicketData } from "@/types/features/supportTypes";
+import type { SupportTicketData } from "@/types/features/supportTypes";
 
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
 import { CalendarDeleteSection } from "./CalendarDeleteSection";
@@ -83,9 +83,9 @@ import ContactListSection from "./ContactListSection";
 import DocumentSection from "./DocumentSection";
 import EmailComposeSection from "./EmailComposeSection";
 import EmailSentSection from "./EmailSentSection";
-import GoalSection from "./goals/GoalSection";
-import { GoalAction } from "./goals/types";
 import GoogleDocsSection from "./GoogleDocsSection";
+import GoalSection from "./goals/GoalSection";
+import type { GoalAction } from "./goals/types";
 import NotificationListSection from "./NotificationListSection";
 import PeopleSearchSection from "./PeopleSearchSection";
 import RedditCommentSection from "./RedditCommentSection";

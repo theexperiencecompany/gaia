@@ -5,8 +5,7 @@ import { Avatar } from "@heroui/avatar";
 import { Button } from "@heroui/button";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import { Textarea } from "@heroui/input";
+import { Input, Textarea } from "@heroui/input";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -14,7 +13,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { teamApi, type TeamMember } from "@/features/team/api/teamApi";
+import { type TeamMember, teamApi } from "@/features/team/api/teamApi";
 import { CalendarIcon, File01Icon, UserCircle02Icon } from "@/icons";
 
 import { blogApi } from "../api/blogApi";

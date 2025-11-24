@@ -10,14 +10,11 @@ import React, {
 } from "react";
 
 import { useUser } from "@/features/auth/hooks/useUser";
+import type { Memory, MemoryRelation } from "@/features/memory/api/memoryApi";
 import {
-  type Memory,
-  type MemoryRelation,
-} from "@/features/memory/api/memoryApi";
-import {
-  getNodeTooltipContent,
   type GraphLink,
   type GraphNode,
+  getNodeTooltipContent,
   transformMemoryDataToGraph,
 } from "@/features/memory/utils/graphUtils";
 

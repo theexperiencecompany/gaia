@@ -1,12 +1,12 @@
-import Dexie, { Table } from "dexie";
+import Dexie, { type Table } from "dexie";
 import { EventEmitter } from "events";
 
-import { ToolDataEntry } from "@/config";
-import { SystemPurpose } from "@/features/chat/api/chatApi";
-import { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
-import { ImageData, MemoryData } from "@/types";
-import { WorkflowData } from "@/types/features/workflowTypes";
-import { FileData } from "@/types/shared";
+import type { ToolDataEntry } from "@/config";
+import type { SystemPurpose } from "@/features/chat/api/chatApi";
+import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
+import type { ImageData, MemoryData } from "@/types";
+import type { WorkflowData } from "@/types/features/workflowTypes";
+import type { FileData } from "@/types/shared";
 
 export interface IConversation {
   id: string;

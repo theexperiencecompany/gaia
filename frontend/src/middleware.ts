@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 export function middleware(request: NextRequest) {
   // Check if the request is for the notes page or any of its subpaths

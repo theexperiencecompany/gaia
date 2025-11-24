@@ -1,6 +1,6 @@
 // ChatBubbleBot.tsx
 import Image from "next/image";
-import { ReactNode, useCallback, useMemo, useRef } from "react";
+import { type ReactNode, useCallback, useMemo, useRef } from "react";
 
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import ChatBubble_Actions from "@/features/chat/components/bubbles/actions/ChatBubble_Actions";
@@ -8,7 +8,7 @@ import ChatBubble_Actions_Image from "@/features/chat/components/bubbles/actions
 import MemoryIndicator from "@/features/chat/components/memory/MemoryIndicator";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
-import { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
+import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
 import FollowUpActions from "./FollowUpActions";

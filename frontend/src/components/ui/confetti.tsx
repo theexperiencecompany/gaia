@@ -1,8 +1,8 @@
 "use client";
 
 import type {
-  CreateTypes as ConfettiInstance,
   GlobalOptions as ConfettiGlobalOptions,
+  CreateTypes as ConfettiInstance,
   Options as ConfettiOptions,
 } from "canvas-confetti";
 import confetti from "canvas-confetti";

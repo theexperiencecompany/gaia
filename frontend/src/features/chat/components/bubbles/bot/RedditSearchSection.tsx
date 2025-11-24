@@ -1,7 +1,7 @@
 "use client";
 
 import RedditSearchCard from "@/features/reddit/components/RedditSearchCard";
-import { RedditSearchData } from "@/types/features/redditTypes";
+import type { RedditSearchData } from "@/types/features/redditTypes";
 
 export default function RedditSearchSection({
   reddit_search_data,

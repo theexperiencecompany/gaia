@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useMemo } from "react";
 
 import TodoListPage from "@/features/todo/components/TodoListPage";
-import { Priority } from "@/types/features/todoTypes";
+import type { Priority } from "@/types/features/todoTypes";
 
 export default function PriorityTodosPage() {
   const params = useParams();

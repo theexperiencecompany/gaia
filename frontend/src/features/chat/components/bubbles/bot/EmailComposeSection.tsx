@@ -1,5 +1,5 @@
 import EmailComposeCard from "@/features/mail/components/EmailComposeCard";
-import { EmailComposeData } from "@/types/features/convoTypes";
+import type { EmailComposeData } from "@/types/features/convoTypes";
 
 export default function EmailComposeSection({
   email_compose_data,

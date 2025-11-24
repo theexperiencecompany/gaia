@@ -1,4 +1,4 @@
-import { NotificationSource } from "../notifications";
+import type { NotificationSource } from "../notifications";
 
 export enum NotificationType {
   INFO = "info",

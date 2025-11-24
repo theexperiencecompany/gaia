@@ -2,8 +2,8 @@ import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
 
-import { UploadedFilePreview } from "@/features/chat/components/files/FilePreview";
-import { FileData, SearchMode } from "@/types/shared";
+import type { UploadedFilePreview } from "@/features/chat/components/files/FilePreview";
+import type { FileData, SearchMode } from "@/types/shared";
 
 interface ComposerState {
   // Text input state

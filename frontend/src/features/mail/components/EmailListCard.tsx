@@ -4,7 +4,7 @@ import { Tooltip } from "@heroui/tooltip";
 import { Gmail } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { useAppendToInput } from "@/stores/composerStore";
-import { EmailFetchData } from "@/types/features/mailTypes";
+import type { EmailFetchData } from "@/types/features/mailTypes";
 
 interface EmailListProps {
   emails?: EmailFetchData[] | null;

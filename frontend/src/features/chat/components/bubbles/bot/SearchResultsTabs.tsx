@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { NewsIcon } from "@/icons";
 import { useImageDialog } from "@/stores/uiStore";
-import {
+import type {
   ImageResult,
   NewsResult,
   SearchResults,

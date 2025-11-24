@@ -1,8 +1,8 @@
-import { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { Dispatch, SetStateAction } from "react";
+import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import type { Dispatch, SetStateAction } from "react";
 
 import { chatApi } from "@/features/chat/api/chatApi";
-import { MessageType } from "@/types/features/convoTypes";
+import type { MessageType } from "@/types/features/convoTypes";
 
 export const fetchMessages = async (
   conversationId: string,

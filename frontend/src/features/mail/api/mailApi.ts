@@ -1,10 +1,10 @@
 import { apiService } from "@/lib/api";
-import { EmailActionResponse } from "@/types/api/mailApiTypes";
-import {
+import type { EmailActionResponse } from "@/types/api/mailApiTypes";
+import type {
   EmailData,
   EmailImportanceSummary,
-  EmailsResponse,
   EmailSummariesResponse,
+  EmailsResponse,
   EmailThreadResponse,
 } from "@/types/features/mailTypes";
 

@@ -1,8 +1,8 @@
 import { useState } from "react";
 
 import {
-  CreateWorkflowRequest,
-  Workflow,
+  type CreateWorkflowRequest,
+  type Workflow,
   workflowApi,
 } from "../api/workflowApi";
 

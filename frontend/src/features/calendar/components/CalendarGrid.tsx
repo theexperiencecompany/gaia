@@ -1,15 +1,16 @@
 "use client";
 
 import { Spinner } from "@heroui/react";
-import { Virtualizer } from "@tanstack/react-virtual";
-import React, { useMemo } from "react";
+import type { Virtualizer } from "@tanstack/react-virtual";
+import type React from "react";
+import { useMemo } from "react";
 
 import { AllDayEventsSection } from "@/features/calendar/components/AllDayEventsSection";
 import {
   CurrentTimeLabel,
   CurrentTimeLine,
 } from "@/features/calendar/components/CurrentTimeIndicator";
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface MultiDayCalendarGridProps {
   hours: number[];

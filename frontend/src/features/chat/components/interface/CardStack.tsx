@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { motion } from "framer-motion";
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { ArrowUpRight } from "@/icons";
 

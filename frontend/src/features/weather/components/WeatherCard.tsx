@@ -1,6 +1,7 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Switch } from "@heroui/switch";
-import React, { useMemo, useState } from "react";
+import type React from "react";
+import { useMemo, useState } from "react";
 
 import {
   DropdownMenu,
@@ -27,7 +28,7 @@ import {
   Tornado02Icon,
   VisionIcon,
 } from "@/icons";
-import { WeatherData } from "@/types/features/convoTypes";
+import type { WeatherData } from "@/types/features/convoTypes";
 
 import { WeatherDetailItem } from "./WeatherDetailItem";
 

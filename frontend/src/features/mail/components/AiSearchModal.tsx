@@ -1,6 +1,7 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import React, { useState } from "react";
+import type React from "react";
+import { useState } from "react";
 
 import {
   Dialog,
@@ -13,7 +14,7 @@ import Spinner from "@/components/ui/spinner";
 import { mailApi } from "@/features/mail/api/mailApi";
 import { AiSearch02Icon } from "@/icons";
 
-import { EmailChip, EmailSuggestion } from "./EmailChip";
+import { EmailChip, type EmailSuggestion } from "./EmailChip";
 
 export interface AiSearchModalProps {
   open: boolean;

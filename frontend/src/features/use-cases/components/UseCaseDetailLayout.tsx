@@ -1,5 +1,5 @@
 import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { RaisedButton } from "@/components";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { ArrowUpRight03Icon } from "@/icons";

@@ -16,7 +16,7 @@ import {
   PlayIcon,
   Tick02Icon,
 } from "@/icons";
-import {
+import type {
   TodoAction,
   TodoItem,
   TodoProject,

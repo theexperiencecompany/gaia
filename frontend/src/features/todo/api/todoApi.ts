@@ -1,5 +1,5 @@
 import { apiService } from "@/lib/api";
-import {
+import type {
   BulkMoveRequest,
   Project,
   ProjectCreate,

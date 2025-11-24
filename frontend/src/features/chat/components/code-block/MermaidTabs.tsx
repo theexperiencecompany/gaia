@@ -1,6 +1,6 @@
 import { Tab, Tabs } from "@heroui/tabs";
 import dynamic from "next/dynamic";
-import React from "react";
+import type React from "react";
 
 // Dynamic imports for Mermaid-related components
 const FlowchartPreview = dynamic(() => import("./FlowchartPreview"), {

@@ -1,11 +1,11 @@
 import { apiauth } from "@/lib/api";
 import {
-  BulkActionRequest,
+  type BulkActionRequest,
   BulkActions,
-  NotificationResponse,
-  PaginatedNotificationsResponse,
-  SnoozeRequest,
-  UseNotificationsOptions,
+  type NotificationResponse,
+  type PaginatedNotificationsResponse,
+  type SnoozeRequest,
+  type UseNotificationsOptions,
 } from "@/types/features/notificationTypes";
 
 export class NotificationsAPI {
@@ -26,7 +26,7 @@ export class NotificationsAPI {
       params.append("channel_type", options.channel_type);
 
     const response = await apiauth.get<PaginatedNotificationsResponse>(
-      `${this.BASE_URL}?${params.toString()}`,
+      `${NotificationsAPI.BASE_URL}?${params.toString()}`,
     );
 
     return response.data;
@@ -46,7 +46,7 @@ export class NotificationsAPI {
       params.append("channel_type", options.channel_type);
 
     const response = await apiauth.get<PaginatedNotificationsResponse>(
-      `${this.BASE_URL}?${params.toString()}`,
+      `${NotificationsAPI.BASE_URL}?${params.toString()}`,
     );
 
     return response.data;
@@ -66,7 +66,7 @@ export class NotificationsAPI {
       params.append("channel_type", options.channel_type);
 
     const response = await apiauth.get<PaginatedNotificationsResponse>(
-      `${this.BASE_URL}/status?${params.toString()}`,
+      `${NotificationsAPI.BASE_URL}/status?${params.toString()}`,
     );
 
     return response.data;
@@ -79,7 +79,7 @@ export class NotificationsAPI {
     notificationId: string,
   ): Promise<NotificationResponse> {
     const response = await apiauth.get<NotificationResponse>(
-      `${this.BASE_URL}/${notificationId}`,
+      `${NotificationsAPI.BASE_URL}/${notificationId}`,
     );
     return response.data;
   }
@@ -92,7 +92,7 @@ export class NotificationsAPI {
     actionId: string,
   ): Promise<NotificationResponse> {
     const response = await apiauth.post<NotificationResponse>(
-      `${this.BASE_URL}/${notificationId}/actions/${actionId}/execute`,
+      `${NotificationsAPI.BASE_URL}/${notificationId}/actions/${actionId}/execute`,
     );
     return response.data;
   }
@@ -104,7 +104,7 @@ export class NotificationsAPI {
     notificationId: string,
   ): Promise<NotificationResponse> {
     const response = await apiauth.post<NotificationResponse>(
-      `${this.BASE_URL}/${notificationId}/read`,
+      `${NotificationsAPI.BASE_URL}/${notificationId}/read`,
     );
     return response.data;
   }
@@ -121,7 +121,7 @@ export class NotificationsAPI {
     };
 
     const response = await apiauth.post<NotificationResponse>(
-      `${this.BASE_URL}/bulk-actions`,
+      `${NotificationsAPI.BASE_URL}/bulk-actions`,
       bulkRequest,
     );
     return response.data;
@@ -139,7 +139,7 @@ export class NotificationsAPI {
     };
 
     const response = await apiauth.post<NotificationResponse>(
-      `${this.BASE_URL}/${notificationId}/snooze`,
+      `${NotificationsAPI.BASE_URL}/${notificationId}/snooze`,
       snoozeRequest,
     );
     return response.data;
@@ -157,7 +157,7 @@ export class NotificationsAPI {
     };
 
     const response = await apiauth.post<NotificationResponse>(
-      `${this.BASE_URL}/bulk-actions`,
+      `${NotificationsAPI.BASE_URL}/bulk-actions`,
       bulkRequest,
     );
     return response.data;
@@ -175,7 +175,7 @@ export class NotificationsAPI {
     };
 
     const response = await apiauth.post<NotificationResponse>(
-      `${this.BASE_URL}/bulk-actions`,
+      `${NotificationsAPI.BASE_URL}/bulk-actions`,
       bulkRequest,
     );
     return response.data;
@@ -193,7 +193,7 @@ export class NotificationsAPI {
     };
 
     const response = await apiauth.post<NotificationResponse>(
-      `${this.BASE_URL}/bulk-actions`,
+      `${NotificationsAPI.BASE_URL}/bulk-actions`,
       bulkRequest,
     );
     return response.data;
@@ -204,7 +204,7 @@ export class NotificationsAPI {
    */
   static async getUnreadCount(): Promise<{ count: number }> {
     const response = await apiauth.get<{ count: number }>(
-      `${this.BASE_URL}/unread/count`,
+      `${NotificationsAPI.BASE_URL}/unread/count`,
     );
     return response.data;
   }
@@ -221,7 +221,7 @@ export class NotificationsAPI {
     }
 
     const response = await apiauth.post<NotificationResponse>(
-      `${this.BASE_URL}/test?${params.toString()}`,
+      `${NotificationsAPI.BASE_URL}/test?${params.toString()}`,
     );
     return response.data;
   }

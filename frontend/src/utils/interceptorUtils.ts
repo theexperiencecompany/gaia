@@ -1,5 +1,5 @@
-import { AxiosError } from "axios";
-import { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import type { AxiosError } from "axios";
+import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { toast } from "sonner";
 
 import {

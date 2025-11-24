@@ -1,6 +1,6 @@
-import { InfiniteData, useQueryClient } from "@tanstack/react-query";
+import { type InfiniteData, useQueryClient } from "@tanstack/react-query";
 
-import { EmailData, EmailsResponse } from "@/types/features/mailTypes";
+import type { EmailData, EmailsResponse } from "@/types/features/mailTypes";
 
 import { mailApi } from "../api/mailApi";
 

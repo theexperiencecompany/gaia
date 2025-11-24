@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { mailApi } from "@/features/mail/api/mailApi";
-import { EmailData } from "@/types/features/mailTypes";
+import type { EmailData } from "@/types/features/mailTypes";
 
 import { useInfiniteEmails } from "./useInfiniteEmails";
 

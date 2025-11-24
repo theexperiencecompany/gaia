@@ -4,7 +4,7 @@
  */
 
 export type {
-  UseCase,
   PublicWorkflowStep as UseCaseStep,
+  UseCase,
 } from "@/types/features/workflowTypes";
 export type { ContentCreator as UseCaseCreator } from "@/types/shared/contentTypes";

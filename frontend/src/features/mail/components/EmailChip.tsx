@@ -1,6 +1,6 @@
 // components/mail/EmailChip.tsx
 import { Chip } from "@heroui/chip";
-import React from "react";
+import type React from "react";
 
 import { Cancel01Icon } from "@/icons";
 

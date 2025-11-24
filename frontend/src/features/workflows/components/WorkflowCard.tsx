@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
-import { Workflow } from "../api/workflowApi";
+import type { Workflow } from "../api/workflowApi";
 import { getTriggerDisplay } from "../utils/triggerDisplay";
 import BaseWorkflowCard from "./shared/BaseWorkflowCard";
 import {

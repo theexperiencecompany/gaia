@@ -9,7 +9,7 @@ import { NotificationItem } from "@/features/notification/components/Notificatio
 import { NotificationIcon } from "@/icons";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
-  NotificationRecord,
+  type NotificationRecord,
   NotificationStatus,
 } from "@/types/features/notificationTypes";
 

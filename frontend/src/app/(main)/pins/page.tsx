@@ -1,4 +1,4 @@
-import { Metadata } from "next";
+import type { Metadata } from "next";
 
 import Pins from "@/features/pins/components/PinsPage";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, Suspense } from "react";
+import { type ReactNode, Suspense } from "react";
 
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { Toaster } from "@/components/ui/sonner";

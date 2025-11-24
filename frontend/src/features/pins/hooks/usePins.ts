@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-import { PinCardProps } from "@/types/features/pinTypes";
+import type { PinCardProps } from "@/types/features/pinTypes";
 
 import { pinsApi } from "../api/pinsApi";
 

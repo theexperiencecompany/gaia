@@ -1,10 +1,10 @@
 "use client";
 
-import { Virtualizer } from "@tanstack/react-virtual";
+import type { Virtualizer } from "@tanstack/react-virtual";
 import { useMemo, useState } from "react";
 
 import { UnfoldLessIcon, UnfoldMoreIcon } from "@/icons";
-import { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface AllDayEventsSectionProps {
   events: GoogleCalendarEvent[];

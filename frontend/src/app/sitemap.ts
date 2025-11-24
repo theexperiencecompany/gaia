@@ -1,4 +1,4 @@
-import { MetadataRoute } from "next";
+import type { MetadataRoute } from "next";
 
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { getAllBlogPosts } from "@/lib/blog";

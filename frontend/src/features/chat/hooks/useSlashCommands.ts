@@ -1,9 +1,9 @@
 import Fuse from "fuse.js";
 import { useCallback, useMemo } from "react";
 
-import { ToolInfo } from "@/features/chat/api/toolsApi";
+import type { ToolInfo } from "@/features/chat/api/toolsApi";
 
-import { EnhancedToolInfo } from "../types/enhancedTools";
+import type { EnhancedToolInfo } from "../types/enhancedTools";
 import { useToolsQuery } from "./useToolsQuery";
 import { useToolsWithIntegrations } from "./useToolsWithIntegrations";
 

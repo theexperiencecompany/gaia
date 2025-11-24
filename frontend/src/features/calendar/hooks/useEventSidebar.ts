@@ -8,7 +8,7 @@ import {
   useRemoveEvent,
   useUpdateEvent,
 } from "@/stores/calendarStore";
-import {
+import type {
   GoogleCalendarEvent,
   RecurrenceData,
 } from "@/types/features/calendarTypes";

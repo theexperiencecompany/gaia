@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { calendarApi } from "@/features/calendar/api/calendarApi";
 import { CalendarCheckIn01Icon, Tick02Icon } from "@/icons";
-import { CalendarEditOptions } from "@/types/features/calendarTypes";
+import type { CalendarEditOptions } from "@/types/features/calendarTypes";
 import { hasEventChanges } from "@/utils/calendar/eventHelpers";
 import { buildEditEventPayload } from "@/utils/calendar/eventPayloadBuilders";
 import { formatDateWithRelative } from "@/utils/date/calendarDateUtils";

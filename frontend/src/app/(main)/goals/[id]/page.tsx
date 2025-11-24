@@ -4,12 +4,12 @@ import "@xyflow/react/dist/style.css";
 
 import {
   ConnectionLineType,
-  Edge,
+  type Edge,
   Handle,
-  Node,
+  type Node,
   Position,
   ReactFlow,
-  ReactFlowInstance,
+  type ReactFlowInstance,
   ReactFlowProvider,
 } from "@xyflow/react";
 import dagre from "dagre";
@@ -23,8 +23,8 @@ import { goalsApi } from "@/features/goals/api/goalsApi";
 import { Alert01Icon } from "@/icons";
 import { truncateTitle } from "@/lib/utils";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
-import { Goal } from "@/types/api/goalsApiTypes";
-import { EdgeType, GoalData, NodeData } from "@/types/features/goalTypes";
+import type { Goal } from "@/types/api/goalsApiTypes";
+import type { EdgeType, GoalData, NodeData } from "@/types/features/goalTypes";
 
 // Define CustomNode outside of the component to prevent recreation on every render
 const CustomNode = React.memo(

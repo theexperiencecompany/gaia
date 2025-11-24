@@ -1,10 +1,10 @@
-import { SystemPurpose } from "@/features/chat/api/chatApi";
-import {
+import type { SystemPurpose } from "@/features/chat/api/chatApi";
+import type {
   ChatBubbleBotProps,
   ChatBubbleUserProps,
   SetImageDataType,
 } from "@/types/features/chatBubbleTypes";
-import { MessageType } from "@/types/features/convoTypes";
+import type { MessageType } from "@/types/features/convoTypes";
 
 /**
  * Utility for transforming raw message data into typed props for chat components.

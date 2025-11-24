@@ -1,5 +1,5 @@
 import ContactListCard from "@/features/mail/components/ContactListCard";
-import { ContactData } from "@/types/features/mailTypes";
+import type { ContactData } from "@/types/features/mailTypes";
 
 export default function ContactListSection({
   contacts_data,

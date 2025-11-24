@@ -1,15 +1,15 @@
 import { useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 
-import { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
+import type { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useChatStream } from "@/features/chat/hooks/useChatStream";
 import { db, type IMessage } from "@/lib/db/chatDb";
 import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
-import { MessageType } from "@/types/features/convoTypes";
-import { WorkflowData } from "@/types/features/workflowTypes";
+import type { MessageType } from "@/types/features/convoTypes";
+import type { WorkflowData } from "@/types/features/workflowTypes";
 import fetchDate from "@/utils/date/dateUtils";
 
 type SendMessageOverrides = {

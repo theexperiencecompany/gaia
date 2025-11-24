@@ -1,5 +1,6 @@
 import { Tab, Tabs } from "@heroui/tabs";
-import React, { useState } from "react";
+import type React from "react";
+import { useState } from "react";
 import {
   Bar,
   BarChart,
@@ -13,7 +14,7 @@ import {
 } from "recharts";
 
 import {
-  ChartConfig,
+  type ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,

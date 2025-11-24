@@ -3,7 +3,7 @@ import Image from "next/image";
 
 import UseCasesPageClient from "@/app/(landing)/use-cases/client";
 import {
-  CommunityWorkflow,
+  type CommunityWorkflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
 import { generatePageMetadata } from "@/lib/seo";

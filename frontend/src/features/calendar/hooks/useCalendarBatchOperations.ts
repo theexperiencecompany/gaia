@@ -2,7 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { calendarApi } from "@/features/calendar/api/calendarApi";
-import {
+import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
   CalendarEvent,
@@ -13,7 +13,7 @@ import {
   buildBatchDeletePayloads,
   buildBatchEditPayloads,
 } from "@/utils/calendar/eventPayloadBuilders";
-import { AnyCalendarEvent } from "@/utils/calendar/eventTypeGuards";
+import type { AnyCalendarEvent } from "@/utils/calendar/eventTypeGuards";
 
 export type EventStatus = {
   [key: string | number]: "idle" | "loading" | "completed";

@@ -1,4 +1,4 @@
-import { Metadata } from "next";
+import type { Metadata } from "next";
 
 import GoalsPage from "@/features/goals/components/GoalsPage";
 

@@ -1,7 +1,7 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 
 import { GoogleCalendarIcon } from "@/components";
-import { CalendarListFetchData } from "@/types/features/calendarTypes";
+import type { CalendarListFetchData } from "@/types/features/calendarTypes";
 
 interface CalendarListFetchProps {
   calendars?: CalendarListFetchData[] | null;

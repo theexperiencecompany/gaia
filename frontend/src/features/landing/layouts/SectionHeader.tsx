@@ -1,5 +1,5 @@
 import { Chip } from "@heroui/chip";
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
 export function SectionHeading({
   heading,

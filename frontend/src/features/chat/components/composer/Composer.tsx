@@ -1,4 +1,5 @@
-import React, {
+import type React from "react";
+import {
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -8,7 +9,7 @@ import React, {
 } from "react";
 
 import FilePreview, {
-  UploadedFilePreview,
+  type UploadedFilePreview,
 } from "@/features/chat/components/files/FilePreview";
 import FileUpload from "@/features/chat/components/files/FileUpload";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
@@ -26,9 +27,9 @@ import {
   useInputText,
 } from "@/stores/composerStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
-import { FileData, SearchMode } from "@/types/shared";
+import type { FileData, SearchMode } from "@/types/shared";
 
-import ComposerInput, { ComposerInputRef } from "./ComposerInput";
+import ComposerInput, { type ComposerInputRef } from "./ComposerInput";
 import ComposerToolbar from "./ComposerToolbar";
 import IntegrationsBanner from "./IntegrationsBanner";
 import SelectedCalendarEventIndicator from "./SelectedCalendarEventIndicator";

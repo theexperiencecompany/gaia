@@ -3,7 +3,8 @@
 import { Checkbox } from "@heroui/checkbox";
 import { Input, Textarea } from "@heroui/input";
 import { formatDistanceToNow } from "date-fns";
-import React, { useEffect, useState } from "react";
+import type React from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
@@ -13,7 +14,7 @@ import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
 import WorkflowSection from "@/features/todo/components/WorkflowSection";
 import { Delete02Icon } from "@/icons";
-import {
+import type {
   Priority,
   Project,
   SubTask,

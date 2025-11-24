@@ -10,7 +10,7 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { Mail01Icon, PlayIcon, Timer02Icon, UserCircle02Icon } from "@/icons";
 import { formatRunCount } from "@/utils/formatters";
 
-import { Workflow } from "../../api/workflowApi";
+import type { Workflow } from "../../api/workflowApi";
 
 // Utility function for calculating next run display
 export function getNextRunDisplay(workflow: Workflow): string | null {

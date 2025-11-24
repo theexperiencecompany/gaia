@@ -1,7 +1,7 @@
 import { Handle, Position } from "@xyflow/react";
 import React from "react";
 
-import { NodeData } from "@/types/features/goalTypes";
+import type { NodeData } from "@/types/features/goalTypes";
 
 interface CustomNodeProps {
   data: NodeData;

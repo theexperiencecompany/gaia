@@ -4,7 +4,9 @@ import { RedoIcon } from "@/icons";
 
 export default function Spinner({
   variant = "logo",
-}: { variant?: "simple" | "logo" } = {}) {
+}: {
+  variant?: "simple" | "logo";
+} = {}) {
   if (variant === "logo")
     return (
       <Image

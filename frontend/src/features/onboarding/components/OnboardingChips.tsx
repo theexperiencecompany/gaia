@@ -2,7 +2,7 @@ import { Chip } from "@heroui/chip";
 import { motion } from "framer-motion";
 
 import { questions } from "../constants";
-import { OnboardingState } from "../types";
+import type { OnboardingState } from "../types";
 
 interface OnboardingChipsProps {
   onboardingState: OnboardingState;

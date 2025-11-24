@@ -5,7 +5,7 @@ import { useMemo } from "react";
 
 import { GoogleCalendarIcon } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
-import { CalendarFetchData } from "@/types/features/calendarTypes";
+import type { CalendarFetchData } from "@/types/features/calendarTypes";
 import { groupFetchDataByDate } from "@/utils/calendar/eventGrouping";
 import {
   formatDateWithRelative,

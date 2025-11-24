@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 
 import { useUser } from "@/features/auth/hooks/useUser";
 
-import { Plan, pricingApi } from "../api/pricingApi";
+import { type Plan, pricingApi } from "../api/pricingApi";
 
 export const usePricing = (initialPlans: Plan[] = []) => {
   const [error, setError] = useState<string | null>(null);

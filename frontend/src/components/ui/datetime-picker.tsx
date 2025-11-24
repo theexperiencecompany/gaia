@@ -18,9 +18,9 @@ import {
   startOfMinute,
   subHours,
 } from "date-fns";
-import * as React from "react";
+import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DayPicker, Matcher } from "react-day-picker";
+import { DayPicker, type Matcher } from "react-day-picker";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import {

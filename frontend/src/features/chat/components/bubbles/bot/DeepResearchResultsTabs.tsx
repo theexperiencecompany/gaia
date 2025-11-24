@@ -8,7 +8,7 @@ import {
   LinkBackwardIcon,
   SearchIcon,
 } from "@/icons";
-import {
+import type {
   DeepResearchResults,
   EnhancedWebResult,
 } from "@/types/features/convoTypes";

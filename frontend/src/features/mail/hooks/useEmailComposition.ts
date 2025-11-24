@@ -4,15 +4,15 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import Typography from "@tiptap/extension-typography";
 import Underline from "@tiptap/extension-underline";
-import { EditorOptions, useEditor } from "@tiptap/react";
+import { type EditorOptions, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Tag } from "emblor";
+import type { Tag } from "emblor";
 import { marked } from "marked";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
 import { mailApi } from "@/features/mail/api/mailApi";
-import { EmailSuggestion } from "@/features/mail/components/EmailChip";
+import type { EmailSuggestion } from "@/features/mail/components/EmailChip";
 
 export interface EmailCompositionFormState {
   toEmails: Tag[];

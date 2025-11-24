@@ -1,7 +1,7 @@
 "use client";
 
 import RedditCreatedCard from "@/features/reddit/components/RedditCreatedCard";
-import {
+import type {
   RedditCommentCreatedData,
   RedditPostCreatedData,
 } from "@/types/features/redditTypes";

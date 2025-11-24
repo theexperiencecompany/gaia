@@ -1,6 +1,6 @@
-import { Metadata } from "next";
+import type { Metadata } from "next";
 
-import { PublicHoloCardData } from "@/features/onboarding/api/holoCardApi";
+import type { PublicHoloCardData } from "@/features/onboarding/api/holoCardApi";
 import { normalizeHouse } from "@/features/onboarding/constants/houses";
 
 export async function generateMetadata({
