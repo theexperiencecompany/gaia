@@ -217,7 +217,7 @@ def get_random_bio_for_profession(name: str, profession: str) -> str:
     bios = PROFESSION_BIOS.get(profession, PROFESSION_BIOS["other"])
 
     # Select a random bio and format with the name
-    selected_bio = random.choice(bios)
+    selected_bio = random.choice(bios)  # nosec: B311
     return selected_bio.format(name=name)
 
 

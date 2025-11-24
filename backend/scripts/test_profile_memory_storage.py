@@ -9,7 +9,8 @@ from pathlib import Path
 backend_path = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_path))
 
-from app.services.memory_service import memory_service
+# Import app modules after path setup  # noqa: E402
+from app.services.memory_service import memory_service  # noqa: E402
 
 
 async def test_profile_memory_storage():
