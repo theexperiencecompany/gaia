@@ -6,7 +6,7 @@ import { Tooltip } from "@heroui/tooltip";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { HoloCardDisplayData,HoloCardEditor } from "@/components/ui/holo-card";
+import { HoloCardDisplayData, HoloCardEditor } from "@/components/ui/holo-card";
 import {
   holoCardApi,
   HoloCardData,
@@ -33,8 +33,10 @@ export default function ProfileCardSettings() {
   }, []);
 
   const handleCopyLink = () => {
-    if (!holoCardData?.holo_card_id) return;
-    const url = `${window.location.origin}/profile/${holoCardData.holo_card_id}`;
+    if (!holoCardData?.holo_card_id &&
+      typeof window !== "undefined"
+    ) return;
+    const url = `${window.location.origin}/profile/${holoCardData?.holo_card_id}`;
     navigator.clipboard.writeText(url);
     toast.success("Profile link copied to clipboard!");
   };
@@ -53,16 +55,16 @@ export default function ProfileCardSettings() {
 
   const displayData: HoloCardDisplayData | null = holoCardData
     ? {
-        house: holoCardData.house || "bluehaven",
-        name: holoCardData.name,
-        personality_phrase: holoCardData.personality_phrase,
-        user_bio: holoCardData.user_bio,
-        account_number: `#${holoCardData.account_number}`,
-        member_since: holoCardData.member_since,
-        overlay_color: holoCardData.overlay_color,
-        overlay_opacity: holoCardData.overlay_opacity,
-        holo_card_id: holoCardData.holo_card_id,
-      }
+      house: holoCardData.house || "bluehaven",
+      name: holoCardData.name,
+      personality_phrase: holoCardData.personality_phrase,
+      user_bio: holoCardData.user_bio,
+      account_number: `#${holoCardData.account_number}`,
+      member_since: holoCardData.member_since,
+      overlay_color: holoCardData.overlay_color,
+      overlay_opacity: holoCardData.overlay_opacity,
+      holo_card_id: holoCardData.holo_card_id,
+    }
     : null;
 
   return (

@@ -45,6 +45,7 @@ export default function ProfilePage() {
 	}, [cardId]);
 
 	const handleShare = () => {
+		if (typeof window === "undefined") return;
 		const url = window.location.href;
 		navigator.clipboard.writeText(url);
 		toast.success("Profile link copied to clipboard!");
@@ -52,16 +53,16 @@ export default function ProfilePage() {
 
 	const displayData: HoloCardDisplayData | null = holoCardData
 		? {
-				house: holoCardData.house,
-				name: holoCardData.name,
-				personality_phrase: holoCardData.personality_phrase,
-				user_bio: holoCardData.user_bio,
-				account_number: `#${holoCardData.account_number}`,
-				member_since: holoCardData.member_since,
-				overlay_color: holoCardData.overlay_color || "rgba(0,0,0,0)",
-				overlay_opacity: holoCardData.overlay_opacity || 40,
-				holo_card_id: cardId,
-			}
+			house: holoCardData.house,
+			name: holoCardData.name,
+			personality_phrase: holoCardData.personality_phrase,
+			user_bio: holoCardData.user_bio,
+			account_number: `#${holoCardData.account_number}`,
+			member_since: holoCardData.member_since,
+			overlay_color: holoCardData.overlay_color || "rgba(0,0,0,0)",
+			overlay_opacity: holoCardData.overlay_opacity || 40,
+			holo_card_id: cardId,
+		}
 		: null;
 
 	return (

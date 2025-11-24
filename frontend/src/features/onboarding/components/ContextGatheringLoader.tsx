@@ -2,7 +2,6 @@
 
 import { Spinner } from "@heroui/spinner";
 import { useEffect, useState } from "react";
-import { useEffect as useDebugEffect } from "react";
 import { toast } from "sonner";
 
 import { RaisedButton } from "@/components";
@@ -61,7 +60,6 @@ export default function ContextGatheringLoader({
     useState<PersonalizationData | null>(null);
   const { phase, setPhase } = useOnboardingPhaseStore();
   const [isInitializing, setIsInitializing] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
   const [messageIndex, setMessageIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
@@ -73,8 +71,6 @@ export default function ContextGatheringLoader({
     phase === OnboardingPhase.GETTING_STARTED ||
     phase === OnboardingPhase.COMPLETED;
 
-
-
   // Initialize: Fetch data and check if should hide
   useEffect(() => {
     const fetchPersonalization = async (): Promise<PersonalizationData | null> => {
@@ -84,24 +80,16 @@ export default function ContextGatheringLoader({
           { silent: true },
         );
 
-        console.log("[ContextGatheringLoader] Fetched data:", data);
-
         setPersonalizationData(data);
-        if (data?.phase) {
-          setPhase(data.phase as OnboardingPhase);
-        }
-        setFetchError(false);
+        if (data?.phase) setPhase(data.phase as OnboardingPhase);
 
         return data;
-      } catch (error) {
-        console.error("[ContextGatheringLoader] Failed to fetch:", error);
-        setFetchError(true);
+      } catch {
         return null;
       }
     };
 
     const initialize = async () => {
-      console.log("[ContextGatheringLoader] Starting initialization...");
       const data = await fetchPersonalization();
 
       // Auto-hide if user already completed personalization
@@ -109,7 +97,6 @@ export default function ContextGatheringLoader({
         data?.phase === OnboardingPhase.GETTING_STARTED ||
         data?.phase === OnboardingPhase.COMPLETED
       ) {
-        console.log("[ContextGatheringLoader] Already completed, hiding");
         setIsInitializing(false);
         return;
       }
@@ -121,16 +108,11 @@ export default function ContextGatheringLoader({
           wasDismissed &&
           data?.phase !== OnboardingPhase.PERSONALIZATION_PENDING
         ) {
-          console.log("[ContextGatheringLoader] Previously dismissed, hiding");
           setIsInitializing(false);
           return;
         }
       }
 
-      console.log(
-        "[ContextGatheringLoader] Initialization complete, phase:",
-        data?.phase,
-      );
       setIsInitializing(false);
     };
 
@@ -141,11 +123,6 @@ export default function ContextGatheringLoader({
   useEffect(() => {
     const handlePersonalizationComplete = (message: unknown) => {
       if (!isPersonalizationCompleteMessage(message)) return;
-
-      console.log(
-        "[ContextGatheringLoader] WebSocket event received:",
-        message,
-      );
 
       const updatedData: PersonalizationData = {
         ...message.data,
@@ -162,10 +139,6 @@ export default function ContextGatheringLoader({
     const handleBioStatusUpdate = (message: unknown) => {
       if (!isBioStatusUpdateMessage(message)) return;
 
-      console.log(
-        "[ContextGatheringLoader] Bio status update received:",
-        message,
-      );
 
       // If bio status changed to processing, reset the personalization state
       if (message.data.bio_status === "processing") {
@@ -183,7 +156,6 @@ export default function ContextGatheringLoader({
       }
     };
 
-    console.log("[ContextGatheringLoader] Registering WebSocket listeners");
     wsManager.on(
       "onboarding_personalization_complete",
       handlePersonalizationComplete,
@@ -191,7 +163,6 @@ export default function ContextGatheringLoader({
     wsManager.on("bio_status_update", handleBioStatusUpdate);
 
     return () => {
-      console.log("[ContextGatheringLoader] Unregistering WebSocket listeners");
       wsManager.off(
         "onboarding_personalization_complete",
         handlePersonalizationComplete,
@@ -199,25 +170,6 @@ export default function ContextGatheringLoader({
       wsManager.off("bio_status_update", handleBioStatusUpdate);
     };
   }, [setPhase]);
-
-  // Monitor WebSocket connection status
-  useDebugEffect(() => {
-    const checkConnection = () => {
-      const isConnected = wsManager.isConnected;
-      console.log("[ContextGatheringLoader] WebSocket status check:", {
-        isConnected,
-        userEmail: user.email,
-      });
-    };
-
-    // Check immediately
-    checkConnection();
-
-    // Check periodically
-    const interval = setInterval(checkConnection, 2000);
-
-    return () => clearInterval(interval);
-  }, [user.email]);
 
   // Timer: Progress bar and message rotation
   useEffect(() => {
@@ -255,31 +207,18 @@ export default function ContextGatheringLoader({
 
   const handleShowMeAround = async () => {
     try {
-      console.log("[ContextGatheringLoader] handleShowMeAround clicked");
-      console.log(
-        "[ContextGatheringLoader] Updating phase to GETTING_STARTED...",
-      );
-
       // Update backend phase
-      const response = await apiService.post("/onboarding/phase", {
+      await apiService.post("/onboarding/phase", {
         phase: OnboardingPhase.GETTING_STARTED,
       });
 
-      console.log("[ContextGatheringLoader] Phase update response:", response);
-
       // Save dismissal state
       localStorage.setItem(dismissalKey, "true");
-      console.log("[ContextGatheringLoader] Saved dismissal state");
-
       // Update global store immediately
       setPhase(OnboardingPhase.GETTING_STARTED);
-      console.log("[ContextGatheringLoader] Updated global phase store");
 
-      // Trigger modal
-      console.log("[ContextGatheringLoader] Opening HoloCard modal...");
       onComplete();
-    } catch (error) {
-      console.error("[ContextGatheringLoader] Failed to update phase:", error);
+    } catch {
       toast.error("Failed to update progress. Please try again.");
     }
   };
@@ -305,9 +244,6 @@ export default function ContextGatheringLoader({
 
   // Show loading state during initialization
   if (isInitializing) {
-    console.log(
-      "[ContextGatheringLoader] Still initializing, showing temporary loader",
-    );
     return (
       <div className="relative flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-4 shadow-xl backdrop-blur-sm">
         <div className="flex items-center gap-3">
@@ -321,23 +257,12 @@ export default function ContextGatheringLoader({
   }
 
   // Hide if personalization is complete or user dismissed
-  if (shouldHide) {
-    console.log("[ContextGatheringLoader] Should hide, phase:", phase);
+  if (shouldHide)
     return null;
-  }
 
   // If no phase data and not initializing, show nothing (error state)
-  if (!phase) {
-    console.log("[ContextGatheringLoader] No phase data available", fetchError);
+  if (!phase)
     return null;
-  }
-
-  console.log(
-    "[ContextGatheringLoader] Rendering with phase:",
-    phase,
-    "isLoading:",
-    isLoading,
-  );
 
   return (
     <div className="relative flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-4 shadow-xl backdrop-blur-sm">

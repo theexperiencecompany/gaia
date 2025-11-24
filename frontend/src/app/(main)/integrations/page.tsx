@@ -38,7 +38,7 @@ export default function IntegrationsPage() {
       </div>,
     );
     return () => setHeader(null);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Set sidebar to sidebar mode (not sheet)
   useEffect(() => {

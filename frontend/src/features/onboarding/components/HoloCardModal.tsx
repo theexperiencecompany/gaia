@@ -9,7 +9,7 @@ import { TwitterShareButton } from "react-share";
 import { toast } from "sonner";
 
 import { TwitterIcon } from "@/components";
-import { HoloCardDisplayData,HoloCardEditor } from "@/components/ui/holo-card";
+import { HoloCardDisplayData, HoloCardEditor } from "@/components/ui/holo-card";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
 import {
@@ -26,6 +26,7 @@ interface FeatureModalProps {
 
 export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
   const [selectedHouse, setSelectedHouse] = useState<House>("bluehaven");
+  const [shareUrl, setShareUrl] = useState("");
   const hasShownConfetti = useRef(false);
   const user = useUser();
 
@@ -40,6 +41,16 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     }
   }, [personalizationData]);
 
+  // Set share URL only on client side
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const url = personalizationData?.holo_card_id
+        ? `${window.location.origin}/profile/${personalizationData.holo_card_id}`
+        : window.location.href;
+      setShareUrl(url);
+    }
+  }, [personalizationData?.holo_card_id]);
+
   useEffect(() => {
     if (isOpen && !hasShownConfetti.current) {
       hasShownConfetti.current = true;
@@ -53,22 +64,23 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
   }, [isOpen]);
 
   const handleShare = (platform: "twitter" | "linkedin" | "copy") => {
-    const url = window.location.href;
+    if (typeof window === "undefined" || !shareUrl) return;
+
     switch (platform) {
       case "twitter":
         window.open(
-          `https://twitter.com/intent/tweet?url=${encodeURIComponent(url)}`,
+          `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}`,
           "_blank",
         );
         break;
       case "linkedin":
         window.open(
-          `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
+          `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`,
           "_blank",
         );
         break;
       case "copy":
-        navigator.clipboard.writeText(url);
+        navigator.clipboard.writeText(shareUrl);
         toast.success("Link copied to clipboard");
         break;
     }
@@ -88,11 +100,6 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     overlay_opacity: personalizationData?.overlay_opacity ?? 40,
     holo_card_id: personalizationData?.holo_card_id,
   };
-
-  const shareUrl =
-    !!window && personalizationData?.holo_card_id
-      ? `${window.location.origin}/profile/${personalizationData.holo_card_id}`
-      : window.location.href;
 
   const shareTitle = "Check out my Personal Card made using GAIA";
 
@@ -160,7 +167,6 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                 >
                   Share on Twitter
                 </Button>
-                Twitter
               </TwitterShareButton>
             </div>
           </div>

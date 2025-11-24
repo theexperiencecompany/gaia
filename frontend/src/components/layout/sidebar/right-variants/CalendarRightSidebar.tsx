@@ -108,8 +108,12 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    if (typeof window !== "undefined")
+      window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      if (typeof window !== "undefined")
+        window.removeEventListener("keydown", handleKeyDown);
+    }
   }, [selectedEvent, isCreating, confirm, summary, onDelete]);
 
   // Set default calendar when calendars are loaded and creating
@@ -276,16 +280,15 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                             day.value,
                           )
                             ? customRecurrenceDays.filter(
-                                (d) => d !== day.value,
-                              )
+                              (d) => d !== day.value,
+                            )
                             : [...customRecurrenceDays, day.value];
                           onCustomRecurrenceDaysChange(newDays);
                         }}
-                        className={`flex size-9 items-center justify-center rounded-full text-sm font-medium transition-colors ${
-                          customRecurrenceDays.includes(day.value)
-                            ? "bg-blue-600 text-white"
-                            : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700"
-                        }`}
+                        className={`flex size-9 items-center justify-center rounded-full text-sm font-medium transition-colors ${customRecurrenceDays.includes(day.value)
+                          ? "bg-blue-600 text-white"
+                          : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700"
+                          }`}
                       >
                         {day.label}
                       </button>
