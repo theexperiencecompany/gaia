@@ -267,10 +267,9 @@ export default function MemoryGraphDemo() {
         >
           <Card className="border border-zinc-600 bg-zinc-800 shadow-lg">
             <CardBody className="p-2">
-              <div
-                className="max-w-48 text-xs text-zinc-100"
-                dangerouslySetInnerHTML={{ __html: tooltip.content }}
-              />
+              <div className="max-w-48 text-xs text-zinc-100">
+                {tooltip.content}
+              </div>
             </CardBody>
           </Card>
         </div>

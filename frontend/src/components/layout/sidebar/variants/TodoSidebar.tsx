@@ -16,7 +16,6 @@ import {
   Folder02Icon,
   InboxCheckIcon,
   InboxIcon,
-  LabelIcon,
   PlusSignIcon,
   Tag01Icon,
 } from "@/icons";

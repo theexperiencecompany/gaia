@@ -31,6 +31,7 @@ export function Safari({
       xmlns="http://www.w3.org/2000/svg"
       {...props}
     >
+      <title>Safari Browser component</title>
       <g clipPath="url(#path0)">
         <path
           className="fill-zinc-900"
@@ -119,18 +120,16 @@ export function Safari({
           </>
         ) : null}
         {imageSrc && (
-          <>
-            <image
-              clipPath="url(#roundedBottom)"
-              height="700"
-              href={`/_next/image?url=${encodeURIComponent(imageSrc)}&w=1452&h=860&q=75`}
-              preserveAspectRatio="xMidYMid slice"
-              width="1200"
-              x="1"
-              y="52"
-              onLoad={handleImageLoad}
-            />
-          </>
+          <image
+            clipPath="url(#roundedBottom)"
+            height="700"
+            href={`/_next/image?url=${encodeURIComponent(imageSrc)}&w=1452&h=860&q=75`}
+            preserveAspectRatio="xMidYMid slice"
+            width="1200"
+            x="1"
+            y="52"
+            onLoad={handleImageLoad}
+          />
         )}
         {videoSrc && (
           <foreignObject

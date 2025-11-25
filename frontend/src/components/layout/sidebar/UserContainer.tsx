@@ -5,12 +5,7 @@ import React from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import SettingsMenu from "@/features/settings/components/SettingsMenu";
-import {
-  ChevronsDownUp,
-  ChevronsUpDown,
-  UnfoldLessIcon,
-  UnfoldMoreIcon,
-} from "@/icons";
+import { ChevronsDownUp, ChevronsUpDown } from "@/icons";
 
 import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
 

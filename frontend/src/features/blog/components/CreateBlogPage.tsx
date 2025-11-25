@@ -289,11 +289,15 @@ Happy writing! 🚀`,
 
             {/* Authors */}
             <div className="space-y-3">
-              <label className="text-sm font-medium text-foreground">
+              <label
+                className="text-sm font-medium text-foreground"
+                htmlFor="blog-author-autocomplete"
+              >
                 Authors <span className="text-danger">*</span>
               </label>
 
               <Autocomplete
+                id="blog-author-autocomplete"
                 placeholder="Search and select authors"
                 startContent={
                   <UserCircle02Icon className="h-4 w-4 text-foreground-400" />
@@ -358,9 +362,9 @@ Happy writing! 🚀`,
 
             {/* Featured Image Upload */}
             <div className="space-y-3">
-              <label className="text-sm font-medium text-foreground">
+              <div className="text-sm font-medium text-foreground">
                 Featured Image (Optional)
-              </label>
+              </div>
 
               {selectedFile ? (
                 <Card className="p-4">
@@ -431,13 +435,17 @@ Happy writing! 🚀`,
 
             {/* Content with Preview */}
             <div className="space-y-4">
-              <label className="text-sm font-medium text-foreground">
+              <label
+                className="text-sm font-medium text-foreground"
+                htmlFor="textarea-blogpost"
+              >
                 Content <span className="text-danger">*</span>
               </label>
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <div>
                   <Textarea
+                    id="textarea-blogpost"
                     placeholder="Write your blog post content in Markdown..."
                     description="You can use Markdown syntax for formatting"
                     minRows={12}

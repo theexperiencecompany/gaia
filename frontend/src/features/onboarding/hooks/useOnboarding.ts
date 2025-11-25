@@ -7,7 +7,7 @@ import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
-import type { Message, OnboardingState } from "../types";
+import type { Message, OnboardingResponse, OnboardingState } from "../types";
 
 const ONBOARDING_STORAGE_KEY = "gaia-onboarding-state";
 
@@ -375,7 +375,7 @@ export const useOnboarding = () => {
       // Send onboarding data to backend with retry logic
       let retryCount = 0;
       const maxRetries = 3;
-      let response;
+      let response: OnboardingResponse | undefined;
 
       while (retryCount < maxRetries) {
         try {

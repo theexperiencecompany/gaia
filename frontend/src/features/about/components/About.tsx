@@ -99,8 +99,11 @@ export default async function About() {
                       {children}
                     </strong>
                   ),
-                  a: ({ children }) => (
-                    <a className="cursor-pointer text-primary hover:underline">
+                  a: ({ href, children }) => (
+                    <a
+                      className="cursor-pointer text-primary hover:underline"
+                      href={href}
+                    >
                       {children}
                     </a>
                   ),

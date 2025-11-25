@@ -1,3 +1,5 @@
+import type { UserInfo } from "@/features/auth/api/authApi";
+
 export interface Message {
   id: string;
   type: "bot" | "user";
@@ -28,4 +30,10 @@ export interface OnboardingState {
 export interface ProfessionOption {
   label: string;
   value: string;
+}
+
+export interface OnboardingResponse {
+  success: boolean;
+  message: string;
+  user?: UserInfo;
 }

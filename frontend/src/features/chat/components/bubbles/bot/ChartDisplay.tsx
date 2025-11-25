@@ -200,6 +200,7 @@ const DynamicChartItem: React.FC<{
       {/* Action buttons */}
       <div className="absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
         <button
+          type="button"
           onClick={onFullscreen}
           className="rounded-lg bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
           title="View fullscreen"

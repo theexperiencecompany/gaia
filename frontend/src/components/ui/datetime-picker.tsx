@@ -164,7 +164,6 @@ export function DateTimePicker({
               disabled && "cursor-not-allowed opacity-50",
               classNames?.trigger,
             )}
-            tabIndex={0}
           >
             <div className="flex flex-grow items-center text-zinc-400">
               <CalendarIcon className="mr-2 size-4" />
