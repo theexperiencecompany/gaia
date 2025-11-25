@@ -168,7 +168,10 @@ const handleRateLimitError = (errorData: unknown): void => {
   const { feature, plan_required, reset_time, message } = rateLimit;
 
   if (plan_required) {
-    showFeatureRestrictedToast(feature || "This feature", plan_required);
+    showFeatureRestrictedToast(
+      feature?.replace("_", " ") || "This feature",
+      plan_required,
+    );
   } else if (feature?.includes("token")) {
     showTokenLimitToast(feature, plan_required);
   } else {

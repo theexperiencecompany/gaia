@@ -136,7 +136,7 @@ export default function SubtaskManager({
           {subtasks.map((subtask) => (
             <div
               key={subtask.id}
-              className="group hover:bg-zinc-750 flex items-center gap-3 rounded-lg bg-zinc-800 p-2 transition-colors"
+              className="group hover:bg-zinc-750 flex items-center gap- rounded-lg bg-zinc-800 p-2 transition-colors"
             >
               <Checkbox
                 isSelected={subtask.completed}

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
-import { RaisedButton } from "@/components/ui/raised-button";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import {
   usePricing,
@@ -13,7 +12,6 @@ import {
 } from "@/features/pricing/hooks/usePricing";
 import {
   Calendar03Icon,
-  CancelIcon,
   CheckListIcon,
   ConnectIcon,
   MessageMultiple02Icon,
@@ -23,6 +21,7 @@ import {
 import { posthog } from "@/lib";
 import { useRefreshTrigger } from "@/stores/notificationStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";
+import { SidebarPromo } from "./SidebarPromo";
 
 export default function SidebarTopButtons() {
   const pathname = usePathname();
@@ -105,36 +104,7 @@ export default function SidebarTopButtons() {
   return (
     <div className="flex flex-col">
       {/* Only show Upgrade to Pro button when user doesn't have an active subscription */}
-      {!subscriptionStatus?.is_subscribed && (
-        <Link href="/pricing">
-          <div className="m-1 mb-2 flex h-fit w-fit flex-col justify-center rounded-2xl border border-zinc-700 bg-zinc-800 p-3 pt-1  transition hover:bg-zinc-700 active:scale-95">
-            <div className="flex w-full justify-between items-center gap-1">
-              <div className="font-medium text-sm">Go on, You Deserve This</div>
-              <Button
-                isIconOnly
-                variant="light"
-                size="sm"
-                className="p-0! text-zinc-400 hover:text-white relative left-2"
-              >
-                <CancelIcon width={18} height={18} />
-              </Button>
-            </div>
-            <p className="text-xs text-zinc-400">
-              Unlock near-unlimited usage and priority support for ${price} a
-              month
-            </p>
-
-            <RaisedButton
-              className="mt-2 w-full rounded-xl! text-black!"
-              color="#00bbff"
-              size={"sm"}
-            >
-              <ZapIcon fill="black" width={17} height={17} />
-              Upgrade to Pro
-            </RaisedButton>
-          </div>
-        </Link>
-      )}
+      {!subscriptionStatus?.is_subscribed && <SidebarPromo price={price} />}
 
       <div className="flex w-full flex-col gap-0.5">
         {buttonData.map(({ route, icon, label }) => (

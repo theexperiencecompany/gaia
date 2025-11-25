@@ -32,7 +32,6 @@ export * from "./sheet";
 export * from "./shimmering-chip";
 export * from "./sidebar";
 export * from "./skeleton";
-export * from "./slider";
 export * from "./sonner";
 export * from "./spinner";
 export * from "./table";
