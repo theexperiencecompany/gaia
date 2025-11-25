@@ -19,8 +19,7 @@ export function SidebarPromo({ price }: SidebarPromoProps) {
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored)
-      setIsCollapsed(JSON.parse(stored));
+    if (stored) setIsCollapsed(JSON.parse(stored));
   }, []);
 
   const handleCollapse = () => {
