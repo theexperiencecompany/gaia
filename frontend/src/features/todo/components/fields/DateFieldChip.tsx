@@ -65,7 +65,7 @@ export default function DateFieldChip({
       label="Due Date"
       value={displayValue}
       placeholder="Due date"
-      icon={<CalendarIcon size={14} />}
+      icon={<CalendarIcon width={18} height={18} />}
       variant={value ? "success" : "default"}
       className={className}
     >
@@ -74,7 +74,7 @@ export default function DateFieldChip({
           <div className="border-0 bg-zinc-900 p-3">
             <label
               htmlFor="due-date-input"
-              className="mb-2 block text-sm text-zinc-300"
+              className="mb-2 block text-sm text-zinc-500"
             >
               Select Date
             </label>
@@ -96,9 +96,9 @@ export default function DateFieldChip({
               e.stopPropagation();
               handleQuickDate(0, onClose);
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
           >
-            <CalendarIcon size={14} />
+            <CalendarIcon width={18} height={18} />
             Today
           </div>
           <div
@@ -106,9 +106,9 @@ export default function DateFieldChip({
               e.stopPropagation();
               handleQuickDate(1, onClose);
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
           >
-            <CalendarIcon size={14} />
+            <CalendarIcon width={18} height={18} />
             Tomorrow
           </div>
           <div
@@ -116,9 +116,9 @@ export default function DateFieldChip({
               e.stopPropagation();
               handleQuickDate(3, onClose);
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
           >
-            <CalendarIcon size={14} />
+            <CalendarIcon width={18} height={18} />
             In 3 days
           </div>
           <div
@@ -126,9 +126,9 @@ export default function DateFieldChip({
               e.stopPropagation();
               handleQuickDate(7, onClose);
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
           >
-            <CalendarIcon size={14} />
+            <CalendarIcon width={18} height={18} />
             Next week
           </div>
 
@@ -142,9 +142,9 @@ export default function DateFieldChip({
                   onChange(undefined, undefined);
                   onClose();
                 }}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
+                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
               >
-                <Cancel01Icon size={14} />
+                <Cancel01Icon width={18} height={18} />
                 Clear date
               </div>
             </>

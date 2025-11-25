@@ -6,6 +6,7 @@ import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import { CalendarUpload01Icon, GoogleCalendarIcon } from "@/icons";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
+import { formatDate } from "@/utils";
 
 interface UpcomingEventsViewProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;
@@ -110,26 +111,6 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
     }
 
     return false;
-  };
-
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    if (date.toDateString() === today.toDateString()) {
-      return "Today";
-    } else if (date.toDateString() === tomorrow.toDateString()) {
-      return "Tomorrow";
-    } else {
-      return date.toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-      });
-    }
   };
 
   const hasEvents = Object.keys(upcomingEventsByDay).length > 0;

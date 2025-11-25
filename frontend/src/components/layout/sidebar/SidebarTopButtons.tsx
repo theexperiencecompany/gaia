@@ -107,20 +107,6 @@ export default function SidebarTopButtons() {
       {!subscriptionStatus?.is_subscribed && (
         <Link href="/pricing">
           <div className="m-1 mb-2 flex h-fit w-fit flex-col justify-center gap-1 rounded-2xl border border-zinc-700 bg-zinc-800 p-3 transition hover:bg-zinc-700 active:scale-95">
-            {/* <div className="flex items-center justify-center gap-2 py-2">
-              <CircleArrowUp width={20} height={20} />
-              <div className="flex items-center gap-4">
-                <div className="flex w-full flex-col justify-center">
-                  <div className="text-left text-sm font-medium">
-                    Upgrade to Pro
-                  </div>
-                  <div className="line-clamp-2 text-left text-xs font-light text-wrap text-foreground-500">
-                    All features & unlimited usage
-                  </div>
-                </div>
-              </div>
-            </div> */}
-
             <div className="font-medium">Go on, You Deserve This</div>
             <p className="text-xs text-zinc-400">
               Unlock near-unlimited usage and priority support for ${price} a

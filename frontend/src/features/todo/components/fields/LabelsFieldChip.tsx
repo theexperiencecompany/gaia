@@ -4,7 +4,13 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { useState } from "react";
 
-import { Cancel01Icon, GridIcon, PlusSignIcon } from "@/icons";
+import {
+  Cancel01Icon,
+  GridIcon,
+  LabelIcon,
+  PlusSignIcon,
+  Tag01Icon,
+} from "@/icons";
 
 import BaseFieldChip from "./BaseFieldChip";
 
@@ -43,7 +49,7 @@ export default function LabelsFieldChip({
       label="Labels"
       value={displayValue}
       placeholder="Labels"
-      icon={<GridIcon size={14} />}
+      icon={<Tag01Icon width={18} height={18} />}
       variant={value.length > 0 ? "primary" : "default"}
       className={className}
     >

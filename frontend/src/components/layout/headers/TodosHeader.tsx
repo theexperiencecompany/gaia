@@ -43,7 +43,10 @@ export default function TodosHeader() {
     } else if (pathname.startsWith("/todos/label/")) {
       const labelValue = pathname.split("/").pop();
       if (labelValue) {
-        title = labelValue.charAt(0).toUpperCase() + labelValue.slice(1);
+        const labelValueDecoded = decodeURIComponent(labelValue);
+        title =
+          labelValueDecoded.charAt(0).toUpperCase() +
+          labelValueDecoded.slice(1);
       }
     } else if (projectId || pathname.startsWith("/todos/project/")) {
       const project = projects.find(
@@ -74,12 +77,11 @@ export default function TodosHeader() {
             <span className="text-zinc-300">{pageTitle}</span>
           </>
         )}
-        <>
-          <ArrowRight01Icon width={18} height={17} />
-          <span className="text-sm text-zinc-400">
-            {taskCount} {taskCount === 1 ? "task" : "tasks"}
-          </span>
-        </>
+
+        <ArrowRight01Icon width={18} height={17} />
+        <span className="text-sm text-zinc-400">
+          {taskCount} {taskCount === 1 ? "task" : "tasks"}
+        </span>
       </div>
 
       <div className="relative flex items-center">

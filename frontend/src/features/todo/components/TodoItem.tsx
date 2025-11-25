@@ -1,20 +1,13 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
 import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import { format } from "date-fns";
-import {
-  CalendarIcon,
-  Delete02Icon,
-  MoreVerticalIcon,
-  PencilEdit01Icon,
+  CalendarCheckOut01Icon,
+  CheckmarkCircle02Icon,
+  ChevronRight,
+  Flag02Icon,
+  Tag01Icon,
 } from "@/icons";
 import { posthog } from "@/lib";
 import {
@@ -22,6 +15,7 @@ import {
   type Todo,
   type TodoUpdate,
 } from "@/types/features/todoTypes";
+import { formatDate, formatRelativeDate, parseDate } from "@/utils";
 
 interface TodoItemProps {
   todo: Todo;
@@ -37,13 +31,6 @@ const priorityColors = {
   [Priority.MEDIUM]: "warning",
   [Priority.LOW]: "primary",
   [Priority.NONE]: "default",
-} as const;
-
-const priorityRingColors = {
-  [Priority.HIGH]: "border-danger-500",
-  [Priority.MEDIUM]: "border-warning-500",
-  [Priority.LOW]: "border-primary-500",
-  [Priority.NONE]: "border-zinc-500",
 } as const;
 
 export default function TodoItem({
@@ -73,124 +60,137 @@ export default function TodoItem({
     todo.due_date && new Date(todo.due_date) < new Date() && !todo.completed;
 
   return (
-    <>
-      <div
-        className={`pointer-events-auto w-full cursor-pointer rounded-xl bg-content2 p-3 shadow-sm transition-all ${
-          isSelected
-            ? "bg-primary/5 ring-2 ring-primary"
-            : "hover:bg-content2/70"
-        } ${todo.completed ? "opacity-30" : ""}`}
-        onClick={() => {
-          onClick?.(todo);
-        }}
-      >
-        <div className="flex h-full items-center gap-3">
-          {/* Complete Checkbox */}
-          <div onClick={(e) => e.stopPropagation()}>
-            <Checkbox
-              isSelected={todo.completed}
-              onChange={handleToggleComplete}
-              color={priorityColors[todo.priority]}
-              radius="full"
-              classNames={{
-                wrapper: `border-1 ${priorityRingColors[todo.priority]} before:border-0!`,
-                base: "opacity",
-              }}
-            />
-          </div>
+    <div
+      className={`pointer-events-auto w-full cursor-pointer p-4 pl-5 mb-0 transition-all ${
+        isSelected ? "bg-primary/5 ring-2 ring-primary" : "hover:bg-content2/70"
+      } ${todo.completed ? "opacity-30" : ""}`}
+      onClick={() => {
+        onClick?.(todo);
+      }}
+    >
+      <div className="flex h-full items-start gap-3">
+        <div onClick={(e) => e.stopPropagation()}>
+          <Checkbox
+            isSelected={todo.completed}
+            onChange={handleToggleComplete}
+            color={priorityColors[todo.priority]}
+            radius="full"
+            classNames={{
+              wrapper: `mt-1 ${todo.completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900"}`,
+              label: "w-[30vw]",
+            }}
+          />
+        </div>
 
-          <div className="min-w-0 flex-1">
-            <div>
-              <h4
-                className={`text-sm font-medium ${
-                  todo.completed ? "text-foreground-500 line-through" : ""
-                }`}
-              >
-                {todo.title}
-              </h4>
-              {todo.description && (
-                <p className="mt-1 text-xs text-foreground-500">
-                  {todo.description}
-                </p>
-              )}
-            </div>
-
-            {(todo.priority !== Priority.NONE ||
-              todo.due_date ||
-              todo.labels.length > 0) && (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                {todo.due_date && (
-                  <div
-                    className={`flex items-center gap-1 text-xs ${
-                      isOverdue ? "text-danger" : "text-foreground-500"
-                    }`}
-                  >
-                    <CalendarIcon width={14} height={14} />
-                    {format(new Date(todo.due_date), "MMM d")}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-1">
-                  {todo.labels.map((label) => (
-                    <Chip key={label} size="sm" variant="flat">
-                      {label.charAt(0).toUpperCase() + label.slice(1)}
-                    </Chip>
-                  ))}
-                </div>
-
-                {/* Subtasks Count */}
-                {todo.subtasks.length > 0 && (
-                  <Chip size="sm" variant="flat" className="text-xs">
-                    {todo.subtasks.filter((s) => s.completed).length}/
-                    {todo.subtasks.length} subtasks
-                  </Chip>
-                )}
-              </div>
+        <div className="min-w-0 flex-1">
+          <div>
+            <h4
+              className={`text-base font-medium ${
+                todo.completed ? "text-zinc-500 line-through" : ""
+              }`}
+            >
+              {todo.title}
+            </h4>
+            {todo.description && (
+              <p className="mt-1 text-xs text-zinc-500">{todo.description}</p>
             )}
           </div>
 
-          {/* Actions Menu */}
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="flex h-full justify-start"
-          >
-            <Dropdown>
-              <DropdownTrigger>
-                <Button isIconOnly size="sm" variant="light">
-                  <MoreVerticalIcon className="h-4 w-4" />
-                </Button>
-              </DropdownTrigger>
-              <DropdownMenu aria-label="Todo actions">
-                <DropdownItem
-                  key="edit"
-                  startContent={<PencilEdit01Icon className="h-4 w-4" />}
-                  onPress={() => onEdit?.(todo)}
+          {(todo.priority !== Priority.NONE ||
+            todo.due_date ||
+            todo.labels.length > 0) && (
+            <div className="mt-2 flex flex-wrap items-center gap-1">
+              {todo.due_date && (
+                <Chip
+                  className="flex items-center text-zinc-400 px-1"
+                  size="sm"
+                  radius="sm"
+                  color={isOverdue ? "danger" : "default"}
+                  variant="flat"
+                  startContent={
+                    <CalendarCheckOut01Icon
+                      width={16}
+                      height={16}
+                      className="mx-1"
+                    />
+                  }
                 >
-                  Edit
-                </DropdownItem>
-                <DropdownItem
-                  key="delete"
-                  startContent={<Delete02Icon className="h-4 w-4" />}
-                  className="text-danger"
-                  color="danger"
-                  onPress={() => {
-                    // Track todo deletion
-                    posthog.capture("todos:deleted", {
-                      todo_id: todo.id,
-                      was_completed: todo.completed,
-                      priority: todo.priority,
-                      had_due_date: !!todo.due_date,
-                    });
-                    onDelete(todo.id);
-                  }}
+                  {formatDate(todo.due_date)}
+                </Chip>
+              )}
+
+              <div className="flex items-center gap-1">
+                {todo.labels.map((label) => (
+                  <Chip
+                    key={label}
+                    size="sm"
+                    variant="flat"
+                    className="flex items-center text-zinc-400 px-1"
+                    radius="sm"
+                    startContent={
+                      <Tag01Icon width={17} height={17} className="mx-1" />
+                    }
+                  >
+                    {label.charAt(0).toUpperCase() + label.slice(1)}
+                  </Chip>
+                ))}
+              </div>
+
+              {!!todo.priority && todo.priority !== "none" && (
+                <div className="flex items-center gap-1">
+                  <Chip
+                    size="sm"
+                    variant="flat"
+                    radius="sm"
+                    className={`px-2 ${
+                      todo.priority === Priority.HIGH
+                        ? "text-red-400 bg-red-400/10"
+                        : todo.priority === Priority.MEDIUM
+                          ? "text-yellow-400 bg-yellow-400/10"
+                          : todo.priority === Priority.LOW
+                            ? "text-blue-400 bg-blue-400/10"
+                            : "text-zinc-500"
+                    }`}
+                    startContent={
+                      <Flag02Icon width={15} height={15} className="mx-1" />
+                    }
+                  >
+                    {todo.priority.charAt(0).toUpperCase() +
+                      todo.priority.slice(1)}
+                  </Chip>
+                </div>
+              )}
+
+              {/* Subtasks Count */}
+              {todo.subtasks.length > 0 && (
+                <Chip
+                  size="sm"
+                  variant="flat"
+                  className=" text-zinc-400 px-1"
+                  radius="sm"
+                  startContent={
+                    <CheckmarkCircle02Icon
+                      width={15}
+                      height={15}
+                      className="mx-1"
+                    />
+                  }
                 >
-                  Delete
-                </DropdownItem>
-              </DropdownMenu>
-            </Dropdown>
-          </div>
+                  {todo.subtasks.filter((s) => s.completed).length}/
+                  {todo.subtasks.length} subtasks
+                </Chip>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="flex h-full min-h-full justify-center items-center self-center"
+        >
+          <ChevronRight width={20} height={20} className="text-zinc-400" />
         </div>
       </div>
-    </>
+    </div>
   );
 }

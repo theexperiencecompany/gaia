@@ -122,7 +122,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
 
   return (
     <div className="flex h-full flex-col">
-      <SidebarContent className="flex-1 overflow-y-auto px-6">
+      <SidebarContent className="flex-1 overflow-y-auto px-6 outline-0">
         <div className="space-y-4 pt-4">
           {/* Title and Description Section */}
           <div className="flex items-start gap-1">
@@ -133,7 +133,8 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
               color="success"
               radius="full"
               classNames={{
-                wrapper: "mt-1",
+                wrapper: `mt-1 ${todo.completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900 "}`,
+                label: "w-[30vw]",
               }}
             />
             <div className="flex-1 space-y-3">

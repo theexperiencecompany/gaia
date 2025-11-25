@@ -10,7 +10,7 @@ import {
   ArrowRight01Icon,
   CalendarIcon,
   CheckmarkCircle02Icon,
-  Flag01Icon,
+  Flag02Icon,
   Folder02Icon,
   GridIcon,
   PlayIcon,
@@ -35,19 +35,19 @@ interface TodoSectionProps {
 const priorityConfig = {
   [Priority.HIGH]: {
     color: "danger" as const,
-    icon: <Flag01Icon className="h-3 w-3" />,
+    icon: <Flag02Icon className="h-3 w-3" />,
     bgColor: "bg-red-500/10",
     textColor: "text-red-500",
   },
   [Priority.MEDIUM]: {
     color: "warning" as const,
-    icon: <Flag01Icon className="h-3 w-3" />,
+    icon: <Flag02Icon className="h-3 w-3" />,
     bgColor: "bg-yellow-500/10",
     textColor: "text-yellow-500",
   },
   [Priority.LOW]: {
     color: "primary" as const,
-    icon: <Flag01Icon className="h-3 w-3" />,
+    icon: <Flag02Icon className="h-3 w-3" />,
     bgColor: "bg-blue-500/10",
     textColor: "text-blue-500",
   },

@@ -10,14 +10,13 @@ import AddProjectModal from "@/features/todo/components/AddProjectModal";
 import TodoModal from "@/features/todo/components/TodoModal";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import {
-  Appointment01Icon,
   Calendar01Icon,
-  Calendar03Icon,
-  CalendarCheckOut02Icon,
+  CalendarUpload02Icon,
+  Flag02Icon,
   Folder02Icon,
-  LabelImportantIcon,
+  InboxCheckIcon,
+  InboxIcon,
   PlusSignIcon,
-  Tag01Icon,
 } from "@/icons";
 import { Priority } from "@/types/features/todoTypes";
 
@@ -61,19 +60,15 @@ function SidebarSection({
           <Button
             key={item.href}
             fullWidth
-            startContent={
-              <item.icon className="w-[20px] text-foreground-500" />
-            }
+            startContent={<item.icon className="w-[20px]" />}
             endContent={
               item.count !== undefined && (
-                <span className="ml-auto text-xs text-foreground-500">
-                  {item.count}
-                </span>
+                <span className="ml-auto text-xs">{item.count}</span>
               )
             }
             className={`justify-start px-2 text-start text-sm ${
               activeItem === item.href
-                ? "bg-primary/10 text-primary"
+                ? "bg-zinc-800 hover:text-zinc-300 text-zinc-400"
                 : "text-zinc-400"
             }`}
             variant="light"
@@ -90,7 +85,7 @@ function SidebarSection({
             <Spinner />
           </div>
         ) : (
-          <div className="py-4 text-center text-xs text-foreground-400 italic">
+          <div className="text-center text-xs text-foreground-400 italic">
             {emptyState.message}
           </div>
         )
@@ -154,7 +149,7 @@ export default function TodoSidebar() {
   const mainMenuItems: MenuItem[] = [
     {
       label: "Inbox",
-      icon: Calendar03Icon,
+      icon: InboxIcon,
       href: "/todos",
       count: counts.inbox,
     },
@@ -166,13 +161,13 @@ export default function TodoSidebar() {
     },
     {
       label: "Upcoming",
-      icon: CalendarCheckOut02Icon,
+      icon: CalendarUpload02Icon,
       href: "/todos/upcoming",
       count: counts.upcoming,
     },
     {
       label: "Completed",
-      icon: Appointment01Icon,
+      icon: InboxCheckIcon,
       href: "/todos/completed",
       count: counts.completed,
     },
@@ -183,24 +178,21 @@ export default function TodoSidebar() {
     {
       label: "High Priority",
       icon: () => (
-        <LabelImportantIcon width={19} color={priorityColors[Priority.HIGH]} />
+        <Flag02Icon width={19} color={priorityColors[Priority.HIGH]} />
       ),
       href: "/todos/priority/high",
     },
     {
       label: "Medium Priority",
       icon: () => (
-        <LabelImportantIcon
-          width={19}
-          color={priorityColors[Priority.MEDIUM]}
-        />
+        <Flag02Icon width={19} color={priorityColors[Priority.MEDIUM]} />
       ),
       href: "/todos/priority/medium",
     },
     {
       label: "Low Priority",
       icon: () => (
-        <LabelImportantIcon width={19} color={priorityColors[Priority.LOW]} />
+        <Flag02Icon width={19} color={priorityColors[Priority.LOW]} />
       ),
       href: "/todos/priority/low",
     },
@@ -211,7 +203,7 @@ export default function TodoSidebar() {
     labels.length > 0
       ? labels.slice(0, 5).map((label) => ({
           label: label.name,
-          icon: () => <Tag01Icon className="w-[20px]" strokeWidth={1.5} />,
+          icon: () => <Flag02Icon className="w-[20px]" strokeWidth={1.5} />,
           href: `/todos/label/${encodeURIComponent(label.name)}`,
           count: label.count,
         }))

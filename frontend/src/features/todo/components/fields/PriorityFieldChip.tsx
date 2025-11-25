@@ -1,6 +1,6 @@
 "use client";
 
-import { Flag01Icon } from "@/icons";
+import { Flag02Icon } from "@/icons";
 import { Priority } from "@/types/features/todoTypes";
 
 import BaseFieldChip from "./BaseFieldChip";
@@ -35,7 +35,7 @@ export default function PriorityFieldChip({
       label="Priority"
       value={displayValue}
       placeholder="Priority"
-      icon={<Flag01Icon size={14} />}
+      icon={<Flag02Icon width={18} height={18} />}
       variant={variant}
       className={className}
     >
@@ -58,12 +58,15 @@ export default function PriorityFieldChip({
                   onChange(option.value);
                   onClose();
                 }}
-                className="flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+                className={
+                  "flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800 "
+                }
               >
                 <div className="flex items-center gap-2">
-                  <Flag01Icon
-                    size={14}
-                    className={
+                  <Flag02Icon
+                    width={20}
+                    height={20}
+                    className={`${
                       option.value === Priority.HIGH
                         ? "text-red-400"
                         : option.value === Priority.MEDIUM
@@ -71,7 +74,7 @@ export default function PriorityFieldChip({
                           : option.value === Priority.LOW
                             ? "text-blue-400"
                             : "text-zinc-500"
-                    }
+                    }`}
                   />
                   <span>{option.label}</span>
                 </div>
