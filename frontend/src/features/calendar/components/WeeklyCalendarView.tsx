@@ -188,7 +188,6 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
         }, 100);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
 
   // Effect 2: Initial fetch of events for 3-month range
@@ -205,7 +204,6 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
       loadEvents(selectedCalendars, true, start, end);
       hasInitialFetchedRef.current = true;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCalendars, isInitialized]);
 
   // Effect 3: Reset fetch flag when calendars change

@@ -74,7 +74,6 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     img: ({ src, alt }) => (
       <>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <Image
           src={src}
           width={1000}

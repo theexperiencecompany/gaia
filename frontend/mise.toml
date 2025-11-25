@@ -34,11 +34,11 @@ description = "Run TypeScript type checking"
 run = "pnpm type"
 
 [tasks.lint]
-description = "Run ESLint"
+description = "Run Biome check"
 run = "pnpm check"
 
 [tasks."lint:fix"]
-description = "Run ESLint with auto-fix"
+description = "Run Biome check with auto-fix"
 run = "pnpm fix"
 
 [tasks.format]
@@ -79,16 +79,12 @@ run = "pnpm knip"
 
 # Pre-commit tasks
 [tasks.precommit]
-description = "Run all prek checks (prettier, eslint, barrels, etc.)"
+description = "Run all prek checks"
 run = "prek run --all-files"
 
 [tasks."precommit:prettier"]
 description = "Run prettier formatter (prek hook)"
 run = "prek run prettier"
-
-[tasks."precommit:eslint"]
-description = "Run eslint linter (prek hook)"
-run = "prek run eslint-frontend"
 
 [tasks."precommit:barrels"]
 description = "Generate barrel exports (prek hook)"

@@ -256,7 +256,6 @@ const ChartModal: React.FC<{
 
       {/* Content */}
       <div className="p-6">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={chart.url}
           alt={chart.text}

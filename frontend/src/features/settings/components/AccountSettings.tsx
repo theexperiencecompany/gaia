@@ -103,7 +103,6 @@ export default function AccountSection({
               >
                 {user?.profilePicture ? (
                   <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={user.profilePicture}
                       alt={user?.name || "Profile"}

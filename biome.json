@@ -50,6 +50,9 @@
     "bracketSpacing": true
   },
   "linter": {
+    "domains": {
+      "next": "recommended"
+    },
     "enabled": true,
     "rules": {
       "recommended": true,

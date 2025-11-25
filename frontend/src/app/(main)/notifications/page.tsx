@@ -109,7 +109,7 @@ export default function NotificationsPage() {
     return () => {
       setHeader(null);
     };
-  }, [selectedTab, unreadNotifications.length, handleMarkAllAsRead]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedTab, unreadNotifications.length, handleMarkAllAsRead]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#1a1a1a]">

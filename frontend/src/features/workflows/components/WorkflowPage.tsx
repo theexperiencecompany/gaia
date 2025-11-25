@@ -118,7 +118,7 @@ export default function WorkflowPage() {
   useLayoutEffect(() => {
     setHeader(headerComponent);
     return () => setHeader(null);
-  }, [headerComponent]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [headerComponent]);
 
   useEffect(() => {
     loadExploreWorkflows();
