@@ -26,7 +26,7 @@ def create_app() -> FastAPI:
         title="GAIA API",
         description="Backend for General-purpose AI assistant (GAIA)",
         contact={
-            "name": "GAIA Labs",
+            "name": "The Experience Company",
             "url": "http://heygaia.io",
             "email": "hi@heygaia.io",
         },

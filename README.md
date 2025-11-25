@@ -91,7 +91,7 @@ Feel free to contact the team at contact@heygaia.io or aryan@heygaia.io for any 
 ---
 
 <div align="center">
-  <strong>Made with ❤️ by GAIA Labs</strong>
+  <strong>Made with ❤️ by The Experience Company</strong>
   <br>
   <br>
    <p>
