@@ -96,6 +96,7 @@ export default function AccountSection({
             {/* Avatar */}
             <div className="group relative">
               <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isLoading}
                 className="relative mt-5 h-14 w-14 cursor-pointer overflow-hidden rounded-full bg-zinc-800 transition-all duration-200 hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-zinc-900"
@@ -163,6 +164,7 @@ export default function AccountSection({
                   </div>
                 ) : (
                   <button
+                    type="button"
                     onClick={() => setIsEditing(true)}
                     className="group flex w-full items-center justify-between rounded-xl bg-zinc-800 px-3 py-2.5 text-sm text-white transition-colors duration-200 hover:bg-zinc-700"
                   >

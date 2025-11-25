@@ -92,9 +92,9 @@ export default function ComingSoonModal({
             Previous
           </Button>
           <div className="flex items-center gap-2">
-            {steps.map((_, index) => (
+            {steps.map((step, index) => (
               <div
-                key={index}
+                key={step.title}
                 aria-hidden="true"
                 className={`h-2 w-2 rounded-full ${
                   index === currentStep ? "bg-primary" : "bg-gray-600"

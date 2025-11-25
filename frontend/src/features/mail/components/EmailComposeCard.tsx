@@ -498,6 +498,7 @@ export default function EmailComposeCard({
             </div>
             {emailData.is_html ? (
               <div
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitizing html in order to show email styling
                 dangerouslySetInnerHTML={{
                   __html: DOMPurify.sanitize(editData.body),
                 }}

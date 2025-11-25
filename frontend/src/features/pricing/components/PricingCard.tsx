@@ -201,7 +201,7 @@ export function PricingCard({
         {featurestitle}
 
         {!!features &&
-          features.map((feature, index) => {
+          features.map((feature) => {
             // Handle both string and Feature object formats
             const featureText =
               typeof feature === "string" ? feature : feature.text;
@@ -212,7 +212,7 @@ export function PricingCard({
 
             return (
               <div
-                key={index}
+                key={featureText}
                 className="flex items-center gap-3 border-none! text-sm font-light"
               >
                 <FeatureIcon

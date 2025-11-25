@@ -91,8 +91,8 @@ export const GoalSidebar: React.FC<GoalSidebarProps> = ({
                 Resources
               </div>
               <ul className="space-y-2 text-sm text-zinc-400">
-                {node.resources.map((resource, index) => (
-                  <li key={index}>
+                {node.resources.map((resource) => (
+                  <li key={resource}>
                     <a
                       className="underline decoration-zinc-600 underline-offset-4 transition-colors hover:text-primary hover:decoration-primary"
                       href={`https://www.google.com/search?q=${resource.replace(

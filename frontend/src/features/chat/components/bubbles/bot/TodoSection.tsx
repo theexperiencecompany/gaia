@@ -261,6 +261,7 @@ export default function TodoSection({
                 {/* todo Header */}
                 <div className="flex items-start gap-3">
                   <button
+                    type="button"
                     className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
                       todo.completed
                         ? "border-success bg-success"
@@ -286,6 +287,7 @@ export default function TodoSection({
                       </h4>
                       {hasDetails && (
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             toggleTodoExpansion(todo.id);

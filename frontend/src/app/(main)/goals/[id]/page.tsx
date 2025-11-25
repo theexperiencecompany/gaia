@@ -340,27 +340,25 @@ export default function GoalPage() {
                 </div>
               </div>
             ) : (
-              <>
-                <div className="relative h-full w-full">
-                  <ReactFlow
-                    fitView
-                    className="relative"
-                    connectionLineType={ConnectionLineType.SmoothStep}
-                    edges={edges}
-                    elementsSelectable={true}
-                    fitViewOptions={{ minZoom: 1.2 }}
-                    minZoom={0.2}
-                    nodeTypes={nodeTypes}
-                    nodes={nodes}
-                    nodesConnectable={false}
-                    nodesDraggable={false}
-                    style={{ background: "transparent" }}
-                    onInit={handleInit}
-                  >
-                    {/* <ZoomSlider className="fixed bottom-[25px] right-[150px]!  left-auto! h-fit top-auto! z-30 dark" /> */}
-                  </ReactFlow>
-                </div>
-              </>
+              <div className="relative h-full w-full">
+                <ReactFlow
+                  fitView
+                  className="relative"
+                  connectionLineType={ConnectionLineType.SmoothStep}
+                  edges={edges}
+                  elementsSelectable={true}
+                  fitViewOptions={{ minZoom: 1.2 }}
+                  minZoom={0.2}
+                  nodeTypes={nodeTypes}
+                  nodes={nodes}
+                  nodesConnectable={false}
+                  nodesDraggable={false}
+                  style={{ background: "transparent" }}
+                  onInit={handleInit}
+                >
+                  {/* <ZoomSlider className="fixed bottom-[25px] right-[150px]!  left-auto! h-fit top-auto! z-30 dark" /> */}
+                </ReactFlow>
+              </div>
             )}
           </div>
           <div className="bg-custom-gradient2 pointer-events-none absolute bottom-0 left-0 z-1 h-[100px] w-full" />

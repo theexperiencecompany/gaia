@@ -88,7 +88,8 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
               <div>
                 <div className="bg-black p-3 font-mono text-sm text-blue-400">
                   {output.results.map((result, index) => (
-                    <pre key={index} className="whitespace-pre-wrap">
+                    // biome-ignore lint/suspicious/noArrayIndexKey: stable array
+                    <pre key={result + index} className="whitespace-pre-wrap">
                       {result}
                     </pre>
                   ))}

@@ -8,13 +8,10 @@ export default function CommunitySection() {
     <div className="flex w-full items-center justify-center gap-5 py-4">
       <div className="mx-auto grid w-full max-w-7xl grid-cols-4 gap-6">
         {SOCIAL_LINKS.map(
-          (
-            { href, ariaLabel, icon, label, username, color, description },
-            index,
-          ) => {
+          ({ href, ariaLabel, icon, label, username, color, description }) => {
             return (
               <Link
-                key={index}
+                key={href}
                 href={href}
                 aria-label={ariaLabel}
                 className={`flex justify-start p-4 transition ${color} group w-full flex-row items-center gap-4 rounded-3xl bg-zinc-900 hover:bg-zinc-800`}

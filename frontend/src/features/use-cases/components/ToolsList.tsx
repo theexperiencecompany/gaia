@@ -47,7 +47,7 @@ export default function ToolsList({ tools }: ToolsListProps) {
                 });
                 return (
                   <div
-                    key={i}
+                    key={t.name}
                     className="relative flex min-w-8 items-center justify-center"
                     style={{
                       rotate:

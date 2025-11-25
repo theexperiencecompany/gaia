@@ -136,7 +136,7 @@ export default function ChatOptionsDropdown({
         <DropdownTrigger>
           <Button
             className={`ml-auto ${buttonHovered ? "backdrop-blur-lg" : ""}`}
-            isIconOnly={btnChildren ? false : true}
+            isIconOnly={!btnChildren}
             variant={btnChildren ? "flat" : "light"}
             radius={btnChildren ? "md" : "full"}
             // size={btnChildren ? "md" : "sm"}
@@ -216,7 +216,7 @@ export default function ChatOptionsDropdown({
                 setNewName(e.target.value)
               }
               onKeyDown={(e: { key: string }) => {
-                if (e.key == "Enter") handleEdit();
+                if (e.key === "Enter") handleEdit();
               }}
             />
           </ModalBody>

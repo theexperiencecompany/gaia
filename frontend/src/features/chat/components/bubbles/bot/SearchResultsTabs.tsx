@@ -137,7 +137,7 @@ function ImageItem({
     <motion.div
       onClick={onImageClick}
       className={`group cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-all duration-200 ${
-        (index + 1) % 2 == 0
+        (index + 1) % 2 === 0
           ? "-rotate-7 hover:-rotate-0"
           : "rotate-7 hover:rotate-0"
       }`}
@@ -192,9 +192,9 @@ function SourcesButton({ web }: SourcesButtonProps) {
         <PopoverTrigger>
           <Button variant="flat" radius="full" size="sm">
             <div className="flex -space-x-3">
-              {web.slice(0, 4).map((result, index) => (
+              {web.slice(0, 4).map((result) => (
                 <div
-                  key={index}
+                  key={result.url + result.title}
                   className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-700"
                 >
                   <Image
@@ -229,9 +229,9 @@ interface NewsResultsProps {
 function NewsResults({ news }: NewsResultsProps) {
   return (
     <div className="space-y-2">
-      {news.map((article, index) => (
+      {news.map((article) => (
         <div
-          key={index}
+          key={article.url + article.title}
           className="max-w-(--breakpoint-sm) overflow-hidden rounded-lg bg-zinc-800 p-4 shadow-md transition-all hover:shadow-lg"
         >
           <div className="flex flex-row items-center gap-2 text-primary transition-all hover:text-white">
@@ -265,10 +265,10 @@ interface WebResultsProps {
 function WebResults({ web }: WebResultsProps) {
   return (
     <div className="max-h-80 w-full max-w-lg overflow-y-auto rounded-2xl bg-zinc-800/70 backdrop-blur-2xl">
-      {web.map((result, index) => (
+      {web.map((result) => (
         <div
           className="w-full border-b-1 border-b-zinc-700 p-4 pb-3 transition-all hover:bg-white/5"
-          key={index}
+          key={result.url + result.title}
         >
           <a
             href={result.url}

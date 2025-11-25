@@ -37,8 +37,8 @@ export function extractDescription(
   const truncated = text.substring(0, maxLength);
   const lastSpace = truncated.lastIndexOf(" ");
   return lastSpace > 100
-    ? truncated.substring(0, lastSpace) + "..."
-    : truncated + "...";
+    ? `${truncated.substring(0, lastSpace)}...`
+    : `${truncated}...`;
 }
 
 /**

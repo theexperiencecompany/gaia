@@ -34,8 +34,8 @@ export default function RedditCreatedCard({
   const content = (
     <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-3 text-white">
       <ScrollShadow className="max-h-[400px] divide-y divide-gray-700">
-        {allItems.map((item, index) => (
-          <div key={index} className="space-y-3 p-3">
+        {allItems.map((item) => (
+          <div key={item.data.id} className="space-y-3 p-3">
             <div className="flex items-center gap-2">
               <CheckmarkCircle02Icon className="h-5 w-5 text-green-400" />
               <span className="text-sm font-semibold text-green-400">

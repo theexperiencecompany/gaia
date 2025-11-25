@@ -180,7 +180,7 @@ export default function RootLayout({
         <AnalyticsLayout />
 
         {process.env.NEXT_PUBLIC_DATABUDDY_CLIENT_ID && (
-          <Suspense fallback={<></>}>
+          <Suspense fallback={undefined}>
             <Databuddy
               clientId={process.env.NEXT_PUBLIC_DATABUDDY_CLIENT_ID}
               trackHashChanges

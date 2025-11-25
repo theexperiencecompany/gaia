@@ -72,6 +72,7 @@ export function PricingCards({
             later.
           </p>
           <button
+            type="button"
             onClick={() => window.location.reload()}
             className="mt-4 rounded-lg bg-red-500 px-4 py-2 text-white hover:bg-red-600"
           >
@@ -112,6 +113,8 @@ export function PricingCards({
     return a.amount - b.amount;
   });
 
+  let originalPriceInUSDCents: number;
+
   return (
     <div className="grid w-screen max-w-(--breakpoint-sm) grid-cols-2 gap-3">
       {sortedPlans.map((plan: Plan) => {
@@ -120,7 +123,6 @@ export function PricingCards({
         const priceInUSDCents = convertToUSDCents(plan.amount, plan.currency);
 
         // Calculate original price for yearly plans (monthly * 12)
-        let originalPriceInUSDCents;
         if (!durationIsMonth && isPro) {
           // For yearly plans, assume 25% discount, so original = price / 0.75
           originalPriceInUSDCents = Math.round(priceInUSDCents / 0.75);

@@ -217,9 +217,9 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                       <Command.Group heading="Conversations">
                         {searchResults.conversations
                           .slice(0, 3)
-                          .map((conversation, index) => (
+                          .map((conversation) => (
                             <Command.Item
-                              key={`conversation-${index}`}
+                              key={`conversation-${conversation.conversation_id}`}
                               value={conversation.description || "Conversation"}
                               onSelect={() => {
                                 router.push(
@@ -251,39 +251,33 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
 
                     {searchResults.messages.length > 0 && (
                       <Command.Group heading="Messages">
-                        {searchResults.messages
-                          .slice(0, 3)
-                          .map((message, index) => (
-                            <Command.Item
-                              key={`message-${index}`}
-                              value={message.snippet}
-                              onSelect={() => {
-                                router.push(`/c/${message.conversation_id}`);
-                                onOpenChange(false);
-                              }}
-                              className={COMMAND_MENU_STYLES.item}
-                            >
-                              <SearchIcon width={16} height={16} />
+                        {searchResults.messages.slice(0, 3).map((message) => (
+                          <Command.Item
+                            key={`message-${message.message.message_id}`}
+                            value={message.snippet}
+                            onSelect={() => {
+                              router.push(`/c/${message.conversation_id}`);
+                              onOpenChange(false);
+                            }}
+                            className={COMMAND_MENU_STYLES.item}
+                          >
+                            <SearchIcon width={16} height={16} />
+                            <div className={COMMAND_MENU_STYLES.contentWrapper}>
                               <div
-                                className={COMMAND_MENU_STYLES.contentWrapper}
+                                className={COMMAND_MENU_STYLES.resultTitleClamp}
                               >
-                                <div
-                                  className={
-                                    COMMAND_MENU_STYLES.resultTitleClamp
-                                  }
-                                >
-                                  {message.snippet}
-                                </div>
-                                <div
-                                  className={COMMAND_MENU_STYLES.resultSubtitle}
-                                >
-                                  {new Date(
-                                    message.message.date,
-                                  ).toLocaleDateString()}
-                                </div>
+                                {message.snippet}
                               </div>
-                            </Command.Item>
-                          ))}
+                              <div
+                                className={COMMAND_MENU_STYLES.resultSubtitle}
+                              >
+                                {new Date(
+                                  message.message.date,
+                                ).toLocaleDateString()}
+                              </div>
+                            </div>
+                          </Command.Item>
+                        ))}
                       </Command.Group>
                     )}
 

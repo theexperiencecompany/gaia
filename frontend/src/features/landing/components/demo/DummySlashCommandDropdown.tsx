@@ -673,6 +673,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
               <div className="flex min-w-max gap-1 px-2 py-2">
                 {categories.map((category) => (
                   <button
+                    type="button"
                     key={category}
                     onClick={(e) => {
                       e.stopPropagation();

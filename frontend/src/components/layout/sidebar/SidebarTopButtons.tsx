@@ -126,8 +126,8 @@ export default function SidebarTopButtons() {
       )}
 
       <div className="flex w-full flex-col gap-0.5">
-        {buttonData.map(({ route, icon, label }, index) => (
-          <div key={index} className="relative">
+        {buttonData.map(({ route, icon, label }) => (
+          <div key={route + label} className="relative">
             <Button
               size="sm"
               variant="light"

@@ -50,10 +50,10 @@ export default function RedditSearchCard({
       className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
     >
       <ScrollShadow className={`${maxHeight} divide-y divide-gray-700`}>
-        {posts.map((post, index) => (
+        {posts.map((post) => (
           <div
             className="group w-full cursor-pointer p-3 transition-colors hover:bg-zinc-700"
-            key={index}
+            key={post.id}
           >
             <Link
               href={`https://reddit.com${post?.permalink}`}

@@ -43,12 +43,12 @@ export default function CalendarListCard({
               </div>
 
               <div className="space-y-2">
-                {dayEvents.map((event, index) => {
+                {dayEvents.map((event) => {
                   const eventColor = event.background_color || "#00bbff";
 
                   return (
                     <div
-                      key={index}
+                      key={`${event}`}
                       className="relative flex items-start gap-2 rounded-lg p-3 pl-5 transition-colors hover:bg-zinc-700/50"
                       style={{
                         backgroundColor: `${eventColor}20`,

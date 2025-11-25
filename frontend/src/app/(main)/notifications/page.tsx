@@ -56,7 +56,7 @@ export default function NotificationsPage() {
   const handleBulkMarkAsRead = useCallback(
     async (notificationIds: string[]) => {
       try {
-        if (notificationIds.length == 0)
+        if (notificationIds.length === 0)
           return toast.error("No events to mark as read");
         await NotificationsAPI.bulkMarkAsRead(notificationIds);
         await refetchUnread();

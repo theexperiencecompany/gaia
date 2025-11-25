@@ -2,7 +2,7 @@
 
 import { Input } from "@heroui/input";
 import { parseDate } from "chrono-node";
-import React from "react";
+import React, { useId } from "react";
 
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -56,7 +56,7 @@ export const NaturalLanguageDateInput: React.FC<
   React.useEffect(() => {
     if (value) {
       const d = fromDateTimeLocalString(value);
-      if (!isNaN(d.getTime())) {
+      if (!Number.isNaN(d.getTime())) {
         setSelectedDate(d);
         setSelectedHour(d.getHours());
         setSelectedMinute(d.getMinutes());
@@ -79,7 +79,7 @@ export const NaturalLanguageDateInput: React.FC<
     if (!text.trim()) return;
 
     const parsed = parseDate(text, undefined, { forwardDate: true });
-    if (parsed && !isNaN(parsed.getTime())) {
+    if (parsed && !Number.isNaN(parsed.getTime())) {
       if (isAllDay) {
         onChange(getStartOfDay(parsed));
       } else {
@@ -89,7 +89,7 @@ export const NaturalLanguageDateInput: React.FC<
   };
 
   const handleDaySelect = (date: Date | undefined) => {
-    if (date && !isNaN(date.getTime())) {
+    if (date && !Number.isNaN(date.getTime())) {
       setSelectedDate(date);
       if (isAllDay) {
         onChange(getStartOfDay(date));
@@ -111,13 +111,17 @@ export const NaturalLanguageDateInput: React.FC<
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const minutes = Array.from({ length: 60 }, (_, i) => i);
+  const baseId = useId();
 
   return (
     <div className={`space-y-2 ${className}`}>
-      <label className="text-xs text-zinc-500">{label}</label>
+      <label className="text-xs text-zinc-500" htmlFor={baseId}>
+        {label}
+      </label>
       <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
         <div className="relative">
           <Input
+            id={baseId}
             value={inputValue}
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder={placeholder}
@@ -155,6 +159,7 @@ export const NaturalLanguageDateInput: React.FC<
                   <div className="flex flex-col gap-1 p-1">
                     {hours.map((h) => (
                       <button
+                        type="button"
                         key={h}
                         onClick={() => setSelectedHour(h)}
                         className={cn(
@@ -173,6 +178,7 @@ export const NaturalLanguageDateInput: React.FC<
                   <div className="flex flex-col gap-1 p-1">
                     {minutes.map((m) => (
                       <button
+                        type="button"
                         key={m}
                         onClick={() => setSelectedMinute(m)}
                         className={cn(
@@ -190,6 +196,7 @@ export const NaturalLanguageDateInput: React.FC<
               </div>
               <div className="flex items-center justify-end p-3 pt-2">
                 <button
+                  type="button"
                   onClick={handleTimeConfirm}
                   className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                 >
@@ -260,12 +267,12 @@ export const NaturalLanguageDateRangeInput: React.FC<
     const parts = text.toLowerCase().split(/\s+to\s+|\s+-\s+/);
     const parsed = parseDate(text, undefined, { forwardDate: true });
 
-    if (parsed && !isNaN(parsed.getTime())) {
+    if (parsed && !Number.isNaN(parsed.getTime())) {
       onStartChange(getStartOfDay(parsed));
 
       if (parts.length === 2) {
         const endParsed = parseDate(parts[1], parsed);
-        if (endParsed && !isNaN(endParsed.getTime())) {
+        if (endParsed && !Number.isNaN(endParsed.getTime())) {
           onEndChange(getEndOfDay(endParsed));
         }
       } else {
@@ -288,12 +295,17 @@ export const NaturalLanguageDateRangeInput: React.FC<
     }
   };
 
+  const baseId = useId();
+
   return (
     <div className={`space-y-2 ${className}`}>
-      <label className="text-sm font-medium text-zinc-400">{label}</label>
+      <label className="text-sm font-medium text-zinc-400" htmlFor={baseId}>
+        {label}
+      </label>
       <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
         <div className="relative">
           <Input
+            id={baseId}
             value={inputValue}
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder={placeholder}

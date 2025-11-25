@@ -29,9 +29,9 @@ export default function CalendarListFetchCard({
             calendars
               .slice() // Slice to copy the array because of immutability
               .sort((a, b) => a.name.localeCompare(b.name)) // Sort alphebetically
-              .map((calendar, index) => (
+              .map((calendar) => (
                 <div
-                  key={index}
+                  key={calendar.id}
                   className="group flex items-center gap-3 p-3 transition-colors hover:bg-zinc-700"
                 >
                   {/* Color dot - centered vertically */}

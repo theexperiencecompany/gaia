@@ -40,27 +40,25 @@ export default function DesktopMenu({ scrolled }: { scrolled: boolean }) {
             </Button>
           </div>
 
-          {isAuthenticated ? (
-            // Show auth links that require login
-            appConfig.links.auth
-              .filter((link) => link.requiresAuth)
-              .map((link) => (
-                <Button
-                  key={link.href}
-                  as={Link}
-                  className="font-medium"
-                  color="primary"
-                  endContent={link.icon}
-                  radius="lg"
-                  size="md"
-                  href={link.href}
-                >
-                  {link.label}
-                </Button>
-              ))
-          ) : (
-            <>
-              {appConfig.links.auth
+          {isAuthenticated
+            ? // Show auth links that require login
+              appConfig.links.auth
+                .filter((link) => link.requiresAuth)
+                .map((link) => (
+                  <Button
+                    key={link.href}
+                    as={Link}
+                    className="font-medium"
+                    color="primary"
+                    endContent={link.icon}
+                    radius="lg"
+                    size="md"
+                    href={link.href}
+                  >
+                    {link.label}
+                  </Button>
+                ))
+            : appConfig.links.auth
                 .filter((link) => link.guestOnly)
                 .map((link) => (
                   <Button
@@ -75,8 +73,6 @@ export default function DesktopMenu({ scrolled }: { scrolled: boolean }) {
                     {link.label}
                   </Button>
                 ))}
-            </>
-          )}
         </div>
       </div>
     );

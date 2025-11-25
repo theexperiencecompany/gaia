@@ -1,4 +1,5 @@
 import { Tab, Tabs } from "@heroui/tabs";
+import Image from "next/image";
 import type React from "react";
 import { useState } from "react";
 import {
@@ -12,7 +13,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-
 import {
   type ChartConfig,
   ChartContainer,
@@ -152,10 +152,11 @@ const StaticChartItem: React.FC<{
     )}
 
     <div className="relative">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         src={chart.url}
         alt={chart.text}
+        width={1000}
+        height={1000}
         className="h-auto w-full cursor-pointer rounded-lg transition-opacity hover:opacity-90"
         onClick={onFullscreen}
       />
@@ -163,6 +164,7 @@ const StaticChartItem: React.FC<{
       {/* Action buttons */}
       <div className="absolute top-2 right-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <button
+          type="button"
           onClick={onFullscreen}
           className="rounded-lg bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
           title="View fullscreen"
@@ -170,6 +172,7 @@ const StaticChartItem: React.FC<{
           <MaximizeScreenIcon className="h-3.5 w-3.5" />
         </button>
         <button
+          type="button"
           onClick={onDownload}
           className="rounded-lg bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
           title="Download"
@@ -232,6 +235,7 @@ const ChartModal: React.FC<{
         </div>
         <div className="flex gap-2">
           <button
+            type="button"
             onClick={() => onDownload(chart)}
             className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
             title="Download"
@@ -239,6 +243,7 @@ const ChartModal: React.FC<{
             <Download01Icon className="h-4 w-4" />
           </button>
           <button
+            type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
             title="Close"

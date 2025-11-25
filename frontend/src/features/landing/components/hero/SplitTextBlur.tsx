@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import React, { useRef } from "react";
+import React, { useId, useRef } from "react";
 
 import { useIntersectionObserver } from "@/hooks/ui/useIntersectionObserver";
 import { cn } from "@/lib/utils";
@@ -68,6 +68,7 @@ const SplitTextBlur = ({
   };
 
   const shouldAnimate = disableIntersectionObserver || isVisible;
+  const baseId = useId();
 
   return (
     <motion.div
@@ -86,7 +87,8 @@ const SplitTextBlur = ({
     >
       {words.map((word, index) => (
         <motion.span
-          key={index}
+          // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
+          key={baseId + word + index}
           variants={wordVariants}
           style={{
             willChange: "transform, opacity, filter",

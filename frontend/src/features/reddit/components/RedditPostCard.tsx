@@ -128,6 +128,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
 
           {/* Open Link */}
           <button
+            type="button"
             onClick={handleOpenPost}
             className="ml-auto text-xs text-gray-400 transition-colors hover:text-[#FF4500]"
           >

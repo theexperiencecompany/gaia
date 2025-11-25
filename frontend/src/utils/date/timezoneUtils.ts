@@ -24,7 +24,7 @@ export const formatTimestampWithTimezone = (timestamp: string): string => {
   const userTimeZone = getUserTimezone(); // e.g., Asia/Kolkata
 
   // Force the timestamp to be treated as UTC by adding 'Z' if it's missing
-  const utcTimestamp = timestamp.endsWith("Z") ? timestamp : timestamp + "Z";
+  const utcTimestamp = timestamp.endsWith("Z") ? timestamp : `${timestamp}Z`;
   const utcDate = new Date(utcTimestamp); // Now correctly parsed as UTC
 
   const zonedDate = toZonedTime(utcDate, userTimeZone); // Convert UTC to user's local time (adds +5:30 for IST)
@@ -52,7 +52,7 @@ export const getTimeGroup = (
   const userTimeZone = getUserTimezone();
 
   // Force the timestamp to be treated as UTC by adding 'Z' if it's missing
-  const utcTimestamp = createdAt.endsWith("Z") ? createdAt : createdAt + "Z";
+  const utcTimestamp = createdAt.endsWith("Z") ? createdAt : `${createdAt}Z`;
   const utcCreated = new Date(utcTimestamp);
 
   const now = new Date();
@@ -80,7 +80,7 @@ export const getTimeGroup = (
  */
 export const convertToUserTimezone = (timestamp: string): Date => {
   const userTimeZone = getUserTimezone();
-  const utcTimestamp = timestamp.endsWith("Z") ? timestamp : timestamp + "Z";
+  const utcTimestamp = timestamp.endsWith("Z") ? timestamp : `${timestamp}Z`;
   const utcDate = new Date(utcTimestamp);
 
   return toZonedTime(utcDate, userTimeZone);

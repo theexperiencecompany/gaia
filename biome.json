@@ -54,7 +54,9 @@
     "rules": {
       "recommended": true,
       "a11y": {
-        "noSvgWithoutTitle": "off"
+        "noStaticElementInteractions": "off",
+        "useKeyWithClickEvents": "off",
+        "useKeyWithMouseEvents": "off"
       },
       "complexity": {
         "noBannedTypes": "off",
@@ -75,9 +77,10 @@
         "noParameterAssign": "off"
       },
       "suspicious": {
-        "noArrayIndexKey": "off",
-        "noExplicitAny": "off",
-        "noConsole": "off"
+        "noArrayIndexKey": "error",
+        "noExplicitAny": "error",
+        "noConsole": "off",
+        "useIterableCallbackReturn": "off"
       }
     }
   },

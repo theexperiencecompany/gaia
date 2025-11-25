@@ -259,9 +259,9 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
 
               {recurrenceType === "custom" && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-400">
-                    RepeatIcon on
-                  </label>
+                  <div className="text-sm font-medium text-zinc-400">
+                    Repeat on
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     {[
                       { label: "S", value: "SU" },
@@ -273,6 +273,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                       { label: "S", value: "SA" },
                     ].map((day) => (
                       <button
+                        type="button"
                         key={day.value}
                         onClick={() => {
                           const newDays = customRecurrenceDays.includes(
@@ -435,6 +436,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                 {isSaving ? "Saving changes..." : "Changes saved"}
               </div>
               <button
+                type="button"
                 onClick={async () => {
                   const confirmed = await confirm({
                     title: "Delete Event",

@@ -203,11 +203,11 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
 
                     {/* Events Container */}
                     <div className="absolute inset-0 px-2">
-                      {day.timedEvents.map((eventPos, eventIndex) => {
+                      {day.timedEvents.map((eventPos) => {
                         const eventColor = getEventColor(eventPos.event);
                         return (
                           <div
-                            key={`event-${eventIndex}`}
+                            key={`event-${eventPos}`}
                             className="absolute ml-0.5 flex min-h-fit cursor-pointer overflow-hidden rounded-lg text-white backdrop-blur-3xl transition-all duration-200 hover:opacity-80"
                             style={{
                               top: `${eventPos.top}px`,

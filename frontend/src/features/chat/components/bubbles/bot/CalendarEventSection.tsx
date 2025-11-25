@@ -233,13 +233,13 @@ export default function CalendarEventSection({
             </div>
 
             <div className="space-y-2">
-              {events.map(({ event, index, isSameDay }, idx) => {
+              {events.map(({ event, index, isSameDay }) => {
                 if (isSameDay) {
                   const sameDayEvent = event as SameDayEvent;
                   const eventColor = sameDayEvent.background_color || "#00bbff";
                   return (
                     <div
-                      key={`same-${idx}`}
+                      key={`same-${sameDayEvent.id}`}
                       className="relative flex items-start gap-2 rounded-lg p-3 pl-5 transition-colors hover:bg-zinc-700/50"
                       style={{ backgroundColor: `${eventColor}20` }}
                     >

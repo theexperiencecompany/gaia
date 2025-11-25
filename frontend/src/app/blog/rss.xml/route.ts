@@ -14,12 +14,11 @@ export async function GET() {
           blog.authors.join(", ");
 
         // Clean content for RSS (strip HTML, limit length)
-        const description =
-          blog.content
-            .replace(/[#*`[\]()]/g, "")
-            .replace(/\n/g, " ")
-            .slice(0, 500)
-            .trim() + "...";
+        const description = `${blog.content
+          .replace(/[#*`[\]()]/g, "")
+          .replace(/\n/g, " ")
+          .slice(0, 500)
+          .trim()}...`;
 
         return `
     <item>

@@ -169,6 +169,7 @@ export default function GoalSection({
           <p className="text-sm text-zinc-300">{message}</p>
         </div>
         <button
+          type="button"
           onClick={() => router.push(`/goals/${goal_id}`)}
           className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >

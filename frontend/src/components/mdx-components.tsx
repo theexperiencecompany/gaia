@@ -1,4 +1,5 @@
 import type { MDXComponents } from "mdx/types";
+import Image from "next/image";
 
 export function useMDXComponents(components: MDXComponents): MDXComponents {
   return {
@@ -74,8 +75,10 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     img: ({ src, alt }) => (
       <>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <Image
           src={src}
+          width={1000}
+          height={1000}
           alt={alt}
           className="mb-4 h-auto max-w-full rounded-lg border"
         />

@@ -1,5 +1,5 @@
 import Image from "next/image";
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useUser } from "@/features/auth/hooks/useUser";
@@ -57,6 +57,7 @@ export function SimpleChatBubbleBot({
   className?: string;
   parentClassName?: string;
 }) {
+  const baseId = useId();
   // Handle NEW_MESSAGE_BREAK for multiple bubbles with single avatar
   const childrenString = typeof children === "string" ? children : "";
   const bubbles = childrenString
@@ -88,7 +89,8 @@ export function SimpleChatBubbleBot({
 
             return (
               <div
-                key={index}
+                // biome-ignore lint/suspicious/noArrayIndexKey: doesn't change so it's fine
+                key={`${baseId}-bubble-${index}`}
                 className={cn(
                   "chat_bubble imessage-bubble imessage-from-them text-white",
                   groupedClasses,

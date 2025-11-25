@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { ArrowUpRight03Icon } from "@/icons";
@@ -48,7 +48,7 @@ export default function BaseWorkflowCard({
           });
           return IconComponent ? (
             <div
-              key={`${category}-${index}`}
+              key={category}
               className="relative flex min-w-8 items-center justify-center"
               style={{
                 rotate:

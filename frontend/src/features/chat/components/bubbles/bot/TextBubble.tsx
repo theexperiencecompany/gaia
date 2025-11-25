@@ -13,7 +13,7 @@ function getTypedData<K extends ToolName>(
 }
 
 import { Chip } from "@heroui/chip";
-import React from "react";
+import React, { useId } from "react";
 
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
@@ -279,7 +279,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     );
   },
 
-  integration_list_data: (data, index) => {
+  integration_list_data: (_data, index) => {
     return <IntegrationListSection key={`tool-integration-list-${index}`} />;
   },
 
@@ -313,8 +313,8 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
         {groups.search.length > 0 && (
           <RedditSearchSection reddit_search_data={groups.search} />
         )}
-        {groups.post.map((p, i) => (
-          <RedditPostSection key={i} reddit_post_data={p} />
+        {groups.post.map((post) => (
+          <RedditPostSection key={post.id} reddit_post_data={post} />
         ))}
         {groups.comments.length > 0 && (
           <RedditCommentSection reddit_comment_data={groups.comments} />
@@ -350,6 +350,8 @@ export default function TextBubble({
   systemPurpose,
   loading,
 }: ChatBubbleBotProps) {
+  const baseId = useId();
+
   // Parse thinking content from text
   const parsedContent = React.useMemo(() => {
     return parseThinkingFromText(text?.toString() || "");
@@ -396,7 +398,7 @@ export default function TextBubble({
         if (!typedData) return null;
 
         return (
-          <React.Fragment key={`tool-${toolName}-${index}`}>
+          <React.Fragment key={`${baseId}-tool-${toolName}}`}>
             {renderTool(toolName, typedData, index)}
           </React.Fragment>
         );
@@ -444,7 +446,8 @@ export default function TextBubble({
 
                 return (
                   <div
-                    key={index}
+                    // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
+                    key={`${baseId}-text-part-${index}`}
                     className={`imessage-bubble imessage-from-them ${groupedClasses}`}
                   >
                     {renderBubbleContent(part, isLast)}

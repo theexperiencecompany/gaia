@@ -1,15 +1,22 @@
 "use client";
 import { Button } from "@heroui/button";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { type FC, useEffect, useState } from "react";
-
 import { SystemPurpose } from "@/features/chat/api/chatApi";
-import { ChatBotIcon, Mail01Icon, StarsIcon, ZapIcon } from "@/icons";
-
+import {
+  ChatBotIcon,
+  CursorMagicSelection02Icon,
+  MagicWand01Icon,
+  Mail01Icon,
+  StarFilledIcon,
+  StarIcon,
+  ZapIcon,
+} from "@/icons";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
-const ICON_WIDTH = "19";
+const ICON_WIDTH = "20";
 const ICON_SIZE = "w-[17px] min-w-[17px]";
 const ACTIVE_COLOR = "#00bbff";
 const INACTIVE_COLOR = "#9b9b9b";
@@ -53,12 +60,12 @@ export const ChatTab: FC<ChatTabProps> = ({
         return <Mail01Icon {...iconProps} />;
 
       if (systemPurpose === SystemPurpose.WORKFLOW_EXECUTION)
-        return <ZapIcon {...iconProps} />;
+        return <ChatBotIcon {...iconProps} />;
 
       return <ChatBotIcon {...iconProps} />;
     }
 
-    if (starred) return <StarsIcon className={ICON_SIZE} {...iconProps} />;
+    if (starred) return <StarFilledIcon className={ICON_SIZE} {...iconProps} />;
 
     // return <BubbleConversationChatIcon className={ICON_SIZE} {...iconProps} />;
     return undefined;

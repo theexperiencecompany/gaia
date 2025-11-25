@@ -142,7 +142,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
               <div className="w-1/5 flex-shrink-0">
                 <div className="sticky top-0 z-10 px-2 pt-1">
                   <span
-                    className={`text-sm ${index == 0 ? "text-primary" : "text-foreground-300"}`}
+                    className={`text-sm ${index === 0 ? "text-primary" : "text-foreground-300"}`}
                   >
                     {formatDate(dateString)}
                   </span>

@@ -265,6 +265,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           </div>
 
           <button
+            type="button"
             onClick={handleDelete}
             className="rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-all hover:bg-red-500/10 active:scale-95"
             aria-label="Delete todo"

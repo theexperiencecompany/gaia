@@ -271,8 +271,8 @@ export function ComparisonTable({
         </div>
 
         <div className="space-y-6">
-          {comparisonFeatures.map((feature, index) => (
-            <FeatureRow key={index} feature={feature} />
+          {comparisonFeatures.map((feature) => (
+            <FeatureRow key={feature.title} feature={feature} />
           ))}
         </div>
 

@@ -98,6 +98,7 @@ function GoalCardHeader({
       </div>
       {showExpandToggle && (
         <button
+          type="button"
           onClick={onToggleExpand}
           className="rounded-lg p-2 transition-colors hover:bg-zinc-800"
         >
@@ -217,6 +218,7 @@ function GoalCardActions({
     return (
       <div className={`pt-2 ${className}`}>
         <button
+          type="button"
           onClick={onViewGoal}
           className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
@@ -234,6 +236,7 @@ function GoalCardActions({
   return (
     <div className={`flex gap-3 pt-2 ${className}`}>
       <button
+        type="button"
         onClick={onViewGoal}
         className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
       >
@@ -241,6 +244,7 @@ function GoalCardActions({
       </button>
       {showViewTasks && (
         <button
+          type="button"
           onClick={onViewTasks}
           className="flex-1 rounded-lg bg-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-600"
         >

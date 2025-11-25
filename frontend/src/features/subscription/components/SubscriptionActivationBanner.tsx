@@ -122,6 +122,7 @@ export function SubscriptionSuccessBanner() {
             </p>
           </div>
           <button
+            type="button"
             onClick={() => setShowSuccess(false)}
             className="text-xs text-green-400 hover:text-green-300"
           >

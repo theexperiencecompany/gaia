@@ -271,7 +271,7 @@ export default function ContactSupportModal({
                     <div className="grid grid-cols-5 gap-3">
                       {formData.attachments.map((file, index) => (
                         <div
-                          key={index}
+                          key={file.name + file.size}
                           className="group relative overflow-hidden rounded-xl bg-zinc-800"
                         >
                           <div className="aspect-square">

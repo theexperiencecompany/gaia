@@ -572,6 +572,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                 {/* <div className="grid min-w-max gap-1 px-2 py-2 grid-rows-2 grid-flow"> for 2 rows */}
                 {categories.map((category) => (
                   <button
+                    type="button"
                     key={category}
                     onClick={(e) => {
                       e.stopPropagation();

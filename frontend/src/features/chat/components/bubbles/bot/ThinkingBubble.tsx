@@ -16,6 +16,7 @@ export default function ThinkingBubble({
   return (
     <div className="mb-3 flex flex-col gap-2">
       <button
+        type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         className="group flex w-fit cursor-pointer items-center gap-2 text-sm text-zinc-500 transition-colors hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
         aria-label={

@@ -109,9 +109,9 @@ interface EnhancedWebResultsProps {
 function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
   return (
     <div className="space-y-4">
-      {results.map((result, index) => (
+      {results.map((result) => (
         <div
-          key={index}
+          key={result.url}
           className="rounded-2xl bg-zinc-800 p-4 shadow-md transition-all hover:shadow-lg"
         >
           <h2 className="truncate text-sm font-medium text-primary">

@@ -52,7 +52,7 @@ export const OnboardingMessages = ({
               disableActions={true}
               {...message}
             >
-              {isOnboardingComplete && index == messages.length - 1 && (
+              {isOnboardingComplete && index === messages.length - 1 && (
                 <motion.div
                   className="ml-[43px]"
                   initial={{ opacity: 0, y: 15 }}

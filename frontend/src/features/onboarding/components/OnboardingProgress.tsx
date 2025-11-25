@@ -1,6 +1,6 @@
 import { Button } from "@heroui/button";
 import { motion } from "framer-motion";
-
+import { useId } from "react";
 import { ReloadIcon } from "@/icons";
 
 interface OnboardingProgressProps {
@@ -14,6 +14,7 @@ export const OnboardingProgress = ({
   totalSteps,
   onRestart,
 }: OnboardingProgressProps) => {
+  const baseId = useId();
   return (
     <div className="fixed top-0 right-0 left-0 z-50 mx-auto flex max-w-lg items-center justify-center gap-2 px-4 py-4">
       {Array.from({ length: totalSteps }).map((_, index) => {
@@ -22,7 +23,8 @@ export const OnboardingProgress = ({
 
         return (
           <motion.div
-            key={index}
+            // biome-ignore lint/suspicious/noArrayIndexKey: Simply mapping progress data
+            key={baseId + index}
             className="relative h-0.5 flex-1 overflow-hidden rounded-full bg-zinc-800"
             initial={{ opacity: 0, scaleX: 0.8 }}
             animate={{ opacity: 1, scaleX: 1 }}

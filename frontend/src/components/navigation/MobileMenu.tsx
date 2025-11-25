@@ -174,29 +174,27 @@ export default function MobileMenu() {
             </div>
 
             {/* Authentication related links */}
-            {isAuthenticated ? (
-              // Show auth links that require login
-              auth
-                .filter((link) => link.requiresAuth)
-                .map((link) => (
-                  <Button
-                    key={link.href}
-                    className="font-medium"
-                    color="primary"
-                    endContent={link.icon}
-                    size="md"
-                    onPress={() => {
-                      router.push(link.href);
-                      setSheetOpen(false);
-                    }}
-                  >
-                    {link.label}
-                  </Button>
-                ))
-            ) : (
-              // Show auth links for guests only
-              <>
-                {auth
+            {isAuthenticated
+              ? // Show auth links that require login
+                auth
+                  .filter((link) => link.requiresAuth)
+                  .map((link) => (
+                    <Button
+                      key={link.href}
+                      className="font-medium"
+                      color="primary"
+                      endContent={link.icon}
+                      size="md"
+                      onPress={() => {
+                        router.push(link.href);
+                        setSheetOpen(false);
+                      }}
+                    >
+                      {link.label}
+                    </Button>
+                  ))
+              : // Show auth links for guests only
+                auth
                   .filter((link) => link.guestOnly)
                   .map((link) => (
                     <Button
@@ -210,8 +208,6 @@ export default function MobileMenu() {
                       {link.label}
                     </Button>
                   ))}
-              </>
-            )}
           </SheetDescription>
         </SheetHeader>
       </SheetContent>

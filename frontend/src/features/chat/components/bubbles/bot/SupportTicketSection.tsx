@@ -13,11 +13,11 @@ export default function SupportTicketSection({
 
   return (
     <div className="mt-3 w-full space-y-3">
-      {support_ticket_data.map((ticket, index) => (
+      {support_ticket_data.map((ticket) => (
         <SupportTicketCard
           ticketData={ticket}
           onSubmitted={handleTicketSubmitted}
-          key={index}
+          key={ticket.title}
         />
       ))}
     </div>

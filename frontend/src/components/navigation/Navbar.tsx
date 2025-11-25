@@ -171,6 +171,7 @@ export default function Navbar() {
                   </Link>
                 ) : (
                   <button
+                    type="button"
                     key={item.menu}
                     className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-zinc-400 capitalize transition-colors hover:text-zinc-100"
                     onMouseEnter={() => {

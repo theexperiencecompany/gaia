@@ -207,9 +207,9 @@ export function EmailPreviewModal({
           <div className="space-y-6">
             {/* Recipients */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
+              <div className="text-sm font-medium text-foreground">
                 To <span className="text-danger">*</span>
-              </label>
+              </div>
               <div
                 className={`min-h-[56px] rounded-xl border-2 bg-default-100 p-3 transition-colors focus-within:border-primary ${
                   errors.recipients ? "border-danger" : "border-default-200"
@@ -217,15 +217,16 @@ export function EmailPreviewModal({
               >
                 <div className="flex flex-wrap gap-2">
                   {/* Email Chips */}
-                  {emailChips.map((chip, index) => (
+                  {emailChips.map((chip) => (
                     <Chip
-                      key={index}
+                      key={chip.email}
                       variant="flat"
                       color={chip.isValid ? "primary" : "danger"}
                       size="sm"
                       endContent={
                         mode === "edit" && (
                           <button
+                            type="button"
                             onClick={() => removeEmailChip(chip.email)}
                             className="ml-1 rounded-full p-0.5 transition-colors hover:bg-white/20"
                           >

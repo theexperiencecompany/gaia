@@ -78,9 +78,9 @@ export function FAQAccordion() {
           itemClasses={{ titleWrapper: "cursor-pointer" }}
           defaultSelectedKeys={["0"]}
         >
-          {faqItems.map((item, index) => (
+          {faqItems.map((item) => (
             <AccordionItem
-              key={index}
+              key={item.question}
               aria-label={item.question}
               title={item.question}
               classNames={{

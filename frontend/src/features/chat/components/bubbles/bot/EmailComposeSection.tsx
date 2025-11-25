@@ -13,11 +13,11 @@ export default function EmailComposeSection({
 
   return (
     <div className="mt-3 w-full space-y-3">
-      {email_compose_data.map((email, index) => (
+      {email_compose_data.map((email) => (
         <EmailComposeCard
           emailData={email}
           onSent={handleEmailSent}
-          key={index}
+          key={email.thread_id}
         />
       ))}
     </div>

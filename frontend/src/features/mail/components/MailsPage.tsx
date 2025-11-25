@@ -134,21 +134,6 @@ export default function MailsPage() {
   if (emailsError) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-4 text-center">
-        <div className="text-red-400">
-          <svg
-            className="h-12 w-12"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z"
-            />
-          </svg>
-        </div>
         <div>
           <h3 className="text-lg font-medium text-white">
             Failed to load emails
@@ -322,9 +307,9 @@ export default function MailsPage() {
                     label: "Set Reminder",
                     onClick: (e: React.MouseEvent) => e.stopPropagation(),
                   },
-                ].map(({ icon: Icon, label, iconProps, onClick }, index) => (
+                ].map(({ icon: Icon, label, iconProps, onClick }) => (
                   <Tooltip
-                    key={index}
+                    key={label}
                     content={label}
                     placement="top"
                     className="z-50"

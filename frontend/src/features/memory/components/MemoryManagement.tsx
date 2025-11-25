@@ -360,30 +360,28 @@ export default function MemoryManagement({
 
           {/* Tab content */}
           <div className="mt-4 flex-1">
-            {selectedTab === "list" && (
-              <>
-                {loading ? (
-                  <div className="space-y-2">
-                    {[...Array(5)].map((_, i) => (
-                      <Card key={i} className="bg-zinc-800 shadow-none">
-                        <CardBody>
-                          <div className="flex animate-pulse flex-col gap-2">
-                            <div className="h-4 w-3/4 rounded bg-zinc-700" />
-                            <div className="h-3 w-1/2 rounded bg-zinc-700" />
-                          </div>
-                        </CardBody>
-                      </Card>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="max-h-[80vh] space-y-2 overflow-y-auto pr-2">
-                    {memories.map((memory) => (
-                      <MemoryCard key={memory.id} memory={memory} />
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
+            {selectedTab === "list" &&
+              (loading ? (
+                <div className="space-y-2">
+                  {[...Array(5)].map((_, i) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: Simply mapping skeletons
+                    <Card key={i} className="bg-zinc-800 shadow-none">
+                      <CardBody>
+                        <div className="flex animate-pulse flex-col gap-2">
+                          <div className="h-4 w-3/4 rounded bg-zinc-700" />
+                          <div className="h-3 w-1/2 rounded bg-zinc-700" />
+                        </div>
+                      </CardBody>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="max-h-[80vh] space-y-2 overflow-y-auto pr-2">
+                  {memories.map((memory) => (
+                    <MemoryCard key={memory.id} memory={memory} />
+                  ))}
+                </div>
+              ))}
 
             {selectedTab === "graph" && (
               <>

@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Select, SelectItem } from "@heroui/select";
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 
 import { CalendarAdd01Icon, CalendarIcon } from "@/components/shared";
 import { ArrowLeft01Icon, ArrowRight01Icon } from "@/icons";
@@ -56,7 +56,7 @@ export default function CalendarHeader() {
         const target = e.target as HTMLElement;
         if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
           e.preventDefault();
-          const days = parseInt(e.key);
+          const days = parseInt(e.key, 10);
           setDaysToShow(days);
         }
       }
@@ -94,7 +94,7 @@ export default function CalendarHeader() {
           selectedKeys={daysToShow ? [daysToShow.toString()] : ["1"]}
           onSelectionChange={(keys) => {
             const value = Array.from(keys)[0] as string;
-            setDaysToShow(parseInt(value));
+            setDaysToShow(parseInt(value, 10));
           }}
           className="w-34"
           // className="max-w-fit min-w-24"

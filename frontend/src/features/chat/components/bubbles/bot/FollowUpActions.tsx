@@ -38,9 +38,9 @@ export default function FollowUpActions({
       }}
       className="flex max-w-xl flex-wrap gap-2 pt-2 pb-1"
     >
-      {actions.map((action, index) => (
+      {actions.map((action) => (
         <motion.div
-          key={index}
+          key={action}
           variants={{
             hidden: { opacity: 0, y: 10 },
             visible: { opacity: 1, y: 0 },

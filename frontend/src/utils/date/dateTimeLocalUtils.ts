@@ -91,7 +91,7 @@ export const formatDateTimeLocal = (
   if (!dateTimeLocalStr) return "";
 
   const date = fromDateTimeLocalString(dateTimeLocalStr);
-  if (isNaN(date.getTime())) return "";
+  if (Number.isNaN(date.getTime())) return "";
 
   return date.toLocaleString("en-US", options);
 };

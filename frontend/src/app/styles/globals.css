@@ -19,12 +19,12 @@ textarea,
 body,
 html,
 main {
-  overflow-x: hidden !important;
+  overflow-x: hidden;
 }
 
 code {
   border-radius: 10px;
-  font-family: monospace !important;
+  font-family: monospace;
   padding: 4px;
 }
 
@@ -32,7 +32,7 @@ code,
 .monospace {
   font-family:
     Menlo, Monaco, Consolas, "Andale Mono", "Ubuntu Mono", "Courier New",
-    monospace !important;
+    monospace;
 }
 
 li {
@@ -40,7 +40,6 @@ li {
 }
 
 .bg-custom-gradient {
-  background: #000;
   background: linear-gradient(0deg, #0000 31%, #0bf3 100%);
 }
 
@@ -121,15 +120,15 @@ li {
 }
 
 .imessage-grouped-first {
-  border-radius: 20px 20px 20px 20px !important;
+  border-radius: 20px 20px 20px 20px;
 }
 
 .imessage-grouped-last {
-  border-radius: 20px 20px 20px 20px !important;
+  border-radius: 20px 20px 20px 20px;
 }
 
 .imessage-grouped-middle {
-  border-radius: 20px 20px 20px 20px !important;
+  border-radius: 20px 20px 20px 20px;
 }
 
 /* Bot messages (from-them style) */
@@ -188,8 +187,7 @@ li {
   height: fit-content;
   justify-content: flex-start;
   min-height: 70vh;
-  padding-left: -0.5rem;
-  padding: 2rem 0;
+  padding: 2rem 0 2rem -0.5rem;
 }
 
 .editor code {
@@ -264,7 +262,7 @@ li {
 .tiptap {
   height: 90vh;
   max-height: 90vh;
-  outline: none !important;
+  outline: none;
   overflow: auto;
 }
 

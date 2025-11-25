@@ -115,10 +115,14 @@ export default function AddProjectModal({
 
                 {/* Color */}
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-foreground-600">
+                  <label
+                    className="mb-2 block text-sm font-medium text-foreground-600"
+                    htmlFor="radiogroupcolorpicker"
+                  >
                     Project Color
                   </label>
                   <RadioGroup
+                    id="radiogroupcolorpicker"
                     value={formData.color}
                     color="default"
                     onValueChange={(value) =>
