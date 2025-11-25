@@ -5,7 +5,6 @@ export * from "./aspect-ratio";
 export * from "./avatar";
 export * from "./button";
 export * from "./calendar";
-export * from "./carousel";
 export * from "./chart";
 export * from "./collapsible";
 export * from "./confetti";

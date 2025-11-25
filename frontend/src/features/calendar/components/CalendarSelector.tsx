@@ -18,11 +18,11 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
       onClick={() => onSelect(calendar.id)}
     >
       <Chip
-        className={`${selected ? "text-foreground-600" : "text-foreground-400"} `}
+        className={`${selected ? "text-zinc-300" : "text-zinc-600"} `}
         variant="faded"
         startContent={
           <div
-            className="mr-2 aspect-square min-h-[10px] min-w-[10px] rounded-full"
+            className="mr-2 aspect-square min-h-[12px] min-w-[12px] rounded-full"
             style={{
               backgroundColor: computedColor,
             }}
@@ -57,27 +57,25 @@ export default function CalendarSelector({
   onCalendarSelect,
 }: CalendarSelectorProps) {
   return (
-    <>
-      <div
-        className={`relative flex flex-col justify-center gap-1 transition-all`}
-      >
-        {calendars && calendars.length > 0 ? (
-          [...calendars]
-            .sort((a, b) => a.summary.localeCompare(b.summary))
-            .map((calendar) => (
-              <CalendarChip
-                key={calendar.id}
-                calendar={calendar}
-                selected={selectedCalendars.includes(calendar.id)}
-                onSelect={onCalendarSelect}
-              />
-            ))
-        ) : (
-          <div className="p-3 text-sm text-foreground-500">
-            You have no Calendars
-          </div>
-        )}
-      </div>
-    </>
+    <div
+      className={`relative flex flex-col justify-center gap-1 transition-all`}
+    >
+      {calendars && calendars.length > 0 ? (
+        [...calendars]
+          .sort((a, b) => a.summary.localeCompare(b.summary))
+          .map((calendar) => (
+            <CalendarChip
+              key={calendar.id}
+              calendar={calendar}
+              selected={selectedCalendars.includes(calendar.id)}
+              onSelect={onCalendarSelect}
+            />
+          ))
+      ) : (
+        <div className="p-3 text-sm text-foreground-500">
+          You have no Calendars
+        </div>
+      )}
+    </div>
   );
 }

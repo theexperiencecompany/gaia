@@ -18,7 +18,6 @@ export * from "./ui/aspect-ratio";
 export * from "./ui/avatar";
 export * from "./ui/button";
 export * from "./ui/calendar";
-export * from "./ui/carousel";
 export * from "./ui/chart";
 export * from "./ui/collapsible";
 export * from "./ui/confetti";

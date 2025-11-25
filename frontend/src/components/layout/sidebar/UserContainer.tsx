@@ -5,7 +5,12 @@ import React from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import SettingsMenu from "@/features/settings/components/SettingsMenu";
-import { UnfoldLessIcon, UnfoldMoreIcon } from "@/icons";
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  UnfoldLessIcon,
+  UnfoldMoreIcon,
+} from "@/icons";
 
 import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
 
@@ -20,13 +25,13 @@ export default function UserContainer() {
         className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 bg-transparent px-2 py-6! hover:bg-zinc-800"
         endContent={
           isOpen ? (
-            <UnfoldLessIcon
+            <ChevronsDownUp
               className="text-zinc-500 transition"
               width={20}
               height={20}
             />
           ) : (
-            <UnfoldMoreIcon
+            <ChevronsUpDown
               className="text-zinc-500 transition"
               width={20}
               height={20}

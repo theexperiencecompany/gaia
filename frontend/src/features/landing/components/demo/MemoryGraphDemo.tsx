@@ -128,7 +128,7 @@ export default function MemoryGraphDemo() {
       .attr("class", "link")
       .attr("stroke", "#6b7280")
       .attr("stroke-opacity", 0.4)
-      .attr("stroke-width", 1.5);
+      .attr("strokeWidth", 1.5);
 
     // Create node groups
     const nodeGroup = g
@@ -163,7 +163,7 @@ export default function MemoryGraphDemo() {
       .attr("r", (d: DummyNode) => d.size)
       .attr("fill", (d: DummyNode) => colorScale(d.group))
       .attr("stroke", "#1f2937")
-      .attr("stroke-width", 1.5);
+      .attr("strokeWidth", 1.5);
 
     // Add special styling for user node
     nodeGroup
@@ -172,7 +172,7 @@ export default function MemoryGraphDemo() {
       .attr("r", (d: DummyNode) => d.size)
       .attr("fill", colorScale("user"))
       .attr("stroke", "#ffffff")
-      .attr("stroke-width", 2);
+      .attr("strokeWidth", 2);
 
     // Create node labels
     nodeGroup
@@ -197,7 +197,7 @@ export default function MemoryGraphDemo() {
           const node = n as DummyNode;
           const strokeWidth =
             node.id === d.id ? 3 : node.type === "user" ? 2 : 1.5;
-          d3.select(this).attr("stroke-width", strokeWidth);
+          d3.select(this).attr("strokeWidth", strokeWidth);
         });
       })
       .on("mouseover", (event, d) => {
@@ -215,7 +215,7 @@ export default function MemoryGraphDemo() {
         d3.select(event.currentTarget)
           .select("circle")
           .attr("stroke", "#ffffff")
-          .attr("stroke-width", 3);
+          .attr("strokeWidth", 3);
       })
       .on("mouseout", (event, d) => {
         setTooltip((prev) => ({ ...prev, visible: false }));
@@ -225,7 +225,7 @@ export default function MemoryGraphDemo() {
           .select("circle")
           .attr("stroke", d.type === "user" ? "#ffffff" : "#1f2937")
           .attr(
-            "stroke-width",
+            "strokeWidth",
             selectedNode?.id === d.id ? 3 : d.type === "user" ? 2 : 1.5,
           );
       });

@@ -41,7 +41,7 @@ def _build_integrations_config():
             provider=integration.provider,
             available=integration.available,
             loginEndpoint=(
-                f"oauth/login/integration/{integration.id}"
+                f"integrations/login/{integration.id}"
                 if integration.available
                 else None
             ),

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { useId, useState } from "react";
+import { useState } from "react";
 
 import MailCompose from "@/features/mail/components/MailCompose";
 import { InboxIcon, QuillWrite01Icon } from "@/icons";

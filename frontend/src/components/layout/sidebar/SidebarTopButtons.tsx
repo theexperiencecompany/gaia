@@ -13,6 +13,7 @@ import {
 } from "@/features/pricing/hooks/usePricing";
 import {
   Calendar03Icon,
+  CancelIcon,
   CheckListIcon,
   ConnectIcon,
   MessageMultiple02Icon,
@@ -28,18 +29,18 @@ export default function SidebarTopButtons() {
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
   const { plans } = usePricing();
   const refreshTrigger = useRefreshTrigger();
+  const [unreadCount, setUnreadCount] = useState(0);
   const { notifications, refetch } = useNotifications({
     status: NotificationStatus.DELIVERED,
     limit: 50,
   });
-
-  const [unreadCount, setUnreadCount] = useState(0);
 
   const monthlyPlan = plans.find(
     (p) => p.name === "Pro" && p.duration === "monthly",
   );
   const price = monthlyPlan ? monthlyPlan.amount / 100 : 15;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: need to refresh on refresh trigger
   useEffect(() => {
     refetch();
   }, [refreshTrigger, refetch]);
@@ -106,15 +107,25 @@ export default function SidebarTopButtons() {
       {/* Only show Upgrade to Pro button when user doesn't have an active subscription */}
       {!subscriptionStatus?.is_subscribed && (
         <Link href="/pricing">
-          <div className="m-1 mb-2 flex h-fit w-fit flex-col justify-center gap-1 rounded-2xl border border-zinc-700 bg-zinc-800 p-3 transition hover:bg-zinc-700 active:scale-95">
-            <div className="font-medium">Go on, You Deserve This</div>
+          <div className="m-1 mb-2 flex h-fit w-fit flex-col justify-center rounded-2xl border border-zinc-700 bg-zinc-800 p-3 pt-1  transition hover:bg-zinc-700 active:scale-95">
+            <div className="flex w-full justify-between items-center gap-1">
+              <div className="font-medium text-sm">Go on, You Deserve This</div>
+              <Button
+                isIconOnly
+                variant="light"
+                size="sm"
+                className="p-0! text-zinc-400 hover:text-white relative left-2"
+              >
+                <CancelIcon width={18} height={18} />
+              </Button>
+            </div>
             <p className="text-xs text-zinc-400">
               Unlock near-unlimited usage and priority support for ${price} a
               month
             </p>
 
             <RaisedButton
-              className="mt-1 w-full rounded-xl! text-black!"
+              className="mt-2 w-full rounded-xl! text-black!"
               color="#00bbff"
               size={"sm"}
             >
@@ -130,12 +141,13 @@ export default function SidebarTopButtons() {
           <div key={route + label} className="relative">
             <Button
               size="sm"
-              variant="light"
-              color={isRouteActive(route) ? "primary" : "default"}
+              variant={isRouteActive(route) ? "flat" : "light"}
+              // color={isRouteActive(route) ? "primary" : "default"}
+              color={"default"}
               className={`group-topbtns w-full justify-start text-sm ${
                 isRouteActive(route)
-                  ? "text-primary"
-                  : "text-zinc-400 hover:text-white"
+                  ? "text-zinc-300"
+                  : "text-zinc-500 hover:text-zinc-300"
               }`}
               as={Link}
               href={route}

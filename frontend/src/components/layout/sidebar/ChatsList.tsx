@@ -14,8 +14,8 @@ import {
   useConversationList,
   useFetchConversations,
 } from "@/features/chat/hooks/useConversationList";
+import { cn } from "@/lib";
 import type { IConversation } from "@/lib/db/chatDb";
-
 import { ChatTab } from "./ChatTab";
 import { accordionItemStyles } from "./constants";
 
@@ -183,7 +183,12 @@ export default function ChatsList() {
               value="system-conversations"
               className={accordionItemStyles.item}
             >
-              <AccordionTrigger className={accordionItemStyles.trigger}>
+              <AccordionTrigger
+                className={cn(
+                  accordionItemStyles.trigger,
+                  "hover:text-zinc-500",
+                )}
+              >
                 Created by GAIA
               </AccordionTrigger>
               <AccordionContent className={accordionItemStyles.content}>
@@ -216,7 +221,12 @@ export default function ChatsList() {
               value="starred-chats"
               className={accordionItemStyles.item}
             >
-              <AccordionTrigger className={accordionItemStyles.trigger}>
+              <AccordionTrigger
+                className={cn(
+                  accordionItemStyles.trigger,
+                  "hover:text-zinc-500",
+                )}
+              >
                 Starred Chats
               </AccordionTrigger>
               <AccordionContent className={accordionItemStyles.content}>
@@ -241,7 +251,12 @@ export default function ChatsList() {
               value={timeFrame.toLowerCase().replace(/\s+/g, "-")}
               className={accordionItemStyles.item}
             >
-              <AccordionTrigger className={accordionItemStyles.trigger}>
+              <AccordionTrigger
+                className={cn(
+                  accordionItemStyles.trigger,
+                  "hover:text-zinc-500",
+                )}
+              >
                 {timeFrame}
               </AccordionTrigger>
               <AccordionContent className={accordionItemStyles.content}>

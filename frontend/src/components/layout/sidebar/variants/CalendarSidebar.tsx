@@ -9,6 +9,8 @@ import CalendarSelector from "@/features/calendar/components/CalendarSelector";
 import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { CalendarAdd01Icon, GoogleCalendarIcon } from "@/icons";
+import { cn } from "@/lib";
+import { accordionItemStyles } from "../constants";
 
 export default function CalendarSidebar() {
   const router = useRouter();
@@ -63,9 +65,7 @@ export default function CalendarSidebar() {
       </Button>
 
       <div>
-        <div className="w-full px-2 pt-0 pb-1 text-xs font-medium text-foreground-400">
-          Your Calendars
-        </div>
+        <div className={cn(accordionItemStyles.trigger)}>Your Calendars</div>
         <CalendarSelector
           calendars={calendars}
           selectedCalendars={selectedCalendars}

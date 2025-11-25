@@ -1,25 +1,14 @@
 "use client";
 import { Button } from "@heroui/button";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { type FC, useEffect, useState } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
-import {
-  ChatBotIcon,
-  CursorMagicSelection02Icon,
-  MagicWand01Icon,
-  Mail01Icon,
-  StarFilledIcon,
-  StarIcon,
-  ZapIcon,
-} from "@/icons";
+import { ChatBotIcon, Mail01Icon, StarFilledIcon } from "@/icons";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
 const ICON_WIDTH = "20";
 const ICON_SIZE = "w-[17px] min-w-[17px]";
-const ACTIVE_COLOR = "#00bbff";
-const INACTIVE_COLOR = "#9b9b9b";
 
 interface ChatTabProps {
   name: string;
@@ -41,16 +30,14 @@ export const ChatTab: FC<ChatTabProps> = ({
   const [buttonHovered, setButtonHovered] = useState(false);
 
   useEffect(() => {
-    const pathParts = location.pathname.split("/");
+    const pathParts = pathname.split("/");
     setCurrentConvoId(pathParts[pathParts.length - 1]);
   }, [pathname]);
 
   const isActive = currentConvoId === id;
-  const iconColor = isActive ? ACTIVE_COLOR : INACTIVE_COLOR;
 
   const getIcon = () => {
     const iconProps = {
-      color: iconColor,
       width: ICON_WIDTH,
       style: { minWidth: ICON_WIDTH },
     };
@@ -67,7 +54,6 @@ export const ChatTab: FC<ChatTabProps> = ({
 
     if (starred) return <StarFilledIcon className={ICON_SIZE} {...iconProps} />;
 
-    // return <BubbleConversationChatIcon className={ICON_SIZE} {...iconProps} />;
     return undefined;
   };
 
@@ -79,13 +65,12 @@ export const ChatTab: FC<ChatTabProps> = ({
     >
       <Button
         className={`w-full justify-start px-2 text-sm ${
-          isActive ? "text-primary" : "text-zinc-400"
+          isActive ? "text-zinc-300" : "text-zinc-500 hover:text-zinc-300"
         }`}
         size="sm"
         as={Link}
         href={`/c/${id}`}
-        variant="light"
-        color={isActive ? "primary" : "default"}
+        variant={isActive ? "flat" : "light"}
         onPress={() => setButtonHovered(false)}
         startContent={
           getIcon() &&

@@ -16,9 +16,13 @@ import {
   Folder02Icon,
   InboxCheckIcon,
   InboxIcon,
+  LabelIcon,
   PlusSignIcon,
+  Tag01Icon,
 } from "@/icons";
+import { cn } from "@/lib";
 import { Priority } from "@/types/features/todoTypes";
+import { accordionItemStyles } from "../constants";
 
 type MenuItem = {
   label: string;
@@ -50,8 +54,8 @@ function SidebarSection({
   return (
     <div className="pb-1">
       {title && (
-        <div className="mb-1 flex items-center justify-between px-1">
-          <span className="text-xs text-zinc-500">{title}</span>
+        <div className="mb-1 flex items-center justify-between">
+          <span className={cn(accordionItemStyles.trigger)}>{title}</span>
           {action}
         </div>
       )}
@@ -68,8 +72,8 @@ function SidebarSection({
             }
             className={`justify-start px-2 text-start text-sm ${
               activeItem === item.href
-                ? "bg-zinc-800 hover:text-zinc-300 text-zinc-400"
-                : "text-zinc-400"
+                ? "bg-zinc-800 text-zinc-300"
+                : "text-zinc-500 hover:text-zinc-300"
             }`}
             variant="light"
             radius="sm"
@@ -178,21 +182,33 @@ export default function TodoSidebar() {
     {
       label: "High Priority",
       icon: () => (
-        <Flag02Icon width={19} color={priorityColors[Priority.HIGH]} />
+        <Flag02Icon
+          width={18}
+          height={18}
+          color={priorityColors[Priority.HIGH]}
+        />
       ),
       href: "/todos/priority/high",
     },
     {
       label: "Medium Priority",
       icon: () => (
-        <Flag02Icon width={19} color={priorityColors[Priority.MEDIUM]} />
+        <Flag02Icon
+          width={18}
+          height={18}
+          color={priorityColors[Priority.MEDIUM]}
+        />
       ),
       href: "/todos/priority/medium",
     },
     {
       label: "Low Priority",
       icon: () => (
-        <Flag02Icon width={19} color={priorityColors[Priority.LOW]} />
+        <Flag02Icon
+          width={18}
+          height={18}
+          color={priorityColors[Priority.LOW]}
+        />
       ),
       href: "/todos/priority/low",
     },
@@ -203,7 +219,7 @@ export default function TodoSidebar() {
     labels.length > 0
       ? labels.slice(0, 5).map((label) => ({
           label: label.name,
-          icon: () => <Flag02Icon className="w-[20px]" strokeWidth={1.5} />,
+          icon: () => <Tag01Icon width={18} height={18} />,
           href: `/todos/label/${encodeURIComponent(label.name)}`,
           count: label.count,
         }))
@@ -256,7 +272,7 @@ export default function TodoSidebar() {
             <Spinner />
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-2">
             {/* Main Menu */}
             <SidebarSection
               items={mainMenuItems}

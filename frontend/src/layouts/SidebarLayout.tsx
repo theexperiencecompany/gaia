@@ -79,7 +79,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
       </SidebarContent>
 
       <SidebarFooter className="relative z-[4] p-2 px-3 pb-3">
-        <ContactSupport />
+        {/* <ContactSupport /> */}
         <UserContainer />
       </SidebarFooter>
     </Sidebar>

@@ -304,7 +304,7 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
         .attr("class", "link")
         .attr("stroke", "#6b7280")
         .attr("stroke-opacity", 0.6)
-        .attr("stroke-width", 2);
+        .attr("strokeWidth", 2);
 
       // Create link labels
       const linkLabel = g
@@ -350,7 +350,7 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
         .attr("r", (d: GraphNode) => d.size)
         .attr("fill", (d: GraphNode) => colorScale(d.group))
         .attr("stroke", "#1f2937")
-        .attr("stroke-width", 2);
+        .attr("strokeWidth", 2);
 
       // Add clipPath for user image
       const defs = svg.append("defs");
@@ -389,7 +389,7 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
         .attr("r", 32)
         .attr("fill", "none")
         .attr("stroke", "#00bbff")
-        .attr("stroke-width", 2);
+        .attr("strokeWidth", 2);
 
       // Create node labels (for non-user nodes only)
       nodeGroup
