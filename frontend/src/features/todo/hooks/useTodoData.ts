@@ -29,9 +29,6 @@ export function useTodoData(options: UseTodoDataOptions = {}) {
     refreshAll,
   } = useTodoStore();
 
-  // API handles filtering, so just return allTodos directly
-  const todos = allTodos;
-
   // Load data on mount if autoLoad is enabled
   useEffect(() => {
     if (autoLoad) {
@@ -81,7 +78,7 @@ export function useTodoData(options: UseTodoDataOptions = {}) {
 
   return {
     // Filtered data
-    todos,
+    todos: allTodos,
 
     // Raw data from context
     allTodos,

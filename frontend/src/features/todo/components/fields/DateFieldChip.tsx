@@ -72,14 +72,7 @@ export default function DateFieldChip({
       {({ onClose }) => (
         <div className="p-1">
           <div className="border-0 bg-zinc-900 p-3">
-            <label
-              htmlFor="due-date-input"
-              className="mb-2 block text-sm text-zinc-500"
-            >
-              Select Date
-            </label>
             <Input
-              id="due-date-input"
               type="date"
               value={value ? value.split("T")[0] : ""}
               onChange={(e) => handleDateInputChange(e, onClose)}

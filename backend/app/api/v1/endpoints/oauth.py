@@ -20,7 +20,6 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
 from workos import WorkOSClient
 
-from app.services.onboarding_service import _queue_gmail_processing
 
 router = APIRouter()
 http_async_client = httpx.AsyncClient()
@@ -263,8 +262,6 @@ async def composio_callback(
                 logger.error(
                     f"Error updating bio_status for user {user_id}: {e}", exc_info=True
                 )
-
-            background_tasks.add_task(_queue_gmail_processing, user_id)
 
         # Invalidate OAuth status cache for this user
         try:

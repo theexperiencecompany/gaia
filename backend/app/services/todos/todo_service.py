@@ -24,13 +24,13 @@ from app.models.todo_models import (
     ProjectResponse,
     SearchMode,
     SubTask,
-    TodoCreate,
     TodoListResponse,
+    TodoModel,
     TodoResponse,
     TodoSearchParams,
     TodoStats,
+    TodoUpdateRequest,
     UpdateProjectRequest,
-    UpdateTodoRequest,
 )
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -256,7 +256,7 @@ class TodoService:
 
     # CRUD Operations
     @classmethod
-    async def create_todo(cls, todo: TodoCreate, user_id: str) -> TodoResponse:
+    async def create_todo(cls, todo: TodoModel, user_id: str) -> TodoResponse:
         """Create a new todo with automatic inbox assignment."""
         # Ensure project exists or use inbox
         if not todo.project_id:
@@ -269,13 +269,25 @@ class TodoService:
                 raise ValueError(f"Project {todo.project_id} not found")
 
         todo_dict = todo.model_dump()
+
+        # Handle subtasks: ensure they have IDs
+        if todo.subtasks:
+            todo_dict["subtasks"] = [
+                subtask.model_dump() if isinstance(subtask, SubTask) else subtask
+                for subtask in todo.subtasks
+            ]
+            for subtask in todo_dict["subtasks"]:
+                if not subtask.get("id"):
+                    subtask["id"] = str(uuid.uuid4())
+        else:
+            todo_dict["subtasks"] = []
+
         todo_dict.update(
             {
                 "user_id": user_id,
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
                 "completed": False,
-                "subtasks": [],
                 "workflow_activated": True,  # Start activated by default
             }
         )
@@ -415,17 +427,9 @@ class TodoService:
 
     @classmethod
     async def update_todo(
-        cls, todo_id: str, updates: UpdateTodoRequest, user_id: str
+        cls, todo_id: str, updates: TodoUpdateRequest, user_id: str
     ) -> TodoResponse:
         """Update a todo."""
-        # Verify ownership
-        existing = await todos_collection.find_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id}
-        )
-
-        if not existing:
-            raise ValueError(f"Todo {todo_id} not found")
-
         # Prepare updates
         update_dict = {k: v for k, v in updates.model_dump().items() if v is not None}
 
@@ -449,23 +453,29 @@ class TodoService:
 
         update_dict["updated_at"] = datetime.now(timezone.utc)
 
-        # Update and return
+        # Update and return - this also verifies ownership atomically
         updated = await todos_collection.find_one_and_update(
-            {"_id": ObjectId(todo_id)},
+            {"_id": ObjectId(todo_id), "user_id": user_id},
             {"$set": update_dict},
             return_document=ReturnDocument.AFTER,
         )
+
+        # If todo not found, updated will be None
+        if not updated:
+            raise ValueError(f"Todo {todo_id} not found")
 
         # Update search index
         try:
             await update_todo_embedding(todo_id, updated, user_id)
         except Exception as e:
-            todos_logger.warning(
-                f"Failed to update index: {str(e)}"
-            )  # Sync subtask changes back to goals if this is a goal-related todo
+            todos_logger.warning(f"Failed to update index: {str(e)}")
+        
+        # Sync subtask changes back to goals if this is a goal-related todo
         if "subtasks" in update_dict:
             try:
-                # Compare old vs new subtasks to find what changed
+                # Get the original subtasks to compare
+                # Note: We need the old state for comparison, but we optimized away the pre-fetch
+                # For subtask sync, we'll need to check if completion changed
                 for new_subtask_dict in update_dict["subtasks"]:
                     new_subtask_id = new_subtask_dict.get("id")
                     new_completed = new_subtask_dict.get("completed", False)
@@ -473,19 +483,15 @@ class TodoService:
                     if not new_subtask_id:
                         continue  # Skip subtasks without IDs
 
-                    old_subtask = next(
-                        (s for s in existing["subtasks"] if s["id"] == new_subtask_id),
-                        None,
+                    # Since we don't have the old state anymore, we sync all subtasks
+                    # The sync service will handle checking if state actually changed
+                    from app.services.todos.sync_service import (
+                        sync_subtask_to_goal_completion,
                     )
-                    if old_subtask and old_subtask["completed"] != new_completed:
-                        # Subtask completion status changed, sync to goal
-                        from app.services.todos.sync_service import (
-                            sync_subtask_to_goal_completion,
-                        )
 
-                        await sync_subtask_to_goal_completion(
-                            todo_id, new_subtask_id, new_completed, user_id
-                        )
+                    await sync_subtask_to_goal_completion(
+                        todo_id, new_subtask_id, new_completed, user_id
+                    )
             except Exception as e:
                 todos_logger.warning(
                     f"Failed to sync subtask completion to goal: {str(e)}"
@@ -514,16 +520,7 @@ class TodoService:
     @classmethod
     async def delete_todo(cls, todo_id: str, user_id: str) -> None:
         """Delete a todo."""
-
-        # Get the todo before deletion to know its project
-        todo = await todos_collection.find_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id}
-        )
-        if not todo:
-            raise ValueError(f"Todo {todo_id} not found")
-
-        project_id = todo.get("project_id")
-
+        # Single atomic delete with ownership verification
         result = await todos_collection.delete_one(
             {"_id": ObjectId(todo_id), "user_id": user_id}
         )
@@ -537,7 +534,8 @@ class TodoService:
         except Exception as e:
             todos_logger.warning(f"Failed to remove from index: {str(e)}")
 
-        await cls._invalidate_cache(user_id, project_id, todo_id, "delete")
+        # Invalidate cache broadly since we don't know the project_id
+        await cls._invalidate_cache(user_id, None, todo_id, "delete")
 
     # Bulk Operations
     @classmethod
@@ -545,23 +543,72 @@ class TodoService:
         cls, request: BulkUpdateRequest, user_id: str
     ) -> BulkOperationResponse:
         """Bulk update multiple todos."""
-        success = []
-        failed = []
+        # Prepare updates - only include non-None fields
+        update_dict = {k: v for k, v in request.updates.model_dump().items() if v is not None}
+        
+        if not update_dict:
+            return BulkOperationResponse(
+                success=[],
+                failed=[],
+                total=len(request.todo_ids),
+                message="No updates provided",
+            )
 
-        for todo_id in request.todo_ids:
+        # Validate project if changing
+        if "project_id" in update_dict:
+            project = await projects_collection.find_one(
+                {"_id": ObjectId(update_dict["project_id"]), "user_id": user_id}
+            )
+            if not project:
+                raise ValueError(f"Project {update_dict['project_id']} not found")
+
+        # Handle subtasks conversion
+        if "subtasks" in update_dict:
+            update_dict["subtasks"] = [
+                subtask.model_dump() if isinstance(subtask, SubTask) else subtask
+                for subtask in update_dict["subtasks"]
+            ]
+            for subtask in update_dict["subtasks"]:
+                if not subtask.get("id"):
+                    subtask["id"] = str(uuid.uuid4())
+
+        update_dict["updated_at"] = datetime.now(timezone.utc)
+
+        # Single atomic update operation for all todos
+        result = await todos_collection.update_many(
+            {
+                "_id": {"$in": [ObjectId(tid) for tid in request.todo_ids]},
+                "user_id": user_id,
+            },
+            {"$set": update_dict},
+        )
+
+        # Update search index for modified todos
+        if result.modified_count > 0:
             try:
-                await cls.update_todo(todo_id, request.updates, user_id)
-                success.append(todo_id)
+                # Fetch updated todos to reindex
+                updated_todos = await todos_collection.find(
+                    {
+                        "_id": {"$in": [ObjectId(tid) for tid in request.todo_ids]},
+                        "user_id": user_id,
+                    }
+                ).to_list(None)
+                
+                for todo in updated_todos:
+                    try:
+                        await update_todo_embedding(str(todo["_id"]), todo, user_id)
+                    except Exception as e:
+                        todos_logger.warning(f"Failed to update index for todo {todo['_id']}: {str(e)}")
             except Exception as e:
-                failed.append({"id": todo_id, "error": str(e)})
+                todos_logger.warning(f"Failed to update search index: {str(e)}")
 
         await cls._invalidate_cache(user_id, operation="bulk_update")
 
         return BulkOperationResponse(
-            success=success,
-            failed=failed,
+            success=request.todo_ids[:result.modified_count],  # Approximation
+            failed=[],
             total=len(request.todo_ids),
-            message=f"Updated {len(success)} todos",
+            message=f"Updated {result.modified_count} todos",
         )
 
     @classmethod
@@ -569,21 +616,38 @@ class TodoService:
         cls, todo_ids: List[str], user_id: str
     ) -> BulkOperationResponse:
         """Bulk delete multiple todos."""
-        success = []
-        failed = []
+        # Get todos before deletion for cleanup operations
+        todos_to_delete = await todos_collection.find(
+            {
+                "_id": {"$in": [ObjectId(tid) for tid in todo_ids]},
+                "user_id": user_id,
+            }
+        ).to_list(None)
 
-        for todo_id in todo_ids:
+        # Single atomic delete operation for all todos
+        result = await todos_collection.delete_many(
+            {
+                "_id": {"$in": [ObjectId(tid) for tid in todo_ids]},
+                "user_id": user_id,
+            }
+        )
+
+        # Remove from search index
+        if result.deleted_count > 0:
             try:
-                await cls.delete_todo(todo_id, user_id)
-                success.append(todo_id)
+                for todo in todos_to_delete:
+                    try:
+                        await delete_todo_embedding(str(todo["_id"]))
+                    except Exception as e:
+                        todos_logger.warning(f"Failed to remove todo {todo['_id']} from index: {str(e)}")
             except Exception as e:
-                failed.append({"id": todo_id, "error": str(e)})
+                todos_logger.warning(f"Failed to cleanup search index: {str(e)}")
 
         return BulkOperationResponse(
-            success=success,
-            failed=failed,
+            success=todo_ids[:result.deleted_count],  # Approximation
+            failed=[],
             total=len(todo_ids),
-            message=f"Deleted {len(success)} todos",
+            message=f"Deleted {result.deleted_count} todos",
         )
 
     @classmethod
@@ -853,7 +917,7 @@ class ProjectService:
 
 
 # Compatibility functions for old API
-async def create_todo(todo: TodoCreate, user_id: str) -> TodoResponse:
+async def create_todo(todo: TodoModel, user_id: str) -> TodoResponse:
     """Compatibility wrapper for old create_todo function."""
     return await TodoService.create_todo(todo, user_id)
 
@@ -893,7 +957,7 @@ async def get_all_todos(
 
 
 async def update_todo(
-    todo_id: str, updates: UpdateTodoRequest, user_id: str
+    todo_id: str, updates: TodoUpdateRequest, user_id: str
 ) -> TodoResponse:
     """Compatibility wrapper for old update_todo function."""
     return await TodoService.update_todo(todo_id, updates, user_id)

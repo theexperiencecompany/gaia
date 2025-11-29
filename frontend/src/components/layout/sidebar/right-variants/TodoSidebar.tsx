@@ -1,12 +1,12 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
 import { Input, Textarea } from "@heroui/input";
 import { formatDistanceToNow } from "date-fns";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { todoApi } from "@/features/todo/api/todoApi";
@@ -233,7 +233,9 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           </div>
 
           {/* Subtasks Section */}
-          <div className="py-2">
+          <div
+            className={`py-4 border-y-1 border-zinc-800 ${todo?.subtasks?.length > 0 ? "pt-6r" : ""}`}
+          >
             <SubtaskManager
               subtasks={todo.subtasks}
               onSubtasksChange={handleSubtasksChange}
@@ -264,14 +266,16 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             </span>
           </div>
 
-          <button
+          <Button
             type="button"
-            onClick={handleDelete}
-            className="rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-all hover:bg-red-500/10 active:scale-95"
+            isIconOnly
+            color="danger"
+            variant="flat"
+            onPress={handleDelete}
             aria-label="Delete todo"
           >
-            <Delete02Icon className="size-4" />
-          </button>
+            <Delete02Icon className="size-5" />
+          </Button>
         </div>
       </SidebarFooter>
     </div>

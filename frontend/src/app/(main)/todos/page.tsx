@@ -114,8 +114,6 @@ export default function TodosPage() {
     setRightSidebarContent,
     openRightSidebar,
     closeRightSidebar,
-    handleTodoUpdate,
-    handleTodoDelete,
   ]);
 
   // Sync close action from right sidebar back to URL
@@ -148,8 +146,9 @@ export default function TodosPage() {
         <TodoList
           todos={todos}
           onTodoUpdate={handleTodoUpdate}
-          onTodoDelete={handleTodoDelete}
-          onTodoEdit={handleTodoEdit}
+          projects={projects}
+          // onTodoDelete={handleTodoDelete}
+          // onTodoEdit={handleTodoEdit}
           onTodoClick={(todo) => selectTodo(todo.id)}
           onRefresh={refresh}
         />

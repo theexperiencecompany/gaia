@@ -127,12 +127,14 @@ async def create_goal_service(goal: GoalCreate, user: dict) -> GoalResponse:
 
     try:
         result = await goals_collection.insert_one(goal_data)
-        new_goal = await goals_collection.find_one({"_id": result.inserted_id})
-
+        
+        # Use the inserted data directly instead of fetching it back
+        goal_data["_id"] = result.inserted_id
+        
         # Invalidate user's goals list cache and statistics
         await _invalidate_goal_caches(user_id)
 
-        formatted_goal = goal_helper(new_goal)
+        formatted_goal = goal_helper(goal_data)
         logger.info(f"Goal created successfully for user {user_id}. Cache invalidated.")
         return GoalResponse(**formatted_goal)
     except Exception as e:
@@ -274,28 +276,30 @@ async def update_node_status_service(
         logger.warning("Unauthorized attempt to update node status.")
         raise HTTPException(status_code=403, detail="Not authenticated")
 
-    goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
+    # Use atomic find_one_and_update with positional operator
+    # First, verify the node exists in the goal
+    goal = await goals_collection.find_one(
+        {"_id": ObjectId(goal_id), "roadmap.nodes.id": node_id}
+    )
     if not goal:
-        logger.error(f"Goal {goal_id} not found.")
-        raise HTTPException(status_code=404, detail="Goal not found")
+        # Check if goal exists at all
+        goal_exists = await goals_collection.find_one({"_id": ObjectId(goal_id)})
+        if not goal_exists:
+            logger.error(f"Goal {goal_id} not found.")
+            raise HTTPException(status_code=404, detail="Goal not found")
+        else:
+            logger.error(f"Node {node_id} not found in goal {goal_id}.")
+            raise HTTPException(status_code=404, detail="Node not found in roadmap")
 
-    roadmap = goal.get("roadmap", {})
-    nodes = roadmap.get("nodes", [])
-    node = next((n for n in nodes if n["id"] == node_id), None)
-    if not node:
-        logger.error(f"Node {node_id} not found in goal {goal_id}.")
-        raise HTTPException(status_code=404, detail="Node not found in roadmap")
-
-    node["data"]["isComplete"] = update_data.is_complete
-
-    await goals_collection.update_one(
-        {"_id": ObjectId(goal_id)}, {"$set": {"roadmap.nodes": nodes}}
+    # Atomically update the specific node using positional operator
+    updated_goal = await goals_collection.find_one_and_update(
+        {"_id": ObjectId(goal_id), "roadmap.nodes.id": node_id},
+        {"$set": {"roadmap.nodes.$.data.isComplete": update_data.is_complete}},
+        return_document=True,
     )
 
     # Sync completion status with corresponding todo
     await sync_goal_node_completion(goal_id, node_id, update_data.is_complete, user_id)
-
-    updated_goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
 
     await _invalidate_goal_caches(user_id, goal_id)
 
@@ -315,7 +319,7 @@ async def update_goal_with_roadmap_service(goal_id: str, roadmap_data: dict) -> 
         bool: True if update was successful, False otherwise
     """
     try:
-        # Get the goal to find the user_id for cache invalidation
+        # Get the goal to find the user_id - we need this for create_goal_project_and_todo
         goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
         if not goal:
             logger.error(f"Goal {goal_id} not found for roadmap update")
@@ -325,29 +329,22 @@ async def update_goal_with_roadmap_service(goal_id: str, roadmap_data: dict) -> 
         goal_title = goal.get("title", "Untitled Goal")
 
         # Create project and todo with subtasks for the roadmap
+        # This function will update the goal with subtask_ids and todo info
         project_id = await create_goal_project_and_todo(
             goal_id, goal_title, roadmap_data, user_id
         )
 
-        # The roadmap has been updated by create_goal_project_and_todo
-        # with subtask_ids, so we need to get the updated goal
-        updated_goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
-
-        if updated_goal:
-            # Invalidate relevant caches
-            if user_id:
-                await _invalidate_goal_caches(user_id, goal_id)
-                logger.info(
-                    f"Goal caches invalidated for goal {goal_id} and user {user_id}"
-                )
-
+        # Invalidate relevant caches
+        if user_id:
+            await _invalidate_goal_caches(user_id, goal_id)
             logger.info(
-                f"Goal {goal_id} successfully updated with roadmap and todo project {project_id}"
+                f"Goal caches invalidated for goal {goal_id} and user {user_id}"
             )
-            return True
-        else:
-            logger.error(f"Failed to update goal {goal_id} with roadmap")
-            return False
+
+        logger.info(
+            f"Goal {goal_id} successfully updated with roadmap and todo project {project_id}"
+        )
+        return True
 
     except Exception as e:
         logger.error(f"Error updating goal {goal_id} with roadmap: {str(e)}")

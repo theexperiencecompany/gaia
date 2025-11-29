@@ -62,9 +62,9 @@ export default function TodoListPage({
     }
   };
 
-  const handleTodoEdit = (todo: Todo) => {
-    selectTodo(todo.id);
-  };
+  // const handleTodoEdit = (todo: Todo) => {
+  //   selectTodo(todo.id);
+  // };
 
   const handleTodoClick = (todo: Todo) => {
     selectTodo(todo.id);
@@ -131,14 +131,17 @@ export default function TodoListPage({
     );
   }
 
+  console.log(projects, "these are the projects");
+
   return (
     <div className="flex h-full w-full flex-col">
       <div className="w-full flex-1 overflow-y-auto px-4">
         <TodoList
           todos={todos}
           onTodoUpdate={handleTodoUpdate}
-          onTodoDelete={handleTodoDelete}
-          onTodoEdit={handleTodoEdit}
+          projects={projects}
+          // onTodoDelete={handleTodoDelete}
+          // onTodoEdit={handleTodoEdit}
           onTodoClick={handleTodoClick}
           onRefresh={refresh}
         />

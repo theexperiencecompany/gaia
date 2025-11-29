@@ -7,22 +7,25 @@ import {
   CheckmarkCircle02Icon,
   ChevronRight,
   Flag02Icon,
+  Folder02Icon,
   Tag01Icon,
 } from "@/icons";
 import { posthog } from "@/lib";
 import {
   Priority,
+  type Project,
   type Todo,
   type TodoUpdate,
 } from "@/types/features/todoTypes";
-import { formatDate, formatRelativeDate, parseDate } from "@/utils";
+import { formatDate } from "@/utils";
 
 interface TodoItemProps {
   todo: Todo;
+  projects: Project[];
   isSelected: boolean;
   onUpdate: (todoId: string, updates: TodoUpdate) => void;
-  onDelete: (todoId: string) => void;
-  onEdit?: (todo: Todo) => void;
+  // onDelete: (todoId: string) => void;
+  // onEdit?: (todo: Todo) => void;
   onClick?: (todo: Todo) => void;
 }
 
@@ -35,10 +38,11 @@ const priorityColors = {
 
 export default function TodoItem({
   todo,
+  projects,
   isSelected,
   onUpdate,
-  onDelete,
-  onEdit,
+  // onDelete,
+  // onEdit,
   onClick,
 }: TodoItemProps) {
   const handleToggleComplete = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,6 +62,19 @@ export default function TodoItem({
 
   const isOverdue =
     todo.due_date && new Date(todo.due_date) < new Date() && !todo.completed;
+
+  const isToday =
+    todo.due_date &&
+    !todo.completed &&
+    (() => {
+      const d = new Date(todo.due_date);
+      const now = new Date();
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    })();
 
   return (
     <div
@@ -105,7 +122,7 @@ export default function TodoItem({
                   className="flex items-center text-zinc-400 px-1"
                   size="sm"
                   radius="sm"
-                  color={isOverdue ? "danger" : "default"}
+                  color={isToday ? "success" : isOverdue ? "danger" : "default"}
                   variant="flat"
                   startContent={
                     <CalendarCheckOut01Icon
@@ -116,6 +133,24 @@ export default function TodoItem({
                   }
                 >
                   {formatDate(todo.due_date)}
+                </Chip>
+              )}
+
+              {projects?.find((project) => project?.id === todo.project_id) && (
+                <Chip
+                  size="sm"
+                  variant="flat"
+                  className=" text-zinc-400 px-1"
+                  radius="sm"
+                  style={{
+                    color: projects?.find((p) => p.id === todo.project_id)
+                      ?.color,
+                  }}
+                  startContent={
+                    <Folder02Icon width={15} height={15} className="mx-1" />
+                  }
+                >
+                  {projects?.find((p) => p.id === todo.project_id)?.name}
                 </Chip>
               )}
 
