@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 
 import FilePreview, {
   type UploadedFilePreview,
@@ -301,6 +302,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
   };
 
   const handleToggleSlashCommandDropdown = () => {
+    console.log("test");
     // Focus the input first - this will naturally trigger slash command detection
     if (inputRef.current) {
       inputRef.current.focus();
@@ -312,6 +314,18 @@ const Composer: React.FC<MainSearchbarProps> = ({
       composerInputRef.current?.isSlashCommandDropdownOpen() || false,
     );
   };
+
+  // Global hotkey to trigger slash command dropdown with '/' key
+  useHotkeys(
+    "slash",
+    () => {
+      handleToggleSlashCommandDropdown();
+    },
+    {
+      enableOnFormTags: false, // Don't trigger when typing in inputs
+      preventDefault: true,
+    },
+  );
 
   // Sync the state with the actual dropdown state
   useEffect(() => {
