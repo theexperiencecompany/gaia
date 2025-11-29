@@ -192,6 +192,12 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     (i) => i.status === "connected",
   ).length;
 
+  const statusOrder = {
+    connected: 0,
+    not_connected: 1,
+    error: 2,
+  };
+
   return (
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
@@ -226,15 +232,17 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
         >
           <div onClick={(e) => e.stopPropagation()}>
             <div className="grid grid-cols-2 gap-2 pl-1">
-              {integrations.map((integration) => (
-                <IntegrationItem
-                  key={integration.id}
-                  integration={integration}
-                  onConnect={handleConnect}
-                  size={size}
-                  onClick={(id) => onIntegrationClick?.(id)}
-                />
-              ))}
+              {[...integrations]
+                .sort((a, b) => statusOrder[a.status] - statusOrder[b.status])
+                .map((integration) => (
+                  <IntegrationItem
+                    key={integration.id}
+                    integration={integration}
+                    onConnect={handleConnect}
+                    size={size}
+                    onClick={(id) => onIntegrationClick?.(id)}
+                  />
+                ))}
             </div>
           </div>
         </AccordionItem>
