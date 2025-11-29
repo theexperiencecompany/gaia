@@ -99,7 +99,25 @@ export const useCalendarStore = create<CalendarStore>()(
       (set, get) => ({
         ...initialState,
 
-        setCalendars: (calendars) => set({ calendars }, false, "setCalendars"),
+        setCalendars: (calendars) =>
+          set(
+            (state) => {
+              // If no calendars are selected (initial load or new connection),
+              // select all available calendars by default
+              if (
+                state.selectedCalendars.length === 0 &&
+                calendars.length > 0
+              ) {
+                return {
+                  calendars,
+                  selectedCalendars: calendars.map((c) => c.id),
+                };
+              }
+              return { calendars };
+            },
+            false,
+            "setCalendars",
+          ),
 
         setSelectedCalendars: (selectedCalendars) =>
           set(

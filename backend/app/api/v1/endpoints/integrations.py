@@ -132,39 +132,58 @@ async def disconnect_integration(
             status_code=404, detail=f"Integration {integration_id} not found"
         )
 
-    if integration.managed_by != "composio":
+    if integration.managed_by == "composio":
+        composio_service = get_composio_service()
+        try:
+            await composio_service.delete_connected_account(
+                user_id=str(user_id), provider=integration.provider
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except Exception as e:
+            logger.error(
+                f"Error disconnecting integration {integration_id} for user {user_id}: {e}"
+            )
+            raise HTTPException(status_code=500, detail="Failed to disconnect integration")
+
+    elif integration.managed_by == "self":
+        # Handle internal disconnection by revoking the token
+        try:
+            # For internal integrations, the provider in config matches the provider in token repo
+            success = await token_repository.revoke_token(
+                user_id=str(user_id), provider=integration.provider
+            )
+            if not success:
+                # If token not found, consider it already disconnected
+                logger.warning(
+                    f"Attempted to disconnect {integration_id} but no token found for user {user_id}"
+                )
+        except Exception as e:
+            logger.error(
+                f"Error disconnecting internal integration {integration_id} for user {user_id}: {e}"
+            )
+            raise HTTPException(status_code=500, detail="Failed to disconnect integration")
+
+    else:
         raise HTTPException(
             status_code=400,
-            detail=f"Integration {integration_id} disconnect not supported. Only Composio-managed integrations can be disconnected via this endpoint.",
+            detail=f"Integration {integration_id} disconnect not supported.",
         )
 
-    composio_service = get_composio_service()
     try:
-        await composio_service.delete_connected_account(
-            user_id=str(user_id), provider=integration.provider
-        )
-
-        try:
-            cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
-            await delete_cache(cache_key)
-            logger.info(f"OAuth status cache invalidated for user {user_id}")
-        except Exception as e:
-            logger.warning(f"Failed to invalidate OAuth status cache: {e}")
-
-        return JSONResponse(
-            content={
-                "status": "success",
-                "message": f"Successfully disconnected {integration.name}",
-                "integrationId": integration_id,
-            }
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
+        await delete_cache(cache_key)
+        logger.info(f"OAuth status cache invalidated for user {user_id}")
     except Exception as e:
-        logger.error(
-            f"Error disconnecting integration {integration_id} for user {user_id}: {e}"
-        )
-        raise HTTPException(status_code=500, detail="Failed to disconnect integration")
+        logger.warning(f"Failed to invalidate OAuth status cache: {e}")
+
+    return JSONResponse(
+        content={
+            "status": "success",
+            "message": f"Successfully disconnected {integration.name}",
+            "integrationId": integration_id,
+        }
+    )
 
 
 @router.get("/login/{integration_id}")
