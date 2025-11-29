@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from bson import ObjectId
-from langchain_google_genai import ChatGoogleGenerativeAI
+from app.agents.llm.client import init_llm
 
 from app.config.loggers import app_logger as logger
 from app.constants.profession_bios import get_random_bio_for_profession
@@ -120,16 +120,23 @@ async def generate_personality_phrase(user_id: str, memories: List[MemoryEntry])
         # Summarize memories
         memory_summary = "\n".join([m.content for m in memories[:10]])
 
-        prompt = f"""Based on this user's profile:
-Profession: {profession}
-Memories: {memory_summary}
+        prompt = f"""Analyze this user's profile deeply to create a truly unique, soulful, and distinctive 2-3 word personality phrase.
 
-Generate a 2-3 word personality phrase that captures their essence.
-Examples: "Curious Developer", "Creative Explorer", "Strategic Thinker", "Data Enthusiast"
+User Context:
+- Profession: {profession} (Use this as a lens, not a constraint)
+- Memories/Insights: {memory_summary}
 
-Respond with ONLY the phrase, nothing else."""
+Instructions:
+1. Look for the underlying themes, values, and motivations in their memories.
+2. Avoid generic, corporate, or cliché phrases (e.g., avoid "Hard Worker", "Team Player").
+3. Aim for a poetic, metaphorical, or highly specific description that captures their essence.
+4. Combine abstract concepts with concrete traits if possible.
 
-        llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-exp", temperature=0.7)
+Examples of the VIBE (do not copy): "Digital Alchemist", "Quiet Storm", "Code Poet", "Restless Voyager", "Mindful Architect".
+
+Generate ONLY the 2-3 word phrase. No explanations."""
+
+        llm = init_llm(preferred_provider="gemini").bind(temperature=1.0, top_k=50)
         response = await llm.ainvoke(prompt)
 
         # Handle response content properly
@@ -214,7 +221,7 @@ What we know: {memory_summary}
 Make it personal and interesting, like an 'About Me' section.
 Respond with ONLY the paragraph, no introduction or formatting."""
 
-        llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-exp", temperature=0.7)
+        llm = init_llm(preferred_provider="gemini")
         response = await llm.ainvoke(prompt)
 
         # Handle response content properly

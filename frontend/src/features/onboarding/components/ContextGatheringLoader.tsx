@@ -46,8 +46,8 @@ const LOADING_MESSAGES = [
   "Preparing your workspace...",
 ] as const;
 
-const MAX_PROGRESS_TIME_SECONDS = 30;
-const MESSAGE_ROTATION_INTERVAL_SECONDS = 3;
+const MAX_PROGRESS_TIME_SECONDS = 60;
+const MESSAGE_ROTATION_INTERVAL_SECONDS = 10;
 
 export default function ContextGatheringLoader({
   onComplete,
@@ -228,12 +228,7 @@ export default function ContextGatheringLoader({
   };
 
   const getProgressPercentage = (): number => {
-    // Cap at 95% to show it's still processing
-    const progress = Math.min(
-      (elapsedSeconds / MAX_PROGRESS_TIME_SECONDS) * 100,
-      95,
-    );
-    return progress;
+    return Math.min((elapsedSeconds / MAX_PROGRESS_TIME_SECONDS) * 100, 95);
   };
 
   const shouldShowGmailHint =
@@ -314,7 +309,7 @@ export default function ContextGatheringLoader({
           {/* Progress bar */}
           <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-700">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-1000"
+              className="h-full rounded-full bg-primary transition-all duration-1000"
               style={{ width: `${getProgressPercentage()}%` }}
             />
           </div>
