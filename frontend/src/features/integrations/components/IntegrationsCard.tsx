@@ -41,76 +41,12 @@ const IntegrationItem: React.FC<{
       className={`flex min-h-12 cursor-pointer flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
       onClick={handleClick}
     >
-      {/* {color && (
-        <div
-          className="relative h-30 w-full overflow-hidden rounded-2xl bg-zinc-900"
-          // style={{ backgroundColor: color }}
-        >
-          <div className="flex h-full w-full items-center justify-center">
-            <Image
-              width={35}
-              height={35}
-              src={integration.icons[0]}
-              alt={integration.name}
-              className="z-[3] aspect-square max-w-[70] min-w-[70] rounded-2xl bg-zinc-700/40 object-contain p-3 backdrop-blur-2xl"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-
-            <Image
-              width={35}
-              height={35}
-              src={integration.icons[0]}
-              alt={integration.name}
-              className="absolute top-4 right-7 z-[1] aspect-square max-w-[45] min-w-[45] -rotate-12 object-contain blur-[3px]"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-
-            <Image
-              width={35}
-              height={35}
-              src={integration.icons[0]}
-              alt={integration.name}
-              className="absolute top-6 left-24 z-[1] aspect-square max-w-[20] min-w-[20] -rotate-6 object-contain blur-[4px]"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-
-            <Image
-              width={35}
-              height={35}
-              src={integration.icons[0]}
-              alt={integration.name}
-              className="absolute right-24 bottom-6 z-[1] aspect-square max-w-[25] min-w-[25] -rotate-6 object-contain blur-[5px]"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-
-            <Image
-              width={35}
-              height={35}
-              src={integration.icons[0]}
-              alt={integration.name}
-              className="absolute bottom-4 left-10 z-[1] aspect-square max-w-[35] min-w-[35] rotate-10 object-contain blur-[3px]"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          </div>
-        </div>
-      )} */}
-
       <div className="flex items-center gap-3">
         <div className="flex-shrink-0">
           {getToolCategoryIcon(integration.id, {
-            size: 22,
-            width: 22,
-            height: 22,
+            size: 26,
+            width: 26,
+            height: 26,
             showBackground: false,
           })}
         </div>
@@ -123,9 +59,7 @@ const IntegrationItem: React.FC<{
             </div>
           </div>
         ) : (
-          <>
-            <div className="flex-1 text-sm font-medium">{integration.name}</div>
-          </>
+          <div className="flex-1 text-sm font-medium">{integration.name}</div>
         )}
 
         <div className="flex-shrink-0">

@@ -26,7 +26,7 @@ router = APIRouter(prefix="/reminders", tags=["reminders"])
 
 
 @router.post(
-    "/", response_model=ReminderResponse, status_code=http_status.HTTP_201_CREATED
+    "", response_model=ReminderResponse, status_code=http_status.HTTP_201_CREATED
 )
 @tiered_rate_limit("reminder_operations")
 async def create_reminder_endpoint(
@@ -220,7 +220,7 @@ async def cancel_reminder_endpoint(
         )
 
 
-@router.get("/", response_model=List[ReminderResponse])
+@router.get("", response_model=List[ReminderResponse])
 async def list_reminders_endpoint(
     user: dict = Depends(get_current_user),
     status: Optional[ReminderStatus] = Query(None, description="Filter by status"),

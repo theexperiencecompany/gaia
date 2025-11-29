@@ -45,7 +45,7 @@ async def _queue_personalization(user_id: str) -> None:
         logger.error(f"Error queuing personalization for user {user_id}: {e}")
 
 
-@router.post("/", response_model=OnboardingResponse)
+@router.post("", response_model=OnboardingResponse)
 async def complete_user_onboarding(
     onboarding_data: OnboardingRequest,
     background_tasks: BackgroundTasks,
