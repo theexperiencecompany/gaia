@@ -34,13 +34,13 @@ from datetime import datetime, timezone
 from typing import Dict, List
 
 import html2text
+from app.agents.memory.profile_crawler import crawl_profile_url
 from app.agents.memory.profile_extractor import (
     PLATFORM_CONFIG,
+    build_profile_url,
     extract_username_with_llm,
     validate_username,
-    build_profile_url,
 )
-from app.agents.memory.profile_crawler import crawl_profile_url
 from app.config.loggers import memory_logger as logger
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
@@ -200,6 +200,25 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
         _extract_profiles_from_parallel_searches(user_id)
     )
 
+    # Check for last scan timestamp
+    last_scan_timestamp = None
+    if user:
+        scan_states = user.get("integration_scan_states", {})
+        if isinstance(scan_states, dict):
+            gmail_state = scan_states.get("gmail", {})
+            if isinstance(gmail_state, dict):
+                last_scan_timestamp = gmail_state.get("last_scan_timestamp")
+
+    # Build query with timestamp if available
+    current_query = EMAIL_QUERY
+    if last_scan_timestamp:
+        if isinstance(last_scan_timestamp, datetime):
+            timestamp_seconds = int(last_scan_timestamp.timestamp())
+            current_query = f"{EMAIL_QUERY} after:{timestamp_seconds}"
+            logger.info(f"Scanning emails after timestamp: {last_scan_timestamp}")
+        else:
+            logger.warning(f"Invalid timestamp format in DB: {last_scan_timestamp}")
+
     try:
         while total_fetched < MAX_RESULTS:
             remaining = MAX_RESULTS - total_fetched
@@ -212,7 +231,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
             result = await search_messages(
                 user_id=user_id,
-                query=EMAIL_QUERY,
+                query=current_query,
                 max_results=batch_size,
                 page_token=page_token,
             )
@@ -308,6 +327,22 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
         except Exception as e:
             logger.error(f"Post-onboarding personalization failed: {e}", exc_info=True)
             # Don't fail the main process
+
+    # Update the scan timestamp if any emails were processed or if it was a successful check
+    if successful_stored > 0 or (last_scan_timestamp and successful_stored == 0):
+        try:
+            current_time = datetime.now(timezone.utc)
+            await users_collection.update_one(
+                {"_id": ObjectId(user_id)},
+                {
+                    "$set": {
+                        "integration_scan_states.gmail.last_scan_timestamp": current_time
+                    }
+                },
+            )
+            logger.info(f"Updated Gmail scan timestamp to {current_time}")
+        except Exception as e:
+            logger.error(f"Failed to update Gmail scan timestamp: {e}")
 
     return {
         "total": total_fetched,
