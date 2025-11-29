@@ -49,7 +49,7 @@ export default function UseCaseDetailLayout({
           <div className="flex-1 space-y-2">
             <h1 className="text-5xl font-normal text-foreground">{title}</h1>
             {description && (
-              <p className="text-base leading-relaxed text-zinc-400">
+              <p className="text-lg leading-relaxed text-zinc-500 max-w-5xl mt-6">
                 {description}
               </p>
             )}
@@ -68,7 +68,7 @@ export default function UseCaseDetailLayout({
           </div>
         </div>
 
-        <div className="flex min-h-[40vh] gap-8">
+        <div className="flex min-h-[40vh] gap-8 flex-col">
           <div className="flex-1 space-y-4">
             <div className="flex flex-wrap items-start gap-2">{metaInfo}</div>
 
