@@ -24,7 +24,7 @@ export default function Onboarding() {
   } = useOnboarding();
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#1a1a1a] backdrop-blur-2xl">
+    <div className="fixed inset-0 z-50 flex flex-col bg-primary-bg backdrop-blur-2xl">
       {/* Progress Indicator - 3 steps: name, profession, connections */}
       <OnboardingProgress
         currentStep={onboardingState.currentQuestionIndex}

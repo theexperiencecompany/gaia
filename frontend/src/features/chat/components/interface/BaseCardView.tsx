@@ -86,7 +86,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
       </div>
 
       <div className="h-full flex-1 px-4 pb-4">
-        <div className="h-full max-h-[40vh] min-h-[40vh] w-full overflow-y-auto rounded-2xl bg-[#141414]">
+        <div className="h-full max-h-[40vh] min-h-[40vh] w-full overflow-y-auto rounded-2xl bg-secondary-bg">
           {!isConnected ? (
             <div className="flex h-full flex-col items-center justify-center p-6">
               {connectIntegrationId ? (

@@ -112,7 +112,7 @@ export default function NotificationsPage() {
   }, [selectedTab, unreadNotifications.length, handleMarkAllAsRead]);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-[#1a1a1a]">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-primary-bg">
       <div className="max-h-[calc(100vh-120px)] overflow-y-auto px-6 pt-6">
         {selectedTab === "unread" ? (
           <NotificationsList

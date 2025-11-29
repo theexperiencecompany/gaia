@@ -11,6 +11,9 @@
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-serif: var(--font-instrument-serif), serif;
 
+  --color-secondary-bg: #141414; /* darker */
+  --color-primary-bg: #1a1a1a; /*  lighter*/
+
   /* Colors */
   --color-primary: #00bbff;
   --color-primary-foreground: #000000;

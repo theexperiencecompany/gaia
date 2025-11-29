@@ -186,10 +186,10 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
   const containerHeight = maxRow * 29;
 
   return (
-    <div className="sticky top-[37px] z-[12] flex min-w-fit flex-shrink-0 border-b border-zinc-800 bg-[#1a1a1a]">
+    <div className="sticky top-[37px] z-[12] flex min-w-fit flex-shrink-0 border-b border-zinc-800 bg-primary-bg">
       {/* Time Label Column */}
       <div
-        className="sticky left-0 z-[11] w-20 flex-shrink-0 cursor-pointer border-r border-zinc-800 bg-[#1a1a1a] transition-colors hover:bg-zinc-800/50"
+        className="sticky left-0 z-[11] w-20 flex-shrink-0 cursor-pointer border-r border-zinc-800 bg-primary-bg transition-colors hover:bg-zinc-800/50"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex h-full items-center justify-end gap-1 py-3 pr-3">
