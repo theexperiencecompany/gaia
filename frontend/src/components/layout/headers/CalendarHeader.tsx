@@ -3,7 +3,7 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Select, SelectItem } from "@heroui/select";
-import { useEffect } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 
 import { CalendarAdd01Icon, CalendarIcon } from "@/components/shared";
 import { ArrowLeft01Icon, ArrowRight01Icon } from "@/icons";
@@ -43,43 +43,20 @@ export default function CalendarHeader() {
   const visibleMonth = useVisibleMonth();
   const visibleYear = useVisibleYear();
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Number keys 1-9 for day selection
-      if (
-        e.key >= "1" &&
-        e.key <= "9" &&
-        !e.metaKey &&
-        !e.ctrlKey &&
-        !e.altKey
-      ) {
-        const target = e.target as HTMLElement;
-        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
-          e.preventDefault();
-          const days = parseInt(e.key, 10);
-          setDaysToShow(days);
-        }
-      }
-      // Arrow keys for navigation
-      if (e.key === "ArrowLeft" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
-          e.preventDefault();
-          goToPreviousDay();
-        }
-      }
-      if (e.key === "ArrowRight" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        const target = e.target as HTMLElement;
-        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
-          e.preventDefault();
-          goToNextDay();
-        }
-      }
-    };
+  // Hotkeys for number keys 1-9 to set days view
+  useHotkeys("1", () => setDaysToShow(1), { enableOnFormTags: false });
+  useHotkeys("2", () => setDaysToShow(2), { enableOnFormTags: false });
+  useHotkeys("3", () => setDaysToShow(3), { enableOnFormTags: false });
+  useHotkeys("4", () => setDaysToShow(4), { enableOnFormTags: false });
+  useHotkeys("5", () => setDaysToShow(5), { enableOnFormTags: false });
+  useHotkeys("6", () => setDaysToShow(6), { enableOnFormTags: false });
+  useHotkeys("7", () => setDaysToShow(7), { enableOnFormTags: false });
+  useHotkeys("8", () => setDaysToShow(8), { enableOnFormTags: false });
+  useHotkeys("9", () => setDaysToShow(9), { enableOnFormTags: false });
 
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [setDaysToShow, goToPreviousDay, goToNextDay]);
+  // Hotkeys for navigation
+  useHotkeys("left", () => goToPreviousDay(), { enableOnFormTags: false });
+  useHotkeys("right", () => goToNextDay(), { enableOnFormTags: false });
 
   return (
     <div className="flex w-full items-center justify-between">
