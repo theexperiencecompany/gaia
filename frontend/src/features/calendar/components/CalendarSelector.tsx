@@ -1,7 +1,7 @@
 import { Chip } from "@heroui/chip";
 
 import { isTooDark } from "@/features/calendar/utils/calendarUtils";
-import { ViewIcon, ViewOffIcon } from "@/icons";
+import { ViewIcon, ViewOffSlashIcon } from "@/icons";
 import type {
   CalendarChipProps,
   CalendarSelectorProps,
@@ -32,12 +32,10 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
           selected ? (
             <ViewIcon className="mr-1" width={17} height={17} />
           ) : (
-            <ViewOffIcon className="mr-1" width={17} height={17} />
+            <ViewOffSlashIcon className="mr-1" width={17} height={17} />
           )
         }
         style={{
-          maxWidth: "100%",
-          minWidth: "100%",
           margin: "0",
           background: "transparent",
           borderWidth: "0px",
@@ -45,7 +43,9 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
           borderRadius: "7px",
         }}
       >
-        <div className="text-sm">{calendar.summary}</div>
+        <div className="text-sm truncate max-w-[calc(var(--sidebar-width)-90px)] w-[calc(var(--sidebar-width)-90px)]">
+          {calendar.summary}
+        </div>
       </Chip>
     </div>
   );
