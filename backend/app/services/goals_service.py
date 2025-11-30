@@ -127,10 +127,10 @@ async def create_goal_service(goal: GoalCreate, user: dict) -> GoalResponse:
 
     try:
         result = await goals_collection.insert_one(goal_data)
-        
+
         # Use the inserted data directly instead of fetching it back
         goal_data["_id"] = result.inserted_id
-        
+
         # Invalidate user's goals list cache and statistics
         await _invalidate_goal_caches(user_id)
 

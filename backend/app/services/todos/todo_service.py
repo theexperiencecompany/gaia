@@ -469,7 +469,7 @@ class TodoService:
             await update_todo_embedding(todo_id, updated, user_id)
         except Exception as e:
             todos_logger.warning(f"Failed to update index: {str(e)}")
-        
+
         # Sync subtask changes back to goals if this is a goal-related todo
         if "subtasks" in update_dict:
             try:
@@ -544,8 +544,10 @@ class TodoService:
     ) -> BulkOperationResponse:
         """Bulk update multiple todos."""
         # Prepare updates - only include non-None fields
-        update_dict = {k: v for k, v in request.updates.model_dump().items() if v is not None}
-        
+        update_dict = {
+            k: v for k, v in request.updates.model_dump().items() if v is not None
+        }
+
         if not update_dict:
             return BulkOperationResponse(
                 success=[],
@@ -593,19 +595,21 @@ class TodoService:
                         "user_id": user_id,
                     }
                 ).to_list(None)
-                
+
                 for todo in updated_todos:
                     try:
                         await update_todo_embedding(str(todo["_id"]), todo, user_id)
                     except Exception as e:
-                        todos_logger.warning(f"Failed to update index for todo {todo['_id']}: {str(e)}")
+                        todos_logger.warning(
+                            f"Failed to update index for todo {todo['_id']}: {str(e)}"
+                        )
             except Exception as e:
                 todos_logger.warning(f"Failed to update search index: {str(e)}")
 
         await cls._invalidate_cache(user_id, operation="bulk_update")
 
         return BulkOperationResponse(
-            success=request.todo_ids[:result.modified_count],  # Approximation
+            success=request.todo_ids[: result.modified_count],  # Approximation
             failed=[],
             total=len(request.todo_ids),
             message=f"Updated {result.modified_count} todos",
@@ -639,12 +643,14 @@ class TodoService:
                     try:
                         await delete_todo_embedding(str(todo["_id"]))
                     except Exception as e:
-                        todos_logger.warning(f"Failed to remove todo {todo['_id']} from index: {str(e)}")
+                        todos_logger.warning(
+                            f"Failed to remove todo {todo['_id']} from index: {str(e)}"
+                        )
             except Exception as e:
                 todos_logger.warning(f"Failed to cleanup search index: {str(e)}")
 
         return BulkOperationResponse(
-            success=todo_ids[:result.deleted_count],  # Approximation
+            success=todo_ids[: result.deleted_count],  # Approximation
             failed=[],
             total=len(todo_ids),
             message=f"Deleted {result.deleted_count} todos",

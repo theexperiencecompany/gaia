@@ -582,8 +582,11 @@ async def update_subtask(
     try:
         # Build update operations
         from typing import Any
-        update_ops: dict[str, Any] = {"$set": {"updated_at": datetime.now(timezone.utc)}}
-        
+
+        update_ops: dict[str, Any] = {
+            "$set": {"updated_at": datetime.now(timezone.utc)}
+        }
+
         if updates.title is not None:
             update_ops["$set"]["subtasks.$[elem].title"] = updates.title
         if updates.completed is not None:
@@ -601,7 +604,9 @@ async def update_subtask(
             raise ValueError(f"Todo {todo_id} not found")
 
         # Verify subtask exists (if no match, the update still succeeds but doesn't modify)
-        subtask_found = any(s.get("id") == subtask_id for s in updated_todo.get("subtasks", []))
+        subtask_found = any(
+            s.get("id") == subtask_id for s in updated_todo.get("subtasks", [])
+        )
         if not subtask_found:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found"
@@ -643,10 +648,9 @@ async def delete_subtask(
     try:
         # Store original subtasks count to verify deletion
         todo_before = await todos_collection.find_one(
-            {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
-            {"subtasks": 1}
+            {"_id": ObjectId(todo_id), "user_id": user["user_id"]}, {"subtasks": 1}
         )
-        
+
         if not todo_before:
             raise ValueError(f"Todo {todo_id} not found")
 
@@ -703,14 +707,16 @@ async def toggle_subtask_completion(
 
         todo = await todos_collection.find_one(
             {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
-            {"subtasks": 1, "project_id": 1}
+            {"subtasks": 1, "project_id": 1},
         )
 
         if not todo:
             raise ValueError(f"Todo {todo_id} not found")
 
         # Find the subtask to get current completion status
-        subtask = next((s for s in todo.get("subtasks", []) if s.get("id") == subtask_id), None)
+        subtask = next(
+            (s for s in todo.get("subtasks", []) if s.get("id") == subtask_id), None
+        )
         if not subtask:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found"
@@ -719,7 +725,7 @@ async def toggle_subtask_completion(
         new_completed = not subtask.get("completed", False)
 
         # Atomic operation: toggle completion using array filter
-        
+
         updated_todo = await todos_collection.find_one_and_update(
             {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
             {
