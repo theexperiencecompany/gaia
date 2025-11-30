@@ -3,6 +3,9 @@
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { useEffect, useState } from "react";
 
+// Use NEXT_PUBLIC_GA_ID from environment variables
+const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
+
 export default function AnalyticsLayout() {
   const [shouldLoad, setShouldLoad] = useState(false);
 
@@ -14,5 +17,5 @@ export default function AnalyticsLayout() {
     return () => clearTimeout(timer);
   }, []);
 
-  return shouldLoad ? <GoogleAnalytics gaId="G-R6EGV9FG2Q" /> : null;
+  return shouldLoad && GA_ID ? <GoogleAnalytics gaId={GA_ID} /> : null;
 }
