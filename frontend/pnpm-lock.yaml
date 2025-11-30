@@ -246,8 +246,8 @@ importers:
         specifier: ^3.13.12
         version: 3.13.12(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@theexperiencecompany/gaia-icons':
-        specifier: ^1.1.0
-        version: 1.1.0(react@19.1.1)
+        specifier: ^1.9.0
+        version: 1.9.0(react@19.1.1)
       '@tiptap/core':
         specifier: ^2.26.1
         version: 2.26.1(@tiptap/pm@2.26.1)
@@ -4982,8 +4982,8 @@ packages:
   '@tanstack/virtual-core@3.13.12':
     resolution: {integrity: sha512-1YBOJfRHV4sXUmWsFSf5rQor4Ss82G8dQWLRbnk3GA4jeP8hQt1hxXh0tmflpC0dz3VgEv/1+qwPyLeWkQuPFA==}
 
-  '@theexperiencecompany/gaia-icons@1.1.0':
-    resolution: {integrity: sha512-u39qvLK35UZumDE+szeRKcUKVsOBIyi9jPZg1Vst7rJFEmQudJ94GKhGqyo3HY6UHuTlOagIolBVIqMP6EOxfA==}
+  '@theexperiencecompany/gaia-icons@1.9.0':
+    resolution: {integrity: sha512-L9atTb83OAOrbjVMJb4G3WLn0KM7nycgHglZb5lFGX+jkzcFln3UhWBgfKWBeGfZmTYfG6pdFalnYvU1qIyezA==}
     peerDependencies:
       react: '>=16'
 
@@ -15200,7 +15200,7 @@ snapshots:
 
   '@tanstack/virtual-core@3.13.12': {}
 
-  '@theexperiencecompany/gaia-icons@1.1.0(react@19.1.1)':
+  '@theexperiencecompany/gaia-icons@1.9.0(react@19.1.1)':
     dependencies:
       react: 19.1.1
 
