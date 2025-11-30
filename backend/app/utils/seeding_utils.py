@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.config.loggers import app_logger as logger
@@ -140,7 +140,7 @@ async def seed_initial_goal(user_id: str) -> None:
 
         await create_goal_project_and_todo(
             goal_id=goal_id,
-            goal_title=goal_data["title"],
+            goal_title=str(goal_data.get("title", "")),
             roadmap_data=roadmap_data,
             user_id=user_id,
             labels=["onboarding"],
