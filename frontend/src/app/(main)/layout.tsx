@@ -227,9 +227,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
           <div
             className={`fixed z-40 w-70 space-y-3 ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
           >
-            {shouldShowPersonalizationCard && (
+            {/* {shouldShowPersonalizationCard && (
               <ContextGatheringLoader onComplete={openHoloCardModal} />
-            )}
+            )} */}
             {/* {shouldShowGettingStartedCard && <OnboardingStepsCard />} */}
           </div>
         )}

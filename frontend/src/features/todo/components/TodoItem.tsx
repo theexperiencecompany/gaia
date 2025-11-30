@@ -36,6 +36,13 @@ const priorityColors = {
   [Priority.NONE]: "default",
 } as const;
 
+const priorityRingColors = {
+  [Priority.HIGH]: "border-red-500",
+  [Priority.MEDIUM]: "border-yellow-500",
+  [Priority.LOW]: "border-blue-500",
+  [Priority.NONE]: "border-zinc-500",
+} as const;
+
 export default function TodoItem({
   todo,
   projects,
@@ -90,10 +97,10 @@ export default function TodoItem({
           <Checkbox
             isSelected={todo.completed}
             onChange={handleToggleComplete}
-            color={priorityColors[todo.priority]}
+            color={todo.completed ? "default" : priorityColors[todo.priority]}
             radius="full"
             classNames={{
-              wrapper: `mt-1 ${todo.completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900"}`,
+              wrapper: `mt-1 ${todo.completed ? "" : `${priorityRingColors[todo.priority]} border-dashed! border-1 before:border-0! bg-zinc-900`}`,
               label: "w-[30vw]",
             }}
           />

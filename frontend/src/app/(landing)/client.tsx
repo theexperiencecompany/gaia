@@ -6,6 +6,7 @@ import { lazy, Suspense, useEffect } from "react";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import CommunitySection from "@/features/landing/components/sections/CommunitySection";
+import ProductivityOS from "@/features/landing/components/sections/ProductivityOS";
 import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
 
 const AllYourTools = lazy(
@@ -89,16 +90,20 @@ export default function LandingPageClient() {
             className="absolute top-140 z-0 h-[120vh] w-screen blur-lg"
             style={{
               backgroundImage: `
-                      radial-gradient(circle at center, #00bbff80 0%, transparent 70%)
-                    `,
+              radial-gradient(circle at center, #00bbff80 0%, transparent 70%)
+              `,
               opacity: 0.6,
             }}
           />
-
-          <Suspense fallback={<SuspenseLoader />}>
-            <AllYourTools />
-          </Suspense>
         </div>
+
+        <Suspense fallback={<SuspenseLoader />}>
+          <ProductivityOS />
+        </Suspense>
+
+        <Suspense fallback={<SuspenseLoader />}>
+          <AllYourTools />
+        </Suspense>
 
         <Suspense fallback={<SuspenseLoader />}>
           <WorkflowSection />
