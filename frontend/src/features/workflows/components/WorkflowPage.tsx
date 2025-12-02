@@ -198,7 +198,7 @@ export default function WorkflowPage() {
 
     if (items.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center space-y-4 rounded-lg border border-zinc-800 bg-zinc-900/50 py-16">
+        <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl bg-zinc-800 border-dashed border-2 border-zinc-700 py-16">
           <div className="text-center">
             <h3 className="text-lg font-medium text-zinc-300">{emptyTitle}</h3>
             <p className="mt-2 text-sm text-zinc-500">{emptyDescription}</p>
