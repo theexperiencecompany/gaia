@@ -7,7 +7,7 @@ import { Home01Icon } from "@/components";
 import Footer from "@/components/navigation/Footer";
 import Navbar from "@/components/navigation/Navbar";
 import { RaisedButton } from "@/components/ui";
-import { ArrowLeft01Icon } from "@/icons";
+import { ChevronLeft } from "@/icons";
 
 export default function PageNotFound() {
   const router = useRouter();
@@ -19,7 +19,9 @@ export default function PageNotFound() {
         <div className="absolute z-0 mx-auto w-full text-center text-[40vw] font-bold text-zinc-900/40">
           404
         </div>
-        <span className="relative z-[1] text-6xl">Page Not Found</span>
+        <span className="relative z-[1] text-6xl font-medium">
+          Page Not Found
+        </span>
         <span className="relative z-[1] text-sm font-light text-zinc-400">
           This page could not be found
         </span>
@@ -37,7 +39,7 @@ export default function PageNotFound() {
             color="#00bbff"
             onClick={() => router.back()}
           >
-            <ArrowLeft01Icon width={18} height={18} />
+            <ChevronLeft width={18} height={18} />
             Go Back
           </RaisedButton>
         </div>
