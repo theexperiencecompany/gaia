@@ -9,7 +9,10 @@ import {
 } from "@heroui/dropdown";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
-
+import {
+  type ConfirmAction,
+  ConfirmActionDialog,
+} from "@/components/shared/ConfirmActionDialog";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
@@ -33,7 +36,6 @@ import {
 
 import { settingsPageItems, socialMediaItems } from "../config/settingsConfig";
 import { useNestedMenu } from "../hooks/useNestedMenu";
-import LogoutModal from "./LogoutModal";
 import { NestedMenuTooltip } from "./NestedMenuTooltip";
 
 export type ModalAction = "clear_chats" | "logout";
@@ -312,7 +314,10 @@ export default function SettingsMenu({
         onOpenChange={() => setSupportModalOpen(false)}
       />
 
-      <LogoutModal modalAction={modalAction} setModalAction={setModalAction} />
+      <ConfirmActionDialog
+        action={modalAction as ConfirmAction}
+        onOpenChange={(action) => setModalAction(action as ModalAction)}
+      />
 
       <ConfirmationDialog {...confirmationProps} />
     </>

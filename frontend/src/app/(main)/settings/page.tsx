@@ -2,9 +2,9 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-
+import type { ConfirmAction } from "@/components/shared/ConfirmActionDialog";
+import { ConfirmActionDialog } from "@/components/shared/ConfirmActionDialog";
 import AccountSettings from "@/features/settings/components/AccountSettings";
-import LogoutModal from "@/features/settings/components/LogoutModal";
 import MemorySettings from "@/features/settings/components/MemorySettings";
 import PreferencesSettings from "@/features/settings/components/PreferencesSettings";
 import ProfileCardSettings from "@/features/settings/components/ProfileCardSettings";
@@ -54,7 +54,10 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <LogoutModal modalAction={modalAction} setModalAction={setModalAction} />
+      <ConfirmActionDialog
+        action={modalAction as ConfirmAction}
+        onOpenChange={(action) => setModalAction(action as ModalAction)}
+      />
     </>
   );
 }
