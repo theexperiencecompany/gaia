@@ -1,4 +1,3 @@
-import router from "next/router";
 import { apiService } from "@/lib/api";
 
 export interface UserInfo {
