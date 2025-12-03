@@ -71,6 +71,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
   uv pip install --no-cache-dir --editable . ; \
   fi
 
+# Setup crawl4ai browser dependencies
+RUN crawl4ai-setup
+
 # ---- Final Stage: Setup application for production ----
 FROM default-dependencies AS final
 WORKDIR /app
