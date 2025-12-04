@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from app.config.loggers import app_logger as logger
@@ -9,12 +9,13 @@ from app.models.chat_models import (
     MessageModel,
     UpdateMessagesRequest,
 )
-from app.models.todo_models import Priority
+from app.models.todo_models import Priority, SubTask, TodoModel
 from app.services.conversation_service import (
     create_conversation_service,
     update_messages,
 )
 from app.services.todos.sync_service import create_goal_project_and_todo
+from app.services.todos.todo_service import TodoService
 
 
 async def seed_initial_goal(user_id: str) -> None:
@@ -22,7 +23,6 @@ async def seed_initial_goal(user_id: str) -> None:
     Create a dummy goal with a full roadmap to showcase features.
     """
     try:
-        # Create a comprehensive instructional roadmap to help users explore all goal features
         roadmap_data = {
             "nodes": [
                 {
@@ -123,7 +123,6 @@ async def seed_initial_goal(user_id: str) -> None:
             ],
         }
 
-        # Direct DB insert with roadmap included to avoid multiple DB operations
         goal_data = {
             "title": "Explore Gaia's Goal Tracking",
             "description": "A comprehensive guide to help you discover all the powerful features of goal tracking in Gaia. Complete the roadmap to learn everything!",
@@ -133,18 +132,16 @@ async def seed_initial_goal(user_id: str) -> None:
         }
 
         result = await goals_collection.insert_one(goal_data)
-        goal_id = str(result.inserted_id)
 
         due_date = datetime.now(timezone.utc)
-        due_date = due_date.replace(hour=17, minute=0, second=0, microsecond=0)  # 5 PM
 
         await create_goal_project_and_todo(
-            goal_id=goal_id,
-            goal_title=str(goal_data.get("title", "")),
+            goal_id=str(result.inserted_id),
+            goal_title="This is a todo linked to your Goals roadmap!",
             roadmap_data=roadmap_data,
             user_id=user_id,
             labels=["onboarding"],
-            priority=Priority.HIGH,
+            priority=Priority.MEDIUM,
             due_date=due_date,
             due_date_timezone="UTC",
         )
@@ -174,10 +171,10 @@ async def seed_initial_conversation(user_id: str) -> None:
 
         # Create the welcome message with breaks for bubbles
         welcome_message = (
-            "Hey! I'm Gaia, your personal AI assistant.<NEW_MESSAGE_BREAK>"
-            "I'm here to help you organize your life, manage your tasks, and get things done.<NEW_MESSAGE_BREAK>"
-            "You can ask me to create todos, set goals, or just chat about your day.<NEW_MESSAGE_BREAK>"
-            "What's on your mind?"
+            "Hey! I'm Gaia, your personal AI assistant—I'm here to help you actually get things done. 👋<NEW_MESSAGE_BREAK>"
+            "Here's what I can help with: \n - 📧 Manage your Gmail inbox\n - 📅 Schedule calendar events\n - ✅ Create and track todos with smart workflows\n - 🎯 Set goals with visual roadmaps\n - 🔍 Search the web and generate images\n - 🧠 Remember important things about you and a lot more!<NEW_MESSAGE_BREAK>"
+            "Try asking me to: Check your unread emails, create a task for something you need to do, set up a goal with a roadmap, search for information, or just tell me about your day so I can get to know you better!<NEW_MESSAGE_BREAK>"
+            "What would you like to explore first?"
         )
 
         message = MessageModel(
@@ -197,9 +194,91 @@ async def seed_initial_conversation(user_id: str) -> None:
         logger.error(f"Failed to seed initial conversation for user {user_id}: {e}")
 
 
+async def seed_onboarding_todo(user_id: str) -> None:
+    """
+    Create a comprehensive onboarding todo that showcases all todo features.
+    This is separate from the goal-linked todo to demonstrate standalone todo functionality.
+    """
+    try:
+        due_date = datetime.now(timezone.utc) + timedelta(days=1)
+
+        # Create subtasks that guide users through all todo features
+        subtasks = [
+            SubTask(
+                id=str(uuid4()),
+                title="✅ Mark this subtask as complete to see progress tracking",
+                completed=False,
+            ),
+            SubTask(
+                id=str(uuid4()),
+                title="📝 Edit the todo title or description by clicking on it",
+                completed=False,
+            ),
+            SubTask(
+                id=str(uuid4()),
+                title="🏷️ Try adding or removing labels for organization",
+                completed=False,
+            ),
+            SubTask(
+                id=str(uuid4()),
+                title="⭐ Change the priority level (try high, medium, or low)",
+                completed=False,
+            ),
+            SubTask(
+                id=str(uuid4()),
+                title="📅 Modify the due date to see how scheduling works",
+                completed=False,
+            ),
+            SubTask(
+                id=str(uuid4()),
+                title="📁 Move this todo to a different project",
+                completed=False,
+            ),
+            SubTask(
+                id=str(uuid4()),
+                title="➕ Add your own custom subtask to this list",
+                completed=False,
+            ),
+        ]
+
+        # Create the onboarding todo
+        todo = TodoModel(
+            title="Welcome to Todos! Explore all the features 🎉",
+            description=(
+                "This interactive todo helps you discover everything you can do with tasks in Gaia.\n\n"
+                "**Features to try:**\n"
+                "• Complete subtasks to track your progress\n"
+                "• Edit title, description, and details\n"
+                "• Add labels like #work, #personal, or #learning\n"
+                "• Set priorities to organize by importance\n"
+                "• Adjust due dates and get reminders\n"
+                "• Move between projects (like Inbox, Work, etc.)\n"
+                "• Create your own subtasks for breaking down work\n\n"
+                "**Pro tips:**\n"
+                "✨ Use Gaia AI to auto-generate todos from conversations\n"
+                "🔗 Link todos to goals for visual roadmap tracking\n"
+                "🔍 Search and filter todos by label, priority, or date\n\n"
+                "Complete the subtasks to learn by doing, then create your first real todo!"
+            ),
+            labels=["onboarding", "tutorial", "getting-started"],
+            priority=Priority.HIGH,
+            due_date=due_date,
+            due_date_timezone="UTC",
+            subtasks=subtasks,
+            project_id=None,  # Will be added to Inbox
+        )
+
+        # Create the todo using the service
+        await TodoService.create_todo(todo, user_id)
+        logger.info(f"Seeded onboarding todo for user {user_id}")
+
+    except Exception as e:
+        logger.error(f"Failed to seed onboarding todo for user {user_id}: {e}")
+
+
 async def seed_initial_user_data(user_id: str) -> None:
     """
-    Seed initial data for a new user (dummy todo, goal, and conversation).
+    Seed initial data for a new user (onboarding todo, goal with linked todo, and conversation).
     Runs tasks in parallel to minimize background processing time.
     """
     try:
@@ -207,7 +286,9 @@ async def seed_initial_user_data(user_id: str) -> None:
 
         # Run seeding tasks in parallel
         # Note: Goal seeding automatically creates a comprehensive linked todo
+        # The onboarding todo is separate and demonstrates standalone todo features
         await asyncio.gather(
+            seed_onboarding_todo(user_id),
             seed_initial_goal(user_id),
             seed_initial_conversation(user_id),
         )
