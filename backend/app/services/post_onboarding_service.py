@@ -1,12 +1,11 @@
 """Post-onboarding personalization service."""
 
+import asyncio
 import random
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from bson import ObjectId
 from app.agents.llm.client import init_llm
-
 from app.config.loggers import app_logger as logger
 from app.constants.profession_bios import get_random_bio_for_profession
 from app.core.websocket_manager import websocket_manager
@@ -14,9 +13,14 @@ from app.db.chromadb import ChromaClient
 from app.db.mongodb.collections import users_collection, workflows_collection
 from app.models.memory_models import MemoryEntry, MemorySearchResult
 from app.models.user_models import BioStatus, OnboardingPhase
-from app.services.memory_service import memory_service
 from app.services.composio.composio_service import get_composio_service
-import asyncio
+from app.services.memory_service import memory_service
+from app.utils.seeding_utils import (
+    seed_initial_conversation,
+    seed_initial_goal,
+    seed_onboarding_todo,
+)
+from bson import ObjectId
 
 HOUSES = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
 
@@ -541,3 +545,26 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
 
     except Exception as e:
         logger.error(f"Error in post-onboarding personalization: {e}", exc_info=True)
+
+
+async def seed_initial_user_data(user_id: str) -> None:
+    """
+    Seed initial data for a new user (onboarding todo, goal with linked todo, and conversation).
+    Runs tasks in parallel to minimize background processing time.
+    """
+    try:
+        logger.info(f"Starting parallel data seeding for user {user_id}")
+
+        # Run seeding tasks in parallel
+        # Note: Goal seeding automatically creates a comprehensive linked todo
+        # The onboarding todo is separate and demonstrates standalone todo features
+        await asyncio.gather(
+            seed_onboarding_todo(user_id),
+            seed_initial_goal(user_id),
+            seed_initial_conversation(user_id),
+        )
+
+        logger.info(f"Completed parallel data seeding for user {user_id}")
+
+    except Exception as e:
+        logger.error(f"Error in seed_initial_user_data for user {user_id}: {e}")

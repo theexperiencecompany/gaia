@@ -73,6 +73,8 @@ export const useLogout = () => {
   }, [queryClient]);
 
   const logout = useCallback(async () => {
+    router.push("/");
+
     try {
       await authApi.logout();
     } catch (error) {
@@ -80,8 +82,6 @@ export const useLogout = () => {
     }
 
     await clearAllStorage();
-
-    router.push("/");
   }, [clearAllStorage, router]);
 
   return { logout };

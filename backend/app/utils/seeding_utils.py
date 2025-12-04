@@ -274,26 +274,3 @@ async def seed_onboarding_todo(user_id: str) -> None:
 
     except Exception as e:
         logger.error(f"Failed to seed onboarding todo for user {user_id}: {e}")
-
-
-async def seed_initial_user_data(user_id: str) -> None:
-    """
-    Seed initial data for a new user (onboarding todo, goal with linked todo, and conversation).
-    Runs tasks in parallel to minimize background processing time.
-    """
-    try:
-        logger.info(f"Starting parallel data seeding for user {user_id}")
-
-        # Run seeding tasks in parallel
-        # Note: Goal seeding automatically creates a comprehensive linked todo
-        # The onboarding todo is separate and demonstrates standalone todo features
-        await asyncio.gather(
-            seed_onboarding_todo(user_id),
-            seed_initial_goal(user_id),
-            seed_initial_conversation(user_id),
-        )
-
-        logger.info(f"Completed parallel data seeding for user {user_id}")
-
-    except Exception as e:
-        logger.error(f"Error in seed_initial_user_data for user {user_id}: {e}")
