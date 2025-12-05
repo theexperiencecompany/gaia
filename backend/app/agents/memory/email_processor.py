@@ -49,6 +49,8 @@ from app.services.memory_service import memory_service
 from arq import create_pool
 from arq.connections import RedisSettings
 from bson import ObjectId
+from app.core.websocket_manager import websocket_manager
+from app.services.post_onboarding_service import process_post_onboarding_personalization
 
 # Constants
 EMAIL_QUERY = "in:inbox"
@@ -200,6 +202,23 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
         _extract_profiles_from_parallel_searches(user_id)
     )
 
+    # Emit initial progress
+    try:
+        await websocket_manager.broadcast_to_user(
+            user_id,
+            {
+                "type": "personalization_progress",
+                "data": {
+                    "stage": "discovering",
+                    "message": "🔮 Discovering your essence...",
+                    "progress": 15,
+                    "details": {"current": 0, "total": MAX_RESULTS},
+                },
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Failed to emit initial progress: {e}")
+
     try:
         while total_fetched < MAX_RESULTS:
             remaining = MAX_RESULTS - total_fetched
@@ -229,6 +248,24 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
             # Update stats
             total_fetched += len(batch_emails)
+
+            # Emit progress update
+            try:
+                progress_percent = min(15 + int((total_fetched / MAX_RESULTS) * 40), 55)
+                await websocket_manager.broadcast_to_user(
+                    user_id,
+                    {
+                        "type": "personalization_progress",
+                        "data": {
+                            "stage": "discovering",
+                            "message": "🔮 Discovering your essence...",
+                            "progress": progress_percent,
+                            "details": {"current": total_fetched, "total": MAX_RESULTS},
+                        },
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"Failed to emit progress update: {e}")
 
             # Process content immediately (no platform filtering - that's handled separately)
             processed_batch, failed = _process_email_content(batch_emails)
@@ -297,10 +334,6 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
         # Trigger post-onboarding personalization
         # This will re-run even if it ran before, updating the bio with new memories
         try:
-            from app.services.post_onboarding_service import (
-                process_post_onboarding_personalization,
-            )
-
             logger.info(
                 f"Triggering post-onboarding personalization for user {user_id} after email processing"
             )

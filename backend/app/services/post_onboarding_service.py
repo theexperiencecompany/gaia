@@ -71,8 +71,8 @@ async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
             return await _get_default_workflows(limit)
 
         # Create query from memories
-        query_parts = [m.content for m in memories.memories[:10]]
-        query_text = " ".join(query_parts)[:1000]
+        query_parts = [m.content for m in memories.memories]
+        query_text = " ".join(query_parts)
 
         logger.info(f"Searching workflows with RAG query for user {user_id}")
 
@@ -574,39 +574,49 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
             user_id, "finalizing", f"🏠 Welcome to {house.title()}!", 90
         )
 
-        # Broadcast via WebSocket
-        # Get user name for complete card data
-        user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
-        user_name = user_doc.get("name", "User") if user_doc else "User"
+        # Only broadcast completion if bio is actually ready
+        # COMPLETED: Bio generated from memories
+        # NO_GMAIL: Static bio (user didn't connect Gmail)
+        # PROCESSING: Still waiting for email processing - don't broadcast yet
+        if bio_status in [BioStatus.COMPLETED, BioStatus.NO_GMAIL]:
+            # Broadcast via WebSocket
+            # Get user name for complete card data
+            user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+            user_name = user_doc.get("name", "User") if user_doc else "User"
 
-        personalization_data = {
-            "has_personalization": True,
-            "house": house,
-            "personality_phrase": personality_phrase,
-            "user_bio": user_bio,
-            "account_number": metadata["account_number"],
-            "member_since": metadata["member_since"],
-            "overlay_color": overlay_color,
-            "overlay_opacity": overlay_opacity,
-            "suggested_workflows": workflows,
-            "name": user_name,
-            "holo_card_id": user_id,
-        }
+            personalization_data = {
+                "has_personalization": True,
+                "house": house,
+                "personality_phrase": personality_phrase,
+                "user_bio": user_bio,
+                "account_number": metadata["account_number"],
+                "member_since": metadata["member_since"],
+                "overlay_color": overlay_color,
+                "overlay_opacity": overlay_opacity,
+                "suggested_workflows": workflows,
+                "name": user_name,
+                "holo_card_id": user_id,
+            }
 
-        # Emit final completion progress
-        await emit_progress(user_id, "complete", "🎉 Your GAIA awaits!", 100)
+            # Emit final completion progress
+            await emit_progress(user_id, "complete", "🎉 Your GAIA awaits!", 100)
 
-        await websocket_manager.broadcast_to_user(
-            user_id=user_id,
-            message={
-                "type": "onboarding_personalization_complete",
-                "data": personalization_data,
-            },
-        )
+            await websocket_manager.broadcast_to_user(
+                user_id=user_id,
+                message={
+                    "type": "onboarding_personalization_complete",
+                    "data": personalization_data,
+                },
+            )
 
-        logger.info(
-            f"Post-onboarding personalization complete for user {user_id}: house={house}, phrase={personality_phrase}"
-        )
+            logger.info(
+                f"Post-onboarding personalization complete for user {user_id}: house={house}, phrase={personality_phrase}"
+            )
+        else:
+            logger.info(
+                f"Personalization saved but not broadcasting completion yet - bio_status={bio_status}, "
+                f"waiting for email processing to complete"
+            )
 
     except Exception as e:
         logger.error(f"Error in post-onboarding personalization: {e}", exc_info=True)

@@ -231,9 +231,10 @@ export default function ContextGatheringLoader({
       return platforms.join(", ");
     }
 
-    // Show count progress
+    // Show count progress as "blocks" for email scanning
     if (current !== undefined && total !== undefined) {
-      return `${current}/${total}`;
+      // Use "blocks" terminology as requested
+      return `${current}/${total} blocks`;
     }
 
     return null;

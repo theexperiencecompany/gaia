@@ -15,6 +15,7 @@ from app.services.composio.composio_service import get_composio_service
 from app.services.oauth_service import store_user_info
 from app.services.oauth_state_service import validate_and_consume_oauth_state
 from app.utils.oauth_utils import fetch_user_info_from_google, get_tokens_from_code
+from app.utils.redis_utils import RedisPoolManager
 from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
@@ -107,6 +108,51 @@ async def workos_callback(
     except Exception as e:
         logger.error(f"Unexpected error during WorkOS callback: {str(e)}")
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=server_error")
+
+
+async def _handle_gmail_connection(user_id: str, user_doc: dict) -> None:
+    """Handle Gmail-specific post-connection processing."""
+    already_processed = user_doc.get("email_memory_processed", False)
+
+    if already_processed:
+        logger.info(f"User {user_id} emails already processed - skipping re-scan")
+        return
+
+    logger.info(f"Queueing Gmail email processing for user {user_id}")
+    pool = await RedisPoolManager.get_pool()
+    await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
+
+    await _update_bio_status_if_needed(user_id, user_doc)
+
+
+async def _update_bio_status_if_needed(user_id: str, user_doc: dict) -> None:
+    """Update bio status to PROCESSING if user previously had NO_GMAIL status."""
+    onboarding = user_doc.get("onboarding", {})
+    if not onboarding.get("completed"):
+        return
+
+    bio_status = onboarding.get("bio_status")
+    if bio_status not in [BioStatus.NO_GMAIL, "no_gmail"]:
+        return
+
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {
+            "$set": {
+                "onboarding.bio_status": BioStatus.PROCESSING,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+    logger.info(f"Updated bio_status to PROCESSING for user {user_id}")
+
+    await websocket_manager.broadcast_to_user(
+        user_id=user_id,
+        message={
+            "type": "bio_status_update",
+            "data": {"bio_status": BioStatus.PROCESSING},
+        },
+    )
 
 
 @router.get("/composio/callback", response_class=RedirectResponse)
@@ -212,56 +258,11 @@ async def composio_callback(
                 triggers=integration_config.associated_triggers,
             )
 
-        # Process Gmail emails to memory if this is a Gmail connection
+        # Handle Gmail-specific processing
         if integration_config.id == "gmail":
-            logger.info(f"Starting Gmail email processing for user {user_id}")
-
-            # Check if user has completed onboarding and update bio_status to processing
-            try:
-                user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
-                if user_doc and user_doc.get("onboarding", {}).get("completed"):
-                    current_bio_status = user_doc.get("onboarding", {}).get(
-                        "bio_status"
-                    )
-
-                    # If bio was generated without Gmail, update status to processing
-                    if current_bio_status in [BioStatus.NO_GMAIL, "no_gmail"]:
-                        await users_collection.update_one(
-                            {"_id": ObjectId(user_id)},
-                            {
-                                "$set": {
-                                    "onboarding.bio_status": BioStatus.PROCESSING,
-                                    "updated_at": datetime.now(timezone.utc),
-                                }
-                            },
-                        )
-                        logger.info(
-                            f"Updated bio_status to processing for user {user_id} "
-                            f"(was {current_bio_status})"
-                        )
-
-                        # Send WebSocket update to notify frontend
-                        try:
-                            if isinstance(user_id, str) and user_id:
-                                await websocket_manager.broadcast_to_user(
-                                    user_id=user_id,
-                                    message={
-                                        "type": "bio_status_update",
-                                        "data": {"bio_status": BioStatus.PROCESSING},
-                                    },
-                                )
-                            else:
-                                logger.warning(
-                                    f"Cannot broadcast WebSocket update: user_id is not a valid string ({user_id})"
-                                )
-                        except Exception as ws_error:
-                            logger.warning(
-                                f"Failed to send WebSocket update: {ws_error}"
-                            )
-            except Exception as e:
-                logger.error(
-                    f"Error updating bio_status for user {user_id}: {e}", exc_info=True
-                )
+            user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+            if user_doc:
+                await _handle_gmail_connection(user_id, user_doc)
 
         # Invalidate OAuth status cache for this user
         try:

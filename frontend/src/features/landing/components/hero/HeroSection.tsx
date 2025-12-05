@@ -44,17 +44,14 @@ export default function HeroSection() {
           text="Meet the personal assistant you’ve always wanted"
           delay={0}
           staggerDelay={0.15}
-          className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-8xl"
+          className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-8xl font-semibold"
           gradient="linear-gradient(to bottom, oklch(55.2% 0.016 285.938), oklch(21% 0.006 285.885))"
           disableIntersectionObserver
           showGlowTextBg
         />
 
-        {/* <h1 className="z-[10] max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-8xl font-serif font-normal">
-          Meet the personal assistant you’ve always wanted
-        </h1> */}
         <div className="relative">
-          <div className="mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-lg leading-7 font-light tracking-tighter text-white sm:px-0 sm:text-xl">
+          <div className="mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-white sm:px-0 sm:text-xl">
             Tired of Siri, Google Assistant, and ChatGPT doing nothing useful?
           </div>
           <div className="mb-6 absolute top-0 blur-sm max-w-(--breakpoint-sm) px-4 py-0 text-center text-lg leading-7 font-bold tracking-tighter text-black/60 z-[-1] sm:px-0 sm:text-xl">
