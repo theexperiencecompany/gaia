@@ -1,5 +1,7 @@
+"use client";
+
 import { motion } from "framer-motion";
-import React, { useId, useRef } from "react";
+import { useId, useRef } from "react";
 
 import { useIntersectionObserver } from "@/hooks/ui/useIntersectionObserver";
 import { cn } from "@/lib/utils";
