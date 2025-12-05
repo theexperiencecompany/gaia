@@ -38,16 +38,16 @@ export function SidebarPromo({ price }: SidebarPromoProps) {
     >
       {!isCollapsed && (
         <>
-          <div className="flex w-full justify-between items-center gap-1">
+          <div className="flex w-full justify-between items-center gap-1 group">
             <div className="font-medium text-sm">Go on, You Deserve This</div>
             <Button
               isIconOnly
               variant="light"
               size="sm"
-              className="p-0! text-zinc-400 hover:text-white relative left-2"
+              className="p-0! text-zinc-400 hover:text-white relative left-2 group-hover:opacity-100 opacity-0 transition"
               onPress={() => handleCollapse()}
             >
-              <CancelIcon width={18} height={18} />
+              <CancelIcon width={15} height={15} />
             </Button>
           </div>
           <p className="text-xs text-zinc-400">

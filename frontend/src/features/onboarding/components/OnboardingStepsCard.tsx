@@ -78,7 +78,7 @@ export default function OnboardingStepsCard() {
   console.log("[OnboardingStepsCard] Showing card for phase:", phase);
 
   return (
-    <div className="flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-2 shadow-xl backdrop-blur-sm">
+    <div className="flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-2 shadow-xl backdrop-blur-sm overflow-hidden!">
       {/* <div className="flex items-center justify-start">
         <h3 className="text-xs font-semibold text-zinc-100">Getting Started</h3>
         <span className="text-xs text-zinc-500">0/5</span>
@@ -88,7 +88,7 @@ export default function OnboardingStepsCard() {
         <AccordionItem
           key="1"
           aria-label="Getting started"
-          classNames={{ trigger: "cursor-pointer" }}
+          classNames={{ trigger: "cursor-pointer", content: "overflow-hidden" }}
           title={
             <div className="flex items-center justify-start gap-2 font-normal">
               <h3 className="text-xs font-semibold text-zinc-100">

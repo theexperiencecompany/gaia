@@ -16,7 +16,7 @@ export default function GetStartedButton({
     <div className="relative z-[2] flex flex-col items-center gap-4">
       <Link href={"/signup"}>
         <RaisedButton
-          className="rounded-xl px-8 text-black! before:rounded-xl hover:scale-110"
+          className="rounded-xl px-4 scale-110 text-black! before:rounded-xl hover:scale-125 shadow-black shadow-xl"
           color="#00bbff"
           onClick={() => {
             posthog.capture("cta:get_started_clicked", {

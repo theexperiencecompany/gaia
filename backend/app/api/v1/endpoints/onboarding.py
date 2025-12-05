@@ -58,12 +58,13 @@ async def complete_user_onboarding(
 
         if has_gmail:
             logger.info(
-                f"User {user['user_id']} has Gmail - personalization will run after email processing"
+                f"User {user['user_id']} has Gmail - queueing personalization with email processing"
             )
+            background_tasks.add_task(queue_personalization, user["user_id"])
         else:
-            # No Gmail, queue personalization directly
+            # No Gmail, queue personalization directly (will use default bio)
             logger.info(
-                f"User {user['user_id']} has no Gmail - queueing personalization directly"
+                f"User {user['user_id']} has no Gmail - queueing personalization with default bio"
             )
             background_tasks.add_task(queue_personalization, user["user_id"])
 

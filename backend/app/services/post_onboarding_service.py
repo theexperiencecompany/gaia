@@ -25,6 +25,28 @@ from bson import ObjectId
 HOUSES = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
 
 
+async def emit_progress(
+    user_id: str,
+    stage: str,
+    message: str,
+    progress: int,
+    details: dict | None = None,
+) -> None:
+    """Emit magical progress update to user via WebSocket."""
+    await websocket_manager.broadcast_to_user(
+        user_id,
+        {
+            "type": "personalization_progress",
+            "data": {
+                "stage": stage,
+                "message": message,
+                "progress": progress,
+                "details": details or {},
+            },
+        },
+    )
+
+
 async def suggest_workflows_via_rag(user_id: str, limit: int = 4) -> List[str]:
     """
     Use RAG to find similar workflows based on user memories.
@@ -432,17 +454,37 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
     try:
         logger.info(f"Starting post-onboarding personalization for user {user_id}")
 
+        # Emit initial progress
+        await emit_progress(
+            user_id, "initializing", "✨ Preparing your magical space...", 5
+        )
+
         # Set bio status to processing
         await users_collection.update_one(
             {"_id": ObjectId(user_id)},
             {"$set": {"onboarding.bio_status": BioStatus.PROCESSING}},
         )
 
-        # Get user memories
+        # Get user memories (this triggers email scanning if needed)
+        await emit_progress(
+            user_id, "discovering", "🔮 Discovering your essence...", 10
+        )
         memories_result = await memory_service.get_all_memories(user_id=user_id)
         memories = memories_result.memories
 
+        # Memories retrieved - emit progress
+        await emit_progress(
+            user_id,
+            "analyzing",
+            "🧠 Analyzing your patterns...",
+            30,
+            {"current": len(memories), "total": len(memories)},
+        )
+
         # Run all tasks in parallel where possible
+        await emit_progress(
+            user_id, "crafting", "🎨 Crafting your unique identity...", 50
+        )
 
         # Parallel tasks
         workflow_task = asyncio.create_task(suggest_workflows_via_rag(user_id, 4))
@@ -461,8 +503,18 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
             return_exceptions=False,
         )
 
+        # Emit progress after parallel tasks
+        await emit_progress(
+            user_id, "curating", "🔧 Curating your perfect toolkit...", 75
+        )
+
         # Unpack bio result
         user_bio, bio_status = bio_result
+
+        # Emit progress after parallel tasks
+        await emit_progress(
+            user_id, "curating", "🔧 Curating your perfect toolkit...", 75
+        )
 
         # Always save personalization data
         # Even if bio is placeholder, we save it so user sees progress
@@ -473,6 +525,11 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
 
         # Assign random house
         house = assign_random_house()
+
+        # Emit house assignment progress
+        await emit_progress(
+            user_id, "finalizing", f"🏠 Welcome to {house.title()}!", 90
+        )
 
         # Generate random color/gradient
         overlay_color, overlay_opacity = generate_random_color()
@@ -512,6 +569,11 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
                 logger.warning(f"Error fetching workflow {wf_id}: {e}")
                 continue
 
+        # Emit house assignment progress
+        await emit_progress(
+            user_id, "finalizing", f"🏠 Welcome to {house.title()}!", 90
+        )
+
         # Broadcast via WebSocket
         # Get user name for complete card data
         user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
@@ -530,6 +592,9 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
             "name": user_name,
             "holo_card_id": user_id,
         }
+
+        # Emit final completion progress
+        await emit_progress(user_id, "complete", "🎉 Your GAIA awaits!", 100)
 
         await websocket_manager.broadcast_to_user(
             user_id=user_id,

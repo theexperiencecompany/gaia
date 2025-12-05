@@ -16,6 +16,7 @@ interface SplitTextBlurProps {
   };
   yOffset?: number;
   disableIntersectionObserver?: boolean;
+  gradient?: string;
 }
 
 const SplitTextBlur = ({
@@ -30,6 +31,7 @@ const SplitTextBlur = ({
   },
   yOffset = 2,
   disableIntersectionObserver = false,
+  gradient = "linear-gradient(to bottom, #a3a3a3, #ffffff)",
 }: SplitTextBlurProps) => {
   const ref = useRef<HTMLDivElement>(null);
   const isVisible = useIntersectionObserver(ref, { threshold: 0.1 });
@@ -71,41 +73,71 @@ const SplitTextBlur = ({
   const baseId = useId();
 
   return (
-    <motion.div
-      ref={ref}
-      initial="hidden"
-      animate={shouldAnimate ? "visible" : "hidden"}
-      variants={containerVariants}
-      className={cn(className)}
-      style={{
-        willChange: "transform, opacity, filter",
-        background: "linear-gradient(to bottom, #a3a3a3, #ffffff)",
-        WebkitBackgroundClip: "text",
-        WebkitTextFillColor: "transparent",
-        backgroundClip: "text",
-      }}
-    >
-      {words.map((word, index) => (
-        <motion.span
-          // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
-          key={baseId + word + index}
-          variants={wordVariants}
-          style={{
-            willChange: "transform, opacity, filter",
-            display: "inline-block",
-            marginRight: index < words.length - 1 ? "0.25em" : "0",
-            background: "inherit",
-            WebkitBackgroundClip: "inherit",
-            WebkitTextFillColor: "inherit",
-            backgroundClip: "inherit",
-            paddingBottom: "7px",
-          }}
-          className="font-serif"
-        >
-          {word}
-        </motion.span>
-      ))}
-    </motion.div>
+    <div className="relative">
+      <motion.div
+        ref={ref}
+        initial="hidden"
+        animate={shouldAnimate ? "visible" : "hidden"}
+        variants={containerVariants}
+        className={`${cn(className)} z-[10]`}
+        style={{
+          willChange: "transform, opacity, filter",
+          background: gradient,
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundClip: "text",
+        }}
+      >
+        {words.map((word, index) => (
+          <motion.span
+            // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
+            key={baseId + word + index}
+            variants={wordVariants}
+            style={{
+              willChange: "transform, opacity, filter",
+              display: "inline-block",
+              marginRight: index < words.length - 1 ? "0.25em" : "0",
+              background: "inherit",
+              WebkitBackgroundClip: "inherit",
+              WebkitTextFillColor: "inherit",
+              backgroundClip: "inherit",
+              paddingBottom: "7px",
+            }}
+            className="font-serif"
+          >
+            {word}
+          </motion.span>
+        ))}
+      </motion.div>
+      <motion.div
+        ref={ref}
+        initial="hidden"
+        animate={shouldAnimate ? "visible" : "hidden"}
+        variants={containerVariants}
+        className={`${cn(className)} text-white blur-md absolute top-0 z-[-1]`}
+      >
+        {words.map((word, index) => (
+          <motion.span
+            // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
+            key={baseId + word + index}
+            variants={wordVariants}
+            style={{
+              willChange: "transform, opacity, filter",
+              display: "inline-block",
+              marginRight: index < words.length - 1 ? "0.25em" : "0",
+              background: "inherit",
+              WebkitBackgroundClip: "inherit",
+              WebkitTextFillColor: "inherit",
+              backgroundClip: "inherit",
+              paddingBottom: "7px",
+            }}
+            className="font-serif"
+          >
+            {word}
+          </motion.span>
+        ))}
+      </motion.div>
+    </div>
   );
 };
 
