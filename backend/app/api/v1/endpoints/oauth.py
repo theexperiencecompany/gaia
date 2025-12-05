@@ -19,6 +19,7 @@ from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
 from workos import WorkOSClient
+from app.services.onboarding_service import queue_personalization
 
 
 router = APIRouter()
@@ -214,53 +215,45 @@ async def composio_callback(
 
         # Process Gmail emails to memory if this is a Gmail connection
         if integration_config.id == "gmail":
-            logger.info(f"Starting Gmail email processing for user {user_id}")
+            logger.info(f"Gmail connected for user {user_id}")
 
-            # Check if user has completed onboarding and update bio_status to processing
+            # Check if user has completed onboarding
             try:
                 user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
                 if user_doc and user_doc.get("onboarding", {}).get("completed"):
-                    current_bio_status = user_doc.get("onboarding", {}).get(
-                        "bio_status"
+                    # Update bio_status to processing
+                    await users_collection.update_one(
+                        {"_id": ObjectId(user_id)},
+                        {
+                            "$set": {
+                                "onboarding.bio_status": BioStatus.PROCESSING,
+                                "updated_at": datetime.now(timezone.utc),
+                            }
+                        },
                     )
+                    logger.info(f"Updated bio_status to processing for user {user_id}")
 
-                    # If bio was generated without Gmail, update status to processing
-                    if current_bio_status in [BioStatus.NO_GMAIL, "no_gmail"]:
-                        await users_collection.update_one(
-                            {"_id": ObjectId(user_id)},
-                            {
-                                "$set": {
-                                    "onboarding.bio_status": BioStatus.PROCESSING,
-                                    "updated_at": datetime.now(timezone.utc),
-                                }
+                    # Send WebSocket update to notify frontend
+                    try:
+                        await websocket_manager.broadcast_to_user(
+                            user_id=user_id,
+                            message={
+                                "type": "bio_status_update",
+                                "data": {"bio_status": BioStatus.PROCESSING},
                             },
                         )
-                        logger.info(
-                            f"Updated bio_status to processing for user {user_id} "
-                            f"(was {current_bio_status})"
-                        )
+                    except Exception as ws_error:
+                        logger.warning(f"Failed to send WebSocket update: {ws_error}")
 
-                        # Send WebSocket update to notify frontend
-                        try:
-                            if isinstance(user_id, str) and user_id:
-                                await websocket_manager.broadcast_to_user(
-                                    user_id=user_id,
-                                    message={
-                                        "type": "bio_status_update",
-                                        "data": {"bio_status": BioStatus.PROCESSING},
-                                    },
-                                )
-                            else:
-                                logger.warning(
-                                    f"Cannot broadcast WebSocket update: user_id is not a valid string ({user_id})"
-                                )
-                        except Exception as ws_error:
-                            logger.warning(
-                                f"Failed to send WebSocket update: {ws_error}"
-                            )
+                    logger.info(
+                        f"Queueing personalization for user {user_id} after Gmail connection"
+                    )
+                    background_tasks.add_task(queue_personalization, user_id)
+
             except Exception as e:
                 logger.error(
-                    f"Error updating bio_status for user {user_id}: {e}", exc_info=True
+                    f"Error processing Gmail connection for user {user_id}: {e}",
+                    exc_info=True,
                 )
 
         # Invalidate OAuth status cache for this user

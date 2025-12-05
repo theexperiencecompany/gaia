@@ -376,3 +376,8 @@ li {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+.heroimage {
+  /* image-rendering: -webkit-optimize-contrast; */
+  image-rendering: crisp-edges;
+}

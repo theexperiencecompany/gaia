@@ -136,27 +136,23 @@ export default function RootLayout({
       <SpeedInsights />
       <head>
         <link
-          rel="stylesheet"
-          type="text/css"
-          href="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/devicon.min.css"
-        />
-        <link
           rel="preconnect"
           href="https://status.heygaia.io"
           crossOrigin="anonymous"
         />
         <link rel="dns-prefetch" href="https://uptime.betterstack.com" />
         <link rel="dns-prefetch" href="https://us.i.posthog.com" />
-
-        <link
-          rel="preconnect"
-          href="https://databuddy.cc"
-          crossOrigin="anonymous"
-        />
         <link
           rel="preload"
           as="image"
-          href="/images/wallpapers/switzerland_night.webp"
+          href="/images/wallpapers/g3.png"
+          fetchPriority="high"
+        />
+
+        <link
+          rel="preload"
+          as="image"
+          href="/images/wallpapers/g3.webp"
           fetchPriority="high"
         />
         {/* <link rel="preconnect" href="https://i.ytimg.com" /> */}

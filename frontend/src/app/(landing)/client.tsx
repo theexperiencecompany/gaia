@@ -1,7 +1,7 @@
 "use client";
 
-import Image from "next/image";
-import { lazy, Suspense, useEffect } from "react";
+import NextImage from "next/image";
+import { lazy, Suspense, useEffect, useState } from "react";
 
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
@@ -52,23 +52,35 @@ export default function LandingPageClient() {
     };
   }, []);
 
+  const [loaded, setLoaded] = useState(false);
+  const [initialloaded, setInitialLoaded] = useState(false);
+
   return (
     // <ReactLenis root>
     <div className="relative overflow-hidden">
       <div className="absolute inset-0 h-screen w-full">
-        <Image
-          // src={"/images/wallpapers/switzerland_night.webp"}
-          src={"/images/wallpapers/g3.png"}
-          // src={
-          //   // "https://i.pinimg.com/1200x/12/91/13/129113c772cac2f5dd337c1ea306ddcb.jpg"
-          //   "https://i.pinimg.com/1200x/a7/aa/c7/a7aac749d7a7dc6edb92f3c13e80a53a.jpg"
-          // }
-          alt="GAIA Hero Section Wallpaper"
-          sizes="100vw"
-          priority
-          fill
-          className="aspect-video object-cover opacity-100"
-        />
+        <div className="relative h-full w-full">
+          {/* Base WEBP visible immediately */}
+          <NextImage
+            src="/images/wallpapers/g3.webp"
+            alt="wallpaper webp"
+            fill
+            priority
+            sizes="100vw"
+            onLoadingComplete={() => setInitialLoaded(true)}
+            className={`object-cover duration-200 ${initialloaded ? "opacity-100" : "opacity-0"} transition`}
+          />
+
+          {/* PNG fades in later */}
+          <NextImage
+            src="/images/wallpapers/g3.png"
+            alt="wallpaper png"
+            fill
+            sizes="100vw"
+            onLoadingComplete={() => setLoaded(true)}
+            className={`object-cover transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
+          />
+        </div>
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-gradient-to-b from-background to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[30vh] bg-gradient-to-t from-background to-transparent" />
       </div>

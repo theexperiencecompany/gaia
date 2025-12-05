@@ -15,7 +15,7 @@ export default function HeroSection() {
   );
 
   return (
-    <div className="relative w-screen flex-col gap-8 pb-60">
+    <div className="relative w-screen flex-col gap-8 pb-30">
       <MotionContainer
         className="relative z-2 flex h-full flex-col items-center justify-start gap-4 bg-transparent"
         staggerDelay={0.07}
@@ -47,6 +47,7 @@ export default function HeroSection() {
           className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-8xl"
           gradient="linear-gradient(to bottom, oklch(55.2% 0.016 285.938), oklch(21% 0.006 285.885))"
           disableIntersectionObserver
+          showGlowTextBg
         />
 
         {/* <h1 className="z-[10] max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-8xl font-serif font-normal">

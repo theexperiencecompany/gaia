@@ -286,7 +286,7 @@ export default function ContextGatheringLoader({
           />
 
           <div className="flex flex-col items-start">
-            <p className="font-medium text-zinc-100">Your GAIA is ready</p>
+            <p className="font-medium text-zinc-100">Your GAIA is ready!</p>
             <p className="text-xs text-zinc-400">
               Let's explore what I can do for you
             </p>

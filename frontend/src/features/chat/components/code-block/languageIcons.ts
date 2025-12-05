@@ -1,3 +1,16 @@
+// Load devicon stylesheet dynamically
+if (
+  typeof window !== "undefined" &&
+  !document.querySelector('link[href*="devicon"]')
+) {
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.type = "text/css";
+  link.href =
+    "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/devicon.min.css";
+  document.head.appendChild(link);
+}
+
 export const getLanguageIcon = (language?: string): string | null => {
   if (!language) return null;
 
