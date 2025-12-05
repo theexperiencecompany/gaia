@@ -169,9 +169,6 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
     Returns dict with processing stats.
     """
-    # Import here to avoid circular imports
-    from app.core.websocket_manager import websocket_manager
-
     user = await users_collection.find_one({"_id": ObjectId(user_id)})
     if user and user.get("email_memory_processed", False):
         logger.info(f"User {user_id} emails already processed, skipping")
@@ -232,26 +229,6 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
             # Update stats
             total_fetched += len(batch_emails)
-
-            # Emit progress update every batch
-            progress_percent = min(
-                int((total_fetched / MAX_RESULTS) * 25), 25
-            )  # 0-25% of total
-            await websocket_manager.broadcast_to_user(
-                user_id,
-                {
-                    "type": "personalization_progress",
-                    "data": {
-                        "stage": "discovering",
-                        "message": "🔮 Discovering your essence...",
-                        "progress": progress_percent,
-                        "details": {
-                            "current": total_fetched,
-                            "total": MAX_RESULTS,
-                        },
-                    },
-                },
-            )
 
             # Process content immediately (no platform filtering - that's handled separately)
             processed_batch, failed = _process_email_content(batch_emails)
@@ -501,24 +478,6 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
         logger.info(
             f"Processing {len(platforms_with_emails)} platforms with emails: "
             f"{list(platforms_with_emails.keys())}"
-        )
-
-        # Emit progress when platforms are found
-        from app.core.websocket_manager import websocket_manager
-
-        await websocket_manager.broadcast_to_user(
-            user_id,
-            {
-                "type": "personalization_progress",
-                "data": {
-                    "stage": "connections",
-                    "message": f"🌐 Found {len(platforms_with_emails)} connections",
-                    "progress": 35,
-                    "details": {
-                        "platforms": list(platforms_with_emails.keys()),
-                    },
-                },
-            },
         )
 
         # Step 2: Extract usernames and crawl profiles in parallel

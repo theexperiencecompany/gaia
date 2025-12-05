@@ -50,11 +50,22 @@ async def complete_user_onboarding(
             user_timezone=tz_info[0],
         )
 
-        # Always queue personalization after onboarding
-        # If user has Gmail: will process emails and use those memories
-        # If no Gmail: will use default bio
-        logger.info(f"Queueing personalization for user {user['user_id']}")
-        background_tasks.add_task(queue_personalization, user["user_id"])
+        composio_service = get_composio_service()
+        connection_status = await composio_service.check_connection_status(
+            ["gmail"], user["user_id"]
+        )
+        has_gmail = connection_status.get("gmail", False)
+
+        if has_gmail:
+            logger.info(
+                f"User {user['user_id']} has Gmail - personalization will run after email processing"
+            )
+        else:
+            # No Gmail, queue personalization directly
+            logger.info(
+                f"User {user['user_id']} has no Gmail - queueing personalization directly"
+            )
+            background_tasks.add_task(queue_personalization, user["user_id"])
 
         return OnboardingResponse(
             success=True, message="Onboarding completed successfully", user=updated_user
