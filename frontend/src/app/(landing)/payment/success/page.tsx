@@ -19,6 +19,9 @@ export default function PaymentSuccessPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   useEffect(() => {
+    // Set page title
+    document.title = "Payment Successful | GAIA";
+
     const verifyPaymentStatus = async () => {
       try {
         const result = await verifyPayment();
@@ -57,7 +60,7 @@ export default function PaymentSuccessPage() {
         <Card className="w-full max-w-md">
           <CardBody className="p-8 text-center">
             <Spinner size="lg" className="mb-4" />
-            <h2 className="mb-2 text-xl font-semibold">Verifying Payment...</h2>
+            <h1 className="mb-2 text-xl font-semibold">Verifying Payment...</h1>
             <p className="text-gray-600">
               Please wait while we confirm your payment with Dodo Payments.
             </p>
@@ -73,9 +76,9 @@ export default function PaymentSuccessPage() {
         <Card className="w-full max-w-md">
           <CardBody className="p-8 text-center">
             <div className="mb-4 text-4xl text-red-500">❌</div>
-            <h2 className="mb-2 text-xl font-semibold text-red-600">
+            <h1 className="mb-2 text-xl font-semibold text-red-600">
               Payment Verification Failed
-            </h2>
+            </h1>
             <p className="mb-6 text-gray-600">{error}</p>
             <div className="flex gap-3">
               <Button
@@ -102,9 +105,9 @@ export default function PaymentSuccessPage() {
         <Card className="w-full max-w-md">
           <CardBody className="p-8 text-center">
             <div className="mb-4 text-4xl text-green-500">✅</div>
-            <h2 className="mb-2 text-xl font-semibold text-green-600">
+            <h1 className="mb-2 text-xl font-semibold text-green-600">
               Payment Successful!
-            </h2>
+            </h1>
             <p className="mb-6 text-gray-600">
               Your subscription has been activated successfully.
             </p>
