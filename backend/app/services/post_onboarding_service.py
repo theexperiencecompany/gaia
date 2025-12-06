@@ -223,8 +223,20 @@ async def generate_user_bio(
 
         # Check if memories exist
         if not memories:
-            if has_gmail:
-                # Gmail connected but memories still processing
+            # Check if emails were already processed (flag should be set)
+            email_processed = user.get("email_memory_processed", False)
+
+            if has_gmail and email_processed:
+                # Emails were processed but memories not yet indexed by Mem0
+                # This shouldn't happen if we wait properly, but handle it gracefully
+                logger.warning(
+                    f"Email processed but no memories found for user {user_id}. "
+                    f"Mem0 may still be indexing. Using fallback bio."
+                )
+                default_bio = get_random_bio_for_profession(name, profession or "other")
+                return (default_bio, BioStatus.COMPLETED)
+            elif has_gmail:
+                # Gmail connected but emails not processed yet
                 return (
                     "Processing your insights... Please check back in a moment.",
                     BioStatus.PROCESSING,

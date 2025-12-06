@@ -42,12 +42,9 @@ from app.agents.memory.profile_extractor import (
 )
 from app.agents.memory.profile_crawler import crawl_profile_url
 from app.config.loggers import memory_logger as logger
-from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
 from app.services.mail.mail_service import search_messages
 from app.services.memory_service import memory_service
-from arq import create_pool
-from arq.connections import RedisSettings
 from bson import ObjectId
 from app.core.websocket_manager import websocket_manager
 from app.services.post_onboarding_service import process_post_onboarding_personalization
@@ -190,8 +187,6 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     total_parsed = 0
     total_failed = 0
 
-    storage_tasks = []
-
     fetch_start_time = time.time()
     page_token = None
     batch_count = 0
@@ -272,14 +267,13 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
             total_parsed += len(processed_batch)
             total_failed += failed
 
-            # 4. Store batch (Async)
+            # Store batch directly to Mem0 with async_mode=True (fire-and-forget)
             if processed_batch:
-                task = asyncio.create_task(
-                    _store_memories_batch(
+                asyncio.create_task(
+                    _store_batch_to_mem0(
                         user_id, processed_batch, user_name, user_email
                     )
                 )
-                storage_tasks.append(task)
 
             if not page_token:
                 logger.info("No next page token, breaking")
@@ -293,26 +287,8 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     except Exception as e:
         logger.error(f"Error in email processing pipeline: {e}")
 
-    # Wait for both parallel tracks to complete
-    logger.info("Waiting for storage tasks and profile extraction to complete...")
-
-    # Wait for all storage tasks (Track A: Email storage)
-    logger.info(f"Waiting for {len(storage_tasks)} storage tasks...")
-    storage_results = await asyncio.gather(*storage_tasks, return_exceptions=True)
-
-    # Calculate successful storage (count emails queued, not memories created)
-    # Note: ARQ tasks return int (emails queued) on success, Exception on failure
-    successful_stored = sum(r for r in storage_results if isinstance(r, int))
-    failed_batches = sum(1 for r in storage_results if isinstance(r, Exception))
-
-    if failed_batches > 0:
-        logger.error(f"{failed_batches} storage batches failed with exceptions")
-        for i, r in enumerate(storage_results):
-            if isinstance(r, Exception):
-                logger.error(f"Batch {i + 1} error: {r}")
-
-    # Wait for profile extraction task (Track B: Profile extraction)
-    logger.info("Waiting for profile extraction task...")
+    # Wait for profile extraction task
+    logger.info("Waiting for profile extraction to complete...")
     profiles_stored = 0
     try:
         profile_result = await profile_extraction_task
@@ -324,15 +300,14 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     total_elapsed = time.time() - fetch_start_time
     logger.info(
         f"Processing complete in {total_elapsed:.2f}s: "
-        f"{successful_stored} emails stored, {profiles_stored} profiles stored"
+        f"{total_parsed} emails processed, {profiles_stored} profiles stored"
     )
 
-    processing_complete = successful_stored > 0
+    processing_complete = total_parsed > 0
     if processing_complete:
-        await _mark_processed(user_id, successful_stored + profiles_stored)
+        await _mark_processed(user_id, total_parsed + profiles_stored)
 
         # Trigger post-onboarding personalization
-        # This will re-run even if it ran before, updating the bio with new memories
         try:
             logger.info(
                 f"Triggering post-onboarding personalization for user {user_id} after email processing"
@@ -340,12 +315,11 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
             await process_post_onboarding_personalization(user_id)
         except Exception as e:
             logger.error(f"Post-onboarding personalization failed: {e}", exc_info=True)
-            # Don't fail the main process
 
     return {
         "total": total_fetched,
-        "successful": successful_stored,
-        "failed": total_failed + (total_parsed - successful_stored),
+        "successful": total_parsed,
+        "failed": total_failed,
         "profiles_stored": profiles_stored,
         "processing_complete": processing_complete,
     }
@@ -396,50 +370,98 @@ def _process_email_content(emails: List[Dict]) -> tuple[List[Dict], int]:
     return processed, failed_count
 
 
-async def _store_memories_batch(
+async def _store_batch_to_mem0(
     user_id: str,
     processed_emails: List[Dict],
     user_name: str | None = None,
     user_email: str | None = None,
-) -> int:
-    """Store memories in batches using ARQ background task."""
+) -> None:
+    """Store email batch directly to Mem0 with async_mode=True (fire-and-forget)."""
     if not processed_emails:
-        return 0
-
-    storage_start_time = time.time()
+        return
 
     try:
-        redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
-        pool = await create_pool(redis_settings)
+        # Build messages for Mem0
+        messages = []
+        for email_data in processed_emails:
+            content = email_data.get("content", "")
+            metadata = email_data.get("metadata", {})
 
-        # Enqueue the batch memory storage task with user context
-        job = await pool.enqueue_job(
-            "store_memories_batch",
-            user_id,
-            processed_emails,
-            user_name,
-            user_email,
+            if not content.strip():
+                continue
+
+            subject = metadata.get("subject", "[No Subject]")
+            sender = metadata.get("sender", "[Unknown Sender]")
+
+            memory_content = f"""The user RECEIVED this email (not sent by the user).
+
+From: {sender}
+Subject: {subject}
+
+{content}"""
+
+            messages.append({"role": "user", "content": memory_content})
+
+        if not messages:
+            return
+
+        # Build user context
+        user_context = ""
+        if user_name:
+            user_context = f"The user's name is {user_name}."
+            if user_email:
+                user_context += f" Their email is {user_email}."
+
+        # Store with async_mode=True (Mem0 queues it for background processing)
+        await memory_service.store_memory_batch(
+            messages=messages,
+            user_id=user_id,
+            metadata={
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "source": "gmail_batch",
+                "batch_size": len(messages),
+                "user_name": user_name,
+                "user_email": user_email,
+            },
+            async_mode=True,  # Fire-and-forget to Mem0's queue
+            custom_instructions=f"""{user_context}
+
+Extract memories ABOUT THE USER from emails they received.
+
+WHAT TO EXTRACT:
+- Identity: Name, email, usernames, role, title
+- Work: Job, company, projects, skills, industry
+- Services: Apps/tools they use, accounts they have, subscriptions
+- Interests: Hobbies, topics they follow, communities, newsletters
+- Location: City, timezone, work setup (remote/hybrid)
+- Relationships: Colleagues, collaborators, frequent contacts
+- Preferences: Communication style, tool choices, work style
+- Goals: What they're building, learning, or working toward
+
+ONLY STORE IF:
+- It's ABOUT THE USER (not about senders or general topics)
+- Persistent/stable information (not one-off events)
+- Actionable for an AI assistant
+- Pattern-based behaviors
+
+DON'T STORE:
+- Marketing/promotional content
+- Info about other people (unless their relationship to user)
+- Trivial details or spam
+- Sensitive data (passwords, financial info)
+- Generic content that doesn't reveal anything about the user
+
+FORMAT: Present tense, factual statements starting with "User"
+Example: "User works as Software Engineer at Acme Corp", "User's email is john@example.com"
+""",
         )
 
-        await pool.close()
-
-        if job:
-            storage_elapsed = time.time() - storage_start_time
-            logger.info(
-                f"Email storage: queued {len(processed_emails)} emails in "
-                f"{storage_elapsed:.2f}s (job ID: {job.job_id})"
-            )
-            return len(processed_emails)
-        else:
-            logger.error("Failed to queue memory storage task")
-            return 0
+        logger.info(
+            f"Sent batch of {len(messages)} emails to Mem0 async queue for user {user_id}"
+        )
 
     except Exception as e:
-        storage_elapsed = time.time() - storage_start_time
-        logger.error(
-            f"Error queuing memory storage task after {storage_elapsed:.2f}s: {e}"
-        )
-        return 0
+        logger.error(f"Error storing batch to Mem0: {e}")
 
 
 async def _mark_processed(user_id: str, memory_count: int) -> None:
@@ -472,6 +494,34 @@ async def _write_debug_log(filename: str, data: dict) -> None:
         logger.error(f"Failed to write debug log {filename}: {e}")
 
 
+async def _store_single_profile(
+    user_id: str,
+    platform: str,
+    profile_url: str,
+    content: str,
+    user_name: str | None = None,
+) -> None:
+    """Store a single profile to memory (fire-and-forget)."""
+    try:
+        memory_content = f"User's {platform} profile: {profile_url} {content}"
+
+        await memory_service.store_memory_batch(
+            messages=[{"role": "user", "content": memory_content}],
+            user_id=user_id,
+            metadata={
+                "type": "social_profile",
+                "platform": platform,
+                "url": profile_url,
+                "source": "gmail_extraction",
+                "discovered_at": datetime.now(timezone.utc).isoformat(),
+                "user_name": user_name,
+            },
+        )
+        logger.info(f"Stored {platform} profile to memory: {profile_url}")
+    except Exception as e:
+        logger.error(f"Failed to store {platform} profile: {e}")
+
+
 async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
     """
     Extract and store profiles using parallel Gmail searches for each platform.
@@ -494,7 +544,6 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
         # Get user context for memory storage
         user = await users_collection.find_one({"_id": ObjectId(user_id)})
         user_name = user.get("name") if user else None
-        user_email = user.get("email") if user else None
 
         # Step 1: Parallel Gmail searches for all platforms
         platform_emails = await _search_platform_emails_parallel(user_id)
@@ -535,24 +584,23 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
             *[task for _, task in platform_tasks], return_exceptions=True
         )
 
-        # Step 3: Filter successful profiles and collect discovery tasks
-        successful_profiles = []
+        # Step 3: Count successful profiles and collect discovery tasks
+        profiles_stored = 0
         for (platform, _), result in zip(platform_tasks, results):
             if isinstance(result, Exception):
                 logger.error(f"Platform {platform} extraction failed: {result}")
             elif (
                 isinstance(result, dict)
-                and "content" in result
+                and "success" in result
                 and "error" not in result
             ):
-                # Collect discovery task if present
                 if "discovery_task" in result:
                     discovered_profile_tasks.append(result["discovery_task"])
-                    # Remove it from profile dict before storing
-                    result = {k: v for k, v in result.items() if k != "discovery_task"}
 
-                successful_profiles.append(result)
-                logger.info(f"✓ Successfully extracted profile for {platform}")
+                profiles_stored += 1
+                logger.info(
+                    f"✓ Successfully extracted and stored profile for {platform}"
+                )
             elif isinstance(result, dict):
                 logger.warning(
                     f"✗ Failed to extract profile for {platform}: "
@@ -563,46 +611,7 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
                     f"✗ Failed to extract profile for {platform}: Unknown error"
                 )
 
-        # Step 4: Store all profiles in a single batch
-        profiles_stored = 0
-        if successful_profiles:
-            logger.info(
-                f"Storing {len(successful_profiles)} profiles in a single API call..."
-            )
-
-            # Build messages for batch storage
-            profile_messages = []
-            user_context = ""
-            if user_name:
-                user_context = f"The user's name is {user_name}."
-                if user_email:
-                    user_context += f" Their email is {user_email}."
-
-            for profile in successful_profiles:
-                memory_content = f"""User's {profile["platform"]} profile: {profile["url"]} {profile["content"]} """
-                profile_messages.append({"role": "user", "content": memory_content})
-
-            # Single API call to store all profiles
-            batch_success = await memory_service.store_memory_batch(
-                messages=profile_messages,
-                user_id=user_id,
-                metadata={
-                    "type": "social_profile",
-                    "source": "parallel_gmail_search_extraction",
-                    "discovered_at": datetime.now(timezone.utc).isoformat(),
-                    "batch_size": len(profile_messages),
-                    "user_name": user_name,
-                    "user_email": user_email,
-                },
-            )
-
-            if batch_success:
-                profiles_stored = len(successful_profiles)
-                logger.info(f"Successfully stored {profiles_stored} profiles")
-            else:
-                logger.error("Failed to store profile batch")
-
-        # Step 5: Wait for discovered profiles and add to count
+        # Step 4: Wait for discovered profiles and add to count
         discovered_count = 0
         if discovered_profile_tasks:
             logger.info(
@@ -728,19 +737,30 @@ async def _process_single_platform(
             )
             return {"error": crawl_result.get("error", "Crawl failed")}
 
-        # 3. Extract additional social links from profile content and return task
+        # 3. Store profile immediately (fire-and-forget)
+        asyncio.create_task(
+            _store_single_profile(
+                user_id,
+                platform,
+                profile_url,
+                crawl_result["content"],
+                user_name,
+            )
+        )
+
+        # 4. Extract additional social links from profile content
         discovery_task = asyncio.create_task(
             _discover_and_store_linked_profiles(
                 user_id, crawl_result["content"], platform, semaphore, crawled_urls
             )
         )
 
-        # Return profile data for batch storage
+        # Return success indicator and discovery task
         return {
+            "success": True,
             "platform": platform,
             "url": profile_url,
-            "content": crawl_result["content"],
-            "discovery_task": discovery_task,  # Include task for tracking
+            "discovery_task": discovery_task,
         }
 
     except Exception as e:
