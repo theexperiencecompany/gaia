@@ -168,7 +168,7 @@ async def generate_personality_phrase(
             profession=profession, memory_summary=memory_summary
         )
 
-        llm = init_llm(preferred_provider="gemini").bind(temperature=1.0, top_k=50)
+        llm = init_llm(preferred_provider="gemini").bind(temperature=1.2, top_k=80)
         response = await llm.ainvoke(prompt)
 
         content = (
