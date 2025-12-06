@@ -187,9 +187,16 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
     # Emit initial progress
     try:
-        await emit_progress(user_id, "exploring", "🌌 Exploring your universe...", 60)
+        await emit_progress(
+            user_id,
+            "exploring",
+            "🌌 Exploring your universe...",
+            15,
+            {"current": 0, "total": MAX_RESULTS},
+        )
     except Exception as e:
         logger.warning(f"Failed to emit initial progress: {e}")
+
     # Check for last scan timestamp
     last_scan_timestamp = None
     if user:
@@ -232,7 +239,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
             # Emit progress update
             try:
-                progress_percent = min(60 + int((total_fetched / MAX_RESULTS) * 10), 70)
+                progress_percent = min(15 + int((total_fetched / MAX_RESULTS) * 40), 55)
                 await emit_progress(
                     user_id,
                     "exploring",

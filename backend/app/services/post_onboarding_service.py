@@ -200,9 +200,12 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
         )
 
         # Get user memories (this triggers email scanning if needed)
+        # Email scanning happens silently in background - we show generic progress
         await emit_progress(
             user_id, "discovering", "🔮 Discovering your essence...", 10
         )
+
+        # This may take time as it triggers email processing internally
         memories_result = await memory_service.get_all_memories(user_id=user_id)
         memories = memories_result.memories
 
@@ -211,13 +214,13 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
             user_id,
             "analyzing",
             "🧠 Analyzing your patterns...",
-            30,
+            60,
             {"current": len(memories), "total": len(memories)},
         )
 
         # Run all tasks in parallel where possible
         await emit_progress(
-            user_id, "crafting", "🎨 Crafting your unique identity...", 50
+            user_id, "crafting", "🎨 Crafting your unique identity...", 70
         )
 
         # Get user profession for personality phrase
