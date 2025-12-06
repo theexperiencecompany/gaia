@@ -335,7 +335,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
             logger.error(f"Post-onboarding personalization failed: {e}", exc_info=True)
 
     # Update the scan timestamp if any emails were processed or if it was a successful check
-    if successful_stored > 0 or (last_scan_timestamp and successful_stored == 0):
+    if total_parsed > 0 or (last_scan_timestamp and total_parsed == 0):
         try:
             current_time = datetime.now(timezone.utc)
             await users_collection.update_one(
