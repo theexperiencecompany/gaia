@@ -26,13 +26,13 @@ async def get_all_memories(
         user: Current authenticated user
 
     Returns:
-        MemorySearchResult with all memories
+        MemorySearchResult with all memories and graph relations
     """
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
-    result = await memory_service.get_all_memories(user_id=user_id)
+    result = await memory_service.get_all_memories(user_id=user_id, user_data=user)
 
     return result
 
@@ -61,7 +61,6 @@ async def create_memory(
         message=request.content,
         user_id=user_id,
         metadata=request.metadata,
-        async_mode=False,
     )
 
     if memory_entry:
@@ -121,7 +120,6 @@ async def clear_all_memories(
         raise HTTPException(status_code=400, detail="User ID not found")
 
     try:
-        # Use the new delete_all_memories method from v2 API
         success = await memory_service.delete_all_memories(user_id=user_id)
 
         if success:

@@ -1,370 +1,173 @@
-"""Memory service layer for handling all memory operations with latest Mem0 API."""
+"""Memory service layer using Zep for knowledge graph and memory operations."""
 
+import asyncio
+import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
-from app.agents.memory.client import memory_client_manager
+from app.agents.memory.client import zep_client_manager
 from app.config.loggers import llm_logger as logger
 from app.models.memory_models import (
     MemoryEntry,
     MemoryRelation,
     MemorySearchResult,
 )
+from zep_cloud import EpisodeData
+from zep_cloud.client import Zep
+from zep_cloud.types import Message
 
 
 class MemoryService:
-    """Service class for managing memory operations."""
+    """Service class for managing memory operations with Zep."""
 
     def __init__(self):
         """Initialize the memory service."""
         self.logger = logger
 
-    async def _get_client(self):
-        """Get the configured async memory client."""
-        return await memory_client_manager.get_client()
+    def _get_client(self) -> Zep:
+        """Get the configured Zep client."""
+        return zep_client_manager.get_client()
 
-    def _validate_user_id(self, user_id: Optional[str]) -> Optional[str]:
+    def _extract_node_data(
+        self, node: Any, default_name: str = "Unknown"
+    ) -> Dict[str, Any]:
+        """Extract common node attributes into a dict."""
+        return {
+            "id": node.uuid_,
+            "name": getattr(node, "name", default_name),
+            "labels": getattr(node, "labels", []),
+            "summary": getattr(node, "summary", None),
+        }
+
+    def _build_relation_from_edge(
+        self, edge: Any, node_map: Dict[str, Dict[str, Any]]
+    ) -> Optional[MemoryRelation]:
+        """Build a MemoryRelation from an edge and node map."""
+        if not (
+            hasattr(edge, "source_node_uuid") and hasattr(edge, "target_node_uuid")
+        ):
+            return None
+
+        source_node = node_map.get(edge.source_node_uuid, {})
+        target_node = node_map.get(edge.target_node_uuid, {})
+
+        return MemoryRelation(
+            source=source_node.get("name", str(edge.source_node_uuid)),
+            source_type=", ".join(source_node.get("labels", ["entity"])),
+            relationship=getattr(edge, "name", "related_to"),
+            target=target_node.get("name", str(edge.target_node_uuid)),
+            target_type=", ".join(target_node.get("labels", ["entity"])),
+        )
+
+    def _ensure_user_exists(self, user_id: str, name: Optional[str] = None) -> None:
         """
-        Validate and return user_id.
+        Ensure Zep user exists, create if not.
 
         Args:
             user_id: User identifier
-
-        Returns:
-            Validated user_id or None
+            name: Optional user name
         """
-        if not user_id:
-            self.logger.warning("No user_id provided for memory operation")
-            return None
+        try:
+            client = self._get_client()
 
-        # Handle different user_id formats
-        if isinstance(user_id, dict):
-            # If user_id is accidentally a user object
-            user_id = user_id.get("user_id") or user_id.get("id")
+            try:
+                client.user.get(user_id)
+                return
+            except Exception as e:
+                self.logger.debug(f"User {user_id} not found, will create: {e}")
 
-        return str(user_id) if user_id else None
+            # Create user with name parsing
+            parts = name.split(" ", 1) if name and " " in name else [name or "User"]
+            first_name = parts[0]
+            last_name = parts[1] if len(parts) > 1 else ""
 
-    def _parse_memory_result(self, result: Dict[str, Any]) -> Optional[MemoryEntry]:
+            client.user.add(
+                user_id=user_id,
+                first_name=first_name,
+                last_name=last_name,
+            )
+            self.logger.info(f"Created Zep user: {user_id}")
+        except Exception as e:
+            self.logger.warning(f"Could not ensure user exists: {e}")
+
+    def _get_or_create_thread(
+        self, user_id: str, conversation_id: Optional[str] = None
+    ) -> str:
         """
-        Parse a single memory result from Mem0 API v2 response.
+        Get existing thread or create a new one for the user.
 
         Args:
-            result: Memory result dictionary from v2 API
+            user_id: User identifier
+            conversation_id: Optional conversation identifier
 
         Returns:
-            MemoryEntry or None if parsing fails
+            Thread ID
         """
-        if not isinstance(result, dict):
-            self.logger.warning(f"Expected dict, got {type(result)}: {result}")
-            return None
+        client = self._get_client()
 
-        # Extract memory content - v2 API uses "memory" field
-        content = result.get("memory", "")
-
-        if not content:
-            self.logger.warning(f"No memory content found in result: {result}")
-            return None
+        thread_id = conversation_id or f"thread_{user_id}_{uuid4().hex[:8]}"
 
         try:
-            # Extract metadata - v2 API may have metadata nested or at root level
-            metadata = result.get("metadata", {})
-            if metadata is None:
-                metadata = {}
-
-            memory_entry = MemoryEntry(
-                id=result.get("id"),
-                content=content,
-                user_id=result.get("user_id", ""),
-                metadata=metadata,
-                categories=result.get("categories") or [],
-                created_at=result.get("created_at"),
-                updated_at=result.get("updated_at"),
-                expiration_date=result.get("expiration_date"),
-                immutable=result.get("immutable", False),
-                organization=result.get("organization"),
-                owner=result.get("owner"),
-                relevance_score=result.get("score"),  # v2 API includes relevance score
-            )
-
-            self.logger.debug(f"Successfully parsed memory: {memory_entry.id}")
-            return memory_entry
-
-        except Exception as e:
-            self.logger.error(
-                f"Error creating MemoryEntry from data: {e}, raw data: {result}"
-            )
-            return None
-
-    def _parse_memory_list(
-        self, memories: List[Dict[str, Any]], user_id: str
-    ) -> List[MemoryEntry]:
-        """
-        Parse a list of memory results.
-
-        Args:
-            memories: List of memory dictionaries
-            user_id: User ID to associate with memories
-
-        Returns:
-            List of MemoryEntry objects
-        """
-        parsed_memories = []
-        for memory_data in memories:
+            client.thread.get(thread_id)
+            return thread_id
+        except Exception:
             try:
-                if memory_entry := self._parse_memory_result(memory_data):
-                    memory_entry.user_id = user_id
-                    parsed_memories.append(memory_entry)
-            except Exception as e:
-                self.logger.warning(f"Failed to parse memory: {e}")
-                continue
-
-        self.logger.debug(
-            f"Successfully parsed {len(parsed_memories)}/{len(memories)} memories"
-        )
-        return parsed_memories
-
-    def _parse_add_result(
-        self, result: Dict[str, Any], is_async: bool = False
-    ) -> Optional[MemoryEntry]:
-        """
-        Parse add operation result from Mem0 API v2.
-
-        Args:
-            result: Add result dictionary with format:
-                    Sync: {"id": "...", "memory": "...", "event": "ADD"|"UPDATE"|"NOOP",
-                           "structured_attributes": {...}}
-                    Async: {"message": "...", "status": "PENDING", "event_id": "..."}
-            is_async: Whether the result is from async mode
-
-        Returns:
-            MemoryEntry or None if parsing fails
-        """
-        if not isinstance(result, dict):
-            self.logger.warning(f"Expected dict, got {type(result)}: {result}")
-            return None
-
-        # Handle async mode response (PENDING status)
-        if result.get("status") == "PENDING" or is_async:
-            event_id = result.get("event_id")
-            message = result.get("message", "Memory processing queued")
-
-            if not event_id:
-                self.logger.warning(f"No event_id in async response: {result}")
-                return None
-
-            # Create a placeholder MemoryEntry for async processing
-            memory_entry = MemoryEntry(
-                id=event_id,  # Use event_id as temporary ID
-                content=message,
-                metadata={
-                    "status": "PENDING",
-                    "event_id": event_id,
-                    "async_mode": True,
-                },
-                created_at=datetime.now(),
-            )
-
-            self.logger.debug(f"Memory queued for async processing: {event_id}")
-            return memory_entry
-
-        # Handle synchronous mode response
-        # Extract memory content - v2 API uses "memory" field
-        content = result.get("memory", "")
-
-        if not content:
-            self.logger.warning(f"No memory content found in add result: {result}")
-            return None
-
-        try:
-            # v2 API returns structured_attributes as metadata
-            structured_attrs = result.get("structured_attributes", {})
-            if structured_attrs is None:
-                structured_attrs = {}
-
-            memory_entry = MemoryEntry(
-                id=result.get("id"),
-                content=content,
-                metadata=structured_attrs,
-                created_at=result.get("created_at"),
-                updated_at=result.get("updated_at"),
-            )
-
-            self.logger.debug(
-                f"Successfully parsed add result: {memory_entry.id} (event: {result.get('event')})"
-            )
-            return memory_entry
-
-        except Exception as e:
-            self.logger.error(
-                f"Error creating MemoryEntry from add result: {e}, raw data: {result}"
-            )
-            return None
-
-    def _extract_relationships_from_response(
-        self, response: Any
-    ) -> List[Dict[str, Any]]:
-        """
-        Extract relationships list from API response.
-
-        Args:
-            response: API response which might contain relationships
-
-        Returns:
-            List of relationship dictionaries
-        """
-        if isinstance(response, dict):
-            return (
-                response.get("relations", [])
-                or response.get("entities", [])
-                or response.get("relationships", [])
-                or response.get("graph", {}).get("relationships", [])
-            )
-        return []
-
-    def _parse_relationships(
-        self, relations: List[Dict[str, Any]]
-    ) -> List[MemoryRelation]:
-        """
-        Parse relationships from Mem0 API v2 graph memory response.
-
-        Args:
-            relations: List of relationship dictionaries in v2 graph format:
-                      [{"source": "alice", "relation": "likes", "destination": "pizza"}]
-
-        Returns:
-            List of MemoryRelation objects
-        """
-        if not relations:
-            return []
-
-        parsed_relations = []
-        for relation_data in relations:
-            try:
-                # v2 Graph API format: source, relation, destination
-                if (
-                    "source" in relation_data
-                    and "relation" in relation_data
-                    and "destination" in relation_data
-                ):
-                    relation = MemoryRelation(
-                        source=relation_data.get("source", ""),
-                        source_type=relation_data.get("source_type", "entity"),
-                        relationship=relation_data.get("relation", ""),
-                        target=relation_data.get("destination", ""),
-                        target_type=relation_data.get("destination_type", "entity"),
-                    )
-                    parsed_relations.append(relation)
-                # Legacy format fallback: source, relationship, target
-                elif (
-                    "source" in relation_data
-                    and "relationship" in relation_data
-                    and "target" in relation_data
-                ):
-                    relation = MemoryRelation(
-                        source=relation_data.get("source", ""),
-                        source_type=relation_data.get("source_type", "entity"),
-                        relationship=relation_data.get("relationship", ""),
-                        target=relation_data.get("target", ""),
-                        target_type=relation_data.get("target_type", "entity"),
-                    )
-                    parsed_relations.append(relation)
-                else:
-                    self.logger.warning(f"Unknown relationship format: {relation_data}")
-
-            except Exception as e:
-                self.logger.warning(
-                    f"Failed to parse relationship: {e}, data: {relation_data}"
+                client.thread.create(
+                    thread_id=thread_id,
+                    user_id=user_id,
                 )
-                continue
+                self.logger.info(f"Created thread {thread_id} for user {user_id}")
+            except Exception as e:
+                self.logger.warning(f"Could not create thread: {e}")
 
-        self.logger.debug(
-            f"Successfully parsed {len(parsed_relations)}/{len(relations)} graph relationships"
-        )
-        return parsed_relations
+            return thread_id
 
     async def store_memory(
         self,
         message: str,
-        user_id: Optional[str],
+        user_id: str,
         conversation_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        async_mode: bool = True,
-        custom_instructions: Optional[str] = None,
     ) -> Optional[MemoryEntry]:
         """
-        Store a single memory using Mem0 v2 API.
+        Store a single memory using Zep.
 
         Args:
             message: The memory content to store
             user_id: User identifier
-            conversation_id: Optional conversation/run identifier
-            metadata: Additional metadata
-            async_mode: If True, queue for background processing (default: True, faster but returns event_id).
-                       If False, returns full memory content immediately.
-            custom_instructions: Project-specific guidelines for handling memories
+            conversation_id: Optional conversation/thread identifier
+            metadata: Message metadata (sentiment, source, priority, etc.)
 
         Returns:
-            For async_mode=True, returns MemoryEntry with event_id and PENDING status.
-            For async_mode=False, returns MemoryEntry with full memory content.
+            MemoryEntry with the stored memory
         """
-        user_id = self._validate_user_id(user_id)
-        if not user_id:
-            return None
-
         try:
-            # Prepare metadata
-            if metadata is None:
-                metadata = {}
-            metadata["timestamp"] = datetime.now().isoformat()
+            client = self._get_client()
 
-            # Get client
-            client = await self._get_client()
+            self._ensure_user_exists(user_id)
 
-            # Use v2 API to add memory
-            # Messages format allows Mem0 to infer structured memories
-            result = await client.add(
-                messages=[{"role": "user", "content": message}],
+            thread_id = self._get_or_create_thread(user_id, conversation_id)
+
+            messages = [
+                Message(
+                    role="user",
+                    content=message,
+                    metadata=metadata,
+                )
+            ]
+
+            client.thread.add_messages(thread_id, messages=messages)
+
+            self.logger.info(f"Memory stored for user {user_id} in thread {thread_id}")
+
+            return MemoryEntry(
+                id=thread_id,
+                content=message,
                 user_id=user_id,
-                metadata=metadata,
-                run_id=conversation_id,
-                async_mode=async_mode,
+                metadata=metadata or {},
+                created_at=datetime.now(),
             )
-
-            mode_str = "async" if async_mode else "sync"
-            self.logger.info(f"Memory stored for user {user_id} (mode: {mode_str})")
-
-            # v2 API response format: {"results": [...]}
-            results_list: List[Dict[str, Any]]
-            if isinstance(result, dict) and "results" in result:
-                raw_results = result["results"]
-                results_list = cast(
-                    List[Dict[str, Any]],
-                    raw_results if isinstance(raw_results, list) else [],
-                )
-            elif isinstance(result, list):
-                # Fallback for direct list response
-                results_list = cast(List[Dict[str, Any]], result)
-            else:
-                self.logger.warning(
-                    f"Unexpected response format from mem0 add: {type(result)}"
-                )
-                return None
-
-            if not results_list:
-                self.logger.debug("No memories created (NOOP event)")
-                return None
-
-            # Parse the first result (primary memory)
-            first_result = results_list[0]
-            memory_entry = self._parse_add_result(first_result, is_async=async_mode)
-
-            if memory_entry:
-                memory_entry.user_id = user_id
-                # Merge any additional metadata
-                if metadata:
-                    memory_entry.metadata.update(metadata)
-
-            return memory_entry
 
         except Exception as e:
             self.logger.error(f"Error storing memory for user {user_id}: {e}")
@@ -373,286 +176,319 @@ class MemoryService:
     async def store_memory_batch(
         self,
         messages: List[Dict[str, str]],
-        user_id: Optional[str],
+        user_id: str,
         conversation_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-        async_mode: bool = True,
-        custom_instructions: Optional[str] = None,
     ) -> bool:
         """
-        Store multiple memories in a single API call using Mem0 v2 API.
+        Store multiple memories in batch using Zep.
 
         Args:
             messages: List of message dictionaries with 'role' and 'content'
             user_id: User identifier
-            conversation_id: Optional conversation/run identifier
-            metadata: Additional metadata
-            async_mode: If True, queue for background processing (default: True)
-            custom_instructions: Project-specific guidelines for handling memories
+            conversation_id: Optional conversation/thread identifier
+            metadata: Shared metadata applied to all messages in batch
 
         Returns:
             True if successful, False otherwise
         """
-        user_id = self._validate_user_id(user_id)
-        if not user_id:
-            return False
-
         try:
-            # Prepare metadata
-            if metadata is None:
-                metadata = {}
-            metadata["timestamp"] = datetime.now().isoformat()
+            client = self._get_client()
 
-            # Get client
-            client = await self._get_client()
+            self._ensure_user_exists(user_id)
 
-            # Use v2 API to add multiple memories in one call
-            result = await client.add(
-                messages=messages,
-                user_id=user_id,
-                metadata=metadata,
-                run_id=conversation_id,
-                async_mode=async_mode,
-                **(
-                    {"custom_instructions": custom_instructions}
-                    if custom_instructions
-                    else {}
-                ),
-            )
+            thread_id = self._get_or_create_thread(user_id, conversation_id)
 
-            mode_str = "async" if async_mode else "sync"
+            zep_messages = [
+                Message(
+                    role=msg.get("role", "user"),
+                    content=msg.get("content", ""),
+                    metadata=metadata,
+                )
+                for msg in messages
+            ]
+
+            client.thread.add_messages(thread_id, messages=zep_messages)
+
             self.logger.info(
-                f"Batch of {len(messages)} memories stored for user {user_id} (mode: {mode_str})"
+                f"Batch of {len(messages)} memories stored for user {user_id}"
             )
-
-            # Log the raw response for debugging
-            self.logger.debug(f"Mem0 API raw response: {result}")
-
-            # v2 API response format: {"results": [...]}
-            if isinstance(result, dict) and "results" in result:
-                results_list = result["results"]
-                success_count = (
-                    len(results_list) if isinstance(results_list, list) else 0
-                )
-
-                # Log details about what was stored
-                if success_count == 0:
-                    self.logger.warning(
-                        f"Mem0 returned 0 memories from {len(messages)} messages. "
-                        f"Response: {result}"
-                    )
-                else:
-                    self.logger.info(f"Successfully stored {success_count} memories")
-                    # Log sample of events
-                    events = [r.get("event", "UNKNOWN") for r in results_list[:5]]
-                    self.logger.debug(f"Sample events: {events}")
-
-                return success_count > 0
-            elif isinstance(result, list):
-                self.logger.info(f"Successfully stored {len(result)} memories")
-                return len(result) > 0
-            else:
-                self.logger.warning(
-                    f"Unexpected response format from mem0 batch add: {type(result)}, value: {result}"
-                )
-                return False
+            return True
 
         except Exception as e:
-            self.logger.error(f"Error storing memory batch for user {user_id}: {e}")
+            self.logger.error(f"Error storing batch memories for user {user_id}: {e}")
             return False
 
-    async def search_memories(
+    async def add_business_data(
+        self,
+        user_id: str,
+        data: Any,
+    ) -> bool:
+        """
+        Add business data (emails, JSON objects, etc.) directly to user's knowledge graph.
+
+        Args:
+            user_id: User identifier
+            data: Business data to add (dict, JSON, or text)
+
+        Returns:
+            True if successful
+        """
+        try:
+            client = self._get_client()
+
+            self._ensure_user_exists(user_id)
+
+            client.graph.add(
+                user_id=user_id,
+                data=data,
+                type="json",
+            )
+
+            self.logger.info(f"Business data added to graph for user {user_id}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error adding business data for user {user_id}: {e}")
+            return False
+
+    async def add_business_data_batch(
+        self,
+        user_id: str,
+        data_items: List[Any],
+    ) -> bool:
+        """
+        Add multiple business data items in batch using Zep's concurrent processing.
+        Up to 20 items can be processed simultaneously.
+
+        Args:
+            user_id: User identifier
+            data_items: List of business data items (dicts, JSON, or text)
+
+        Returns:
+            True if successful
+        """
+        if not data_items:
+            return True
+
+        try:
+            client = self._get_client()
+
+            self._ensure_user_exists(user_id)
+
+            episodes = [
+                EpisodeData(
+                    data=json.dumps(item) if isinstance(item, dict) else item,
+                    type="json" if isinstance(item, dict) else "text",
+                )
+                for item in data_items
+                if isinstance(item, (dict, str))
+            ]
+
+            batch_size = 20
+            for i in range(0, len(episodes), batch_size):
+                batch = episodes[i : i + batch_size]
+                client.graph.add_batch(user_id=user_id, episodes=batch)
+                self.logger.info(
+                    f"Batch processed: {len(batch)} items for user {user_id}"
+                )
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error adding batch data for user {user_id}: {e}")
+            return False
+
+    async def search_memory(
         self,
         query: str,
-        user_id: Optional[str],
-        limit: int = 5,
-        threshold: Optional[float] = None,
+        user_id: str,
+        limit: int = 10,
     ) -> MemorySearchResult:
         """
-        Search for relevant memories using Mem0 v2 API with semantic search.
+        Search memories using Zep's hybrid search.
 
         Args:
             query: Search query
             user_id: User identifier
-            limit: Maximum number of results (default: 5)
-            threshold: Minimum relevance score (default: None)
+            limit: Maximum results to return
 
         Returns:
-            MemorySearchResult with matching memories and relations
+            MemorySearchResult with found memories
         """
-        user_id = self._validate_user_id(user_id)
-        if not user_id:
-            return MemorySearchResult()
-
         try:
-            client = await self._get_client()
+            client = self._get_client()
 
-            # v2 API search with reranking for better results
-            # Use filters parameter to properly scope the search
-            response = await client.search(
+            results = client.graph.search(
+                user_id=user_id,
                 query=query,
-                filters={"user_id": user_id},
                 limit=limit,
-                rerank=True,
-                threshold=threshold,
+                reranker="rrf",
             )
 
-            # v2 API response format: {"results": [...], "relations": [...]}
-            memories_list: List[Dict[str, Any]] = []
-            relations_list: List[Dict[str, Any]] = []
-
-            if isinstance(response, dict):
-                # Extract memories
-                memories_list = response.get("results", [])
-                # Extract graph relationships if enabled
-                relations_list = self._extract_relationships_from_response(response)
-            elif isinstance(response, list):
-                # Fallback for direct list response
-                memories_list = response
-            else:
-                self.logger.warning(
-                    f"Unexpected response format from mem0 search: {type(response)}"
-                )
-                return MemorySearchResult()
-
-            # Parse memories and relationships
-            memories = self._parse_memory_list(memories_list, user_id)
-            relations = self._parse_relationships(relations_list)
-
-            self.logger.debug(
-                f"Search found {len(memories)} memories and {len(relations)} relations for user {user_id}"
+            memories = (
+                [
+                    MemoryEntry(
+                        id=result.uuid_,
+                        content=result.fact or "",
+                        user_id=user_id,
+                        metadata={},
+                        relevance_score=getattr(result, "score", None),
+                        created_at=getattr(result, "created_at", None),
+                    )
+                    for result in results.edges[:limit]
+                ]
+                if results and results.edges
+                else []
             )
 
-            return MemorySearchResult(
-                memories=memories,
-                relations=relations,
-                total_count=len(memories),
-            )
+            self.logger.info(f"Found {len(memories)} memories for query: {query}")
+            return MemorySearchResult(memories=memories)
 
         except Exception as e:
             self.logger.error(f"Error searching memories for user {user_id}: {e}")
-            return MemorySearchResult()
+            return MemorySearchResult(memories=[])
 
     async def get_all_memories(
         self,
-        user_id: Optional[str],
+        user_id: str,
+        user_data: Optional[Dict[str, Any]] = None,
     ) -> MemorySearchResult:
         """
-        Get all memories for a user using Mem0 v2 API.
+        Get all memories for a user using Zep.
 
         Args:
             user_id: User identifier
-            limit: Maximum number of memories to retrieve (default: 100)
+            user_data: Optional user data dict with profile info
 
         Returns:
-            MemorySearchResult with user's memories and graph relations
+            MemorySearchResult with all memories, relations, and user node
         """
-        user_id = self._validate_user_id(user_id)
-        if not user_id:
-            return MemorySearchResult()
-
         try:
-            client = await self._get_client()
+            client = self._get_client()
 
-            response = await client.get_all(
-                filters={"AND": [{"user_id": user_id}]}, output_format="v1.1"
+            user_node_response, edges, nodes = await asyncio.gather(
+                asyncio.to_thread(client.user.get_node, user_id=user_id),
+                asyncio.to_thread(client.graph.edge.get_by_user_id, user_id=user_id),
+                asyncio.to_thread(client.graph.node.get_by_user_id, user_id=user_id),
             )
 
-            logger.debug(f"{response=}")
+            user_graph_node = user_node_response.node if user_node_response else None
 
-            # v2 API response format: {"results": [...], "relations": [...]}
-            memories_list: List[Dict[str, Any]] = []
-            relationships_list: List[Dict[str, Any]] = []
-
-            if isinstance(response, dict):
-                # Extract memories from results
-                memories_list = response.get("results", [])
-                # Extract graph relationships if enabled
-                relationships_list = self._extract_relationships_from_response(response)
-            elif isinstance(response, list):
-                # Fallback for direct list response
-                memories_list = response
-            else:
-                self.logger.error(
-                    f"Unexpected response format from mem0 get_all: {type(response)}"
+            node_map = {}
+            if user_graph_node and hasattr(user_graph_node, "uuid_"):
+                node_map[user_graph_node.uuid_] = self._extract_node_data(
+                    user_graph_node, "User"
                 )
-                return MemorySearchResult()
 
-            # Parse memories and relationships
-            memory_entries = self._parse_memory_list(memories_list, user_id)
-            relationships = self._parse_relationships(relationships_list)
+            if nodes:
+                node_map.update(
+                    {
+                        node.uuid_: self._extract_node_data(node)
+                        for node in nodes
+                        if hasattr(node, "uuid_") and node.uuid_ not in node_map
+                    }
+                )
 
-            self.logger.info(
-                f"Retrieved {len(memory_entries)} memories and {len(relationships)} graph relations for user {user_id}"
-            )
+            memories = [
+                MemoryEntry(
+                    id=edge.uuid_,
+                    content=edge.fact or "",
+                    user_id=user_id,
+                    metadata={},
+                    created_at=getattr(edge, "created_at", None),
+                )
+                for edge in (edges or [])
+            ]
+
+            relations = [
+                relation
+                for edge in (edges or [])
+                if (relation := self._build_relation_from_edge(edge, node_map))
+            ]
+
+            user_node_data = None
+            if user_graph_node and hasattr(user_graph_node, "uuid_"):
+                base_data = self._extract_node_data(user_graph_node, "User")
+                user_node_data = {
+                    "id": base_data["name"],
+                    "uuid": base_data["id"],
+                    "name": user_data.get("full_name", base_data["name"])
+                    if user_data
+                    else base_data["name"],
+                    "email": user_data.get("email") if user_data else None,
+                    "profile_photo_url": user_data.get("profile_photo_url")
+                    if user_data
+                    else None,
+                    "type": "user",
+                    "labels": base_data["labels"],
+                    "summary": base_data["summary"],
+                }
 
             return MemorySearchResult(
-                memories=memory_entries,
-                relations=relationships,
-                total_count=len(memory_entries),
+                memories=memories, relations=relations, user_node=user_node_data
             )
 
         except Exception as e:
-            self.logger.error(f"Error retrieving all memories for user {user_id}: {e}")
-            return MemorySearchResult()
+            self.logger.error(f"Error getting all memories for user {user_id}: {e}")
+            return MemorySearchResult(memories=[])
 
-    async def delete_memory(self, memory_id: str, user_id: Optional[str]) -> bool:
+    async def get_user_context(
+        self,
+        user_id: str,
+        conversation_id: Optional[str] = None,
+        template_id: Optional[str] = None,
+    ) -> str:
         """
-        Delete a specific memory using Mem0 v2 API.
-
-        Args:
-            memory_id: Memory identifier
-            user_id: User identifier (for logging/validation)
-
-        Returns:
-            True if successful, False otherwise
-        """
-        user_id = self._validate_user_id(user_id)
-        if not user_id:
-            return False
-
-        try:
-            client = await self._get_client()
-
-            # v2 API delete by memory_id
-            result = await client.delete(memory_id=memory_id)
-
-            self.logger.info(f"Memory {memory_id} deleted for user {user_id}: {result}")
-            return True
-
-        except Exception as e:
-            self.logger.error(
-                f"Error deleting memory {memory_id} for user {user_id}: {e}"
-            )
-            return False
-
-    async def delete_all_memories(self, user_id: Optional[str]) -> bool:
-        """
-        Delete all memories for a user using Mem0 v2 API.
+        Get the auto-assembled context block for a user.
+        This is Zep's superpower - returns prompt-ready context.
 
         Args:
             user_id: User identifier
+            conversation_id: Optional thread/conversation ID
+            template_id: Optional custom context template ID
 
         Returns:
-            True if successful, False otherwise
+            Context string ready for LLM prompt
         """
-        user_id = self._validate_user_id(user_id)
-        if not user_id:
-            return False
-
         try:
-            client = await self._get_client()
+            client = self._get_client()
 
-            # v2 API delete_all with user filter
-            result = await client.delete_all(user_id=user_id)
+            thread_id = self._get_or_create_thread(user_id, conversation_id)
 
-            self.logger.info(f"All memories deleted for user {user_id}: {result}")
-            return True
+            memory = client.thread.get_user_context(
+                thread_id=thread_id,
+                template_id=template_id,
+            )
+            return memory.context or ""
 
         except Exception as e:
-            self.logger.error(f"Error deleting all memories for user {user_id}: {e}")
+            self.logger.error(f"Error getting user context: {e}")
+            return ""
+
+    async def delete_memory(self, memory_id: str, user_id: str) -> bool:
+        """
+        Delete a specific memory/edge from the graph.
+
+        Args:
+            memory_id: UUID of the edge/episode to delete
+            user_id: User identifier
+
+        Returns:
+            True if successful
+        """
+        try:
+            client = self._get_client()
+
+            try:
+                client.graph.edge.delete(uuid_=memory_id)
+                return True
+            except Exception:
+                client.graph.episode.delete(uuid_=memory_id)
+                return True
+
+        except Exception as e:
+            self.logger.error(f"Error deleting memory {memory_id}: {e}")
             return False
 
 
-# Create singleton instance
 memory_service = MemoryService()

@@ -18,6 +18,7 @@ from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
 )
 from langchain_core.messages import SystemMessage
+import asyncio
 
 
 def create_system_message(
@@ -38,19 +39,20 @@ async def get_memory_message(
     user_name: Optional[str] = None,
     user_timezone: Optional[str] = None,
     user_preferences: Optional[dict] = None,
+    conversation_id: Optional[str] = None,
 ) -> SystemMessage:
-    """Create memory system message with user context (preferences, timezone, times) and optional memories.
+    """Create memory system message with user context (preferences, timezone, times) and Zep memory context.
 
     This message ALWAYS returns (even if no memories exist) to provide:
     - User preferences (profession, response style, custom instructions)
     - User's name
     - Current UTC time
     - User's local timezone and time
-    - Conversation memories (if available)
+    - Zep's auto-assembled memory context block (user summary + relevant facts with temporal info)
 
     Args:
         user_id: User's ID for memory search
-        query: Search query for retrieving relevant memories
+        query: Search query for retrieving relevant memories (not used with get_user_context)
         user_name: User's full name (already available from user dict)
         user_timezone: User's timezone (already available from user dict)
         user_preferences: User's onboarding preferences (already available from user dict)
@@ -88,20 +90,37 @@ async def get_memory_message(
             except Exception as e:
                 logger.warning(f"Error formatting user local time: {e}")
 
-        # Search for conversation memories
+        # Get Zep's auto-assembled context block (user summary + relevant facts + temporal info)
+        # AND do semantic search for additional relevant memories (in parallel)
         memories_section = ""
         try:
-            if results := await memory_service.search_memories(
-                query=query, user_id=user_id, limit=5
+            context_block, search_results = await asyncio.gather(
+                memory_service.get_user_context(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                ),
+                memory_service.search_memory(
+                    query=query,
+                    user_id=user_id,
+                    limit=10,
+                ),
+            )
+
+            if context_block:
+                memories_section = f"\n\n{context_block}"
+
+            if search_results and (
+                memories := getattr(search_results, "memories", None)
             ):
-                if memories := getattr(results, "memories", None):
-                    memories_section = (
-                        "\n\nBased on our previous conversations:\n"
+                if memories:
+                    semantic_facts = (
+                        "\n\nAdditional relevant facts from graph search:\n"
                         + "\n".join(f"- {mem.content}" for mem in memories)
                     )
-                    logger.info(f"Added {len(memories)} memories to context")
+                    memories_section += semantic_facts
+
         except Exception as e:
-            logger.warning(f"Error retrieving memories: {e}")
+            logger.warning(f"Error retrieving memory context: {e}")
 
         # Combine all sections
         content = "\n".join(context_parts) + memories_section

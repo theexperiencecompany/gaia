@@ -65,14 +65,6 @@ class MemoryEntry(BaseModel):
     expiration_date: Optional[datetime] = Field(
         default=None, description="When this memory expires"
     )
-    # Mem0 API specific fields
-    immutable: Optional[bool] = Field(
-        default=False, description="Whether this memory is immutable"
-    )
-    organization: Optional[str] = Field(
-        default=None, description="Organization associated with this memory"
-    )
-    owner: Optional[str] = Field(default=None, description="Owner of this memory")
     # Search-specific fields
     relevance_score: Optional[float] = Field(
         default=None, description="Relevance score from search"
@@ -99,6 +91,9 @@ class MemorySearchResult(BaseModel):
     )
     relations: List[MemoryRelation] = Field(
         default_factory=list, description="List of relationships between entities"
+    )
+    user_node: Optional[Dict[str, Any]] = Field(
+        default=None, description="User node data for graph visualization"
     )
     total_count: int = Field(default=0, description="Total number of matching memories")
 

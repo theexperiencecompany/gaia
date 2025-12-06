@@ -10,7 +10,11 @@ import {
 } from "react";
 
 import { useUser } from "@/features/auth/hooks/useUser";
-import type { Memory, MemoryRelation } from "@/features/memory/api/memoryApi";
+import type {
+  Memory,
+  MemoryRelation,
+  UserNode,
+} from "@/features/memory/api/memoryApi";
 import {
   type GraphLink,
   type GraphNode,
@@ -21,6 +25,8 @@ import {
 interface MemoryGraphProps {
   memories: Memory[];
   relations: MemoryRelation[];
+  nodes?: Array<{ id: string; name: string; labels: string[] }>;
+  user_node?: UserNode;
   onNodeClick?: (node: GraphNode) => void;
   className?: string;
 }
@@ -31,7 +37,7 @@ export interface MemoryGraphHandle {
 }
 
 const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
-  ({ memories, relations, onNodeClick, className = "" }, ref) => {
+  ({ memories, relations, user_node, onNodeClick, className = "" }, ref) => {
     const svgRef = useRef<SVGSVGElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [_selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -51,13 +57,57 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
     >([]);
     const user = useUser();
 
-    const exportAsSVG = useCallback(() => {
+    const convertImageToBase64 = useCallback((url: string): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL("image/png"));
+          } else {
+            reject(new Error("Failed to get canvas context"));
+          }
+        };
+        img.onerror = () => reject(new Error("Failed to load image"));
+        img.src = url;
+      });
+    }, []);
+
+    const exportAsSVG = useCallback(async () => {
       if (!svgRef.current) return;
 
       const svgElement = svgRef.current;
 
       // Clone the SVG to avoid modifying the original
       const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
+
+      // Convert user profile image to base64
+      const userProfilePic =
+        user?.profilePicture ||
+        "https://links.aryanranderiya.com/l/default_user";
+
+      try {
+        const base64Image = await convertImageToBase64(userProfilePic);
+
+        // Find and replace the image href in the cloned SVG
+        const userImage = clonedSvg.querySelector(
+          'image[clip-path="url(#user-avatar-clip)"]',
+        ) as SVGImageElement | null;
+        if (userImage) {
+          userImage.setAttributeNS(
+            "http://www.w3.org/1999/xlink",
+            "href",
+            base64Image,
+          );
+        }
+      } catch (error) {
+        console.error("Failed to convert user image to base64:", error);
+      }
 
       // Get the graph group and its bounding box
       const graphGroup = clonedSvg.querySelector("g");
@@ -96,15 +146,38 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
       downloadLink.click();
       document.body.removeChild(downloadLink);
       URL.revokeObjectURL(svgUrl);
-    }, []);
+    }, [user?.profilePicture, convertImageToBase64]);
 
-    const exportAsPNG = useCallback(() => {
+    const exportAsPNG = useCallback(async () => {
       if (!svgRef.current) return;
 
       const svgElement = svgRef.current;
 
       // Clone the SVG to avoid modifying the original
       const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
+
+      // Convert user profile image to base64
+      const userProfilePic =
+        user?.profilePicture ||
+        "https://links.aryanranderiya.com/l/default_user";
+
+      try {
+        const base64Image = await convertImageToBase64(userProfilePic);
+
+        // Find and replace the image href in the cloned SVG
+        const userImage = clonedSvg.querySelector(
+          'image[clip-path="url(#user-avatar-clip)"]',
+        ) as SVGImageElement | null;
+        if (userImage) {
+          userImage.setAttributeNS(
+            "http://www.w3.org/1999/xlink",
+            "href",
+            base64Image,
+          );
+        }
+      } catch (error) {
+        console.error("Failed to convert user image to base64:", error);
+      }
 
       // Get the graph group and its bounding box
       const graphGroup = clonedSvg.querySelector("g");
@@ -179,7 +252,7 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
       });
       const url = URL.createObjectURL(svgBlob);
       img.src = url;
-    }, []);
+    }, [user?.profilePicture, convertImageToBase64]);
 
     useImperativeHandle(ref, () => ({
       exportAsSVG,
@@ -199,7 +272,11 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
       const height = container.clientHeight;
 
       // Use utility function to transform data
-      const { nodes, links } = transformMemoryDataToGraph(memories, relations);
+      const { nodes, links } = transformMemoryDataToGraph(
+        memories,
+        relations,
+        user_node,
+      );
 
       // Get unique node types and sort them alphabetically
       const nodeTypes = Array.from(new Set(nodes.map((n) => n.group))).sort();
@@ -403,7 +480,7 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
         .attr("fill", "#f9fafb")
         .attr("pointer-events", "none")
         .text((d: GraphNode) =>
-          d.label.length > 20 ? d.label.substring(0, 17) + "..." : d.label,
+          d.label.length > 20 ? `${d.label.substring(0, 17)}...` : d.label,
         );
 
       // Add event handlers
@@ -457,7 +534,7 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
       return () => {
         simulation.stop();
       };
-    }, [memories, relations, onNodeClick, user?.profilePicture]);
+    }, [memories, relations, user_node, onNodeClick, user?.profilePicture]);
 
     return (
       <div className={`relative h-full w-full ${className}`}>
@@ -473,7 +550,14 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
           >
             <Card className="border border-zinc-600 bg-zinc-800 shadow-lg">
               <CardBody className="p-2">
-                <div className="text-xs text-zinc-100">{tooltip.content}</div>
+                <div
+                  className="text-xs text-zinc-100"
+                  dangerouslySetInnerHTML={{
+                    __html: JSON.stringify(tooltip.content),
+                  }}
+                />
+                {/* {tooltip.content} */}
+                {/* </div> */}
               </CardBody>
             </Card>
           </div>

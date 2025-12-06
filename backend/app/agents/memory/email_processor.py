@@ -35,7 +35,7 @@ from bson import ObjectId
 from app.helpers.email_helpers import (
     mark_email_processing_complete,
     process_email_content,
-    store_emails_to_mem0,
+    store_emails_to_zep,
     store_single_profile,
 )
 from app.agents.memory.profile_crawler import crawl_profile_url
@@ -146,7 +146,7 @@ async def _search_platform_emails(
 
 async def process_gmail_to_memory(user_id: str) -> Dict:
     """
-    Process user's Gmail emails into Mem0 memories.
+    Process user's Gmail emails into Zep memories.
 
     Flow:
     1. TWO PARALLEL TRACKS:
@@ -255,12 +255,10 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
             total_parsed += len(processed_batch)
             total_failed += failed
 
-            # Store batch directly to Mem0 with async_mode=True (fire-and-forget)
+            # Store batch to Zep using concurrent batch processing
             if processed_batch:
                 asyncio.create_task(
-                    store_emails_to_mem0(
-                        user_id, processed_batch, user_name, user_email
-                    )
+                    store_emails_to_zep(user_id, processed_batch, user_name, user_email)
                 )
 
             if not page_token:

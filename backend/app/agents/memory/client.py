@@ -1,45 +1,40 @@
-"""Centralized memory client management."""
+"""Centralized Zep client management for memory and knowledge graph operations."""
 
 from typing import Optional
 
-from mem0 import AsyncMemoryClient
+from zep_cloud.client import Zep
 
+from app.config.loggers import llm_logger as logger
 from app.config.settings import settings
 
 
-class MemoryClientManager:
-    """Manages memory client lifecycle and configuration."""
+class ZepClientManager:
+    """Manages Zep client lifecycle and configuration."""
 
     def __init__(self):
-        self._client: Optional[AsyncMemoryClient] = None
-        self._graph_enabled: bool = False
+        self._client: Optional[Zep] = None
 
-    async def get_client(self) -> AsyncMemoryClient:
-        """Get the properly configured memory client instance with graph memory enabled."""
+    def get_client(self) -> Zep:
+        """
+        Get the properly configured Zep client instance.
+
+        Returns:
+            Configured Zep client
+        """
         if self._client is None:
-            client = AsyncMemoryClient(
-                api_key=settings.MEM0_API_KEY,
-                org_id=settings.MEM0_ORG_ID,
-                project_id=settings.MEM0_PROJECT_ID,
-            )
+            if not settings.ZEP_API_KEY:
+                raise ValueError("ZEP_API_KEY is required but not set")
 
-            # Enable graph memory in project settings
-            if not self._graph_enabled:
-                try:
-                    await client.project.update(enable_graph=True)
-                    self._graph_enabled = True
-                except Exception as e:
-                    # Log but don't fail if graph setup fails
-                    print(f"Warning: Could not enable graph memory: {e}")
-
-            self._client = client
+            self._client = Zep(api_key=settings.ZEP_API_KEY)
+            logger.info("Zep client initialized successfully")
 
         return self._client
 
     def reset(self):
         """Reset the client instance (useful for testing)."""
         self._client = None
+        logger.info("Zep client reset")
 
 
 # Global instance
-memory_client_manager = MemoryClientManager()
+zep_client_manager = ZepClientManager()

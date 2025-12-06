@@ -1,4 +1,4 @@
-"""ARQ worker tasks for storing memories in mem0."""
+"""ARQ worker tasks for storing memories in Zep."""
 
 from datetime import datetime, timezone
 from typing import Dict, List
@@ -15,7 +15,7 @@ async def store_memories_batch(
     user_email: str | None = None,
 ) -> str:
     """
-    Store a batch of emails in mem0 using a single API call.
+    Store a batch of emails in Zep using a single API call.
 
     Args:
         ctx: ARQ context
@@ -47,7 +47,7 @@ async def store_memories_batch(
             subject = metadata.get("subject", "[No Subject]")
             sender = metadata.get("sender", "[Unknown Sender]")
 
-            # Format clean content for mem0 (instructions handled via custom_instructions parameter)
+            # Format clean content for Zep
             memory_content = f"""The user RECEIVED this email (not sent by the user).
 
 From: {sender}
@@ -62,17 +62,10 @@ Subject: {subject}
             return f"No valid emails to process for user {user_id}"
 
         logger.info(
-            f"Storing {len(messages)} emails in a single mem0 API call (user {user_id})..."
+            f"Storing {len(messages)} emails in a single Zep API call (user {user_id})..."
         )
 
-        # Build user context for consistent attribution
-        user_context = ""
-        if user_name:
-            user_context = f"The user's name is {user_name}."
-            if user_email:
-                user_context += f" Their email is {user_email}."
-
-        # Single API call to store all memories with custom instructions
+        # Single API call to store all memories
         result = await memory_service.store_memory_batch(
             messages=messages,
             user_id=user_id,
@@ -83,52 +76,21 @@ Subject: {subject}
                 "user_name": user_name,
                 "user_email": user_email,
             },
-            async_mode=False,
-            custom_instructions=f"""{user_context}
-
-Extract memories ABOUT THE USER from emails they received.
-
-WHAT TO EXTRACT:
-- Identity: Name, email, usernames, role, title
-- Work: Job, company, projects, skills, industry
-- Services: Apps/tools they use, accounts they have, subscriptions
-- Interests: Hobbies, topics they follow, communities, newsletters
-- Location: City, timezone, work setup (remote/hybrid)
-- Relationships: Colleagues, collaborators, frequent contacts
-- Preferences: Communication style, tool choices, work style
-- Goals: What they're building, learning, or working toward
-
-ONLY STORE IF:
-- It's ABOUT THE USER (not about senders or general topics)
-- Persistent/stable information (not one-off events)
-- Actionable for an AI assistant
-- Pattern-based behaviors
-
-DON'T STORE:
-- Marketing/promotional content
-- Info about other people (unless their relationship to user)
-- Trivial details or spam
-- Sensitive data (passwords, financial info)
-- Generic content that doesn't reveal anything about the user
-
-FORMAT: Present tense, factual statements starting with "User"
-Example: "User works as Software Engineer at Acme Corp", "User's email is john@example.com"
-""",
         )
 
         if result:
             logger.info(
                 f"✓ Batch completed for user {user_id}: stored {len(messages)} emails successfully"
             )
-            return f"Stored {len(messages)} emails in mem0 successfully"
+            return f"Stored {len(messages)} emails in Zep successfully"
         else:
-            # Note: result=False means Mem0 filtered all emails (returned 0 memories)
+            # Note: result=False means Zep filtered all emails (returned 0 memories)
             # This is NOT an error - it's a valid outcome
             logger.warning(
-                f"Mem0 filtered all {len(messages)} emails for user {user_id} (deemed non-memorable)"
+                f"Zep filtered all {len(messages)} emails for user {user_id} (deemed non-memorable)"
             )
             return (
-                f"Processed {len(messages)} emails - Mem0 filtered all as non-memorable"
+                f"Processed {len(messages)} emails - Zep filtered all as non-memorable"
             )
 
     except Exception as e:

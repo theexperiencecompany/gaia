@@ -20,7 +20,6 @@ async def store_user_message_memory(user_id: str, message: str, conversation_id:
                 "conversation_id": conversation_id,
                 "type": "user_message",
             },
-            async_mode=True,
         )
 
         if result:
@@ -71,7 +70,7 @@ async def await_remaining_memory_task(memory_task, memory_yielded: bool):
 
 
 def format_email_for_memory(parser: GmailMessageParser) -> str:
-    """Format email content for Mem0 storage."""
+    """Format email content for Zep storage."""
     sender = parser.sender or "Unknown Sender"
     subject = parser.subject or "No Subject"
     content = parser.text_content or "No content available"

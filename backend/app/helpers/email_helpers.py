@@ -7,7 +7,6 @@ from typing import Dict, List
 import html2text
 from bson import ObjectId
 
-from app.agents.prompts.email_filter_prompts import EMAIL_MEMORY_EXTRACTION_PROMPT
 from app.config.loggers import memory_logger as logger
 from app.db.mongodb.collections import users_collection
 from app.services.memory_service import memory_service
@@ -98,67 +97,59 @@ def process_email_content(emails: List[Dict]) -> tuple[List[Dict], int]:
     return processed, failed_count
 
 
-async def store_emails_to_mem0(
+async def store_emails_to_zep(
     user_id: str,
     processed_emails: List[Dict],
     user_name: str | None = None,
     user_email: str | None = None,
 ) -> None:
     """
-    Store email batch directly to Mem0 with async_mode=True (fire-and-forget).
+    Store email batch to Zep knowledge graph using batch API for faster processing.
+    Processes up to 20 emails concurrently!
 
     Args:
         user_id: User ID
         processed_emails: List of processed email dicts
-        user_name: User's name (optional)
-        user_email: User's email (optional)
+        user_name: User's name (not used, kept for compatibility)
+        user_email: User's email (not used, kept for compatibility)
     """
     if not processed_emails:
         return
 
     try:
-        # Build messages for Mem0
-        messages = [
-            {
-                "role": "user",
-                "content": f"""The user RECEIVED this email (not sent by the user).
+        # Prepare all email data for batch processing
+        email_objects = []
+        for email_data in processed_emails:
+            content = email_data.get("content", "").strip()
+            if not content:
+                continue
 
-From: {email_data.get("metadata", {}).get("sender", UNKNOWN_SENDER)}
-Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
+            metadata = email_data.get("metadata", {})
 
-{email_data.get("content", "")}""",
+            # Create structured email data for graph
+            email_obj = {
+                "type": "email",
+                "source": "gmail",
+                "direction": "received",
+                "from": metadata.get("sender", UNKNOWN_SENDER),
+                "subject": metadata.get("subject", NO_SUBJECT),
+                "content": content,
+                "message_id": metadata.get("message_id"),
             }
-            for email_data in processed_emails
-            if email_data.get("content", "").strip()
-        ]
+            email_objects.append(email_obj)
 
-        if not messages:
-            return
-
-        # Build user context
-        user_context = _build_user_context(user_name, user_email)
-
-        # Store with async_mode=True (Mem0 queues it for background processing)
-        await memory_service.store_memory_batch(
-            messages=messages,
+        # Use batch API for concurrent processing (up to 20 at a time)
+        await memory_service.add_business_data_batch(
             user_id=user_id,
-            metadata={
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "source": "gmail_batch",
-                "batch_size": len(messages),
-                "user_name": user_name,
-                "user_email": user_email,
-            },
-            async_mode=True,
-            custom_instructions=f"{user_context}\n\n{EMAIL_MEMORY_EXTRACTION_PROMPT}",
+            data_items=email_objects,
         )
 
         logger.info(
-            f"Sent batch of {len(messages)} emails to Mem0 async queue for user {user_id}"
+            f"Added batch of {len(email_objects)} emails to Zep graph for user {user_id}"
         )
 
     except Exception as e:
-        logger.error(f"Error storing batch to Mem0: {e}")
+        logger.error(f"Error storing batch to Zep: {e}")
 
 
 async def mark_email_processing_complete(user_id: str, memory_count: int) -> None:
@@ -189,29 +180,30 @@ async def store_single_profile(
     user_name: str | None = None,
 ) -> None:
     """
-    Store a single social profile to memory (fire-and-forget).
+    Store a single social profile to Zep graph.
 
     Args:
         user_id: User ID
         platform: Platform name (twitter, github, etc.)
         profile_url: Profile URL
         content: Crawled profile content
-        user_name: User's name (optional)
+        user_name: User's name (optional, not used - kept for compatibility)
     """
     try:
-        memory_content = f"User's {platform} profile: {profile_url} {content}"
+        # Create structured profile data for graph
+        # Don't include user_name - causes entity confusion
+        profile_obj = {
+            "type": "social_profile",
+            "platform": platform,
+            "url": profile_url,
+            "content": content,
+            "discovered_at": datetime.now(timezone.utc).isoformat(),
+        }
 
-        await memory_service.store_memory_batch(
-            messages=[{"role": "user", "content": memory_content}],
+        # Add to knowledge graph
+        await memory_service.add_business_data(
             user_id=user_id,
-            metadata={
-                "type": "social_profile",
-                "platform": platform,
-                "url": profile_url,
-                "source": "gmail_extraction",
-                "discovered_at": datetime.now(timezone.utc).isoformat(),
-                "user_name": user_name,
-            },
+            data=profile_obj,
         )
         logger.info(f"Stored {platform} profile to memory: {profile_url}")
     except Exception as e:

@@ -30,9 +30,19 @@ export interface MemoryUpdate {
   content: string;
 }
 
+export interface UserNode {
+  id: string;
+  name: string;
+  email?: string;
+  profile_photo_url?: string;
+  type: string;
+  labels: string[];
+}
+
 export interface MemoriesResponse {
   memories: Memory[];
   relations: MemoryRelation[];
+  user_node?: UserNode;
   total_count: number;
   success?: boolean;
 }

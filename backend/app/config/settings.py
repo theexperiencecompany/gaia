@@ -183,9 +183,8 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     # Memory & Storage Configuration
     # ----------------------------------------------
-    MEM0_API_KEY: str
-    MEM0_ORG_ID: str
-    MEM0_PROJECT_ID: str
+    # Zep (Memory & Knowledge Graph)
+    ZEP_API_KEY: str
 
     # ----------------------------------------------
     # Code Execution Environment
@@ -276,9 +275,8 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     # Memory & Storage Configuration
     # ----------------------------------------------
-    MEM0_API_KEY: Optional[str] = None
-    MEM0_ORG_ID: Optional[str] = None
-    MEM0_PROJECT_ID: Optional[str] = None
+    # Zep (Memory & Knowledge Graph)
+    ZEP_API_KEY: Optional[str] = None
 
     # ----------------------------------------------
     # Code Execution Environment

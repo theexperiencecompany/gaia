@@ -15,7 +15,7 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
     This task runs periodically to clean up stuck states caused by:
     - Network failures during email processing
     - LLM timeouts
-    - Mem0 API failures
+    - Zep API failures
     - Process crashes
 
     Instead of directly processing, this queues ARQ jobs to avoid blocking.

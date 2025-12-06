@@ -29,6 +29,7 @@ async def construct_langchain_messages(
     selected_workflow: Optional[SelectedWorkflowData] = None,
     selected_calendar_event: Optional[SelectedCalendarEventData] = None,
     trigger_context: Optional[dict] = None,
+    conversation_id: Optional[str] = None,
 ) -> List[AnyMessage]:
     """
     Construct LangChain messages for agent interaction.
@@ -69,6 +70,7 @@ async def construct_langchain_messages(
             user_name=user_name,
             user_timezone=user_timezone,
             user_preferences=user_preferences,
+            conversation_id=conversation_id,
         )
 
         if memory_msg:

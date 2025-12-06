@@ -16,6 +16,7 @@ import {
   type Memory,
   type MemoryRelation,
   memoryApi,
+  type UserNode,
 } from "@/features/memory/api/memoryApi";
 import AddMemoryModal from "@/features/memory/components/AddMemoryModal";
 import MemoryGraph from "@/features/memory/components/MemoryGraph";
@@ -23,6 +24,7 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import {
   AiBrain01Icon,
   ArrowDown01Icon,
+  ChevronDown,
   Delete02Icon,
   FileEmpty02Icon,
   Image02Icon,
@@ -46,6 +48,7 @@ export default function MemoryManagement({
 }: MemoryManagementProps) {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [relations, setRelations] = useState<MemoryRelation[]>([]);
+  const [userNode, setUserNode] = useState<UserNode | undefined>();
   const [loading, setLoading] = useState(false);
   const [isAddMemoryModalOpen, setIsAddMemoryModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -67,6 +70,7 @@ export default function MemoryManagement({
 
       setMemories(response.memories || []);
       setRelations(response.relations || []);
+      setUserNode(response.user_node);
       if (onFetch) {
         onFetch(response.memories || []);
       }
@@ -106,36 +110,36 @@ export default function MemoryManagement({
     [fetchMemories],
   );
 
-  const handleClearAll = useCallback(async () => {
-    const confirmed = await confirm({
-      title: "Clear All Memories",
-      message:
-        "Are you sure you want to clear all memories? This action cannot be undone.",
-      confirmText: "Clear All",
-      cancelText: "Cancel",
-      variant: "destructive",
-    });
+  // const handleClearAll = useCallback(async () => {
+  //   const confirmed = await confirm({
+  //     title: "Clear All Memories",
+  //     message:
+  //       "Are you sure you want to clear all memories? This action cannot be undone.",
+  //     confirmText: "Clear All",
+  //     cancelText: "Cancel",
+  //     variant: "destructive",
+  //   });
 
-    if (!confirmed) return;
+  //   if (!confirmed) return;
 
-    setIsClearing(true);
-    try {
-      const response = await memoryApi.deleteAllMemories();
+  //   setIsClearing(true);
+  //   try {
+  //     const response = await memoryApi.deleteAllMemories();
 
-      if (response.success) {
-        toast.success(response.message || "All memories cleared");
-        setMemories([]);
-        setRelations([]);
-      } else {
-        toast.error(response.message || "Failed to clear memories");
-      }
-    } catch (error) {
-      console.error("Error clearing memories:", error);
-      toast.error("Failed to clear memories");
-    } finally {
-      setIsClearing(false);
-    }
-  }, [confirm]);
+  //     if (response.success) {
+  //       toast.success(response.message || "All memories cleared");
+  //       setMemories([]);
+  //       setRelations([]);
+  //     } else {
+  //       toast.error(response.message || "Failed to clear memories");
+  //     }
+  //   } catch (error) {
+  //     console.error("Error clearing memories:", error);
+  //     toast.error("Failed to clear memories");
+  //   } finally {
+  //     setIsClearing(false);
+  //   }
+  // }, [confirm]);
 
   const handleExport = useCallback(() => {
     const exportType = Array.from(selectedExportType)[0];
@@ -273,7 +277,7 @@ export default function MemoryManagement({
             </Tabs>
 
             <div className="flex gap-2">
-              {memories.length > 0 && (
+              {/* {memories.length > 0 && (
                 <Button
                   color="danger"
                   variant="flat"
@@ -282,12 +286,13 @@ export default function MemoryManagement({
                 >
                   Clear All
                 </Button>
-              )}
+              )} */}
 
               {selectedTab === "graph" && (
                 <ButtonGroup variant="flat">
                   <Button
                     onPress={handleExport}
+                    className="pr-1.5!"
                     startContent={
                       selectedExportValue === "png" ? (
                         <Image02Icon
@@ -307,7 +312,7 @@ export default function MemoryManagement({
                   <Dropdown placement="bottom-end">
                     <DropdownTrigger>
                       <Button isIconOnly>
-                        <ArrowDown01Icon className="h-4 w-4" />
+                        <ChevronDown className="h-4 w-4" />
                       </Button>
                     </DropdownTrigger>
                     <DropdownMenu
@@ -401,6 +406,7 @@ export default function MemoryManagement({
                       ref={graphExportRef}
                       memories={memories}
                       relations={relations}
+                      user_node={userNode}
                     />
                   </div>
                 )}

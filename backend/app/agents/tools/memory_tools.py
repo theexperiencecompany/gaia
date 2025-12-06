@@ -1,5 +1,5 @@
 """
-Mem0 LangChain Tools for memory management.
+Zep LangChain Tools for memory management.
 
 These tools allow agents to store, search, and retrieve memories,
 enabling them to maintain context and learn from past interactions.
@@ -35,18 +35,14 @@ async def add_memory(
         return "Error: User ID is required but not found in configuration"
 
     memory = await memory_service.store_memory(
-        message=content, user_id=user_id, metadata=metadata, async_mode=True
+        message=content, user_id=user_id, metadata=metadata
     )
 
     if not memory:
         return "Failed to store memory"
 
-    # For async mode, return event_id and status
-    if hasattr(memory, "event_id") and memory.event_id:
-        return f"Memory queued for processing (Event ID: {memory.event_id}, Status: {memory.status})"
-
-    # Fallback for sync mode
-    return f"Memory stored successfully with ID: {memory.id}"
+    # Zep processes synchronously, memory is immediately available
+    return f"Memory stored successfully (ID: {memory.id})"
 
 
 @tool
@@ -64,7 +60,7 @@ async def search_memory(
     if not user_id:
         return "Error: User ID is required but not found in configuration"
 
-    results = await memory_service.search_memories(
+    results = await memory_service.search_memory(
         query=query, user_id=user_id, limit=limit
     )
 

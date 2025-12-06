@@ -16,7 +16,8 @@ from app.models.chat_models import (
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
 from app.services.conversation_service import update_messages
-from app.services.file_service import get_files
+
+# from app.services.file_service import get_files
 from app.services.model_service import get_user_selected_model
 from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation, generate_and_update_description
@@ -270,12 +271,10 @@ async def initialize_conversation(
     }\n\n"""
 
     # Load files and old messages if conversation_id is provided
-    uploaded_files = await get_files(
-        user_id=user.get("user_id"),
-        conversation_id=conversation_id,
-    )
-
-    logger.info(f"{uploaded_files=}")
+    # await get_files(
+    #     user_id=user.get("user_id"),
+    #     conversation_id=conversation_id,
+    # )
 
     return conversation_id, init_chunk, user_message_id, bot_message_id
 

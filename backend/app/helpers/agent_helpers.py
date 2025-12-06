@@ -131,7 +131,7 @@ def build_initial_state(
         "query": request.message,
         "messages": history,
         "current_datetime": datetime.now(timezone.utc).isoformat(),
-        "mem0_user_id": user_id,
+        "zep_user_id": user_id,
         "conversation_id": conversation_id,
         "selected_tool": request.selectedTool,
         "selected_workflow": request.selectedWorkflow,

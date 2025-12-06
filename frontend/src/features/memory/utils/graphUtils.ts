@@ -1,6 +1,10 @@
 import type * as d3 from "d3";
 
-import type { Memory, MemoryRelation } from "@/features/memory/api/memoryApi";
+import type {
+  Memory,
+  MemoryRelation,
+  UserNode,
+} from "@/features/memory/api/memoryApi";
 
 export interface GraphNode extends d3.SimulationNodeDatum {
   id: string;
@@ -26,24 +30,20 @@ export interface GraphData {
 export function transformMemoryDataToGraph(
   memories: Memory[],
   relations: MemoryRelation[],
+  userNodeData?: UserNode,
 ): GraphData {
   const nodes: GraphNode[] = [];
   const nodeMap = new Map<string, GraphNode>();
 
-  // Get user ID - assuming it's from the first memory or from relations
-  const userId =
-    memories[0]?.user_id ||
-    relations.find((r) => r.source_type === "user")?.source ||
-    "";
-
-  // Add user as central node
+  // Use user node from backend if provided, otherwise create default
+  const userId = userNodeData?.id || memories[0]?.user_id || "";
   const userNode: GraphNode = {
     id: userId,
-    label: "Me",
+    label: userNodeData?.name || "Me",
     type: "user",
     group: "user",
     size: 30,
-    data: { id: userId, type: "user" },
+    data: userNodeData || { id: userId, type: "user" },
   };
   nodes.push(userNode);
   nodeMap.set(userId, userNode);
