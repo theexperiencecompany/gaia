@@ -56,14 +56,35 @@ async def complete_user_onboarding(
         )
         has_gmail = connection_status.get("gmail", False)
 
-        if has_gmail:
+        # Check if Gmail emails have already been processed
+        user_doc = await users_collection.find_one({"_id": ObjectId(user["user_id"])})
+        email_already_processed = (
+            user_doc.get("email_memory_processed", False) if user_doc else False
+        )
+
+        if has_gmail and not email_already_processed:
+            # Gmail connected but not yet processed - queue email processing
+            # Email processor will trigger personalization when done
             logger.info(
-                f"User {user['user_id']} has Gmail - personalization will run after email processing"
+                f"User {user['user_id']} has Gmail (not processed) - queueing email processing"
             )
+            from app.utils.redis_utils import RedisPoolManager
+
+            try:
+                pool = await RedisPoolManager.get_pool()
+                await pool.enqueue_job(
+                    "process_gmail_emails_to_memory", user["user_id"]
+                )
+                logger.info(f"Queued Gmail processing for user {user['user_id']}")
+            except Exception as e:
+                logger.error(f"Failed to queue Gmail processing: {e}", exc_info=True)
+                # Fallback: queue personalization directly
+                background_tasks.add_task(queue_personalization, user["user_id"])
         else:
-            # No Gmail, queue personalization directly
+            # No Gmail OR already processed - queue personalization directly
+            reason = "already processed" if email_already_processed else "no Gmail"
             logger.info(
-                f"User {user['user_id']} has no Gmail - queueing personalization directly"
+                f"User {user['user_id']} ({reason}) - queueing personalization directly"
             )
             background_tasks.add_task(queue_personalization, user["user_id"])
 

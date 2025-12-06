@@ -334,21 +334,21 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
         except Exception as e:
             logger.error(f"Post-onboarding personalization failed: {e}", exc_info=True)
 
-    # Update the scan timestamp if any emails were processed or if it was a successful check
-    if total_parsed > 0 or (last_scan_timestamp and total_parsed == 0):
-        try:
-            current_time = datetime.now(timezone.utc)
-            await users_collection.update_one(
-                {"_id": ObjectId(user_id)},
-                {
-                    "$set": {
-                        "integration_scan_states.gmail.last_scan_timestamp": current_time
-                    }
-                },
-            )
-            logger.info(f"Updated Gmail scan timestamp to {current_time}")
-        except Exception as e:
-            logger.error(f"Failed to update Gmail scan timestamp: {e}")
+    # Update the scan timestamp after processing (regardless of success/failure)
+    # This prevents re-scanning the same emails
+    try:
+        current_time = datetime.now(timezone.utc)
+        await users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "integration_scan_states.gmail.last_scan_timestamp": current_time
+                }
+            },
+        )
+        logger.info(f"Updated Gmail scan timestamp to {current_time}")
+    except Exception as e:
+        logger.error(f"Failed to update Gmail scan timestamp: {e}")
 
     return {
         "total": total_fetched,

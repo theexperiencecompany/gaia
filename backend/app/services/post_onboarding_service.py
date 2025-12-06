@@ -1,28 +1,29 @@
 """Post-onboarding personalization service."""
 
 import asyncio
-import random
 from datetime import datetime, timezone
-from typing import Any, Dict, List
+from typing import List
 
-from app.agents.llm.client import init_llm
+from bson import ObjectId
+
 from app.config.loggers import app_logger as logger
-from app.constants.profession_bios import get_random_bio_for_profession
 from app.core.websocket_manager import websocket_manager
 from app.db.chromadb import ChromaClient
 from app.db.mongodb.collections import users_collection, workflows_collection
-from app.models.memory_models import MemoryEntry, MemorySearchResult
+from app.models.memory_models import MemorySearchResult
 from app.models.user_models import BioStatus, OnboardingPhase
-from app.services.composio.composio_service import get_composio_service
 from app.services.memory_service import memory_service
+from app.utils.profile_card import (
+    generate_personality_phrase,
+    generate_profile_card_design,
+    generate_user_bio,
+    get_user_metadata,
+)
 from app.utils.seeding_utils import (
     seed_initial_conversation,
     seed_initial_goal,
     seed_onboarding_todo,
 )
-from bson import ObjectId
-
-HOUSES = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
 
 
 async def emit_progress(
@@ -125,285 +126,6 @@ async def _get_default_workflows(limit: int = 4) -> List[str]:
         return []
 
 
-async def generate_personality_phrase(user_id: str, memories: List[MemoryEntry]) -> str:
-    """
-    Generate personality phrase using LLM.
-
-    Args:
-        user_id: User identifier
-        memories: User's memories
-
-    Returns:
-        Generated personality phrase
-    """
-    profession = ""
-    try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        profession = (
-            user.get("onboarding", {}).get("preferences", {}).get("profession", "")
-        )
-
-        # Summarize memories
-        memory_summary = "\n".join([m.content for m in memories[:10]])
-
-        prompt = f"""Analyze this user's profile deeply to create a truly unique, soulful, and distinctive 2-3 word personality phrase.
-
-User Context:
-- Profession: {profession} (Use this as a lens, not a constraint)
-- Memories/Insights: {memory_summary}
-
-Instructions:
-1. Look for the underlying themes, values, and motivations in their memories.
-2. Avoid generic, corporate, or cliché phrases (e.g., avoid "Hard Worker", "Team Player").
-3. Aim for a poetic, metaphorical, or highly specific description that captures their essence.
-4. Combine abstract concepts with concrete traits if possible.
-
-Examples of the VIBE (do not copy): "Digital Alchemist", "Quiet Storm", "Code Poet", "Restless Voyager", "Mindful Architect".
-
-Generate ONLY the 2-3 word phrase. No explanations."""
-
-        llm = init_llm(preferred_provider="gemini").bind(temperature=1.0, top_k=50)
-        response = await llm.ainvoke(prompt)
-
-        # Handle response content properly
-        content = (
-            response.content
-            if isinstance(response.content, str)
-            else str(response.content)
-        )
-        phrase = content.strip().strip('"').strip("'")
-        logger.info(f"Generated personality phrase for user {user_id}: {phrase}")
-        return phrase
-
-    except Exception as e:
-        logger.error(f"Error generating personality phrase: {e}", exc_info=True)
-        # Fallback based on profession
-        profession_map = {
-            "developer": "Curious Developer",
-            "designer": "Creative Designer",
-            "engineer": "Innovative Engineer",
-            "student": "Eager Learner",
-            "manager": "Strategic Leader",
-        }
-        profession_lower = profession.lower() if profession else ""
-        for key, value in profession_map.items():
-            if key in profession_lower:
-                return value
-        return "Curious Adventurer"
-
-
-async def generate_user_bio(
-    user_id: str, memories: List[MemoryEntry]
-) -> tuple[str, BioStatus]:
-    """
-    Generate user bio paragraph using LLM.
-
-    Args:
-        user_id: User identifier
-        memories: User's memories
-
-    Returns:
-        Tuple of (Generated bio paragraph, BioStatus)
-    """
-    profession = ""
-    try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        name = user.get("name", "User")
-        profession = (
-            user.get("onboarding", {}).get("preferences", {}).get("profession", "")
-        )
-
-        # Check if user has Gmail integration via Composio
-
-        composio_service = get_composio_service()
-        connection_status = await composio_service.check_connection_status(
-            ["gmail"], str(user_id)
-        )
-        has_gmail = connection_status.get("gmail", False)
-
-        # Check if memories exist
-        if not memories:
-            # Check if emails were already processed (flag should be set)
-            email_processed = user.get("email_memory_processed", False)
-
-            if has_gmail and email_processed:
-                # Emails were processed but memories not yet indexed by Mem0
-                # This shouldn't happen if we wait properly, but handle it gracefully
-                logger.warning(
-                    f"Email processed but no memories found for user {user_id}. "
-                    f"Mem0 may still be indexing. Using fallback bio."
-                )
-                default_bio = get_random_bio_for_profession(name, profession or "other")
-                return (default_bio, BioStatus.COMPLETED)
-            elif has_gmail:
-                # Gmail connected but emails not processed yet
-                return (
-                    "Processing your insights... Please check back in a moment.",
-                    BioStatus.PROCESSING,
-                )
-            else:
-                # Gmail not connected - use static profession-based bio
-                default_bio = get_random_bio_for_profession(name, profession or "other")
-                return (
-                    default_bio,
-                    BioStatus.NO_GMAIL,
-                )
-
-        memory_summary = "\n".join([m.content for m in memories[:15]])
-
-        prompt = f"""Write a brief, engaging bio paragraph (2-3 sentences) about {name}.
-
-Profession: {profession}
-What we know: {memory_summary}
-
-Make it personal and interesting, like an 'About Me' section.
-Respond with ONLY the paragraph, no introduction or formatting."""
-
-        llm = init_llm(preferred_provider="gemini")
-        response = await llm.ainvoke(prompt)
-
-        # Handle response content properly
-        content = (
-            response.content
-            if isinstance(response.content, str)
-            else str(response.content)
-        )
-        bio = content.strip()
-        logger.info(f"Generated bio for user {user_id}")
-        return bio, BioStatus.COMPLETED
-
-    except Exception as e:
-        logger.error(f"Error generating user bio: {e}", exc_info=True)
-        # On error, check if user has Gmail to return appropriate status
-        try:
-            composio_service = get_composio_service()
-            connection_status = await composio_service.check_connection_status(
-                ["gmail"], str(user_id)
-            )
-            has_gmail = connection_status.get("gmail", False)
-            if has_gmail:
-                return (
-                    "Processing your insights... Please check back in a moment.",
-                    BioStatus.PROCESSING,
-                )
-            else:
-                return (
-                    "Connect your Gmail to unlock your personalized GAIA bio",
-                    BioStatus.NO_GMAIL,
-                )
-        except:  # noqa: E722
-            return (
-                "Connect your Gmail to unlock your personalized GAIA bio",
-                BioStatus.NO_GMAIL,
-            )
-
-
-def assign_random_house() -> str:
-    """Randomly select a house."""
-    return random.choice(HOUSES)  # nosec B311
-
-
-def generate_random_color() -> tuple[str, int]:
-    """
-    Generate a random color or gradient for holo card overlay.
-
-    Returns:
-        Tuple of (color_string, opacity_percentage)
-    """
-    # 50% chance of gradient vs solid color
-    is_gradient = random.random() > 0.5  # nosec B311
-
-    def generate_vibrant_color() -> str:
-        """Generate a vibrant color in RGBA format."""
-        hue = random.randint(0, 360)  # nosec B311
-        saturation = random.randint(70, 100)  # nosec B311
-        lightness = random.randint(40, 70)  # nosec B311
-
-        # Convert HSL to RGB
-        hue_2 = hue / 360
-        saturation_2 = saturation / 100
-        lightness_2 = lightness / 100
-
-        if saturation_2 == 0:
-            r = g = b = lightness_2
-        else:
-
-            def hue2rgb(p: float, q: float, t: float) -> float:
-                if t < 0:
-                    t += 1
-                if t > 1:
-                    t -= 1
-                if t < 1 / 6:
-                    return p + (q - p) * 6 * t
-                if t < 1 / 2:
-                    return q
-                if t < 2 / 3:
-                    return p + (q - p) * (2 / 3 - t) * 6
-                return p
-
-            q = (
-                lightness_2 * (1 + saturation_2)
-                if lightness_2 < 0.5
-                else lightness_2 + saturation_2 - lightness_2 * saturation_2
-            )
-            p = 2 * lightness_2 - q
-            r = hue2rgb(p, q, hue_2 + 1 / 3)
-            g = hue2rgb(p, q, hue_2)
-            b = hue2rgb(p, q, hue_2 - 1 / 3)
-
-        return f"rgba({round(r * 255)}, {round(g * 255)}, {round(b * 255)}, 1)"
-
-    if is_gradient:
-        # Generate random gradient
-        color1 = generate_vibrant_color()
-        color2 = generate_vibrant_color()
-        angle = random.randint(0, 360)  # nosec B311
-        color_string = f"linear-gradient({angle}deg, {color1} 0%, {color2} 100%)"
-    else:
-        # Generate solid color
-        color_string = generate_vibrant_color()
-
-    # Random opacity between 30-80%
-    opacity = random.randint(30, 80)  # nosec B311
-
-    return color_string, opacity
-
-
-async def get_user_metadata(user_id: str) -> Dict[str, Any]:
-    """
-    Calculate user metadata.
-
-    Args:
-        user_id: User identifier
-
-    Returns:
-        Dict with account_number and member_since
-    """
-    try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        created_at = user.get("created_at")
-
-        # Calculate account number
-        if created_at:
-            count = await users_collection.count_documents(
-                {"created_at": {"$lt": created_at}}
-            )
-            account_number = count + 1
-        else:
-            account_number = 1
-
-        # Format member since
-        member_since = (
-            created_at.strftime("%b %d, %Y") if created_at else "Nov 21, 2024"
-        )
-
-        return {"account_number": account_number, "member_since": member_since}
-
-    except Exception as e:
-        logger.error(f"Error getting user metadata: {e}", exc_info=True)
-        return {"account_number": 1, "member_since": "Nov 21, 2024"}
-
-
 async def save_personalization_data(
     user_id: str,
     house: str,
@@ -498,10 +220,18 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
             user_id, "crafting", "🎨 Crafting your unique identity...", 50
         )
 
+        # Get user profession for personality phrase
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        profession = (
+            user.get("onboarding", {}).get("preferences", {}).get("profession", "")
+            if user
+            else ""
+        )
+
         # Parallel tasks
         workflow_task = asyncio.create_task(suggest_workflows_via_rag(user_id, 4))
         personality_task = asyncio.create_task(
-            generate_personality_phrase(user_id, memories)
+            generate_personality_phrase(user_id, memories, profession)
         )
         bio_task = asyncio.create_task(generate_user_bio(user_id, memories))
         metadata_task = asyncio.create_task(get_user_metadata(user_id))
@@ -513,11 +243,6 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
             bio_task,
             metadata_task,
             return_exceptions=False,
-        )
-
-        # Emit progress after parallel tasks
-        await emit_progress(
-            user_id, "curating", "🔧 Curating your perfect toolkit...", 75
         )
 
         # Unpack bio result
@@ -535,16 +260,16 @@ async def process_post_onboarding_personalization(user_id: str) -> None:
             f"Saving personalization for user {user_id} with bio: {user_bio[:50]}..."
         )
 
-        # Assign random house
-        house = assign_random_house()
+        # Generate profile card design (house, colors)
+        card_design = generate_profile_card_design()
+        house = card_design["house"]
+        overlay_color = card_design["overlay_color"]
+        overlay_opacity = card_design["overlay_opacity"]
 
         # Emit house assignment progress
         await emit_progress(
             user_id, "finalizing", f"🏠 Welcome to {house.title()}!", 90
         )
-
-        # Generate random color/gradient
-        overlay_color, overlay_opacity = generate_random_color()
 
         # Save to database (including account_number and member_since for persistence)
         await save_personalization_data(
