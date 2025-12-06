@@ -46,11 +46,13 @@ from app.agents.memory.profile_extractor import (
     validate_username,
 )
 from app.config.loggers import memory_logger as logger
-from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import users_collection
 from app.services.mail.mail_service import search_messages
 from app.services.memory_service import memory_service
-from app.services.post_onboarding_service import process_post_onboarding_personalization
+from app.services.post_onboarding_service import (
+    emit_progress,
+    process_post_onboarding_personalization,
+)
 
 # Constants
 EMAIL_QUERY = "in:inbox"
@@ -72,7 +74,6 @@ async def _search_platform_emails_parallel(user_id: str) -> Dict[str, List[Dict]
     Returns:
         Dict mapping platform names to their email lists
     """
-    logger.info("Starting parallel Gmail searches for profile extraction...")
     search_start = time.time()
 
     # Create parallel search tasks for each platform
@@ -88,7 +89,6 @@ async def _search_platform_emails_parallel(user_id: str) -> Dict[str, List[Dict]
         search_tasks.append((platform, task))
 
     # Execute all searches in parallel
-    logger.info(f"Launching {len(search_tasks)} parallel Gmail searches...")
     results = await asyncio.gather(
         *[task for _, task in search_tasks], return_exceptions=True
     )
@@ -101,7 +101,6 @@ async def _search_platform_emails_parallel(user_id: str) -> Dict[str, List[Dict]
             platform_emails[platform] = []
         elif isinstance(result, list):
             platform_emails[platform] = result
-            logger.info(f"Found {len(result)} emails from {platform}")
         else:
             platform_emails[platform] = []
 
@@ -131,8 +130,6 @@ async def _search_platform_emails(
         List of email data from this platform
     """
     try:
-        logger.info(f"Searching {platform} emails with query: {query}")
-
         result = await search_messages(
             user_id=user_id,
             query=query,
@@ -140,8 +137,6 @@ async def _search_platform_emails(
         )
 
         emails = result.get("messages", [])
-        logger.info(f"Retrieved {len(emails)} emails for {platform}")
-
         return emails
 
     except Exception as e:
@@ -186,25 +181,13 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     batch_count = 0
 
     # START PARALLEL TRACK: Profile extraction via targeted Gmail searches
-    logger.info("Starting parallel processing: email storage + profile extraction")
     profile_extraction_task = asyncio.create_task(
         _extract_profiles_from_parallel_searches(user_id)
     )
 
     # Emit initial progress
     try:
-        await websocket_manager.broadcast_to_user(
-            user_id,
-            {
-                "type": "personalization_progress",
-                "data": {
-                    "stage": "discovering",
-                    "message": "🔮 Discovering your essence...",
-                    "progress": 15,
-                    "details": {"current": 0, "total": MAX_RESULTS},
-                },
-            },
-        )
+        await emit_progress(user_id, "exploring", "🌌 Exploring your universe...", 60)
     except Exception as e:
         logger.warning(f"Failed to emit initial progress: {e}")
     # Check for last scan timestamp
@@ -222,19 +205,12 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
         if isinstance(last_scan_timestamp, datetime):
             timestamp_seconds = int(last_scan_timestamp.timestamp())
             current_query = f"{EMAIL_QUERY} after:{timestamp_seconds}"
-            logger.info(f"Scanning emails after timestamp: {last_scan_timestamp}")
-        else:
-            logger.warning(f"Invalid timestamp format in DB: {last_scan_timestamp}")
 
     try:
         while total_fetched < MAX_RESULTS:
             remaining = MAX_RESULTS - total_fetched
             batch_size = min(BATCH_SIZE, remaining)
             batch_count += 1
-
-            logger.info(
-                f"Fetching batch {batch_count}, requesting {batch_size} emails, page_token: {page_token}"
-            )
 
             result = await search_messages(
                 user_id=user_id,
@@ -244,10 +220,8 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
             )
 
             batch_emails = result.get("messages", [])
-            logger.info(f"Batch {batch_count} returned {len(batch_emails)} emails")
 
             if not batch_emails:
-                logger.info("No more emails returned, breaking")
                 break
 
             # Update page token for next iteration
@@ -258,18 +232,13 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
             # Emit progress update
             try:
-                progress_percent = min(15 + int((total_fetched / MAX_RESULTS) * 40), 55)
-                await websocket_manager.broadcast_to_user(
+                progress_percent = min(60 + int((total_fetched / MAX_RESULTS) * 10), 70)
+                await emit_progress(
                     user_id,
-                    {
-                        "type": "personalization_progress",
-                        "data": {
-                            "stage": "discovering",
-                            "message": "🔮 Discovering your essence...",
-                            "progress": progress_percent,
-                            "details": {"current": total_fetched, "total": MAX_RESULTS},
-                        },
-                    },
+                    "exploring",
+                    "🌌 Exploring your universe...",
+                    progress_percent,
+                    {"current": total_fetched, "total": MAX_RESULTS},
                 )
             except Exception as e:
                 logger.warning(f"Failed to emit progress update: {e}")
@@ -288,24 +257,16 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
                 )
 
             if not page_token:
-                logger.info("No next page token, breaking")
                 break
-
-        fetch_elapsed = time.time() - fetch_start_time
-        logger.info(
-            f"Fetched and processed {total_fetched} emails in {fetch_elapsed:.2f}s"
-        )
 
     except Exception as e:
         logger.error(f"Error in email processing pipeline: {e}")
 
     # Wait for profile extraction task
-    logger.info("Waiting for profile extraction to complete...")
     profiles_stored = 0
     try:
         profile_result = await profile_extraction_task
         profiles_stored = profile_result.get("profiles_stored", 0)
-        logger.info(f"Profile extraction completed: {profiles_stored} profiles stored")
     except Exception as e:
         logger.error(f"Profile extraction task failed: {e}")
 
@@ -321,9 +282,6 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
         # Trigger post-onboarding personalization
         try:
-            logger.info(
-                f"Triggering post-onboarding personalization for user {user_id} after email processing"
-            )
             await process_post_onboarding_personalization(user_id)
         except Exception as e:
             logger.error(f"Post-onboarding personalization failed: {e}", exc_info=True)
@@ -340,7 +298,6 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
                 }
             },
         )
-        logger.info(f"Updated Gmail scan timestamp to {current_time}")
     except Exception as e:
         logger.error(f"Failed to update Gmail scan timestamp: {e}")
 
@@ -385,13 +342,7 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
         }
 
         if not platforms_with_emails:
-            logger.info("No platform emails found for profile extraction")
             return {"profiles_stored": 0}
-
-        logger.info(
-            f"Processing {len(platforms_with_emails)} platforms with emails: "
-            f"{list(platforms_with_emails.keys())}"
-        )
 
         # Step 2: Extract usernames and crawl profiles in parallel
         crawl_semaphore = asyncio.Semaphore(20)  # Limit concurrent crawls
@@ -410,7 +361,6 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
             platform_tasks.append((platform, task))
 
         # Wait for all platform processing
-        logger.info(f"Waiting for {len(platform_tasks)} platform extraction tasks...")
         results = await asyncio.gather(
             *[task for _, task in platform_tasks], return_exceptions=True
         )
@@ -420,34 +370,14 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
         for (platform, _), result in zip(platform_tasks, results):
             if isinstance(result, Exception):
                 logger.error(f"Platform {platform} extraction failed: {result}")
-            elif (
-                isinstance(result, dict)
-                and "success" in result
-                and "error" not in result
-            ):
+            elif isinstance(result, dict) and result.get("success"):
                 if "discovery_task" in result:
                     discovered_profile_tasks.append(result["discovery_task"])
-
                 profiles_stored += 1
-                logger.info(
-                    f"✓ Successfully extracted and stored profile for {platform}"
-                )
-            elif isinstance(result, dict):
-                logger.warning(
-                    f"✗ Failed to extract profile for {platform}: "
-                    f"{result.get('error', 'Unknown error')}"
-                )
-            else:
-                logger.warning(
-                    f"✗ Failed to extract profile for {platform}: Unknown error"
-                )
 
         # Step 4: Wait for discovered profiles and add to count
         discovered_count = 0
         if discovered_profile_tasks:
-            logger.info(
-                f"Waiting for {len(discovered_profile_tasks)} discovery tasks to complete..."
-            )
             discovery_results = await asyncio.gather(
                 *discovered_profile_tasks, return_exceptions=True
             )
@@ -458,9 +388,6 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
                     discovered_count += result
                 elif isinstance(result, Exception):
                     logger.error(f"Discovery task failed: {result}")
-
-            logger.info(f"Discovered and stored {discovered_count} additional profiles")
-            profiles_stored += discovered_count
 
         elapsed = time.time() - extraction_start
         logger.info(
@@ -510,7 +437,6 @@ async def _process_single_platform(
 
         # Check if already crawled (deduplication)
         if crawled_urls is not None and profile_url in crawled_urls:
-            logger.info(f"Skipping already crawled profile: {profile_url}")
             return {"error": "duplicate", "url": profile_url}
 
         # Mark as crawled before actually crawling (prevent race conditions)
@@ -628,12 +554,8 @@ async def _discover_and_store_linked_profiles(
                             "url": profile_url,
                             "username": username,
                         }
-                        logger.info(
-                            f"Discovered {platform} profile from {source_platform}: {profile_url}"
-                        )
 
         if not discovered_profiles:
-            logger.info(f"No additional profiles discovered from {source_platform}")
             return 0
 
         # Crawl and store discovered profiles in background
@@ -662,7 +584,6 @@ async def _discover_and_store_linked_profiles(
 {result["content"]}
 """
                 profile_messages.append({"role": "user", "content": memory_content})
-                logger.info(f"✓ Discovered profile ready for storage: {platform}")
 
         # Store in batch if we have any
         if profile_messages:
