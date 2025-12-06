@@ -102,7 +102,10 @@ export default function BaseFieldChip({
           />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="min-w-[200px] rounded-2xl border-zinc-700 bg-zinc-900 p-0 shadow-xl">
+      <PopoverContent className="min-w-68 max-w-68 rounded-2xl border-zinc-700 bg-zinc-900 p-0 shadow-xl">
+        <div className="flex w-full justify-start pl-4 pt-3 text-xs font-medium text-zinc-400">
+          {label}
+        </div>
         <div className="w-full">
           {typeof children === "function"
             ? children({ onClose: () => setIsOpen(false) })

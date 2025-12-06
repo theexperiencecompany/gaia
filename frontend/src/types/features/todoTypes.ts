@@ -123,15 +123,6 @@ export interface BulkMoveRequest {
   project_id: string;
 }
 
-export interface SubtaskCreate {
-  title: string;
-}
-
-export interface SubtaskUpdate {
-  title?: string;
-  completed?: boolean;
-}
-
 // New API response types
 export interface PaginationMeta {
   total: number;

@@ -42,7 +42,6 @@ export const goalsApi = {
       `/goals/${goalId}/roadmap/nodes/${nodeId}`,
       { is_complete: isComplete },
       {
-        successMessage: "Node status updated successfully!",
         errorMessage: "Failed to update node status",
       },
     );

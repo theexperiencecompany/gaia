@@ -12,16 +12,17 @@ export default function WorkflowSection() {
 
       <div className="mt-4 flex flex-col gap-4">
         <div className="grid w-full grid-cols-1 grid-rows-3 gap-6 sm:grid-cols-2 sm:gap-8 lg:gap-10">
-          <ContentSection
-            title="Wait, what even are workflows?"
-            description="Think of them as little robots you train to do your repetitive stuff. Could be as basic as 'forward all receipts to my accountant' or as wild as 'watch my calendar, research everyone I'm meeting today, write briefing docs, and email them to me an hour before.' If you're a student, use them for tracking assignments, organizing research papers, or prepping for exams. If you're building a startup, automate investor updates, customer onboarding, or market research. Honestly, if it's something you do more than once, you can probably make a workflow for it. The more apps you connect and triggers you set up, the more powerful it gets. We're just getting started."
-            className="sm:row-span-2"
-          />
+          <div className="row-span-3 space-y-10">
+            <ContentSection
+              title="Wait, what even are workflows?"
+              description="Think of them as little robots you train to do your repetitive stuff. Could be as basic as 'forward all receipts to my accountant' or as wild as 'watch my calendar, research everyone I'm meeting today, write briefing docs, and email them to me an hour before.' If you're a student, use them for tracking assignments, organizing research papers, or prepping for exams. If you're building a startup, automate investor updates, customer onboarding, or market research. Honestly, if it's something you do more than once, you can probably make a workflow for it. The more apps you connect and triggers you set up, the more powerful it gets. We're just getting started."
+            />
 
-          <ContentSection
-            title="Powered by Your Todos"
-            description="Every todo you add becomes its own mini-workflow. GAIA doesn't just remind you about it—it actually does the work. Research? Done. Drafting? Done. Scheduling? Done. Your todo list stops being a guilt trip and starts being your secret weapon."
-          />
+            <ContentSection
+              title="Powered by Your Todos"
+              description="Every todo you add becomes its own mini-workflow. GAIA doesn't just remind you about it—it actually does the work. Research? Done. Drafting? Done. Scheduling? Done. Your todo list stops being a guilt trip and starts being your secret weapon."
+            />
+          </div>
 
           <ContentSection
             title="Smart Triggers"

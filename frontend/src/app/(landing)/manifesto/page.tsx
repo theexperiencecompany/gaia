@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 
+import JsonLd from "@/components/seo/JsonLd";
 import About from "@/features/about/components/About";
-import { generatePageMetadata } from "@/lib/seo";
+import {
+  generateAboutPageSchema,
+  generateBreadcrumbSchema,
+  generatePageMetadata,
+  generateWebPageSchema,
+  siteConfig,
+} from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Manifesto",
@@ -23,5 +30,25 @@ export const metadata: Metadata = generatePageMetadata({
 });
 
 export default function Manifesto() {
-  return <About />;
+  const aboutSchema = generateAboutPageSchema();
+  const webPageSchema = generateWebPageSchema(
+    "Manifesto",
+    "Read why we're building GAIA differently. Our commitment to privacy, open source, and building AI that actually helps.",
+    `${siteConfig.url}/manifesto`,
+    [
+      { name: "Home", url: siteConfig.url },
+      { name: "Manifesto", url: `${siteConfig.url}/manifesto` },
+    ],
+  );
+  const breadcrumbSchema = generateBreadcrumbSchema([
+    { name: "Home", url: siteConfig.url },
+    { name: "Manifesto", url: `${siteConfig.url}/manifesto` },
+  ]);
+
+  return (
+    <>
+      <JsonLd data={[aboutSchema, webPageSchema, breadcrumbSchema]} />
+      <About />
+    </>
+  );
 }

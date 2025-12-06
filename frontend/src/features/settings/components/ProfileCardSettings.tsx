@@ -112,16 +112,8 @@ export default function ProfileCardSettings() {
             {displayData.user_bio &&
               (displayData.user_bio.startsWith("Connect your Gmail") ||
                 displayData.user_bio.startsWith("Processing")) && (
-                <Button
-                  color="primary"
-                  size="lg"
-                  className="mt-4 rounded-xl px-6 py-3 text-base font-semibold"
-                  onPress={handleConnectGmail}
-                >
-                  Connect Gmail for a personalized bio
-                  <span className="mt-1 block text-xs font-normal text-zinc-300">
-                    Unlock your unique AI bio and insights
-                  </span>
+                <Button color="primary" onPress={handleConnectGmail}>
+                  Connect Gmail for a more personalized bio
                 </Button>
               )}
           </div>

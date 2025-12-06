@@ -47,7 +47,7 @@ export const CurrentTimeLabel: React.FC = () => {
 
   return (
     <div
-      className="absolute left-0 z-[12] flex w-20 flex-shrink-0 items-center justify-end bg-[#1a1a1a] pr-3 text-xs text-primary"
+      className="absolute left-0 z-[12] flex w-20 flex-shrink-0 items-center justify-end bg-primary-bg pr-3 text-xs text-primary"
       style={{ top: `${currentTimeTop - 8}px` }}
     >
       {currentTimeLabel}

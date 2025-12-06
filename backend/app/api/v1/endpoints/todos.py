@@ -1,10 +1,15 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
+import uuid
+
+from bson import ObjectId
+from pymongo import ReturnDocument
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone_from_preferences,
 )
+from app.config.loggers import todos_logger
 from app.db.mongodb.collections import projects_collection, todos_collection
 from app.decorators import tiered_rate_limit
 from app.models.todo_models import (
@@ -15,23 +20,25 @@ from app.models.todo_models import (
     ProjectCreate,
     ProjectResponse,
     SearchMode,
-    SubTask,
     SubtaskCreateRequest,
     SubtaskUpdateRequest,
-    TodoCreate,
     TodoListResponse,
+    TodoModel,
     TodoResponse,
     TodoSearchParams,
+    TodoStats,
+    TodoUpdateRequest,
     UpdateProjectRequest,
-    UpdateTodoRequest,
 )
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
     TriggerType,
 )
+from app.services.todos.sync_service import sync_subtask_to_goal_completion
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.workflow.service import WorkflowService
+from app.db.utils import serialize_document
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 
 router = APIRouter()
@@ -46,7 +53,7 @@ async def get_todo_counts(user: dict = Depends(get_current_user)):
     """
     try:
         # Use the stats calculation to get counts efficiently
-        stats = await TodoService._calculate_stats(user["user_id"])
+        stats: TodoStats = await TodoService._calculate_stats(user["user_id"])
 
         # Get today's date for filtering
         today = datetime.now(timezone.utc).date()
@@ -208,7 +215,7 @@ async def list_todos(
 
 @router.post("/todos", response_model=TodoResponse, status_code=status.HTTP_201_CREATED)
 @tiered_rate_limit("todo_operations")
-async def create_todo(todo: TodoCreate, user: dict = Depends(get_current_user)):
+async def create_todo(todo: TodoModel, user: dict = Depends(get_current_user)):
     """Create a new todo. If no project is specified, it will be added to Inbox."""
     try:
         return await TodoService.create_todo(todo, user["user_id"])
@@ -238,7 +245,7 @@ async def get_todo(todo_id: str, user: dict = Depends(get_current_user)):
 @router.put("/todos/{todo_id}", response_model=TodoResponse)
 @tiered_rate_limit("todo_operations")
 async def update_todo(
-    todo_id: str, updates: UpdateTodoRequest, user: dict = Depends(get_current_user)
+    todo_id: str, updates: TodoUpdateRequest, user: dict = Depends(get_current_user)
 ):
     """Update a todo."""
     try:
@@ -277,7 +284,7 @@ async def generate_workflow(
 ):
     """Generate a standalone workflow for a specific todo with automatic timezone detection."""
     try:
-        todo = await TodoService.get_todo(todo_id, user["user_id"])
+        todo: TodoResponse = await TodoService.get_todo(todo_id, user["user_id"])
 
         # Check if workflow already exists for this todo
         if todo.workflow_id:
@@ -302,21 +309,7 @@ async def generate_workflow(
             workflow_request, user["user_id"], user_timezone=user_timezone
         )
 
-        # Update the todo with the workflow_id
-        from app.models.todo_models import UpdateTodoRequest
-
-        update_request = UpdateTodoRequest(
-            title=None,
-            description=None,
-            labels=None,
-            due_date=None,
-            due_date_timezone=None,
-            priority=None,
-            project_id=None,
-            completed=None,
-            subtasks=None,
-            workflow_id=workflow.id,
-        )
+        update_request = TodoUpdateRequest(workflow_id=workflow.id)
         await TodoService.update_todo(todo_id, update_request, user["user_id"])
 
         return {"workflow": workflow, "message": "Workflow generated successfully"}
@@ -343,7 +336,7 @@ async def get_workflow_status(todo_id: str, user: dict = Depends(get_current_use
         from app.services.workflow.service import WorkflowService
 
         # Verify todo exists and get workflow_id
-        todo = await TodoService.get_todo(todo_id, user["user_id"])
+        todo: TodoResponse = await TodoService.get_todo(todo_id, user["user_id"])
 
         # Get standalone workflow if workflow_id exists
         workflow = None
@@ -439,18 +432,7 @@ async def bulk_complete_todos(
     """Mark multiple todos as completed (convenience endpoint)."""
     request = BulkUpdateRequest(
         todo_ids=todo_ids,
-        updates=UpdateTodoRequest(
-            title=None,
-            description=None,
-            labels=None,
-            due_date=None,
-            due_date_timezone=None,
-            priority=None,
-            project_id=None,
-            completed=True,
-            subtasks=None,
-            workflow_id=None,
-        ),
+        updates=TodoUpdateRequest(completed=True),
     )
     try:
         return await TodoService.bulk_update_todos(request, user["user_id"])
@@ -551,36 +533,34 @@ async def create_subtask(
 ):
     """Add a new subtask to a todo."""
     try:
-        # Get the current todo
-        current_todo = await TodoService.get_todo(todo_id, user["user_id"])
+        new_subtask = {
+            "id": str(uuid.uuid4()),
+            "title": subtask.title,
+            "completed": False,
+        }
 
-        # Create new subtask with unique ID
-        import uuid
-
-        new_subtask = SubTask(
-            id=str(uuid.uuid4()), title=subtask.title, completed=False
+        # Atomic operation: verify ownership and add subtask in one query
+        updated_todo = await todos_collection.find_one_and_update(
+            {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
+            {
+                "$push": {"subtasks": new_subtask},
+                "$set": {"updated_at": datetime.now(timezone.utc)},
+            },
+            return_document=ReturnDocument.AFTER,
         )
 
-        # Add to existing subtasks
-        updated_subtasks = list(current_todo.subtasks) + [new_subtask]
+        if not updated_todo:
+            raise ValueError(f"Todo {todo_id} not found")
 
-        # Update the todo
-        return await TodoService.update_todo(
-            todo_id,
-            UpdateTodoRequest(
-                title=None,
-                description=None,
-                labels=None,
-                due_date=None,
-                due_date_timezone=None,
-                priority=None,
-                project_id=None,
-                completed=None,
-                subtasks=updated_subtasks,
-                workflow_id=None,
-            ),
+        # Invalidate cache
+        await TodoService._invalidate_cache(
             user["user_id"],
+            updated_todo.get("project_id"),
+            todo_id,
+            "update_minor",
         )
+
+        return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception:
@@ -600,43 +580,56 @@ async def update_subtask(
 ):
     """Update a specific subtask."""
     try:
-        # Get the current todo
-        current_todo = await TodoService.get_todo(todo_id, user["user_id"])
+        # Build update operations
+        from typing import Any
 
-        # Update the subtasks
-        updated_subtasks = []
-        subtask_found = False
-        for subtask in current_todo.subtasks:
-            if subtask.id == subtask_id:
-                subtask_found = True
-                if updates.title is not None:
-                    subtask.title = updates.title
-                if updates.completed is not None:
-                    subtask.completed = updates.completed
-            updated_subtasks.append(subtask)
+        update_ops: dict[str, Any] = {
+            "$set": {"updated_at": datetime.now(timezone.utc)}
+        }
 
+        if updates.title is not None:
+            update_ops["$set"]["subtasks.$[elem].title"] = updates.title
+        if updates.completed is not None:
+            update_ops["$set"]["subtasks.$[elem].completed"] = updates.completed
+
+        # Atomic operation: verify ownership, find subtask, and update in one query
+        updated_todo = await todos_collection.find_one_and_update(
+            {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
+            update_ops,
+            array_filters=[{"elem.id": subtask_id}],
+            return_document=ReturnDocument.AFTER,
+        )
+
+        if not updated_todo:
+            raise ValueError(f"Todo {todo_id} not found")
+
+        # Verify subtask exists (if no match, the update still succeeds but doesn't modify)
+        subtask_found = any(
+            s.get("id") == subtask_id for s in updated_todo.get("subtasks", [])
+        )
         if not subtask_found:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found"
             )
 
-        # Update the todo
-        return await TodoService.update_todo(
-            todo_id,
-            UpdateTodoRequest(
-                title=None,
-                description=None,
-                labels=None,
-                due_date=None,
-                due_date_timezone=None,
-                priority=None,
-                project_id=None,
-                completed=None,
-                subtasks=updated_subtasks,
-                workflow_id=None,
-            ),
+        # Invalidate cache and handle goal sync if completion changed
+        await TodoService._invalidate_cache(
             user["user_id"],
+            updated_todo.get("project_id"),
+            todo_id,
+            "update_minor",
         )
+
+        # Sync to goal if completion status changed
+        if updates.completed is not None:
+            try:
+                await sync_subtask_to_goal_completion(
+                    todo_id, subtask_id, updates.completed, user["user_id"]
+                )
+            except Exception as e:
+                todos_logger.warning(f"Failed to sync subtask to goal: {str(e)}")
+
+        return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception:
@@ -653,34 +646,45 @@ async def delete_subtask(
 ):
     """Delete a specific subtask."""
     try:
-        # Get the current todo
-        current_todo = await TodoService.get_todo(todo_id, user["user_id"])
+        # Store original subtasks count to verify deletion
+        todo_before = await todos_collection.find_one(
+            {"_id": ObjectId(todo_id), "user_id": user["user_id"]}, {"subtasks": 1}
+        )
 
-        # Remove the subtask
-        updated_subtasks = [s for s in current_todo.subtasks if s.id != subtask_id]
+        if not todo_before:
+            raise ValueError(f"Todo {todo_id} not found")
 
-        if len(updated_subtasks) == len(current_todo.subtasks):
+        original_count = len(todo_before.get("subtasks", []))
+
+        # Atomic operation: verify ownership and remove subtask in one query
+        updated_todo = await todos_collection.find_one_and_update(
+            {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
+            {
+                "$pull": {"subtasks": {"id": subtask_id}},
+                "$set": {"updated_at": datetime.now(timezone.utc)},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+        if not updated_todo:
+            raise ValueError(f"Todo {todo_id} not found")
+
+        # Verify subtask was actually removed
+        new_count = len(updated_todo.get("subtasks", []))
+        if new_count == original_count:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found"
             )
 
-        # Update the todo
-        return await TodoService.update_todo(
-            todo_id,
-            UpdateTodoRequest(
-                title=None,
-                description=None,
-                labels=None,
-                due_date=None,
-                due_date_timezone=None,
-                priority=None,
-                project_id=None,
-                completed=None,
-                subtasks=updated_subtasks,
-                workflow_id=None,
-            ),
+        # Invalidate cache
+        await TodoService._invalidate_cache(
             user["user_id"],
+            updated_todo.get("project_id"),
+            todo_id,
+            "update_minor",
         )
+
+        return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception:
@@ -699,41 +703,61 @@ async def toggle_subtask_completion(
 ):
     """Toggle the completion status of a subtask (convenience endpoint)."""
     try:
-        # Get the current todo
-        current_todo = await TodoService.get_todo(todo_id, user["user_id"])
+        # First, get current completion status to toggle and for goal sync
 
-        # Find and toggle the subtask
-        updated_subtasks = []
-        subtask_found = False
+        todo = await todos_collection.find_one(
+            {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
+            {"subtasks": 1, "project_id": 1},
+        )
 
-        for subtask in current_todo.subtasks:
-            if subtask.id == subtask_id:
-                subtask_found = True
-                subtask.completed = not subtask.completed
-            updated_subtasks.append(subtask)
+        if not todo:
+            raise ValueError(f"Todo {todo_id} not found")
 
-        if not subtask_found:
+        # Find the subtask to get current completion status
+        subtask = next(
+            (s for s in todo.get("subtasks", []) if s.get("id") == subtask_id), None
+        )
+        if not subtask:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found"
             )
 
-        # Update the todo
-        return await TodoService.update_todo(
-            todo_id,
-            UpdateTodoRequest(
-                title=None,
-                description=None,
-                labels=None,
-                due_date=None,
-                due_date_timezone=None,
-                priority=None,
-                project_id=None,
-                completed=None,
-                subtasks=updated_subtasks,
-                workflow_id=None,
-            ),
-            user["user_id"],
+        new_completed = not subtask.get("completed", False)
+
+        # Atomic operation: toggle completion using array filter
+
+        updated_todo = await todos_collection.find_one_and_update(
+            {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
+            {
+                "$set": {
+                    "subtasks.$[elem].completed": new_completed,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
+            array_filters=[{"elem.id": subtask_id}],
+            return_document=ReturnDocument.AFTER,
         )
+
+        if not updated_todo:
+            raise ValueError(f"Todo {todo_id} not found")
+
+        # Invalidate cache
+        await TodoService._invalidate_cache(
+            user["user_id"],
+            updated_todo.get("project_id"),
+            todo_id,
+            "update_minor",
+        )
+
+        # Sync to goal
+        try:
+            await sync_subtask_to_goal_completion(
+                todo_id, subtask_id, new_completed, user["user_id"]
+            )
+        except Exception as e:
+            todos_logger.warning(f"Failed to sync subtask to goal: {str(e)}")
+
+        return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception:

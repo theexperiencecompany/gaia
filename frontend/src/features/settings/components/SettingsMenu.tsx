@@ -221,7 +221,7 @@ export default function SettingsMenu({
     <>
       <Dropdown
         placement="right"
-        className="bg-[#141414] text-foreground dark shadow-xl"
+        className="bg-secondary-bg text-foreground dark shadow-xl"
         offset={21}
         onOpenChange={onOpenChange}
       >

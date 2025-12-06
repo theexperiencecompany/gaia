@@ -85,7 +85,7 @@ const initialState: CalendarState = {
   createEventAction: null,
   selectedDate: new Date(),
   currentWeek: new Date(),
-  daysToShow: 1,
+  daysToShow: 7,
   visibleMonth: new Date().toLocaleDateString("en-US", { month: "long" }),
   visibleYear: new Date().getFullYear().toString(),
   loadedDateRanges: [],

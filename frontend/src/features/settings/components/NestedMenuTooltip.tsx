@@ -35,7 +35,7 @@ export function NestedMenuTooltip({
       offset={8}
       closeDelay={0}
       classNames={{
-        content: "p-0 bg-[#141414] border-0! outline-0!",
+        content: "p-0 bg-secondary-bg border-0! outline-0!",
         base: "border-0",
       }}
       content={

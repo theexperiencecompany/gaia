@@ -1,8 +1,8 @@
 "use client";
 
 import { Avatar } from "@heroui/avatar";
+import { PlayIcon } from "@theexperiencecompany/gaia-icons/solid-standard";
 import { useState } from "react";
-
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -15,7 +15,7 @@ import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplay } from "@/features/workflows/utils/triggerDisplay";
-import { PlayIcon, UserCircle02Icon } from "@/icons";
+import { UserCircle02Icon } from "@/icons";
 
 interface UseCaseDetailClientProps {
   useCase: UseCase | null;
@@ -67,7 +67,6 @@ export default function UseCaseDetailClient({
 
   // Prepare common data
   const title = "title" in data ? data.title : "";
-  const description = "description" in data ? data.description : "";
   const currentSlug = useCase?.slug || communityWorkflow?.id || slug;
 
   // Prepare breadcrumbs
@@ -143,7 +142,7 @@ export default function UseCaseDetailClient({
       <UseCaseDetailLayout
         breadcrumbs={breadcrumbs}
         title={title}
-        description={useCase ? description : undefined}
+        // description={useCase ? description : undefined}
         slug={currentSlug}
         isCreating={isCreating}
         onCreateWorkflow={handleCreateWorkflow}
@@ -158,7 +157,7 @@ export default function UseCaseDetailClient({
                     name={creatorName}
                     size="sm"
                     fallback={
-                      <UserCircle02Icon className="h-4 w-4 text-primary-foreground" />
+                      <UserCircle02Icon className="h-8 w-8 text-zinc-300" />
                     }
                   />
                 }
@@ -172,7 +171,7 @@ export default function UseCaseDetailClient({
 
             {/* Run Count */}
             <MetaInfoCard
-              icon={<PlayIcon className="h-5 w-5 text-zinc-400" />}
+              icon={<PlayIcon className="h-7 w-7 text-zinc-400" />}
               label="Ran"
               value={runCountText}
             />
@@ -196,23 +195,13 @@ export default function UseCaseDetailClient({
             )}
           </>
         }
-        detailedContent={
-          <>
-            {useCase?.detailed_description && (
-              <p className="leading-relaxed text-zinc-400">
-                {useCase.detailed_description}
-              </p>
-            )}
-            {communityWorkflow && (
-              <div className="text-zinc-400">
-                {communityWorkflow.description}
-              </div>
-            )}
-          </>
+        // detailedContent={}
+        description={
+          useCase?.detailed_description || communityWorkflow?.description
         }
         steps={
           steps && steps.length > 0 ? (
-            <div className="w-[400px] flex-shrink-0">
+            <div className="w-fit flex-shrink-0">
               <div className="sticky top-8 rounded-3xl bg-zinc-900 px-6 pt-4 pb-2">
                 <div className="text-sm font-medium text-zinc-500">
                   Workflow Steps:

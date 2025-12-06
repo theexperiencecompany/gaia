@@ -2,25 +2,27 @@
 
 import { useMemo } from "react";
 
-import type { Todo, TodoUpdate } from "@/types/features/todoTypes";
+import type { Project, Todo, TodoUpdate } from "@/types/features/todoTypes";
 
 import TodoItem from "./TodoItem";
 
 interface TodoListProps {
   todos: Todo[];
+  projects: Project[];
   onTodoUpdate: (todoId: string, updates: TodoUpdate) => void;
-  onTodoDelete: (todoId: string) => void;
+  // onTodoDelete: (todoId: string) => void;
   onTodoClick?: (todo: Todo) => void;
-  onTodoEdit?: (todo: Todo) => void;
+  // onTodoEdit?: (todo: Todo) => void;
   onRefresh?: () => void;
 }
 
 export default function TodoList({
   todos,
+  projects,
   onTodoUpdate,
-  onTodoDelete,
+  // onTodoDelete,
   onTodoClick,
-  onTodoEdit,
+  // onTodoEdit,
 }: TodoListProps) {
   const sortedTodos = useMemo(() => {
     return [...todos].sort((a, b) => Number(a.completed) - Number(b.completed));
@@ -43,9 +45,10 @@ export default function TodoList({
             key={todo.id}
             todo={todo}
             isSelected={false}
+            projects={projects}
             onUpdate={onTodoUpdate}
-            onDelete={onTodoDelete}
-            onEdit={onTodoEdit}
+            // onDelete={onTodoDelete}
+            // onEdit={onTodoEdit}
             onClick={onTodoClick}
           />
         ))}

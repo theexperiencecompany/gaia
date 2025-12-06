@@ -1,8 +1,15 @@
 import type { Metadata } from "next";
 
+import JsonLd from "@/components/seo/JsonLd";
 import { BlogList } from "@/features/blog/components/BlogList";
 import { getAllBlogPosts } from "@/lib/blog";
-import { generatePageMetadata } from "@/lib/seo";
+import {
+  generateBreadcrumbSchema,
+  generateItemListSchema,
+  generatePageMetadata,
+  generateWebPageSchema,
+  siteConfig,
+} from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Blog",
@@ -24,13 +31,38 @@ export default async function BlogPage() {
   try {
     const blogs = await getAllBlogPosts(false);
 
+    const webPageSchema = generateWebPageSchema(
+      "Blog",
+      "Read the latest updates, insights, and stories from the GAIA team.",
+      `${siteConfig.url}/blog`,
+      [
+        { name: "Home", url: siteConfig.url },
+        { name: "Blog", url: `${siteConfig.url}/blog` },
+      ],
+    );
+    const breadcrumbSchema = generateBreadcrumbSchema([
+      { name: "Home", url: siteConfig.url },
+      { name: "Blog", url: `${siteConfig.url}/blog` },
+    ]);
+    const itemListSchema = generateItemListSchema(
+      blogs.map((blog) => ({
+        name: blog.title,
+        url: `${siteConfig.url}/blog/${blog.slug}`,
+        description: blog.content.slice(0, 160),
+      })),
+      "BlogPosting",
+    );
+
     return (
-      <div className="flex min-h-screen w-screen justify-center py-28">
-        <div className="w-full max-w-(--breakpoint-lg) space-y-4">
-          <h1>Blog</h1>
-          <BlogList blogs={blogs} />
+      <>
+        <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
+        <div className="flex min-h-screen w-screen justify-center py-28">
+          <div className="w-full max-w-(--breakpoint-lg) space-y-4">
+            <h1>Blog</h1>
+            <BlogList blogs={blogs} />
+          </div>
         </div>
-      </div>
+      </>
     );
   } catch (error) {
     return (

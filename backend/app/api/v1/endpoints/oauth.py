@@ -15,6 +15,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
 from workos import WorkOSClient
 
+
 router = APIRouter()
 http_async_client = httpx.AsyncClient()
 

@@ -59,11 +59,7 @@ export default function LabelsFieldChip({
             {/* Add new label */}
             <div className="mb-1">
               <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <GridIcon
-                    size={14}
-                    className="absolute top-1/2 left-3 z-10 -translate-y-1/2 transform text-zinc-500"
-                  />
+                <div className="relative flex-1 mb-3">
                   <Input
                     placeholder="Add label..."
                     value={newLabel}
@@ -78,8 +74,7 @@ export default function LabelsFieldChip({
                     size="sm"
                     aria-label="Add new label"
                     classNames={{
-                      input:
-                        "pl-8 text-sm text-zinc-200 placeholder:text-zinc-500",
+                      input: "text-sm text-zinc-200 placeholder:text-zinc-500",
                       inputWrapper:
                         "border-0 bg-zinc-800 hover:bg-zinc-700 focus:bg-zinc-700 data-[focus=true]:bg-zinc-700",
                     }}
@@ -112,9 +107,9 @@ export default function LabelsFieldChip({
                 {value.map((label) => (
                   <div
                     key={label}
-                    className="flex items-center gap-1 rounded-md bg-zinc-800 px-2 py-1 text-sm text-zinc-300 hover:bg-zinc-700"
+                    className="flex items-center gap-1 rounded-md bg-zinc-800 px-2 py-1 text-sm text-zinc-400 hover:bg-zinc-700"
                   >
-                    <GridIcon size={12} />
+                    <Tag01Icon size={12} />
                     {label}
                     <Button
                       variant="light"

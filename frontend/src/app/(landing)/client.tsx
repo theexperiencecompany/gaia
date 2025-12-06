@@ -6,6 +6,7 @@ import { lazy, Suspense, useEffect } from "react";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import CommunitySection from "@/features/landing/components/sections/CommunitySection";
+import ProductivityOS from "@/features/landing/components/sections/ProductivityOS";
 import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
 
 const AllYourTools = lazy(
@@ -57,14 +58,18 @@ export default function LandingPageClient() {
       <div className="absolute inset-0 h-screen w-full">
         <Image
           src={"/images/wallpapers/switzerland_night.webp"}
+          // src={
+          //   // "https://i.pinimg.com/1200x/12/91/13/129113c772cac2f5dd337c1ea306ddcb.jpg"
+          //   "https://i.pinimg.com/1200x/a7/aa/c7/a7aac749d7a7dc6edb92f3c13e80a53a.jpg"
+          // }
           alt="GAIA Hero Section Wallpaper"
           sizes="100vw"
           priority
           fill
           className="aspect-video object-cover opacity-90"
         />
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30vh] bg-gradient-to-b from-background to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-gradient-to-t from-background via-background to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-gradient-to-b from-background to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[30vh] bg-gradient-to-t from-background to-transparent" />
       </div>
 
       <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
@@ -89,16 +94,20 @@ export default function LandingPageClient() {
             className="absolute top-140 z-0 h-[120vh] w-screen blur-lg"
             style={{
               backgroundImage: `
-                      radial-gradient(circle at center, #00bbff80 0%, transparent 70%)
-                    `,
+              radial-gradient(circle at center, #00bbff80 0%, transparent 70%)
+              `,
               opacity: 0.6,
             }}
           />
-
-          <Suspense fallback={<SuspenseLoader />}>
-            <AllYourTools />
-          </Suspense>
         </div>
+
+        <Suspense fallback={<SuspenseLoader />}>
+          <ProductivityOS />
+        </Suspense>
+
+        <Suspense fallback={<SuspenseLoader />}>
+          <AllYourTools />
+        </Suspense>
 
         <Suspense fallback={<SuspenseLoader />}>
           <WorkflowSection />

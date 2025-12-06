@@ -67,6 +67,11 @@ export default function ProfilePage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-black">
+      <h1 className="sr-only">
+        {holoCardData?.name
+          ? `${holoCardData.name} - GAIA Profile`
+          : "GAIA Profile"}
+      </h1>
       <div className="flex flex-col items-center gap-8">
         {isLoading ? (
           <Skeleton className="h-[500px] w-[350px] rounded-2xl" />

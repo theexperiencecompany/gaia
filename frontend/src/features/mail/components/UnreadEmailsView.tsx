@@ -69,7 +69,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
       ) : (
         <EmailListCard
           emails={formattedEmails}
-          backgroundColor="bg-[#141414]"
+          backgroundColor="bg-secondary-bg"
           maxHeight=""
           isCollapsible={false}
         />

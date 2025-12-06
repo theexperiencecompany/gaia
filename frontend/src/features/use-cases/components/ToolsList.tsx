@@ -24,8 +24,11 @@ export default function ToolsList({ tools }: ToolsListProps) {
     setIsExpanded(!isExpanded);
   };
 
-  const displayIcons = tools.slice(0, 3);
+  const uniqueTools = Array.from(
+    new Map(tools.map((tool) => [tool.category, tool])).values(),
+  );
 
+  const displayIcons = uniqueTools.slice(0, 3);
   return (
     <div className="inline-block" onClick={toggleExpanded}>
       <AnimatePresence mode="wait">

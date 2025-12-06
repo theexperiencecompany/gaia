@@ -1,13 +1,14 @@
 import { Button } from "@heroui/button";
+import { Input } from "@heroui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import type React from "react";
 import { useState } from "react";
-
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useFetchIntegrationStatus } from "@/features/integrations";
+import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { ConnectIcon, Gmail, GoogleCalendarIcon } from "@/icons";
+import { CancelIcon, ConnectIcon, Gmail, GoogleCalendarIcon } from "@/icons";
 
 interface OnboardingIntegrationButtonsProps {
   className?: string;
@@ -16,14 +17,11 @@ interface OnboardingIntegrationButtonsProps {
 export const OnboardingIntegrationButtons: React.FC<
   OnboardingIntegrationButtonsProps
 > = ({ className = "" }) => {
-  // Force refetch on mount to show updated status after OAuth
-  useFetchIntegrationStatus({ refetchOnMount: "always" });
-
+  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
   const { connectIntegration, getIntegrationStatus, integrations } =
     useIntegrations();
-  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+  useFetchIntegrationStatus({ refetchOnMount: "always" });
 
-  // Check integration statuses
   const gmailStatus = getIntegrationStatus("gmail");
   const calendarStatus = getIntegrationStatus("google_calendar");
   const isGmailConnected = gmailStatus?.connected || false;
@@ -53,14 +51,16 @@ export const OnboardingIntegrationButtons: React.FC<
     }
   };
 
-  // Filter out Gmail and Google Calendar from the list, and only show available integrations
-  const otherIntegrations = integrations.filter(
+  const baseIntegrations = integrations.filter(
     (int) =>
       int.id !== "gmail" &&
       int.id !== "google_calendar" &&
-      int.loginEndpoint && // Only show integrations that can be connected
-      !int.isSpecial, // Exclude special/unified integrations
+      int.loginEndpoint &&
+      !int.isSpecial,
   );
+
+  const { searchQuery, setSearchQuery, clearSearch, filteredIntegrations } =
+    useIntegrationSearch(baseIntegrations);
 
   return (
     <div className={`mt-3 ml-1 flex w-fit flex-col gap-2 ${className}`}>
@@ -102,32 +102,55 @@ export const OnboardingIntegrationButtons: React.FC<
               Connect More Integrations
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-fit overflow-hidden rounded-2xl p-0">
-            <div className="pt-4 pb-2">
-              <p className="text-center text-sm font-semibold">
-                More Integrations
-              </p>
-              <p className="mt-0.5 text-center text-xs text-zinc-500">
-                Connect additional services
-              </p>
+
+          <PopoverContent className="w-fit overflow-hidden rounded-2xl p-0 relative min-h-100 min-w-130 max-w-130 flex flex-col justify-start">
+            <div className="flex w-full justify-between px-4 items-center gap-1">
+              <div className="pt-4 pb-2 w-full gap-0.5">
+                <p className="text-sm font-semibold">More Integrations</p>
+                <p className="text-xs text-zinc-500">
+                  Connect additional services
+                </p>
+              </div>
+
+              <Input
+                variant="flat"
+                radius="full"
+                size="sm"
+                placeholder="Search..."
+                value={searchQuery}
+                isClearable
+                onValueChange={setSearchQuery}
+                onClear={clearSearch}
+              />
+
+              <Button
+                type="button"
+                isIconOnly
+                variant="light"
+                size="sm"
+                onPress={() => setIsPopoverOpen(false)}
+              >
+                <CancelIcon className="text-zinc-300" width={15} height={15} />
+              </Button>
             </div>
-            <ScrollShadow className="max-h-80">
+
+            <ScrollShadow className="max-h-80 w-full">
               <div className="py-2 pl-2">
-                {otherIntegrations.length === 0 ? (
+                {filteredIntegrations.length === 0 ? (
                   <div className="px-4 py-8 text-center">
                     <p className="text-sm text-zinc-500">
                       No additional integrations available
                     </p>
                   </div>
                 ) : (
-                  otherIntegrations.map((integration) => {
+                  filteredIntegrations.map((integration) => {
                     const status = getIntegrationStatus(integration.id);
                     const isConnected = status?.connected || false;
 
                     return (
                       <div
                         key={integration.id}
-                        className="flex w-full max-w-xl items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-800/50"
+                        className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-800/50"
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-3">
                           <div className="flex-shrink-0">
@@ -138,6 +161,7 @@ export const OnboardingIntegrationButtons: React.FC<
                               showBackground: false,
                             })}
                           </div>
+
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium">
                               {integration.name}
@@ -149,6 +173,7 @@ export const OnboardingIntegrationButtons: React.FC<
                             )}
                           </div>
                         </div>
+
                         <Button
                           size="sm"
                           variant="flat"

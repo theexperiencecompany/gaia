@@ -28,7 +28,7 @@ export default function WorkflowStep({
   const dotTextSize = isLarge ? "text-sm" : "text-xs";
   const chipTextSize = isLarge ? "text-sm" : "text-xs";
   const chipPadding = isLarge ? "py-5!" : "py-4!";
-  const iconSize = isLarge ? 20 : 17;
+  const iconSize = isLarge ? 22 : 17;
   const titleTextSize = isLarge ? "text-base" : "text-sm";
   const descriptionTextSize = isLarge ? "text-sm" : "text-xs";
   const chipSize = isLarge ? "md" : "sm";
@@ -50,7 +50,8 @@ export default function WorkflowStep({
           <Tooltip content="Tool Name" size={chipSize} color="foreground">
             <Chip
               radius="sm"
-              className={`${chipPadding} pl-2 ${chipTextSize}`}
+              variant="flat"
+              className={`${chipPadding} pl-2 space-x-1 ${chipTextSize}`}
               startContent={getToolCategoryIcon(step.tool_category, {
                 size: iconSize,
                 width: iconSize,
@@ -67,7 +68,12 @@ export default function WorkflowStep({
               color="primary"
               className="text-primary capitalize"
             >
-              {step.tool_category.replace("_", " ")}
+              {step.tool_category
+                .replaceAll("_", " ")
+                .replace(
+                  /^([a-zA-Z])([\s\S]*)$/,
+                  (_, first, rest) => first.toUpperCase() + rest.toLowerCase(),
+                )}
             </Chip>
           </Tooltip>
         </div>

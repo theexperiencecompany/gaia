@@ -18,9 +18,9 @@ from app.services.composio.composio_service import get_composio_service
 from app.services.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
+    queue_personalization,
     update_onboarding_preferences,
 )
-from app.utils.redis_utils import RedisPoolManager
 from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from app.core.websocket_manager import websocket_manager
@@ -28,24 +28,7 @@ from app.core.websocket_manager import websocket_manager
 router = APIRouter()
 
 
-async def _queue_personalization(user_id: str) -> None:
-    """Queue post-onboarding personalization as an ARQ background task."""
-    try:
-        pool = await RedisPoolManager.get_pool()
-        job = await pool.enqueue_job("process_personalization_task", user_id)
-
-        if job:
-            logger.info(
-                f"Queued personalization for user {user_id} with job ID {job.job_id}"
-            )
-        else:
-            logger.error(f"Failed to queue personalization for user {user_id}")
-
-    except Exception as e:
-        logger.error(f"Error queuing personalization for user {user_id}: {e}")
-
-
-@router.post("/", response_model=OnboardingResponse)
+@router.post("", response_model=OnboardingResponse)
 async def complete_user_onboarding(
     onboarding_data: OnboardingRequest,
     background_tasks: BackgroundTasks,
@@ -61,7 +44,10 @@ async def complete_user_onboarding(
     """
     try:
         updated_user = await complete_onboarding(
-            user["user_id"], onboarding_data, user_timezone=tz_info[0]
+            user["user_id"],
+            onboarding_data,
+            background_tasks,
+            user_timezone=tz_info[0],
         )
 
         composio_service = get_composio_service()
@@ -79,7 +65,7 @@ async def complete_user_onboarding(
             logger.info(
                 f"User {user['user_id']} has no Gmail - queueing personalization directly"
             )
-            background_tasks.add_task(_queue_personalization, user["user_id"])
+            background_tasks.add_task(queue_personalization, user["user_id"])
 
         return OnboardingResponse(
             success=True, message="Onboarding completed successfully", user=updated_user

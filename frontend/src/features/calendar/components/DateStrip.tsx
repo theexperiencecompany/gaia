@@ -20,9 +20,9 @@ export const DateStrip: React.FC<DateStripProps> = ({
   columnVirtualizer,
 }) => {
   return (
-    <div className="sticky top-0 z-[30] flex min-h-9 min-w-fit flex-shrink-0 border-b border-zinc-800 bg-[#1a1a1a]">
+    <div className="sticky top-0 z-[30] flex min-h-9 min-w-fit flex-shrink-0 border-b border-zinc-800 bg-primary-bg">
       {/* Time Label Column */}
-      <div className="sticky left-0 z-[11] w-20 flex-shrink-0 border-r border-zinc-800 bg-[#1a1a1a]" />
+      <div className="sticky left-0 z-[11] w-20 flex-shrink-0 border-r border-zinc-800 bg-primary-bg" />
 
       {/* Date Headers - Virtualized */}
       <div className="relative min-h-9 flex-1 overflow-hidden">
@@ -60,7 +60,7 @@ export const DateStrip: React.FC<DateStripProps> = ({
                       ? "bg-zinc-800 text-white hover:bg-zinc-700/40"
                       : isWeekend
                         ? "hover:bg-zinc- bg-zinc-900 text-zinc-400"
-                        : "bg-[#1a1a1a] text-zinc-400 hover:bg-zinc-800"
+                        : "bg-primary-bg text-zinc-400 hover:bg-zinc-800"
                 }`}
                 style={{
                   width: `${virtualColumn.size}px`,

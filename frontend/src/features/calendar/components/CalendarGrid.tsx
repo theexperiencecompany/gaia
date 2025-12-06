@@ -111,7 +111,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
         <CurrentTimeLine />
 
         <div
-          className="sticky left-0 z-[11] w-20 flex-shrink-0 border-r border-zinc-800 bg-[#1a1a1a]"
+          className="sticky left-0 z-[11] w-20 flex-shrink-0 border-r border-zinc-800 bg-primary-bg"
           style={{ height: `${hours.length * 64}px` }}
         >
           <CurrentTimeLabel />
