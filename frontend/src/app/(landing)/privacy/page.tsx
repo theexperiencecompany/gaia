@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
-import { generatePageMetadata, generateWebPageSchema } from "@/lib/seo";
+import {
+  generateBreadcrumbSchema,
+  generatePageMetadata,
+  generateWebPageSchema,
+  siteConfig,
+} from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Privacy Policy",
@@ -24,11 +29,19 @@ const PrivacyPolicy = () => {
     "Privacy Policy",
     "Review GAIA's Privacy Policy to learn how we collect, use, and protect your personal data.",
     "https://heygaia.io/privacy",
+    [
+      { name: "Home", url: siteConfig.url },
+      { name: "Privacy Policy", url: `${siteConfig.url}/privacy` },
+    ],
   );
+  const breadcrumbSchema = generateBreadcrumbSchema([
+    { name: "Home", url: siteConfig.url },
+    { name: "Privacy Policy", url: `${siteConfig.url}/privacy` },
+  ]);
 
   return (
     <>
-      <JsonLd data={privacySchema} />
+      <JsonLd data={[privacySchema, breadcrumbSchema]} />
       <div className="flex w-screen flex-col items-center justify-center">
         <div className="privacy-policy max-w-(--breakpoint-xl) p-6 pt-24">
           <h1 className="mb-4 text-2xl font-bold">Privacy Policy</h1>

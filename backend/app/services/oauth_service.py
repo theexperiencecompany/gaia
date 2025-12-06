@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from app.config.loggers import app_logger as logger
 from app.config.oauth_config import (
@@ -8,10 +8,15 @@ from app.config.oauth_config import (
 )
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
+from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import users_collection
+from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
+from app.models.user_models import BioStatus
 from app.services.composio.composio_service import get_composio_service
+from app.services.onboarding_service import _queue_gmail_processing
 from app.utils.email_utils import add_contact_to_resend, send_welcome_email
+from bson import ObjectId
 from fastapi import HTTPException
 
 
@@ -194,3 +199,89 @@ async def check_multiple_integrations_status(
     except Exception as e:
         logger.error(f"Error checking multiple integrations status: {e}")
         return {integration_id: False for integration_id in integration_ids}
+
+
+async def handle_oauth_connection(
+    user_id: str,
+    integration_config: Any,
+    connected_account_id: str,
+    background_tasks: Any,
+) -> None:
+    """
+    Handle successful OAuth connection: setup triggers, update bio status, queue processing.
+
+    Args:
+        user_id: The user ID
+        integration_config: The integration configuration object
+        connected_account_id: The connected account ID from Composio
+        background_tasks: FastAPI background tasks
+    """
+    # Setup triggers if available
+    if integration_config.associated_triggers:
+        composio_service = get_composio_service()
+        logger.info(
+            f"Setting up {len(integration_config.associated_triggers)} triggers "
+            f"for user {user_id} and integration {integration_config.id}"
+        )
+        background_tasks.add_task(
+            composio_service.handle_subscribe_trigger,
+            user_id=user_id,
+            triggers=integration_config.associated_triggers,
+        )
+
+    # Process Gmail emails to memory if this is a Gmail connection
+    if integration_config.id == "gmail":
+        logger.info(f"Starting Gmail email processing for user {user_id}")
+
+        # Check if user has completed onboarding and update bio_status to processing
+        try:
+            user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+            if user_doc and user_doc.get("onboarding", {}).get("completed"):
+                current_bio_status = user_doc.get("onboarding", {}).get("bio_status")
+
+                # If bio was generated without Gmail, update status to processing
+                if current_bio_status in [BioStatus.NO_GMAIL, "no_gmail"]:
+                    await users_collection.update_one(
+                        {"_id": ObjectId(user_id)},
+                        {
+                            "$set": {
+                                "onboarding.bio_status": BioStatus.PROCESSING,
+                                "updated_at": datetime.now(timezone.utc),
+                            }
+                        },
+                    )
+                    logger.info(
+                        f"Updated bio_status to processing for user {user_id} "
+                        f"(was {current_bio_status})"
+                    )
+
+                    # Send WebSocket update to notify frontend
+                    try:
+                        if isinstance(user_id, str) and user_id:
+                            await websocket_manager.broadcast_to_user(
+                                user_id=user_id,
+                                message={
+                                    "type": "bio_status_update",
+                                    "data": {"bio_status": BioStatus.PROCESSING},
+                                },
+                            )
+                        else:
+                            logger.warning(
+                                f"Cannot broadcast WebSocket update: user_id is not a valid string ({user_id})"
+                            )
+                    except Exception as ws_error:
+                        logger.warning(f"Failed to send WebSocket update: {ws_error}")
+        except Exception as e:
+            logger.error(
+                f"Error updating bio_status for user {user_id}: {e}", exc_info=True
+            )
+
+        background_tasks.add_task(_queue_gmail_processing, user_id)
+
+    # Invalidate OAuth status cache for this user
+    try:
+        cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
+        await delete_cache(cache_key)
+        logger.info(f"OAuth status cache invalidated for user {user_id}")
+    except Exception as e:
+        logger.warning(f"Failed to invalidate OAuth status cache: {e}")

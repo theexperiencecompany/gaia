@@ -2,7 +2,7 @@
 
 import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import Image from "next/image";
-import type { Article, WithContext } from "schema-dts";
+import type { Article, BreadcrumbList, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
 import BlogMetadata from "@/features/blog/components/BlogMetadata";
@@ -13,11 +13,13 @@ import type { BlogPost } from "@/lib/blog";
 interface BlogPostClientProps {
   blog: BlogPost;
   structuredData: WithContext<Article>;
+  breadcrumbSchema: WithContext<BreadcrumbList>;
 }
 
 export default function BlogPostClient({
   blog,
   structuredData,
+  breadcrumbSchema,
 }: BlogPostClientProps) {
   if (!blog) {
     return (
@@ -29,7 +31,7 @@ export default function BlogPostClient({
 
   return (
     <>
-      <JsonLd data={structuredData} />
+      <JsonLd data={[structuredData, breadcrumbSchema]} />
       <SearchedImageDialog />
       <div className="flex h-fit min-h-screen w-screen justify-center overflow-y-auto pt-28">
         <div className="mx-auto w-full px-5 sm:p-0">

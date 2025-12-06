@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 
+import JsonLd from "@/components/seo/JsonLd";
 import About from "@/features/about/components/About";
-import { generatePageMetadata } from "@/lib/seo";
+import {
+  generateAboutPageSchema,
+  generateBreadcrumbSchema,
+  generatePageMetadata,
+  generateWebPageSchema,
+  siteConfig,
+} from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "About GAIA",
@@ -23,5 +30,25 @@ export const metadata: Metadata = generatePageMetadata({
 });
 
 export default function AboutPage() {
-  return <About />;
+  const aboutSchema = generateAboutPageSchema();
+  const webPageSchema = generateWebPageSchema(
+    "About GAIA",
+    "Meet the founders behind GAIA and learn why we're building a personal AI assistant.",
+    `${siteConfig.url}/about`,
+    [
+      { name: "Home", url: siteConfig.url },
+      { name: "About", url: `${siteConfig.url}/about` },
+    ],
+  );
+  const breadcrumbSchema = generateBreadcrumbSchema([
+    { name: "Home", url: siteConfig.url },
+    { name: "About", url: `${siteConfig.url}/about` },
+  ]);
+
+  return (
+    <>
+      <JsonLd data={[aboutSchema, webPageSchema, breadcrumbSchema]} />
+      <About />
+    </>
+  );
 }

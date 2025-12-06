@@ -2,11 +2,18 @@ import type { Metadata } from "next";
 import Image from "next/image";
 
 import UseCasesPageClient from "@/app/(landing)/use-cases/client";
+import JsonLd from "@/components/seo/JsonLd";
 import {
   type CommunityWorkflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
-import { generatePageMetadata } from "@/lib/seo";
+import {
+  generateBreadcrumbSchema,
+  generateItemListSchema,
+  generatePageMetadata,
+  generateWebPageSchema,
+  siteConfig,
+} from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Use Cases & Workflows",
@@ -37,8 +44,31 @@ export default async function UseCasesPage() {
     console.error("Error loading community workflows:", error);
   }
 
+  const webPageSchema = generateWebPageSchema(
+    "Use Cases & Workflows",
+    "Explore powerful workflows and use cases for GAIA. Discover how others are using AI to automate tasks.",
+    `${siteConfig.url}/use-cases`,
+    [
+      { name: "Home", url: siteConfig.url },
+      { name: "Use Cases", url: `${siteConfig.url}/use-cases` },
+    ],
+  );
+  const breadcrumbSchema = generateBreadcrumbSchema([
+    { name: "Home", url: siteConfig.url },
+    { name: "Use Cases", url: `${siteConfig.url}/use-cases` },
+  ]);
+  const itemListSchema = generateItemListSchema(
+    communityWorkflows.map((workflow) => ({
+      name: workflow.title,
+      url: `${siteConfig.url}/use-cases/${workflow.id}`,
+      description: workflow.description || "",
+    })),
+    "Article",
+  );
+
   return (
     <div className="relative h-fit min-h-screen pt-110">
+      <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
       <div className="absolute inset-0 top-0 z-0 h-[70vh] w-[100%]">
         <Image
           src={"/images/wallpapers/meadow.webp"}

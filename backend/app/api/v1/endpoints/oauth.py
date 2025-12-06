@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
@@ -7,16 +6,11 @@ from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
-from app.core.websocket_manager import websocket_manager
-from app.db.mongodb.collections import users_collection
 from app.db.redis import delete_cache
-from app.models.user_models import BioStatus
 from app.services.composio.composio_service import get_composio_service
-from app.services.oauth_service import store_user_info
+from app.services.oauth_service import handle_oauth_connection, store_user_info
 from app.services.oauth_state_service import validate_and_consume_oauth_state
 from app.utils.oauth_utils import fetch_user_info_from_google, get_tokens_from_code
-from app.utils.redis_utils import RedisPoolManager
-from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
 from workos import WorkOSClient
@@ -110,51 +104,6 @@ async def workos_callback(
         return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=server_error")
 
 
-async def _handle_gmail_connection(user_id: str, user_doc: dict) -> None:
-    """Handle Gmail-specific post-connection processing."""
-    already_processed = user_doc.get("email_memory_processed", False)
-
-    if already_processed:
-        logger.info(f"User {user_id} emails already processed - skipping re-scan")
-        return
-
-    logger.info(f"Queueing Gmail email processing for user {user_id}")
-    pool = await RedisPoolManager.get_pool()
-    await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
-
-    await _update_bio_status_if_needed(user_id, user_doc)
-
-
-async def _update_bio_status_if_needed(user_id: str, user_doc: dict) -> None:
-    """Update bio status to PROCESSING if user previously had NO_GMAIL status."""
-    onboarding = user_doc.get("onboarding", {})
-    if not onboarding.get("completed"):
-        return
-
-    bio_status = onboarding.get("bio_status")
-    if bio_status not in [BioStatus.NO_GMAIL, "no_gmail"]:
-        return
-
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {
-            "$set": {
-                "onboarding.bio_status": BioStatus.PROCESSING,
-                "updated_at": datetime.now(timezone.utc),
-            }
-        },
-    )
-    logger.info(f"Updated bio_status to PROCESSING for user {user_id}")
-
-    await websocket_manager.broadcast_to_user(
-        user_id=user_id,
-        message={
-            "type": "bio_status_update",
-            "data": {"bio_status": BioStatus.PROCESSING},
-        },
-    )
-
-
 @router.get("/composio/callback", response_class=RedirectResponse)
 async def composio_callback(
     status: str,
@@ -246,31 +195,12 @@ async def composio_callback(
                 url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=user_mismatch"
             )
 
-        # Setup triggers if available
-        if integration_config.associated_triggers:
-            logger.info(
-                f"Setting up {len(integration_config.associated_triggers)} triggers "
-                f"for user {user_id} and integration {integration_config.id}"
-            )
-            background_tasks.add_task(
-                composio_service.handle_subscribe_trigger,
-                user_id=user_id,
-                triggers=integration_config.associated_triggers,
-            )
-
-        # Handle Gmail-specific processing
-        if integration_config.id == "gmail":
-            user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
-            if user_doc:
-                await _handle_gmail_connection(user_id, user_doc)
-
-        # Invalidate OAuth status cache for this user
-        try:
-            cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
-            await delete_cache(cache_key)
-            logger.info(f"OAuth status cache invalidated for user {user_id}")
-        except Exception as e:
-            logger.warning(f"Failed to invalidate OAuth status cache: {e}")
+        await handle_oauth_connection(
+            user_id=str(user_id),
+            integration_config=integration_config,
+            connected_account_id=connectedAccountId,
+            background_tasks=background_tasks,
+        )
 
         # Successful connection - redirect to frontend with success indicator
         logger.info(

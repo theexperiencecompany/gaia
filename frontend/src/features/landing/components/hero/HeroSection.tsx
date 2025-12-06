@@ -47,6 +47,7 @@ export default function HeroSection() {
           className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-8xl font-semibold"
           gradient="linear-gradient(to bottom, oklch(55.2% 0.016 285.938), oklch(21% 0.006 285.885))"
           disableIntersectionObserver
+          as="h1"
           showGlowTextBg
         />
 
