@@ -92,7 +92,7 @@ export default function OnboardingStepsCard() {
           title={
             <div className="flex items-center justify-start gap-2 font-normal">
               <h3 className="text-xs font-semibold text-zinc-100">
-                Getting Started
+                First Steps
               </h3>
               <span className="text-xs text-zinc-500">0/5</span>
             </div>

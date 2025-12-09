@@ -13,7 +13,7 @@ import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
-import { ArrowDown01Icon, ChevronDown, StarFilledIcon } from "@/icons";
+import { ChevronDown, StarFilledIcon } from "@/icons";
 import { posthog } from "@/lib";
 
 import { Github } from "../shared";

@@ -16,10 +16,6 @@ interface ChatSuggestion {
   category: string;
 }
 
-interface ChatSuggestionsProps {
-  onSubmitSuggestion?: () => void;
-}
-
 const getAllSuggestions = (): ChatSuggestion[] => [
   // Default suggestions shown on page load
   {
@@ -150,7 +146,7 @@ const getAllSuggestions = (): ChatSuggestion[] => [
   {
     id: 15,
     icon: getToolCategoryIcon("creative", { showBackground: true }),
-    text: "Generate an image for my project",
+    text: "Generate an image of a dog",
     category: "creative",
   },
   {
@@ -239,15 +235,15 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
           return (
             <div
               key={suggestion.id}
-              className="flex min-h-20 w-full cursor-pointer flex-col justify-start gap-2 rounded-2xl bg-zinc-800/70 p-4 text-zinc-400 transition-colors hover:bg-zinc-700/70"
+              className="flex min-h-10 h-fit w-full cursor-pointer flex-row justify-start items-center gap-2 rounded-2xl bg-zinc-800/70 p-3 text-zinc-400 transition-colors hover:bg-zinc-700/70"
               onClick={() => handleSuggestionClick(suggestion)}
             >
               <div className="h-6">
-                <div className="flex aspect-square h-fit w-fit items-center justify-center">
+                <div className="flex aspect-square h-fit w-fit items-center justify-center min-h-6 min-w-6">
                   {suggestion.icon}
                 </div>
               </div>
-              <div className="text-sm">{suggestion.text}</div>
+              <div className="text-sm truncate">{suggestion.text}</div>
             </div>
           );
         })}

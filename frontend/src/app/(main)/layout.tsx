@@ -16,7 +16,6 @@ import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
 import { useUser } from "@/features/auth/hooks/useUser";
 import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
 import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
-import OnboardingStepsCard from "@/features/onboarding/components/OnboardingStepsCard";
 import { isOnboardingPhaseUpdateMessage } from "@/features/onboarding/types/websocket";
 import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
@@ -231,7 +230,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             {shouldShowPersonalizationCard && (
               <ContextGatheringLoader onComplete={openHoloCardModal} />
             )}
-            {shouldShowGettingStartedCard && <OnboardingStepsCard />}
+            {/* {shouldShowGettingStartedCard && <OnboardingStepsCard />} */}
           </div>
         )}
       </SidebarProvider>

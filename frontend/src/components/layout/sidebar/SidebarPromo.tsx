@@ -2,7 +2,6 @@
 
 import { Button } from "@heroui/button";
 import Link from "next/link";
-import type React from "react";
 import { useEffect, useState } from "react";
 
 import { RaisedButton } from "@/components/ui/raised-button";

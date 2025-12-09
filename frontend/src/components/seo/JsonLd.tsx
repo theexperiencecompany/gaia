@@ -20,7 +20,6 @@ export default function JsonLd({ data }: JsonLdProps) {
           // biome-ignore lint/suspicious/noArrayIndexKey: mapping json ld is fine
           key={`jsonld-${baseId}-${index}`}
           type="application/ld+json"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: setting json ld schema is fine
           dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
         />
       ))}
