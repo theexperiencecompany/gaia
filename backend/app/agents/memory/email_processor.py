@@ -30,14 +30,6 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, List
 
-from bson import ObjectId
-
-from app.helpers.email_helpers import (
-    mark_email_processing_complete,
-    process_email_content,
-    store_emails_to_zep,
-    store_single_profile,
-)
 from app.agents.memory.profile_crawler import crawl_profile_url
 from app.agents.memory.profile_extractor import (
     PLATFORM_CONFIG,
@@ -47,12 +39,19 @@ from app.agents.memory.profile_extractor import (
 )
 from app.config.loggers import memory_logger as logger
 from app.db.mongodb.collections import users_collection
+from app.helpers.email_helpers import (
+    mark_email_processing_complete,
+    process_email_content,
+    store_emails_to_zep,
+    store_single_profile,
+)
 from app.services.mail.mail_service import search_messages
 from app.services.memory_service import memory_service
 from app.services.post_onboarding_service import (
     emit_progress,
     process_post_onboarding_personalization,
 )
+from bson import ObjectId
 
 # Constants
 EMAIL_QUERY = "in:inbox"
@@ -75,6 +74,18 @@ async def _search_platform_emails_parallel(user_id: str) -> Dict[str, List[Dict]
         Dict mapping platform names to their email lists
     """
     search_start = time.time()
+
+    # Emit progress update
+    try:
+        await emit_progress(
+            user_id,
+            "exploring",
+            "🔍 Searching for social profiles...",
+            60,
+            {"status": "searching_profiles"},
+        )
+    except Exception as e:
+        logger.warning(f"Failed to emit profile search progress: {e}")
 
     # Create parallel search tasks for each platform
     search_tasks = []
@@ -110,6 +121,18 @@ async def _search_platform_emails_parallel(user_id: str) -> Dict[str, List[Dict]
         f"Parallel Gmail searches completed in {elapsed:.2f}s: "
         f"found {total_found} platform emails across {len(platform_emails)} platforms"
     )
+
+    # Emit progress update
+    try:
+        await emit_progress(
+            user_id,
+            "exploring",
+            "🌐 Analyzing profiles...",
+            65,
+            {"status": "analyzing_profiles"},
+        )
+    except Exception as e:
+        logger.warning(f"Failed to emit profile analysis progress: {e}")
 
     return platform_emails
 
@@ -349,6 +372,18 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
         if not platforms_with_emails:
             return {"profiles_stored": 0}
 
+        # Emit progress update
+        try:
+            await emit_progress(
+                user_id,
+                "exploring",
+                f"🌐 Crawling {len(platforms_with_emails)} social profiles...",
+                70,
+                {"status": "crawling_profiles", "count": len(platforms_with_emails)},
+            )
+        except Exception as e:
+            logger.warning(f"Failed to emit profile crawling progress: {e}")
+
         # Step 2: Extract usernames and crawl profiles in parallel
         crawl_semaphore = asyncio.Semaphore(20)  # Limit concurrent crawls
         platform_tasks = []
@@ -399,6 +434,18 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
             f"Profile extraction completed in {elapsed:.2f}s: "
             f"{profiles_stored}/{len(platforms_with_emails)} profiles stored (including {discovered_count} discovered)"
         )
+
+        # Emit progress update
+        try:
+            await emit_progress(
+                user_id,
+                "exploring",
+                f"✨ Stored {profiles_stored} social profiles",
+                75,
+                {"status": "profiles_complete", "count": profiles_stored},
+            )
+        except Exception as e:
+            logger.warning(f"Failed to emit profiles complete progress: {e}")
 
         return {"profiles_stored": profiles_stored}
 
