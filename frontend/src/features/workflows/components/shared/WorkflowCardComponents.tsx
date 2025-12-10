@@ -1,19 +1,12 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
 
 import { CursorMagicSelection03Icon } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import {
-  Mail01Icon,
-  PlaneIcon,
-  PlayIcon,
-  Timer02Icon,
-  UserCircle02Icon,
-} from "@/icons";
+import { Mail01Icon, PlayIcon, Timer02Icon, UserCircle02Icon } from "@/icons";
 import { formatRunCount } from "@/utils/formatters";
 
 import type { Workflow } from "../../api/workflowApi";
@@ -107,27 +100,28 @@ export function TriggerDisplay({
   nextRunText,
   className = "",
 }: TriggerDisplayProps) {
-  return (
-    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
-      <div className="flex items-center gap-1 text-xs text-zinc-500">
-        <div className="w-4">
-          <TriggerIcon
-            triggerType={triggerType}
-            integrationId={integrationId}
-            size={15}
-          />
-        </div>
-        {triggerLabel}
-      </div>
-
-      {nextRunText && (
+  if (triggerLabel !== "Manual Trigger")
+    return (
+      <div className={`flex flex-wrap items-center gap-2 ${className}`}>
         <div className="flex items-center gap-1 text-xs text-zinc-500">
-          <Timer02Icon width={15} height={15} />
-          {nextRunText}
+          <div className="w-4">
+            <TriggerIcon
+              triggerType={triggerType}
+              integrationId={integrationId}
+              size={15}
+            />
+          </div>
+          {triggerLabel}
         </div>
-      )}
-    </div>
-  );
+
+        {nextRunText && (
+          <div className="flex items-center gap-1 text-xs text-zinc-500">
+            <Timer02Icon width={15} height={15} />
+            {nextRunText}
+          </div>
+        )}
+      </div>
+    );
 }
 
 // Reusable Run Count Component
@@ -151,67 +145,6 @@ export function RunCountDisplay({
         <span className="text-nowrap">{formatRunCount(totalExecutions)}</span>
       </div>
     );
-}
-
-// Reusable Run Workflow Button
-interface RunWorkflowButtonProps {
-  isLoading: boolean;
-  onPress: () => void;
-  size?: "sm" | "md" | "lg";
-  variant?: "flat" | "solid" | "bordered" | "light" | "ghost";
-  className?: string;
-}
-
-export function RunWorkflowButton({
-  isLoading,
-  onPress,
-  size = "sm",
-  variant = "flat",
-  className = "",
-}: RunWorkflowButtonProps) {
-  return (
-    <Button
-      color="primary"
-      size={size}
-      isLoading={isLoading}
-      onPress={onPress}
-      variant={variant}
-      className={`text-primary mt-auto ${className}`}
-    >
-      Run Workflow
-    </Button>
-  );
-}
-
-// Reusable Create Workflow Button
-interface CreateWorkflowButtonProps {
-  isLoading: boolean;
-  onPress: () => void;
-  size?: "sm" | "md" | "lg";
-  variant?: "flat" | "solid" | "bordered" | "light" | "ghost";
-  className?: string;
-}
-
-export function CreateWorkflowButton({
-  isLoading,
-  onPress,
-  size = "md",
-  variant = "solid",
-  className = "",
-}: CreateWorkflowButtonProps) {
-  return (
-    <Button
-      color="primary"
-      size={size}
-      variant={variant}
-      className={`font-medium mt-auto ${className}`}
-      isLoading={isLoading}
-      onPress={onPress}
-      endContent={<PlayIcon width={18} height={18} />}
-    >
-      Create
-    </Button>
-  );
 }
 
 // Reusable Activation Status Chip

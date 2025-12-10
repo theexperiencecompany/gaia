@@ -19,7 +19,7 @@ import {
   type House,
   usePersonalization,
 } from "@/features/onboarding/hooks/usePersonalization";
-import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
+import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { Rocket01Icon } from "@/icons";
 
 interface FeatureModalProps {
@@ -135,12 +135,14 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
               ) : (
                 (personalizationData?.suggested_workflows || []).map(
                   (workflow, index) => (
-                    <UseCaseCard
+                    <UnifiedWorkflowCard
                       key={workflow.id || index}
                       title={workflow.title}
                       description={workflow.description}
-                      action_type="workflow"
                       steps={workflow.steps}
+                      variant="explore"
+                      primaryAction="create"
+                      showExecutions={false}
                     />
                   ),
                 )

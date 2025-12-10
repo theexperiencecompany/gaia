@@ -5,43 +5,73 @@ import { useEffect, useState } from "react";
 
 import type { CommunityWorkflow } from "@/features/workflows/api/workflowApi";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
-import CommunityWorkflowCard from "@/features/workflows/components/CommunityWorkflowCard";
+import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 
 interface YouMightAlsoLikeProps {
   currentSlug: string;
+  categories?: string[];
 }
 
 export default function YouMightAlsoLike({
   currentSlug,
+  categories = [],
 }: YouMightAlsoLikeProps) {
   const [items, setItems] = useState<CommunityWorkflow[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    // Prevent fetching if already loading or if we already have items for this slug
-    if (isLoading) return;
-
     const fetchItems = async () => {
-      setIsLoading(true);
       try {
-        const resp = await workflowApi.getExploreWorkflows(12, 0);
-        const workflows = resp.workflows
-          .filter((w) => w.id !== currentSlug)
-          .sort(() => Math.random() - 0.5)
-          .slice(0, 6);
+        const resp = await workflowApi.getExploreWorkflows(50, 0);
+        let workflows = resp.workflows.filter((w) => w.id !== currentSlug);
+
+        // If categories are provided, prioritize workflows in the same category
+        if (categories.length > 0) {
+          const sameCategoryWorkflows = workflows.filter((w) =>
+            w.categories?.some((cat) => categories.includes(cat)),
+          );
+          const otherWorkflows = workflows.filter(
+            (w) => !w.categories?.some((cat) => categories.includes(cat)),
+          );
+
+          // Sort by popularity (total_executions)
+          const sortByPopularity = (
+            a: CommunityWorkflow,
+            b: CommunityWorkflow,
+          ) => {
+            const aExecutions = a.total_executions || 0;
+            const bExecutions = b.total_executions || 0;
+            return bExecutions - aExecutions;
+          };
+
+          sameCategoryWorkflows.sort(sortByPopularity);
+          otherWorkflows.sort(sortByPopularity);
+
+          // Take top 6: prioritize same category, then fill with others
+          workflows = [
+            ...sameCategoryWorkflows.slice(0, 6),
+            ...otherWorkflows,
+          ].slice(0, 6);
+        } else {
+          // No categories - just sort by popularity and take top 6
+          workflows = workflows
+            .sort((a, b) => {
+              const aExecutions = a.total_executions || 0;
+              const bExecutions = b.total_executions || 0;
+              return bExecutions - aExecutions;
+            })
+            .slice(0, 6);
+        }
 
         setItems(workflows);
       } catch (error) {
         console.error("Error fetching similar items:", error);
         setItems([]);
-      } finally {
-        setIsLoading(false);
       }
     };
 
     fetchItems();
-  }, [currentSlug]);
+  }, [currentSlug, categories]);
 
   if (items.length === 0) return null;
 
@@ -54,10 +84,12 @@ export default function YouMightAlsoLike({
         </h2>
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {items.map((workflow) => (
-            <CommunityWorkflowCard
+            <UnifiedWorkflowCard
               key={workflow.id}
-              workflow={workflow}
-              onClick={() => {
+              communityWorkflow={workflow}
+              variant="community"
+              showCreator={true}
+              onCardClick={() => {
                 router.push(`/use-cases/${workflow.id}`);
               }}
             />

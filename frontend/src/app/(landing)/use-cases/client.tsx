@@ -7,7 +7,7 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import PublishWorkflowCTA from "@/features/use-cases/components/PublishWorkflowCTA";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import type { CommunityWorkflow } from "@/features/workflows/api/workflowApi";
-import CommunityWorkflowCard from "@/features/workflows/components/CommunityWorkflowCard";
+import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 
 interface UseCasesPageClientProps {
   communityWorkflows: CommunityWorkflow[];
@@ -51,10 +51,12 @@ export default function UseCasesPageClient({
           ) : (
             <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
               {communityWorkflows.map((workflow) => (
-                <CommunityWorkflowCard
+                <UnifiedWorkflowCard
                   key={workflow.id}
-                  workflow={workflow}
-                  onClick={() => {
+                  communityWorkflow={workflow}
+                  variant="community"
+                  showCreator={true}
+                  onCardClick={() => {
                     router.push(`/use-cases/${workflow.id}`);
                   }}
                 />

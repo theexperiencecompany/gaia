@@ -10,13 +10,12 @@ import {
   StarAward01Icon,
   WorkflowCircle03Icon,
 } from "@/components/shared/icons";
-import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
 import type { UseCase } from "@/features/use-cases/types";
 import {
   type Workflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
-import WorkflowCard from "@/features/workflows/components/WorkflowCard";
+import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 
 // Register GSAP plugin
@@ -122,27 +121,10 @@ export default function UseCaseSection({
       scroller: scrollContainer,
       start: "top 50%",
       end: "bottom-=10 40%",
-      // snap: {
-      //   snapTo: 1, // snap to the closest section (1 means each one)
-      //   duration: 0.4, // lower = faster snapping (default is 0.5)
-      // },
-
-      onEnter: () => {
-        // Scrolling down - keep featured selected if no category is selected
-        if (selectedCategory === null) setSelectedCategory("featured");
-      },
-
-      onLeaveBack: () => {
-        // Scrolling up - only unselect if we're not on the default "featured" category
-        // Keep "featured" as the default when scrolling back up
-        if (selectedCategory !== null && selectedCategory !== "featured") {
-          setSelectedCategory("featured");
-        }
-      },
     });
 
     return () => trigger.kill();
-  }, [selectedCategory, dummySectionRef, getScrollContainer]);
+  }, [dummySectionRef, getScrollContainer]);
 
   const filteredUseCases =
     selectedCategory === null
@@ -314,14 +296,21 @@ export default function UseCaseSection({
                       ease: "easeOut",
                     }}
                   >
-                    <UseCaseCard
+                    <UnifiedWorkflowCard
                       title={useCase.title || ""}
                       description={useCase.description || ""}
-                      action_type={useCase.action_type || "prompt"}
+                      actionType={useCase.action_type || "prompt"}
                       prompt={useCase.prompt}
                       slug={useCase.slug}
                       steps={useCase.steps}
                       totalExecutions={useCase.total_executions || 0}
+                      showExecutions={true}
+                      variant="explore"
+                      primaryAction={
+                        useCase.action_type === "prompt"
+                          ? "insert-prompt"
+                          : "create"
+                      }
                     />
                   </motion.div>
                 ))}
@@ -353,10 +342,10 @@ export default function UseCaseSection({
                       ease: "easeOut",
                     }}
                   >
-                    <WorkflowCard
+                    <UnifiedWorkflowCard
                       workflow={workflow}
-                      variant="execution"
-                      showArrowIcon={false}
+                      variant="user"
+                      primaryAction="run"
                     />
                   </motion.div>
                 ))}

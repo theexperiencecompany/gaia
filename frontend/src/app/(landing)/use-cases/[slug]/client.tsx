@@ -2,6 +2,7 @@
 
 import { Avatar } from "@heroui/avatar";
 import { PlayIcon } from "@theexperiencecompany/gaia-icons/solid-standard";
+import Image from "next/image";
 import { useState } from "react";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -138,17 +139,22 @@ export default function UseCaseDetailClient({
     : communityWorkflow?.steps;
 
   return (
-    <>
+    <div className="relative">
+      <Image
+        src={"/images/wallpapers/meadow.webp"}
+        alt="GAIA Use-Cases Wallpaper"
+        priority
+        fill
+        className="[mask-image:linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)] object-cover opacity-15 z-0 w-screen fixed h-screen left-0 top-0 max-h-screen"
+      />
       <UseCaseDetailLayout
         breadcrumbs={breadcrumbs}
         title={title}
-        // description={useCase ? description : undefined}
         slug={currentSlug}
         isCreating={isCreating}
         onCreateWorkflow={handleCreateWorkflow}
         metaInfo={
           <>
-            {/* Creator - only for community workflows */}
             {showCreator && (
               <MetaInfoCard
                 icon={
@@ -197,7 +203,9 @@ export default function UseCaseDetailClient({
         }
         // detailedContent={}
         description={
-          useCase?.detailed_description || communityWorkflow?.description
+          useCase?.detailed_description ||
+          useCase?.description ||
+          communityWorkflow?.description
         }
         steps={
           steps && steps.length > 0 ? (
@@ -211,8 +219,14 @@ export default function UseCaseDetailClient({
             </div>
           ) : undefined
         }
+        categories={
+          useCase?.categories ||
+          (communityWorkflow?.metadata?.category
+            ? [communityWorkflow.metadata.category]
+            : [])
+        }
       />
       <FinalSection />
-    </>
+    </div>
   );
 }

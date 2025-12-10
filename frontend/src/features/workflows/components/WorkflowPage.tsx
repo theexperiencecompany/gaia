@@ -26,10 +26,9 @@ import {
   workflowApi,
 } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
-import CommunityWorkflowCard from "./CommunityWorkflowCard";
 import CreateWorkflowModal from "./CreateWorkflowModal";
 import EditWorkflowModal from "./EditWorkflowModal";
-import WorkflowCard from "./WorkflowCard";
+import UnifiedWorkflowCard from "./shared/UnifiedWorkflowCard";
 import { WorkflowListSkeleton } from "./WorkflowSkeletons";
 
 export default function WorkflowPage() {
@@ -262,10 +261,13 @@ export default function WorkflowPage() {
               "Create your first workflow to get started",
               refetch,
               (workflow) => (
-                <WorkflowCard
+                <UnifiedWorkflowCard
                   key={workflow.id}
                   workflow={workflow}
-                  onClick={() => handleWorkflowClick(workflow.id)}
+                  variant="user"
+                  showActivationStatus={true}
+                  primaryAction="none"
+                  onCardClick={() => handleWorkflowClick(workflow.id)}
                 />
               ),
               <Button color="primary" variant="flat" onPress={onOpen}>
@@ -297,10 +299,12 @@ export default function WorkflowPage() {
               "Be the first to publish a workflow to the community",
               loadCommunityWorkflows,
               (workflow) => (
-                <CommunityWorkflowCard
+                <UnifiedWorkflowCard
                   key={workflow.id}
-                  workflow={workflow}
-                  onClick={() => handleCommunityWorkflowClick(workflow.id)}
+                  communityWorkflow={workflow}
+                  variant="community"
+                  showCreator={true}
+                  onCardClick={() => handleCommunityWorkflowClick(workflow.id)}
                 />
               ),
             ),

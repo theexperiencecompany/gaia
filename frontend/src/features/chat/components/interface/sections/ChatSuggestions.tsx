@@ -4,9 +4,8 @@ import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
-import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflowCard";
-import { useSendMessage } from "@/hooks/useSendMessage";
-import { PlayIcon, UndoIcon } from "@/icons";
+import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
+import { UndoIcon } from "@/icons";
 import { posthog } from "@/lib/posthog";
 import { useComposerTextActions } from "@/stores/composerStore";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";
@@ -30,7 +29,6 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
     CommunityWorkflow[]
   >([]);
   const { clearInputText } = useComposerTextActions();
-  const sendMessage = useSendMessage();
   const { setContextualLoading } = useLoadingText();
 
   // Fetch featured workflows on mount
@@ -79,26 +77,6 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
     }
   }, [currentSuggestions, allWorkflows]);
 
-  const handleWorkflowClick = useCallback(
-    async (workflow: CommunityWorkflow) => {
-      // Track suggestion click
-      posthog.capture("chat:suggestion_clicked", {
-        workflow_id: workflow.id,
-        workflow_title: workflow.title,
-      });
-
-      // Set loading state with contextual message
-      setContextualLoading(true, workflow.title);
-
-      // Send message directly with the workflow title
-      await sendMessage(workflow.title);
-
-      // Clear the input text after sending
-      clearInputText();
-    },
-    [sendMessage, setContextualLoading, clearInputText],
-  );
-
   return (
     <div className="w-full max-w-4xl mt-10">
       <div className="mb-2 flex w-full items-end justify-between px-1 text-zinc-400">
@@ -121,43 +99,29 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
         exit={{ opacity: 0, y: -20 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
-        {currentSuggestions.map((workflow, index) => {
-          const footerContent = (
-            <div className="mt-1 flex w-full items-end justify-end gap-3">
-              <Button
-                color="primary"
-                className="font-medium ml-auto"
-                endContent={<PlayIcon width={18} height={18} />}
-                onPress={() => handleWorkflowClick(workflow)}
-              >
-                Try
-              </Button>
-            </div>
-          );
-
-          return (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{
-                duration: 0.3,
-                delay: index * 0.05, // Stagger animation
-                ease: "easeOut",
+        {currentSuggestions.map((workflow, index) => (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.3,
+              delay: index * 0.05,
+              ease: "easeOut",
+            }}
+            key={workflow.id}
+          >
+            <UnifiedWorkflowCard
+              communityWorkflow={workflow}
+              variant="suggestion"
+              showExecutions={true}
+              actionButtonLabel="Try"
+              onActionComplete={() => {
+                setContextualLoading(true, workflow.title);
+                clearInputText();
               }}
-              key={workflow.id}
-            >
-              <BaseWorkflowCard
-                title={workflow.title}
-                description={workflow.description}
-                steps={workflow.steps}
-                onClick={() => handleWorkflowClick(workflow)}
-                footerContent={footerContent}
-                showArrowIcon={false}
-                hideExecutions={true}
-              />
-            </motion.div>
-          );
-        })}
+            />
+          </motion.div>
+        ))}
       </motion.div>
     </div>
   );

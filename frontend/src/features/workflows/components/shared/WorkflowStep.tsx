@@ -47,21 +47,35 @@ export default function WorkflowStep({
       {/* Step content */}
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-2">
-          <Tooltip content="Tool Name" size={chipSize} color="foreground">
+          <Tooltip
+            content="Tool Name"
+            size={chipSize}
+            color="foreground"
+            showArrow
+          >
             <Chip
               radius="sm"
               variant="flat"
-              className={`${chipPadding} pl-2 space-x-1 ${chipTextSize}`}
-              startContent={getToolCategoryIcon(step.tool_category, {
-                size: iconSize,
-                width: iconSize,
-                height: iconSize,
-              })}
+              className={`${chipPadding} pl-2 space-x-1 truncate ${chipTextSize}`}
+              startContent={
+                <div className="min-w-fit">
+                  {getToolCategoryIcon(step.tool_category, {
+                    size: iconSize,
+                    width: iconSize,
+                    height: iconSize,
+                  })}
+                </div>
+              }
             >
               {formatToolName(step.tool_name)}
             </Chip>
           </Tooltip>
-          <Tooltip content="Tool Category" size={chipSize} color="foreground">
+          <Tooltip
+            content="Tool Category"
+            size={chipSize}
+            color="foreground"
+            showArrow
+          >
             <Chip
               size={chipSize}
               variant="flat"
