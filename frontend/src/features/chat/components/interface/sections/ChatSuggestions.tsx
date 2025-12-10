@@ -107,6 +107,13 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
           <UndoIcon width={16} height={16} className="text-zinc-400" />
         </Button>
       </div>
+
+      {currentSuggestions.length === 0 && (
+        <div className="text-sm text-zinc-400 flex items-center justify-center py-8">
+          No Suggestions found
+        </div>
+      )}
+
       <motion.div
         className="grid w-full grid-cols-3 gap-4"
         initial={{ opacity: 0, y: 20 }}

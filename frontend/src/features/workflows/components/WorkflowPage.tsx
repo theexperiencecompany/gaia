@@ -274,16 +274,17 @@ export default function WorkflowPage() {
             )}
           </div>
 
-          {renderSection(
-            "Explore & Discover",
-            "See what's possible with real examples that actually work!",
-            <UseCaseSection
-              centered={false}
-              dummySectionRef={pageRef}
-              hideUserWorkflows={true}
-              exploreWorkflows={exploreWorkflows}
-            />,
-          )}
+          {exploreWorkflows.length > 0 &&
+            renderSection(
+              "Explore & Discover",
+              "See what's possible with real examples that actually work!",
+              <UseCaseSection
+                centered={false}
+                dummySectionRef={pageRef}
+                hideUserWorkflows={true}
+                exploreWorkflows={exploreWorkflows}
+              />,
+            )}
 
           {renderSection(
             "Community Workflows",

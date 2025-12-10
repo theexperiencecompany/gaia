@@ -3,6 +3,7 @@ import { Chip } from "@heroui/chip";
 import { AnimatePresence, motion } from "framer-motion";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   ChevronUp,
@@ -220,7 +221,7 @@ export default function UseCaseSection({
     };
   }, []);
 
-  return (
+  return workflows.length > 0 ? (
     <div className="w-full" ref={dummySectionRef}>
       <div
         className={`mb-6 flex flex-wrap ${setShowUseCases ? "max-w-5xl mx-auto" : ""} ${centered ? "justify-center" : ""} items-center gap-2`}
@@ -372,11 +373,14 @@ export default function UseCaseSection({
         !isLoadingWorkflows &&
         workflows.length === 0 && (
           <div className="flex h-48 items-center justify-center">
-            <div className="text-center">
-              <p className="text-lg text-foreground-500">No workflows found</p>
-              <p className="text-sm text-foreground-600">
+            <div className="text-center space-y-1">
+              <p className="text-lg text-foreground-600">No workflows found</p>
+              <p className="text-sm text-foreground-400">
                 Create your first workflow to get started
               </p>
+              <Link href={"/workflows"} className="mt-4">
+                <Button color="primary">Create</Button>
+              </Link>
             </div>
           </div>
         )}
@@ -389,5 +393,5 @@ export default function UseCaseSection({
         </div>
       )}
     </div>
-  );
+  ) : null;
 }
