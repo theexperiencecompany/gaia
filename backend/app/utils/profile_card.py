@@ -256,10 +256,10 @@ async def generate_user_bio(
                 return (default_bio, BioStatus.NO_GMAIL)
 
         # Generate bio from memories using LLM
-        memory_summary = "\n".join([m.content for m in memories[:15]])
+        memory_summary = "\n".join([m.content for m in memories])
 
         prompt = USER_BIO_PROMPT.format(
-            name=name, profession=profession, memory_summary=memory_summary
+            name=name, profession=profession, memory_summary=memory_summary[:10000]
         )
 
         llm = init_llm(preferred_provider="gemini")

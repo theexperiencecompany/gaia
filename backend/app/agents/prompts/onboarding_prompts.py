@@ -36,9 +36,6 @@ Context:
 
 Style: Sassy best friend who sees through them. Third person. Call out patterns and quirks, not job titles.
 
-DO: Read between the lines. Notice contradictions. Make observations that feel earned.
-DON'T: Resume speak. Generic compliments. List obvious facts.
-
 Examples:
 
 ❌ "Alex is a passionate software engineer who loves coding and problem-solving."

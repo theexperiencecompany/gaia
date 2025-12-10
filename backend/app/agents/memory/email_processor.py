@@ -180,6 +180,9 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     page_token = None
     batch_count = 0
 
+    # Track memory storage tasks to await completion
+    email_storage_tasks = []
+
     # START PARALLEL TRACK: Profile extraction via targeted Gmail searches
     profile_extraction_task = asyncio.create_task(
         _extract_profiles_from_parallel_searches(user_id)
@@ -250,18 +253,23 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
             except Exception as e:
                 logger.warning(f"Failed to emit progress update: {e}")
 
-            # Process content immediately (no platform filtering - that's handled separately)
+            # Process content (platform emails automatically excluded)
             processed_batch, failed = process_email_content(batch_emails)
             total_parsed += len(processed_batch)
             total_failed += failed
 
-            # Store batch directly to Mem0 with async_mode=True (fire-and-forget)
+            # Store batch to Mem0 with sync mode during onboarding (ensures completion)
             if processed_batch:
-                asyncio.create_task(
+                task = asyncio.create_task(
                     store_emails_to_mem0(
-                        user_id, processed_batch, user_name, user_email
+                        user_id,
+                        processed_batch,
+                        user_name,
+                        user_email,
+                        async_mode=False,
                     )
                 )
+                email_storage_tasks.append(task)
 
             if not page_token:
                 break
@@ -269,29 +277,72 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     except Exception as e:
         logger.error(f"Error in email processing pipeline: {e}")
 
-    # Wait for profile extraction task
+    # Await all email storage tasks in parallel with error handling
+    logger.info(
+        f"Awaiting {len(email_storage_tasks)} email storage tasks to complete in parallel..."
+    )
+    storage_results = []
+    storage_errors = 0
+    if email_storage_tasks:
+        try:
+            # Gather all results, including exceptions
+            storage_results = await asyncio.gather(
+                *email_storage_tasks, return_exceptions=True
+            )
+
+            # Count successes and errors
+            for idx, result in enumerate(storage_results):
+                if isinstance(result, Exception):
+                    storage_errors += 1
+                    logger.warning(f"Email storage task {idx + 1} failed: {result}")
+
+            successful_batches = len(storage_results) - storage_errors
+            logger.info(
+                f"Email storage complete: {successful_batches}/{len(storage_results)} batches succeeded, "
+                f"{storage_errors} failed (continuing anyway)"
+            )
+        except Exception as e:
+            logger.error(f"Critical error in email storage tasks: {e}")
+            storage_errors = len(email_storage_tasks)
+
+    # Wait for profile extraction task (also with error handling)
     profiles_stored = 0
     try:
         profile_result = await profile_extraction_task
         profiles_stored = profile_result.get("profiles_stored", 0)
     except Exception as e:
         logger.error(f"Profile extraction task failed: {e}")
+        # Continue anyway - don't let profile failures block completion
 
     total_elapsed = time.time() - fetch_start_time
     logger.info(
         f"Processing complete in {total_elapsed:.2f}s: "
-        f"{total_parsed} emails processed, {profiles_stored} profiles stored"
+        f"{total_parsed} emails processed, {profiles_stored} profiles stored, "
+        f"{storage_errors} storage errors"
     )
 
+    # Mark as complete if we processed ANY emails, even if some storage failed
     processing_complete = total_parsed > 0
-    if processing_complete:
-        await mark_email_processing_complete(user_id, total_parsed + profiles_stored)
 
-        # Trigger post-onboarding personalization
-        try:
-            await process_post_onboarding_personalization(user_id)
-        except Exception as e:
-            logger.error(f"Post-onboarding personalization failed: {e}", exc_info=True)
+    # ALWAYS mark as complete and trigger completion events
+    # This ensures the frontend gets the "show me around" button
+    try:
+        if processing_complete:
+            await mark_email_processing_complete(
+                user_id, total_parsed + profiles_stored
+            )
+            logger.info(f"✓ Marked email processing as complete for user {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to mark email processing complete: {e}")
+        # Continue anyway - we still want to trigger post-onboarding
+
+    # Trigger post-onboarding personalization (always run, even if storage had errors)
+    try:
+        await process_post_onboarding_personalization(user_id)
+        logger.info(f"✓ Post-onboarding personalization triggered for user {user_id}")
+    except Exception as e:
+        logger.error(f"Post-onboarding personalization failed: {e}", exc_info=True)
+        # Don't fail the entire process - user still gets onboarded
 
     # Update the scan timestamp after processing (regardless of success/failure)
     # This prevents re-scanning the same emails
@@ -362,7 +413,13 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> Dict:
         for platform, emails in platforms_with_emails.items():
             task = asyncio.create_task(
                 _process_single_platform(
-                    user_id, platform, emails, crawl_semaphore, user_name, crawled_urls
+                    user_id,
+                    platform,
+                    emails,
+                    crawl_semaphore,
+                    user_name,
+                    crawled_urls,
+                    async_mode=False,
                 )
             )
             platform_tasks.append((platform, task))
@@ -416,6 +473,7 @@ async def _process_single_platform(
     semaphore: asyncio.Semaphore,
     user_name: str | None = None,
     crawled_urls: set | None = None,
+    async_mode: bool = False,
 ) -> Dict:
     """
     Process a single platform: Extract -> Crawl -> Return content.
@@ -423,6 +481,7 @@ async def _process_single_platform(
 
     Args:
         crawled_urls: Shared set to track already-crawled URLs for deduplication
+        async_mode: Memory storage mode (False for onboarding to ensure completion)
     """
     try:
         # 1. Extract username
@@ -459,15 +518,14 @@ async def _process_single_platform(
             )
             return {"error": crawl_result.get("error", "Crawl failed")}
 
-        # 3. Store profile immediately (fire-and-forget)
-        asyncio.create_task(
-            store_single_profile(
-                user_id,
-                platform,
-                profile_url,
-                crawl_result["content"],
-                user_name,
-            )
+        # 3. Store profile with configured mode
+        await store_single_profile(
+            user_id,
+            platform,
+            profile_url,
+            crawl_result["content"],
+            user_name,
+            async_mode=async_mode,
         )
 
         # 4. Extract additional social links from profile content
@@ -592,7 +650,7 @@ async def _discover_and_store_linked_profiles(
 """
                 profile_messages.append({"role": "user", "content": memory_content})
 
-        # Store in batch if we have any
+        # Store in batch if we have any (sync mode for onboarding)
         if profile_messages:
             success = await memory_service.store_memory_batch(
                 messages=profile_messages,
@@ -603,6 +661,7 @@ async def _discover_and_store_linked_profiles(
                     "discovered_at": datetime.now(timezone.utc).isoformat(),
                     "batch_size": len(profile_messages),
                 },
+                async_mode=False,
             )
             if success:
                 logger.info(

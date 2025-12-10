@@ -7,6 +7,7 @@ from typing import Dict, List
 import html2text
 from bson import ObjectId
 
+from app.agents.memory.profile_extractor import PLATFORM_CONFIG
 from app.agents.prompts.email_filter_prompts import EMAIL_MEMORY_EXTRACTION_PROMPT
 from app.config.loggers import memory_logger as logger
 from app.db.mongodb.collections import users_collection
@@ -53,6 +54,7 @@ def remove_invisible_chars(s: str) -> str:
 def process_email_content(emails: List[Dict]) -> tuple[List[Dict], int]:
     """
     Process email content converting HTML to clean text.
+    Skips platform emails (they're only used for profile discovery).
 
     Args:
         emails: Raw email data from Gmail API
@@ -65,6 +67,20 @@ def process_email_content(emails: List[Dict]) -> tuple[List[Dict], int]:
 
     for email_data in emails:
         try:
+            # Skip platform emails - only used for profile discovery
+            sender = (email_data.get("sender") or email_data.get("from", "")).lower()
+
+            # Check against all platform sender domains from config
+            is_platform_email = False
+            for platform_config in PLATFORM_CONFIG.values():
+                sender_domains = platform_config.get("sender_domains", [])
+                if any(domain in sender for domain in sender_domains):
+                    is_platform_email = True
+                    break
+
+            if is_platform_email:
+                continue
+
             message_text = email_data.get("messageText", "")
             if not message_text.strip():
                 failed_count += 1
@@ -103,15 +119,17 @@ async def store_emails_to_mem0(
     processed_emails: List[Dict],
     user_name: str | None = None,
     user_email: str | None = None,
+    async_mode: bool = True,
 ) -> None:
     """
-    Store email batch directly to Mem0 with async_mode=True (fire-and-forget).
+    Store email batch to Mem0.
 
     Args:
         user_id: User ID
         processed_emails: List of processed email dicts
         user_name: User's name (optional)
         user_email: User's email (optional)
+        async_mode: If True, Mem0 queues in background (fast). If False, waits for completion (slower but guaranteed)
     """
     if not processed_emails:
         return
@@ -138,8 +156,8 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
         # Build user context
         user_context = _build_user_context(user_name, user_email)
 
-        # Store with async_mode=True (Mem0 queues it for background processing)
-        await memory_service.store_memory_batch(
+        # Store with configurable async_mode
+        success = await memory_service.store_memory_batch(
             messages=messages,
             user_id=user_id,
             metadata={
@@ -149,16 +167,23 @@ Subject: {email_data.get("metadata", {}).get("subject", NO_SUBJECT)}
                 "user_name": user_name,
                 "user_email": user_email,
             },
-            async_mode=True,
+            async_mode=async_mode,
             custom_instructions=f"{user_context}\n\n{EMAIL_MEMORY_EXTRACTION_PROMPT}",
         )
 
-        logger.info(
-            f"Sent batch of {len(messages)} emails to Mem0 async queue for user {user_id}"
-        )
+        mode_str = "async queue" if async_mode else "synchronously"
+        if success:
+            logger.info(
+                f"Stored batch of {len(messages)} emails to Mem0 {mode_str} for user {user_id}"
+            )
+        else:
+            logger.warning(
+                f"Failed to store batch of {len(messages)} emails to Mem0 for user {user_id}"
+            )
 
     except Exception as e:
         logger.error(f"Error storing batch to Mem0: {e}")
+        # Don't re-raise - we want to continue processing other batches
 
 
 async def mark_email_processing_complete(user_id: str, memory_count: int) -> None:
@@ -187,9 +212,10 @@ async def store_single_profile(
     profile_url: str,
     content: str,
     user_name: str | None = None,
+    async_mode: bool = True,
 ) -> None:
     """
-    Store a single social profile to memory (fire-and-forget).
+    Store a single social profile to memory.
 
     Args:
         user_id: User ID
@@ -197,6 +223,7 @@ async def store_single_profile(
         profile_url: Profile URL
         content: Crawled profile content
         user_name: User's name (optional)
+        async_mode: If True, Mem0 queues in background. If False, waits for completion
     """
     try:
         memory_content = f"User's {platform} profile: {profile_url} {content}"
@@ -212,6 +239,7 @@ async def store_single_profile(
                 "discovered_at": datetime.now(timezone.utc).isoformat(),
                 "user_name": user_name,
             },
+            async_mode=async_mode,
         )
         logger.info(f"Stored {platform} profile to memory: {profile_url}")
     except Exception as e:
