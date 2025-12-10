@@ -14,6 +14,8 @@ import {
   Calendar03Icon,
   CheckListIcon,
   ConnectIcon,
+  DashboardSquare02Icon,
+  Home11Icon,
   MessageMultiple02Icon,
   Target02Icon,
   ZapIcon,
@@ -58,6 +60,11 @@ export default function SidebarTopButtons() {
   };
 
   const buttonData = [
+    {
+      route: "/home",
+      icon: <Home11Icon />,
+      label: "Home",
+    },
     {
       route: "/calendar",
       icon: <Calendar03Icon />,

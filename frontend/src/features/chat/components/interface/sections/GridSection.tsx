@@ -1,5 +1,6 @@
+"use client";
+
 import { useRouter } from "next/navigation";
-import React from "react";
 
 import UpcomingEventsView from "@/features/calendar/components/UpcomingEventsView";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";

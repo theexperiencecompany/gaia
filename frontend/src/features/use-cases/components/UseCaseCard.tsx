@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflowCard";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
-import { ArrowUpRight03Icon } from "@/icons";
+import { PlayIcon } from "@/icons";
 import { posthog } from "@/lib";
 import { useAppendToInput } from "@/stores/composerStore";
 
@@ -94,21 +94,15 @@ export default function UseCaseCard({
 
   const isLoading = action_type === "workflow" && isCreatingWorkflow;
   const footerContent = (
-    <div className="mt-1 flex w-full items-center justify-end gap-3">
+    <div className="mt-auto flex w-full items-end justify-end gap-3">
       <Button
         color="primary"
-        size="sm"
-        variant="flat"
-        className="w-fit text-primary"
-        endContent={
-          (isLoading ? undefined : action_type === "prompt") && (
-            <ArrowUpRight03Icon width={16} height={16} />
-          )
-        }
+        className="font-medium ml-auto"
+        endContent={<PlayIcon width={18} height={18} />}
         isLoading={isLoading}
         onPress={handleAction}
       >
-        {action_type === "prompt" ? "Insert Prompt" : "Create"}
+        {action_type === "prompt" ? "Insert Prompt" : "Try"}
       </Button>
     </div>
   );

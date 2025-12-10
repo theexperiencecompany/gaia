@@ -1,3 +1,5 @@
+"use client";
+
 import { Spinner } from "@heroui/spinner";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";

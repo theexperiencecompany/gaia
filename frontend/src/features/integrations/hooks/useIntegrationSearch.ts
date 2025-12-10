@@ -1,3 +1,5 @@
+"use client";
+
 import Fuse from "fuse.js";
 import { useMemo, useState } from "react";
 import type { Integration } from "../types";

@@ -25,7 +25,7 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
 }) => {
   // Memoize shuffled integrations to prevent re-shuffling on every render
   const shuffledIntegrations = useMemo(
-    () => shuffle(integrations.slice(0, 14)),
+    () => shuffle(integrations),
     [integrations],
   );
 

@@ -79,7 +79,7 @@ export default function YouMightAlsoLike({
         <h2 className="mx-auto text-center font-serif text-6xl font-normal text-foreground">
           You might also like
         </h2>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {items.map((item) => {
             const isUseCase = "slug" in item;
 

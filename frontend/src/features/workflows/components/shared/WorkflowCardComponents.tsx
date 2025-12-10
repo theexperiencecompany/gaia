@@ -7,7 +7,13 @@ import Image from "next/image";
 
 import { CursorMagicSelection03Icon } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { Mail01Icon, PlayIcon, Timer02Icon, UserCircle02Icon } from "@/icons";
+import {
+  Mail01Icon,
+  PlaneIcon,
+  PlayIcon,
+  Timer02Icon,
+  UserCircle02Icon,
+} from "@/icons";
 import { formatRunCount } from "@/utils/formatters";
 
 import type { Workflow } from "../../api/workflowApi";
@@ -134,14 +140,17 @@ export function RunCountDisplay({
   totalExecutions,
   className = "",
 }: RunCountDisplayProps) {
-  return (
-    <div
-      className={`flex items-center gap-1 text-xs text-zinc-500 ${className}`}
-    >
-      <PlayIcon width={15} height={15} className="w-4 text-zinc-500" />
-      {formatRunCount(totalExecutions)}
-    </div>
-  );
+  const runCount = formatRunCount(totalExecutions);
+
+  if (runCount !== "Never run")
+    return (
+      <div
+        className={`flex items-center gap-1 text-xs text-zinc-500 ${className}`}
+      >
+        <PlayIcon width={15} height={15} className="w-4 text-zinc-500" />
+        {formatRunCount(totalExecutions)}
+      </div>
+    );
 }
 
 // Reusable Run Workflow Button
@@ -167,7 +176,7 @@ export function RunWorkflowButton({
       isLoading={isLoading}
       onPress={onPress}
       variant={variant}
-      className={`text-primary ${className}`}
+      className={`text-primary mt-auto ${className}`}
     >
       Run Workflow
     </Button>
@@ -186,8 +195,8 @@ interface CreateWorkflowButtonProps {
 export function CreateWorkflowButton({
   isLoading,
   onPress,
-  size = "sm",
-  variant = "flat",
+  size = "md",
+  variant = "solid",
   className = "",
 }: CreateWorkflowButtonProps) {
   return (
@@ -195,9 +204,10 @@ export function CreateWorkflowButton({
       color="primary"
       size={size}
       variant={variant}
-      className={`text-primary ${className}`}
+      className={`font-medium mt-auto ${className}`}
       isLoading={isLoading}
       onPress={onPress}
+      endContent={<PlayIcon width={18} height={18} />}
     >
       Create
     </Button>
@@ -241,17 +251,17 @@ export function CreatorAvatar({
 }: CreatorAvatarProps) {
   const avatar = (
     <div className="flex items-center gap-2">
-      <div className="flex h-8 w-8 items-center justify-center rounded-full">
+      <div className="flex h-7 w-7 items-center justify-center rounded-full">
         {creator.avatar ? (
           <Image
             src={creator.avatar}
             alt={creator.name}
             width={size}
             height={size}
-            className="rounded-full"
+            className="rounded-full h-7 w-7"
           />
         ) : (
-          <UserCircle02Icon className="h-4 w-4 text-zinc-400" />
+          <UserCircle02Icon className="h-7 w-7 text-zinc-400" />
         )}
       </div>
     </div>

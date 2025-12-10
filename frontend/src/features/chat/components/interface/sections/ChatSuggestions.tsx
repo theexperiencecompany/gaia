@@ -1,165 +1,15 @@
 import { Button } from "@heroui/button";
+import { motion } from "framer-motion";
 import type React from "react";
-import { useCallback, useState } from "react";
-
+import { useCallback, useEffect, useState } from "react";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { workflowApi } from "@/features/workflows/api/workflowApi";
+import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflowCard";
 import { useSendMessage } from "@/hooks/useSendMessage";
-import { ShuffleIcon } from "@/icons";
+import { PlayIcon, UndoIcon } from "@/icons";
 import { posthog } from "@/lib/posthog";
 import { useComposerTextActions } from "@/stores/composerStore";
-
-interface ChatSuggestion {
-  id: number;
-  icon: React.ReactNode;
-  text: string;
-  category: string;
-}
-
-interface ChatSuggestionsProps {
-  onSubmitSuggestion?: () => void;
-}
-
-const getAllSuggestions = (): ChatSuggestion[] => [
-  // Default suggestions shown on page load
-  {
-    id: 1,
-    icon: getToolCategoryIcon("gmail", {
-      showBackground: false,
-      width: 25,
-      height: 25,
-    }),
-    text: "Check my unread emails",
-    category: "gmail",
-  },
-  {
-    id: 2,
-    icon: getToolCategoryIcon("gmail", {
-      showBackground: false,
-      width: 25,
-      height: 25,
-    }),
-    text: "Compose a new email",
-    category: "gmail",
-  },
-  {
-    id: 3,
-    icon: getToolCategoryIcon("calendar", {
-      showBackground: false,
-      width: 25,
-      height: 25,
-    }),
-    text: "What's on my calendar today?",
-    category: "calendar",
-  },
-  {
-    id: 4,
-    icon: getToolCategoryIcon("calendar", {
-      showBackground: false,
-      width: 25,
-      height: 25,
-    }),
-    text: "Schedule a new meeting",
-    category: "calendar",
-  },
-  // Additional suggestions for shuffle
-  {
-    id: 5,
-    icon: getToolCategoryIcon("gmail", {
-      showBackground: false,
-      width: 25,
-      height: 25,
-    }),
-    text: "Search emails by keyword",
-    category: "gmail",
-  },
-  {
-    id: 6,
-    icon: getToolCategoryIcon("calendar", {
-      showBackground: false,
-      width: 25,
-      height: 25,
-    }),
-    text: "Find free time this week",
-    category: "calendar",
-  },
-  {
-    id: 7,
-    icon: getToolCategoryIcon("notion", {
-      showBackground: false,
-      width: 25,
-      height: 25,
-    }),
-    text: "Create a new document",
-    category: "notion",
-  },
-  {
-    id: 8,
-    icon: getToolCategoryIcon("notion", {
-      showBackground: false,
-      width: 25,
-      height: 25,
-    }),
-    text: "Take notes from meeting",
-    category: "notion",
-  },
-  {
-    id: 9,
-    icon: getToolCategoryIcon("productivity", { showBackground: true }),
-    text: "Show me my todo list",
-    category: "productivity",
-  },
-  {
-    id: 10,
-    icon: getToolCategoryIcon("productivity", { showBackground: true }),
-    text: "Plan my tasks for today",
-    category: "productivity",
-  },
-  {
-    id: 11,
-    icon: getToolCategoryIcon("documents", { showBackground: true }),
-    text: "Write a project summary",
-    category: "documents",
-  },
-  {
-    id: 12,
-    icon: getToolCategoryIcon("documents", { showBackground: true }),
-    text: "Draft a business proposal",
-    category: "documents",
-  },
-  {
-    id: 13,
-    icon: getToolCategoryIcon("search", {
-      showBackground: false,
-      width: 25,
-      height: 25,
-    }),
-    text: "Research current market trends",
-    category: "search",
-  },
-  {
-    id: 14,
-    icon: getToolCategoryIcon("weather", {
-      showBackground: false,
-      width: 25,
-      height: 25,
-    }),
-    text: "What's the weather today?",
-    category: "weather",
-  },
-  {
-    id: 15,
-    icon: getToolCategoryIcon("creative", { showBackground: true }),
-    text: "Generate an image for my project",
-    category: "creative",
-  },
-  {
-    id: 16,
-    icon: getToolCategoryIcon("memory", { showBackground: true }),
-    text: "Remember this for later",
-    category: "memory",
-  },
-];
+import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 
 const shuffleArray = <T,>(array: T[]): T[] => {
   const shuffled = [...array];
@@ -175,83 +25,133 @@ interface ChatSuggestionsProps {
 }
 
 export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
-  const [currentSuggestions, setCurrentSuggestions] = useState(
-    () => getAllSuggestions().slice(0, 4), // Show first 4 items on load (default suggestions)
-  );
+  const [allWorkflows, setAllWorkflows] = useState<CommunityWorkflow[]>([]);
+  const [currentSuggestions, setCurrentSuggestions] = useState<
+    CommunityWorkflow[]
+  >([]);
   const { clearInputText } = useComposerTextActions();
   const sendMessage = useSendMessage();
   const { setContextualLoading } = useLoadingText();
 
+  // Fetch featured workflows on mount
+  useEffect(() => {
+    const fetchFeaturedWorkflows = async () => {
+      try {
+        const response = await workflowApi.getExploreWorkflows(50, 0);
+
+        // Filter for only featured workflows
+        const featuredWorkflows = response.workflows.filter((workflow) =>
+          workflow.categories?.includes("featured"),
+        );
+
+        setAllWorkflows(featuredWorkflows);
+
+        // Set initial 3 random suggestions
+        const initialSuggestions = shuffleArray(featuredWorkflows).slice(0, 3);
+        setCurrentSuggestions(initialSuggestions);
+      } catch (error) {
+        console.error("Error fetching featured workflows:", error);
+      }
+    };
+
+    fetchFeaturedWorkflows();
+  }, []);
+
   const handleShuffle = useCallback(() => {
     posthog.capture("chat:suggestion_shuffled", {
-      current_suggestion_ids: currentSuggestions.map((s) => s.id),
+      current_suggestion_ids: currentSuggestions.map((w) => w.id),
     });
 
-    const allSuggestions = getAllSuggestions();
-    const currentIds = new Set(currentSuggestions.map((s) => s.id));
+    const currentIds = new Set(currentSuggestions.map((w) => w.id));
 
-    // Filter out currently displayed suggestions
-    const availableSuggestions = allSuggestions.filter(
-      (s) => !currentIds.has(s.id),
+    // Filter out currently displayed workflows
+    const availableWorkflows = allWorkflows.filter(
+      (w) => !currentIds.has(w.id),
     );
 
-    // If we don't have enough different suggestions, use all suggestions
-    if (availableSuggestions.length < 4) {
-      const newSuggestions = shuffleArray(allSuggestions).slice(0, 4);
+    // If we don't have enough different workflows, use all workflows
+    if (availableWorkflows.length < 3) {
+      const newSuggestions = shuffleArray(allWorkflows).slice(0, 3);
       setCurrentSuggestions(newSuggestions);
     } else {
-      const newSuggestions = shuffleArray(availableSuggestions).slice(0, 4);
+      const newSuggestions = shuffleArray(availableWorkflows).slice(0, 3);
       setCurrentSuggestions(newSuggestions);
     }
-  }, [currentSuggestions]);
+  }, [currentSuggestions, allWorkflows]);
 
-  const handleSuggestionClick = useCallback(
-    async (suggestion: ChatSuggestion) => {
+  const handleWorkflowClick = useCallback(
+    async (workflow: CommunityWorkflow) => {
       // Track suggestion click
       posthog.capture("chat:suggestion_clicked", {
-        suggestion_id: suggestion.id,
-        suggestion_text: suggestion.text,
-        suggestion_category: suggestion.category,
+        workflow_id: workflow.id,
+        workflow_title: workflow.title,
       });
 
       // Set loading state with contextual message
-      setContextualLoading(true, suggestion.text);
+      setContextualLoading(true, workflow.title);
 
-      // Send message directly with the suggestion text
-      await sendMessage(suggestion.text);
+      // Send message directly with the workflow title
+      await sendMessage(workflow.title);
 
-      // Clear the input text after sending (mimicking Composer behavior)
+      // Clear the input text after sending
       clearInputText();
     },
     [sendMessage, setContextualLoading, clearInputText],
   );
 
   return (
-    <div className="w-full max-w-5xl">
+    <div className="w-full max-w-4xl mt-10">
       <div className="mb-2 flex w-full items-end justify-between px-1 text-zinc-400">
         <span className="text-sm font-light">Suggestions</span>
         <Button isIconOnly size="sm" variant="light" onPress={handleShuffle}>
-          <ShuffleIcon width={16} height={16} className="text-zinc-400" />
+          <UndoIcon width={16} height={16} className="text-zinc-400" />
         </Button>
       </div>
-      <div className="grid w-full grid-cols-4 gap-4">
-        {currentSuggestions.map((suggestion) => {
-          return (
-            <div
-              key={suggestion.id}
-              className="flex min-h-20 w-full cursor-pointer flex-col justify-start gap-2 rounded-2xl bg-zinc-800/70 p-4 text-zinc-400 transition-colors hover:bg-zinc-700/70"
-              onClick={() => handleSuggestionClick(suggestion)}
-            >
-              <div className="h-6">
-                <div className="flex aspect-square h-fit w-fit items-center justify-center">
-                  {suggestion.icon}
-                </div>
-              </div>
-              <div className="text-sm">{suggestion.text}</div>
+      <motion.div
+        className="grid w-full grid-cols-3 gap-4"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+      >
+        {currentSuggestions.map((workflow, index) => {
+          const footerContent = (
+            <div className="mt-1 flex w-full items-end justify-end gap-3">
+              <Button
+                color="primary"
+                className="font-medium ml-auto"
+                endContent={<PlayIcon width={18} height={18} />}
+                onPress={() => handleWorkflowClick(workflow)}
+              >
+                Try
+              </Button>
             </div>
           );
+
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                duration: 0.3,
+                delay: index * 0.05, // Stagger animation
+                ease: "easeOut",
+              }}
+              key={workflow.id}
+            >
+              <BaseWorkflowCard
+                title={workflow.title}
+                description={workflow.description}
+                steps={workflow.steps}
+                onClick={() => handleWorkflowClick(workflow)}
+                footerContent={footerContent}
+                showArrowIcon={false}
+                hideExecutions={true}
+              />
+            </motion.div>
+          );
         })}
-      </div>
+      </motion.div>
     </div>
   );
 };

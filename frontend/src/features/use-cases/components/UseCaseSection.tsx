@@ -1,10 +1,11 @@
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { AnimatePresence, motion } from "framer-motion";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useCallback, useEffect, useState } from "react";
-
 import {
+  ChevronUp,
   StarAward01Icon,
   WorkflowCircle03Icon,
 } from "@/components/shared/icons";
@@ -25,11 +26,13 @@ export default function UseCaseSection({
   hideUserWorkflows = false,
   centered = true,
   exploreWorkflows: propExploreWorkflows,
+  setShowUseCases,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
   centered?: boolean;
   exploreWorkflows?: UseCase[];
+  setShowUseCases?: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -220,33 +223,67 @@ export default function UseCaseSection({
   return (
     <div className="w-full" ref={dummySectionRef}>
       <div
-        className={`mb-6 flex flex-wrap ${centered ? "justify-center" : ""} gap-2`}
+        className={`mb-6 flex flex-wrap ${setShowUseCases ? "max-w-5xl mx-auto" : ""} ${centered ? "justify-center" : ""} items-center gap-2`}
       >
-        {allCategories.map((category) => (
-          <Chip
+        {allCategories.map((category, index) => (
+          <motion.div
             key={category as string}
-            variant={selectedCategory === category ? "solid" : "flat"}
-            color={selectedCategory === category ? "primary" : "default"}
-            className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
-            size="lg"
-            startContent={
-              category === "featured" ? (
-                <StarAward01Icon width={18} height={18} />
-              ) : category === "workflows" ? (
-                <WorkflowCircle03Icon width={18} height={18} />
-              ) : undefined
-            }
-            onClick={() => handleCategoryClick(category as string)}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.3,
+              delay: index * 0.05,
+              ease: "easeOut",
+            }}
           >
-            {category === "all"
-              ? "All"
-              : category === "featured"
-                ? "Featured"
-                : category === "workflows"
-                  ? "Your Workflows"
-                  : (category as string)}
-          </Chip>
+            <Chip
+              variant={selectedCategory === category ? "solid" : "flat"}
+              color={selectedCategory === category ? "primary" : "default"}
+              className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
+              size="lg"
+              startContent={
+                category === "featured" ? (
+                  <StarAward01Icon width={18} height={18} />
+                ) : category === "workflows" ? (
+                  <WorkflowCircle03Icon width={18} height={18} />
+                ) : undefined
+              }
+              onClick={() => handleCategoryClick(category as string)}
+            >
+              {category === "all"
+                ? "All"
+                : category === "featured"
+                  ? "Featured"
+                  : category === "workflows"
+                    ? "Your Workflows"
+                    : (category as string)}
+            </Chip>
+          </motion.div>
         ))}
+
+        {setShowUseCases && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.3,
+              delay: allCategories.length * 0.05,
+              ease: "easeOut",
+            }}
+            className="pl-2"
+          >
+            <Button
+              isIconOnly
+              radius="full"
+              size="sm"
+              variant="flat"
+              onPress={() => setShowUseCases(false)}
+              className="text-zinc-300 "
+            >
+              <ChevronUp />
+            </Button>
+          </motion.div>
+        )}
       </div>
 
       <AnimatePresence mode="wait">
@@ -256,7 +293,7 @@ export default function UseCaseSection({
           selectedCategory !== "workflows" && (
             <motion.div
               key={selectedCategory}
-              className="mx-auto grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3"
+              className={`mx-auto grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -294,7 +331,7 @@ export default function UseCaseSection({
           workflows.length > 0 && (
             <motion.div
               key="workflows"
-              className="mx-auto grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3"
+              className={`mx-auto grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"}  grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}

@@ -19,14 +19,16 @@ interface NewChatSectionProps {
     hasMessages: boolean;
     conversationId?: string;
   };
+  showUseCases: boolean;
 }
 
 export const NewChatSection: React.FC<NewChatSectionProps> = ({
   composerProps,
+  showUseCases,
 }) => {
   return (
-    <div className="relative flex w-full snap-start items-center justify-center p-4 pt-[28vh]">
-      <div className="flex w-full max-w-7xl flex-col items-center justify-center gap-3">
+    <div className="relative flex w-full snap-start items-center justify-center px-4 pt-[25vh] scrollbar-default">
+      <div className="flex w-full max-w-7xl flex-col items-center justify-center">
         <div className="flex flex-col items-center gap-2">
           <StarterText />
         </div>
@@ -34,7 +36,7 @@ export const NewChatSection: React.FC<NewChatSectionProps> = ({
           <Composer {...composerProps} />
         </div>
 
-        <ChatSuggestions />
+        {!showUseCases && <ChatSuggestions />}
         {/* <CardStackContainer /> */}
       </div>
     </div>

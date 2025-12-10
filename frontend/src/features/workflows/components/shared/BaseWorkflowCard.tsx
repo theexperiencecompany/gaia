@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useId } from "react";
+import type { ReactNode } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { ArrowUpRight03Icon } from "@/icons";
@@ -75,7 +75,7 @@ export default function BaseWorkflowCard({
 
   return (
     <div
-      className={`group relative z-[1] flex h-full min-h-fit w-full flex-col gap-2 rounded-2xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${
+      className={`group relative z-[1] flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${
         onClick ? "cursor-pointer hover:bg-zinc-700/50" : ""
       }`}
       onClick={onClick}
@@ -94,20 +94,21 @@ export default function BaseWorkflowCard({
 
       <div>
         <h3 className="line-clamp-2 text-lg font-medium">{title}</h3>
-        <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-zinc-400">
+        {/* <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-zinc-400">
           {description}
-        </div>
+        </div> */}
       </div>
 
       <div className="mt-auto">
-        {triggerContent && <div className="mt-1">{triggerContent}</div>}
-        <div className="flex items-center justify-between gap-2">
-          {!hideExecutions && (
-            <RunCountDisplay totalExecutions={totalExecutions} />
-          )}
-          {footerContent && (
-            <div className="flex-shrink-0">{footerContent}</div>
-          )}
+        <div className="flex items-center justify-between gap-2 mt-1">
+          <div className="space-y-1">
+            {triggerContent && <div>{triggerContent}</div>}
+
+            {!hideExecutions && (
+              <RunCountDisplay totalExecutions={totalExecutions} />
+            )}
+          </div>
+          {footerContent}
         </div>
       </div>
     </div>

@@ -41,7 +41,7 @@ export default function WorkflowSection() {
         </div>
       </div>
 
-      {/* <div className="grid w-full max-w-7xl grid-cols-1 grid-rows-1 justify-between gap-4 sm:gap-6 lg:grid-cols-3 lg:gap-7">
+      {/* <div className="grid w-full max-w-7xl grid-cols-1 grid-rows-1 justify-between gap-4 sm:gap-6 lg:grid-cols-4 lg:gap-7">
         <BentoItem
           title="Smart Triggers"
           description="Set conditions once, automate actions forever."

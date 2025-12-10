@@ -1,8 +1,9 @@
+import { Button } from "@heroui/button";
 import type React from "react";
-
+import { useState } from "react";
+import { ArrowDown02Icon, ChevronUp } from "@/components";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
-
-import { GridSection, NewChatSection } from "../sections";
+import { NewChatSection } from "../sections";
 
 interface NewChatLayoutProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -35,6 +36,8 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
   dragHandlers,
   composerProps,
 }) => {
+  const [showUseCases, setShowUseCases] = useState(false);
+
   return (
     <div
       ref={scrollContainerRef}
@@ -42,10 +45,29 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
       onScroll={handleScroll}
       {...dragHandlers}
     >
-      <div className="flex w-full flex-col items-center gap-10 px-4 pb-20">
-        <NewChatSection composerProps={composerProps} />
-        <GridSection />
-        <UseCaseSection dummySectionRef={dummySectionRef} />
+      <div className="flex w-full flex-col items-center gap-10 px-4 pb-10">
+        <NewChatSection
+          composerProps={composerProps}
+          showUseCases={showUseCases}
+        />
+
+        {!showUseCases && (
+          <Button
+            className="font-medium text-zinc-300"
+            radius="full"
+            variant="flat"
+            onPress={() => setShowUseCases(true)}
+          >
+            Explore Use Cases <ChevronUp />
+          </Button>
+        )}
+
+        {showUseCases && (
+          <UseCaseSection
+            dummySectionRef={dummySectionRef}
+            setShowUseCases={setShowUseCases}
+          />
+        )}
       </div>
     </div>
   );
