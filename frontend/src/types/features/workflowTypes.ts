@@ -115,6 +115,7 @@ export interface CommunityWorkflow {
   created_at: string;
   creator: ContentCreator;
   categories?: string[]; // For filtering (Students, Founders, Engineering, etc.)
+  total_executions?: number; // Run count for display
 }
 
 /**
@@ -145,6 +146,7 @@ export interface UseCase {
   prompt?: string; // For prompt-type use cases
   steps?: PublicWorkflowStep[]; // Workflow steps if action_type === "workflow"
   creator?: ContentCreator;
+  total_executions?: number; // Run count for display
 }
 
 // ============================================================================

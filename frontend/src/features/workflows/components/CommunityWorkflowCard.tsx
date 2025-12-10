@@ -89,7 +89,7 @@ export default function CommunityWorkflowCard({
       steps={localWorkflow.steps}
       triggerContent={triggerContent}
       footerContent={footerContent}
-      totalExecutions={0}
+      totalExecutions={localWorkflow.total_executions || 0}
       onClick={onClick}
       useBlurEffect={useBlurEffect}
       showArrowIcon={!!onClick}

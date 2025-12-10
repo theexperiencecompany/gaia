@@ -708,6 +708,7 @@ class WorkflowService:
                     "steps": workflow.get("steps", []),
                     "created_at": workflow["created_at"],
                     "categories": workflow.get("use_case_categories", ["featured"]),
+                    "total_executions": workflow.get("total_executions", 0),
                     "creator": {
                         "id": workflow.get("created_by"),
                         "name": creator_info.get("name", "GAIA Team"),

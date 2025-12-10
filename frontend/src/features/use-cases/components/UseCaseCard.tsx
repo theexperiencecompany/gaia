@@ -24,6 +24,7 @@ interface UseCaseCardProps {
     title?: string;
     description?: string;
   }>;
+  totalExecutions?: number;
 }
 
 export default function UseCaseCard({
@@ -33,6 +34,7 @@ export default function UseCaseCard({
   prompt,
   slug,
   steps,
+  totalExecutions = 0,
 }: UseCaseCardProps) {
   const [isCreatingWorkflow, setIsCreatingWorkflow] = useState(false);
   const appendToInput = useAppendToInput();
@@ -115,7 +117,8 @@ export default function UseCaseCard({
       footerContent={footerContent}
       onClick={slug ? handleCardClick : undefined}
       showArrowIcon={false}
-      hideExecutions={true}
+      hideExecutions={false}
+      totalExecutions={totalExecutions}
     />
   );
 }

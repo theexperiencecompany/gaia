@@ -64,6 +64,7 @@ export default function UseCaseSection({
             slug: w.id,
             steps: w.steps,
             creator: w.creator,
+            total_executions: w.total_executions || 0,
           }));
           setLocalExploreWorkflows(converted);
         } catch (error) {
@@ -221,7 +222,7 @@ export default function UseCaseSection({
     };
   }, []);
 
-  return workflows.length > 0 ? (
+  return (
     <div className="w-full" ref={dummySectionRef}>
       <div
         className={`mb-6 flex flex-wrap ${setShowUseCases ? "max-w-5xl mx-auto" : ""} ${centered ? "justify-center" : ""} items-center gap-2`}
@@ -320,6 +321,7 @@ export default function UseCaseSection({
                       prompt={useCase.prompt}
                       slug={useCase.slug}
                       steps={useCase.steps}
+                      totalExecutions={useCase.total_executions || 0}
                     />
                   </motion.div>
                 ))}
@@ -393,5 +395,5 @@ export default function UseCaseSection({
         </div>
       )}
     </div>
-  ) : null;
+  );
 }

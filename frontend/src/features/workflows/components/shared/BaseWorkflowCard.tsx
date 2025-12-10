@@ -94,9 +94,9 @@ export default function BaseWorkflowCard({
 
       <div>
         <h3 className="line-clamp-2 text-lg font-medium">{title}</h3>
-        {/* <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-zinc-400">
+        <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-zinc-400">
           {description}
-        </div> */}
+        </div>
       </div>
 
       <div className="mt-auto">

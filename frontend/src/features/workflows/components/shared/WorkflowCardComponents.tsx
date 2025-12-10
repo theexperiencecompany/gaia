@@ -148,7 +148,7 @@ export function RunCountDisplay({
         className={`flex items-center gap-1 text-xs text-zinc-500 ${className}`}
       >
         <PlayIcon width={15} height={15} className="w-4 text-zinc-500" />
-        {formatRunCount(totalExecutions)}
+        <span className="text-nowrap">{formatRunCount(totalExecutions)}</span>
       </div>
     );
 }
@@ -237,6 +237,7 @@ export function ActivationStatus({
 // Reusable Creator Avatar
 interface CreatorAvatarProps {
   creator: {
+    id: string;
     name: string;
     avatar?: string;
   };
@@ -252,9 +253,9 @@ export function CreatorAvatar({
   const avatar = (
     <div className="flex items-center gap-2">
       <div className="flex h-7 w-7 items-center justify-center rounded-full">
-        {creator.avatar ? (
+        {creator.avatar || creator.id === "system" ? (
           <Image
-            src={creator.avatar}
+            src={creator.avatar || "/images/logos/experience_black_bg.png"}
             alt={creator.name}
             width={size}
             height={size}
