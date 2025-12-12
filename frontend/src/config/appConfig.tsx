@@ -133,6 +133,12 @@ export const appConfig = {
         description: "Learn about our mission",
       },
       {
+        href: "/brand",
+        label: "Brand",
+        icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
+        description: "Brand guidelines and downloadable assets",
+      },
+      {
         href: "/contact",
         label: "Contact",
         icon: <HeartHandIcon width={20} height={20} color={"currentColor"} />,
