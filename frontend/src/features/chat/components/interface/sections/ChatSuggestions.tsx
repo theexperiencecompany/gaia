@@ -114,6 +114,7 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
               communityWorkflow={workflow}
               variant="suggestion"
               showExecutions={true}
+              showDescriptionAsTooltip={true}
               actionButtonLabel="Try"
               onActionComplete={() => {
                 setContextualLoading(true, workflow.title);

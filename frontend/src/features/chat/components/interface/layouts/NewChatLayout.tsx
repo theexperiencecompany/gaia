@@ -66,6 +66,7 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
           <UseCaseSection
             dummySectionRef={dummySectionRef}
             setShowUseCases={setShowUseCases}
+            showDescriptionAsTooltip={true}
           />
         )}
       </div>

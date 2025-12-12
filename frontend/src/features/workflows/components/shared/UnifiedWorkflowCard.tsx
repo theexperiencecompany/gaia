@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Tooltip } from "@heroui/tooltip";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -8,7 +9,7 @@ import { toast } from "sonner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { PlayIcon } from "@/icons";
+import { PlayIcon, ZapIcon } from "@/icons";
 import { posthog } from "@/lib";
 import { useAppendToInput } from "@/stores/composerStore";
 import type {
@@ -50,6 +51,7 @@ interface UnifiedWorkflowCardProps {
   showActivationStatus?: boolean;
   showCreator?: boolean;
   useBlurEffect?: boolean;
+  showDescriptionAsTooltip?: boolean;
 
   // Action configuration
   primaryAction?: ActionType;
@@ -76,6 +78,7 @@ export default function UnifiedWorkflowCard({
   showActivationStatus = false,
   showCreator,
   useBlurEffect = false,
+  showDescriptionAsTooltip = false,
   primaryAction,
   onCardClick,
   onActionComplete,
@@ -282,7 +285,7 @@ export default function UnifiedWorkflowCard({
 
   const isClickable = onCardClick || resolvedAction !== "none";
 
-  return (
+  const cardContent = (
     <div
       className={`group relative z-[1] flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${
         useBlurEffect
@@ -302,9 +305,11 @@ export default function UnifiedWorkflowCard({
 
       <div>
         <h3 className="line-clamp-2 text-lg font-medium">{title}</h3>
-        <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-zinc-500">
-          {description}
-        </div>
+        {!showDescriptionAsTooltip && (
+          <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-zinc-500">
+            {description}
+          </div>
+        )}
       </div>
 
       <div className="mt-auto">
@@ -357,6 +362,24 @@ export default function UnifiedWorkflowCard({
         </div>
       </div>
     </div>
+  );
+
+  return showDescriptionAsTooltip ? (
+    <Tooltip
+      content={description}
+      placement="top"
+      className="max-w-xs"
+      showArrow
+      classNames={{
+        content: "bg-zinc-800 p-4 rounded-3xl",
+      }}
+      delay={0}
+      closeDelay={0}
+    >
+      {cardContent}
+    </Tooltip>
+  ) : (
+    cardContent
   );
 }
 
@@ -418,7 +441,7 @@ export function WorkflowActionButton({
   isLoading,
   onPress,
   variant = "primary",
-  size = "md",
+  size = "sm",
 }: WorkflowActionButtonProps) {
   const buttonVariant = variant === "flat" ? "flat" : "solid";
   const showIcon = label !== "Run Workflow";
@@ -428,10 +451,10 @@ export function WorkflowActionButton({
       color="primary"
       size={size}
       variant={buttonVariant}
-      className={`font-medium ${variant === "flat" ? "text-primary" : ""}`}
+      className={`font-medium rounded-xl ${variant === "flat" ? "text-primary" : ""}`}
       isLoading={isLoading}
       onPress={(e) => onPress(e as unknown as React.MouseEvent)}
-      endContent={showIcon ? <PlayIcon width={18} height={18} /> : undefined}
+      endContent={showIcon ? <ZapIcon width={16} height={16} /> : undefined}
     >
       {label}
     </Button>

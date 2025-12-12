@@ -27,12 +27,14 @@ export default function UseCaseSection({
   centered = true,
   exploreWorkflows: propExploreWorkflows,
   setShowUseCases,
+  showDescriptionAsTooltip,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
   centered?: boolean;
   exploreWorkflows?: UseCase[];
   setShowUseCases?: React.Dispatch<React.SetStateAction<boolean>>;
+  showDescriptionAsTooltip?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -297,6 +299,7 @@ export default function UseCaseSection({
                     }}
                   >
                     <UnifiedWorkflowCard
+                      showDescriptionAsTooltip={showDescriptionAsTooltip}
                       title={useCase.title || ""}
                       description={useCase.description || ""}
                       actionType={useCase.action_type || "prompt"}
@@ -344,6 +347,7 @@ export default function UseCaseSection({
                   >
                     <UnifiedWorkflowCard
                       workflow={workflow}
+                      showDescriptionAsTooltip={showDescriptionAsTooltip}
                       variant="user"
                       primaryAction="run"
                     />
