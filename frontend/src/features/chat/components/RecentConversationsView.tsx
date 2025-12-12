@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 
-import { BubbleConversationChatIcon } from "@/components";
+import { MessageMultiple02Icon } from "@/components";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import {
   useConversationList,
@@ -41,7 +41,7 @@ const RecentConversationsView = memo(() => {
   return (
     <BaseCardView
       title="Recent Conversations"
-      icon={<BubbleConversationChatIcon className="h-6 w-6 text-zinc-500" />}
+      icon={<MessageMultiple02Icon className="h-6 w-6 text-zinc-500" />}
       isFetching={loading}
       isEmpty={displayConversations.length === 0}
       emptyMessage="No recent conversations"

@@ -1,11 +1,33 @@
 // greetingUtils.ts - Utility functions for time-based greetings
 
 /**
+ * Get a simple time-based greeting (Good morning, Good afternoon, etc.)
+ * @returns A simple greeting string based on the current time
+ */
+export const getSimpleTimeGreeting = (): string => {
+  const currentHour = new Date().getHours();
+
+  if (currentHour >= 5 && currentHour < 12) {
+    return "Good morning";
+  } else if (currentHour >= 12 && currentHour < 17) {
+    return "Good afternoon";
+  } else if (currentHour >= 17 && currentHour < 21) {
+    return "Good evening";
+  } else {
+    return "Good night";
+  }
+};
+
+/**
  * Get a conversational greeting message based on the current time of day
  * @param userName - Optional user's name for personalization
+ * @param includeName - Whether to include the user's name in the greeting (default: true)
  * @returns A greeting string appropriate for the current time with proper name placement
  */
-export const getTimeBasedGreeting = (userName?: string): string => {
+export const getTimeBasedGreeting = (
+  userName?: string,
+  includeName: boolean = true,
+): string => {
   const currentHour = new Date().getHours();
 
   const morningGreetings = [
@@ -94,7 +116,7 @@ export const getTimeBasedGreeting = (userName?: string): string => {
   const template = greetings[randomIndex];
 
   // Handle name replacement
-  if (!userName || userName.trim() === "") {
+  if (!includeName || !userName || userName.trim() === "") {
     return template.replace("{name}", "");
   }
 

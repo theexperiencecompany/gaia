@@ -13,7 +13,12 @@ import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
-import { ArrowDown01Icon, StarFilledIcon } from "@/icons";
+import {
+  ArrowDown01Icon,
+  Login02Icon,
+  MessageMultiple02Icon,
+  StarFilledIcon,
+} from "@/icons";
 import { posthog } from "@/lib";
 
 import { Github } from "../shared";
@@ -247,7 +252,12 @@ export default function Navbar() {
                     });
                   }}
                 >
-                  {user.email ? "Open Chat" : "Get Started"}
+                  {user.email ? "Chat" : "Get Started"}
+                  {user.email ? (
+                    <MessageMultiple02Icon width={17} height={17} />
+                  ) : (
+                    <Login02Icon width={19} height={19} />
+                  )}
                 </RaisedButton>
                 {/* #1c1c1c */}
               </Link>
