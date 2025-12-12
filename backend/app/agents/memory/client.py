@@ -10,7 +10,7 @@ from app.config.settings import settings
 class MemoryClientManager:
     """Manages memory client lifecycle and configuration."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._client: Optional[AsyncMemoryClient] = None
         self._graph_enabled: bool = False
 
@@ -36,7 +36,7 @@ class MemoryClientManager:
 
         return self._client
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset the client instance (useful for testing)."""
         self._client = None
 

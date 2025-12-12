@@ -466,7 +466,7 @@ class ProviderRegistry:
     Supports both sync and async providers.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._providers: Dict[str, LazyLoader] = {}
         self._lock = Lock()
         self._auto_init_providers: Set[str] = set()

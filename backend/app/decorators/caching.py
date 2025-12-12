@@ -309,7 +309,7 @@ class CacheInvalidator:
         """
 
         @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args, **kwargs) -> Any:
             # Generate the cache key
             cache_keys: List[str] = []
             if self.key:

@@ -281,7 +281,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     logger.info(
         f"Awaiting {len(email_storage_tasks)} email storage tasks to complete in parallel..."
     )
-    storage_results = []
+    storage_results: list[None | BaseException] = []
     storage_errors = 0
     if email_storage_tasks:
         try:
