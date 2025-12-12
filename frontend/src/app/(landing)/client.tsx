@@ -1,9 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, useEffect } from "react";
 
-import SuspenseLoader from "@/components/shared/SuspenseLoader";
+import { AnimatedLazySection } from "@/components/shared/AnimatedSection";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import CommunitySection from "@/features/landing/components/sections/CommunitySection";
 import ProductivityOS from "@/features/landing/components/sections/ProductivityOS";
@@ -86,9 +86,7 @@ export default function LandingPageClient() {
       </section>
       <div>
         <div className="relative">
-          <Suspense fallback={<SuspenseLoader />}>
-            <Tired />
-          </Suspense>
+          <AnimatedLazySection component={Tired} delay={0.1} />
 
           <div
             className="absolute top-140 z-0 h-[120vh] w-screen blur-lg"
@@ -101,45 +99,29 @@ export default function LandingPageClient() {
           />
         </div>
 
-        <Suspense fallback={<SuspenseLoader />}>
-          <ProductivityOS />
-        </Suspense>
+        <AnimatedLazySection component={ProductivityOS} delay={0.2} />
 
-        <Suspense fallback={<SuspenseLoader />}>
-          <AllYourTools />
-        </Suspense>
+        <AnimatedLazySection component={AllYourTools} delay={0.2} />
 
-        <Suspense fallback={<SuspenseLoader />}>
-          <WorkflowSection />
-        </Suspense>
+        <AnimatedLazySection component={WorkflowSection} delay={0.2} />
 
-        <Suspense fallback={<SuspenseLoader />}>
-          <AutomateDailyChaos />
-        </Suspense>
+        <AnimatedLazySection component={AutomateDailyChaos} delay={0.2} />
 
-        <Suspense fallback={<SuspenseLoader />}>
-          <Personalised />
-        </Suspense>
+        <AnimatedLazySection component={Personalised} delay={0.2} />
 
-        <Suspense fallback={<SuspenseLoader />}>
-          <TestimonialsSection />
-        </Suspense>
+        <AnimatedLazySection component={TestimonialsSection} delay={0.2} />
 
-        <Suspense fallback={<SuspenseLoader />}>
-          <OpenSource />
-        </Suspense>
+        <AnimatedLazySection component={OpenSource} delay={0.2} />
 
-        <Suspense fallback={<SuspenseLoader />}>
-          <FAQAccordion />
-        </Suspense>
+        <AnimatedLazySection component={FAQAccordion} delay={0.2} />
 
-        <Suspense fallback={<SuspenseLoader />}>
-          <CommunitySection />
-        </Suspense>
+        <AnimatedLazySection component={CommunitySection} delay={0.2} />
 
-        <Suspense fallback={<SuspenseLoader />}>
-          <FinalSection showSocials={false} />
-        </Suspense>
+        <AnimatedLazySection
+          component={FinalSection}
+          componentProps={{ showSocials: false }}
+          delay={0.2}
+        />
       </div>
     </div>
     // </ReactLenis>

@@ -1,13 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-
 import UpcomingEventsView from "@/features/calendar/components/UpcomingEventsView";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
 import { useUpcomingEventsQuery } from "@/features/calendar/hooks/useUpcomingEventsQuery";
+import RecentConversationsView from "@/features/chat/components/RecentConversationsView";
+import GoalsView from "@/features/goals/components/GoalsView";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import UnreadEmailsView from "@/features/mail/components/UnreadEmailsView";
 import { useUnreadEmailsQuery } from "@/features/mail/hooks/useUnreadEmailsQuery";
+import InboxTodosView from "@/features/todo/components/InboxTodosView";
+import WorkflowListView from "@/features/workflows/components/WorkflowListView";
 import { posthog } from "@/lib/posthog";
 
 export const GridSection = () => {
@@ -79,7 +82,7 @@ export const GridSection = () => {
 
   return (
     <div className="relative flex h-fit w-full snap-start flex-col items-center justify-center">
-      <div className="mb-20 grid min-h-screen w-full max-w-7xl grid-cols-1 grid-rows-1 gap-8 space-y-14 sm:min-h-[40vh] sm:grid-cols-2 sm:space-y-0">
+      <div className="mb-20 grid min-h-screen w-full max-w-7xl grid-cols-1 grid-rows-1  sm:grid-cols-2 sm:space-y-0">
         <UnreadEmailsView
           emails={emailData}
           isLoading={emailLoading}
@@ -101,6 +104,10 @@ export const GridSection = () => {
             router.push("/calendar");
           }}
         />
+        <InboxTodosView />
+        <GoalsView />
+        <WorkflowListView />
+        <RecentConversationsView />
       </div>
     </div>
   );

@@ -140,6 +140,17 @@ export default function UnifiedWorkflowCard({
     const toastId = toast.loading("Creating workflow...");
 
     try {
+      // Convert PublicWorkflowStep to WorkflowStepData format if steps exist
+      const formattedSteps = steps?.map((step, index) => ({
+        id: step.id || `step_${index}`,
+        title: step.title,
+        description: step.description,
+        tool_name: step.tool_name || step.tool_category,
+        tool_category: step.tool_category,
+        tool_inputs: step.tool_inputs || {},
+        order: step.order ?? index,
+      }));
+
       const workflowRequest = {
         title,
         description,
@@ -147,7 +158,13 @@ export default function UnifiedWorkflowCard({
           type: "manual" as const,
           enabled: true,
         },
-        generate_immediately: true,
+        // Pass formatted steps if available to avoid regeneration
+        ...(formattedSteps &&
+          formattedSteps.length > 0 && {
+            steps: formattedSteps,
+          }),
+        // Only generate if no steps exist
+        generate_immediately: !formattedSteps || formattedSteps.length === 0,
       };
 
       const result = await createWorkflow(workflowRequest);

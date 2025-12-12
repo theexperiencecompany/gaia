@@ -31,6 +31,8 @@ export interface WorkflowStepData {
   description: string;
   tool_name: string;
   tool_category: string;
+  tool_inputs?: Record<string, unknown>;
+  order?: number;
 }
 
 /**
@@ -51,12 +53,16 @@ export interface WorkflowStepType {
 /**
  * Simplified workflow step for community/public display
  * Used in CommunityWorkflow and UseCase types
+ * Note: Backend actually returns full WorkflowStepType, but we type it as optional for flexibility
  */
 export interface PublicWorkflowStep {
+  id?: string;
   title: string;
   tool_name?: string;
   tool_category: string;
   description: string;
+  tool_inputs?: Record<string, unknown>;
+  order?: number;
 }
 
 // ============================================================================
@@ -196,6 +202,7 @@ export interface CreateWorkflowRequest {
   title: string;
   description: string;
   trigger_config: TriggerConfig;
+  steps?: WorkflowStepData[]; // Optional: pre-existing steps from explore/community workflows
   execution_config?: ExecutionConfig;
   metadata?: Partial<WorkflowMetadata>;
   generate_immediately?: boolean;

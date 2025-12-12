@@ -11,6 +11,7 @@ import {
   useUserSubscriptionStatus,
 } from "@/features/pricing/hooks/usePricing";
 import {
+  BlockGameIcon,
   Calendar03Icon,
   CheckListIcon,
   ConnectIcon,
@@ -82,7 +83,7 @@ export default function SidebarTopButtons() {
     },
     {
       route: "/integrations",
-      icon: <ConnectIcon />,
+      icon: <BlockGameIcon />,
       label: "Integrations",
     },
     // {

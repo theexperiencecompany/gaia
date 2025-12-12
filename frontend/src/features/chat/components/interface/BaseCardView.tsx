@@ -49,7 +49,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
   path,
   onRefresh,
 }) => {
-  const containerClassName = `flex h-full min-h-[40vh] max-h-[40vh] w-full flex-col ${className} rounded-3xl`;
+  const containerClassName = `flex h-full w-full flex-col ${className} rounded-3xl`;
 
   return (
     <div className={containerClassName}>

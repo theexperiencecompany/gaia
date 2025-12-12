@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { useTodoStore } from "@/stores/todoStore";
 import type { Priority, TodoFilters } from "@/types/features/todoTypes";
@@ -12,6 +12,10 @@ interface UseTodoDataOptions {
 
 export function useTodoData(options: UseTodoDataOptions = {}) {
   const { filters, autoLoad = true } = options;
+
+  // Use JSON.stringify to create a stable reference for filters
+  const filtersString = useMemo(() => JSON.stringify(filters || {}), [filters]);
+
   const {
     todos: allTodos,
     projects,
@@ -29,17 +33,23 @@ export function useTodoData(options: UseTodoDataOptions = {}) {
     refreshAll,
   } = useTodoStore();
 
+  // Track if initial load has happened
+  const hasLoadedRef = useRef(false);
+
   // Load data on mount if autoLoad is enabled
   useEffect(() => {
-    if (autoLoad) {
-      loadTodos(filters);
+    if (autoLoad && !hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      const parsedFilters = JSON.parse(filtersString) as TodoFilters;
+      loadTodos(parsedFilters);
     }
-  }, [autoLoad, filters, loadTodos]);
+  }, [autoLoad, filtersString, loadTodos]);
 
   // Refresh function that reloads current filter
   const refresh = useCallback(() => {
-    return loadTodos(filters);
-  }, [loadTodos, filters]);
+    const parsedFilters = JSON.parse(filtersString) as TodoFilters;
+    return loadTodos(parsedFilters);
+  }, [loadTodos, filtersString]);
 
   // Convenience methods for specific todo types
   const loadTodayTodos = useCallback(() => {
