@@ -42,8 +42,9 @@ export function useTodoData(options: UseTodoDataOptions = {}) {
       hasLoadedRef.current = true;
       const parsedFilters = JSON.parse(filtersString) as TodoFilters;
       loadTodos(parsedFilters);
+      loadCounts(); // Also load counts for dashboard summary
     }
-  }, [autoLoad, filtersString, loadTodos]);
+  }, [autoLoad, filtersString, loadTodos, loadCounts]);
 
   // Refresh function that reloads current filter
   const refresh = useCallback(() => {

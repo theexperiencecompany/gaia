@@ -7,24 +7,16 @@ import type { EmailData, EmailFetchData } from "@/types/features/mailTypes";
 
 interface UnreadEmailsViewProps {
   emails?: EmailData[];
-  isLoading: boolean;
-  isFetching?: boolean;
-  error?: Error | null;
-  // Connection state props
   isConnected?: boolean;
   onConnect?: (integrationId: string) => void;
-  onRefresh?: () => void;
 }
 
 const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
-  emails,
-  isLoading,
-  isFetching = false,
-  error,
+  emails = [],
   isConnected = true,
   onConnect,
-  onRefresh,
 }) => {
+  const isLoading = false; // Data is passed from parent, no loading state needed
   // Convert EmailData to EmailFetchData format expected by EmailListCard
   // and sort by time (most recent first)
   const formattedEmails: EmailFetchData[] =
@@ -48,8 +40,6 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
     <BaseCardView
       title="Unread emails"
       icon={<InboxUnreadIcon className="h-6 w-6 text-zinc-500" />}
-      isFetching={isFetching}
-      error={error?.message}
       isEmpty={isEmpty}
       emptyMessage="No unread emails"
       errorMessage="Failed to load unread emails"
@@ -60,7 +50,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
       connectTitle="Connect Your Gmail"
       connectDescription="Access and manage your emails"
       connectIcon={<Gmail width={32} height={32} />}
-      onRefresh={onRefresh}
+      path="/mail"
     >
       {isLoading ? (
         <div className="flex h-full items-center justify-center">

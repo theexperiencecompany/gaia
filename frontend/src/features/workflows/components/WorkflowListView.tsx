@@ -1,12 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo } from "react";
 
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { workflowApi } from "@/features/workflows/api/workflowApi";
-import { Loading02Icon, WorkflowSquare05Icon } from "@/icons";
+import { WorkflowSquare05Icon } from "@/icons";
 import type { Workflow } from "@/types/features/workflowTypes";
 
 // Get unique tool categories from workflow steps (max 4)
@@ -36,7 +35,7 @@ const WorkflowRow = memo(
 
     return (
       <div
-        className="flex cursor-pointer items-center gap-3 rounded-lg bg-zinc-800/50 p-3 transition-colors hover:bg-zinc-700/50"
+        className="flex cursor-pointer items-center gap-3 rounded-2xl bg-zinc-800/50 p-3 transition-colors hover:bg-zinc-700/50"
         onClick={handleClick}
       >
         {/* Stacked Icons matching workflow cards */}
@@ -89,37 +88,12 @@ const WorkflowRow = memo(
 
 WorkflowRow.displayName = "WorkflowRow";
 
-const WorkflowListView = memo(() => {
+interface WorkflowListViewProps {
+  workflows?: Workflow[];
+}
+
+const WorkflowListView = memo(({ workflows = [] }: WorkflowListViewProps) => {
   const router = useRouter();
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const hasLoadedRef = useRef(false);
-
-  const fetchWorkflows = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await workflowApi.listWorkflows({
-        limit: 10,
-      });
-      setWorkflows(response.workflows);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err : new Error("Failed to load workflows"),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Only fetch once on mount
-  useEffect(() => {
-    if (!hasLoadedRef.current) {
-      hasLoadedRef.current = true;
-      fetchWorkflows();
-    }
-  }, [fetchWorkflows]);
 
   const handleWorkflowClick = useCallback(
     (workflowId: string) => {
@@ -131,35 +105,26 @@ const WorkflowListView = memo(() => {
   // Memoize first 5 workflows
   const displayWorkflows = useMemo(() => workflows.slice(0, 5), [workflows]);
 
-  const isEmpty = !loading && workflows.length === 0;
+  const isEmpty = workflows.length === 0;
 
   return (
     <BaseCardView
       title="Workflows"
       icon={<WorkflowSquare05Icon className="h-6 w-6 text-zinc-500" />}
-      isFetching={loading}
       isEmpty={isEmpty}
       emptyMessage="No workflows created yet"
       errorMessage="Failed to load workflows"
-      error={error?.message}
       path="/workflows"
-      onRefresh={fetchWorkflows}
     >
-      {loading ? (
-        <div className="flex h-full items-center justify-center">
-          <Loading02Icon className="h-8 w-8 animate-spin text-zinc-500" />
-        </div>
-      ) : (
-        <div className="space-y-2 p-4">
-          {displayWorkflows.map((workflow) => (
-            <WorkflowRow
-              key={workflow.id}
-              workflow={workflow}
-              onClick={handleWorkflowClick}
-            />
-          ))}
-        </div>
-      )}
+      <div className="space-y-2 p-4">
+        {displayWorkflows.map((workflow) => (
+          <WorkflowRow
+            key={workflow.id}
+            workflow={workflow}
+            onClick={handleWorkflowClick}
+          />
+        ))}
+      </div>
     </BaseCardView>
   );
 });

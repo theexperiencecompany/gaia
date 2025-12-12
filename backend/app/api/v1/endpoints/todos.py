@@ -75,6 +75,9 @@ async def get_todo_counts(user: dict = Depends(get_current_user)):
             str(inbox_project["_id"]) if inbox_project else "no_inbox_found"
         )
 
+        # Get current time for overdue calculation
+        now = datetime.now(timezone.utc)
+
         # Count todos efficiently with a single aggregation
         counts_pipeline = [
             {"$match": {"user_id": user["user_id"]}},
@@ -107,6 +110,15 @@ async def get_todo_counts(user: dict = Depends(get_current_user)):
                         },
                         {"$count": "count"},
                     ],
+                    "overdue": [
+                        {
+                            "$match": {
+                                "due_date": {"$lt": now},
+                                "completed": False,
+                            }
+                        },
+                        {"$count": "count"},
+                    ],
                 }
             },
         ]
@@ -123,6 +135,7 @@ async def get_todo_counts(user: dict = Depends(get_current_user)):
             "today": safe_get_count(facets.get("today", [])),
             "upcoming": safe_get_count(facets.get("upcoming", [])),
             "completed": stats.completed,
+            "overdue": safe_get_count(facets.get("overdue", [])),
         }
 
     except Exception as e:

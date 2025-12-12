@@ -10,25 +10,18 @@ import { formatDate } from "@/utils";
 
 interface UpcomingEventsViewProps {
   onEventClick?: (event: GoogleCalendarEvent) => void;
-  events: GoogleCalendarEvent[];
-  isFetching?: boolean;
-  error?: string | null;
-  calendars: CalendarItem[];
-  // Connection state props
+  events?: GoogleCalendarEvent[];
+  calendars?: CalendarItem[];
   isConnected?: boolean;
   onConnect?: (integrationId: string) => void;
-  onRefresh?: () => void;
 }
 
 const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
   onEventClick,
-  events,
-  isFetching = false,
-  error,
-  calendars,
+  events = [],
+  calendars = [],
   isConnected = true,
   onConnect,
-  onRefresh,
 }) => {
   // Group all events by their date (show all events from API, grouped by day)
   const upcomingEventsByDay = useMemo(() => {
@@ -119,8 +112,6 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
     <BaseCardView
       title="Upcoming events"
       icon={<CalendarUpload01Icon className="h-6 w-6 text-zinc-500" />}
-      isFetching={isFetching}
-      error={error}
       isEmpty={!hasEvents}
       emptyMessage="No upcoming events"
       errorMessage="Failed to load upcoming events"
@@ -132,7 +123,6 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
       connectDescription="Manage events and view your schedule"
       connectIcon={<GoogleCalendarIcon width={32} height={32} />}
       path="/calendar"
-      onRefresh={onRefresh}
     >
       <div className="space-y-6 p-4">
         {Object.entries(upcomingEventsByDay).map(

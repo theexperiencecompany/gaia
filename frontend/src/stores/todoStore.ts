@@ -15,6 +15,7 @@ interface TodoCounts {
   today: number;
   upcoming: number;
   completed: number;
+  overdue: number;
 }
 
 interface TodoState {
@@ -57,6 +58,7 @@ const initialState: TodoState = {
     today: 0,
     upcoming: 0,
     completed: 0,
+    overdue: 0,
   },
   loading: false,
   error: null,

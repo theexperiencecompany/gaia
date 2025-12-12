@@ -194,6 +194,7 @@ export const todoApi = {
     today: number;
     upcoming: number;
     completed: number;
+    overdue: number;
   }> => {
     return apiService.get("/todos/counts", {
       silent: true,
