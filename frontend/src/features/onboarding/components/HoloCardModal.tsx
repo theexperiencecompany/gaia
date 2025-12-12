@@ -21,6 +21,7 @@ import {
 } from "@/features/onboarding/hooks/usePersonalization";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { Rocket01Icon } from "@/icons";
+import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 
 interface FeatureModalProps {
   isOpen: boolean;
@@ -139,7 +140,6 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                       key={workflow.id || index}
                       title={workflow.title}
                       description={workflow.description}
-                      steps={workflow.steps}
                       variant="explore"
                       primaryAction="create"
                       showExecutions={false}
