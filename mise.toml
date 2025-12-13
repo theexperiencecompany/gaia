@@ -13,6 +13,7 @@ node = "22"
 "npm:mintlify" = "latest"
 prek = "latest"
 uv = "latest"
+"npm:nx" = "latest"
 
 [env]
 _.python.venv = { path = "apps/backend/.venv", create = true }
@@ -108,7 +109,7 @@ run = "nx affected -t lint --parallel=3"
 
 # Format Tasks (with Nx parallelism)
 [tasks.format]
-description = "Format all apps (parallel)"
+description = "Format and write changes to all apps (parallel)"
 run = "nx run-many -t format --parallel=3"
 
 [tasks."format:check"]
@@ -116,15 +117,15 @@ description = "Check formatting for all apps (parallel with caching)"
 run = "nx run-many -t format:check --parallel=3"
 
 [tasks."format:backend"]
-description = "Format backend only"
+description = "Format and write changes to backend only"
 run = "nx format backend"
 
 [tasks."format:web"]
-description = "Format web only"
+description = "Format and write changes to web only"
 run = "nx format web"
 
 [tasks."format:affected"]
-description = "Format only affected projects (parallel)"
+description = "Format and write changes to affected projects (parallel)"
 run = "nx affected -t format --parallel=3"
 
 # Type-check Tasks (with Nx caching)

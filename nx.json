@@ -6,7 +6,7 @@
 			"sources": []
 		}
 	},
-	"defaultBase": "main",
+	"defaultBase": "master",
 	"namedInputs": {
 		"default": ["{projectRoot}/**/*"],
 		"production": ["!{projectRoot}/**/*.spec.ts", "!{projectRoot}/**/*.test.ts"]
@@ -59,17 +59,6 @@
 				"serveStaticTargetName": "serve-static",
 				"buildDepsTargetName": "build-deps",
 				"watchDepsTargetName": "watch-deps"
-			}
-		},
-		{
-			"plugin": "@nx/docker",
-			"options": {
-				"buildTarget": {
-					"name": "docker:build"
-				},
-				"runTarget": {
-					"name": "docker:run"
-				}
 			}
 		}
 	],

@@ -34,11 +34,7 @@
         "cwd": "{projectRoot}"
       },
       "cache": true,
-      "inputs": [
-        "default",
-        "{workspaceRoot}/config/biome.json",
-        "^production"
-      ]
+      "inputs": ["default", "{workspaceRoot}/config/biome.json", "^production"]
     },
     "lint:fix": {
       "executor": "nx:run-commands",
@@ -63,10 +59,7 @@
         "cwd": "{projectRoot}"
       },
       "cache": true,
-      "inputs": [
-        "default",
-        "{workspaceRoot}/config/biome.json"
-      ]
+      "inputs": ["default", "{workspaceRoot}/config/biome.json"]
     },
     "type-check": {
       "executor": "nx:run-commands",

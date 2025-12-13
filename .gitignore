@@ -100,4 +100,4 @@ dist/
 .next
 out
 
-/logs
+**/logs
