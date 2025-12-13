@@ -5,7 +5,7 @@ services:
   gaia-backend:
     container_name: gaia-backend
     profiles: ["backend", "all"]
-    build: ./backend
+    build: ./api
     image: gaia
     working_dir: /app
     command:
@@ -29,9 +29,9 @@ services:
       FORCE_COLOR: 1
       WORKER_TYPE: main_app
     env_file:
-      - ./backend/.env
+      - ./api/.env
     volumes:
-      - ./backend:/app
+      - ./api:/app
     ports:
       - "8000:80"
     restart: on-failure
@@ -156,13 +156,13 @@ services:
     profiles: ["worker", "all"]
     working_dir: /app
     env_file:
-      - ./backend/.env
+      - ./api/.env
     environment:
       - WORKER_TYPE=arq_worker
     command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     volumes:
-      - ./backend:/app
+      - ./api:/app
     depends_on:
       redis:
         condition: service_healthy

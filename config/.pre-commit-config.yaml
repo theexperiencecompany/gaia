@@ -8,9 +8,9 @@ repos:
       - id: check-toml
       - id: check-merge-conflict
       - id: check-added-large-files
-        exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/backend/uv.lock)$
+        exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
       - id: check-ast
-        exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/backend/uv.lock)$
+        exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
       - id: check-docstring-first
       - id: check-case-conflict
       - id: detect-private-key

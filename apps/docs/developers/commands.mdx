@@ -12,7 +12,7 @@ GAIA uses [mise](https://mise.jdx.dev) as a unified task runner. Run `mise tasks
 
 ```bash
 mise setup        # First time setup
-mise dev          # Start development (backend + web + docker)
+mise dev          # Start development (API + web + docker)
 mise dev:full     # Start everything (includes ARQ worker)
 ```
 
@@ -26,11 +26,11 @@ Run these from the project root.
 
 | Command          | Description                      |
 | ---------------- | -------------------------------- |
-| `mise dev`       | Backend + web + docker logs      |
-| `mise dev:backend` | Backend only (no docker)         |
+| `mise dev`       | API + web + docker logs          |
+| `mise dev:api`   | API only (no docker)             |
 | `mise dev:web`   | Web only                         |
 | `mise dev:arq`   | ARQ worker only                  |
-| `mise dev:full`  | Everything (backend + web + ARQ + docker) |
+| `mise dev:full`  | Everything (API + web + ARQ + docker) |
 
 ### Setup
 
@@ -38,7 +38,7 @@ Run these from the project root.
 | --------------------- | ----------------------------------------------------- |
 | `mise setup`        | Complete setup (env check, deps, docker, seed models) |
 | `mise setup:env`    | Check if `.env` files exist                           |
-| `mise setup:backend` | Backend dependencies only                             |
+| `mise setup:api`    | API dependencies only                             |
 | `mise setup:web`    | Web dependencies only                                 |
 | `mise setup:deps`     | All dependencies                                      |
 
@@ -46,8 +46,8 @@ Run these from the project root.
 
 | Command       | Description          |
 | ------------- | -------------------- |
-| `mise lint`   | Lint backend + web   |
-| `mise format` | Format backend + web |
+| `mise lint`   | Lint API + web       |
+| `mise format` | Format API + web     |
 | `mise clean`  | Clean build artifacts     |
 
 ### Documentation
@@ -60,7 +60,7 @@ Run these from the project root.
 
 ## Backend Commands
 
-Run from `backend/` or use `mise -C backend <task>` from root.
+Run from `api/` or use `mise -C apps/api <task>` from root.
 
 ### Development
 
@@ -165,7 +165,7 @@ Standard Docker Compose commands:
 | `docker compose logs -f postgres`     | Logs for specific service    |
 | `docker compose restart`              | Restart services             |
 | `docker compose build`                | Rebuild images               |
-| `docker compose --profile all up`     | All containers (backend/arq) |
+| `docker compose --profile all up`     | All containers (API/arq)     |
 | `docker compose --profile backend up` | Services + backend           |
 | `docker compose --profile worker up`  | Services + ARQ worker        |
 
@@ -176,7 +176,7 @@ Standard Docker Compose commands:
 **Run tasks from anywhere:**
 
 ```bash
-mise -C apps/backend dev      # Backend from root
+mise -C apps/api dev          # API from root
 mise -C apps/web lint         # Web from root
 ```
 

@@ -45,13 +45,13 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install backend dependencies
+      - name: Install API dependencies
         run: uv sync --frozen --all-extras
-        working-directory: apps/backend
+        working-directory: apps/api
 
       - name: Install mypy types
         run: uv run mypy --install-types --non-interactive
-        working-directory: apps/backend
+        working-directory: apps/api
 
       - name: Run affected lint
         run: npx nx affected -t lint --parallel=3

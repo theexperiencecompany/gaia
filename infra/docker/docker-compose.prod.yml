@@ -33,7 +33,7 @@ services:
       # Disable output buffering for streaming
       PYTHONIOENCODING: utf-8
     env_file:
-      - ./backend/.env
+      - ./api/.env
     ports:
       - "8000:80"
     restart: on-failure
@@ -139,7 +139,7 @@ services:
     profiles: ["", "backend-only"]
     working_dir: /app
     env_file:
-      - ./backend/.env
+      - ./api/.env
     environment:
       - WORKER_TYPE=arq_worker
     command: ["python", "-m", "arq", "app.worker.WorkerSettings"]

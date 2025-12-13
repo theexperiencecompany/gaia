@@ -1,5 +1,5 @@
-# Backend mise.toml for GAIA
-# This file defines tasks for the GAIA backend (Python/FastAPI).
+# API mise.toml for GAIA
+# This file defines tasks for the GAIA API (Python/FastAPI).
 #
 # Quick Start:
 #   mise dev             # Start development server
@@ -30,27 +30,27 @@ alias = "arq"
 
 [tasks.lint]
 description = "Run ruff linter (via Nx with caching)"
-run = "nx lint backend"
+run = "nx lint api"
 
 [tasks."lint:fix"]
 description = "Run ruff linter with auto-fix"
-run = "nx lint:fix backend"
+run = "nx lint:fix api"
 
 [tasks.format]
 description = "Format code with ruff"
-run = "nx format backend"
+run = "nx format api"
 
 [tasks."format:check"]
 description = "Check code formatting (via Nx with caching)"
-run = "nx format:check backend"
+run = "nx format:check api"
 
 [tasks.mypy]
 description = "Run mypy type checker (via Nx with caching)"
-run = "nx type-check backend"
+run = "nx type-check api"
 
 [tasks."type-check"]
 description = "Run mypy type checker (via Nx with caching)"
-run = "nx type-check backend"
+run = "nx type-check api"
 
 [tasks.schema]
 description = "Test API schema with schemathesis"

@@ -5,14 +5,14 @@
     {
       "type": "linked-versions",
       "groupName": "gaia",
-      "components": ["backend", "web"],
+      "components": ["api", "web"],
       "merge": true
     }
   ],
   "packages": {
-    "backend": {
+    "api": {
       "release-type": "python",
-      "component": "backend",
+      "component": "api",
       "changelog-path": "CHANGELOG.md",
       "changelog-type": "github"
     },

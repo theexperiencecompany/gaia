@@ -15,7 +15,7 @@ uv = "latest"
 "npm:nx" = "latest"
 
 [env]
-_.python.venv = { path = "apps/backend/.venv", create = true }
+_.python.venv = { path = "apps/api/.venv", create = true }
 MISE_NODE_COREPACK = "1"
 
 [hooks]
@@ -30,13 +30,13 @@ experimental = true # Can setup hooks and advanced features
 description = "Run ONLY web (starts Docker automatically)"
 run = "nx run docker:docker:up && nx dev web"
 
-[tasks."dev:backend"]
-description = "Run ONLY backend server (starts Docker automatically)"
-run = "nx run docker:docker:up && nx dev backend"
+[tasks."dev:api"]
+description = "Run ONLY API server (starts Docker automatically)"
+run = "nx run docker:docker:up && nx dev api"
 
 [tasks."dev:arq"]
 description = "Run ONLY ARQ worker"
-dir = "apps/backend"
+dir = "apps/api"
 run = "mise worker"
 
 [tasks."dev:docs"]
@@ -44,12 +44,12 @@ description = "Run ONLY docs"
 run = "nx dev docs"
 
 [tasks."dev:full"]
-description = "Run backend + web + arq in parallel (starts Docker automatically)"
-run = "nx run docker:docker:up && nx run-many -t dev --projects=backend,web --parallel=2 & mise dev:arq"
+description = "Run API + web + arq in parallel (starts Docker automatically)"
+run = "nx run docker:docker:up && nx run-many -t dev --projects=api,web --parallel=2 & mise dev:arq"
 
 [tasks.dev]
-description = "Run backend + web in parallel (starts Docker automatically)"
-run = "nx run docker:docker:up && nx run-many -t dev --projects=backend,web --parallel=2"
+description = "Run API + web in parallel (starts Docker automatically)"
+run = "nx run docker:docker:up && nx run-many -t dev --projects=api,web --parallel=2"
 
 # Build Tasks (with Nx caching)
 [tasks.build]
@@ -73,9 +73,9 @@ run = "nx affected -t build"
 description = "Test all apps"
 run = "nx run-many -t test"
 
-[tasks."test:backend"]
-description = "Test backend only"
-run = "nx test backend"
+[tasks."test:api"]
+description = "Test API only"
+run = "nx test api"
 
 [tasks."test:web"]
 description = "Test web only"
@@ -94,9 +94,9 @@ run = "nx run-many -t lint --parallel=3"
 description = "Lint and fix all apps"
 run = "nx run-many -t lint:fix --parallel=3"
 
-[tasks."lint:backend"]
-description = "Lint backend only"
-run = "nx lint backend"
+[tasks."lint:api"]
+description = "Lint API only"
+run = "nx lint api"
 
 [tasks."lint:web"]
 description = "Lint web only"
@@ -115,9 +115,9 @@ run = "nx run-many -t format --parallel=3"
 description = "Check formatting for all apps (parallel with caching)"
 run = "nx run-many -t format:check --parallel=3"
 
-[tasks."format:backend"]
-description = "Format and write changes to backend only"
-run = "nx format backend"
+[tasks."format:api"]
+description = "Format and write changes to API only"
+run = "nx format api"
 
 [tasks."format:web"]
 description = "Format and write changes to web only"
@@ -140,19 +140,19 @@ run = "nx affected -t type-check --parallel=3"
 [tasks."setup:env"]
 description = "Check if environment files exist"
 run = '''
-if [ ! -f "apps/backend/.env" ] || [ ! -f "apps/web/.env" ]; then
+if [ ! -f "apps/api/.env" ] || [ ! -f "apps/web/.env" ]; then
     echo "❌ Environment files not found!"
     echo ""
     echo "Copy example files:"
-    echo "  cp apps/backend/.env.example apps/backend/.env"
+    echo "  cp apps/api/.env.example apps/api/.env"
     echo "  cp apps/web/.env.example apps/web/.env"
     exit 1
 fi
 '''
 
-[tasks."setup:backend"]
-description = "Set up backend dependencies"
-dir = "apps/backend"
+[tasks."setup:api"]
+description = "Set up API dependencies"
+dir = "apps/api"
 run = "mise deps"
 depends = ["setup:env"]
 
@@ -163,12 +163,12 @@ run = "mise deps"
 
 [tasks."setup:deps"]
 description = "Install all dependencies"
-depends = ["setup:backend", "setup:web"]
+depends = ["setup:api", "setup:web"]
 
 [tasks.setup]
 description = "Complete project setup"
 depends = ["setup:*"]
-dir = "apps/backend"
+dir = "apps/api"
 run = "nx run docker:docker:up && mise seed:models"
 
 # Clean Tasks
@@ -193,9 +193,9 @@ run = "prek install"
 description = "Run pre-commit hooks on staged files"
 run = "prek run"
 
-[tasks."pre-commit:backend"]
-description = "Run pre-commit checks for backend only"
-run = "prek run apps/backend/"
+[tasks."pre-commit:api"]
+description = "Run pre-commit checks for API only"
+run = "prek run apps/api/"
 
 [tasks."pre-commit:web"]
 description = "Run pre-commit checks for web only"

@@ -12,7 +12,7 @@ icon: "wrench"
 ### Backend (LangChain)
 1) Implement the tool
 ```python
-# backend/app/langchain/tools/my_tool.py
+# api/app/langchain/tools/my_tool.py
 from langchain_core.tools import tool
 
 @tool
@@ -23,7 +23,7 @@ def my_tool(arg: str) -> str:
 
 2) Register in the Tool Registry
 ```python
-# backend/app/langchain/tools/core/registry.py
+# api/app/langchain/tools/core/registry.py
 # Inside ToolRegistry._initialize_categories()
 category = self.get_category("development")  # or create via add_category(...)
 category.add_tool(my_tool)
@@ -74,7 +74,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 Done. The backend tool becomes available to agents; the frontend knows how to type and render its outputs.
 
 See also:
-- Backend registry: `apps/backend/app/langchain/tools/core/registry.py`
+- Backend registry: `apps/api/app/langchain/tools/core/registry.py`
 - Web tool registry: `apps/web/src/config/registries/toolRegistry.ts`
 - Unified renderers: `apps/web/src/features/chat/components/bubbles/bot/TextBubble.tsx`
-- Lazy providers: `backend/app/core/lazy_loader.py` 
+- Lazy providers: `api/app/core/lazy_loader.py` 
