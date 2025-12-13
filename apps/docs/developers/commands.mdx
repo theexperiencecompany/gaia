@@ -1,198 +1,274 @@
 ---
 title: "Commands Reference"
-description: "Complete reference of all available mise commands for GAIA"
+description: "Complete reference of all mise and Nx commands for GAIA"
 icon: "terminal"
 ---
 
-# Commands Reference
+## Overview
 
-GAIA uses [mise](https://mise.jdx.dev) as a unified task runner. Run `mise tasks` to see all available commands.
+GAIA uses a **mise + Nx** architecture:
+- **[mise](https://mise.jdx.dev)** - Task runner and tool version manager
+- **[Nx](https://nx.dev)** - Build system with caching and project graph
+
+Run `mise tasks` to see all available commands.
+
+---
 
 ## Quick Start
 
 ```bash
-mise setup        # First time setup
-mise dev          # Start development (API + web + docker)
-mise dev:full     # Start everything (includes ARQ worker)
+mise setup        # First-time setup (deps, docker, seed)
+mise dev          # Start API + web (auto-starts Docker)
+mise dev:full     # Everything including ARQ worker
 ```
 
 ---
 
-## Root Commands
+## Development Commands
 
-Run these from the project root.
+Run from project root.
 
-### Development
-
-| Command          | Description                      |
-| ---------------- | -------------------------------- |
-| `mise dev`       | API + web + docker logs          |
-| `mise dev:api`   | API only (no docker)             |
-| `mise dev:web`   | Web only                         |
-| `mise dev:arq`   | ARQ worker only                  |
-| `mise dev:full`  | Everything (API + web + ARQ + docker) |
-
-### Setup
-
-| Command               | Description                                           |
-| --------------------- | ----------------------------------------------------- |
-| `mise setup`        | Complete setup (env check, deps, docker, seed models) |
-| `mise setup:env`    | Check if `.env` files exist                           |
-| `mise setup:api`    | API dependencies only                             |
-| `mise setup:web`    | Web dependencies only                                 |
-| `mise setup:deps`     | All dependencies                                      |
-
-### Code Quality
-
-| Command       | Description          |
-| ------------- | -------------------- |
-| `mise lint`   | Lint API + web       |
-| `mise format` | Format API + web     |
-| `mise clean`  | Clean build artifacts     |
-
-### Documentation
-
-| Command     | Description              |
-| ----------- | ------------------------ |
-| `mise docs` | Run mintlify docs server |
+| Command | Description |
+|---------|-------------|
+| `mise dev` | API + web in parallel (starts Docker) |
+| `mise dev:api` | API server only (port 8000) |
+| `mise dev:web` | Web app only (port 3000) |
+| `mise dev:arq` | ARQ background worker |
+| `mise dev:full` | API + web + ARQ worker |
+| `mise dev:docs` | Documentation server |
 
 ---
 
-## Backend Commands
+## Setup Commands
 
-Run from `api/` or use `mise -C apps/api <task>` from root.
+| Command | Description |
+|---------|-------------|
+| `mise setup` | Complete setup (env check → deps → docker → seed models) |
+| `mise setup:env` | Check if `.env` files exist |
+| `mise setup:api` | Install API dependencies (uv sync) |
+| `mise setup:web` | Install web dependencies (pnpm install) |
+| `mise setup:deps` | Install all dependencies |
+
+---
+
+## Build Commands
+
+| Command | Description |
+|---------|-------------|
+| `mise build` | Build all projects |
+| `mise build:web` | Build web only |
+| `mise build:docs` | Build documentation |
+| `mise build:affected` | Build only changed projects |
+
+---
+
+## Code Quality
+
+### Linting
+
+| Command | Description |
+|---------|-------------|
+| `mise lint` | Lint all projects (parallel with caching) |
+| `mise lint:fix` | Lint and auto-fix all projects |
+| `mise lint:api` | Lint API only (ruff) |
+| `mise lint:web` | Lint web only (biome) |
+| `mise lint:affected` | Lint only changed projects |
+
+### Formatting
+
+| Command | Description |
+|---------|-------------|
+| `mise format` | Format all projects |
+| `mise format:check` | Check formatting without changes |
+| `mise format:api` | Format API only |
+| `mise format:web` | Format web only |
+| `mise format:affected` | Format only changed projects |
+
+### Type Checking
+
+| Command | Description |
+|---------|-------------|
+| `mise type-check` | Type-check all projects |
+| `mise type-check:affected` | Type-check only changed projects |
+
+---
+
+## Testing
+
+| Command | Description |
+|---------|-------------|
+| `mise test` | Run all tests |
+| `mise test:api` | Run API tests (pytest) |
+| `mise test:web` | Run web tests |
+| `mise test:affected` | Test only changed projects |
+
+---
+
+## Pre-commit Hooks
+
+GAIA uses [prek](https://github.com/ajitid/prek) for pre-commit hooks.
+
+| Command | Description |
+|---------|-------------|
+| `mise pre-commit` | Run all checks on all files |
+| `mise pre-commit:install` | Install git hooks |
+| `mise pre-commit:run` | Run on staged files |
+| `mise pre-commit:api` | Run checks on API only |
+| `mise pre-commit:web` | Run checks on web only |
+| `mise pre-commit:uninstall` | Remove git hooks |
+
+---
+
+## Clean & Maintenance
+
+| Command | Description |
+|---------|-------------|
+| `mise clean` | Clean all project build artifacts |
+| `mise clean:nx` | Reset Nx cache |
+
+---
+
+## Nx Commands
+
+### Project Graph
+
+| Command | Description |
+|---------|-------------|
+| `mise graph` | Open Nx project graph in browser |
+| `mise affected:graph` | Show graph of affected projects |
+
+### Direct Nx Usage
+
+```bash
+# Run any target on a specific project
+npx nx <target> <project>
+
+# Examples
+npx nx lint api
+npx nx build web
+npx nx test api
+
+# Run on multiple projects
+npx nx run-many -t lint --projects=api,web
+
+# Run on all affected projects
+npx nx affected -t lint
+npx nx affected -t build
+npx nx affected -t test
+
+# Show project config
+npx nx show project api
+npx nx show project web
+npx nx show projects
+```
+
+---
+
+## API-Specific Commands
+
+Run from `apps/api/` or use `mise -C apps/api <task>`.
 
 ### Development
 
-| Command       | Description                            |
-| ------------- | -------------------------------------- |
-| `mise dev`    | Dev server with hot reload (port 8000) |
-| `mise start`  | Production server                      |
-| `mise worker` | ARQ background worker (alias: `arq`)   |
+| Command | Description |
+|---------|-------------|
+| `mise dev` | Dev server with hot reload |
+| `mise start` | Production server |
+| `mise worker` | ARQ background worker |
 
 ### Code Quality
 
-| Command         | Description          |
-| --------------- | -------------------- |
-| `mise lint`     | Ruff linter          |
+| Command | Description |
+|---------|-------------|
+| `mise lint` | Ruff linter |
 | `mise lint:fix` | Auto-fix lint issues |
-| `mise format`   | Format with ruff     |
-| `mise mypy`     | Type checking        |
+| `mise format` | Format with ruff |
+| `mise mypy` | Type checking |
 
-### Security & Testing
+### Security
 
-| Command             | Description                   |
-| ------------------- | ----------------------------- |
-| `mise schema`       | Test API schema               |
-| `mise schema:write` | Test schema + JUnit report    |
-| `mise bandit`       | Security scanner              |
-| `mise pip:audit`    | Audit package vulnerabilities |
-| `mise secrets`      | Detect secrets in code        |
+| Command | Description |
+|---------|-------------|
+| `mise bandit` | Security scanner |
+| `mise pip:audit` | Audit dependencies |
+| `mise secrets` | Detect secrets in code |
+| `mise schema` | Test API schema |
 
 ### Database
 
-| Command               | Description    |
-| --------------------- | -------------- |
-| `mise seed:models`    | Seed AI models |
+| Command | Description |
+|---------|-------------|
+| `mise seed:models` | Seed AI models |
 | `mise seed:workflows` | Seed workflows |
 
-### Maintenance
+---
 
-| Command        | Description                    |
-| -------------- | ------------------------------ |
-| `mise install` | Install dependencies (uv)      |
-| `mise clean`   | Clean `__pycache__` and `.pyc` |
+## Web-Specific Commands
+
+Run from `apps/web/` or use `mise -C apps/web <task>`.
+
+| Command | Description |
+|---------|-------------|
+| `mise dev` | Dev server with Turbopack (port 3000) |
+| `mise build` | Production build |
+| `mise start` | Production server |
+| `mise type` | TypeScript type checking |
+| `mise lint` | Lint with biome |
+| `mise format` | Format with biome |
+| `mise analyze` | Bundle size analysis |
+| `mise clean` | Clean `.next` and caches |
 
 ---
 
-## Web Commands
+## Common Workflows
 
-Run from `apps/web/` or use `mise -C apps/web <task>` from root.
+### Daily Development
 
-### Development
+```bash
+mise dev                      # Start everything
+# or
+mise dev:api                  # In one terminal
+mise dev:web                  # In another terminal
+```
 
-| Command            | Description                           |
-| ------------------ | ------------------------------------- |
-| `mise dev`         | Dev server with Turbopack (port 3000) |
-| `mise dev:webpack` | Dev server with Webpack               |
-| `mise build`       | Production build                      |
-| `mise start`       | Production server                     |
+### Before Committing
 
-### Code Quality
+```bash
+mise lint && mise format      # Check code quality
+mise type-check               # Verify types
+mise test:affected            # Run relevant tests
+```
 
-| Command            | Description              |
-| ------------------ | ------------------------ |
-| `mise type`        | TypeScript type checking |
-| `mise lint`        | Lint                   |
-| `mise lint:fix`    | Auto-fix lint issues     |
-| `mise format`      | Format     |
+### CI/CD Pattern
 
-### Dependencies
-
-| Command         | Description               |
-| --------------- | ------------------------- |
-| `mise install`  | Install with pnpm         |
-| `mise depcheck` | Check unused dependencies |
-| `mise knip`     | Find unused files/exports |
-
-### Build & Analysis
-
-| Command                 | Description             |
-| ----------------------- | ----------------------- |
-| `mise analyze`          | Bundle size analysis    |
-| `mise generate:barrels` | Generate barrel exports |
-
-### Maintenance
-
-| Command            | Description                             |
-| ------------------ | --------------------------------------- |
-| `mise clean`       | Clean `.next`, `node_modules`, `.turbo` |
-| `mise clean:cache` | Clean `.next` only                      |
-| `mise prepare`     | Setup git hooks (husky)                 |
-
----
-
-## Docker Commands
-
-Standard Docker Compose commands:
-
-| Command                               | Description                  |
-| ------------------------------------- | ---------------------------- |
-| `docker compose up`                   | Start services               |
-| `docker compose up -d`                | Start in background          |
-| `docker compose down`                 | Stop and remove              |
-| `docker compose logs -f`              | Stream logs                  |
-| `docker compose logs -f postgres`     | Logs for specific service    |
-| `docker compose restart`              | Restart services             |
-| `docker compose build`                | Rebuild images               |
-| `docker compose --profile all up`     | All containers (API/arq)     |
-| `docker compose --profile backend up` | Services + backend           |
-| `docker compose --profile worker up`  | Services + ARQ worker        |
+```bash
+mise lint:affected            # Only lint changed code
+mise type-check:affected      # Only type-check changed code
+mise build:affected           # Only build changed projects
+mise test:affected            # Only test changed code
+```
 
 ---
 
 ## Tips
 
-**Run tasks from anywhere:**
+### Run Commands Anywhere
 
 ```bash
-mise -C apps/api dev          # API from root
-mise -C apps/web lint         # Web from root
+mise -C apps/api dev          # Run API dev from root
+mise -C apps/web lint         # Run web lint from root
 ```
 
-**Common workflows:**
+### List All Tasks
 
 ```bash
-mise setup                    # First time
-mise dev                      # Daily dev
-mise dev:full                 # Everything
-mise lint && mise format      # Code quality
+mise tasks                    # Show all available tasks
+mise tasks --hidden           # Include hidden tasks
 ```
 
-**Need help?**
+### Need Help?
 
-1. Check you're in the correct directory
-2. Run `mise setup` to install dependencies
-3. Verify Docker is running
-4. Check `.env` files exist
-5. See [Development Setup](/developers/development-setup)
+1. Run `mise doctor` to check your setup
+2. Ensure Docker is running (`docker ps`)
+3. Check `.env` files exist
+4. See [Development Setup](/developers/development-setup)

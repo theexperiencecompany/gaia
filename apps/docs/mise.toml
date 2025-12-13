@@ -1,0 +1,32 @@
+# Docs mise.toml for GAIA
+# This file defines tasks for the GAIA documentation (Mintlify).
+#
+# Quick Start:
+#   mise dev       # Start Mintlify dev server
+#   mise build     # Build documentation
+#   mise tasks     # List all available commands
+
+[tasks.dev]
+description = "Start Mintlify dev server"
+run = "mintlify dev"
+
+[tasks.build]
+description = "Build documentation"
+run = "mintlify build"
+
+[tasks.preview]
+description = "Preview built documentation"
+run = "mintlify preview"
+
+[tasks.check]
+description = "Check for broken links"
+run = "mintlify broken-links"
+
+[tasks.install]
+description = "Install Mintlify CLI globally"
+run = "npm install -g mintlify"
+alias = "deps"
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "rm -rf .mintlify"
