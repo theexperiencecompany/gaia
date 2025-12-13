@@ -1,0 +1,12 @@
+{
+  "name": "gaia",
+  "private": true,
+  "dependencies": {
+    "nx": "latest"
+  },
+  "devDependencies": {
+    "nx": "22.2.3",
+    "@nx/next": "22.2.3",
+    "@nx/docker": "22.2.3"
+  }
+}

@@ -1,0 +1,23 @@
+config:
+  target: "http://127.0.0.1:8000"
+  phases:
+    - duration: 30 # Phase 1 duration
+      arrivalRate: 5 # 5 requests per second for 60 seconds
+    - duration: 30 # Phase 2 duration
+      arrivalRate: 10 # 10 requests per second for 120 seconds
+    - duration: 30 # Phase 3 duration
+      arrivalRate: 20 # 20 requests per second for 180 seconds
+    - duration: 30 # Phase 4 duration
+      arrivalRate: 50
+    - duration: 30 # Phase 5 duration
+      arrivalRate: 100
+    - duration: 60 # Phase 6 duration
+      arrivalRate: 200
+  http:
+    timeout: 1000
+
+scenarios:
+  - name: "API Load Test"
+    flow:
+      - get:
+          url: "/"

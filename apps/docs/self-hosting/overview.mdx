@@ -1,0 +1,47 @@
+---
+title: "Overview"
+description: "Learn how to self-host GAIA on your own infrastructure"
+icon: "circle-info"
+---
+
+## Welcome to GAIA Self-Hosting
+
+Self-host GAIA with Docker Compose. Keep it simple: start with minimal env vars, add more only when you enable features.
+
+## What runs
+
+- **Frontend**: Next.js
+- **Backend**: FastAPI
+- **Databases/Infra**: PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ (via Docker)
+
+## Prerequisites
+
+- Docker Engine 20.10+ and Compose v2+
+- 2+ CPU cores, 4GB+ RAM, 10GB+ disk (8GB+ RAM recommended)
+- API keys as needed (see [Environment Variables](/configuration/environment-variables))
+
+## Quick Start
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash git clone https://github.com/theexperiencecompany/gaia.git cd gaia
+    ```
+  </Step>
+  <Step title="Set minimal env vars">
+    Add a minimal `backend/.env` (see the “Minimal .env to boot locally” section
+    in [Environment Variables](/configuration/environment-variables)).
+  </Step>
+  <Step title="Start services">```bash docker compose up -d ```</Step>
+  <Step title="Open GAIA">
+    - Frontend: http://localhost:3000 - Backend API: http://localhost:8000
+  </Step>
+</Steps>
+
+## Next Steps
+
+- Configure additional features as you need them: see [Environment Variables](/configuration/environment-variables)
+- For advanced options: see [Docker Setup](/self-hosting/docker-setup)
+
+<Warning>
+  Self-hosting requires ongoing maintenance and security updates.
+</Warning>

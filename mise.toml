@@ -1,13 +1,10 @@
 # Root mise.toml for GAIA monorepo
 #
-# This file defines tasks and tools for the entire GAIA project.
+# mise manages tools (node, python, nx)
+# nx manages task execution and caching
 #
-# mise is a task runner and tool manager that handles both backend and frontend.
-#
-# Run 'mise tasks' to see all tasks in the current directory.
-# Run 'mise tasks --all' to see all tasks including subdirectories
+# Run 'mise tasks' to see all available tasks
 # Documentation: https://docs.heygaia.io/developers/commands
-
 
 [tools]
 mprocs = "0.7.3"
@@ -16,58 +13,127 @@ node = "22"
 "npm:mintlify" = "latest"
 prek = "latest"
 uv = "latest"
-"npm:nx" = "latest" 
 
 [env]
-_.python.venv = { path = "backend/.venv", create = true }
+_.python.venv = { path = "apps/backend/.venv", create = true }
 MISE_NODE_COREPACK = "1"
 
+[hooks]
+postinstall = "pnpm install"
+
+# Development Tasks
 [tasks."dev:frontend"]
 description = "Run ONLY frontend"
-dir = "frontend"
-run = "mise dev"
+run = "nx dev frontend"
 
 [tasks."dev:backend"]
-description = "Run ONLY backend server (without docker dependencies)"
-dir = "backend"
-run = "mise dev"
+description = "Run ONLY backend server"
+run = "nx dev backend"
 
 [tasks."dev:arq"]
-description = "Run ONLY ARQ worker (without docker dependencies)"
-dir = "backend"
+description = "Run ONLY ARQ worker"
+dir = "apps/backend"
 run = "mise worker"
+
+[tasks."dev:docs"]
+description = "Run ONLY docs"
+run = "nx dev docs"
 
 [tasks."dev:full"]
 description = "Run backend + frontend + arq + docker"
-run = 'mprocs "mise dev:backend" "mise dev:frontend" "mise dev:arq" "docker compose up"'
+run = 'mprocs "nx dev backend" "nx dev frontend" "mise dev:arq" "docker compose up"'
 
 [tasks.dev]
 description = "Run backend + frontend + docker logs"
-run = 'mprocs "mise dev:backend" "mise dev:frontend" "docker compose up"'
+run = 'mprocs "nx dev backend" "nx dev frontend" "docker compose up"'
 
-# Setup and Installation (setup:*)
+# Build Tasks (with Nx caching)
+[tasks.build]
+description = "Build all apps"
+run = "nx run-many -t build"
+
+[tasks."build:frontend"]
+description = "Build frontend only"
+run = "nx build frontend"
+
+[tasks."build:docs"]
+description = "Build docs only"
+run = "nx build docs"
+
+[tasks."build:affected"]
+description = "Build only affected projects"
+run = "nx affected -t build"
+
+# Test Tasks (with Nx caching)
+[tasks.test]
+description = "Test all apps"
+run = "nx run-many -t test"
+
+[tasks."test:backend"]
+description = "Test backend only"
+run = "nx test backend"
+
+[tasks."test:frontend"]
+description = "Test frontend only"
+run = "nx test frontend"
+
+[tasks."test:affected"]
+description = "Test only affected projects"
+run = "nx affected -t test"
+
+# Lint Tasks (with Nx caching)
+[tasks.lint]
+description = "Lint all apps"
+run = "nx run-many -t lint"
+
+[tasks."lint:backend"]
+description = "Lint backend only"
+run = "nx lint backend"
+
+[tasks."lint:frontend"]
+description = "Lint frontend only"
+run = "nx lint frontend"
+
+[tasks."lint:affected"]
+description = "Lint only affected projects"
+run = "nx affected -t lint"
+
+# Format Tasks
+[tasks.format]
+description = "Format all apps"
+run = "nx run-many -t format"
+
+[tasks."format:backend"]
+description = "Format backend only"
+run = "nx format backend"
+
+[tasks."format:frontend"]
+description = "Format frontend only"
+run = "nx format frontend"
+
+# Setup and Installation
 [tasks."setup:env"]
 description = "Check if environment files exist"
 run = '''
-if [ ! -f "backend/.env" ] || [ ! -f "frontend/.env" ]; then
+if [ ! -f "apps/backend/.env" ] || [ ! -f "apps/frontend/.env" ]; then
     echo "❌ Environment files not found!"
     echo ""
     echo "Copy example files:"
-    echo "  cp backend/.env.example backend/.env"
-    echo "  cp frontend/.env.example frontend/.env"
+    echo "  cp apps/backend/.env.example apps/backend/.env"
+    echo "  cp apps/frontend/.env.example apps/frontend/.env"
     exit 1
 fi
 '''
 
 [tasks."setup:backend"]
 description = "Set up backend dependencies"
-dir = "backend"
+dir = "apps/backend"
 run = "mise deps"
 depends = ["setup:env"]
 
 [tasks."setup:frontend"]
 description = "Set up frontend dependencies"
-dir = "frontend"
+dir = "apps/frontend"
 run = "mise deps"
 
 [tasks."setup:deps"]
@@ -77,31 +143,26 @@ depends = ["setup:backend", "setup:frontend"]
 [tasks.setup]
 description = "Complete project setup"
 depends = ["setup:*"]
-dir = "backend"
+dir = "apps/backend"
 run = "docker compose up -d && mise seed:models"
 
-# Code Quality (lint:*, format:*, clean:*)
-[tasks.lint]
-description = "Lint both backend and frontend"
-run = ["mise -C backend lint", "mise -C frontend lint"]
-
-[tasks.format]
-description = "Format both backend and frontend"
-run = ["mise -C backend format", "mise -C frontend format"]
-
+# Clean Tasks
 [tasks.clean]
-description = "Clean both backend and frontend"
-run = ["mise -C backend clean", "mise -C frontend clean"]
+description = "Clean all apps"
+run = "nx run-many -t clean"
 
-# Pre-commit hooks (workspace mode)
+[tasks."clean:nx"]
+description = "Clean Nx cache"
+run = "nx reset"
+
+# Pre-commit hooks
 [tasks."pre-commit"]
-description = "Run all pre-commit checks for both backend and frontend (workspace mode)"
+description = "Run all pre-commit checks (workspace mode)"
 run = "prek run --all-files"
 
 [tasks."pre-commit:install"]
 description = "Install pre-commit hooks using prek"
 run = "prek install"
-alias = "setup:precommit"
 
 [tasks."pre-commit:run"]
 description = "Run pre-commit hooks on staged files"
@@ -109,17 +170,21 @@ run = "prek run"
 
 [tasks."pre-commit:backend"]
 description = "Run pre-commit checks for backend only"
-run = "prek run backend/"
+run = "prek run apps/backend/"
 
 [tasks."pre-commit:frontend"]
 description = "Run pre-commit checks for frontend only"
-run = "prek run frontend/"
+run = "prek run apps/frontend/"
 
 [tasks."pre-commit:uninstall"]
 description = "Uninstall pre-commit hooks"
 run = "prek uninstall"
 
-[tasks.docs]
-description = "Run the mintlify documentation server"
-dir = "docs"
-run = "mintlify dev"
+# Nx-specific tasks
+[tasks.graph]
+description = "Show Nx project graph"
+run = "nx graph"
+
+[tasks."affected:graph"]
+description = "Show affected projects graph"
+run = "nx affected:graph"

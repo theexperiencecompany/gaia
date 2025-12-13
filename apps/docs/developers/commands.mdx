@@ -1,0 +1,198 @@
+---
+title: "Commands Reference"
+description: "Complete reference of all available mise commands for GAIA"
+icon: "terminal"
+---
+
+# Commands Reference
+
+GAIA uses [mise](https://mise.jdx.dev) as a unified task runner. Run `mise tasks` to see all available commands.
+
+## Quick Start
+
+```bash
+mise setup        # First time setup
+mise dev          # Start development (backend + frontend + docker)
+mise dev:full     # Start everything (includes ARQ worker)
+```
+
+---
+
+## Root Commands
+
+Run these from the project root.
+
+### Development
+
+| Command             | Description                                    |
+| ------------------- | ---------------------------------------------- |
+| `mise dev`          | Backend + frontend + docker logs               |
+| `mise dev:backend`  | Backend only (no docker)                       |
+| `mise dev:frontend` | Frontend only                                  |
+| `mise dev:arq`      | ARQ worker only                                |
+| `mise dev:full`     | Everything (backend + frontend + ARQ + docker) |
+
+### Setup
+
+| Command               | Description                                           |
+| --------------------- | ----------------------------------------------------- |
+| `mise setup`          | Complete setup (env check, deps, docker, seed models) |
+| `mise setup:env`      | Check if `.env` files exist                           |
+| `mise setup:backend`  | Backend dependencies only                             |
+| `mise setup:frontend` | Frontend dependencies only                            |
+| `mise setup:deps`     | All dependencies                                      |
+
+### Code Quality
+
+| Command       | Description               |
+| ------------- | ------------------------- |
+| `mise lint`   | Lint backend + frontend   |
+| `mise format` | Format backend + frontend |
+| `mise clean`  | Clean build artifacts     |
+
+### Documentation
+
+| Command     | Description              |
+| ----------- | ------------------------ |
+| `mise docs` | Run mintlify docs server |
+
+---
+
+## Backend Commands
+
+Run from `backend/` or use `mise -C backend <task>` from root.
+
+### Development
+
+| Command       | Description                            |
+| ------------- | -------------------------------------- |
+| `mise dev`    | Dev server with hot reload (port 8000) |
+| `mise start`  | Production server                      |
+| `mise worker` | ARQ background worker (alias: `arq`)   |
+
+### Code Quality
+
+| Command         | Description          |
+| --------------- | -------------------- |
+| `mise lint`     | Ruff linter          |
+| `mise lint:fix` | Auto-fix lint issues |
+| `mise format`   | Format with ruff     |
+| `mise mypy`     | Type checking        |
+
+### Security & Testing
+
+| Command             | Description                   |
+| ------------------- | ----------------------------- |
+| `mise schema`       | Test API schema               |
+| `mise schema:write` | Test schema + JUnit report    |
+| `mise bandit`       | Security scanner              |
+| `mise pip:audit`    | Audit package vulnerabilities |
+| `mise secrets`      | Detect secrets in code        |
+
+### Database
+
+| Command               | Description    |
+| --------------------- | -------------- |
+| `mise seed:models`    | Seed AI models |
+| `mise seed:workflows` | Seed workflows |
+
+### Maintenance
+
+| Command        | Description                    |
+| -------------- | ------------------------------ |
+| `mise install` | Install dependencies (uv)      |
+| `mise clean`   | Clean `__pycache__` and `.pyc` |
+
+---
+
+## Frontend Commands
+
+Run from `frontend/` or use `mise -C frontend <task>` from root.
+
+### Development
+
+| Command            | Description                           |
+| ------------------ | ------------------------------------- |
+| `mise dev`         | Dev server with Turbopack (port 3000) |
+| `mise dev:webpack` | Dev server with Webpack               |
+| `mise build`       | Production build                      |
+| `mise start`       | Production server                     |
+
+### Code Quality
+
+| Command            | Description              |
+| ------------------ | ------------------------ |
+| `mise type`        | TypeScript type checking |
+| `mise lint`        | Lint                   |
+| `mise lint:fix`    | Auto-fix lint issues     |
+| `mise format`      | Format     |
+
+### Dependencies
+
+| Command         | Description               |
+| --------------- | ------------------------- |
+| `mise install`  | Install with pnpm         |
+| `mise depcheck` | Check unused dependencies |
+| `mise knip`     | Find unused files/exports |
+
+### Build & Analysis
+
+| Command                 | Description             |
+| ----------------------- | ----------------------- |
+| `mise analyze`          | Bundle size analysis    |
+| `mise generate:barrels` | Generate barrel exports |
+
+### Maintenance
+
+| Command            | Description                             |
+| ------------------ | --------------------------------------- |
+| `mise clean`       | Clean `.next`, `node_modules`, `.turbo` |
+| `mise clean:cache` | Clean `.next` only                      |
+| `mise prepare`     | Setup git hooks (husky)                 |
+
+---
+
+## Docker Commands
+
+Standard Docker Compose commands:
+
+| Command                               | Description                  |
+| ------------------------------------- | ---------------------------- |
+| `docker compose up`                   | Start services               |
+| `docker compose up -d`                | Start in background          |
+| `docker compose down`                 | Stop and remove              |
+| `docker compose logs -f`              | Stream logs                  |
+| `docker compose logs -f postgres`     | Logs for specific service    |
+| `docker compose restart`              | Restart services             |
+| `docker compose build`                | Rebuild images               |
+| `docker compose --profile all up`     | All containers (backend/arq) |
+| `docker compose --profile backend up` | Services + backend           |
+| `docker compose --profile worker up`  | Services + ARQ worker        |
+
+---
+
+## Tips
+
+**Run tasks from anywhere:**
+
+```bash
+mise -C backend dev           # Backend from root
+mise -C frontend lint         # Frontend from root
+```
+
+**Common workflows:**
+
+```bash
+mise setup                    # First time
+mise dev                      # Daily dev
+mise dev:full                 # Everything
+mise lint && mise format      # Code quality
+```
+
+**Need help?**
+
+1. Check you're in the correct directory
+2. Run `mise setup` to install dependencies
+3. Verify Docker is running
+4. Check `.env` files exist
+5. See [Development Setup](/developers/development-setup)

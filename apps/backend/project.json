@@ -1,0 +1,13 @@
+{
+  "name": "backend",
+  "root": "apps/backend",
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run uvicorn app.main:app --port 8000 --reload --log-level info",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

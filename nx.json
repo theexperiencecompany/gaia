@@ -1,12 +1,40 @@
 {
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "installation": {
-    "version": "22.2.3",
+    "version": "latest",
     "plugins": {
-      "@nx/next": "22.2.3",
-      "@nx/docker": "22.2.3"
+      "sources": []
     }
   },
-  "$schema": "./node_modules/nx/schemas/nx-schema.json",
-  "defaultBase": "develop",
-  "nxCloudId": "693d44fa817ac1181e15c697"
+  "defaultBase": "main",
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*"
+    ],
+    "production": [
+      "!{projectRoot}/**/*.spec.ts",
+      "!{projectRoot}/**/*.test.ts"
+    ]
+  },
+  "targetDefaults": {
+    "build": {
+      "cache": true,
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "test": {
+      "cache": true
+    },
+    "lint": {
+      "cache": true
+    },
+    "format": {
+      "cache": false
+    },
+    "dev": {
+      "cache": false
+    }
+  },
+  "parallel": 3
 }

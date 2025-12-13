@@ -1,0 +1,3 @@
+[settings]
+npm.package_manager = "pnpm"
+experimental = true

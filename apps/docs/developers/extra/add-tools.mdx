@@ -1,0 +1,80 @@
+---
+title: "Add a new tool"
+description: "Minimal steps to implement and register a tool (backend + frontend)"
+icon: "wrench"
+---
+
+### TL;DR
+- Backend: implement tool, register in the Tool Registry.
+- Frontend: add the tool key and payload type to the Tool Registry, and (optionally) a renderer.
+- If the tool needs API keys, add envs in `settings.py` and use a lazy provider.
+
+### Backend (LangChain)
+1) Implement the tool
+```python
+# backend/app/langchain/tools/my_tool.py
+from langchain_core.tools import tool
+
+@tool
+def my_tool(arg: str) -> str:
+  """Short description."""
+  return f"You sent: {arg}"
+```
+
+2) Register in the Tool Registry
+```python
+# backend/app/langchain/tools/core/registry.py
+# Inside ToolRegistry._initialize_categories()
+category = self.get_category("development")  # or create via add_category(...)
+category.add_tool(my_tool)
+# Mark as core if needed:
+# category.add_tools([my_tool], is_core=True)
+```
+
+3) If it needs env-backed clients
+```python
+from app.core.lazy_loader import lazy_provider, MissingKeyStrategy
+from app.config.settings import settings
+
+@lazy_provider(
+  name="my_api_client",
+  required_keys=[settings.MY_API_KEY],
+  strategy=MissingKeyStrategy.WARN,  # dev-friendly
+)
+def create_my_api_client():
+  ...
+```
+
+### Frontend (types + optional renderer)
+1) Add the tool and payload type to the registry
+```ts
+// frontend/src/config/registries/toolRegistry.ts
+import type { MyToolData } from "@/types"; // or a feature-specific type
+
+export const TOOL_REGISTRY = {
+  // ...existing
+  my_tool_data: null as unknown as MyToolData,
+} as const;
+
+export type ToolName = keyof typeof TOOL_REGISTRY;
+export type ToolDataMap = { [K in ToolName]: (typeof TOOL_REGISTRY)[K] };
+```
+
+2) (Optional) Add a UI renderer
+```tsx
+// frontend/src/features/chat/components/bubbles/bot/TextBubble.tsx
+const TOOL_RENDERERS: Partial<RendererMap> = {
+  // ...existing
+  my_tool_data: (data, index) => (
+    <MyToolCard key={`tool-my-${index}`} myData={data as MyToolData} />
+  ),
+};
+```
+
+Done. The backend tool becomes available to agents; the frontend knows how to type and render its outputs.
+
+See also:
+- Backend registry: `backend/app/langchain/tools/core/registry.py`
+- Frontend tool registry: `frontend/src/config/registries/toolRegistry.ts`
+- Unified renderers: `frontend/src/features/chat/components/bubbles/bot/TextBubble.tsx`
+- Lazy providers: `backend/app/core/lazy_loader.py` 

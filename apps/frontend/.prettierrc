@@ -1,0 +1,7 @@
+{
+  "plugins": ["prettier-plugin-tailwindcss"],
+  "tailwindStylesheet": "./src/app/styles/tailwind.css",
+  "bracketSpacing": true,
+  "endOfLine": "lf",
+  "quoteProps": "as-needed"
+}

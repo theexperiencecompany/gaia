@@ -1,0 +1,130 @@
+# Backend mise.toml for GAIA
+# This file defines tasks for the GAIA backend (Python/FastAPI).
+#
+# Quick Start:
+#   mise dev             # Start development server
+#   mise install         # Install dependencies
+#   mise tasks               # List all available commands
+
+[tools]
+mprocs = "0.7.3"
+python = "3.11"
+
+[env]
+PROJECT_NAME = "{{ config_root | basename }}"
+
+[settings]
+python.uv_venv_auto = true
+
+[tasks.dev]
+description = "Run development server with hot reload"
+run = "uv run uvicorn app.main:app --port 8000 --reload --log-level info"
+
+[tasks.start]
+description = "Run production server"
+run = "uv run fastapi run"
+
+[tasks.worker]
+description = "Start ARQ worker"
+run = "uv run arq app.worker.WorkerSettings"
+alias = "arq"
+
+[tasks.lint]
+description = "Run ruff linter"
+run = "uvx ruff check ."
+
+[tasks."lint:fix"]
+description = "Run ruff linter with auto-fix"
+run = "uvx ruff check . --fix"
+
+[tasks.format]
+description = "Format code with ruff"
+run = "uvx ruff format ."
+
+[tasks.mypy]
+description = "Run mypy type checker"
+run = "uvx mypy app --ignore-missing-imports"
+
+[tasks.schema]
+description = "Test API schema with schemathesis"
+run = "uvx schemathesis run http://localhost:8000/openapi.json"
+
+[tasks."schema:write"]
+description = "Test API schema and write report"
+run = "uvx schemathesis run http://localhost:8000/openapi.json --report-junit-path report.xml"
+
+[tasks.bandit]
+description = "Run bandit security scanner"
+run = "uvx bandit -r app"
+
+[tasks."pip:audit"]
+description = "Audit pip packages for vulnerabilities"
+run = "uv run pip-audit --skip-editable"
+
+[tasks.secrets]
+description = "Detect secrets in codebase"
+run = "uvx detect-secrets scan --all-files"
+
+[tasks.precommit]
+description = "Run all prek checks (ruff, mypy, bandit, pip-audit, detect-secrets)"
+run = "prek run --all-files"
+
+[tasks."precommit:ruff"]
+description = "Run ruff linter (prek hook)"
+run = "prek run ruff"
+
+[tasks."precommit:ruff-format"]
+description = "Run ruff formatter (prek hook)"
+run = "prek run ruff-format"
+
+[tasks."precommit:trailing-whitespace"]
+description = "Check trailing whitespace (prek hook)"
+run = "prek run trailing-whitespace"
+
+[tasks."precommit:check-yaml"]
+description = "Check YAML files (prek hook)"
+run = "prek run check-yaml"
+
+[tasks."precommit:check-merge-conflict"]
+description = "Check for merge conflicts (prek hook)"
+run = "prek run check-merge-conflict"
+
+[tasks."precommit:check-large-files"]
+description = "Check for large files (prek hook)"
+run = "prek run check-added-large-files"
+
+[tasks."precommit:check-ast"]
+description = "Check Python AST (prek hook)"
+run = "prek run check-ast"
+
+[tasks."precommit:bandit"]
+description = "Run bandit security scanner (prek hook)"
+run = "prek run bandit"
+
+[tasks."precommit:mypy"]
+description = "Run mypy type checker (prek hook)"
+run = "prek run mypy"
+
+[tasks."precommit:pip-audit"]
+description = "Audit pip packages (prek hook)"
+run = "prek run pip-audit"
+
+[tasks."precommit:detect-secrets"]
+description = "Detect secrets in codebase (prek hook)"
+run = "prek run detect-secrets"
+
+[tasks.deps]
+description = "Install all dependencies"
+run = "uv sync"
+
+[tasks."seed:models"]
+description = "Seed AI models"
+run = "uv run python scripts/seed_models.py --force"
+
+[tasks."seed:workflows"]
+description = "Seed workflows"
+run = "uv run python scripts/seed_workflows.py"
+
+[tasks.clean]
+description = "Clean up __pycache__ and build artifacts"
+run = "find . -type d -name '__pycache__' -exec rm -rf {} + && find . -type f -name '*.pyc' -delete"

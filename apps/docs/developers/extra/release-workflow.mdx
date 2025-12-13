@@ -1,0 +1,125 @@
+---
+title: "Release Workflow"
+description: "Learn how our automated release process works using Release Please and conventional commits"
+icon: "rocket"
+---
+
+This document explains how our automated release process works using Release Please.
+
+## Overview
+
+We use [Release Please](https://github.com/googleapis/release-please) to automate releases. When you push to `master`, Release Please automatically:
+
+1. Parses commit messages for conventional commits
+2. Creates/updates a Release PR with version bumps and changelog
+3. Tags and creates a GitHub release when the Release PR is merged
+
+## How It Works
+
+### 1. Write Conventional Commits
+
+Use these prefixes in your commit messages:
+
+- `feat:` - New feature (minor version bump)
+- `fix:` - Bug fix (patch version bump)
+- `feat!:` or `fix!:` - Breaking change (major version bump)
+- `chore:`, `docs:`, `refactor:` - No version bump
+
+<CodeGroup>
+```bash Example Commits
+feat: add user authentication
+fix: resolve login button issue
+feat!: change API response format
+```
+</CodeGroup>
+
+### 2. Push to Master
+
+When commits with releasable changes (`feat`, `fix`, `deps`) are pushed to master, Release Please automatically creates or updates a Release PR.
+
+### 3. Release PR Lifecycle
+
+Release PRs have status labels:
+
+<CardGroup cols={1}>
+  <Card title="Pending" icon="clock" horizontal>
+    `autorelease: pending` - PR is ready for review/merge
+  </Card>
+  <Card title="Tagged" icon="tag" horizontal>
+    `autorelease: tagged` - PR merged, release tagged
+  </Card>
+  <Card title="Published" icon="check" horizontal>
+    `autorelease: published` - GitHub release published
+  </Card>
+</CardGroup>
+
+### 4. Merge Release PR
+
+When you merge the Release PR, Release Please:
+
+1. Updates `CHANGELOG.md` and version files
+2. Creates a git tag with the new version
+3. Creates a GitHub Release
+
+## Best Practices
+
+<Tip>
+- **Use squash-merge** for PRs to maintain clean commit history
+- **Write clear commit messages** that explain the change's impact
+- **Review Release PRs** before merging to ensure correct version bumps
+</Tip>
+
+## Manual Version Override
+
+To release a specific version, add `Release-As: x.x.x` to your commit body:
+
+```bash
+git commit --allow-empty -m "chore: release 2.0.0" -m "Release-As: 2.0.0"
+```
+
+## Troubleshooting
+
+### No Release PR Created?
+
+<Steps>
+  <Step title="Check Releasable Commits">
+    Ensure you have `feat:`, `fix:`, or `deps:` commits
+  </Step>
+  <Step title="Remove Stale Labels">
+    Look for old PRs with `autorelease: pending` labels
+  </Step>
+  <Step title="Force Rerun">
+    Add `release-please:force-run` label to trigger manually
+  </Step>
+</Steps>
+
+### Fix Release Notes
+
+Edit the merged PR body and add:
+
+```
+BEGIN_COMMIT_OVERRIDE
+feat: corrected commit message for release notes
+END_COMMIT_OVERRIDE
+```
+
+<Note>
+This allows you to correct commit messages that will appear in the release notes after the fact.
+</Note>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Release Please Docs" icon="book" href="https://github.com/googleapis/release-please">
+    Official Release Please documentation
+  </Card>
+  <Card title="Conventional Commits" icon="git-alt" href="https://www.conventionalcommits.org/">
+    Learn about conventional commit specification
+  </Card>
+  <Card title="Customizing Guide" icon="wrench" href="https://github.com/googleapis/release-please/blob/main/docs/customizing.md">
+    Advanced customization options
+  </Card>
+  <Card title="Troubleshooting Guide" icon="bug" href="https://github.com/googleapis/release-please/blob/main/docs/troubleshooting.md">
+    Common issues and solutions
+  </Card>
+</CardGroup>

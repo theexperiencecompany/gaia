@@ -1,0 +1,138 @@
+---
+title: "Commit Messages"
+description: "Learn about our conventional commit standards and supported types"
+icon: folder-tree
+---
+
+# Conventional Commits
+
+GAIA follows the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification to standardize commit messages and enable automated versioning and changelog generation.
+
+## What are Conventional Commits?
+
+Conventional Commits is a specification for adding human and machine readable meaning to commit messages. It provides an easy set of rules for creating an explicit commit history, which makes it easier to write automated tools on top of.
+
+## Format
+
+The commit message should be structured as follows:
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+### Format Examples
+
+**Simple commit:**
+
+```
+feat: add user profile page
+```
+
+**With scope:**
+
+```
+fix(auth): resolve password reset issue
+```
+
+**With body:**
+
+```
+feat(ui): add dark mode toggle
+
+Add a toggle button in the header to switch between light and dark themes.
+The preference is saved in localStorage for persistence across sessions.
+```
+
+**With footer:**
+
+```
+fix: correct calculation in payment processing
+
+Closes #123
+```
+
+## Supported Types
+
+Based on our GitHub workflows, GAIA supports the following conventional commit types:
+
+### Core Types
+
+- **feat**: A new feature for the user
+- **fix**: A bug fix for the user
+- **docs**: Documentation only changes
+- **style**: Changes that do not affect the meaning of the code (white-space, formatting, missing semi-colons, etc)
+- **refactor**: A code change that neither fixes a bug nor adds a feature
+- **test**: Adding missing tests or correcting existing tests
+- **chore**: Changes to the build process or auxiliary tools and libraries
+
+### Additional Types
+
+- **ci**: Changes to our CI configuration files and scripts
+- **build**: Changes that affect the build system or external dependencies
+- **revert**: Reverts a previous commit
+- **perf**: A code change that improves performance
+- **release**: Release commits (handled automatically)
+- **deps**: Dependency updates
+- **infra**: Infrastructure changes
+- **security**: Security-related changes
+- **env**: Environment configuration changes
+- **i18n**: Internationalization changes
+- **ux**: User experience improvements
+- **config**: Configuration changes
+- **assets**: Asset changes (images, fonts, etc.)
+- **meta**: Meta changes (README, documentation structure, etc.)
+
+## Examples
+
+### Basic Examples
+
+```bash
+feat: add user authentication system
+fix: resolve login button not responding
+docs: update API documentation
+refactor: simplify user service logic
+```
+
+### With Scope
+
+```bash
+feat(auth): add OAuth2 integration
+fix(ui): resolve mobile navigation issue
+docs(api): add endpoint documentation
+```
+
+### Breaking Changes
+
+```bash
+feat!: remove deprecated user endpoints
+
+BREAKING CHANGE: The /api/v1/users endpoint has been removed. Use /api/v2/users instead.
+```
+
+## Pull Request Titles
+
+Our CI enforces that pull request titles also follow the conventional commit format. This ensures consistency across both commits and pull requests.
+
+## Automated Benefits
+
+Following conventional commits enables:
+
+- **Automatic versioning**: Semantic version bumps based on commit types
+- **Changelog generation**: Automated changelog creation from commit messages
+- **Release automation**: Automated releases through Release Please
+- **Better project history**: Clear, structured commit history
+
+## Best Practices
+
+1. **Use lowercase**: Keep type and description in lowercase
+2. **Be descriptive**: Write clear, concise descriptions
+3. **Use imperative mood**: "add feature" not "added feature"
+4. **Limit line length**: Keep the first line under 50 characters when possible
+5. **Include scope when helpful**: Use scopes to provide additional context
+6. **Use breaking change notation**: Mark breaking changes with `!` or `BREAKING CHANGE:`
+
+For more detailed information, visit the official [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/).

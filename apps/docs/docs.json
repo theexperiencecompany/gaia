@@ -1,0 +1,134 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "almond",
+  "name": "GAIA",
+  "colors": {
+    "primary": "#00bbff",
+    "light": "#00bbff",
+    "dark": "#00bbff"
+  },
+  "seo": {
+    "indexing": "all",
+    "metatags": {
+      "og:type": "website",
+      "og:site_name": "GAIA Documentation",
+      "og:image": "https://docs.heygaia.io/og-image.jpg",
+      "og:url": "https://docs.heygaia.io",
+      "canonical": "https://docs.heygaia.io",
+      "description": "Documentation for GAIA, the open-source AI assistant.",
+      "twitter:card": "summary_large_image",
+      "twitter:image": "https://docs.heygaia.io/og-image.jpg"
+    }
+  },
+  "fonts": {
+    "family": "Inter"
+  },
+  "favicon": "/logo/logo.png",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Home",
+        "icon": "home",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quick-start", "resources", "manifesto"]
+          },
+          {
+            "group": "For Developers",
+            "pages": [
+              "developers/introduction",
+              "developers/development-setup",
+              "developers/commands",
+              "developers/code-style",
+              "developers/pull-requests",
+              "developers/contributing"
+            ]
+          },
+          {
+            "group": "Self-Hosting",
+            "pages": ["self-hosting/overview", "self-hosting/docker-setup"]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment-variables",
+              "configuration/docker",
+              "configuration/profiling",
+              "configuration/logging",
+              "configuration/conventional-commits"
+            ]
+          },
+          {
+            "group": "Extra Developer Docs",
+            "pages": [
+              "developers/extra/add-tools",
+              "developers/extra/release-workflow",
+              "developers/extra/add-env-vars",
+              "developers/extra/lazy-loading"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Guides",
+        "icon": "book-open",
+        "groups": [
+          {
+            "group": "Guides",
+            "pages": ["guides/create-public-workflow"]
+          }
+        ]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/logo/logo.png",
+    "dark": "/logo/logo.png"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Discord",
+        "href": "https://discord.heygaia.io",
+        "icon": "discord"
+      },
+      {
+        "label": "WhatsApp",
+        "href": "https://whatsapp.heygaia.io",
+        "icon": "whatsapp"
+      },
+      {
+        "label": "GitHub",
+        "href": "https://github.com/theexperiencecompany/gaia",
+        "icon": "github"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get Started",
+      "href": "https://heygaia.io"
+    }
+  },
+  "footer": {
+    "socials": {
+      "website": "https://heygaia.io",
+      "twitter": "https://x.com/trygaia",
+      "github": "https://github.com/theexperiencecompany",
+      "discord": "https://discord.heygaia.io",
+      "linkedin": "https://linkedin.com/company/heygaia"
+    }
+  },
+  "contextual": {
+    "options": [
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
+  }
+}

@@ -1,0 +1,167 @@
+---
+title: "Code Style Guide"
+description: "Coding standards and best practices for GAIA development"
+icon: "code"
+---
+
+## Python Style Guide
+
+### General Guidelines
+
+- Follow [PEP 8](https://peps.python.org/pep-0008/) for Python code style
+- Use type hints for all function parameters and return values
+- Include comprehensive docstrings for all modules, classes, and functions
+- Run `mise lint` before committing to ensure code quality
+
+### Linting and Formatting
+
+Check code quality:
+
+```bash
+mise lint
+```
+
+Auto-fix issues:
+
+```bash
+mise lint:fix
+```
+
+Format code:
+
+```bash
+mise format
+```
+
+Type checking:
+
+```bash
+mise mypy
+```
+
+### Route Handler Best Practices
+
+Route handlers should be thin wrappers around service functions:
+
+```python
+@router.post("/resource", response_model=ResourceResponse)
+async def create_resource_endpoint(
+    resource: ResourceModel,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Create a new resource.
+
+    Args:
+        resource: The resource data
+        user: The authenticated user information
+
+    Returns:
+        The created resource
+    """
+    return await create_resource(resource, user["user_id"])
+```
+
+### Service Function Best Practices
+
+Service functions should contain the business logic:
+
+```python
+async def create_resource(resource: ResourceModel, user_id: str) -> ResourceResponse:
+    """
+    Create a new resource in the database.
+
+    Args:
+        resource: The resource data model
+        user_id: The ID of the user creating the resource
+
+    Returns:
+        ResourceResponse: The created resource with additional metadata
+
+    Raises:
+        HTTPException: If resource creation fails
+    """
+    # Implementation logic here
+    return resource_response
+```
+
+## TypeScript/JavaScript Style Guide
+
+### Frontend Standards
+
+- Use TypeScript for all new code
+- Follow Biome configuration for formatting and linting
+- Prefer functional components and hooks
+
+### Linting and Formatting
+
+Check code quality:
+
+```bash
+mise lint
+```
+
+Auto-fix issues:
+
+```bash
+mise lint:fix
+```
+
+Format code:
+
+```bash
+mise format
+```
+
+Type checking:
+
+```bash
+mise type
+```
+
+## Commit Message Format
+
+Follow [conventional commits](/configuration/conventional-commits) format:
+
+```
+type(scope): description
+
+[optional body]
+
+[optional footer]
+```
+
+**Types:**
+
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation changes
+- `style`: Code style changes (formatting, etc.)
+- `refactor`: Code refactoring
+- `test`: Adding or updating tests
+- `chore`: Maintenance tasks
+
+**Example:**
+
+```bash
+git commit -m "feat(auth): add OAuth2 token refresh endpoint"
+```
+
+## Testing Standards
+
+- Write tests for all new features and bug fixes
+- Maintain or improve code coverage
+- Both unit and integration tests are encouraged
+
+Run tests:
+
+```bash
+mise test
+```
+
+## Additional Resources
+
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [Pydantic Documentation](https://docs.pydantic.dev/)
+- [Next.js Documentation](https://nextjs.org/docs)
+- [TypeScript Documentation](https://www.typescriptlang.org/docs/)
