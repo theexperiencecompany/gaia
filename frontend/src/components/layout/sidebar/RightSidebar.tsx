@@ -41,7 +41,7 @@ export default function RightSidebar({
   if (variant === "sidebar") {
     return (
       <aside
-        className="relative flex flex-col bg-[#141414] transition-all duration-300 ease-in-out "
+        className="relative flex flex-col bg-secondary-bg transition-all duration-300 ease-in-out "
         style={{
           width: isOpen ? "350px" : "0px",
           minWidth: isOpen ? "350px" : "0px",
@@ -69,7 +69,7 @@ export default function RightSidebar({
   // Sheet variant (overlay)
   return (
     <aside
-      className="absolute top-0 right-0 z-50 flex h-full flex-col bg-[#141414] transition-transform duration-300 ease-in-out"
+      className="absolute top-0 right-0 z-50 flex h-full flex-col bg-secondary-bg transition-transform duration-300 ease-in-out"
       style={{
         width: "350px",
         transform: isOpen ? "translateX(0)" : "translateX(100%)",

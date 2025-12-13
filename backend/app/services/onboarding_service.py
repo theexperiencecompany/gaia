@@ -1,10 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from bson import ObjectId
-from fastapi import HTTPException
-from pymongo import ReturnDocument
-
 from app.config.loggers import app_logger as logger
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import (
@@ -13,30 +9,35 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingRequest,
 )
-from app.utils.user_preferences_utils import format_user_preferences_for_agent
 from app.utils.redis_utils import RedisPoolManager
+from app.services.post_onboarding_service import seed_initial_user_data
+from app.utils.user_preferences_utils import format_user_preferences_for_agent
+from bson import ObjectId
+from fastapi import BackgroundTasks, HTTPException
+from pymongo import ReturnDocument
 
 
-async def _queue_gmail_processing(user_id: str) -> None:
-    """Queue Gmail email processing as an ARQ background task."""
+async def queue_personalization(user_id: str) -> None:
+    """Queue post-onboarding personalization as an ARQ background task."""
     try:
         pool = await RedisPoolManager.get_pool()
-        job = await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
+        job = await pool.enqueue_job("process_personalization_task", user_id)
 
         if job:
             logger.info(
-                f"Queued Gmail processing for user {user_id} with job ID {job.job_id}"
+                f"Queued personalization for user {user_id} with job ID {job.job_id}"
             )
         else:
-            logger.error(f"Failed to queue Gmail processing for user {user_id}")
+            logger.error(f"Failed to queue personalization for user {user_id}")
 
     except Exception as e:
-        logger.error(f"Error queuing Gmail processing for user {user_id}: {e}")
+        logger.error(f"Error queuing personalization for user {user_id}: {e}")
 
 
 async def complete_onboarding(
     user_id: str,
     onboarding_data: OnboardingRequest,
+    background_tasks: BackgroundTasks,
     user_timezone: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -111,6 +112,9 @@ async def complete_onboarding(
         # Convert ObjectId to string for JSON serialization
         updated_user["_id"] = str(updated_user["_id"])
         updated_user["user_id"] = updated_user["_id"]
+
+        # Schedule background tasks
+        background_tasks.add_task(seed_initial_user_data, user_id)
 
         logger.info(f"Onboarding completed successfully for user {user_id}")
 

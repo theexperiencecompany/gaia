@@ -2,7 +2,6 @@ import type { ReactElement } from "react";
 
 import {
   BookOpen02Icon,
-  BubbleConversationChatIcon,
   CreditCardPosIcon,
   DiscordIcon,
   Github,
@@ -12,6 +11,7 @@ import {
   Idea01Icon,
   LinkedinIcon,
   MapsIcon,
+  MessageMultiple02Icon,
   QuillWrite01Icon,
   TwitterIcon,
   WhatsappIcon,
@@ -61,7 +61,7 @@ export const appConfig = {
         href: "/login",
         label: "Get Started",
         icon: (
-          <BubbleConversationChatIcon
+          <MessageMultiple02Icon
             width={20}
             height={20}
             color={"currentColor"}
@@ -131,6 +131,12 @@ export const appConfig = {
         label: "Manifesto",
         icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
         description: "Learn about our mission",
+      },
+      {
+        href: "/brand",
+        label: "Brand",
+        icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
+        description: "Brand guidelines and downloadable assets",
       },
       {
         href: "/contact",
@@ -214,7 +220,7 @@ export const appConfig = {
       {
         href: "/c",
         label: "Chat",
-        icon: <BubbleConversationChatIcon width={17} color={"currentColor"} />,
+        icon: <MessageMultiple02Icon width={17} color={"currentColor"} />,
         requiresAuth: true,
       },
     ] as AppLink[],

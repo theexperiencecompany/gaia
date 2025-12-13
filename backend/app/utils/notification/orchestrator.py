@@ -43,7 +43,7 @@ class NotificationOrchestrator:
     - Status management
     """
 
-    def __init__(self, storage=MongoDBNotificationStorage()):
+    def __init__(self, storage=MongoDBNotificationStorage()) -> None:
         self.storage = storage
         self.channel_adapters: Dict[str, ChannelAdapter] = {}
         self.action_handlers: Dict[str, ActionHandler] = {}

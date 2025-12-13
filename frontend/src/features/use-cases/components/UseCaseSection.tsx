@@ -1,20 +1,21 @@
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { AnimatePresence, motion } from "framer-motion";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-
 import {
+  ChevronUp,
   StarAward01Icon,
   WorkflowCircle03Icon,
 } from "@/components/shared/icons";
-import UseCaseCard from "@/features/use-cases/components/UseCaseCard";
 import type { UseCase } from "@/features/use-cases/types";
 import {
   type Workflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
-import WorkflowCard from "@/features/workflows/components/WorkflowCard";
+import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
 
 // Register GSAP plugin
@@ -25,11 +26,15 @@ export default function UseCaseSection({
   hideUserWorkflows = false,
   centered = true,
   exploreWorkflows: propExploreWorkflows,
+  setShowUseCases,
+  showDescriptionAsTooltip,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
   centered?: boolean;
   exploreWorkflows?: UseCase[];
+  setShowUseCases?: React.Dispatch<React.SetStateAction<boolean>>;
+  showDescriptionAsTooltip?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -60,6 +65,7 @@ export default function UseCaseSection({
             slug: w.id,
             steps: w.steps,
             creator: w.creator,
+            total_executions: w.total_executions || 0,
           }));
           setLocalExploreWorkflows(converted);
         } catch (error) {
@@ -117,27 +123,10 @@ export default function UseCaseSection({
       scroller: scrollContainer,
       start: "top 50%",
       end: "bottom-=10 40%",
-      // snap: {
-      //   snapTo: 1, // snap to the closest section (1 means each one)
-      //   duration: 0.4, // lower = faster snapping (default is 0.5)
-      // },
-
-      onEnter: () => {
-        // Scrolling down - keep featured selected if no category is selected
-        if (selectedCategory === null) setSelectedCategory("featured");
-      },
-
-      onLeaveBack: () => {
-        // Scrolling up - only unselect if we're not on the default "featured" category
-        // Keep "featured" as the default when scrolling back up
-        if (selectedCategory !== null && selectedCategory !== "featured") {
-          setSelectedCategory("featured");
-        }
-      },
     });
 
     return () => trigger.kill();
-  }, [selectedCategory, dummySectionRef, getScrollContainer]);
+  }, [dummySectionRef, getScrollContainer]);
 
   const filteredUseCases =
     selectedCategory === null
@@ -220,33 +209,67 @@ export default function UseCaseSection({
   return (
     <div className="w-full" ref={dummySectionRef}>
       <div
-        className={`mb-6 flex flex-wrap ${centered ? "justify-center" : ""} gap-2`}
+        className={`mb-6 flex flex-wrap ${setShowUseCases ? "max-w-5xl mx-auto" : ""} ${centered ? "justify-center" : ""} items-center gap-2`}
       >
-        {allCategories.map((category) => (
-          <Chip
+        {allCategories.map((category, index) => (
+          <motion.div
             key={category as string}
-            variant={selectedCategory === category ? "solid" : "flat"}
-            color={selectedCategory === category ? "primary" : "default"}
-            className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
-            size="lg"
-            startContent={
-              category === "featured" ? (
-                <StarAward01Icon width={18} height={18} />
-              ) : category === "workflows" ? (
-                <WorkflowCircle03Icon width={18} height={18} />
-              ) : undefined
-            }
-            onClick={() => handleCategoryClick(category as string)}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.3,
+              delay: index * 0.05,
+              ease: "easeOut",
+            }}
           >
-            {category === "all"
-              ? "All"
-              : category === "featured"
-                ? "Featured"
-                : category === "workflows"
-                  ? "Your Workflows"
-                  : (category as string)}
-          </Chip>
+            <Chip
+              variant={selectedCategory === category ? "solid" : "flat"}
+              color={selectedCategory === category ? "primary" : "default"}
+              className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
+              size="lg"
+              startContent={
+                category === "featured" ? (
+                  <StarAward01Icon width={18} height={18} />
+                ) : category === "workflows" ? (
+                  <WorkflowCircle03Icon width={18} height={18} />
+                ) : undefined
+              }
+              onClick={() => handleCategoryClick(category as string)}
+            >
+              {category === "all"
+                ? "All"
+                : category === "featured"
+                  ? "Featured"
+                  : category === "workflows"
+                    ? "Your Workflows"
+                    : (category as string)}
+            </Chip>
+          </motion.div>
         ))}
+
+        {setShowUseCases && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.3,
+              delay: allCategories.length * 0.05,
+              ease: "easeOut",
+            }}
+            className="pl-2"
+          >
+            <Button
+              isIconOnly
+              radius="full"
+              size="sm"
+              variant="flat"
+              onPress={() => setShowUseCases(false)}
+              className="text-zinc-300 "
+            >
+              <ChevronUp />
+            </Button>
+          </motion.div>
+        )}
       </div>
 
       <AnimatePresence mode="wait">
@@ -256,7 +279,7 @@ export default function UseCaseSection({
           selectedCategory !== "workflows" && (
             <motion.div
               key={selectedCategory}
-              className="mx-auto grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3"
+              className={`mx-auto grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -275,13 +298,22 @@ export default function UseCaseSection({
                       ease: "easeOut",
                     }}
                   >
-                    <UseCaseCard
+                    <UnifiedWorkflowCard
+                      showDescriptionAsTooltip={showDescriptionAsTooltip}
                       title={useCase.title || ""}
                       description={useCase.description || ""}
-                      action_type={useCase.action_type || "prompt"}
+                      actionType={useCase.action_type || "prompt"}
                       prompt={useCase.prompt}
                       slug={useCase.slug}
                       steps={useCase.steps}
+                      totalExecutions={useCase.total_executions || 0}
+                      showExecutions={true}
+                      variant="explore"
+                      primaryAction={
+                        useCase.action_type === "prompt"
+                          ? "insert-prompt"
+                          : "create"
+                      }
                     />
                   </motion.div>
                 ))}
@@ -294,7 +326,7 @@ export default function UseCaseSection({
           workflows.length > 0 && (
             <motion.div
               key="workflows"
-              className="mx-auto grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3"
+              className={`mx-auto grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"}  grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -313,10 +345,11 @@ export default function UseCaseSection({
                       ease: "easeOut",
                     }}
                   >
-                    <WorkflowCard
+                    <UnifiedWorkflowCard
                       workflow={workflow}
-                      variant="execution"
-                      showArrowIcon={false}
+                      showDescriptionAsTooltip={showDescriptionAsTooltip}
+                      variant="user"
+                      primaryAction="run"
                     />
                   </motion.div>
                 ))}
@@ -335,11 +368,14 @@ export default function UseCaseSection({
         !isLoadingWorkflows &&
         workflows.length === 0 && (
           <div className="flex h-48 items-center justify-center">
-            <div className="text-center">
-              <p className="text-lg text-foreground-500">No workflows found</p>
-              <p className="text-sm text-foreground-600">
+            <div className="text-center space-y-1">
+              <p className="text-lg text-foreground-600">No workflows found</p>
+              <p className="text-sm text-foreground-400">
                 Create your first workflow to get started
               </p>
+              <Link href={"/workflows"} className="mt-4">
+                <Button color="primary">Create</Button>
+              </Link>
             </div>
           </div>
         )}

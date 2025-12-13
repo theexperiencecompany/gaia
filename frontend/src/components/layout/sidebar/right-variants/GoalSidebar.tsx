@@ -5,7 +5,7 @@ import { Chip } from "@heroui/chip";
 import type React from "react";
 
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
-import { BookIcon1, Timer02Icon } from "@/icons";
+import { Book01Icon, Timer02Icon } from "@/icons";
 import type { NodeData } from "@/types/features/goalTypes";
 
 interface GoalSidebarProps {
@@ -87,7 +87,7 @@ export const GoalSidebar: React.FC<GoalSidebarProps> = ({
           {node.resources && node.resources.length > 0 && (
             <div className="rounded-xl bg-zinc-800/40 p-5">
               <div className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-200">
-                <BookIcon1 width={18} />
+                <Book01Icon width={18} />
                 Resources
               </div>
               <ul className="space-y-2 text-sm text-zinc-400">

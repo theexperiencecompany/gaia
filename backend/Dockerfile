@@ -34,8 +34,7 @@ COPY pyproject.toml ./
 COPY scripts/extract_heavy_deps.py ./
 
 # Run script to extract heavy dependencies
-RUN python extract_heavy_deps.py && \
-  rm -rf /root/.cache/pip
+RUN pip install crawl4ai && crawl4ai-setup && python extract_heavy_deps.py && rm -rf /root/.cache/pip
 
 # ---- Heavy Dependencies Stage ----
 FROM base AS heavy-dependencies

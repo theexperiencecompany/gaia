@@ -98,7 +98,7 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
         ),
     ),
     "workflow_operations": TieredRateLimits(
-        free=RateLimitConfig(day=1, month=3),
+        free=RateLimitConfig(day=5, month=20),
         pro=RateLimitConfig(day=30, month=900),
         info=FeatureInfo(
             title="Workflow Operations",

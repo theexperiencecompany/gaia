@@ -7,38 +7,56 @@ import {
   CheckmarkCircle02Icon,
   ChevronRight,
   Flag02Icon,
+  Folder02Icon,
   Tag01Icon,
 } from "@/icons";
 import { posthog } from "@/lib";
 import {
   Priority,
+  type Project,
   type Todo,
   type TodoUpdate,
 } from "@/types/features/todoTypes";
-import { formatDate, formatRelativeDate, parseDate } from "@/utils";
+import { formatDate } from "@/utils";
 
 interface TodoItemProps {
   todo: Todo;
+  projects: Project[];
   isSelected: boolean;
   onUpdate: (todoId: string, updates: TodoUpdate) => void;
-  onDelete: (todoId: string) => void;
-  onEdit?: (todo: Todo) => void;
+  // onDelete: (todoId: string) => void;
+  // onEdit?: (todo: Todo) => void;
   onClick?: (todo: Todo) => void;
 }
 
-const priorityColors = {
+export const priorityColors = {
   [Priority.HIGH]: "danger",
   [Priority.MEDIUM]: "warning",
   [Priority.LOW]: "primary",
   [Priority.NONE]: "default",
 } as const;
 
+export const priorityTextColors = {
+  [Priority.HIGH]: "oklch(63.7% 0.237 25.331)",
+  [Priority.MEDIUM]: "oklch(79.5% 0.184 86.047)",
+  [Priority.LOW]: "oklch(62.3% 0.214 259.815)",
+  [Priority.NONE]: "oklch(55.2% 0.016 285.938)",
+} as const;
+
+const priorityRingColors = {
+  [Priority.HIGH]: "border-red-500",
+  [Priority.MEDIUM]: "border-yellow-500",
+  [Priority.LOW]: "border-blue-500",
+  [Priority.NONE]: "border-zinc-500",
+} as const;
+
 export default function TodoItem({
   todo,
+  projects,
   isSelected,
   onUpdate,
-  onDelete,
-  onEdit,
+  // onDelete,
+  // onEdit,
   onClick,
 }: TodoItemProps) {
   const handleToggleComplete = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -59,6 +77,19 @@ export default function TodoItem({
   const isOverdue =
     todo.due_date && new Date(todo.due_date) < new Date() && !todo.completed;
 
+  const isToday =
+    todo.due_date &&
+    !todo.completed &&
+    (() => {
+      const d = new Date(todo.due_date);
+      const now = new Date();
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    })();
+
   return (
     <div
       className={`pointer-events-auto w-full cursor-pointer p-4 pl-5 mb-0 transition-all ${
@@ -73,10 +104,10 @@ export default function TodoItem({
           <Checkbox
             isSelected={todo.completed}
             onChange={handleToggleComplete}
-            color={priorityColors[todo.priority]}
+            color={todo.completed ? "default" : priorityColors[todo.priority]}
             radius="full"
             classNames={{
-              wrapper: `mt-1 ${todo.completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900"}`,
+              wrapper: `mt-1 ${todo.completed ? "" : `${priorityRingColors[todo.priority]} border-dashed! border-1 before:border-0! bg-zinc-900`}`,
               label: "w-[30vw]",
             }}
           />
@@ -105,7 +136,7 @@ export default function TodoItem({
                   className="flex items-center text-zinc-400 px-1"
                   size="sm"
                   radius="sm"
-                  color={isOverdue ? "danger" : "default"}
+                  color={isToday ? "success" : isOverdue ? "danger" : "default"}
                   variant="flat"
                   startContent={
                     <CalendarCheckOut01Icon
@@ -116,6 +147,24 @@ export default function TodoItem({
                   }
                 >
                   {formatDate(todo.due_date)}
+                </Chip>
+              )}
+
+              {projects?.find((project) => project?.id === todo.project_id) && (
+                <Chip
+                  size="sm"
+                  variant="flat"
+                  className=" text-zinc-400 px-1"
+                  radius="sm"
+                  style={{
+                    color: projects?.find((p) => p.id === todo.project_id)
+                      ?.color,
+                  }}
+                  startContent={
+                    <Folder02Icon width={15} height={15} className="mx-1" />
+                  }
+                >
+                  {projects?.find((p) => p.id === todo.project_id)?.name}
                 </Chip>
               )}
 

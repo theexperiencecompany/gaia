@@ -438,11 +438,17 @@ export default function TextBubble({
               {textParts.map((part, index) => {
                 const isFirst = index === 0;
                 const isLast = index === textParts.length - 1;
-                const groupedClasses = isFirst
-                  ? "imessage-grouped-first mb-1.5"
-                  : isLast
-                    ? "imessage-grouped-last"
-                    : "imessage-grouped-middle mb-1.5";
+                const isSingle = textParts.length === 1;
+
+                // Single message should show tail (use last styling)
+                // Otherwise: first = no tail, middle = no tail, last = show tail
+                const groupedClasses = isSingle
+                  ? "imessage-grouped-last"
+                  : isFirst
+                    ? "imessage-grouped-first mb-1.5"
+                    : isLast
+                      ? "imessage-grouped-last"
+                      : "imessage-grouped-middle mb-1.5";
 
                 return (
                   <div

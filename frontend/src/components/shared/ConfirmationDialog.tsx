@@ -1,17 +1,15 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
-import { useEffect, useRef } from "react";
-
 import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+  Button,
+  Modal,
+  ModalBody,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+} from "@heroui/react";
+import { useEffect, useRef } from "react";
 
 interface ConfirmationDialogProps {
   isOpen: boolean;
@@ -61,32 +59,48 @@ export function ConfirmationDialog({
     };
   }, [isOpen, onConfirm, onCancel]);
 
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      onCancel();
+    }
+  };
+
   return (
-    <AlertDialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{message}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <Button
-            variant="flat"
-            onPress={onCancel}
-            className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-            endContent={<Kbd keys={["escape"]} />}
-          >
-            {cancelText}
-          </Button>
-          <Button
-            ref={confirmButtonRef}
-            color={variant === "destructive" ? "danger" : "primary"}
-            onPress={onConfirm}
-            endContent={<Kbd keys={["enter"]} />}
-          >
-            {confirmText}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <Modal isOpen={isOpen} onOpenChange={handleOpenChange}>
+      <ModalContent>
+        {(onClose) => (
+          <>
+            <ModalHeader className="flex flex-col gap-1">{title}</ModalHeader>
+            <ModalBody>
+              <p>{message}</p>
+            </ModalBody>
+            <ModalFooter>
+              <Button
+                variant="flat"
+                onPress={() => {
+                  onCancel();
+                  onClose();
+                }}
+                className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                endContent={<Kbd keys={["escape"]} />}
+              >
+                {cancelText}
+              </Button>
+              <Button
+                ref={confirmButtonRef}
+                color={variant === "destructive" ? "danger" : "primary"}
+                onPress={() => {
+                  onConfirm();
+                  onClose();
+                }}
+                endContent={<Kbd keys={["enter"]} />}
+              >
+                {confirmText}
+              </Button>
+            </ModalFooter>
+          </>
+        )}
+      </ModalContent>
+    </Modal>
   );
 }

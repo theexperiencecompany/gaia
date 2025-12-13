@@ -18,9 +18,9 @@ from app.services.composio.composio_service import get_composio_service
 from app.services.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
+    queue_personalization,
     update_onboarding_preferences,
 )
-from app.utils.redis_utils import RedisPoolManager
 from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from app.core.websocket_manager import websocket_manager
@@ -28,24 +28,7 @@ from app.core.websocket_manager import websocket_manager
 router = APIRouter()
 
 
-async def _queue_personalization(user_id: str) -> None:
-    """Queue post-onboarding personalization as an ARQ background task."""
-    try:
-        pool = await RedisPoolManager.get_pool()
-        job = await pool.enqueue_job("process_personalization_task", user_id)
-
-        if job:
-            logger.info(
-                f"Queued personalization for user {user_id} with job ID {job.job_id}"
-            )
-        else:
-            logger.error(f"Failed to queue personalization for user {user_id}")
-
-    except Exception as e:
-        logger.error(f"Error queuing personalization for user {user_id}: {e}")
-
-
-@router.post("/", response_model=OnboardingResponse)
+@router.post("", response_model=OnboardingResponse)
 async def complete_user_onboarding(
     onboarding_data: OnboardingRequest,
     background_tasks: BackgroundTasks,
@@ -61,7 +44,10 @@ async def complete_user_onboarding(
     """
     try:
         updated_user = await complete_onboarding(
-            user["user_id"], onboarding_data, user_timezone=tz_info[0]
+            user["user_id"],
+            onboarding_data,
+            background_tasks,
+            user_timezone=tz_info[0],
         )
 
         composio_service = get_composio_service()
@@ -70,16 +56,37 @@ async def complete_user_onboarding(
         )
         has_gmail = connection_status.get("gmail", False)
 
-        if has_gmail:
+        # Check if Gmail emails have already been processed
+        user_doc = await users_collection.find_one({"_id": ObjectId(user["user_id"])})
+        email_already_processed = (
+            user_doc.get("email_memory_processed", False) if user_doc else False
+        )
+
+        if has_gmail and not email_already_processed:
+            # Gmail connected but not yet processed - queue email processing
+            # Email processor will trigger personalization when done
             logger.info(
-                f"User {user['user_id']} has Gmail - personalization will run after email processing"
+                f"User {user['user_id']} has Gmail (not processed) - queueing email processing"
             )
+            from app.utils.redis_utils import RedisPoolManager
+
+            try:
+                pool = await RedisPoolManager.get_pool()
+                await pool.enqueue_job(
+                    "process_gmail_emails_to_memory", user["user_id"]
+                )
+                logger.info(f"Queued Gmail processing for user {user['user_id']}")
+            except Exception as e:
+                logger.error(f"Failed to queue Gmail processing: {e}", exc_info=True)
+                # Fallback: queue personalization directly
+                background_tasks.add_task(queue_personalization, user["user_id"])
         else:
-            # No Gmail, queue personalization directly
+            # No Gmail OR already processed - queue personalization directly
+            reason = "already processed" if email_already_processed else "no Gmail"
             logger.info(
-                f"User {user['user_id']} has no Gmail - queueing personalization directly"
+                f"User {user['user_id']} ({reason}) - queueing personalization directly"
             )
-            background_tasks.add_task(_queue_personalization, user["user_id"])
+            background_tasks.add_task(queue_personalization, user["user_id"])
 
         return OnboardingResponse(
             success=True, message="Onboarding completed successfully", user=updated_user

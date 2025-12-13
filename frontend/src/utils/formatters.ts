@@ -41,21 +41,14 @@ export function formatCompactNumber(num: number): string {
   );
 }
 
-/**
- * Format execution count with appropriate text.
- * Examples: 0 -> "Never run", 1 -> "Ran 1 time", 2600 -> "Ran 2.6k times"
- *
- * @param count - The execution count
- * @returns Formatted string with run text
- */
 export function formatRunCount(count: number): string {
   if (count === 0) {
     return "Never run";
   }
 
   if (count === 1) {
-    return "Ran 1 time";
+    return "Ran once";
   }
 
-  return `Ran ${formatCompactNumber(count)} times`;
+  return `${formatCompactNumber(count)} runs`;
 }

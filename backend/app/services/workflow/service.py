@@ -57,11 +57,14 @@ class WorkflowService:
                 if trigger_config.cron_expression:
                     trigger_config.update_next_run(user_timezone=timezone_to_use)
 
+            # Use provided steps or initialize empty list for generation
+            workflow_steps = request.steps if request.steps else []
+
             # Create workflow object
             workflow = Workflow(
                 title=request.title,
                 description=request.description,
-                steps=[],  # Steps will be generated
+                steps=workflow_steps,
                 trigger_config=trigger_config,
                 activated=True,  # Default to activated
                 user_id=user_id,
@@ -115,22 +118,28 @@ class WorkflowService:
                     repeat=trigger_config.cron_expression,  # Enable recurring if cron exists
                 )
 
-            # Generate steps
-            if request.generate_immediately:
-                await WorkflowService._generate_workflow_steps(workflow.id, user_id)
-                # Fetch the updated workflow with generated steps
-                updated_workflow = await WorkflowService.get_workflow(
-                    workflow.id, user_id
-                )
-                return updated_workflow or workflow
-            else:
-                success = await WorkflowQueueService.queue_workflow_generation(
-                    workflow.id, user_id
-                )
-                if not success:
-                    logger.error(
-                        f"Failed to queue workflow generation for {workflow.id}"
+            # Generate steps only if not provided
+            if not request.steps:
+                # Generate steps
+                if request.generate_immediately:
+                    await WorkflowService._generate_workflow_steps(workflow.id, user_id)
+                    # Fetch the updated workflow with generated steps
+                    updated_workflow = await WorkflowService.get_workflow(
+                        workflow.id, user_id
                     )
+                    return updated_workflow or workflow
+                else:
+                    success = await WorkflowQueueService.queue_workflow_generation(
+                        workflow.id, user_id
+                    )
+                    if not success:
+                        logger.error(
+                            f"Failed to queue workflow generation for {workflow.id}"
+                        )
+            else:
+                logger.info(
+                    f"Workflow {workflow.id} created with {len(request.steps)} pre-existing steps, skipping generation"
+                )
 
             return workflow
 
@@ -708,6 +717,7 @@ class WorkflowService:
                     "steps": workflow.get("steps", []),
                     "created_at": workflow["created_at"],
                     "categories": workflow.get("use_case_categories", ["featured"]),
+                    "total_executions": workflow.get("total_executions", 0),
                     "creator": {
                         "id": workflow.get("created_by"),
                         "name": creator_info.get("name", "GAIA Team"),

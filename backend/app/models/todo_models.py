@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class Priority(str, Enum):
@@ -13,6 +13,8 @@ class Priority(str, Enum):
 
 
 class SubTask(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str = Field(default="", description="Unique identifier for the subtask")
     title: str = Field(..., description="Title of the subtask")
     completed: bool = Field(
@@ -21,157 +23,123 @@ class SubTask(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class TodoModel(BaseModel):
-    title: str = Field(
-        ..., min_length=1, max_length=200, description="Title of the todo item"
+# Base model with all shared todo fields
+class TodoBase(BaseModel):
+    """Base model with shared fields for todos"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    title: Annotated[
+        str, Field(min_length=1, max_length=200, description="Title of the todo item")
+    ]
+    description: str | None = Field(
+        default=None, max_length=2000, description="Description of the todo item"
     )
-    description: Optional[str] = Field(
-        None, max_length=2000, description="Description of the todo item"
-    )
-    labels: List[str] = Field(
+    labels: list[str] = Field(
         default_factory=list, max_length=10, description="Labels for categorization"
     )
-    due_date: Optional[datetime] = Field(None, description="Due date for the todo item")
-    due_date_timezone: Optional[str] = Field(
-        None, description="Timezone for the due date (e.g., 'America/New_York')"
+    due_date: datetime | None = Field(
+        default=None, description="Due date for the todo item"
+    )
+    due_date_timezone: str | None = Field(
+        default=None, description="Timezone for the due date (e.g., 'America/New_York')"
     )
     priority: Priority = Field(default=Priority.NONE, description="Priority level")
-    project_id: Optional[str] = Field(
-        None, description="Project ID the todo belongs to"
+    project_id: str | None = Field(
+        default=None, description="Project ID the todo belongs to"
     )
     completed: bool = Field(default=False, description="Whether the todo is completed")
-    subtasks: List[SubTask] = Field(
+    subtasks: list[SubTask] = Field(
         default_factory=list, max_length=50, description="List of subtasks"
     )
-    workflow_id: Optional[str] = Field(
-        None, description="ID of the associated workflow"
+    workflow_id: str | None = Field(
+        default=None, description="ID of the associated workflow"
     )
+
+
+# For creating new todos
+class TodoModel(TodoBase):
+    """Model for creating todos"""
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class TodoCreate(BaseModel):
-    title: str = Field(
-        ..., min_length=1, max_length=200, description="Title of the todo item"
-    )
-    description: Optional[str] = Field(
-        None, max_length=2000, description="Description of the todo item"
-    )
-    labels: List[str] = Field(
-        default_factory=list, max_length=10, description="Labels for categorization"
-    )
-    due_date: Optional[datetime] = Field(None, description="Due date for the todo item")
-    due_date_timezone: Optional[str] = Field(
-        None, description="Timezone for the due date (e.g., 'America/New_York')"
-    )
-    priority: Priority = Field(default=Priority.NONE, description="Priority level")
-    project_id: Optional[str] = Field(
-        None, description="Project ID the todo belongs to"
-    )
+# For updating todos - all fields optional
+class TodoUpdateRequest(BaseModel):
+    """Model for updating todos - all fields optional for partial updates"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    title: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    description: Annotated[str, Field(max_length=2000)] | None = None
+    labels: list[str] | None = None
+    due_date: datetime | None = None
+    due_date_timezone: str | None = None
+    priority: Priority | None = None
+    project_id: str | None = None
+    completed: bool | None = None
+    subtasks: list[SubTask] | None = None
+    workflow_id: str | None = None
 
 
-class UpdateTodoRequest(BaseModel):
-    title: Optional[str] = Field(
-        None, min_length=1, max_length=200, description="Title of the todo item"
-    )
-    description: Optional[str] = Field(
-        None, max_length=2000, description="Description of the todo item"
-    )
-    labels: Optional[List[str]] = Field(
-        None, max_length=10, description="Labels for categorization"
-    )
-    due_date: Optional[datetime] = Field(None, description="Due date for the todo item")
-    due_date_timezone: Optional[str] = Field(
-        None, description="Timezone for the due date (e.g., 'America/New_York')"
-    )
-    priority: Optional[Priority] = Field(None, description="Priority level")
-    project_id: Optional[str] = Field(
-        None, description="Project ID the todo belongs to"
-    )
-    completed: Optional[bool] = Field(None, description="Whether the todo is completed")
-    subtasks: Optional[List[SubTask]] = Field(
-        None, max_length=50, description="List of subtasks"
-    )
-    workflow_id: Optional[str] = Field(
-        None, description="ID of the associated workflow"
-    )
+# For responses with ID and user_id
+class TodoResponse(TodoBase):
+    """Complete todo response with all fields"""
 
-
-class TodoResponse(BaseModel):
     id: str = Field(..., description="Unique identifier")
     user_id: str = Field(..., description="User ID who owns the todo")
-    title: str = Field(..., description="Title of the todo item")
-    description: Optional[str] = Field(None, description="Description of the todo item")
-    labels: List[str] = Field(
-        default_factory=list, description="Labels for categorization"
-    )
-    due_date: Optional[datetime] = Field(None, description="Due date for the todo item")
-    due_date_timezone: Optional[str] = Field(
-        None, description="Timezone for the due date (e.g., 'America/New_York')"
-    )
-    priority: Priority = Field(default=Priority.NONE, description="Priority level")
-    project_id: str = Field(..., description="Project ID the todo belongs to")
-    completed: bool = Field(default=False, description="Whether the todo is completed")
-    subtasks: List[SubTask] = Field(
-        default_factory=list, description="List of subtasks"
-    )
-    workflow_id: Optional[str] = Field(
-        None, description="ID of the associated workflow"
-    )
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
 
 
-class ProjectModel(BaseModel):
-    name: str = Field(
-        ..., min_length=1, max_length=100, description="Name of the project"
+# Project models
+class ProjectBase(BaseModel):
+    """Base model for project fields"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    name: Annotated[
+        str, Field(min_length=1, max_length=100, description="Name of the project")
+    ]
+    description: str | None = Field(
+        default=None, max_length=500, description="Description of the project"
     )
-    description: Optional[str] = Field(
-        None, max_length=500, description="Description of the project"
-    )
-    color: Optional[str] = Field(
-        None,
+    color: str | None = Field(
+        default=None,
         pattern="^#[0-9A-Fa-f]{6}$",
         description="Color code for the project in hex format",
     )
+
+
+class ProjectCreate(ProjectBase):
+    """Model for creating projects"""
+
+    pass
+
+
+class ProjectModel(ProjectBase):
+    """Model with timestamps"""
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class ProjectCreate(BaseModel):
-    name: str = Field(
-        ..., min_length=1, max_length=100, description="Name of the project"
-    )
-    description: Optional[str] = Field(
-        None, max_length=500, description="Description of the project"
-    )
-    color: Optional[str] = Field(
-        None,
-        pattern="^#[0-9A-Fa-f]{6}$",
-        description="Color code for the project in hex format",
-    )
-
-
 class UpdateProjectRequest(BaseModel):
-    name: Optional[str] = Field(
-        None, min_length=1, max_length=100, description="Name of the project"
-    )
-    description: Optional[str] = Field(
-        None, max_length=500, description="Description of the project"
-    )
-    color: Optional[str] = Field(
-        None,
-        pattern="^#[0-9A-Fa-f]{6}$",
-        description="Color code for the project in hex format",
-    )
+    """Model for updating projects - all fields optional"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    name: Annotated[str, Field(min_length=1, max_length=100)] | None = None
+    description: Annotated[str, Field(max_length=500)] | None = None
+    color: Annotated[str, Field(pattern="^#[0-9A-Fa-f]{6}$")] | None = None
 
 
-class ProjectResponse(BaseModel):
+class ProjectResponse(ProjectBase):
+    """Complete project response"""
+
     id: str = Field(..., description="Unique identifier")
     user_id: str = Field(..., description="User ID who owns the project")
-    name: str = Field(..., description="Name of the project")
-    description: Optional[str] = Field(None, description="Description of the project")
-    color: Optional[str] = Field(None, description="Color code for the project")
     is_default: bool = Field(
         default=False, description="Whether this is the default Inbox project"
     )
@@ -180,15 +148,17 @@ class ProjectResponse(BaseModel):
     updated_at: datetime = Field(..., description="Last update timestamp")
 
 
+# Subtask operations
 class SubtaskCreateRequest(BaseModel):
     title: str
 
 
 class SubtaskUpdateRequest(BaseModel):
-    title: Optional[str] = None
-    completed: Optional[bool] = None
+    title: str | None = None
+    completed: bool | None = None
 
 
+# Pagination and stats
 class PaginationMeta(BaseModel):
     total: int = Field(..., description="Total number of items")
     page: int = Field(..., description="Current page (1-based)")
@@ -206,15 +176,16 @@ class TodoStats(BaseModel):
     by_priority: dict[str, int] = Field(default_factory=dict)
     by_project: dict[str, int] = Field(default_factory=dict)
     completion_rate: float = Field(default=0.0)
-    labels: Optional[List[dict]] = Field(default=None)
+    labels: list[dict] | None = None
 
 
 class TodoListResponse(BaseModel):
-    data: List[TodoResponse]
+    data: list[TodoResponse]
     meta: PaginationMeta
-    stats: Optional[TodoStats] = None
+    stats: TodoStats | None = None
 
 
+# Search
 class SearchMode(str, Enum):
     TEXT = "text"
     SEMANTIC = "semantic"
@@ -222,27 +193,28 @@ class SearchMode(str, Enum):
 
 
 class TodoSearchParams(BaseModel):
-    q: Optional[str] = Field(None, description="Search query")
-    mode: SearchMode = Field(default=SearchMode.HYBRID, description="Search mode")
-    project_id: Optional[str] = None
-    completed: Optional[bool] = None
-    priority: Optional[Priority] = None
-    has_due_date: Optional[bool] = None
-    overdue: Optional[bool] = None
-    due_date_start: Optional[datetime] = None
-    due_date_end: Optional[datetime] = None
-    labels: Optional[List[str]] = None
+    q: str | None = None
+    mode: SearchMode = Field(default=SearchMode.HYBRID)
+    project_id: str | None = None
+    completed: bool | None = None
+    priority: Priority | None = None
+    has_due_date: bool | None = None
+    overdue: bool | None = None
+    due_date_start: datetime | None = None
+    due_date_end: datetime | None = None
+    labels: list[str] | None = None
     page: int = Field(default=1, ge=1)
     per_page: int = Field(default=50, ge=1, le=100)
     include_stats: bool = Field(default=False)
 
 
+# Bulk operations
 class BulkOperationRequest(BaseModel):
-    todo_ids: List[str] = Field(..., min_length=1, max_length=100)
+    todo_ids: Annotated[list[str], Field(min_length=1, max_length=100)]
 
 
 class BulkUpdateRequest(BulkOperationRequest):
-    updates: UpdateTodoRequest
+    updates: TodoUpdateRequest
 
 
 class BulkMoveRequest(BulkOperationRequest):
@@ -250,7 +222,7 @@ class BulkMoveRequest(BulkOperationRequest):
 
 
 class BulkOperationResponse(BaseModel):
-    success: List[str] = Field(default_factory=list)
-    failed: List[dict] = Field(default_factory=list)
+    success: list[str] = Field(default_factory=list)
+    failed: list[dict] = Field(default_factory=list)
     total: int
     message: str

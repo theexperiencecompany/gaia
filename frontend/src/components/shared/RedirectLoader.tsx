@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import HeroImage from "@/features/landing/components/hero/HeroImage";
 
 interface RedirectLoaderProps {
   url: string;
@@ -19,19 +20,21 @@ export function RedirectLoader({ url, replace = false }: RedirectLoaderProps) {
   }, [url, router, replace]);
 
   return (
-    <div className="inset-0 flex h-full flex-1 flex-col items-center justify-center bg-background">
+    <div className="inset-0 flex h-full flex-1 flex-col items-center justify-center">
+      <div className="fixed left-0 top-0 h-screen w-screen opacity-30 z-0">
+        <HeroImage />
+      </div>
+
       <div className="mb-6 animate-spin">
         <Image
           src="/images/logos/logo.webp"
           alt="GAIA"
-          width={100}
-          height={100}
+          width={80}
+          height={80}
           priority
         />
       </div>
-      <div className="text-lg font-medium text-foreground">
-        Redirecting you...
-      </div>
+      <div className="text-lg font-normal text-white">Redirecting you...</div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import Spinner from "@/components/ui/spinner";
 import AddProjectModal from "@/features/todo/components/AddProjectModal";
+import { priorityTextColors } from "@/features/todo/components/TodoItem";
 import TodoModal from "@/features/todo/components/TodoModal";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import {
@@ -97,13 +98,6 @@ function SidebarSection({
   );
 }
 
-// Priority colors mapping
-const priorityColors: Record<Priority, string> = {
-  [Priority.HIGH]: "#ef4444", // red
-  [Priority.MEDIUM]: "#eab308", // yellow
-  [Priority.LOW]: "#3b82f6", // blue
-  [Priority.NONE]: "#6b7280", // gray
-};
 export default function TodoSidebar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -184,7 +178,7 @@ export default function TodoSidebar() {
         <Flag02Icon
           width={18}
           height={18}
-          color={priorityColors[Priority.HIGH]}
+          style={{ color: priorityTextColors[Priority.HIGH] }}
         />
       ),
       href: "/todos/priority/high",
@@ -195,7 +189,7 @@ export default function TodoSidebar() {
         <Flag02Icon
           width={18}
           height={18}
-          color={priorityColors[Priority.MEDIUM]}
+          style={{ color: priorityTextColors[Priority.MEDIUM] }}
         />
       ),
       href: "/todos/priority/medium",
@@ -206,7 +200,7 @@ export default function TodoSidebar() {
         <Flag02Icon
           width={18}
           height={18}
-          color={priorityColors[Priority.LOW]}
+          style={{ color: priorityTextColors[Priority.LOW] }}
         />
       ),
       href: "/todos/priority/low",

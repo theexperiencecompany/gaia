@@ -8,6 +8,7 @@ import {
   type Workflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
+import { generateBreadcrumbSchema } from "@/lib/seo";
 import {
   generateUseCaseMetadata,
   generateUseCaseStructuredData,
@@ -173,9 +174,19 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
     ? generateUseCaseStructuredData(useCase)
     : null;
 
+  const breadcrumbSchema = generateBreadcrumbSchema([
+    { name: "Home", url: "https://heygaia.io" },
+    { name: "Use Cases", url: "https://heygaia.io/use-cases" },
+    {
+      name: useCase?.title || communityWorkflow?.title || "",
+      url: `https://heygaia.io/use-cases/${slug}`,
+    },
+  ]);
+
   return (
     <>
-      {structuredData && <JsonLd data={structuredData} />}
+      {structuredData && <JsonLd data={[structuredData, breadcrumbSchema]} />}
+      {!structuredData && <JsonLd data={breadcrumbSchema} />}
       <UseCaseDetailClient
         useCase={useCase}
         communityWorkflow={communityWorkflow}

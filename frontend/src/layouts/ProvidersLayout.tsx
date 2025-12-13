@@ -4,7 +4,6 @@ import { type ReactNode, Suspense } from "react";
 
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { Toaster } from "@/components/ui/sonner";
-import LoginModal from "@/features/auth/components/LoginModal";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
 import GlobalAuth from "@/hooks/providers/GlobalAuth";
@@ -35,7 +34,6 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
         </Suspense>
         <GlobalInterceptor />
         {/* <HydrationManager /> */}
-        <LoginModal />
         <Toaster closeButton richColors position="top-right" theme="dark" />
         <Suspense fallback={<></>}>{children}</Suspense>
       </QueryProvider>

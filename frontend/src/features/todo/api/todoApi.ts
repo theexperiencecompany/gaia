@@ -4,8 +4,6 @@ import type {
   Project,
   ProjectCreate,
   ProjectUpdate,
-  SubtaskCreate,
-  SubtaskUpdate,
   Todo,
   TodoCreate,
   TodoFilters,
@@ -16,10 +14,8 @@ import type {
 import type { Workflow } from "@/types/features/workflowTypes";
 
 export const todoApi = {
-  // todo CRUD operations
   createTodo: async (todo: TodoCreate): Promise<Todo> => {
     return apiService.post<Todo>("/todos", todo, {
-      successMessage: "Task created successfully",
       errorMessage: "Failed to create task",
     });
   },
@@ -27,7 +23,7 @@ export const todoApi = {
   getTodo: async (todoId: string): Promise<Todo> => {
     return apiService.get<Todo>(`/todos/${todoId}`, {
       errorMessage: "Failed to fetch task",
-      silent: true, // Don't show success for fetching
+      silent: true,
     });
   },
 
@@ -70,10 +66,7 @@ export const todoApi = {
   },
 
   updateTodo: async (todoId: string, update: TodoUpdate): Promise<Todo> => {
-    const response = await apiService.put<Todo>(`/todos/${todoId}`, update, {
-      successMessage: "Task updated successfully",
-      errorMessage: "Failed to update task",
-    });
+    const response = await apiService.put<Todo>(`/todos/${todoId}`, update);
 
     // Check if the response has the correct completed status
     if (
@@ -91,7 +84,6 @@ export const todoApi = {
 
   deleteTodo: async (todoId: string): Promise<void> => {
     return apiService.delete(`/todos/${todoId}`, {
-      successMessage: "Task deleted successfully",
       errorMessage: "Failed to delete task",
     });
   },
@@ -99,7 +91,6 @@ export const todoApi = {
   // Project operations
   createProject: async (project: ProjectCreate): Promise<Project> => {
     return apiService.post<Project>("/projects", project, {
-      successMessage: "Project created successfully",
       errorMessage: "Failed to create project",
     });
   },
@@ -107,7 +98,6 @@ export const todoApi = {
   getAllProjects: async (): Promise<Project[]> => {
     return apiService.get<Project[]>("/projects", {
       errorMessage: "Failed to fetch projects",
-      silent: true, // Don't show success for fetching
     });
   },
 
@@ -116,88 +106,16 @@ export const todoApi = {
     update: ProjectUpdate,
   ): Promise<Project> => {
     return apiService.put<Project>(`/projects/${projectId}`, update, {
-      successMessage: "Project updated successfully",
       errorMessage: "Failed to update project",
+      silent: true,
     });
   },
 
   deleteProject: async (projectId: string): Promise<void> => {
     return apiService.delete(`/projects/${projectId}`, {
-      successMessage: "Project deleted successfully",
       errorMessage: "Failed to delete project",
+      silent: true,
     });
-  },
-
-  // Subtask operations (Note: Backend doesn't have separate subtask endpoints)
-  // These need to be implemented via todo updates
-  addSubtask: async (todoId: string, subtask: SubtaskCreate): Promise<Todo> => {
-    // First get the todo
-    const todo = await todoApi.getTodo(todoId);
-
-    // Add new subtask with generated ID
-    const newSubtask = {
-      id: Date.now().toString(), // Simple ID generation
-      title: subtask.title,
-      completed: false,
-      created_at: new Date().toISOString(),
-    };
-
-    // Update todo with new subtasks array
-    return apiService.put<Todo>(
-      `/todos/${todoId}`,
-      {
-        subtasks: [...todo.subtasks, newSubtask],
-      },
-      {
-        successMessage: "Subtask added successfully",
-        errorMessage: "Failed to add subtask",
-      },
-    );
-  },
-
-  updateSubtask: async (
-    todoId: string,
-    subtaskId: string,
-    update: SubtaskUpdate,
-  ): Promise<Todo> => {
-    // First get the todo
-    const todo = await todoApi.getTodo(todoId);
-
-    // Update the specific subtask
-    const updatedSubtasks = todo.subtasks.map((st) =>
-      st.id === subtaskId ? { ...st, ...update } : st,
-    );
-
-    // Update todo with modified subtasks array
-    return apiService.put<Todo>(
-      `/todos/${todoId}`,
-      {
-        subtasks: updatedSubtasks,
-      },
-      {
-        silent: true, // Subtask updates are usually silent
-      },
-    );
-  },
-
-  deleteSubtask: async (todoId: string, subtaskId: string): Promise<Todo> => {
-    // First get the todo
-    const todo = await todoApi.getTodo(todoId);
-
-    // Remove the subtask
-    const updatedSubtasks = todo.subtasks.filter((st) => st.id !== subtaskId);
-
-    // Update todo with modified subtasks array
-    return apiService.put<Todo>(
-      `/todos/${todoId}`,
-      {
-        subtasks: updatedSubtasks,
-      },
-      {
-        successMessage: "Subtask deleted successfully",
-        errorMessage: "Failed to delete subtask",
-      },
-    );
   },
 
   // Bulk operations
@@ -276,6 +194,7 @@ export const todoApi = {
     today: number;
     upcoming: number;
     completed: number;
+    overdue: number;
   }> => {
     return apiService.get("/todos/counts", {
       silent: true,
@@ -405,8 +324,8 @@ export const todoApi = {
       `/todos/${todoId}/workflow`,
       {},
       {
-        successMessage: "Workflow generated successfully",
         errorMessage: "Failed to generate workflow",
+        silent: true,
       },
     );
   },

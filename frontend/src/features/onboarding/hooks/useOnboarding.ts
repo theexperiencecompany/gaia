@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
+import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
@@ -17,6 +18,7 @@ export const useOnboarding = () => {
   const user = useUser();
   const { setUser } = useUserActions();
   const [isInitialized, setIsInitialized] = useState(false);
+  const fetchConversations = useFetchConversations();
 
   // Force integration status refresh on this page to show connected state immediately
   const { refetch: refetchIntegrationStatus } = useFetchIntegrationStatus({
@@ -184,60 +186,58 @@ export const useOnboarding = () => {
       // Add a delay before showing bot response (800-1200ms for natural feel)
       const delay = 800 + Math.random() * 400; // Random delay between 800-1200ms
 
-      setTimeout(() => {
-        setOnboardingState((prev) => {
-          const newState = { ...prev };
+      setOnboardingState((prev) => {
+        const newState = { ...prev };
 
-          if (prev.currentQuestionIndex < questions.length - 1) {
-            const nextQuestionIndex = prev.currentQuestionIndex + 1;
-            const nextQuestion = questions[nextQuestionIndex];
+        if (prev.currentQuestionIndex < questions.length - 1) {
+          const nextQuestionIndex = prev.currentQuestionIndex + 1;
+          const nextQuestion = questions[nextQuestionIndex];
 
-            if (prev.currentQuestionIndex === 0) {
-              // Combine greeting and next question with NEW_MESSAGE_BREAK
-              const combinedMessage: Message = {
-                id: nextQuestion.id,
-                type: "bot",
-                content: `Nice to meet you, ${prev.userResponses.name}! 😊<NEW_MESSAGE_BREAK>${nextQuestion.question}`,
-              };
-              newState.messages = [...prev.messages, combinedMessage];
-            } else {
-              // For other questions, just add the question normally
-              const botMessage: Message = {
-                id: nextQuestion.id,
-                type: "bot",
-                content: nextQuestion.question,
-              };
-              newState.messages = [...prev.messages, botMessage];
-            }
-
-            newState.currentQuestionIndex = nextQuestionIndex;
-            newState.hasAnsweredCurrentQuestion = false;
-          } else if (prev.currentQuestionIndex === questions.length - 1) {
-            // After profession (last question), move to connections step
-            const connectionsMessage: Message = {
-              id: "connections",
+          if (prev.currentQuestionIndex === 0) {
+            // Combine greeting and next question with NEW_MESSAGE_BREAK
+            const combinedMessage: Message = {
+              id: nextQuestion.id,
               type: "bot",
-              content: `Great! Now let's connect your accounts to help me assist you better. You can connect Gmail and Google Calendar below, or skip this step for now.`,
+              content: `Nice to meet you, ${prev.userResponses.name}! 😊<NEW_MESSAGE_BREAK>${nextQuestion.question}`,
             };
-            newState.messages = [...prev.messages, connectionsMessage];
-            newState.currentQuestionIndex = questions.length; // Step 3 (connections)
-            newState.hasAnsweredCurrentQuestion = false;
-            newState.isOnboardingComplete = true; // Show completion buttons
+            newState.messages = [...prev.messages, combinedMessage];
           } else {
-            // This shouldn't happen in normal flow
-            const finalMessage: Message = {
-              id: "final",
+            // For other questions, just add the question normally
+            const botMessage: Message = {
+              id: nextQuestion.id,
               type: "bot",
-              content: `Thank you, ${prev.userResponses.name}! I'm all set up and ready to assist you. Let's get started!`,
+              content: nextQuestion.question,
             };
-            newState.messages = [...prev.messages, finalMessage];
-            newState.isOnboardingComplete = true;
+            newState.messages = [...prev.messages, botMessage];
           }
 
-          newState.isProcessing = false;
-          return newState;
-        });
-      }, delay);
+          newState.currentQuestionIndex = nextQuestionIndex;
+          newState.hasAnsweredCurrentQuestion = false;
+        } else if (prev.currentQuestionIndex === questions.length - 1) {
+          // After profession (last question), move to connections step
+          const connectionsMessage: Message = {
+            id: "connections",
+            type: "bot",
+            content: `Great! Now let's connect your accounts to help me assist you better. You can connect Gmail and Google Calendar below, or skip this step for now.`,
+          };
+          newState.messages = [...prev.messages, connectionsMessage];
+          newState.currentQuestionIndex = questions.length; // Step 3 (connections)
+          newState.hasAnsweredCurrentQuestion = false;
+          newState.isOnboardingComplete = true; // Show completion buttons
+        } else {
+          // This shouldn't happen in normal flow
+          const finalMessage: Message = {
+            id: "final",
+            type: "bot",
+            content: `Thank you, ${prev.userResponses.name}! I'm all set up and ready to assist you. Let's get started!`,
+          };
+          newState.messages = [...prev.messages, finalMessage];
+          newState.isOnboardingComplete = true;
+        }
+
+        newState.isProcessing = false;
+        return newState;
+      });
     },
     [onboardingState.isProcessing, onboardingState.currentQuestionIndex],
   );
@@ -410,6 +410,14 @@ export const useOnboarding = () => {
             onboarding: response.user.onboarding,
             selected_model: response.user.selected_model,
           });
+        }
+
+        // Fetch conversations to populate sidebar with seeded data
+        try {
+          await fetchConversations(1, 20);
+        } catch (error) {
+          console.error("Failed to fetch conversations:", error);
+          // Don't block navigation if conversation fetch fails
         }
 
         // Navigate to the main chat page

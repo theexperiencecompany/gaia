@@ -26,10 +26,9 @@ import {
   workflowApi,
 } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
-import CommunityWorkflowCard from "./CommunityWorkflowCard";
 import CreateWorkflowModal from "./CreateWorkflowModal";
 import EditWorkflowModal from "./EditWorkflowModal";
-import WorkflowCard from "./WorkflowCard";
+import UnifiedWorkflowCard from "./shared/UnifiedWorkflowCard";
 import { WorkflowListSkeleton } from "./WorkflowSkeletons";
 
 export default function WorkflowPage() {
@@ -198,7 +197,7 @@ export default function WorkflowPage() {
 
     if (items.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center space-y-4 rounded-lg border border-zinc-800 bg-zinc-900/50 py-16">
+        <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl bg-zinc-800 border-dashed border-2 border-zinc-700 py-16">
           <div className="text-center">
             <h3 className="text-lg font-medium text-zinc-300">{emptyTitle}</h3>
             <p className="mt-2 text-sm text-zinc-500">{emptyDescription}</p>
@@ -209,7 +208,7 @@ export default function WorkflowPage() {
     }
 
     return (
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
         {items.map((item) => renderItem(item))}
       </div>
     );
@@ -262,10 +261,13 @@ export default function WorkflowPage() {
               "Create your first workflow to get started",
               refetch,
               (workflow) => (
-                <WorkflowCard
+                <UnifiedWorkflowCard
                   key={workflow.id}
                   workflow={workflow}
-                  onClick={() => handleWorkflowClick(workflow.id)}
+                  variant="user"
+                  showActivationStatus={true}
+                  primaryAction="none"
+                  onCardClick={() => handleWorkflowClick(workflow.id)}
                 />
               ),
               <Button color="primary" variant="flat" onPress={onOpen}>
@@ -274,16 +276,17 @@ export default function WorkflowPage() {
             )}
           </div>
 
-          {renderSection(
-            "Explore & Discover",
-            "See what's possible with real examples that actually work!",
-            <UseCaseSection
-              centered={false}
-              dummySectionRef={pageRef}
-              hideUserWorkflows={true}
-              exploreWorkflows={exploreWorkflows}
-            />,
-          )}
+          {exploreWorkflows.length > 0 &&
+            renderSection(
+              "Explore & Discover",
+              "See what's possible with real examples that actually work!",
+              <UseCaseSection
+                centered={false}
+                dummySectionRef={pageRef}
+                hideUserWorkflows={true}
+                exploreWorkflows={exploreWorkflows}
+              />,
+            )}
 
           {renderSection(
             "Community Workflows",
@@ -296,10 +299,12 @@ export default function WorkflowPage() {
               "Be the first to publish a workflow to the community",
               loadCommunityWorkflows,
               (workflow) => (
-                <CommunityWorkflowCard
+                <UnifiedWorkflowCard
                   key={workflow.id}
-                  workflow={workflow}
-                  onClick={() => handleCommunityWorkflowClick(workflow.id)}
+                  communityWorkflow={workflow}
+                  variant="community"
+                  showCreator={true}
+                  onCardClick={() => handleCommunityWorkflowClick(workflow.id)}
                 />
               ),
             ),

@@ -5,14 +5,14 @@ export function ContentSection({
   description,
   className,
 }: {
-  title: string;
+  title?: string;
   description: string;
   className?: string;
 }) {
   return (
-    <div className={`flex flex-col gap-2 ${cn(className)}`}>
-      <h3 className="text-4xl font-medium text-zinc-100">{title}</h3>
-      <p className="text-lg font-light text-zinc-400">{description}</p>
+    <div className={`flex flex-col gap-3 ${cn(className)}`}>
+      {title && <h3 className="text-4xl font-medium text-zinc-100">{title}</h3>}
+      <div className="text-lg font-light text-zinc-400">{description} </div>
     </div>
   );
 }

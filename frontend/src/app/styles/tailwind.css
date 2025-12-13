@@ -11,6 +11,9 @@
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-serif: var(--font-instrument-serif), serif;
 
+  --color-secondary-bg: #141414; /* darker */
+  --color-primary-bg: #1a1a1a; /*  lighter*/
+
   /* Colors */
   --color-primary: #00bbff;
   --color-primary-foreground: #000000;
@@ -45,6 +48,9 @@
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
   --animate-shiny-text: shiny-text 8s infinite;
+  --animate-shimmer: shimmer 2s linear infinite;
+  --animate-shake: shake 0.7s ease-in-out;
+  --animate-scale-in: scale-in 0.4s ease-out forwards;
 }
 
 @keyframes shine {
@@ -102,6 +108,46 @@
   30%,
   60% {
     background-position: calc(100% + var(--shiny-width)) 0;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-4px);
+  }
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+
+@keyframes scale-in {
+  0% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 

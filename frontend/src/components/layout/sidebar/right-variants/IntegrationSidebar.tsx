@@ -77,7 +77,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             size: 40,
             width: 40,
             height: 40,
-            showBackground: true,
+            showBackground: false,
           })}
         </div>
 

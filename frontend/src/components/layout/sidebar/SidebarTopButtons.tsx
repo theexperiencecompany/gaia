@@ -14,6 +14,7 @@ import {
   Calendar03Icon,
   CheckListIcon,
   ConnectIcon,
+  DashboardSquare02Icon,
   MessageMultiple02Icon,
   Target02Icon,
   ZapIcon,
@@ -58,6 +59,11 @@ export default function SidebarTopButtons() {
   };
 
   const buttonData = [
+    {
+      route: "/dashboard",
+      icon: <DashboardSquare02Icon />,
+      label: "Dashboard",
+    },
     {
       route: "/calendar",
       icon: <Calendar03Icon />,

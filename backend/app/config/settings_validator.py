@@ -49,14 +49,14 @@ class SettingsGroup:
 
 
 class SettingsValidator:
-    def __init__(self):
+    def __init__(self) -> None:
         self.groups: List[SettingsGroup] = []
         self.missing_groups: List[Tuple[SettingsGroup, List[str]]] = []
         self.show_warnings: bool = True
         self.is_production: bool = True
         self._register_predefined_groups()
 
-    def _register_predefined_groups(self):
+    def _register_predefined_groups(self) -> None:
         # Database connections
         self.register_group(
             SettingsGroup(
@@ -292,7 +292,7 @@ class SettingsValidator:
             )
         )
 
-    def register_group(self, group: SettingsGroup):
+    def register_group(self, group: SettingsGroup) -> None:
         """
         Register a settings group for validation.
 
@@ -301,7 +301,7 @@ class SettingsValidator:
         """
         self.groups.append(group)
 
-    def configure(self, show_warnings: bool, is_production: bool):
+    def configure(self, show_warnings: bool, is_production: bool) -> None:
         """
         Configure the validator.
 
@@ -345,7 +345,7 @@ class SettingsValidator:
 
         return self.missing_groups
 
-    def log_validation_results(self):
+    def log_validation_results(self) -> None:
         """Log validation results with warnings for missing configuration."""
         if not self.show_warnings or not self.missing_groups:
             return

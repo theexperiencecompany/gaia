@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
@@ -101,27 +100,28 @@ export function TriggerDisplay({
   nextRunText,
   className = "",
 }: TriggerDisplayProps) {
-  return (
-    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
-      <div className="flex items-center gap-1 text-xs text-zinc-500">
-        <div className="w-4">
-          <TriggerIcon
-            triggerType={triggerType}
-            integrationId={integrationId}
-            size={15}
-          />
-        </div>
-        {triggerLabel}
-      </div>
-
-      {nextRunText && (
+  if (triggerLabel !== "Manual Trigger")
+    return (
+      <div className={`flex flex-wrap items-center gap-2 ${className}`}>
         <div className="flex items-center gap-1 text-xs text-zinc-500">
-          <Timer02Icon width={15} height={15} />
-          {nextRunText}
+          <div className="w-4">
+            <TriggerIcon
+              triggerType={triggerType}
+              integrationId={integrationId}
+              size={15}
+            />
+          </div>
+          {triggerLabel}
         </div>
-      )}
-    </div>
-  );
+
+        {nextRunText && (
+          <div className="flex items-center gap-1 text-xs text-zinc-500">
+            <Timer02Icon width={15} height={15} />
+            {nextRunText}
+          </div>
+        )}
+      </div>
+    );
 }
 
 // Reusable Run Count Component
@@ -134,74 +134,17 @@ export function RunCountDisplay({
   totalExecutions,
   className = "",
 }: RunCountDisplayProps) {
-  return (
-    <div
-      className={`flex items-center gap-1 text-xs text-zinc-500 ${className}`}
-    >
-      <PlayIcon width={15} height={15} className="w-4 text-zinc-500" />
-      {formatRunCount(totalExecutions)}
-    </div>
-  );
-}
+  const runCount = formatRunCount(totalExecutions);
 
-// Reusable Run Workflow Button
-interface RunWorkflowButtonProps {
-  isLoading: boolean;
-  onPress: () => void;
-  size?: "sm" | "md" | "lg";
-  variant?: "flat" | "solid" | "bordered" | "light" | "ghost";
-  className?: string;
-}
-
-export function RunWorkflowButton({
-  isLoading,
-  onPress,
-  size = "sm",
-  variant = "flat",
-  className = "",
-}: RunWorkflowButtonProps) {
-  return (
-    <Button
-      color="primary"
-      size={size}
-      isLoading={isLoading}
-      onPress={onPress}
-      variant={variant}
-      className={`text-primary ${className}`}
-    >
-      Run Workflow
-    </Button>
-  );
-}
-
-// Reusable Create Workflow Button
-interface CreateWorkflowButtonProps {
-  isLoading: boolean;
-  onPress: () => void;
-  size?: "sm" | "md" | "lg";
-  variant?: "flat" | "solid" | "bordered" | "light" | "ghost";
-  className?: string;
-}
-
-export function CreateWorkflowButton({
-  isLoading,
-  onPress,
-  size = "sm",
-  variant = "flat",
-  className = "",
-}: CreateWorkflowButtonProps) {
-  return (
-    <Button
-      color="primary"
-      size={size}
-      variant={variant}
-      className={`text-primary ${className}`}
-      isLoading={isLoading}
-      onPress={onPress}
-    >
-      Create
-    </Button>
-  );
+  if (runCount !== "Never run")
+    return (
+      <div
+        className={`flex items-center gap-1 text-xs text-zinc-500 ${className}`}
+      >
+        <PlayIcon width={15} height={15} className="w-4 text-zinc-500" />
+        <span className="text-nowrap">{formatRunCount(totalExecutions)}</span>
+      </div>
+    );
 }
 
 // Reusable Activation Status Chip
@@ -227,6 +170,7 @@ export function ActivationStatus({
 // Reusable Creator Avatar
 interface CreatorAvatarProps {
   creator: {
+    id: string;
     name: string;
     avatar?: string;
   };
@@ -241,17 +185,17 @@ export function CreatorAvatar({
 }: CreatorAvatarProps) {
   const avatar = (
     <div className="flex items-center gap-2">
-      <div className="flex h-8 w-8 items-center justify-center rounded-full">
-        {creator.avatar ? (
+      <div className="flex h-7 w-7 items-center justify-center rounded-full">
+        {creator.avatar || creator.id === "system" ? (
           <Image
-            src={creator.avatar}
+            src={creator.avatar || "/images/logos/experience_black_bg.png"}
             alt={creator.name}
             width={size}
             height={size}
-            className="rounded-full"
+            className="rounded-full h-7 w-7"
           />
         ) : (
-          <UserCircle02Icon className="h-4 w-4 text-zinc-400" />
+          <UserCircle02Icon className="h-7 w-7 text-zinc-400" />
         )}
       </div>
     </div>

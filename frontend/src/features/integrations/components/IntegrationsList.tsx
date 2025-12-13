@@ -38,7 +38,7 @@ export const IntegrationsList: React.FC<{
 
   return (
     <div>
-      <div className="mb-6 space-y-3">
+      <div className="mb-6 space-y-3 flex justify-end">
         <IntegrationsSearchInput
           value={searchQuery}
           onChange={setSearchQuery}
@@ -47,14 +47,15 @@ export const IntegrationsList: React.FC<{
       </div>
 
       {!hasResults && searchQuery && (
-        <div className="py-16 text-center">
+        <div className="py-16 text-center space-y-2">
           <p className="text-sm text-zinc-400">
             No integrations found for &ldquo;{searchQuery}&rdquo;
           </p>
           <Button
             onPress={clearSearch}
             variant="light"
-            className="mt-2 text-zinc-400"
+            color="primary"
+            size="sm"
           >
             Clear search
           </Button>

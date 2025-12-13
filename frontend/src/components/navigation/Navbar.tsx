@@ -13,7 +13,12 @@ import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
-import { ArrowDown01Icon, StarFilledIcon } from "@/icons";
+import {
+  ChevronDown,
+  Login02Icon,
+  MessageMultiple02Icon,
+  StarFilledIcon,
+} from "@/icons";
 import { posthog } from "@/lib";
 
 import { Github } from "../shared";
@@ -25,9 +30,21 @@ export default function Navbar() {
   const isMobileScreen = useMediaQuery("(max-width: 990px)");
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const [isScrolled, setIsScrolled] = useState(false);
   const { data: repoData } = useGitHubStars("theexperiencecompany/gaia");
 
   const user = useUser();
+
+  // Handle scroll to change navbar appearance
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollThreshold = 50; // Adjust this value to change when the navbar changes
+      setIsScrolled(window.scrollY > scrollThreshold);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   // Define navbar items - can be single links or dropdown menus
   const navbarItems = [
@@ -79,35 +96,32 @@ export default function Navbar() {
   }, [pathname]);
 
   return (
-    <div className="fixed top-0 left-0 z-50 w-full px-4 pt-4">
+    <div
+      className={`fixed top-0 left-0 z-50 w-full pt-4 transition-all duration-300 px-4`}
+    >
       <div
-        className="relative mx-auto max-w-6xl"
+        className={`relative mx-auto transition-all duration-300 ${
+          isScrolled ? "w-6xl" : "w-full"
+        }`}
         onMouseLeave={handleNavbarMouseLeave}
       >
         <div
-          className={`navbar_content flex h-14 w-full items-center justify-between border-1 border-white/5 px-3 backdrop-blur-md transition-none ${
+          className={`navbar_content flex h-14 w-full items-center justify-between  px-3 transition-all duration-300 ${
             activeDropdown
-              ? "rounded-t-2xl border-b-0 bg-zinc-950"
-              : "rounded-2xl bg-zinc-900/30"
+              ? "rounded-t-2xl  bg-zinc-800"
+              : isScrolled
+                ? "rounded-2xl bg-zinc-900/30 backdrop-blur-md"
+                : "rounded-2xl border-transparent bg-transparent "
           }`}
         >
-          <Button
-            as={Link}
-            href={"/"}
-            variant="light"
-            className="px-2"
-            // isIconOnly
-            // className="h-10 w-10"
-          >
+          <Button as={Link} href={"/"} variant="light" className="px-2">
             <Image
-              // src="/images/logos/logo.webp"
               src="/images/logos/text_w_logo_white.webp"
               alt="GAIA Logo"
               width={100}
               height={30}
               className="object-contain"
             />
-            {/* <span className="tracking-tigher text-xl font-medium">GAIA</span> */}
           </Button>
 
           <div className="hidden items-center gap-1 sm:flex">
@@ -120,7 +134,7 @@ export default function Navbar() {
                   className={`text-sm font-medium ${
                     pathname === href
                       ? "text-primary"
-                      : "text-zinc-400 hover:text-zinc-300"
+                      : "text-zinc-300 hover:text-zinc-100"
                   }`}
                   as={Link}
                   href={href}
@@ -144,7 +158,7 @@ export default function Navbar() {
                     className={`relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm transition-colors hover:bg-zinc-800/40 ${
                       pathname === item.href
                         ? "text-primary"
-                        : "text-zinc-400 hover:text-zinc-100"
+                        : "text-zinc-300 hover:text-zinc-100"
                     }`}
                     onMouseEnter={() => {
                       setHoveredItem(item.label.toLowerCase());
@@ -158,16 +172,13 @@ export default function Navbar() {
                       });
                     }}
                   >
-                    {/* {hoveredItem === item.label.toLowerCase() && (
-                      <div className="absolute inset-0 h-full w-full rounded-lg bg-zinc-800/40 font-medium! transition-all! duration-300 ease-out" />
-                    )} */}
                     <span className="relative z-10">{item.label}</span>
                   </Link>
                 ) : (
                   <button
                     type="button"
                     key={item.menu}
-                    className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-zinc-400 capitalize transition-colors hover:text-zinc-100"
+                    className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-zinc-200 capitalize transition-colors hover:text-zinc-100"
                     onMouseEnter={() => {
                       handleMouseEnter(item.menu);
                       posthog.capture("navigation:navbar_dropdown_opened", {
@@ -183,7 +194,7 @@ export default function Navbar() {
                         {item.label.charAt(0).toUpperCase() +
                           item.label.slice(1)}
                       </span>
-                      <ArrowDown01Icon
+                      <ChevronDown
                         height={17}
                         width={17}
                         className={
@@ -247,7 +258,12 @@ export default function Navbar() {
                     });
                   }}
                 >
-                  {user.email ? "Open Chat" : "Get Started"}
+                  {user.email ? "Chat" : "Get Started"}
+                  {user.email ? (
+                    <MessageMultiple02Icon width={17} height={17} />
+                  ) : (
+                    <Login02Icon width={19} height={19} />
+                  )}
                 </RaisedButton>
                 {/* #1c1c1c */}
               </Link>

@@ -4,6 +4,9 @@ import { useConversationsOperations } from "./useConversationsOperations";
 
 export const useConversationList = () => {
   const conversations = useChatStore((state) => state.conversations);
+  const messagesByConversation = useChatStore(
+    (state) => state.messagesByConversation,
+  );
   const conversationsLoadingStatus = useChatStore(
     (state) => state.conversationsLoadingStatus,
   );
@@ -27,6 +30,7 @@ export const useConversationList = () => {
       updated_at: conv.updatedAt.toISOString(),
       createdAt: conv.createdAt,
       updatedAt: conv.updatedAt,
+      messageCount: messagesByConversation[conv.id]?.length || 0,
     })),
     loading,
     error,

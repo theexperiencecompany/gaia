@@ -126,6 +126,10 @@ class OnboardingData(BaseModel):
     )
     account_number: Optional[int] = Field(None, description="User's account number")
     member_since: Optional[str] = Field(None, description="Member since date string")
+    integration_scan_states: Optional[Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict,
+        description="Map of integration IDs to their scan state data (e.g. {'gmail': {'last_scan': timestamp}})",
+    )
 
 
 class OnboardingRequest(BaseModel):

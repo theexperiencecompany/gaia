@@ -58,7 +58,7 @@ export default function TestimonialsSection() {
       <div className="flex w-full max-w-7xl flex-col items-center justify-center">
         <LargeHeader
           chipText="Wall of Love"
-          headingText="Loved by thousands of users"
+          headingText="From the people who use it"
           subHeadingText="See what people are saying about their experience with GAIA"
           centered
         />

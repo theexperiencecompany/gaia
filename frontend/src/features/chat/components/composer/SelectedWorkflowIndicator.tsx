@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 
 import type { SelectedWorkflowData } from "@/features/chat/hooks/useWorkflowSelection";
-import BaseWorkflowCard from "@/features/workflows/components/shared/BaseWorkflowCard";
+import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { Cancel01Icon } from "@/icons";
 
 interface SelectedWorkflowIndicatorProps {
@@ -30,35 +30,38 @@ export default function SelectedWorkflowIndicator({
     }
   };
 
-  // Create header right content with remove button
-  const headerRight = onRemove ? (
-    <Button
-      isIconOnly
-      size="sm"
-      variant="light"
-      onPress={() => onRemove()}
-      className="text-zinc-400 hover:text-zinc-200"
-    >
-      <Cancel01Icon className="h-4 w-4" />
-    </Button>
-  ) : undefined;
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="m-3 w-80 rounded-2xl border-2 border-zinc-700"
+      className="relative m-3 w-80 rounded-3xl border-2 border-zinc-700"
     >
-      <BaseWorkflowCard
+      <UnifiedWorkflowCard
         title={workflow.title}
         description={workflow.description}
         steps={workflow.steps}
-        headerRight={headerRight}
-        showArrowIcon={true}
-        hideExecutions
-        onClick={handleWorkflowClick}
+        variant="user"
+        primaryAction="none"
+        onCardClick={handleWorkflowClick}
+        showExecutions={false}
       />
+      {onRemove && (
+        <div
+          className="absolute top-4 right-4 z-20"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            onPress={onRemove}
+            className="text-zinc-400 hover:text-zinc-200"
+          >
+            <Cancel01Icon className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </motion.div>
   );
 }

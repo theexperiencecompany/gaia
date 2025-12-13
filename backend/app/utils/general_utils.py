@@ -167,3 +167,29 @@ def get_project_info() -> dict:
             }
     except Exception:
         return {"name": "GAIA API", "version": "dev", "description": "Backend for GAIA"}
+
+
+def describe_structure(obj, parent=""):
+    lines = []
+
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            key = f"{parent}.{k}" if parent else k
+            if isinstance(v, dict):
+                lines.append(key)
+                lines.extend(describe_structure(v, key))
+            elif isinstance(v, list):
+                lines.append(f"{key}: [{len(v)} items]")
+                if v and isinstance(v[0], (dict, list)):
+                    lines.extend(describe_structure(v[0], f"{key}.0"))
+            else:
+                lines.append(key)
+        return lines
+
+    if isinstance(obj, list):
+        lines.append(f"{parent}: [{len(obj)} items]")
+        if obj and isinstance(obj[0], (dict, list)):
+            lines.extend(describe_structure(obj[0], f"{parent}.0"))
+        return lines
+
+    return [parent]

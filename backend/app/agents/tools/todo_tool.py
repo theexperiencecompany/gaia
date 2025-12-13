@@ -8,9 +8,9 @@ from app.models.todo_models import (
     Priority,
     ProjectCreate,
     SubTask,
-    TodoCreate,
+    TodoModel,
+    TodoUpdateRequest,
     UpdateProjectRequest,
-    UpdateTodoRequest,
 )
 from app.services.todos.todo_bulk_service import (
     bulk_complete_todos as bulk_complete_service,
@@ -96,7 +96,7 @@ async def create_todo(
         # Convert priority string to enum if provided
         priority_enum = Priority(priority) if priority else Priority.NONE
 
-        todo_data = TodoCreate(
+        todo_data = TodoModel(
             title=title,
             description=description,
             labels=labels or [],
@@ -222,7 +222,7 @@ async def update_todo(
             return {"error": "User authentication required", "todo": None}
 
         # Build update data with only provided fields
-        update_request = UpdateTodoRequest(
+        update_request = TodoUpdateRequest(
             title=title,
             description=description,
             labels=labels,
@@ -231,8 +231,6 @@ async def update_todo(
             priority=Priority(priority) if priority is not None else None,
             project_id=project_id,
             completed=completed,
-            subtasks=None,
-            workflow_id=None,
         )
         result = await update_todo_service(todo_id, update_request, user_id)
         todo_dict = result.model_dump(mode="json")
@@ -865,18 +863,7 @@ async def add_subtask(
         new_subtask = SubTask(id=str(uuid.uuid4()), title=title, completed=False)
 
         # Update todo with new subtask
-        update_data = UpdateTodoRequest(
-            subtasks=todo.subtasks + [new_subtask],
-            title=None,
-            description=None,
-            labels=None,
-            due_date=None,
-            due_date_timezone=None,
-            priority=None,
-            project_id=None,
-            completed=None,
-            workflow_id=None,
-        )
+        update_data = TodoUpdateRequest(subtasks=todo.subtasks + [new_subtask])
 
         result = await update_todo_service(todo_id, update_data, user_id)
         todo_dict = result.model_dump(mode="json")
@@ -936,18 +923,7 @@ async def update_subtask(
             return {"error": f"Subtask {subtask_id} not found", "todo": None}
 
         # Update todo with modified subtasks
-        update_data = UpdateTodoRequest(
-            subtasks=updated_subtasks,
-            title=None,
-            description=None,
-            labels=None,
-            due_date=None,
-            due_date_timezone=None,
-            priority=None,
-            project_id=None,
-            completed=None,
-            workflow_id=None,
-        )
+        update_data = TodoUpdateRequest(subtasks=updated_subtasks)
         result = await update_todo_service(todo_id, update_data, user_id)
         todo_dict = result.model_dump(mode="json")
 
@@ -995,18 +971,7 @@ async def delete_subtask(
             return {"error": f"Subtask {subtask_id} not found", "todo": None}
 
         # Update todo with remaining subtasks
-        update_data = UpdateTodoRequest(
-            subtasks=updated_subtasks,
-            title=None,
-            description=None,
-            labels=None,
-            due_date=None,
-            due_date_timezone=None,
-            priority=None,
-            project_id=None,
-            completed=None,
-            workflow_id=None,
-        )
+        update_data = TodoUpdateRequest(subtasks=updated_subtasks)
         result = await update_todo_service(todo_id, update_data, user_id)
         todo_dict = result.model_dump(mode="json")
 

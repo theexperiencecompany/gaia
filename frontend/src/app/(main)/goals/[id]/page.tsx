@@ -302,7 +302,7 @@ export default function GoalPage() {
             }`}
           >
             {loading ? (
-              <div className="bg-opacity-50 relative flex h-fit w-fit flex-col items-center justify-center gap-10 overflow-hidden rounded-xl bg-zinc-900 pt-9 pb-0">
+              <div className="bg-secondary-bg relative flex h-fit w-fit flex-col items-center justify-center gap-10 overflow-hidden rounded-xl pt-9 pb-0">
                 <div className="space-y-2 text-center">
                   <div className="text-xl font-medium text-foreground">
                     Creating your detailed Roadmap.

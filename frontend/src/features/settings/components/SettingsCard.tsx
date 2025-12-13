@@ -17,7 +17,7 @@ export function SettingsCard({
 }: SettingsCardProps) {
   return (
     <div
-      className={`mx-auto max-w-3xl rounded-2xl bg-[#141414] p-4 ${cn(className)}`}
+      className={`mx-auto max-w-3xl rounded-2xl bg-secondary-bg p-4 ${cn(className)}`}
     >
       {(icon || title) && (
         <div className="mb-3 flex items-center space-x-1 text-zinc-400">

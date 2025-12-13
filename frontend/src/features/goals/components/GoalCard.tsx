@@ -12,7 +12,11 @@ import { useRouter } from "next/navigation";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { Calendar03Icon, MoreVerticalIcon } from "@/icons";
+import {
+  Calendar03Icon,
+  CheckmarkCircle02Icon,
+  MoreVerticalIcon,
+} from "@/icons";
 import type { Goal } from "@/types/api/goalsApiTypes";
 import { parseDate2 } from "@/utils";
 
@@ -48,7 +52,11 @@ export function GoalCard({
     await deleteGoal(goal?.id);
   };
 
-  console.log(goal);
+  // Calculate steps info
+  const nodes = goal.roadmap?.nodes || [];
+  const totalSteps = nodes.length;
+  const completedSteps = nodes.filter((node) => node.data?.isComplete).length;
+  const hasSteps = totalSteps > 0;
 
   return (
     <>
@@ -97,7 +105,7 @@ export function GoalCard({
           <span className="text-xs">{goal?.progress || 0}%</span>
         </div>
 
-        <div className="flex cursor-default items-center justify-start gap-3">
+        <div className="flex cursor-default items-center justify-start gap-2 flex-wrap">
           <Chip
             color={
               !goal.roadmap?.nodes?.length || !goal.roadmap?.edges?.length
@@ -119,6 +127,25 @@ export function GoalCard({
                   ? "In Progress"
                   : "Not Started"}
           </Chip>
+
+          {/* Steps chip */}
+          {hasSteps && (
+            <Chip
+              size="sm"
+              variant="flat"
+              className="text-zinc-400 px-1"
+              radius="sm"
+              startContent={
+                <CheckmarkCircle02Icon
+                  width={15}
+                  height={15}
+                  className="mx-1"
+                />
+              }
+            >
+              {completedSteps}/{totalSteps} steps
+            </Chip>
+          )}
 
           <Tooltip content="Created on" size="sm" showArrow placement="bottom">
             <div className="flex cursor-default items-center gap-1 text-xs text-zinc-500">

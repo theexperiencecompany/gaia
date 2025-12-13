@@ -278,6 +278,10 @@ class CreateWorkflowRequest(BaseModel):
         min_length=1, description="Description of what the workflow should accomplish"
     )
     trigger_config: TriggerConfig = Field(description="Trigger configuration")
+    steps: Optional[List[WorkflowStep]] = Field(
+        default=None,
+        description="Optional pre-existing steps (e.g., from explore/community workflows). If provided, step generation will be skipped.",
+    )
     generate_immediately: bool = Field(
         default=False, description="Generate steps immediately vs background"
     )

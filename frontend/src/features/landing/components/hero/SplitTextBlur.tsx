@@ -1,5 +1,7 @@
+"use client";
+
 import { motion } from "framer-motion";
-import React, { useId, useRef } from "react";
+import { useId, useRef } from "react";
 
 import { useIntersectionObserver } from "@/hooks/ui/useIntersectionObserver";
 import { cn } from "@/lib/utils";
@@ -16,6 +18,9 @@ interface SplitTextBlurProps {
   };
   yOffset?: number;
   disableIntersectionObserver?: boolean;
+  as?: "h1" | "h2" | "h3" | "div";
+  gradient?: string;
+  showGlowTextBg?: boolean;
 }
 
 const SplitTextBlur = ({
@@ -30,6 +35,9 @@ const SplitTextBlur = ({
   },
   yOffset = 2,
   disableIntersectionObserver = false,
+  gradient = "linear-gradient(to bottom, #a3a3a3, #ffffff)",
+  showGlowTextBg = false,
+  as = "div",
 }: SplitTextBlurProps) => {
   const ref = useRef<HTMLDivElement>(null);
   const isVisible = useIntersectionObserver(ref, { threshold: 0.1 });
@@ -70,42 +78,76 @@ const SplitTextBlur = ({
   const shouldAnimate = disableIntersectionObserver || isVisible;
   const baseId = useId();
 
+  const MotionComponent = motion[as] as typeof motion.div;
+
   return (
-    <motion.div
-      ref={ref}
-      initial="hidden"
-      animate={shouldAnimate ? "visible" : "hidden"}
-      variants={containerVariants}
-      className={cn(className)}
-      style={{
-        willChange: "transform, opacity, filter",
-        background: "linear-gradient(to bottom, #a3a3a3, #ffffff)",
-        WebkitBackgroundClip: "text",
-        WebkitTextFillColor: "transparent",
-        backgroundClip: "text",
-      }}
-    >
-      {words.map((word, index) => (
-        <motion.span
-          // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
-          key={baseId + word + index}
-          variants={wordVariants}
-          style={{
-            willChange: "transform, opacity, filter",
-            display: "inline-block",
-            marginRight: index < words.length - 1 ? "0.25em" : "0",
-            background: "inherit",
-            WebkitBackgroundClip: "inherit",
-            WebkitTextFillColor: "inherit",
-            backgroundClip: "inherit",
-            paddingBottom: "7px",
-          }}
-          className="font-serif"
+    <div className="relative">
+      <MotionComponent
+        ref={ref}
+        initial="hidden"
+        animate={shouldAnimate ? "visible" : "hidden"}
+        variants={containerVariants}
+        className={`${cn(className)} z-[10]`}
+        style={{
+          willChange: "transform, opacity, filter",
+          background: gradient,
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundClip: "text",
+        }}
+      >
+        {words.map((word, index) => (
+          <motion.span
+            // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
+            key={baseId + word + index}
+            variants={wordVariants}
+            style={{
+              willChange: "transform, opacity, filter",
+              display: "inline-block",
+              marginRight: index < words.length - 1 ? "0.25em" : "0",
+              background: "inherit",
+              WebkitBackgroundClip: "inherit",
+              WebkitTextFillColor: "inherit",
+              backgroundClip: "inherit",
+              paddingBottom: "7px",
+            }}
+            className="font-serif"
+          >
+            {word}
+          </motion.span>
+        ))}
+      </MotionComponent>
+      {showGlowTextBg && (
+        <motion.div
+          ref={ref}
+          initial="hidden"
+          animate={shouldAnimate ? "visible" : "hidden"}
+          variants={containerVariants}
+          className={`${cn(className)} text-white blur-md absolute top-0 z-[-1]`}
         >
-          {word}
-        </motion.span>
-      ))}
-    </motion.div>
+          {words.map((word, index) => (
+            <motion.span
+              // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
+              key={baseId + word + index}
+              variants={wordVariants}
+              style={{
+                willChange: "transform, opacity, filter",
+                display: "inline-block",
+                marginRight: index < words.length - 1 ? "0.25em" : "0",
+                background: "inherit",
+                WebkitBackgroundClip: "inherit",
+                WebkitTextFillColor: "inherit",
+                backgroundClip: "inherit",
+                paddingBottom: "7px",
+              }}
+              className="font-serif"
+            >
+              {word}
+            </motion.span>
+          ))}
+        </motion.div>
+      )}
+    </div>
   );
 };
 

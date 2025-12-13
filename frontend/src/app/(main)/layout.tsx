@@ -11,6 +11,7 @@ import Sidebar from "@/components/layout/sidebar/MainSidebar";
 import RightSidebar from "@/components/layout/sidebar/RightSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import LoginModal from "@/features/auth/components/LoginModal";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
 import { useUser } from "@/features/auth/hooks/useUser";
 import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
@@ -181,6 +182,8 @@ export default function MainLayout({ children }: { children: ReactNode }) {
         onOpenChange={handleOpenChange}
         defaultOpen={defaultOpen}
       >
+        <LoginModal />
+
         <div
           className="relative flex min-h-screen w-full dark"
           style={{ touchAction: "pan-y" }}
@@ -190,7 +193,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             <Sidebar />
           </SidebarLayout>
 
-          <SidebarInset className="flex h-screen flex-col bg-[#1a1a1a]">
+          <SidebarInset className="flex h-screen flex-col bg-primary-bg">
             <header
               className="flex flex-shrink-0 items-center justify-between px-6 py-3 pl-3"
               onClick={closeOnTouch}
@@ -222,7 +225,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
         {/* Onboarding assistance cards - shown after completing initial onboarding */}
         {(shouldShowPersonalizationCard || shouldShowGettingStartedCard) && (
           <div
-            className={`fixed z-40 w-70 space-y-3 ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
+            className={`fixed z-40 w-70 space-y-3 overflow-hidden ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
           >
             {shouldShowPersonalizationCard && (
               <ContextGatheringLoader onComplete={openHoloCardModal} />

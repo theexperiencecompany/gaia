@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, cast
 
 from app.agents.memory.client import memory_client_manager
 from app.config.loggers import llm_logger as logger
+from app.utils.general_utils import describe_structure
 from app.models.memory_models import (
     MemoryEntry,
     MemoryRelation,
@@ -143,6 +144,14 @@ class MemoryService:
             self.logger.warning(f"Expected dict, got {type(result)}: {result}")
             return None
 
+        # Log if this individual result contains graph data
+        if "relations" in result or "graph" in result:
+            self.logger.info(
+                f"Individual add result contains graph keys: {[k for k in ['relations', 'graph'] if k in result]}"
+            )
+            if "relations" in result:
+                self.logger.info(f"Relations in add result: {result.get('relations')}")
+
         # Handle async mode response (PENDING status)
         if result.get("status") == "PENDING" or is_async:
             event_id = result.get("event_id")
@@ -213,12 +222,62 @@ class MemoryService:
             List of relationship dictionaries
         """
         if isinstance(response, dict):
-            return (
+            # Log what graph-related keys are present
+            graph_keys = ["relations", "entities", "relationships", "graph"]
+            present_keys = [k for k in graph_keys if k in response]
+            self.logger.info(f"Graph-related keys in response: {present_keys}")
+
+            # Check each possible location and log what we find
+            relations = response.get("relations")
+            entities = response.get("entities")
+            relationships = response.get("relationships")
+            graph_obj = response.get("graph")
+
+            self.logger.info(
+                f"relations field: {type(relations)}, length: {len(relations) if isinstance(relations, list) else 'N/A'}"
+            )
+            if relations:
+                self.logger.info(
+                    f"Sample relation data (first item): {relations[0] if len(relations) > 0 else 'empty'}"
+                )
+
+            self.logger.info(
+                f"entities field: {type(entities)}, length: {len(entities) if isinstance(entities, list) else 'N/A'}"
+            )
+            if entities:
+                self.logger.info(
+                    f"Sample entity data (first item): {entities[0] if len(entities) > 0 else 'empty'}"
+                )
+
+            self.logger.info(
+                f"relationships field: {type(relationships)}, length: {len(relationships) if isinstance(relationships, list) else 'N/A'}"
+            )
+            if relationships:
+                self.logger.info(
+                    f"Sample relationship data (first item): {relationships[0] if len(relationships) > 0 else 'empty'}"
+                )
+
+            self.logger.info(f"graph field: {type(graph_obj)}")
+            if isinstance(graph_obj, dict):
+                graph_rels = graph_obj.get("relationships", [])
+                self.logger.info(
+                    f"graph.relationships: {type(graph_rels)}, length: {len(graph_rels) if isinstance(graph_rels, list) else 'N/A'}"
+                )
+
+            # Return first non-empty list found
+            result = (
                 response.get("relations", [])
                 or response.get("entities", [])
                 or response.get("relationships", [])
                 or response.get("graph", {}).get("relationships", [])
             )
+
+            self.logger.info(
+                f"Final extracted relations count: {len(result) if isinstance(result, list) else 0}"
+            )
+            return result
+
+        self.logger.warning(f"Response is not a dict, type: {type(response)}")
         return []
 
     def _parse_relationships(
@@ -235,10 +294,17 @@ class MemoryService:
             List of MemoryRelation objects
         """
         if not relations:
+            self.logger.info("_parse_relationships: No relations to parse (empty list)")
             return []
 
+        self.logger.info(f"_parse_relationships: Parsing {len(relations)} relations")
+        if len(relations) > 0:
+            self.logger.info(
+                f"First relation structure: {list(relations[0].keys()) if isinstance(relations[0], dict) else type(relations[0])}"
+            )
+
         parsed_relations = []
-        for relation_data in relations:
+        for idx, relation_data in enumerate(relations):
             try:
                 # v2 Graph API format: source, relation, destination
                 if (
@@ -246,6 +312,9 @@ class MemoryService:
                     and "relation" in relation_data
                     and "destination" in relation_data
                 ):
+                    self.logger.debug(
+                        f"Relation {idx}: Matched v2 format (source/relation/destination)"
+                    )
                     relation = MemoryRelation(
                         source=relation_data.get("source", ""),
                         source_type=relation_data.get("source_type", "entity"),
@@ -260,6 +329,9 @@ class MemoryService:
                     and "relationship" in relation_data
                     and "target" in relation_data
                 ):
+                    self.logger.debug(
+                        f"Relation {idx}: Matched legacy format (source/relationship/target)"
+                    )
                     relation = MemoryRelation(
                         source=relation_data.get("source", ""),
                         source_type=relation_data.get("source_type", "entity"),
@@ -269,15 +341,22 @@ class MemoryService:
                     )
                     parsed_relations.append(relation)
                 else:
-                    self.logger.warning(f"Unknown relationship format: {relation_data}")
+                    available_keys = (
+                        list(relation_data.keys())
+                        if isinstance(relation_data, dict)
+                        else "not a dict"
+                    )
+                    self.logger.warning(
+                        f"Relation {idx}: Unknown format. Available keys: {available_keys}, data: {relation_data}"
+                    )
 
             except Exception as e:
                 self.logger.warning(
-                    f"Failed to parse relationship: {e}, data: {relation_data}"
+                    f"Failed to parse relationship {idx}: {e}, data: {relation_data}"
                 )
                 continue
 
-        self.logger.debug(
+        self.logger.info(
             f"Successfully parsed {len(parsed_relations)}/{len(relations)} graph relationships"
         )
         return parsed_relations
@@ -332,6 +411,19 @@ class MemoryService:
 
             mode_str = "async" if async_mode else "sync"
             self.logger.info(f"Memory stored for user {user_id} (mode: {mode_str})")
+
+            # Log raw response structure to check for graph data
+            if isinstance(result, dict):
+                self.logger.info(f"Add response keys: {list(result.keys())}")
+                # Check for graph-related data in add response
+                if "relations" in result:
+                    self.logger.info(
+                        f"Add response contains 'relations': {len(result.get('relations', []))} items"
+                    )
+                if "graph" in result:
+                    self.logger.info(
+                        f"Add response contains 'graph': {type(result.get('graph'))}"
+                    )
 
             # v2 API response format: {"results": [...]}
             results_list: List[Dict[str, Any]]
@@ -397,6 +489,11 @@ class MemoryService:
         if not user_id:
             return False
 
+        # Start timing
+        import time
+
+        batch_start = time.time()
+
         try:
             # Prepare metadata
             if metadata is None:
@@ -425,8 +522,18 @@ class MemoryService:
                 f"Batch of {len(messages)} memories stored for user {user_id} (mode: {mode_str})"
             )
 
-            # Log the raw response for debugging
-            self.logger.debug(f"Mem0 API raw response: {result}")
+            # Log the raw response structure
+            if isinstance(result, dict):
+                self.logger.info(f"Batch add response keys: {list(result.keys())}")
+                # Check for graph-related data
+                if "relations" in result:
+                    self.logger.info(
+                        f"Batch add response contains 'relations': {len(result.get('relations', []))} items"
+                    )
+                if "graph" in result:
+                    self.logger.info(
+                        f"Batch add response contains 'graph': {type(result.get('graph'))}"
+                    )
 
             # v2 API response format: {"results": [...]}
             if isinstance(result, dict) and "results" in result:
@@ -435,30 +542,44 @@ class MemoryService:
                     len(results_list) if isinstance(results_list, list) else 0
                 )
 
+                # Calculate elapsed time
+                batch_elapsed = time.time() - batch_start
+
                 # Log details about what was stored
                 if success_count == 0:
                     self.logger.warning(
-                        f"Mem0 returned 0 memories from {len(messages)} messages. "
+                        f"Mem0 returned 0 memories from {len(messages)} messages in {batch_elapsed:.2f}s. "
                         f"Response: {result}"
                     )
                 else:
-                    self.logger.info(f"Successfully stored {success_count} memories")
+                    self.logger.info(
+                        f"✓ Stored {success_count} memories in {batch_elapsed:.2f}s "
+                        f"(batch_size={len(messages)}, mode={'async' if async_mode else 'sync'})"
+                    )
                     # Log sample of events
                     events = [r.get("event", "UNKNOWN") for r in results_list[:5]]
                     self.logger.debug(f"Sample events: {events}")
 
                 return success_count > 0
             elif isinstance(result, list):
-                self.logger.info(f"Successfully stored {len(result)} memories")
+                batch_elapsed = time.time() - batch_start
+                self.logger.info(
+                    f"✓ Stored {len(result)} memories in {batch_elapsed:.2f}s "
+                    f"(batch_size={len(messages)}, mode={'async' if async_mode else 'sync'})"
+                )
                 return len(result) > 0
             else:
+                batch_elapsed = time.time() - batch_start
                 self.logger.warning(
-                    f"Unexpected response format from mem0 batch add: {type(result)}, value: {result}"
+                    f"Unexpected response format from mem0 batch add in {batch_elapsed:.2f}s: {type(result)}, value: {result}"
                 )
                 return False
 
         except Exception as e:
-            self.logger.error(f"Error storing memory batch for user {user_id}: {e}")
+            batch_elapsed = time.time() - batch_start
+            self.logger.error(
+                f"Error storing memory batch for user {user_id} after {batch_elapsed:.2f}s: {e}"
+            )
             return False
 
     async def search_memories(
@@ -554,29 +675,43 @@ class MemoryService:
         try:
             client = await self._get_client()
 
+            # v1.1 format includes graph relationships if graph memory is enabled at project level
             response = await client.get_all(
-                filters={"AND": [{"user_id": user_id}]}, output_format="v1.1"
+                filters={"AND": [{"user_id": user_id}]},
+                output_format="v1.1",
             )
 
-            logger.debug(f"{response=}")
+            structure = describe_structure(response)
+            logger.info("response_structure=" + "\n".join(structure))
+
+            # Check if graph data is present
+            has_graph_data = False
+            if isinstance(response, dict):
+                possible_graph_keys = [
+                    "relations",
+                    "relationships",
+                    "graph",
+                    "entities",
+                ]
+                has_graph_data = any(key in response for key in possible_graph_keys)
+                logger.info(f"Graph data present in response: {has_graph_data}")
+                if has_graph_data:
+                    logger.info(
+                        f"Graph keys found: {[k for k in possible_graph_keys if k in response]}"
+                    )
+                else:
+                    logger.warning(
+                        "No graph relationships in response. Graph memory may not be enabled at project level."
+                    )
 
             # v2 API response format: {"results": [...], "relations": [...]}
             memories_list: List[Dict[str, Any]] = []
             relationships_list: List[Dict[str, Any]] = []
 
-            if isinstance(response, dict):
-                # Extract memories from results
-                memories_list = response.get("results", [])
-                # Extract graph relationships if enabled
-                relationships_list = self._extract_relationships_from_response(response)
-            elif isinstance(response, list):
-                # Fallback for direct list response
-                memories_list = response
-            else:
-                self.logger.error(
-                    f"Unexpected response format from mem0 get_all: {type(response)}"
-                )
-                return MemorySearchResult()
+            # Extract memories from results
+            memories_list = response.get("results", [])
+            # Extract graph relationships if enabled
+            relationships_list = self._extract_relationships_from_response(response)
 
             # Parse memories and relationships
             memory_entries = self._parse_memory_list(memories_list, user_id)
@@ -652,6 +787,31 @@ class MemoryService:
         except Exception as e:
             self.logger.error(f"Error deleting all memories for user {user_id}: {e}")
             return False
+
+    async def get_project_info(self) -> Dict[str, Any]:
+        """
+        Get project configuration to check if graph memory is enabled.
+
+        Returns:
+            Dict with project information
+        """
+        try:
+            client = await self._get_client()
+
+            # Try to get project details
+            if hasattr(client, "project") and hasattr(client.project, "get"):
+                project_info = await client.project.get()
+                self.logger.info(f"Project info: {project_info}")
+                return {"success": True, "project_info": project_info}
+            else:
+                return {
+                    "success": False,
+                    "message": "Project API not available on this client",
+                }
+
+        except Exception as e:
+            self.logger.error(f"Error getting project info: {e}")
+            return {"success": False, "error": str(e)}
 
 
 # Create singleton instance

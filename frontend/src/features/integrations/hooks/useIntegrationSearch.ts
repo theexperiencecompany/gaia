@@ -1,22 +1,23 @@
-import { useMemo, useState } from "react";
+"use client";
 
+import Fuse from "fuse.js";
+import { useMemo, useState } from "react";
 import type { Integration } from "../types";
 
-export const useIntegrationSearch = (integrations: Integration[]) => {
+export function useIntegrationSearch(integrations: Integration[]) {
   const [searchQuery, setSearchQuery] = useState("");
 
-  const filteredIntegrations = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return integrations;
-    }
+  const fuse = useMemo(() => {
+    return new Fuse(integrations, {
+      keys: ["name", "description", "id"],
+      threshold: 0.3,
+    });
+  }, [integrations]);
 
-    const query = searchQuery.toLowerCase();
-    return integrations.filter(
-      (integration) =>
-        integration.name.toLowerCase().includes(query) ||
-        integration.description.toLowerCase().includes(query),
-    );
-  }, [integrations, searchQuery]);
+  const filteredIntegrations = useMemo(() => {
+    if (!searchQuery.trim()) return integrations;
+    return fuse.search(searchQuery).map((r) => r.item);
+  }, [searchQuery, fuse, integrations]);
 
   const clearSearch = () => setSearchQuery("");
 
@@ -26,4 +27,4 @@ export const useIntegrationSearch = (integrations: Integration[]) => {
     clearSearch,
     filteredIntegrations,
   };
-};
+}

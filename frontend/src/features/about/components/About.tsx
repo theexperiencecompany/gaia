@@ -48,6 +48,7 @@ export default async function About() {
 
         <div className="relative max-w-(--breakpoint-lg) space-y-8">
           <Suspense fallback={<div>Loading...</div>}>
+            <h1 className="sr-only">About GAIA</h1>
             <div className="flex w-full justify-center gap-10">
               <Image
                 src="/images/logos/logo.webp"
