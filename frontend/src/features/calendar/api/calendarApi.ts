@@ -121,10 +121,17 @@ export const calendarApi = {
   fetchCalendarPreferences: async (): Promise<string[]> => {
     try {
       const data = await apiService.get<{
+        selectedCalendars?: string[];
         selected_calendars?: string[];
         calendar_ids?: string[];
       }>("/calendar/preferences", { silent: true });
-      return data.selected_calendars || data.calendar_ids || [];
+      // Backend returns 'selectedCalendars' (camelCase)
+      return (
+        data.selectedCalendars ||
+        data.selected_calendars ||
+        data.calendar_ids ||
+        []
+      );
     } catch (error) {
       console.error("Error fetching calendar preferences:", error);
       return [];

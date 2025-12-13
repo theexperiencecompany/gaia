@@ -48,6 +48,7 @@ def _build_integrations_config():
             isSpecial=integration.is_special,
             displayPriority=integration.display_priority,
             includedIntegrations=integration.included_integrations,
+            isFeatured=integration.is_featured,
         )
         integration_configs.append(config.model_dump())
 
@@ -144,7 +145,9 @@ async def disconnect_integration(
             logger.error(
                 f"Error disconnecting integration {integration_id} for user {user_id}: {e}"
             )
-            raise HTTPException(status_code=500, detail="Failed to disconnect integration")
+            raise HTTPException(
+                status_code=500, detail="Failed to disconnect integration"
+            )
 
     elif integration.managed_by == "self":
         # Handle internal disconnection by revoking the token
@@ -162,7 +165,9 @@ async def disconnect_integration(
             logger.error(
                 f"Error disconnecting internal integration {integration_id} for user {user_id}: {e}"
             )
-            raise HTTPException(status_code=500, detail="Failed to disconnect integration")
+            raise HTTPException(
+                status_code=500, detail="Failed to disconnect integration"
+            )
 
     else:
         raise HTTPException(

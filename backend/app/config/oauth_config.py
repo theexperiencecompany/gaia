@@ -57,6 +57,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 description="View calendar events",
             ),
         ],
+        is_featured=True,
         short_name="calendar",
         managed_by="self",
         subagent_config=SubAgentConfig(
@@ -97,6 +98,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 description="Read, compose, and send emails",
             )
         ],
+        is_featured=True,
         short_name="gmail",
         managed_by="composio",
         composio_config=ComposioConfig(
@@ -130,6 +132,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         provider="notion",
         scopes=[],
         available=True,
+        is_featured=True,
         short_name="notion",
         managed_by="composio",
         composio_config=ComposioConfig(
@@ -225,6 +228,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
     OAuthIntegration(
         id="github",
         name="GitHub",
+        is_featured=True,
         description="Manage repositories, issues, pull requests, and automate your development workflow",
         category="productivity",
         provider="github",
@@ -330,6 +334,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         provider="slack",
         scopes=[],
         available=True,
+        is_featured=True,
         short_name="slack",
         managed_by="composio",
         composio_config=ComposioConfig(

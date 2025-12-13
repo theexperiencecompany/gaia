@@ -20,6 +20,7 @@ export interface Integration {
   isSpecial?: boolean;
   displayPriority?: number;
   includedIntegrations?: string[];
+  isFeatured?: boolean;
 }
 
 export interface IntegrationStatus {

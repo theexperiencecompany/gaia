@@ -101,6 +101,7 @@ class OAuthIntegration(BaseModel):
     is_special: bool = False  # For unified integrations like Google Workspace
     display_priority: int = 0  # Higher priority shows first
     included_integrations: List[str] = []  # Child integrations for unified ones
+    is_featured: bool = False  # Featured integrations displayed at the top
     # Short name for slash command dropdowns and quick access
     short_name: Optional[str] = None  # e.g., "gmail", "calendar", "drive", "docs"
     managed_by: Literal["self", "composio"]
@@ -126,3 +127,4 @@ class IntegrationConfigResponse(BaseModel):
     isSpecial: bool
     displayPriority: int
     includedIntegrations: List[str]
+    isFeatured: bool

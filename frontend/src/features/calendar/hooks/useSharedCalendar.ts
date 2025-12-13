@@ -5,7 +5,9 @@ import { useCallback, useMemo } from "react";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useCalendarStore } from "@/stores/calendarStore";
 
+import { calendarApi } from "../api/calendarApi";
 import { useCalendarOperations } from "./useCalendarOperations";
+import { useCalendarPreferences } from "./useCalendarPreferences";
 import { useCalendarsQuery } from "./useCalendarsQuery";
 
 export const useSharedCalendar = () => {
@@ -32,17 +34,38 @@ export const useSharedCalendar = () => {
   const calendarStatus = getIntegrationStatus("google_calendar");
   const isCalendarConnected = calendarStatus?.connected || false;
 
+  // Fetch calendar preferences from backend (syncs to store automatically)
+  const preferencesQuery = useCalendarPreferences({
+    enabled: isCalendarConnected,
+  });
+
   // Use React Query for calendars with caching - only fetch if connected
   const calendarsQuery = useCalendarsQuery({
     enabled: isCalendarConnected,
   });
   const calendars = calendarsQuery.data ?? [];
-  const isInitialized = calendarsQuery.isFetched;
+  const isInitialized = calendarsQuery.isFetched && preferencesQuery.isFetched;
 
   // Handle calendar selection
   const handleCalendarSelect = useCallback(
-    (calendarId: string) => {
+    async (calendarId: string) => {
+      // Toggle in store (updates UI immediately)
       toggleCalendarSelection(calendarId);
+
+      // Get updated selections after toggle
+      const updatedSelections = useCalendarStore.getState().selectedCalendars;
+
+      // Sync to backend
+      try {
+        await calendarApi.updateCalendarPreferences(updatedSelections);
+        console.log(
+          "[Calendar] Synced selection to backend:",
+          updatedSelections.length,
+          "calendars",
+        );
+      } catch (error) {
+        console.error("[Calendar] Failed to sync selection to backend:", error);
+      }
     },
     [toggleCalendarSelection],
   );

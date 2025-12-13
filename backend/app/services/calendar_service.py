@@ -220,6 +220,57 @@ async def list_calendars(access_token: str, short=False) -> Optional[Dict[str, A
     return await fetch_calendar_list(access_token, short)
 
 
+async def initialize_calendar_preferences(
+    user_id: str,
+    access_token: str,
+) -> None:
+    """
+    Initialize calendar preferences for a user who just connected their Google Calendar.
+    Fetches all available calendars and sets them as selected by default.
+
+    Args:
+        user_id (str): The user's ID
+        access_token (str): Valid Google OAuth access token
+    """
+    try:
+        # Check if user already has calendar preferences
+        existing_preferences = await calendars_collection.find_one({"user_id": user_id})
+        if existing_preferences and existing_preferences.get("selected_calendars"):
+            logger.info(
+                f"User {user_id} already has calendar preferences, skipping initialization"
+            )
+            return
+
+        # Fetch all available calendars
+        calendar_data = await fetch_calendar_list(access_token)
+        calendars = calendar_data.get("items", [])
+
+        if not calendars:
+            logger.warning(f"No calendars found for user {user_id}")
+            return
+
+        # Select all calendars by default
+        all_calendar_ids = [cal["id"] for cal in calendars]
+
+        # Save preferences to database
+        await calendars_collection.update_one(
+            {"user_id": user_id},
+            {"$set": {"selected_calendars": all_calendar_ids}},
+            upsert=True,
+        )
+
+        logger.info(
+            f"Initialized calendar preferences for user {user_id}: "
+            f"selected {len(all_calendar_ids)} calendars"
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Failed to initialize calendar preferences for user {user_id}: {e}",
+            exc_info=True,
+        )
+
+
 async def get_calendar_metadata_map(
     access_token: str,
 ) -> tuple[Dict[str, str], Dict[str, str]]:
@@ -444,7 +495,7 @@ async def get_calendar_events(
     calendars = calendar_data.get("items", [])
 
     # Determine selected calendars: update preferences if provided,
-    # otherwise load from the database or default to the primary calendar.
+    # otherwise load from the database or default to all available calendars.
     user_selected_calendars: List[str] = []
     if selected_calendars is not None:
         user_selected_calendars = selected_calendars
@@ -458,11 +509,8 @@ async def get_calendar_events(
         if preferences and preferences.get("selected_calendars"):
             user_selected_calendars = preferences["selected_calendars"]
         else:
-            primary_calendar = next(
-                (cal for cal in calendars if cal.get("primary")), None
-            )
-            if primary_calendar:
-                user_selected_calendars = [primary_calendar["id"]]
+            # Default: select all available calendars
+            user_selected_calendars = [cal["id"] for cal in calendars]
             await calendars_collection.update_one(
                 {"user_id": user_id},
                 {"$set": {"selected_calendars": user_selected_calendars}},
@@ -857,15 +905,11 @@ async def search_calendar_events_native(
         user_selected_calendars = preferences["selected_calendars"]
         logger.info(f"User has calendar preferences: {user_selected_calendars}")
     else:
-        # Default to primary calendar if no preferences set
-        primary_calendar = next((cal for cal in calendars if cal.get("primary")), None)
-        if primary_calendar:
-            user_selected_calendars = [primary_calendar["id"]]
-            logger.info(
-                f"No preferences found, defaulting to primary calendar: {primary_calendar['id']}"
-            )
-        else:
-            logger.warning("No primary calendar found")
+        # Default: select all available calendars
+        user_selected_calendars = [cal["id"] for cal in calendars]
+        logger.info(
+            f"No preferences found, defaulting to all calendars: {len(user_selected_calendars)} calendars"
+        )
 
     # Filter the calendars to only those that are selected
     selected_cal_objs = [

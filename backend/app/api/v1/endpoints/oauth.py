@@ -7,6 +7,7 @@ from app.config.settings import settings
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
+from app.services.calendar_service import initialize_calendar_preferences
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth_service import handle_oauth_connection, store_user_info
 from app.services.oauth_state_service import validate_and_consume_oauth_state
@@ -322,6 +323,12 @@ async def callback(
         except Exception as e:
             logger.warning(f"Failed to invalidate OAuth status cache: {e}")
 
+        # Initialize calendar preferences (select all calendars by default)
+        await initialize_calendar_preferences(   
+          user_id=str(user_id),
+          access_token=access_token,
+        )
+        
         # Redirect to the original page with success indicator
         separator = "&" if "?" in redirect_path else "?"
         redirect_url = (
