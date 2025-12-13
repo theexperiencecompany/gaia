@@ -56,7 +56,7 @@ export const authApi = {
 
   // Logout user
   logout: async (): Promise<void> => {
-    const response = await apiService.post<{ logout_url: string }>(
+    await apiService.post<{ logout_url: string }>(
       "/user/logout",
       {},
       {
@@ -66,9 +66,8 @@ export const authApi = {
     );
 
     // Redirect to the logout URL returned by the backend
-    if (response.logout_url) {
-      window.location.href = response.logout_url;
-    }
+    // if (response.logout_url)
+    //   window.location.href = response.logout_url;
   },
 
   // Complete onboarding

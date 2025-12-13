@@ -13,7 +13,6 @@ export * from "./seo/JsonLd";
 export * from "./shared/index";
 export * from "./ui/accordion";
 export * from "./ui/alert";
-export * from "./ui/alert-dialog";
 export * from "./ui/aspect-ratio";
 export * from "./ui/avatar";
 export * from "./ui/button";

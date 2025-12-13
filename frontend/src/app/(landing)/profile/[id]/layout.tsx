@@ -10,25 +10,18 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   try {
     const cardId = params.id;
-
-    // TEMPORARY: Use hardcoded URL for testing
-    const tempUrl = "https://care-scan-serial-match.trycloudflare.com";
-    const backendUrl =
-      process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
 
     const response = await fetch(
-      `${tempUrl || backendUrl}/api/v1/user/holo-card/${cardId}`,
+      `${backendUrl}/api/v1/user/holo-card/${cardId}`,
       {
         headers: {
           "Content-Type": "application/json",
         },
-        cache: "no-store",
       },
     );
 
-    if (!response.ok) {
-      throw new Error("Failed to fetch profile data");
-    }
+    if (!response.ok) throw new Error("Failed to fetch profile data");
 
     const holoCardData: PublicHoloCardData = await response.json();
     const houseName = normalizeHouse(holoCardData.house);

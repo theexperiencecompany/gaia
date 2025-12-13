@@ -90,7 +90,7 @@ const ListItem = React.forwardRef<
               {children && (
                 <p
                   className={cn(
-                    "line-clamp-2 text-sm leading-tight font-light text-zinc-500",
+                    "line-clamp-2 text-sm leading-tight font-light text-zinc-400",
                     backgroundImage && "relative z-[2]",
                   )}
                 >
@@ -138,10 +138,10 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
         ease: [0.19, 1, 0.15, 1.01],
       }}
       className={cn(
-        "absolute top-full left-0 z-40 w-full origin-top overflow-hidden rounded-b-2xl border-1 border-y-0 border-white/5 bg-gradient-to-b from-zinc-950 to-zinc-900/30 backdrop-blur-2xl outline-none",
+        "absolute top-full left-0 z-40 w-full origin-top overflow-hidden rounded-b-2xl border-1 border-y-0 border-white/5 bg-gradient-to-b from-zinc-800 to-zinc-900/30 backdrop-blur-xl outline-none",
       )}
     >
-      <div className="p-6">
+      <div className="p-6 pt-2">
         {activeMenu === "product" && (
           <div className="grid w-full grid-cols-3 grid-rows-2 gap-4">
             {links.map((link) => (

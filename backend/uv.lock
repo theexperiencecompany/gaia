@@ -1766,6 +1766,7 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "ujson" },
     { name = "urllib3" },
+    { name = "urllib3" },
     { name = "uuid7" },
     { name = "uvicorn" },
     { name = "uvloop", marker = "sys_platform != 'win32'" },

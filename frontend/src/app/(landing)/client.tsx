@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
+import { AnimatedLazySection } from "@/components/shared/AnimatedSection";
 import { lazy, useEffect } from "react";
 
-import { AnimatedLazySection } from "@/components/shared/AnimatedSection";
+import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import CommunitySection from "@/features/landing/components/sections/CommunitySection";
 import ProductivityOS from "@/features/landing/components/sections/ProductivityOS";
@@ -56,18 +56,7 @@ export default function LandingPageClient() {
     // <ReactLenis root>
     <div className="relative overflow-hidden">
       <div className="absolute inset-0 h-screen w-full">
-        <Image
-          src={"/images/wallpapers/switzerland_night.webp"}
-          // src={
-          //   // "https://i.pinimg.com/1200x/12/91/13/129113c772cac2f5dd337c1ea306ddcb.jpg"
-          //   "https://i.pinimg.com/1200x/a7/aa/c7/a7aac749d7a7dc6edb92f3c13e80a53a.jpg"
-          // }
-          alt="GAIA Hero Section Wallpaper"
-          sizes="100vw"
-          priority
-          fill
-          className="aspect-video object-cover opacity-90"
-        />
+        <HeroImage shouldHaveInitialFade />
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-gradient-to-b from-background to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[30vh] bg-gradient-to-t from-background to-transparent" />
       </div>

@@ -3,6 +3,7 @@ interface ShinyTextProps {
   disabled?: boolean;
   speed?: number;
   className?: string;
+  heading?: string;
 }
 
 const ShinyText = ({
@@ -10,13 +11,14 @@ const ShinyText = ({
   disabled = false,
   speed = 5,
   className = "",
+  heading,
 }: ShinyTextProps) => {
   const animationDuration = `${speed}s`;
 
   return (
     <div className={className}>
       <div
-        className={`inline-block bg-clip-text text-zinc-400 ${disabled ? "" : "animate-shine"} `}
+        className={`inline-block bg-clip-text text-zinc-800 ${disabled ? "" : "animate-shine"} `}
         style={{
           backgroundImage:
             "linear-gradient(120deg, rgba(255, 255, 255, 0) 40%, rgba(255, 255, 255, 0.8) 50%, rgba(255, 255, 255, 0) 60%)",
@@ -25,15 +27,8 @@ const ShinyText = ({
           animationDuration,
         }}
       >
-        {text.includes("New: ") ? (
-          <>
-            <span className="text-white">New: </span>
-            {text.replace("New: ", "")}
-            <span className="text-white"> 🎉</span>
-          </>
-        ) : (
-          text
-        )}
+        {heading && <span className="font-medium">{heading} </span>}
+        {text}
       </div>
     </div>
   );

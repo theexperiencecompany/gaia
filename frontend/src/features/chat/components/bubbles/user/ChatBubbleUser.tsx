@@ -89,7 +89,7 @@ export default function ChatBubbleUser({
       </div>
       <div className="min-w-[40px]">
         <Avatar
-          className={`relative rounded-full bg-black ${disableActions ? "bottom-0" : "bottom-11"}`}
+          className={`relative rounded-full bg-black ${disableActions ? "bottom-0" : "bottom-18"}`}
         >
           <AvatarImage src={user?.profilePicture} alt="User Avatar" />
           <AvatarFallback>

@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
-import { generatePageMetadata, generateWebPageSchema } from "@/lib/seo";
+import {
+  generateBreadcrumbSchema,
+  generatePageMetadata,
+  generateWebPageSchema,
+  siteConfig,
+} from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Terms of Service",
@@ -23,11 +28,19 @@ const TermsOfService = () => {
     "Terms of Service",
     "Review GAIA's Terms of Service to understand your rights, responsibilities, and the terms governing your use of our AI assistant platform.",
     "https://heygaia.io/terms",
+    [
+      { name: "Home", url: siteConfig.url },
+      { name: "Terms of Service", url: `${siteConfig.url}/terms` },
+    ],
   );
+  const breadcrumbSchema = generateBreadcrumbSchema([
+    { name: "Home", url: siteConfig.url },
+    { name: "Terms of Service", url: `${siteConfig.url}/terms` },
+  ]);
 
   return (
     <>
-      <JsonLd data={termsSchema} />
+      <JsonLd data={[termsSchema, breadcrumbSchema]} />
       <div className="flex w-screen flex-col items-center justify-center">
         <div className="privacy-policy max-w-(--breakpoint-xl) p-6 pt-24">
           <h1 className="mb-4 text-3xl font-bold">

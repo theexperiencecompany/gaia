@@ -46,10 +46,25 @@ export interface OnboardingPhaseUpdateMessage {
   };
 }
 
+export interface PersonalizationProgressMessage {
+  type: "personalization_progress";
+  data: {
+    stage: string;
+    message: string;
+    progress: number; // 0-100
+    details?: {
+      current?: number;
+      total?: number;
+      platforms?: string[];
+    };
+  };
+}
+
 export type OnboardingWebSocketMessage =
   | PersonalizationCompleteMessage
   | BioStatusUpdateMessage
-  | OnboardingPhaseUpdateMessage;
+  | OnboardingPhaseUpdateMessage
+  | PersonalizationProgressMessage;
 
 /**
  * Type guard for PersonalizationCompleteMessage
@@ -97,5 +112,20 @@ export function isOnboardingPhaseUpdateMessage(
     (message as { type?: string }).type === "onboarding_phase_update" &&
     "data" in message &&
     typeof (message as { data?: { phase?: string } }).data?.phase === "string"
+  );
+}
+
+/**
+ * Type guard for PersonalizationProgressMessage
+ */
+export function isPersonalizationProgressMessage(
+  message: unknown,
+): message is PersonalizationProgressMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    "type" in message &&
+    (message as { type?: string }).type === "personalization_progress" &&
+    "data" in message
   );
 }

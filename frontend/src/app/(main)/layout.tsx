@@ -225,11 +225,11 @@ export default function MainLayout({ children }: { children: ReactNode }) {
         {/* Onboarding assistance cards - shown after completing initial onboarding */}
         {(shouldShowPersonalizationCard || shouldShowGettingStartedCard) && (
           <div
-            className={`fixed z-40 w-70 space-y-3 ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
+            className={`fixed z-40 w-70 space-y-3 overflow-hidden ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
           >
-            {/* {shouldShowPersonalizationCard && (
+            {shouldShowPersonalizationCard && (
               <ContextGatheringLoader onComplete={openHoloCardModal} />
-            )} */}
+            )}
             {/* {shouldShowGettingStartedCard && <OnboardingStepsCard />} */}
           </div>
         )}
