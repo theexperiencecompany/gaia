@@ -130,7 +130,7 @@ jobs:
           git config --global user.email "actions@github.com"
 
           echo "Running prek checks..."
-          uvx prek run --all-files --show-diff-on-failure
+          uv run prek run --all-files --show-diff-on-failure
 
           # Auto-commit fixes if changes were made
           if ! git diff --exit-code; then

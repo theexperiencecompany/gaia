@@ -59,7 +59,7 @@ run = "uvx bandit -r app"
 
 [tasks."pip:audit"]
 description = "Audit pip packages for vulnerabilities"
-run = "uvx pip-audit"
+run = "uv run pip-audit --skip-editable"
 
 [tasks.secrets]
 description = "Detect secrets in codebase"
