@@ -2,6 +2,7 @@
 out/
 dist/
 release/
+.next-server-prepared/
 
 # Dependencies
 node_modules/
