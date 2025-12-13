@@ -43,7 +43,7 @@ jobs:
           username: "Gaia Deploy Bot"
           color: ${{ job.status == 'success' && '#00d4aa' || '#ff6b6b' }}
           message: |
-            🌐 **Frontend Deployment ${{ job.status == 'success' && 'Triggered' || 'Failed' }}**
+            🌐 **Web Deployment ${{ job.status == 'success' && 'Triggered' || 'Failed' }}**
             **Repo:** ${{ github.repository }}
             **Branch:** master
             **Commit:** ${{ github.sha }}

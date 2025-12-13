@@ -45,10 +45,10 @@ def create_my_api_client():
   ...
 ```
 
-### Frontend (types + optional renderer)
+### Web (types + optional renderer)
 1) Add the tool and payload type to the registry
 ```ts
-// frontend/src/config/registries/toolRegistry.ts
+// apps/web/src/config/registries/toolRegistry.ts
 import type { MyToolData } from "@/types"; // or a feature-specific type
 
 export const TOOL_REGISTRY = {
@@ -62,7 +62,7 @@ export type ToolDataMap = { [K in ToolName]: (typeof TOOL_REGISTRY)[K] };
 
 2) (Optional) Add a UI renderer
 ```tsx
-// frontend/src/features/chat/components/bubbles/bot/TextBubble.tsx
+// apps/web/src/features/chat/components/bubbles/bot/TextBubble.tsx
 const TOOL_RENDERERS: Partial<RendererMap> = {
   // ...existing
   my_tool_data: (data, index) => (
@@ -74,7 +74,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 Done. The backend tool becomes available to agents; the frontend knows how to type and render its outputs.
 
 See also:
-- Backend registry: `backend/app/langchain/tools/core/registry.py`
-- Frontend tool registry: `frontend/src/config/registries/toolRegistry.ts`
-- Unified renderers: `frontend/src/features/chat/components/bubbles/bot/TextBubble.tsx`
+- Backend registry: `apps/backend/app/langchain/tools/core/registry.py`
+- Web tool registry: `apps/web/src/config/registries/toolRegistry.ts`
+- Unified renderers: `apps/web/src/features/chat/components/bubbles/bot/TextBubble.tsx`
 - Lazy providers: `backend/app/core/lazy_loader.py` 

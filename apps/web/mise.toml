@@ -1,5 +1,5 @@
-# Frontend mise.toml for GAIA
-# This file defines tasks for the GAIA frontend (Next.js/React).
+# Web mise.toml for GAIA
+# This file defines tasks for the GAIA web app (Next.js/React).
 #
 # Quick Start:
 #   mise dev             # Start development server
@@ -30,20 +30,28 @@ description = "Start production server"
 run = "pnpm start"
 
 [tasks.type]
-description = "Run TypeScript type checking"
-run = "pnpm type"
+description = "Run TypeScript type checking (via Nx with caching)"
+run = "nx type-check web"
+
+[tasks."type-check"]
+description = "Run TypeScript type checking (via Nx with caching)"
+run = "nx type-check web"
 
 [tasks.lint]
-description = "Run Biome check"
-run = "pnpm check"
+description = "Run Biome check (via Nx with caching)"
+run = "nx lint web"
 
 [tasks."lint:fix"]
 description = "Run Biome check with auto-fix"
-run = "pnpm fix"
+run = "nx lint:fix web"
 
 [tasks.format]
-description = "Format code with Prettier"
-run = "pnpm format"
+description = "Format code with Biome"
+run = "nx format web"
+
+[tasks."format:check"]
+description = "Check code formatting (via Nx with caching)"
+run = "nx format:check web"
 
 [tasks.depcheck]
 description = "Check for unused dependencies"
@@ -81,10 +89,6 @@ run = "pnpm knip"
 [tasks.precommit]
 description = "Run all prek checks"
 run = "prek run --all-files"
-
-[tasks."precommit:prettier"]
-description = "Run prettier formatter (prek hook)"
-run = "prek run prettier"
 
 [tasks."precommit:barrels"]
 description = "Generate barrel exports (prek hook)"

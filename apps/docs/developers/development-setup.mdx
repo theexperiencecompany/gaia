@@ -196,8 +196,8 @@ You should see that mise is activated. If not, restart your terminal.
 
   <Step title="Setup Environment Variables">
     ```bash
-    cp backend/.env.example backend/.env
-    cp frontend/.env.example frontend/.env
+    cp apps/backend/.env.example apps/backend/.env
+    cp apps/web/.env.example apps/web/.env
     ```
     Then configure your environment variables by following the docs.
   </Step>
@@ -212,14 +212,14 @@ You should see that mise is activated. If not, restart your terminal.
     - start docker services  
     - install Python  
     - install backend dependencies  
-    - install Node 22 and frontend deps  
+    - install Node 22 and web deps  
     - seed models  
   </Step>
 
   <Step title="Start Development">
     ```bash
     mise dev:backend
-    mise dev:frontend
+    mise dev:web
     mise dev
     mise dev:full
     ```
@@ -240,8 +240,8 @@ Environment Variables
 <Steps>
   <Step title="Copy Example Files">
     ```bash
-    cp backend/.env.example backend/.env
-    cp frontend/.env.example frontend/.env
+    cp apps/backend/.env.example apps/backend/.env
+    cp apps/web/.env.example apps/web/.env
     ```
   </Step>
 
@@ -293,17 +293,17 @@ uv sync
 </Steps>
 
 
-Frontend Setup
+Web Setup
 
 <Steps>
-  <Step title="Navigate to Frontend Directory">
+  <Step title="Navigate to Web Directory">
     ```bash
-    cd frontend
+    cd apps/web
     ```
   </Step>
 
 
-  <Step title="Install Frontend Dependencies">
+  <Step title="Install Web Dependencies">
     ```bash
     mise install
     ```

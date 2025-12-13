@@ -30,20 +30,28 @@ run = "uv run arq app.worker.WorkerSettings"
 alias = "arq"
 
 [tasks.lint]
-description = "Run ruff linter"
-run = "uvx ruff check ."
+description = "Run ruff linter (via Nx with caching)"
+run = "nx lint backend"
 
 [tasks."lint:fix"]
 description = "Run ruff linter with auto-fix"
-run = "uvx ruff check . --fix"
+run = "nx lint:fix backend"
 
 [tasks.format]
 description = "Format code with ruff"
-run = "uvx ruff format ."
+run = "nx format backend"
+
+[tasks."format:check"]
+description = "Check code formatting (via Nx with caching)"
+run = "nx format:check backend"
 
 [tasks.mypy]
-description = "Run mypy type checker"
-run = "uvx mypy app --ignore-missing-imports"
+description = "Run mypy type checker (via Nx with caching)"
+run = "nx type-check backend"
+
+[tasks."type-check"]
+description = "Run mypy type checker (via Nx with caching)"
+run = "nx type-check backend"
 
 [tasks.schema]
 description = "Test API schema with schemathesis"

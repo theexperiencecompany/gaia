@@ -74,7 +74,7 @@ Docker Compose profiles let you run specific service groups:
 
 ### Default Profile (Empty)
 
-Runs all services including frontend, backend, databases, workers, and development tools:
+Runs all services including web, backend, databases, workers, and development tools:
 
 ```bash
 docker compose up
@@ -82,7 +82,7 @@ docker compose up
 
 ### Backend Only
 
-Runs backend services, databases, workers, and development tools - excludes the frontend:
+Runs backend services, databases, workers, and development tools - excludes the web:
 
 ```bash
 docker compose --profile backend-only up
@@ -90,7 +90,7 @@ docker compose --profile backend-only up
 
 <Note>
   The `backend-only` profile is recommended for development when you want to run
-  the frontend manually with `mise dev` for faster hot reloading.
+  the web manually with `mise dev` for faster hot reloading.
 </Note>
 
 ## Health Checks

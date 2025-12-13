@@ -1,11 +1,95 @@
 {
   "name": "backend",
   "root": "apps/backend",
+  "sourceRoot": "apps/backend/app",
   "targets": {
     "dev": {
       "executor": "nx:run-commands",
       "options": {
         "command": "uv run uvicorn app.main:app --port 8000 --reload --log-level info",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uvx ruff check .",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/apps/backend/pyproject.toml",
+        "{workspaceRoot}/apps/backend/ruff.toml",
+        "^production"
+      ],
+      "outputs": []
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uvx ruff check . --fix",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uvx ruff format .",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
+    "format:check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uvx ruff format . --check",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/apps/backend/pyproject.toml",
+        "{workspaceRoot}/apps/backend/ruff.toml"
+      ]
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uvx mypy app --ignore-missing-imports",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/apps/backend/pyproject.toml",
+        "^production"
+      ]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run pytest",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": [
+        "default",
+        "^production"
+      ]
+    },
+    "worker": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run arq app.worker.WorkerSettings",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "find . -type d -name '__pycache__' -exec rm -rf {} + && find . -type f -name '*.pyc' -delete",
         "cwd": "{projectRoot}"
       }
     }

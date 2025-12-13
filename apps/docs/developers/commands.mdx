@@ -12,7 +12,7 @@ GAIA uses [mise](https://mise.jdx.dev) as a unified task runner. Run `mise tasks
 
 ```bash
 mise setup        # First time setup
-mise dev          # Start development (backend + frontend + docker)
+mise dev          # Start development (backend + web + docker)
 mise dev:full     # Start everything (includes ARQ worker)
 ```
 
@@ -24,30 +24,30 @@ Run these from the project root.
 
 ### Development
 
-| Command             | Description                                    |
-| ------------------- | ---------------------------------------------- |
-| `mise dev`          | Backend + frontend + docker logs               |
-| `mise dev:backend`  | Backend only (no docker)                       |
-| `mise dev:frontend` | Frontend only                                  |
-| `mise dev:arq`      | ARQ worker only                                |
-| `mise dev:full`     | Everything (backend + frontend + ARQ + docker) |
+| Command          | Description                      |
+| ---------------- | -------------------------------- |
+| `mise dev`       | Backend + web + docker logs      |
+| `mise dev:backend` | Backend only (no docker)         |
+| `mise dev:web`   | Web only                         |
+| `mise dev:arq`   | ARQ worker only                  |
+| `mise dev:full`  | Everything (backend + web + ARQ + docker) |
 
 ### Setup
 
 | Command               | Description                                           |
 | --------------------- | ----------------------------------------------------- |
-| `mise setup`          | Complete setup (env check, deps, docker, seed models) |
-| `mise setup:env`      | Check if `.env` files exist                           |
-| `mise setup:backend`  | Backend dependencies only                             |
-| `mise setup:frontend` | Frontend dependencies only                            |
+| `mise setup`        | Complete setup (env check, deps, docker, seed models) |
+| `mise setup:env`    | Check if `.env` files exist                           |
+| `mise setup:backend` | Backend dependencies only                             |
+| `mise setup:web`    | Web dependencies only                                 |
 | `mise setup:deps`     | All dependencies                                      |
 
 ### Code Quality
 
-| Command       | Description               |
-| ------------- | ------------------------- |
-| `mise lint`   | Lint backend + frontend   |
-| `mise format` | Format backend + frontend |
+| Command       | Description          |
+| ------------- | -------------------- |
+| `mise lint`   | Lint backend + web   |
+| `mise format` | Format backend + web |
 | `mise clean`  | Clean build artifacts     |
 
 ### Documentation
@@ -105,9 +105,9 @@ Run from `backend/` or use `mise -C backend <task>` from root.
 
 ---
 
-## Frontend Commands
+## Web Commands
 
-Run from `frontend/` or use `mise -C frontend <task>` from root.
+Run from `apps/web/` or use `mise -C apps/web <task>` from root.
 
 ### Development
 
@@ -176,8 +176,8 @@ Standard Docker Compose commands:
 **Run tasks from anywhere:**
 
 ```bash
-mise -C backend dev           # Backend from root
-mise -C frontend lint         # Frontend from root
+mise -C apps/backend dev      # Backend from root
+mise -C apps/web lint         # Web from root
 ```
 
 **Common workflows:**

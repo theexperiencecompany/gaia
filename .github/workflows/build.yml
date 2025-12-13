@@ -74,7 +74,7 @@ jobs:
     uses: ./.github/workflows/deploy.yml
     secrets: inherit # pragma: allowlist secret
 
-  trigger-frontend:
+  trigger-web:
     needs: [build-backend]
     if: github.ref == 'refs/heads/master'
     uses: ./.github/workflows/deploy-frontend.yml

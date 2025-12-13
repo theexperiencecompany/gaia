@@ -8,7 +8,7 @@ icon: "key"
 - Backend single source: `backend/app/config/settings.py`.
 - Dev: make new fields Optional; Prod: make required if mandatory.
 - Use `settings` in code; for external clients, add a lazy provider.
-- Frontend: only add `NEXT_PUBLIC_*` when strictly needed; validated via `frontend/src/lib/api/client.ts`.
+- Web: only add `NEXT_PUBLIC_*` when strictly needed; validated via `apps/web/src/lib/api/client.ts`.
 
 ### Backend: add the field
 ```python

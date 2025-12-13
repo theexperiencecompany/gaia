@@ -53,14 +53,15 @@ GAIA uses Docker Compose to orchestrate all the required services. This makes de
 gaia/
 ├── docker-compose.yml          # Main compose file
 ├── docker-compose.prod.yml     # Production overrides
-├── backend/
-│   ├── Dockerfile
-│   ├── .env                    # Backend environment variables
-│   └── ...
-├── frontend/
-│   ├── Dockerfile
-│   ├── .env                    # Frontend environment variables
-│   └── ...
+├── apps/
+│   ├── backend/
+│   │   ├── Dockerfile
+│   │   ├── .env                # Backend environment variables
+│   │   └── ...
+│   ├── web/
+│   │   ├── Dockerfile
+│   │   ├── .env                # Web environment variables
+│   │   └── ...
 └── docs/
 ```
 
@@ -91,7 +92,7 @@ gaia/
     ```
 
     Access the applications:
-    - **GAIA Frontend**: http://localhost:3000
+    - **GAIA Web**: http://localhost:3000
     - **Backend API**: http://localhost:8000
     - **API Docs**: http://localhost:8000/docs
     - **ChromaDB**: http://localhost:8080
@@ -106,16 +107,16 @@ gaia/
 The Docker Compose setup includes the following services:
 
 <AccordionGroup>
-  <Accordion icon="react" title="Frontend (gaia-frontend)">
+  <Accordion icon="react" title="Web (gaia-web)">
     **Next.js React Application**
     - Port: 3000
     - Hot reload enabled in development
     - Serves the web interface
 
     ```yaml
-    frontend:
-      container_name: gaia-frontend
-      build: ./frontend
+    web:
+      container_name: gaia-web
+      build: ./apps/web
       ports:
         - "3000:3000"
       environment:

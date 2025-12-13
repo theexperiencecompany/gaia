@@ -1,6 +1,7 @@
 {
   "name": "web",
   "root": "apps/web",
+  "sourceRoot": "apps/web/src",
   "targets": {
     "dev": {
       "executor": "nx:run-commands",
@@ -15,15 +16,70 @@
         "command": "pnpm build",
         "cwd": "{projectRoot}"
       },
-      "cache": true
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/apps/web/next.config.mjs",
+        "{workspaceRoot}/apps/web/tsconfig.json",
+        "{workspaceRoot}/apps/web/tailwind.config.ts"
+      ],
+      "outputs": ["{projectRoot}/.next", "{projectRoot}/.next/cache"]
     },
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm lint",
+        "command": "pnpm check",
         "cwd": "{projectRoot}"
       },
-      "cache": true
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/config/biome.json",
+        "^production"
+      ]
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm fix",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm format",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
+    "format:check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "biome format --check .",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/config/biome.json"
+      ]
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm type",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/apps/web/tsconfig.json",
+        "^production"
+      ]
     },
     "test": {
       "executor": "nx:run-commands",
@@ -32,6 +88,13 @@
         "cwd": "{projectRoot}"
       },
       "cache": true
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "rm -rf .next node_modules .turbo",
+        "cwd": "{projectRoot}"
+      }
     }
   }
 }

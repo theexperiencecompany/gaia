@@ -13,7 +13,7 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      frontend: ${{ steps.changes.outputs.frontend }}
+      web: ${{ steps.changes.outputs.web }}
       backend: ${{ steps.changes.outputs.backend }}
     steps:
       - name: Checkout
@@ -24,20 +24,20 @@ jobs:
         id: changes
         with:
           filters: |
-            frontend:
-              - 'frontend/**'
+            web:
+              - 'apps/web/**'
             backend:
-              - 'backend/**'
+              - 'apps/backend/**'
 
-  frontend-build:
+  web-build:
     needs: changes
-    if: needs.changes.outputs.frontend == 'true'
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Needed for auto-commit
+      contents: write
     defaults:
       run:
-        working-directory: frontend
+        working-directory: apps/web
 
     steps:
       - uses: actions/checkout@v4
@@ -53,19 +53,17 @@ jobs:
         with:
           node-version: "22.15.1"
           cache: "pnpm"
-          cache-dependency-path: "frontend/pnpm-lock.yaml"
+          cache-dependency-path: "apps/web/pnpm-lock.yaml"
 
       - name: Cache Next.js build
         uses: actions/cache@v4
         with:
           path: |
             ~/.local/share/pnpm/store
-            ${{ github.workspace }}/frontend/.next/cache
-          # Cache key includes lockfile + source files for precise invalidation
-          # Falls back to lockfile-only match if source changes
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('frontend/pnpm-lock.yaml') }}-${{ hashFiles('frontend/src/**/*.{js,jsx,ts,tsx}', 'frontend/app/**/*.{js,jsx,ts,tsx}') }}
+            ${{ github.workspace }}/apps/web/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('apps/web/pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**/*.{js,jsx,ts,tsx}', 'apps/web/app/**/*.{js,jsx,ts,tsx}') }}
           restore-keys: |
-            ${{ runner.os }}-nextjs-${{ hashFiles('frontend/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-nextjs-${{ hashFiles('apps/web/pnpm-lock.yaml') }}-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -86,7 +84,7 @@ jobs:
       contents: write
     defaults:
       run:
-        working-directory: backend
+        working-directory: apps/backend
 
     steps:
       - uses: actions/checkout@v4
@@ -156,8 +154,8 @@ jobs:
 
   # Only trigger builds on master when checks pass and there are actual changes
   trigger-build:
-    needs: [changes, frontend-build, backend-checks]
+    needs: [changes, web-build, backend-checks]
     # Runs if: on master branch + (checks succeeded or were skipped) + changes detected
-    if: always() && !cancelled() && github.ref == 'refs/heads/master' && (needs.frontend-build.result == 'success' || needs.frontend-build.result == 'skipped') && (needs.backend-checks.result == 'success' || needs.backend-checks.result == 'skipped') && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true')
+    if: always() && !cancelled() && github.ref == 'refs/heads/master' && (needs.web-build.result == 'success' || needs.web-build.result == 'skipped') && (needs.backend-checks.result == 'success' || needs.backend-checks.result == 'skipped') && (needs.changes.outputs.web == 'true' || needs.changes.outputs.backend == 'true')
     uses: ./.github/workflows/build.yml
-    secrets: inherit # pragma: allowlist secret
+    secrets: inherit

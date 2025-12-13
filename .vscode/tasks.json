@@ -6,16 +6,16 @@
         {
             "label": "Run Backend",
             "type": "shell",
-            "command": "cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --port 8000 --reload",
+            "command": "cd apps/backend && source .venv/bin/activate && python -m uvicorn app.main:app --port 8000 --reload",
             "problemMatcher": [],
             "presentation": {
                 "panel": "new"
             }
         },
         {
-            "label": "Run Frontend",
+            "label": "Run Web",
             "type": "shell",
-            "command": "cd frontend && pnpm dev",
+            "command": "cd apps/web && pnpm dev",
             "problemMatcher": [],
             "presentation": {
                 "panel": "new"

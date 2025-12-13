@@ -5,7 +5,7 @@
     {
       "type": "linked-versions",
       "groupName": "gaia",
-      "components": ["backend", "frontend"],
+      "components": ["backend", "web"],
       "merge": true
     }
   ],
@@ -15,9 +15,9 @@
       "component": "backend",
       "changelog-path": "CHANGELOG.md"
     },
-    "frontend": {
+    "web": {
       "release-type": "node",
-      "component": "frontend",
+      "component": "web",
       "changelog-path": "CHANGELOG.md"
     }
   }
