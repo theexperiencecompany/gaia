@@ -17,6 +17,10 @@ const nextConfig = {
       "react-syntax-highlighter",
       "cytoscape",
     ],
+    // Explicitly include styled-jsx (Next.js peer dependency) in standalone output
+    // outputFileTracingIncludes: {
+    //   '/': ['./node_modules/styled-jsx/**/*'],
+    // },
   },
   webpack: (config, { isServer }) => {
     // Exclude cytoscape from bundle since it's not used

@@ -1,6 +1,7 @@
 appId: io.heygaia.desktop
 productName: GAIA
 copyright: Copyright © 2024 The Experience Company
+electronVersion: 33.2.1
 
 directories:
   output: release/${version}
@@ -20,6 +21,9 @@ asarUnpack:
   - "**/next-server/**/*"
 
 extraResources:
+  # Splash screen for fast startup
+  - from: resources/splash.html
+    to: splash.html
   # Use .next-server-prepared which has dereferenced symlinks (created by scripts/prepare-next-server.sh)
   - from: .next-server-prepared
     to: next-server

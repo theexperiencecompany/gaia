@@ -46,6 +46,10 @@ run = "nx dist desktop"
 description = "Create macOS distributable (DMG + ZIP)"
 run = "nx dist:mac desktop"
 
+[tasks."dist:mac:run"]
+description = "Build macOS distributable and run it"
+run = "nx dist:mac desktop && ./release/0.1.0/mac/GAIA.app/Contents/MacOS/GAIA"
+
 [tasks."dist:win"]
 description = "Create Windows distributable (NSIS + Portable)"
 run = "nx dist:win desktop"

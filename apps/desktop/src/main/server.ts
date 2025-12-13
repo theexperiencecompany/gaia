@@ -7,11 +7,40 @@ let serverProcess: ChildProcess | null = null;
 let serverPort: number = 5174;
 
 /**
- * Get an available port starting from 5174
- * This ensures we don't conflict with the user's port 3000
+ * Check if a port is available (fast check)
+ */
+async function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const net = require('node:net');
+    const server = net.createServer();
+    
+    server.once('error', () => {
+      resolve(false);
+    });
+    
+    server.once('listening', () => {
+      server.close();
+      resolve(true);
+    });
+    
+    server.listen(port, 'localhost');
+  });
+}
+
+/**
+ * Get an available port - try fixed port first for speed
  */
 async function findAvailablePort(): Promise<number> {
-  return await getPort({ port: [5174, 5175, 5176, 5177, 5178, 5179, 5180] });
+  const preferredPort = 5174;
+  
+  // Fast path: try preferred port directly
+  if (await isPortAvailable(preferredPort)) {
+    return preferredPort;
+  }
+  
+  // Fallback: use get-port for remaining ports
+  console.log(`Port ${preferredPort} in use, finding alternative...`);
+  return await getPort({ port: [5175, 5176, 5177, 5178, 5179, 5180] });
 }
 
 /**
@@ -51,12 +80,15 @@ export async function startNextServer(): Promise<void> {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
+    let resolved = false;
+
     serverProcess.stdout?.on('data', (data: Buffer) => {
       const message = data.toString();
       console.log('[Next.js]', message);
       
-      // Check if server is ready
-      if (message.includes('Ready') || message.includes('started server')) {
+      // Check if server is ready - resolve immediately
+      if (!resolved && (message.includes('Ready') || message.includes('started server'))) {
+        resolved = true;
         resolve();
       }
     });
@@ -67,7 +99,10 @@ export async function startNextServer(): Promise<void> {
 
     serverProcess.on('error', (error) => {
       console.error('Failed to start Next.js server:', error);
-      reject(error);
+      if (!resolved) {
+        resolved = true;
+        reject(error);
+      }
     });
 
     serverProcess.on('close', (code) => {
@@ -75,12 +110,14 @@ export async function startNextServer(): Promise<void> {
       serverProcess = null;
     });
 
-    // Timeout after 30 seconds
+    // Timeout after 15 seconds (reduced from 30 - if it takes this long, something is wrong)
     setTimeout(() => {
-      if (serverProcess) {
-        resolve(); // Assume server is ready
+      if (!resolved && serverProcess) {
+        console.warn('Server startup timeout - assuming ready');
+        resolved = true;
+        resolve();
       }
-    }, 30000);
+    }, 15000);
   });
 }
 

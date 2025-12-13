@@ -11,6 +11,13 @@ PREPARED_DIR="$SCRIPT_DIR/../.next-server-prepared"
 
 echo "Preparing Next.js standalone for electron-builder..."
 
+# Check if standalone directory exists
+if [ ! -d "$STANDALONE_DIR" ]; then
+  echo "ERROR: Standalone directory does not exist: $STANDALONE_DIR"
+  echo "Please run 'nx build web' first to generate the standalone output."
+  exit 1
+fi
+
 # Remove old prepared directory
 rm -rf "$PREPARED_DIR"
 
@@ -44,3 +51,4 @@ if [ $RSYNC_EXIT -ne 0 ] && [ $RSYNC_EXIT -ne 23 ]; then
 fi
 
 echo "Done! Prepared Next.js server at: $PREPARED_DIR"
+exit 0

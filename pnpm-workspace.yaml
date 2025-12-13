@@ -5,6 +5,7 @@ packages:
 
 onlyBuiltDependencies:
   - '@heroui/shared-utils'
+  - '@parcel/watcher'
   - '@sentry/cli'
   - canvas
   - core-js
