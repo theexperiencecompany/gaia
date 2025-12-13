@@ -118,6 +118,7 @@ dependencies = [
   "posthog>=5.4.0",
   "sentry-sdk[langgraph]>=2.44.0",
   "crawl4ai>=0.7.7",
+  "urllib3==2.6.0",
 ]
 
 [dependency-groups]
