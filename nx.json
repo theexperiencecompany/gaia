@@ -1,0 +1,12 @@
+{
+  "installation": {
+    "version": "22.2.3",
+    "plugins": {
+      "@nx/next": "22.2.3",
+      "@nx/docker": "22.2.3"
+    }
+  },
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "develop",
+  "nxCloudId": "693d44fa817ac1181e15c697"
+}

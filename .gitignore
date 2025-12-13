@@ -92,3 +92,7 @@ dist/
 .vscode/settings.json
 .cursor
 .hypothesis
+
+.nx/installation
+.nx/cache
+.nx/workspace-data
