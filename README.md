@@ -1,6 +1,6 @@
 <div align="center">
 
-<img alt="logo" src="frontend/public/images/logos/macos.png" width=150 height=150 /> <br/>
+<img alt="logo" src="apps/web/frontend/public/images/logos/macos.png" width=150 height=150 /> <br/>
 
 [![GAIA](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/theexperiencecompany/gaia/refs/heads/master/frontend/public/badge.json)](https://heygaia.io) [![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Latest Release](https://img.shields.io/github/v/release/theexperiencecompany/gaia?color=00bbff)](https://github.com/theexperiencecompany/gaia/releases)
 

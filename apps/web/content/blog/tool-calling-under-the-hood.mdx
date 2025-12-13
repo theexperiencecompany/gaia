@@ -1,0 +1,136 @@
+---
+title: "How does tool calling work under the hood?"
+date: "2025-11-14"
+authors:
+  - name: "Dhruv Maradiya"
+    role: "Founder & CTO"
+    avatar: "https://github.com/dhruv-maradiya.png"
+    linkedin: "https://linkedin.com/in/dhruvmaradiya"
+    twitter: "https://twitter.com/dhruvmaradiya"
+    github: "https://github.com/dhruv-maradiya"
+category: "Tech"
+slug: "tool-calling-under-the-hood"
+image: "/images/blog/tool-calling-under-the-hood.webp"
+---
+
+# How Tool Call Works under the hood
+
+### What Is a Tool and Why Do We Need It?
+
+A large language model (LLM) is just a text prediction engine. It can write code, summarize text, or plan actions — but it cannot _execute_ anything.
+
+If you tell it to “send an email,” it can generate a perfect JSON body for that email, but it won’t actually send it.
+
+That’s where **tools** come in.
+
+A **tool** is a bridge between language and action — it’s a real function in your code that the model can ask you to execute.
+
+Think of it as:
+
+> “LLM → decides what needs to happen → emits a JSON tool call → your app executes the code → sends results back.”
+
+---
+
+### What Happens When You Bind a Tool
+
+When you “bind” a tool to the LLM, you’re giving it **the schema, arguments, types, and description** of that tool.
+
+For example:
+
+```python
+from langchain_openai import ChatOpenAI
+from langchain.tools import tool
+
+@tool
+def get_weather(city: str) -> str:
+    """Get the current weather in a given city."""
+    return f"Currently sunny in {city}."
+
+llm = ChatOpenAI(model="gpt-4-turbo")
+llm_with_tools = llm.bind_tools([get_weather])
+```
+
+Now, the LLM has this tool’s definition inside its **context window** — it knows the tool name, parameters `(city: str)`, return type `(str)`, and the description.
+
+Modern models are **pretrained for tool use** — they understand when and how to use a function call structure.
+
+### The Tool Calling Cycle
+
+Here’s what actually happens during execution:
+
+1. **User Prompt → Model Reads Context**
+
+   The user says something like:
+
+   > “What’s the weather in Delhi?”
+   >
+   > The model looks at all bound tools and decides that `get_weather` fits the task.
+
+2. **Model Emits a Tool Call (JSON format)**
+
+   Instead of giving a plain text answer, the model outputs something like:
+
+   ```python
+   {
+     "tool_calls": [
+       {
+         "name": "get_weather",
+         "args": {"city": "Delhi"}
+       }
+     ]
+   }
+   ```
+
+3. **Your App Executes the Tool**
+
+   LangChain (or your framework) detects this special message and runs `get_weather(city="Delhi")`.
+
+4. **Tool Output Returned to the Model**
+
+   Once the tool returns a result, LangChain wraps it in a `ToolMessage` and sends it back to the model:
+
+   ```python
+   {
+     "tool_responses": [
+       {
+         "tool": "get_weather",
+         "output": "Currently sunny in Delhi."
+       }
+     ]
+   }
+   ```
+
+5. **Model Generates Final Answer**
+
+   The LLM receives the tool output and produces the final user-facing message:
+
+   > “It’s currently sunny in Delhi.”
+
+This **loop repeats** — the model can call multiple tools in sequence or even plan a chain of tool calls — until it decides no further tools are needed.
+
+---
+
+### How LangChain Handles the Message Flow
+
+LangChain abstracts this entire cycle into a **message-based architecture**.
+
+Instead of you parsing JSON manually, LangChain uses message types to represent each part of the conversation:
+
+| Message Type    | Represents                       | Example                                   |
+| --------------- | -------------------------------- | ----------------------------------------- |
+| `SystemMessage` | System prompt or context         | “You are Gaia, a personal assistant.”     |
+| `HumanMessage`  | User input                       | “What’s my next calendar event?”          |
+| `AIMessage`     | Model output (text or tool call) | JSON tool call emitted by the LLM         |
+| `ToolMessage`   | Response from a tool             | Output of `get_weather` or any other tool |
+
+---
+
+### Why This Matters for Gaia
+
+This is the **foundation** of Gaia’s architecture.
+
+Every advanced feature — tool discovery, multi-agent collaboration, subgraphs, and dynamic user-based tool binding — builds on top of this simple loop.
+
+Understanding this flow is crucial before exploring how **LangGraph BigTools**, **ChromaDB**, and **Composio** make it scalable and dynamic.
+
+> 🧠 If you want to see how Gaia extends this concept to thousands of tools and multiple agents, read the main article: “How Tool Calling Works at Scale.”

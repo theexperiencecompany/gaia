@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: lint-all
+        name: Format & Lint & Apply Fixes
+        entry: bash -c 'pnpm fix'
+        language: system
+        types_or: [javascript, jsx, ts, tsx, json, markdown, css]
+        pass_filenames: false

@@ -2,11 +2,14 @@
   "name": "gaia",
   "private": true,
   "dependencies": {
-    "nx": "latest"
+    "next": "~16.0.1",
+    "nx": "latest",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "nx": "22.2.3",
+    "@nx/docker": "22.2.3",
     "@nx/next": "22.2.3",
-    "@nx/docker": "22.2.3"
+    "nx": "22.2.3"
   }
 }

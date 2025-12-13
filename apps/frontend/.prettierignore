@@ -1,6 +1,0 @@
-node_modules
-.next
-public
-.husky
-../docs
-pnpm-lock.yaml
