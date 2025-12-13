@@ -17,7 +17,7 @@ import {
   ChevronDown,
   Login02Icon,
   MessageMultiple02Icon,
-  StarFilledIcon
+  StarFilledIcon,
 } from "@/icons";
 import { posthog } from "@/lib";
 

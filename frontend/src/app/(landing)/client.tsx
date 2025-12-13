@@ -1,7 +1,7 @@
 "use client";
 
-import { AnimatedLazySection } from "@/components/shared/AnimatedSection";
 import { lazy, useEffect } from "react";
+import { AnimatedLazySection } from "@/components/shared/AnimatedSection";
 
 import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
