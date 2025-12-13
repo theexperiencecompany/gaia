@@ -1,66 +1,66 @@
 {
-	"$schema": "https://raw.githubusercontent.com/nrwl/nx/refs/heads/master/packages/nx/schemas/nx-schema.json",
-	"installation": {
-		"version": "latest",
-		"plugins": {
-			"sources": []
-		}
-	},
-	"defaultBase": "master",
-	"namedInputs": {
-		"default": ["{projectRoot}/**/*"],
-		"production": ["!{projectRoot}/**/*.spec.ts", "!{projectRoot}/**/*.test.ts"]
-	},
-	"targetDefaults": {
-		"build": {
-			"cache": true,
-			"dependsOn": ["^build"]
-		},
-		"test": {
-			"cache": true,
-			"inputs": ["default", "^production"]
-		},
-		"lint": {
-			"cache": true,
-			"inputs": ["default", "^production"]
-		},
-		"lint:fix": {
-			"cache": false
-		},
-		"format": {
-			"cache": false
-		},
-		"format:check": {
-			"cache": true,
-			"inputs": ["default"]
-		},
-		"type-check": {
-			"cache": true,
-			"inputs": ["default", "^production"]
-		},
-		"dev": {
-			"cache": false
-		},
-		"worker": {
-			"cache": false
-		},
-		"clean": {
-			"cache": false
-		}
-	},
-	"parallel": 3,
-	"plugins": [
-		{
-			"plugin": "@nx/next/plugin",
-			"options": {
-				"startTargetName": "next:start",
-				"buildTargetName": "next:build",
-				"devTargetName": "next:dev",
-				"serveStaticTargetName": "serve-static",
-				"buildDepsTargetName": "build-deps",
-				"watchDepsTargetName": "watch-deps"
-			}
-		}
-	],
-	"nxCloudId": "693d6d47c244495eb66b1b66"
+  "$schema": "https://raw.githubusercontent.com/nrwl/nx/refs/heads/master/packages/nx/schemas/nx-schema.json",
+  "installation": {
+    "version": "latest",
+    "plugins": {
+      "sources": []
+    }
+  },
+  "defaultBase": "master",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*"],
+    "production": ["!{projectRoot}/**/*.spec.ts", "!{projectRoot}/**/*.test.ts"]
+  },
+  "targetDefaults": {
+    "build": {
+      "cache": true,
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "cache": true,
+      "inputs": ["default", "^production"]
+    },
+    "lint": {
+      "cache": true,
+      "inputs": ["default", "^production"]
+    },
+    "lint:fix": {
+      "cache": false
+    },
+    "format": {
+      "cache": false
+    },
+    "format:check": {
+      "cache": true,
+      "inputs": ["default"]
+    },
+    "type-check": {
+      "cache": true,
+      "inputs": ["default", "^production"]
+    },
+    "dev": {
+      "cache": false
+    },
+    "worker": {
+      "cache": false
+    },
+    "clean": {
+      "cache": false
+    }
+  },
+  "parallel": 3,
+  "plugins": [
+    {
+      "plugin": "@nx/next/plugin",
+      "options": {
+        "startTargetName": "next:start",
+        "buildTargetName": "next:build",
+        "devTargetName": "next:dev",
+        "serveStaticTargetName": "serve-static",
+        "buildDepsTargetName": "build-deps",
+        "watchDepsTargetName": "watch-deps"
+      }
+    }
+  ],
+  "nxCloudId": "693d6d47c244495eb66b1b66"
 }

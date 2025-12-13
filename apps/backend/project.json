@@ -1,7 +1,9 @@
 {
   "name": "backend",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "root": "apps/backend",
   "sourceRoot": "apps/backend/app",
+  "implicitDependencies": ["docker"],
   "targets": {
     "dev": {
       "executor": "nx:run-commands",

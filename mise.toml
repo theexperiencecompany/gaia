@@ -7,7 +7,6 @@
 # Documentation: https://docs.heygaia.io/developers/commands
 
 [tools]
-mprocs = "0.7.3"
 python = "3.11"
 node = "22"
 "npm:mintlify" = "latest"
@@ -28,12 +27,12 @@ experimental = true # Can setup hooks and advanced features
 
 # Development Tasks
 [tasks."dev:web"]
-description = "Run ONLY web"
-run = "nx dev web"
+description = "Run ONLY web (starts Docker automatically)"
+run = "nx run docker:docker:up && nx dev web"
 
 [tasks."dev:backend"]
-description = "Run ONLY backend server"
-run = "nx dev backend"
+description = "Run ONLY backend server (starts Docker automatically)"
+run = "nx run docker:docker:up && nx dev backend"
 
 [tasks."dev:arq"]
 description = "Run ONLY ARQ worker"
@@ -45,12 +44,12 @@ description = "Run ONLY docs"
 run = "nx dev docs"
 
 [tasks."dev:full"]
-description = "Run backend + web + arq + docker"
-run = 'mprocs "nx dev backend" "nx dev web" "mise dev:arq" "docker compose up"'
+description = "Run backend + web + arq in parallel (starts Docker automatically)"
+run = "nx run docker:docker:up && nx run-many -t dev --projects=backend,web --parallel=2 & mise dev:arq"
 
 [tasks.dev]
-description = "Run backend + web + docker logs"
-run = 'mprocs "nx dev backend" "nx dev web" "docker compose up"'
+description = "Run backend + web in parallel (starts Docker automatically)"
+run = "nx run docker:docker:up && nx run-many -t dev --projects=backend,web --parallel=2"
 
 # Build Tasks (with Nx caching)
 [tasks.build]
@@ -170,7 +169,7 @@ depends = ["setup:backend", "setup:web"]
 description = "Complete project setup"
 depends = ["setup:*"]
 dir = "apps/backend"
-run = "docker compose up -d && mise seed:models"
+run = "nx run docker:docker:up && mise seed:models"
 
 # Clean Tasks
 [tasks.clean]

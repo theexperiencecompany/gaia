@@ -7,7 +7,6 @@
 #   mise tasks               # List all available commands
 
 [tools]
-mprocs = "0.7.3"
 node = "22"
 
 [env]

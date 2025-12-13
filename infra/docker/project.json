@@ -1,0 +1,51 @@
+{
+  "name": "docker",
+  "root": "infra/docker",
+  "targets": {
+    "docker:up": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose up -d",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false,
+      "description": "Start all Docker services in detached mode"
+    },
+    "docker:down": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose down",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false,
+      "description": "Stop and remove all Docker containers"
+    },
+    "docker:restart": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose restart",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false,
+      "description": "Restart all Docker services"
+    },
+    "docker:logs": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose logs -f",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false,
+      "description": "View logs from all Docker services"
+    },
+    "docker:ps": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose ps",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false,
+      "description": "List running Docker containers"
+    }
+  }
+}
