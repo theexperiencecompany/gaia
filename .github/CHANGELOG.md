@@ -2,5 +2,5 @@
 
 > **Note:** This is the root changelog that provides an overview of releases. For detailed component-specific changes, please see:
 >
-> - [Backend Changelog](./backend/CHANGELOG.md)
-> - [Frontend Changelog](./frontend/CHANGELOG.md)
+> - [Backend Changelog](./apps/backend/CHANGELOG.md)
+> - [Frontend Changelog](./apps/web/CHANGELOG.md)

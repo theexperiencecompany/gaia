@@ -21,6 +21,10 @@ MISE_NODE_COREPACK = "1"
 [hooks]
 postinstall = "pnpm install"
 
+[settings]
+npm.package_manager = "pnpm" # Use pnpm as the package manager
+experimental = true # Can setup hooks and advanced features
+
 # Development Tasks
 [tasks."dev:frontend"]
 description = "Run ONLY frontend"

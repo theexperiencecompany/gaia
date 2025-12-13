@@ -1,6 +1,6 @@
 {
-  "name": "frontend",
-  "root": "apps/frontend",
+  "name": "web",
+  "root": "apps/web",
   "targets": {
     "dev": {
       "executor": "nx:run-commands",

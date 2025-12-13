@@ -1,12 +1,12 @@
 {
   "name": "gaia",
-  "private": true,
   "dependencies": {
     "next": "~16.0.1",
     "nx": "latest",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
+  "packageManager": "pnpm@10.17.1",
   "devDependencies": {
     "@nx/docker": "22.2.3",
     "@nx/next": "22.2.3",

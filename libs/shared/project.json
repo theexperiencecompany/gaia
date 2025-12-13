@@ -1,0 +1,12 @@
+{
+  "name": "shared",
+  "root": "libs/shared",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo 'Linting shared code...'"
+      }
+    }
+  }
+}
