@@ -129,7 +129,9 @@ def register_before_hook(
             return params
     """
 
-    def decorator(func: Callable[[str, str, ToolExecuteParams], ToolExecuteParams]) -> Callable[[str, str, ToolExecuteParams], ToolExecuteParams]:
+    def decorator(
+        func: Callable[[str, str, ToolExecuteParams], ToolExecuteParams],
+    ) -> Callable[[str, str, ToolExecuteParams], ToolExecuteParams]:
         # Normalize tools and toolkits to lists
         target_tools = []
         if tools:
@@ -193,7 +195,9 @@ def register_after_hook(
             return response
     """
 
-    def decorator(func: Callable[[str, str, Any], Any]) -> Callable[[str, str, Any], Any]:
+    def decorator(
+        func: Callable[[str, str, Any], Any],
+    ) -> Callable[[str, str, Any], Any]:
         # Normalize tools and toolkits to lists
         target_tools = []
         if tools:

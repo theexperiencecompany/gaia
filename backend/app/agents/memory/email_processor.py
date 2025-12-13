@@ -28,7 +28,7 @@ import asyncio
 import re
 import time
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from bson import ObjectId
 
@@ -281,7 +281,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     logger.info(
         f"Awaiting {len(email_storage_tasks)} email storage tasks to complete in parallel..."
     )
-    storage_results: list[None | BaseException] = []
+    storage_results: list[Any] = []
     storage_errors = 0
     if email_storage_tasks:
         try:
@@ -308,7 +308,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     # Wait for profile extraction task (also with error handling)
     profiles_stored = 0
     try:
-        profile_result = await profile_extraction_task
+        profile_result: Dict[str, int] = await profile_extraction_task
         profiles_stored = profile_result.get("profiles_stored", 0)
     except Exception as e:
         logger.error(f"Profile extraction task failed: {e}")
