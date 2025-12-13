@@ -30,9 +30,7 @@ export default function UseCasesPageClient({
             Practical use cases showing how GAIA works for you
           </p>
         </div>
-
-        <UseCaseSection dummySectionRef={contentRef} />
-
+        <UseCaseSection dummySectionRef={contentRef} useBlurEffect={true} />
         <div id="community-section" className="mt-22 space-y-6">
           <div className="mb-14 text-center">
             <h1 className="mb-1 font-serif text-6xl font-normal">
@@ -54,6 +52,7 @@ export default function UseCasesPageClient({
                 <UnifiedWorkflowCard
                   key={workflow.id}
                   communityWorkflow={workflow}
+                  useBlurEffect={true}
                   variant="community"
                   showCreator={true}
                   onCardClick={() => {

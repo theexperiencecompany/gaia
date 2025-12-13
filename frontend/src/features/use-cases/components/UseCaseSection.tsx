@@ -28,6 +28,7 @@ export default function UseCaseSection({
   exploreWorkflows: propExploreWorkflows,
   setShowUseCases,
   showDescriptionAsTooltip,
+  useBlurEffect,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
@@ -35,6 +36,7 @@ export default function UseCaseSection({
   exploreWorkflows?: UseCase[];
   setShowUseCases?: React.Dispatch<React.SetStateAction<boolean>>;
   showDescriptionAsTooltip?: boolean;
+  useBlurEffect?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -308,6 +310,7 @@ export default function UseCaseSection({
                       steps={useCase.steps}
                       totalExecutions={useCase.total_executions || 0}
                       showExecutions={true}
+                      useBlurEffect={useBlurEffect}
                       variant="explore"
                       primaryAction={
                         useCase.action_type === "prompt"
@@ -350,6 +353,7 @@ export default function UseCaseSection({
                       showDescriptionAsTooltip={showDescriptionAsTooltip}
                       variant="user"
                       primaryAction="run"
+                      useBlurEffect={useBlurEffect}
                     />
                   </motion.div>
                 ))}
@@ -370,10 +374,10 @@ export default function UseCaseSection({
           <div className="flex h-48 items-center justify-center">
             <div className="text-center space-y-1">
               <p className="text-lg text-foreground-600">No workflows found</p>
-              <p className="text-sm text-foreground-400">
+              <p className="text-sm text-foreground-400 mb-5">
                 Create your first workflow to get started
               </p>
-              <Link href={"/workflows"} className="mt-4">
+              <Link href={"/workflows"}>
                 <Button color="primary">Create</Button>
               </Link>
             </div>

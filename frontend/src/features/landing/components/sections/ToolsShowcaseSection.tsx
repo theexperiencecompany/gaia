@@ -131,7 +131,7 @@ const ToolsShowcaseSection: React.FC = () => {
         <div className="relative z-10 flex h-full flex-col items-center justify-center gap-4">
           <LargeHeader
             headingText="All Your Tools, One Assistant"
-            subHeadingText="GAIA plugs into your digital world — so it can actually do things, not just talk."
+            subHeadingText="GAIA plugs into your digital world ,  so it can actually do things, not just talk."
             centered
           />
 

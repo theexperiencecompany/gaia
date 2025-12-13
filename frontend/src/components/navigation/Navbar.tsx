@@ -108,7 +108,7 @@ export default function Navbar() {
         <div
           className={`navbar_content flex h-14 w-full items-center justify-between  px-3 transition-all duration-300 ${
             activeDropdown
-              ? "rounded-t-2xl  bg-zinc-800"
+              ? "rounded-t-2xl  bg-zinc-900"
               : isScrolled
                 ? "rounded-2xl bg-zinc-900/30 backdrop-blur-md"
                 : "rounded-2xl border-transparent bg-transparent "

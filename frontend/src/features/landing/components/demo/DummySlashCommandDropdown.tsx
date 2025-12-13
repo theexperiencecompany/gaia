@@ -11,44 +11,7 @@ import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { Cancel01Icon, GridIcon, SearchIcon, Tick02Icon } from "@/icons";
 
-// Dummy integrations data - all shown as connected
-const dummyIntegrations = [
-  {
-    id: "gmail",
-    name: "Gmail",
-    status: "connected",
-  },
-  {
-    id: "google_calendar",
-    name: "Google Calendar",
-    status: "connected",
-  },
-  {
-    id: "google_docs",
-    name: "Google Docs",
-    status: "connected",
-  },
-  {
-    id: "googlesheets",
-    name: "Google Sheets",
-    status: "connected",
-  },
-  {
-    id: "notion",
-    name: "Notion",
-    status: "connected",
-  },
-  {
-    id: "twitter",
-    name: "Twitter",
-    status: "connected",
-  },
-  {
-    id: "linkedin",
-    name: "LinkedIn",
-    status: "connected",
-  },
-];
+import { dummyIntegrations } from "./constants";
 
 // Dummy Integrations Card Component
 const DummyIntegrationsCard: React.FC = () => {

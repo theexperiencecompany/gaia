@@ -31,16 +31,20 @@ export default function Productivity() {
         }}
       />
 
-      <div className="relative z-[1] flex w-full max-w-7xl flex-col items-center justify-center p-4 sm:p-6 lg:p-7">
+      <div className="relative z-[1] flex w-full max-w-7xl flex-col items-center justify-center p-4 sm:p-6 lg:p-7 gap-10">
         <LargeHeader
           centered
           headingText="Automate your daily chaos"
           subHeadingText="Skip the grunt work forever. Create insane workflows."
         />
 
-        <UseCaseSection dummySectionRef={contentRef} hideUserWorkflows={true} />
+        <UseCaseSection
+          dummySectionRef={contentRef}
+          hideUserWorkflows={true}
+          useBlurEffect={true}
+        />
 
-        <Link href={"/use-cases"} className="mt-6 sm:mt-8 lg:mt-10">
+        <Link href={"/use-cases"} className="mt-2">
           <RaisedButton
             className="rounded-xl text-black! before:rounded-xl hover:scale-110"
             color="#00bbff"

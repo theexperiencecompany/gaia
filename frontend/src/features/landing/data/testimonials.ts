@@ -80,7 +80,7 @@ export const testimonials = [
   },
   {
     name: "Joey Judd",
-    body: "I have intense daily needs around email, task management, and calendar coordination—juggling all three usually means switching between 3–4 tools. Gaia feels like it finally brings them together in a way that makes sense. The interface is fast, the command bar is a game changer, and it just fits into how I think and work. Seriously impressive—this solves a real productivity pain.",
+    body: "I have intense daily needs around email, task management, and calendar coordination, juggling all three usually means switching between 3–4 tools. Gaia feels like it finally brings them together in a way that makes sense. The interface is fast, the command bar is a game changer, and it just fits into how I think and work. Seriously impressive, this solves a real productivity pain.",
     img: "https://ph-avatars.imgix.net/8535914/8ce91e30-2502-4974-bcb4-abc2439fd081.jpeg",
     role: "Product Hunter",
   },

@@ -107,7 +107,7 @@ export default function Tired() {
             </Tooltip>
 
             <Tooltip
-              content="GAIA handles repetitive tasks automatically — scheduling, email triage, and task management — saving you hours every day."
+              content="GAIA handles repetitive tasks automatically ,  scheduling, email triage, and task management ,  saving you hours every day."
               className="max-w-60 p-2"
               showArrow
               placement="left"

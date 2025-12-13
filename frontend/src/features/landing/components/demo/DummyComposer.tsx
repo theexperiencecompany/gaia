@@ -20,40 +20,8 @@ import {
   PlusSignIcon,
   Wrench01Icon,
 } from "@/icons";
-
+import { dummyIntegrations } from "./constants";
 import DummySlashCommandDropdown from "./DummySlashCommandDropdown";
-
-// Dummy integrations data for the top banner
-const dummyIntegrations = [
-  {
-    id: "gmail",
-    name: "Gmail",
-  },
-  {
-    id: "google_calendar",
-    name: "Google Calendar",
-  },
-  {
-    id: "google_docs",
-    name: "Google Docs",
-  },
-  {
-    id: "notion",
-    name: "Notion",
-  },
-  {
-    id: "googlesheets",
-    name: "Google Sheets",
-  },
-  {
-    id: "twitter",
-    name: "Twitter",
-  },
-  {
-    id: "linkedin",
-    name: "LinkedIn",
-  },
-];
 
 const DummyComposer: React.FC = () => {
   const [message, setMessage] = useState("");
@@ -109,7 +77,7 @@ const DummyComposer: React.FC = () => {
           <div className="flex w-full items-center justify-between">
             <span className="text-xs">Connect your tools to GAIA</span>
             <div className="ml-3 flex items-center gap-1">
-              {dummyIntegrations.slice(0, 4).map((integration) => (
+              {dummyIntegrations.slice(0, 7).map((integration) => (
                 <div
                   key={integration.id}
                   className="opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-120"

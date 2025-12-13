@@ -138,7 +138,7 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
         ease: [0.19, 1, 0.15, 1.01],
       }}
       className={cn(
-        "absolute top-full left-0 z-40 w-full origin-top overflow-hidden rounded-b-2xl border-1 border-y-0 border-white/5 bg-gradient-to-b from-zinc-800 to-zinc-900/30 backdrop-blur-xl outline-none",
+        "absolute top-full left-0 z-40 w-full origin-top overflow-hidden rounded-b-2xl border-1 border-y-0 border-white/5 bg-gradient-to-b from-zinc-900 to-zinc-900/30 backdrop-blur-xl outline-none",
       )}
     >
       <div className="p-6 pt-2">

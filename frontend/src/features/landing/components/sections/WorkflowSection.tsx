@@ -20,23 +20,23 @@ export default function WorkflowSection() {
 
             <ContentSection
               title="Powered by Your Todos"
-              description="Every todo you add becomes its own mini-workflow. GAIA doesn't just remind you about it—it actually does the work. Research? Done. Drafting? Done. Scheduling? Done. Your todo list stops being a guilt trip and starts being your secret weapon."
+              description="Every todo you add becomes its own mini-workflow. GAIA doesn't just remind you about it, it actually does the work. Research? Done. Drafting? Done. Scheduling? Done. Your todo list stops being a guilt trip and starts being your secret weapon."
             />
           </div>
 
           <ContentSection
             title="Smart Triggers"
-            description="Set it to run every morning at 9 AM, trigger it manually when you need it, or let it kick in automatically when something happens—like when you get an email, a Slack message pops up, or your next meeting's about to start. We're constantly adding new ways to trigger your workflows based on what you tell us you need."
+            description="Set it to run every morning at 9 AM, trigger it manually when you need it, or let it kick in automatically when something happens, like when you get an email, a Slack message pops up, or your next meeting's about to start. We're constantly adding new ways to trigger your workflows based on what you tell us you need."
           />
 
           <ContentSection
             title="Proactive by Nature"
-            description="Assignment due next week? GAIA's already researched it, created the Google Doc, and drafted it. That investor email you've been putting off? Already written and sitting in your drafts. GAIA doesn't wait around—it just handles it. Labels your emails, organizes your files, and prepares whatever you need way ahead of time."
+            description="Assignment due next week? GAIA's already researched it, created the Google Doc, and drafted it. That investor email you've been putting off? Already written and sitting in your drafts. GAIA doesn't wait around, it just handles it. Labels your emails, organizes your files, and prepares whatever you need way ahead of time."
           />
 
           <ContentSection
             title="Seamless Orchestration"
-            description="Gmail, Google Docs, Slack, Calendar—they all talk to each other now. One workflow can pull info from your email, create a doc, schedule a meeting, and ping your team on Slack. No more tab-switching hell. Complex stuff becomes simple when everything just... works together."
+            description="Gmail, Google Docs, Slack, Calendar, they all talk to each other now. One workflow can pull info from your email, create a doc, schedule a meeting, and ping your team on Slack. No more tab-switching hell. Complex stuff becomes simple when everything just... works together."
           />
         </div>
       </div>

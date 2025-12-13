@@ -66,7 +66,7 @@ export const getTimeBasedGreeting = (
   ];
 
   const eveningGreetings = [
-    "Evening grind{name}—what's left?",
+    "Evening grind{name}, what's left?",
     "Day's endgame{name}. One last push?",
     "Time to finish strong{name}.",
     "Evening hustle check{name}.",
