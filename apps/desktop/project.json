@@ -64,8 +64,13 @@
     "dist:mac": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "nx build web --skip-nx-cache && pnpm dist:mac",
+        "commands": [
+          "nx build web --skip-nx-cache",
+          "./scripts/prepare-next-server.sh",
+          "pnpm dist:mac"
+        ],
         "cwd": "{projectRoot}",
+        "parallel": false,
         "env": {
           "NEXT_PUBLIC_API_BASE_URL": "https://api.heygaia.io/api/v1/"
         }
@@ -73,7 +78,7 @@
       "dependsOn": ["build"]
     },
     "dist:win": {
-      "executor": "nx:run-commands",
+      "executor": "nx:run-commands",    
       "options": {
         "command": "nx build web --skip-nx-cache && pnpm dist:win",
         "cwd": "{projectRoot}",

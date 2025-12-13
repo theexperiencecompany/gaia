@@ -15,16 +15,17 @@ files:
   - "!node_modules/**/README*"
   - "!node_modules/**/CHANGELOG*"
 
+asarUnpack:
+  - "**/*.node"
+  - "**/next-server/**/*"
+
 extraResources:
-  - from: ../web/.next/standalone
+  # Use .next-server-prepared which has dereferenced symlinks (created by scripts/prepare-next-server.sh)
+  - from: .next-server-prepared
     to: next-server
     filter:
       - "**/*"
       - "!**/node_modules/.cache/**/*"
-  - from: ../web/.next/static
-    to: next-server/apps/web/.next/static
-  - from: ../web/public
-    to: next-server/apps/web/public
 
 mac:
   category: public.app-category.productivity

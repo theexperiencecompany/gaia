@@ -1,0 +1,167 @@
+---
+title: "How we scaled GAIA to use thousands of tools"
+date: "2025-11-14"
+authors:
+  - name: "Dhruv Maradiya"
+    role: "Founder & CTO"
+    avatar: "https://github.com/dhruv-maradiya.png"
+    linkedin: "https://linkedin.com/in/dhruvmaradiya"
+    twitter: "https://twitter.com/dhruvmaradiya"
+    github: "https://github.com/dhruv-maradiya"
+category: "Tech"
+image: "/images/blog/how-tool-calling-works/image.webp"
+slug: "how-tool-calling-works"
+---
+
+### Introduction: Why Tool Calling Matters
+
+Modern AI agents are only as useful as the actions they can take. Large language models are great at writing, but they cannot fetch emails, post to Slack, or schedule meetings on their own. **Tool calling** is the bridge between text generation and real work.
+
+---
+
+### What Is Tool Calling?
+
+An LLM takes text in and produces text out. It does not directly call APIs or run SDK functions. Tool calling gives it this ability.
+
+Think of a tool as a function the model can ask your system to execute. A tool might fetch your last 20 emails, send a message, or create a GitHub issue.
+
+When the model decides it needs a tool, it sends a message describing which tool to call and what arguments to pass. Your application reads that message, runs the tool, and returns the output. That loop is how an LLM gets things done.
+
+If you want to understand how tool calling works under the hood, [read more here.](./tool-calling-under-the-hood)
+
+> 💡**If you're new to LangChain:**
+> LangChain is a framework that helps connect LLMs to external data and tools.
+> It handles tool binding, context management, and reasoning chains.
+> [Check it out here..](https://python.langchain.com/)
+
+---
+
+### A Basic Example Using LangChain
+
+Here is a minimal Python example that binds a tool the model can use automatically:
+
+```python
+from langchain_openai import ChatOpenAI
+from langchain_[core.tools](http://core.tools) import tool
+
+@tool
+def exponentiate(x: float, y: float) -> float:
+    """Raise x to the power of y."""
+    return x ** y
+
+# Define LLM and bind tools
+llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
+llm_with_tools = llm.bind_tools([exponentiate])
+```
+
+Now the model can decide to call `exponentiate` whenever it needs it.
+
+![Untitled diagram-2025-11-11-183105.png](/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183105.png)
+
+---
+
+### When We Started Gaia
+
+In Gaia's early days we bound every available integration directly to the model. It worked at small scale, then slowed down as we added Gmail, Calendar, Slack, GitHub, Linear, Notion, and more.
+
+We also ran into a practical limit. OpenAI caps the number of tools per model, often around 128. Each tool includes a schema and description that must be added to the context window. More tools means more tokens, less room for reasoning, and higher latency and cost.
+
+We hit that wall quickly.
+
+---
+
+### Why Fewer Tools Are Better
+
+Even before reaching hard limits, hundreds of tools create context pollution.
+
+The model starts confusing which tool to call or fails to call any at all. The real question became:
+
+> How can we support thousands of tools without choking the LLM context window?
+
+---
+
+### The Naive Approach: Manual Tool Search
+
+One idea was to list all tools in the prompt and add a `search_tool`.
+
+We’d list all tools in the system prompt, then let the model call `search_tool` .
+
+The `search_tool` would look up the right tool and bind it dynamically.
+
+Sounds smart, right? Not really.
+
+LLMs are too unpredictable. You can’t rely on them to use the _exact_ tool names or follow strict patterns.
+
+When you have hundreds or thousands of tools, this method collapses:
+
+- The list itself bloats the context.
+- You must describe every tool and when to use it.
+- The LLM often guesses names wrong.
+
+We actually tried this at one point — and it worked only for small sets (under ~30 tools).
+
+![Untitled diagram-2025-11-11-183124.png](/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183124.png)
+
+---
+
+### The Breakthrough: LangGraph Big Tools
+
+Then came the turning point — **LangGraph Big Tools**.
+
+It’s a small package that turns the problem of tool lookup from _exact name matching_ to _semantic retrieval_.
+
+How it works:
+
+1. Each tool (its name + description) is embedded into a **vector store** like ChromaDB.
+2. When the LLM needs a tool, it doesn’t guess names — it writes a _natural language query_, e.g.
+
+   “find a tool that fetches latest GitHub pull requests.”
+
+3. A `retrieve_tools` step queries the vector store and finds the most relevant matches.
+4. Those tools are then **dynamically bound** to the model at runtime.
+
+Now, instead of carrying all tools in the prompt, the model retrieves them on demand.
+
+This reduces context size, cost, and confusion dramatically.
+
+![Untitled diagram-2025-11-11-183144.png](/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183144.png)
+
+---
+
+### Integrating Composio and Building the ToolRegistry
+
+After solving discovery, we needed a way to manage real-world integrations efficiently.
+
+That’s where **Composio** came in — a platform that provides ready-made, authenticated tools for popular services like Slack, Gmail, GitHub, and more.
+
+We built a `ToolRegistry` that:
+
+- Fetches tools from **Composio** and custom-defined sources
+- Embeds them into **ChromaDB**
+- Tracks metadata like OAuth tokens and user IDs
+- Integrates with our modified `langgraph_bigtools` implementation
+- Handles dynamic binding at runtime
+
+On top of that, Gaia runs with **sub-agents** — isolated agents for each integration (GitHub, Linear, Slack, etc.).
+
+Each sub-agent has its own toolset and logic, managed through the `ToolRegistry` .
+
+![Untitled diagram-2025-11-11-183214.png](/images/blog/how-tool-calling-works/Untitled_diagram-2025-11-11-183214.png)
+
+---
+
+### The Result
+
+With this architecture Gaia handles thousands of tools efficiently. Each user can connect multiple accounts and integrations without bloating the LLM context. The system is scalable, modular, and context aware.
+
+> With retrieval based binding, an AI system can connect to a wide world of tools and still think clearly.
+
+---
+
+### What Is Next
+
+This is only half the story.
+
+Gaia also uses **complex sub-graphs** and **sub-agents** that coordinate multiple integrations in parallel.
+
+For example, one agent might handle your inbox, another your project management, and a third your calendar — all talking to each other through a higher-level control graph.
