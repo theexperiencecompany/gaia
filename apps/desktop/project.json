@@ -23,7 +23,7 @@
         "cwd": "{projectRoot}"
       },
       "cache": true,
-      "dependsOn": ["^build"],
+      "dependsOn": [],
       "inputs": [
         "default",
         "^production",
@@ -42,42 +42,57 @@
     "pack": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm pack",
-        "cwd": "{projectRoot}"
+        "command": "nx build web --skip-nx-cache && pnpm pack",
+        "cwd": "{projectRoot}",
+        "env": {
+          "NEXT_PUBLIC_API_BASE_URL": "https://api.heygaia.io/api/v1/"
+        }
       },
-      "dependsOn": ["web:build"]
+      "dependsOn": ["build"]
     },
     "dist": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm dist",
-        "cwd": "{projectRoot}"
+        "command": "nx build web --skip-nx-cache && pnpm dist",
+        "cwd": "{projectRoot}",
+        "env": {
+          "NEXT_PUBLIC_API_BASE_URL": "https://api.heygaia.io/api/v1/"
+        }
       },
-      "dependsOn": ["web:build"]
+      "dependsOn": ["build"]
     },
     "dist:mac": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm dist:mac",
-        "cwd": "{projectRoot}"
+        "command": "nx build web --skip-nx-cache && pnpm dist:mac",
+        "cwd": "{projectRoot}",
+        "env": {
+          "NEXT_PUBLIC_API_BASE_URL": "https://api.heygaia.io/api/v1/"
+        }
       },
-      "dependsOn": ["web:build"]
+      "dependsOn": ["build"]
     },
     "dist:win": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm dist:win",
-        "cwd": "{projectRoot}"
+        "command": "nx build web --skip-nx-cache && pnpm dist:win",
+        "cwd": "{projectRoot}",
+        "env": {
+          "NEXT_PUBLIC_API_BASE_URL": "https://api.heygaia.io/api/v1/"
+        }
       },
-      "dependsOn": ["web:build"]
+      "dependsOn": ["build"]
     },
     "dist:linux": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm dist:linux",
-        "cwd": "{projectRoot}"
+        "command": "nx build web --skip-nx-cache && pnpm dist:linux",
+        "cwd": "{projectRoot}",
+        "env": {
+          "NEXT_PUBLIC_API_BASE_URL": "https://api.heygaia.io/api/v1/"
+        }
       },
-      "dependsOn": ["web:build"]
+      "dependsOn": ["build"]
     },
     "type-check": {
       "executor": "nx:run-commands",

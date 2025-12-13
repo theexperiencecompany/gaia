@@ -20,32 +20,39 @@ description = "Run desktop app with web + api in dev mode"
 depends = ["dev:web", "dev:api", "dev:electron"]
 
 [tasks.build]
-description = "Build Electron main and preload processes"
-run = "pnpm build"
+description = "Build Electron main and preload (uses nx caching)"
+run = "nx build desktop"
 
 [tasks.start]
-description = "Preview the built desktop app"
-run = "pnpm start"
+description = "Run the built desktop app in production mode (builds if needed)"
+run = """
+(cd ../web && NEXT_PUBLIC_API_BASE_URL=https://api.heygaia.io/api/v1/ pnpm next build)
+# Copy static files required for standalone mode
+cp -r ../web/.next/static ../web/.next/standalone/apps/web/.next/static
+cp -r ../web/public ../web/.next/standalone/apps/web/public
+pnpm build
+NODE_ENV=production npx electron .
+"""
 
 [tasks.pack]
-description = "Package desktop app without distributing (for testing)"
-run = "pnpm pack"
+description = "Package desktop app without distributing"
+run = "nx pack desktop"
 
 [tasks.dist]
-description = "Create distributable for current platform"
-run = "pnpm dist"
+description = "Create distributable for current platform (builds web first via nx)"
+run = "nx dist desktop"
 
 [tasks."dist:mac"]
 description = "Create macOS distributable (DMG + ZIP)"
-run = "pnpm dist:mac"
+run = "nx dist:mac desktop"
 
 [tasks."dist:win"]
 description = "Create Windows distributable (NSIS + Portable)"
-run = "pnpm dist:win"
+run = "nx dist:win desktop"
 
 [tasks."dist:linux"]
 description = "Create Linux distributable (AppImage + DEB + RPM)"
-run = "pnpm dist:linux"
+run = "nx dist:linux desktop"
 
 [tasks.deps]
 description = "Install dependencies"
@@ -53,36 +60,17 @@ run = "pnpm install"
 
 [tasks."type-check"]
 description = "Run TypeScript type checking"
-run = "pnpm type-check"
+run = "nx type-check desktop"
 
 [tasks.lint]
 description = "Run Biome linting"
-run = "pnpm lint"
+run = "nx lint desktop"
 
 [tasks."lint:fix"]
 description = "Run Biome linting with auto-fix"
-run = "pnpm lint:fix"
+run = "nx lint:fix desktop"
 
 [tasks.clean]
 description = "Clean all build artifacts"
-run = "pnpm clean"
+run = "nx clean desktop"
 
-[tasks."build:web"]
-description = "Build the web app for production (uses api.heygaia.io)"
-run = "cd ../web && NEXT_PUBLIC_API_BASE_URL=https://api.heygaia.io/api/v1/ pnpm build"
-
-[tasks."full:dist"]
-description = "Build web + desktop and create distributable"
-depends = ["build:web", "dist"]
-
-[tasks."full:dist:mac"]
-description = "Build web + desktop and create macOS distributable"
-depends = ["build:web", "dist:mac"]
-
-[tasks."full:dist:win"]
-description = "Build web + desktop and create Windows distributable"
-depends = ["build:web", "dist:win"]
-
-[tasks."full:dist:linux"]
-description = "Build web + desktop and create Linux distributable"
-depends = ["build:web", "dist:linux"]

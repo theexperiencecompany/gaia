@@ -26,13 +26,6 @@ export default defineConfig({
       },
     },
   },
-  renderer: {
-    // We don't use electron-vite for renderer since we use Next.js
-    // This is a placeholder config
-    build: {
-      rollupOptions: {
-        input: {},
-      },
-    },
-  },
+
 });
+

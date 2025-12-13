@@ -175,27 +175,6 @@ export default function RootLayout({
         <VercelAnalytics />
         <AnalyticsLayout />
 
-        {process.env.NEXT_PUBLIC_DATABUDDY_CLIENT_ID && (
-          <Suspense fallback={undefined}>
-            <Databuddy
-              clientId={process.env.NEXT_PUBLIC_DATABUDDY_CLIENT_ID}
-              trackHashChanges
-              trackAttributes
-              trackOutgoingLinks
-              trackInteractions
-              trackEngagement
-              trackScrollDepth
-              trackExitIntent
-              trackBounceRate
-              trackWebVitals
-              trackErrors
-              enableBatching
-              batchSize={20}
-              batchTimeout={5000}
-              disabled={process.env.NODE_ENV === "development"}
-            />
-          </Suspense>
-        )}
       </body>
     </html>
   );

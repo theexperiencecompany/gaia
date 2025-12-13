@@ -35,8 +35,15 @@ async function createWindow(): Promise<void> {
   });
 
   // Load the Next.js server URL
+  // Use NODE_ENV to detect production mode (for mise start)
+  // or app.isPackaged for packaged apps (for dist)
+  const isProduction = process.env.NODE_ENV === 'production' || app.isPackaged;
   const serverUrl = getServerUrl();
-  if (is.dev) {
+  
+  if (isProduction) {
+    // In production, use the bundled Next.js server
+    mainWindow.loadURL(serverUrl);
+  } else {
     // In development, wait for web dev server then load it
     const devUrl = 'http://localhost:3000';
     const waitOn = await import('wait-on');
@@ -44,9 +51,6 @@ async function createWindow(): Promise<void> {
     await waitOn.default({ resources: [devUrl], timeout: 30000 });
     console.log('Web dev server ready, loading...');
     mainWindow.loadURL(devUrl);
-  } else {
-    // In production, use the bundled Next.js server
-    mainWindow.loadURL(serverUrl);
   }
 }
 
@@ -65,7 +69,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('get-version', () => app.getVersion());
 
   // Start the Next.js server in production
-  if (!is.dev) {
+  const isProduction = process.env.NODE_ENV === 'production' || app.isPackaged;
+  if (isProduction) {
     await startNextServer();
   }
 

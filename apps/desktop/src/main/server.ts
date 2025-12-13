@@ -28,10 +28,11 @@ export async function startNextServer(): Promise<void> {
   serverPort = await findAvailablePort();
   
   // Path to the Next.js standalone server
-  // In production, this is bundled in the app resources
+  // In production (packaged app), this is bundled in the app resources
+  // In development (mise start), we need to go from apps/desktop/out/main to apps/web/.next/standalone
   const resourcesPath = app.isPackaged
     ? join(process.resourcesPath, 'next-server')
-    : join(__dirname, '../../../../web/.next/standalone');
+    : join(__dirname, '../../../web/.next/standalone');
 
   const serverPath = join(resourcesPath, 'apps/web/server.js');
 
