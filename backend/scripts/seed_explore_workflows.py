@@ -42,15 +42,15 @@ from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowStep 
 
 def generate_run_count() -> tuple[int, int]:
     """Generate realistic run counts with some variance."""
-    base_runs = random.choice(  # noqa: S311
+    base_runs = random.choice(  # noqa: S311  # nosec B311
         [
-            random.randint(800, 1200),  # noqa: S311
-            random.randint(1300, 1800),  # noqa: S311
-            random.randint(2100, 2800),  # noqa: S311
-            random.randint(3200, 4200),  # noqa: S311
+            random.randint(800, 1200),  # noqa: S311  # nosec B311
+            random.randint(1300, 1800),  # noqa: S311  # nosec B311
+            random.randint(2100, 2800),  # noqa: S311  # nosec B311
+            random.randint(3200, 4200),  # noqa: S311  # nosec B311
         ]
     )
-    success_rate = random.uniform(0.88, 0.97)  # noqa: S311
+    success_rate = random.uniform(0.88, 0.97)  # noqa: S311  # nosec B311
     successful_runs = int(base_runs * success_rate)
     return base_runs, successful_runs
 
