@@ -21,6 +21,9 @@ importers:
         specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
     devDependencies:
+      '@nx/docker':
+        specifier: ^22.2.3
+        version: 22.2.3(nx@22.2.3)
       '@nx/next':
         specifier: 22.2.3
         version: 22.2.3(@babel/core@7.28.5)(@babel/traverse@7.28.5)(@rspack/core@1.6.7(@swc/helpers@0.5.15))(@swc/helpers@0.5.15)(@zkochan/js-yaml@0.0.7)(eslint@9.39.2(jiti@2.6.1))(lightningcss@1.30.2)(next@16.0.10(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(sass@1.96.0))(nx@22.2.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(typescript@5.9.3)(vite@7.2.7(@types/node@25.0.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.30.2)(sass-embedded@1.96.0)(sass@1.96.0)(terser@5.44.1)(yaml@2.8.2))(vitest@4.0.15(@opentelemetry/api@1.9.0)(@types/node@25.0.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.30.2)(sass-embedded@1.96.0)(sass@1.96.0)(terser@5.44.1)(yaml@2.8.2))(webpack@5.103.0)
@@ -1207,6 +1210,9 @@ packages:
     resolution: {integrity: sha512-vmYcGg7TPqQ65T0wEFJnS3rC3+CsgiZhObuAaHGuE7ZAtDq2xYNc4+nmTz8ykKgfQNIe1ZZsm6P0fL1HvC9b8w==}
     peerDependencies:
       nx: '>= 21 <= 23 || ^22.0.0-0'
+
+  '@nx/docker@22.2.3':
+    resolution: {integrity: sha512-fDPPODo5T4NNqgDtv5ZYNNKR2/1tHefM/I68YufALa/7I2d1XAP+udmvdvTQWEyyKuF4Y/uTz6uczmZZ9y0MVQ==}
 
   '@nx/eslint@22.2.3':
     resolution: {integrity: sha512-iq7rhzWPz0iKAR2Jl9dyHMVp4WB54jSMrqWIlhrxgN4H8TTJfjUSO7d27eg5oxkhitdFJ5KVb/ZmIzpYW+rFMg==}
@@ -6727,6 +6733,14 @@ snapshots:
       semver: 7.7.3
       tslib: 2.8.1
       yargs-parser: 21.1.1
+
+  '@nx/docker@22.2.3(nx@22.2.3)':
+    dependencies:
+      '@nx/devkit': 22.2.3(nx@22.2.3)
+      enquirer: 2.3.6
+      tslib: 2.8.1
+    transitivePeerDependencies:
+      - nx
 
   '@nx/eslint@22.2.3(@babel/traverse@7.28.5)(@zkochan/js-yaml@0.0.7)(eslint@9.39.2(jiti@2.6.1))(nx@22.2.3)':
     dependencies:

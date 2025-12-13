@@ -60,7 +60,32 @@
         "buildDepsTargetName": "build-deps",
         "watchDepsTargetName": "watch-deps"
       }
-    }
+    },
+    "@nx/docker"
   ],
+  "release": {
+    "releaseTag": {
+      "pattern": "release/{projectName}/{version}"
+    },
+    "groups": {
+      "apps": {
+        "projects": ["backend"],
+        "projectsRelationship": "independent",
+        "docker": {
+          "skipVersionActions": true,
+          "registryUrl": "ghcr.io"
+        },
+        "changelog": {
+          "projectChangelogs": true
+        }
+      }
+    },
+    "docker": {
+      "versionSchemes": {
+        "production": "{currentDate|YYMM.DD}.{shortCommitSha}",
+        "develop": "develop-{shortCommitSha}"
+      }
+    }
+  },
   "nxCloudId": "693d6d47c244495eb66b1b66"
 }

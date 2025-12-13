@@ -4,6 +4,11 @@
   "root": "apps/backend",
   "sourceRoot": "apps/backend/app",
   "implicitDependencies": ["docker"],
+  "release": {
+    "docker": {
+      "repositoryName": "heygaia/gaia"
+    }
+  },
   "targets": {
     "dev": {
       "executor": "nx:run-commands",
