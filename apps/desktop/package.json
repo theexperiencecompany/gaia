@@ -1,0 +1,42 @@
+{
+  "name": "@gaia/desktop",
+  "version": "0.1.0",
+  "description": "GAIA Desktop - Your Personal AI Assistant",
+  "main": "./out/main/index.mjs",
+  "author": "The Experience Company",
+  "homepage": "https://heygaia.io",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "postinstall": "electron-builder install-app-deps",
+    "pack": "pnpm build && electron-builder --dir",
+    "dist": "pnpm build && electron-builder",
+    "dist:mac": "pnpm build && electron-builder --mac",
+    "dist:win": "pnpm build && electron-builder --win",
+    "dist:linux": "pnpm build && electron-builder --linux",
+    "type-check": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "clean": "rm -rf out dist release node_modules"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9",
+    "get-port": "^7.1.0",
+    "wait-on": "^8.0.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.7",
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/utils": "^3.0.0",
+    "@types/node": "^22.10.2",
+    "@types/wait-on": "^5.3.4",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
+  }
+}

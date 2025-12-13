@@ -1,0 +1,117 @@
+{
+  "name": "desktop",
+  "root": "apps/desktop",
+  "sourceRoot": "apps/desktop/src",
+  "projectType": "application",
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx dev web",
+          "pnpm dev"
+        ],
+        "cwd": "{projectRoot}",
+        "parallel": true
+      },
+      "dependsOn": []
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm build",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": [
+        "default",
+        "^production",
+        "{projectRoot}/electron.vite.config.ts",
+        "{projectRoot}/electron-builder.yml"
+      ],
+      "outputs": ["{projectRoot}/out", "{projectRoot}/dist"]
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm start",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "pack": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm pack",
+        "cwd": "{projectRoot}"
+      },
+      "dependsOn": ["web:build"]
+    },
+    "dist": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm dist",
+        "cwd": "{projectRoot}"
+      },
+      "dependsOn": ["web:build"]
+    },
+    "dist:mac": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm dist:mac",
+        "cwd": "{projectRoot}"
+      },
+      "dependsOn": ["web:build"]
+    },
+    "dist:win": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm dist:win",
+        "cwd": "{projectRoot}"
+      },
+      "dependsOn": ["web:build"]
+    },
+    "dist:linux": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm dist:linux",
+        "cwd": "{projectRoot}"
+      },
+      "dependsOn": ["web:build"]
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm type-check",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": ["default", "{projectRoot}/tsconfig.json", "^production"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm lint",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/config/biome.json"]
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm lint:fix",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm clean",
+        "cwd": "{projectRoot}"
+      }
+    }
+  },
+  "implicitDependencies": ["web"]
+}

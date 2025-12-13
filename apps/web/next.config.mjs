@@ -8,6 +8,9 @@ const withBundleAnalyzer = bundleAnalyzer({
 
 const nextConfig = {
   reactStrictMode: true,
+  // Enable standalone output for Electron desktop app bundling
+  // This creates a minimal production server with all dependencies
+  output: 'standalone',
   experimental: {
     optimizePackageImports: [
       "mermaid",

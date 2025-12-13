@@ -1,0 +1,88 @@
+# Desktop app mise.toml
+# Run these commands from apps/desktop directory
+# Documentation: https://mise.run
+
+[tasks."dev:web"]
+description = "Start the web dev server"
+dir = "../web"
+run = "pnpm dev"
+
+[tasks."dev:api"]
+description = "Start the API server"
+run = "nx dev api"
+
+[tasks."dev:electron"]
+description = "Start Electron"
+run = "pnpm dev"
+
+[tasks.dev]
+description = "Run desktop app with web + api in dev mode"
+depends = ["dev:web", "dev:api", "dev:electron"]
+
+[tasks.build]
+description = "Build Electron main and preload processes"
+run = "pnpm build"
+
+[tasks.start]
+description = "Preview the built desktop app"
+run = "pnpm start"
+
+[tasks.pack]
+description = "Package desktop app without distributing (for testing)"
+run = "pnpm pack"
+
+[tasks.dist]
+description = "Create distributable for current platform"
+run = "pnpm dist"
+
+[tasks."dist:mac"]
+description = "Create macOS distributable (DMG + ZIP)"
+run = "pnpm dist:mac"
+
+[tasks."dist:win"]
+description = "Create Windows distributable (NSIS + Portable)"
+run = "pnpm dist:win"
+
+[tasks."dist:linux"]
+description = "Create Linux distributable (AppImage + DEB + RPM)"
+run = "pnpm dist:linux"
+
+[tasks.deps]
+description = "Install dependencies"
+run = "pnpm install"
+
+[tasks."type-check"]
+description = "Run TypeScript type checking"
+run = "pnpm type-check"
+
+[tasks.lint]
+description = "Run Biome linting"
+run = "pnpm lint"
+
+[tasks."lint:fix"]
+description = "Run Biome linting with auto-fix"
+run = "pnpm lint:fix"
+
+[tasks.clean]
+description = "Clean all build artifacts"
+run = "pnpm clean"
+
+[tasks."build:web"]
+description = "Build the web app for production (uses api.heygaia.io)"
+run = "cd ../web && NEXT_PUBLIC_API_BASE_URL=https://api.heygaia.io/api/v1/ pnpm build"
+
+[tasks."full:dist"]
+description = "Build web + desktop and create distributable"
+depends = ["build:web", "dist"]
+
+[tasks."full:dist:mac"]
+description = "Build web + desktop and create macOS distributable"
+depends = ["build:web", "dist:mac"]
+
+[tasks."full:dist:win"]
+description = "Build web + desktop and create Windows distributable"
+depends = ["build:web", "dist:win"]
+
+[tasks."full:dist:linux"]
+description = "Build web + desktop and create Linux distributable"
+depends = ["build:web", "dist:linux"]

@@ -213,3 +213,38 @@ run = "nx graph"
 [tasks."affected:graph"]
 description = "Show affected projects graph"
 run = "nx affected:graph"
+
+# Desktop App Tasks
+[tasks."dev:desktop"]
+description = "Run desktop app in development mode (requires web dev server)"
+run = "nx dev desktop"
+
+[tasks."build:desktop"]
+description = "Build desktop app (builds web first)"
+run = "nx build web && nx build desktop"
+
+[tasks."pack:desktop"]
+description = "Package desktop app without distributing"
+run = "nx pack desktop"
+
+[tasks."dist:desktop"]
+description = "Create distributable desktop packages for current platform"
+run = "nx dist desktop"
+
+[tasks."dist:desktop:mac"]
+description = "Create macOS distributable (DMG + ZIP)"
+run = "nx dist:mac desktop"
+
+[tasks."dist:desktop:win"]
+description = "Create Windows distributable (NSIS + Portable)"
+run = "nx dist:win desktop"
+
+[tasks."dist:desktop:linux"]
+description = "Create Linux distributable (AppImage + DEB + RPM)"
+run = "nx dist:linux desktop"
+
+[tasks."setup:desktop"]
+description = "Set up desktop dependencies"
+dir = "apps/desktop"
+run = "pnpm install"
+
