@@ -22,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/ui/useMobile";
+import { useElectron } from "@/hooks/useElectron";
 import { SidebarLeft01Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
@@ -155,6 +156,7 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none";
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+  const { isElectron } = useElectron();
 
   if (collapsible === "none") {
     return (
@@ -235,7 +237,10 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex h-full w-full flex-col bg-secondary-bg group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm"
+          className={cn(
+            "flex h-full w-full flex-col bg-secondary-bg group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm",
+            isElectron && "opacity-95 backdrop-blur-lg",
+          )}
         >
           {children}
         </div>

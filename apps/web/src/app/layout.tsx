@@ -1,12 +1,10 @@
 import "./styles/globals.css";
 import "./styles/tailwind.css";
 
-import { Databuddy } from "@databuddy/sdk/react";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
-import { Suspense } from "react";
 
 import AnalyticsLayout from "@/layouts/AnalyticsLayout";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
@@ -174,7 +172,6 @@ export default function RootLayout({
 
         <VercelAnalytics />
         <AnalyticsLayout />
-
       </body>
     </html>
   );
