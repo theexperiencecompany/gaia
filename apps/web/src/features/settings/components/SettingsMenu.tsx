@@ -17,6 +17,10 @@ import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { ContactSupportModal } from "@/features/support";
+import {
+  type PlatformInfo,
+  usePlatformDetection,
+} from "@/hooks/ui/usePlatformDetection";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import {
   ArrowRight01Icon,
@@ -24,6 +28,7 @@ import {
   BookOpen02Icon,
   BubbleChatQuestionIcon,
   CircleArrowUp02Icon,
+  CloudDownloadIcon,
   CustomerService01Icon,
   Github,
   GitPullRequestIcon,
@@ -76,6 +81,9 @@ export default function SettingsMenu({
 
   const resourcesMenu = useNestedMenu();
   const supportMenu = useNestedMenu();
+  const downloadMenu = useNestedMenu();
+
+  const { currentPlatform, desktopPlatforms } = usePlatformDetection();
 
   const iconClasses = "w-[18px] h-[18px]";
 
@@ -131,6 +139,25 @@ export default function SettingsMenu({
       action: () => setSupportModalOpen(true),
     },
   ];
+
+  // Sort platforms with current platform first
+  const sortedPlatforms = [
+    ...desktopPlatforms.filter((p) => p.platform === currentPlatform.platform),
+    ...desktopPlatforms.filter((p) => p.platform !== currentPlatform.platform),
+  ];
+
+  const downloadMenuItems = sortedPlatforms.map((platform: PlatformInfo) => ({
+    key: platform.platform,
+    label: platform.shortName,
+    icon: CloudDownloadIcon,
+    action: () => {
+      if (platform.downloadUrl) {
+        window.open(platform.downloadUrl, "_blank");
+      } else {
+        router.push("/download");
+      }
+    },
+  }));
 
   const socialMediaColorMap: Record<string, string> = {
     twitter: "#1da1f2",
@@ -191,6 +218,12 @@ export default function SettingsMenu({
       showDivider: false,
       items: [
         {
+          key: "download",
+          label: `Download for ${currentPlatform.isMobile ? "Desktop" : currentPlatform.shortName.split(" ")[0]}`,
+          icon: CloudDownloadIcon,
+          hasSubmenu: true,
+        },
+        {
           key: "resources",
           label: "Resources",
           icon: BookOpen02Icon,
@@ -241,10 +274,14 @@ export default function SettingsMenu({
                 const iconColor =
                   item.iconColor || socialMediaColorMap[item.key];
 
-                // Handle nested menus (Resources and Support)
+                // Handle nested menus (Download, Resources, and Support)
                 if (item.hasSubmenu) {
                   const menu =
-                    item.key === "resources" ? resourcesMenu : supportMenu;
+                    item.key === "download"
+                      ? downloadMenu
+                      : item.key === "resources"
+                        ? resourcesMenu
+                        : supportMenu;
 
                   return (
                     <DropdownItem
@@ -306,6 +343,14 @@ export default function SettingsMenu({
         onOpenChange={supportMenu.setIsOpen}
         itemRef={supportMenu.itemRef}
         menuItems={supportMenuItems}
+        iconClasses={iconClasses}
+      />
+
+      <NestedMenuTooltip
+        isOpen={downloadMenu.isOpen}
+        onOpenChange={downloadMenu.setIsOpen}
+        itemRef={downloadMenu.itemRef}
+        menuItems={downloadMenuItems}
         iconClasses={iconClasses}
       />
 

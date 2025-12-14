@@ -221,3 +221,69 @@ run = "nx graph"
 [tasks."affected:graph"]
 description = "Show affected projects graph"
 run = "nx affected:graph"
+
+# Desktop App Tasks
+[tasks."dev:desktop"]
+description = "Run desktop app in development mode (requires web dev server)"
+run = "nx dev desktop"
+
+[tasks."build:desktop"]
+description = "Build desktop app (builds web first)"
+run = "nx build web && nx build desktop"
+
+[tasks."pack:desktop"]
+description = "Package desktop app without distributing"
+run = "nx pack desktop"
+
+[tasks."dist:desktop"]
+description = "Create distributable desktop packages for current platform"
+run = "nx dist desktop"
+
+[tasks."dist:desktop:mac"]
+description = "Create macOS distributable (DMG + ZIP)"
+run = "nx dist:mac desktop"
+
+[tasks."dist:desktop:win"]
+description = "Create Windows distributable (NSIS + Portable)"
+run = "nx dist:win desktop"
+
+[tasks."dist:desktop:linux"]
+description = "Create Linux distributable (AppImage + DEB + RPM)"
+run = "nx dist:linux desktop"
+
+[tasks."setup:desktop"]
+description = "Set up desktop dependencies"
+dir = "apps/desktop"
+run = "pnpm install"
+
+[tasks."ci:desktop"]
+description = "Test desktop-release workflow locally with act (dry-run)"
+run = "act release --job build -n --eventpath .github/test-events/release.json"
+
+[tasks."ci:desktop:run"]
+description = "Actually run desktop-release workflow locally with act"
+run = "act release --job build --eventpath .github/test-events/release.json"
+
+[tasks."ci:list"]
+description = "List all available GitHub Actions workflows"
+run = "act -l"
+
+[tasks."ci:release-please"]
+description = "Test release-please workflow locally with act (dry-run)"
+run = "act push -n --job release-please"
+
+[tasks."ci:quality"]
+description = "Test main.yml quality-checks workflow (dry-run)"
+run = "act pull_request -n --job quality-checks"
+
+[tasks."ci:quality:run"]
+description = "Actually run quality-checks locally with act"
+run = "act pull_request --job quality-checks"
+
+[tasks."ci:build"]
+description = "Test build.yml workflow (dry-run)"
+run = "act workflow_call -n -W .github/workflows/build.yml"
+
+[tasks."ci:all"]
+description = "List all jobs across all workflows"
+run = "act -l --workflows .github/workflows/"

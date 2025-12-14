@@ -1,0 +1,80 @@
+# Desktop app mise.toml
+# Run these commands from apps/desktop directory
+# Documentation: https://mise.run
+
+[tasks."dev:web"]
+description = "Start the web dev server"
+dir = "../web"
+run = "pnpm dev"
+
+[tasks."dev:api"]
+description = "Start the API server"
+run = "nx dev api"
+
+[tasks."dev:electron"]
+description = "Start Electron"
+run = "pnpm dev"
+
+[tasks.dev]
+description = "Run desktop app with web + api in dev mode"
+depends = ["dev:web", "dev:api", "dev:electron"]
+
+[tasks.build]
+description = "Build Electron main and preload (uses nx caching)"
+run = "nx build desktop"
+
+[tasks.start]
+description = "Run the built desktop app in production mode (builds if needed)"
+run = """
+(cd ../web && NEXT_PUBLIC_API_BASE_URL=https://api.heygaia.io/api/v1/ pnpm next build)
+# Copy static files required for standalone mode
+cp -r ../web/.next/static ../web/.next/standalone/apps/web/.next/static
+cp -r ../web/public ../web/.next/standalone/apps/web/public
+pnpm build
+NODE_ENV=production npx electron .
+"""
+
+[tasks.pack]
+description = "Package desktop app without distributing"
+run = "nx pack desktop"
+
+[tasks.dist]
+description = "Create distributable for current platform (builds web first via nx)"
+run = "nx dist desktop"
+
+[tasks."dist:mac"]
+description = "Create macOS distributable (DMG + ZIP)"
+run = "nx dist:mac desktop"
+
+[tasks."dist:mac:run"]
+description = "Build macOS distributable and run it"
+run = "nx dist:mac desktop && ./release/0.1.0/mac/GAIA.app/Contents/MacOS/GAIA"
+
+[tasks."dist:win"]
+description = "Create Windows distributable (NSIS + Portable)"
+run = "nx dist:win desktop"
+
+[tasks."dist:linux"]
+description = "Create Linux distributable (AppImage + DEB + RPM)"
+run = "nx dist:linux desktop"
+
+[tasks.deps]
+description = "Install dependencies"
+run = "pnpm install"
+
+[tasks."type-check"]
+description = "Run TypeScript type checking"
+run = "nx type-check desktop"
+
+[tasks.lint]
+description = "Run Biome linting"
+run = "nx lint desktop"
+
+[tasks."lint:fix"]
+description = "Run Biome linting with auto-fix"
+run = "nx lint:fix desktop"
+
+[tasks.clean]
+description = "Clean all build artifacts"
+run = "nx clean desktop"
+

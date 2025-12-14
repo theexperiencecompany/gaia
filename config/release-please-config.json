@@ -5,20 +5,26 @@
     {
       "type": "linked-versions",
       "groupName": "gaia",
-      "components": ["api", "web"],
+      "components": ["api", "web", "desktop"],
       "merge": true
     }
   ],
   "packages": {
-    "api": {
+    "apps/api": {
       "release-type": "python",
       "component": "api",
       "changelog-path": "CHANGELOG.md",
       "changelog-type": "github"
     },
-    "web": {
+    "apps/web": {
       "release-type": "node",
       "component": "web",
+      "changelog-path": "CHANGELOG.md",
+      "changelog-type": "github"
+    },
+    "apps/desktop": {
+      "release-type": "node",
+      "component": "desktop",
       "changelog-path": "CHANGELOG.md",
       "changelog-type": "github"
     }

@@ -1,0 +1,109 @@
+appId: io.heygaia.desktop
+productName: GAIA
+copyright: Copyright © 2024 The Experience Company
+electronVersion: 33.2.1
+
+directories:
+  output: release/${version}
+  buildResources: resources
+
+files:
+  - out/**/*
+  - "!out/renderer/**/*"
+  - node_modules/**/*
+  - "!node_modules/**/{test,tests,__tests__,testing}/**/*"
+  - "!node_modules/**/*.{md,map,ts}"
+  - "!node_modules/**/README*"
+  - "!node_modules/**/CHANGELOG*"
+
+asarUnpack:
+  - "**/*.node"
+  - "**/next-server/**/*"
+
+extraResources:
+  # Splash screen for fast startup
+  - from: resources/splash.html
+    to: splash.html
+  # Experience Company logo for splash screen
+  - from: resources/the_experience_company_white.webp
+    to: the_experience_company_white.webp
+  # Use .next-server-prepared which has dereferenced symlinks (created by scripts/prepare-next-server.sh)
+  - from: .next-server-prepared
+    to: next-server
+    filter:
+      - "**/*"
+      - "!**/node_modules/.cache/**/*"
+
+mac:
+  category: public.app-category.productivity
+  icon: resources/icons/icon.icns
+  artifactName: "${productName}-${arch}.${ext}"
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+  darkModeSupport: true
+
+dmg:
+  iconSize: 100
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+win:
+  icon: resources/icons/icon.ico
+  artifactName: "${productName}-${arch}.${ext}"
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+    - target: portable
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  deleteAppDataOnUninstall: true
+  installerIcon: resources/icons/icon.ico
+  uninstallerIcon: resources/icons/icon.ico
+
+linux:
+  icon: resources/icons
+  artifactName: "${productName}-${arch}.${ext}"
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: deb
+      arch:
+        - x64
+        - arm64
+    - target: rpm
+      arch:
+        - x64
+  category: Utility
+  synopsis: Your Personal AI Assistant
+  description: GAIA is your personal AI assistant designed to help increase your productivity.
+
+publish:
+  provider: github
+  owner: theexperiencecompany
+  repo: gaia
+  releaseType: release

@@ -1,0 +1,207 @@
+---
+title: "Introducing GAIA Desktop"
+date: "2025-12-04"
+authors:
+  - name: "Aryan Randeriya"
+    role: "Founder & CEO"
+    avatar: "https://github.com/aryanranderiya.png"
+    linkedin: "https://linkedin.com/in/aryanranderiya"
+    twitter: "https://twitter.com/aryanranderiya"
+    github: "https://github.com/aryanranderiya"
+category: "Engineering"
+image: "/images/screenshots/desktop_dock.png"
+slug: "desktop"
+---
+
+I love the web. It's where Gaia started, and it's where we iterate fastest. But there's a specific "stickiness" to a desktop app that a browser tab just can't match.
+
+We built this desktop app for a very practical reason: **we needed to use Gaia ourselves, every single day.**
+
+We wanted Gaia to be part of our daily workflows with zero friction. We needed to understand the product from our own experience as users—to feel the bugs, hit the limitations, and smooth out the rough edges. The only way to truly improve something is to live inside it. We wanted Gaia to live in the dock, to be `Cmd+Tab` accessible, and to be something we reach for naturally throughout the day.
+
+So, yesterday, I decided to pull the trigger: we were going to wrap our Next.js web application into a native desktop experience.
+
+"How hard could it be?" I thought. "It's just a wrapper, right?"
+
+Spoiler: It was not just a wrapper. It took about a day of intense wrestling, but we got there. Here is the engineering deep dive into how we built the Gaia desktop app, why we chose the tech we did, and the absolute nightmares we faced with symlinks, caching, and startup times.
+
+## The First Decision: Tauri vs. Electron
+
+I'll be honest—I really, *really* wanted to use Tauri.
+
+If you've been following the space, you know Tauri v2 is the new hotness. It's written in Rust, uses the OS's native webview (WebKit on macOS, WebView2 on Windows), and produces tiny binaries (\~10MB vs Electron's \~150MB). As a founder who cares about performance, that sounded like a dream.
+
+But we hit a wall immediately.
+
+Gaia isn't a static site. We rely heavily on Next.js dynamic routing and server-side features. We couldn't just run `next export` and call it a day. We needed an actual Node.js server running to handle the logic.
+
+With Tauri, supporting this required the "Sidecar" pattern—essentially bundling a Node.js binary alongside the Rust binary to run the server.
+
+I ran the numbers and realized the "Tauri Advantage" evaporated for our use case:
+
+1.  **Complexity:** We'd have to manage Rust, the Tauri configuration, *and* a separate Node.js packaging flow using `pkg` or `nexe`.
+2.  **Size:** Once you bundle the Node.js runtime (sidecar) + the WebView overhead, we were looking at \~80-100MB anyway.
+3.  **Maturity:** Electron is boring. But "boring" means when you Google "Electron Next.js standalone pnpm," you get answers. With Tauri v2 sidecars, we were largely on our own.
+
+We chose **Electron**. Sometimes, the boring choice is the right one.
+
+## The Architecture: A Server Inside a Box
+
+The architecture we settled on is a "Hybrid." We aren't rebuilding the UI in Electron. We are literally packaging the production build of our Next.js app, spinning it up on a localhost port inside the Electron process, and pointing the browser window at it.
+
+Here is the flow:
+
+1.  **User opens Gaia.app.**
+2.  **Electron Main Process starts.**
+3.  **It spawns a child process:** A standalone Next.js server (derived from `output: standalone`).
+4.  **Window loads:** `http://localhost:5174` (We avoided port 3000 because, let's be real, you developers already have something running on port 3000).
+
+## Roadblock \#1: The "White Screen of Waiting"
+
+The first version was painful. You clicked the icon, the icon bounced... and bounced. And bounced.
+
+The app was waiting for the Next.js server to fully boot before showing the window. In the world of "instant gratification," 3 seconds is an eternity.
+
+We optimized this by decoupling the two processes. Now, we show the window immediately. But instead of a white screen, we load a lightweight HTML splash screen directly from the file system. It's transparent, blurred, and has a rotating Gaia logo.
+
+While you are admiring the logo, the heavy lifting (server boot) happens in the background. As soon as the server replies "I'm ready," we hot-swap the view to the local URL.
+
+Here is a snippet of how we handle the background server spawn in `main/index.ts`:
+
+```typescript
+// Don't wait for this to finish to show the window
+startNextServer(port).catch((err) => {
+  console.error('Failed to start Next.js server:', err);
+});
+
+// Show splash immediately
+const mainWindow = createWindow();
+mainWindow.loadFile(join(__dirname, '../renderer/splash.html'));
+
+// Poll for readiness
+waitOn({ resources: [`http://localhost:${port}`] }).then(() => {
+   mainWindow.loadURL(`http://localhost:${port}`);
+});
+```
+
+This perceived performance bump was massive. It went from "is it broken?" to "oh, it's loading."
+
+## Roadblock \#2: The `pnpm` Symlink Nightmare
+
+This was the boss fight.
+
+We use `pnpm` in our monorepo. `pnpm` is amazing for disk space because it uses symlinks everywhere. `electron-builder`, however, absolutely hates symlinks when trying to package resources.
+
+When we tried to copy the `standalone` Next.js folder into the Electron build, `electron-builder` would either crash or copy empty folders because it couldn't resolve the symlinked `node_modules`.
+
+We tried standard copies (`cp -r`). We tried dereferencing (`cp -L`). Nothing worked reliably across the weird nested structure of pnpm dependencies.
+
+The solution? **`rsync`**.
+
+We wrote a custom script to prepare the Next.js server before packaging. It uses `rsync` with the `-L` flag (copy referent of symlink) to flatten the structure into a real folder that Electron can understand.
+
+But there was a catch: `rsync` kept exiting with **code 23** ("Partial transfer due to error"). It turned out it was choking on some obscure, non-critical symlinks deep in the dependency tree.
+
+The fix? We embraced the jank. If `rsync` transfers the files but complains about a few bad links, we take the win.
+
+```bash
+#!/bin/bash
+# scripts/prepare-next-server.sh
+
+SOURCE="../../apps/web/.next/standalone/"
+DEST="./.next-server-prepared"
+
+echo "Syncing files using rsync..."
+# -a: archive mode, -L: transform symlinks into referent file/dir
+rsync -aL --delete "$SOURCE" "$DEST"
+
+EXIT_CODE=$?
+
+# rsync code 23 = partial transfer. 
+# We ignore it because it usually means it skipped some unreadable symlinks 
+# that we don't actually need for the runtime.
+if [ $EXIT_CODE -eq 0 ] || [ $EXIT_CODE -eq 23 ]; then
+  echo "Rsync completed (ignoring code 23)."
+  exit 0
+else
+  echo "Rsync failed with critical error: $EXIT_CODE"
+  exit $EXIT_CODE
+fi
+```
+
+Is it pretty? No. Does it reliably build a working .app? Yes.
+
+## Roadblock \#3: Nx Caching & The "File Exists" Bug
+
+We use Nx to manage our monorepo. It's usually great at caching builds so you don't rebuild things that haven't changed.
+
+However, Next.js `output: standalone` and Nx caching do not get along. We kept hitting a `File exists (os error 17)` crash when trying to restore the standalone folder from cache during the desktop build.
+
+We aren't the only ones. We found multiple issues tracking this exact behavior:
+
+  * [Nx Issue \#27724](https://github.com/nrwl/nx/issues/27724)
+  * [Nx Issue \#30733](https://github.com/nrwl/nx/issues/30733)
+
+Essentially, Nx tries to hard-link files that Next.js is messing with, and the whole thing explodes. We lost hours debugging this. In the end, we had to forcibly disable the cache specifically for the desktop distribution step.
+
+```bash
+# We force skip cache for the web build when packaging desktop
+nx build web --skip-nx-cache && nx build desktop
+```
+
+Sometimes you have to stop fighting the tool and just bypass it.
+
+## Roadblock \#4: The `styled-jsx` Confusion
+
+Just when we thought we were clear, we hit this beauty:
+`Cannot find module 'styled-jsx/style.js'`
+
+This is apparently a known issue (see [vercel/styled-jsx\#334](https://github.com/vercel/styled-jsx/issues/334)). The internet says it's fixed in Next.js v15.
+
+The problem? **We are already using Next.js v16.**
+
+It makes absolutely no sense, but software engineering rarely does at 2 AM. We managed to resolve it by ensuring our dependencies were hoisted correctly, which leads me to...
+
+## The Final Polish: Styling & Configuration Hell
+
+We also broke our UI. The HeroUI styling completely vanished because of how we were importing Tailwind.
+
+In `tailwind.css`, we had a line pointing to the theme:
+`@source "../../../../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";`
+
+In a standard web build, this path was fine. But inside the Electron monorepo structure, it was pointing to the *web app's* `node_modules` instead of the *root* `node_modules`. To make matters weirder, despite using `node-linker=hoisted` in our `.npmrc` (which flattens dependencies), the `@heroui/theme` package wasn't even *in* the web folder—it was sitting in the root the whole time.
+
+We had to manually fix the paths in `tailwind.css` to align with the actual file structure generated during the build.
+
+## It's Alive
+
+It took about a day of wrestling with configs, ports, and build scripts, but we now have a pipeline:
+
+1.  Run `mise dist:mac`.
+2.  Nx builds the web app (uncached).
+3.  Our script flattens the `pnpm` structure.
+4.  Electron wraps it all up.
+5.  Out pops a `.dmg` installer.
+
+It feels solid, it's fast, and most importantly, it's now a permanent resident on my dock.
+
+![dock whatsapp image](https://i.ibb.co/LX6m1V9r/Whats-App-Image-2025-12-14-at-02-56-07.webp)
+
+## What's Next: Unlocking Desktop-First Features
+
+This is just the beginning. Having a native desktop app opens up a whole new world of possibilities that you simply can't achieve in a browser.
+
+We're constantly going to be adding new features that take full advantage of the desktop environment:
+
+- **Native system integrations** - Deep OS-level features like menubar access, global shortcuts, and system notifications
+- **Better performance** - Utilizing native APIs for faster operations and smoother experiences
+- **Enhanced workflows** - Features that feel natural on desktop but would be clunky in a browser tab
+- **Local-first capabilities** - Taking advantage of local processing power
+
+We don't want to build just a website wrapper, the vision is a platform for us to build features that make Gaia feel like a true native experience. We're actively using this ourselves every day to find what works, what breaks, and what we should build next.
+
+If you try it out, I want to hear from you. We're looking for honest, brutal feedback to make this thing actually good.
+
+Now, back to shipping features. Go break it.
+
+[Download GAIA for Desktop here](https://heygaia.io/desktop)

@@ -1,0 +1,23 @@
+# Desktop app build artifacts
+out/
+dist/
+release/
+.next-server-prepared/
+
+# Dependencies
+node_modules/
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

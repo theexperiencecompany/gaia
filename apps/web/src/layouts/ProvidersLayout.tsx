@@ -2,6 +2,7 @@
 
 import { type ReactNode, Suspense } from "react";
 
+import { ElectronRouteGuard } from "@/components/electron";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { Toaster } from "@/components/ui/sonner";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
@@ -35,7 +36,9 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
         <GlobalInterceptor />
         {/* <HydrationManager /> */}
         <Toaster closeButton richColors position="top-right" theme="dark" />
-        <Suspense fallback={<></>}>{children}</Suspense>
+        <ElectronRouteGuard>
+          <Suspense fallback={<></>}>{children}</Suspense>
+        </ElectronRouteGuard>
       </QueryProvider>
     </HeroUIProvider>
   );

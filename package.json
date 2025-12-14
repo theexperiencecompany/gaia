@@ -11,5 +11,21 @@
 		"@nx/docker": "^22.2.3",
 		"@nx/next": "22.2.3",
 		"nx": "22.2.3"
+	},
+	"pnpm": {
+		"ignoredBuiltDependencies": [
+			"@heroui/shared-utils"
+		],
+		"onlyBuiltDependencies": [
+			"@heroui/shared-utils",
+			"@parcel/watcher",
+			"@sentry/cli",
+			"canvas",
+			"core-js",
+			"electron",
+			"esbuild",
+			"nx",
+			"sharp"
+		]
 	}
 }

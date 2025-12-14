@@ -1,2 +1,15 @@
+packages:
+  - apps/*
+  - packages/*
+  - libs/*
+
 onlyBuiltDependencies:
+  - '@heroui/shared-utils'
+  - '@parcel/watcher'
+  - '@sentry/cli'
+  - canvas
+  - core-js
+  - electron
+  - esbuild
   - nx
+  - sharp
