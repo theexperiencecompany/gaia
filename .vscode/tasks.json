@@ -20,6 +20,15 @@
             "presentation": {
                 "panel": "new"
             }
+        },
+        {
+            "label": "Run Mobile",
+            "type": "shell",
+            "command": "cd apps/mobile && pnpm start",
+            "problemMatcher": [],
+            "presentation": {
+                "panel": "new"
+            }
         }
     ]
 }

@@ -1,0 +1,192 @@
+---
+title: "How We Migrated to a Monorepo using NX"
+date: "2025-12-14"
+authors:
+  - name: "Aryan Randeriya"
+    role: "Founder & CEO"
+    avatar: "https://github.com/aryanranderiya.png"
+    linkedin: "https://linkedin.com/in/aryanranderiya"
+    twitter: "https://twitter.com/aryanranderiya"
+    github: "https://github.com/aryanranderiya"
+category: "Engineering"
+image: "/images/blog/monorepo.webp"
+slug: "monorepo"
+---
+
+# Changing Engines Mid-Flight
+
+In the lifecycle of every high-growth startup, you hit a specific wall. It's the moment where your codebase transitions from "fast and loose" to "complex and fragile."
+
+At GAIA, we hit that wall last week.
+
+We are building a massive multi-surface platform: **a Web app, a Desktop app, a Mobile app, a heavy-lifting Python backend, and a documentation site.** Until recently, these lived in a flat, somewhat isolated structure. It worked for a prototype, but as we scaled, the friction became unbearable. We needed a Monorepo.
+
+But here is the startup reality: **We couldn't just "pause" development to refactor.**
+
+While I was architecting the migration, **Dhruv (CTO)** was rewriting core backend logic, **Vinit** was actively building our new Voice Mode, and **Sankalp** was kicking off the Mobile App.
+
+This is the story of how we migrated GAIA to an Nx workspace without halting the feature factory, and the "Let's f\*\*king do it" meeting that started it all.
+
+-----
+
+## The "Let's F\*\*king Do It" Meeting
+
+Looking back, it is shocking even to us how quickly this escalated. We didn't plan a multi-platform strategy over months. We decided it in a single meeting.
+
+It started with a simple realization: **We need notifications.**
+
+Notifications on the web are notoriously terrible. We looked at WhatsApp, but the costs are high and Meta's support for general AI assistants is worsening by the day. SMS is barely an option. We realized that if we wanted GAIA to be truly useful, we needed a native Mobile App.
+
+I asked Dhruv: *"How long do you think a mobile app would take? A couple of weeks? A month?"*
+
+We broke it down right there in the call. We already had the API. We didn't need to brainstorm the UI because the design system was already built for the web. The only "hard" part was chat state management; the rest was just CRUD.
+
+So we decided: **Let's f\*\*king do it.**
+
+Sankalpa would start on the mobile build immediately. Vinit would contribute once the Voice Mode was done.
+
+But we didn't stop there. I looked at my own dock—ChatGPT, Notion Calendar, Todoist. I realized GAIA is meant to replace them all, so why am I forced to use it in a browser tab? A native Desktop app is faster, always available, and just feels better to use. (You can read more about [why we built the Desktop app here](https://www.google.com/search?q=https://heygaia.io/blog/desktop)).
+
+**The Velocity:**
+The result of that call was terrifyingly fast.
+
+  * **The Desktop App** was ready the next day.
+  * **The Mobile App shell (MVP UI)** was ready the next day too.
+
+Suddenly, we went from managing one web repo to managing Web, Mobile, Desktop, and Backend simultaneously. That was the moment our old architecture broke. That was the moment we *needed* Nx.
+
+-----
+
+## The "Enterprise" Fear: Why We Almost Skipped Nx
+
+We've used Turborepo in the past. It's lightweight and low-config. When we looked at Nx, I'll be honest—we were intimidated.
+
+Nx is massive. It's feature-rich. Usually, when you see a platform that big, you assume two things:
+
+1.  The learning curve will be a vertical wall.
+2.  The documentation will be terrible (a classic trait of large, enterprise-focused platforms).
+
+We thought, *"Do we really want to spend two weeks just configuring a build tool?"*
+
+**The Surprise:**
+We were wrong. Nx wasn't an "all-or-nothing" monolith. It allowed us to adopt features incrementally. We didn't have to set up distributed cloud caching or complex code generators on Day 1. We could start small—using it just as a smart task runner—and integrate more features as we needed them. The documentation was actually helpful, guiding us through a "progressive adoption" rather than forcing a complete ecosystem rewrite.
+
+-----
+
+## The Coordination Crisis & Git Gymnastics
+
+The hardest part of this migration wasn't the code; it was the choreography. We had three concurrent streams of work active while I was trying to restructure the entire universe.
+
+### The "Decoupled" Mobile Strategy
+
+We made a tactical decision with Sankalp on the mobile front. Since the "Shared State Magic" inside the monorepo wasn't ready, we didn't want him blocked. We told him: *"Build the UI. Just the visuals. Mock the data."*
+
+He started building the basic React Native UI structure completely decoupled from the logic. This allowed him to make progress on the pixels while I sorted out the plumbing.
+
+### Orchestrating the Merge
+
+If I moved files around while Dhruv and Vinit were editing them on the backend, we would have faced the "Merge Conflict from Hell." Here is exactly how we landed this:
+
+1.  **Stabilize:** We waited for Dhruv and Vinit to finish their sprint tasks and merged them into `develop`.
+2.  **Sync:** I pulled `develop` into my feature branch *before* moving a single file.
+3.  **Shift:** I physically moved `backend/` $\rightarrow$ `apps/backend/` and `frontend/` $\rightarrow$ `apps/frontend/`.
+4.  **Mobile Merge:** Once the structure was solid, we merged Sankalp's mobile UI work into `apps/mobile`.
+
+-----
+
+## The Strategic Pivot: Why `gaia-ui` Stayed Behind
+
+Mid-migration, we hit a decision point regarding our design system, `gaia-ui`.
+
+Technically, Nx supports this easily. We could have pulled the UI library in and preserved the Git history. Sankalp asked, *"Should we move the UI in now?"*
+
+My instinct was "Yes, put everything in the Monorepo." But then Dhruv, Sankalp, and I took a step back to look at the product strategy, not just the code.
+
+**The Argument for Separation:**
+We want `gaia-ui` to be more than just *our* internal library. We want traction. We want other developers to find it, star it, and use it in their projects.
+
+Sankalp made the critical point: *"If we bury it inside the monorepo, contributing becomes a nightmare."*
+
+If a developer wants to fix a button padding in `gaia-ui` but they have to clone our entire Desktop/Web/Mobile/Python monorepo just to do it, they won't bother. It creates too much friction.
+
+**The Verdict:**
+We decided to keep `gaia-ui` in a separate repository to lower the barrier for open-source contribution and increase visibility.
+
+-----
+
+## The Clean-Up: Migrating Release Please
+
+One detail that often gets overlooked in these blog posts is the Ops side. Moving folders breaks automation.
+
+We rely on `release-please` to automate our changelogs and versioning. Since we moved the root of our applications into `apps/backend` and `apps/frontend`, our old configuration broke immediately. We had to restructure our release manifest to point to the new paths—a small but necessary step to ensure that when we shipped this new architecture, we could actually *release* it.
+
+-----
+
+## The Great Debate: Nx AND Mise?
+
+This was the biggest architectural debate we had.
+
+We were already using **[mise](https://mise.jdx.dev)** (formerly rtx) to manage our tools. When we introduced Nx, we got confused. Nx *also* has a task runner.
+We thought: *"Should we just delete mise and use Nx for everything?"*
+
+**The "Install Hell" Problem:**
+If we removed mise, a new developer joining GAIA would have a miserable Day 1. They would have to manually install Python 3.11, Node 22, `uv`, `pnpm`, and `prek`. Then they'd have to run `npm install` manually. Nx is an amazing build tool, but it is **not** an environment manager.
+
+**The Solution: The Hybrid Layering**
+We decided to keep mise as the "Outer Shell" and use Nx as the "Engine."
+
+### 1\. Mise Manages the Environment
+
+We configured our `mise.toml` to install everything automatically, including a global version of Nx so we can use the CLI without clunky wrappers.
+
+```toml
+[tools]
+python = "3.11"
+node = "22"
+uv = "latest"
+"npm:nx" = "latest"  # Installs Nx globally for the CLI
+
+[hooks]
+postinstall = "pnpm install" # Automates the dependency installation
+```
+
+### 2\. Nx Manages the Tasks (Called by Mise)
+
+We don't use mise to *run* the build logic directly. We use mise to *call* Nx.
+
+This was a massive Quality of Life improvement. Look at the difference:
+
+**Without Mise (The Nx Command):**
+`nx run docker:docker:up && nx run-many -t dev --projects=api,web --parallel=2 & nx run backend:worker`
+
+**With Mise:**
+`mise dev:full`
+
+It abstracts away the complexity. A new developer doesn't need to know the parallelization flags or the project names. They just run the mise task.
+
+-----
+
+## Killing Your Darlings: Goodbye `mprocs`
+
+This one hurt a little.
+
+For a long time, **[mprocs](https://github.com/pvolok/mprocs)** was one of our favorite "hidden gem" tools. It's a TUI (Terminal User Interface) that lets you run multiple commands in a single window—like running your backend, frontend, and database logs side-by-side. It was our cockpit.
+
+We initially planned to keep using it. But once we saw the new **Nx TUI**, we realized `mprocs` had become redundant.
+
+Nx now has a native interactive terminal that handles parallel processes beautifully. Keeping `mprocs` just to run `nx` commands inside it felt like wrapping a Ferrari in a car cover and driving the cover.
+
+We realized that to keep the stack clean, we had to stop hoarding tools. We deprecated `mprocs` and embraced the Nx way.
+
+-----
+
+## The Result
+
+We paid a high "refactoring tax" this week. We had to migrate config files, move folders, debate architecture, and say goodbye to tools we loved.
+
+But the result is a unified developer experience. It doesn't matter if you are Dhruv working on the API or Sankalp working on the Mobile UI. You don't need to check documentation on how to start the app.
+
+You just run:
+**`mise dev`**
+
+And the system handles the rest. We changed the engine mid-flight, and now, GAIA is ready to go supersonic.

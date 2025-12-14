@@ -4,115 +4,242 @@ description: "Complete guide to configuring environment variables for GAIA"
 icon: "key"
 ---
 
-## Environment Configuration
+## Overview
 
-GAIA uses many integrations, but you don’t need all keys to start. We load env via Pydantic settings and lazily initialize providers only when first used. See: [Lazy Loading Env. Variables](/developers/extra/lazy-loading).
+GAIA uses Pydantic settings to load environment variables with validation. Settings are defined in `apps/api/app/config/settings.py` with two modes:
 
-### What you must set
+- **Development**: Most keys optional, missing ones just disable features
+- **Production**: All integration keys required for full functionality
 
-- **Backend (always required in all envs)**: `MONGO_DB`, `REDIS_URL`, `WORKOS_API_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_COOKIE_PASSWORD`
-- **Production adds**: databases/queues + integration keys are required (see `ProductionSettings`)
-- **Development**: most integrations are optional; missing keys only disable that feature
+<Note>
+Variables are lazily loaded—the app starts even with missing keys. See [Lazy Loading](/developers/extra/lazy-loading).
+</Note>
 
-### Minimal .env to boot locally
+---
 
-Create `backend/.env` with just the essentials. If you use Docker, defaults are provided by Compose.
+## Quick Setup
 
+<Steps>
+  <Step title="Copy environment files">
+    ```bash
+    cp apps/api/.env.example apps/api/.env
+    cp apps/web/.env.example apps/web/.env
+    ```
+  </Step>
+  <Step title="Set required variables">
+    At minimum, set these in `apps/api/.env`:
+    
+    ```bash
+    ENV=development
+    MONGO_DB=mongodb://mongo:27017/gaia
+    REDIS_URL=redis://redis:6379
+    WORKOS_API_KEY=your-workos-api-key
+    WORKOS_CLIENT_ID=your-workos-client-id
+    WORKOS_COOKIE_PASSWORD=your-32-char-random-secret
+    ```
+  </Step>
+  <Step title="Start development">
+    ```bash
+    mise dev
+    ```
+  </Step>
+</Steps>
+
+---
+
+## API Environment Variables
+
+### Always Required
+
+These are required in **both** development and production:
+
+| Variable | Description |
+|----------|-------------|
+| `ENV` | `development` or `production` |
+| `MONGO_DB` | MongoDB connection string |
+| `REDIS_URL` | Redis connection string |
+| `WORKOS_API_KEY` | WorkOS API key for authentication |
+| `WORKOS_CLIENT_ID` | WorkOS client ID |
+| `WORKOS_COOKIE_PASSWORD` | Secret for session cookies (min 32 chars) |
+
+### Environment & Deployment
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HOST` | `https://api.heygaia.io` | API host URL |
+| `FRONTEND_URL` | `https://heygaia.io` | Frontend app URL |
+| `ENABLE_PROFILING` | `false` | Enable performance profiling |
+| `SHOW_MISSING_KEY_WARNINGS` | `true` | Log warnings for missing keys |
+
+---
+
+### Database & Message Queue
+
+<Note>When using Docker Compose, these have sensible defaults.</Note>
+
+| Variable | Docker Default | Description |
+|----------|----------------|-------------|
+| `POSTGRES_URL` | `postgresql://postgres:postgres@postgres:5432/langgraph` | PostgreSQL connection |
+| `CHROMADB_HOST` | `chromadb` | ChromaDB vector database host |
+| `CHROMADB_PORT` | `8000` | ChromaDB port |
+| `RABBITMQ_URL` | `amqp://guest:guest@rabbitmq:5672/` | RabbitMQ for message queue |
+
+---
+
+### Authentication & OAuth
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GOOGLE_CLIENT_ID` | Prod only | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Prod only | Google OAuth client secret |
+
+<Note>
+Computed OAuth callback URLs are generated automatically:
+- `WORKOS_REDIRECT_URI` → `{HOST}/api/v1/oauth/workos/callback`
+- `GOOGLE_CALLBACK_URL` → `{HOST}/api/v1/oauth/google/callback`
+- `COMPOSIO_REDIRECT_URI` → `{HOST}/api/v1/oauth/composio/callback`
+</Note>
+
+---
+
+### AI & Machine Learning
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI API key for GPT models |
+| `GOOGLE_API_KEY` | Google AI API key for Gemini |
+
+---
+
+### Search & Web Content
+
+| Variable | Description |
+|----------|-------------|
+| `TAVILY_API_KEY` | Tavily search API |
+| `LLAMA_INDEX_KEY` | LlamaIndex/LlamaCloud API |
+| `FIRECRAWL_API_KEY` | Firecrawl web scraping |
+| `OPENWEATHER_API_KEY` | OpenWeather API for weather data |
+
+---
+
+### Media & Content Processing
+
+| Variable | Description |
+|----------|-------------|
+| `ASSEMBLYAI_API_KEY` | AssemblyAI for speech-to-text |
+| `DEEPGRAM_API_KEY` | Deepgram for audio transcription |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name |
+| `CLOUDINARY_API_KEY` | Cloudinary API key |
+| `CLOUDINARY_API_SECRET` | Cloudinary API secret |
+
+---
+
+### External Integrations
+
+| Variable | Description |
+|----------|-------------|
+| `COMPOSIO_KEY` | Composio integration key |
+| `COMPOSIO_WEBHOOK_SECRET` | Webhook verification secret |
+| `E2B_API_KEY` | E2B code sandbox API key |
+| `RESEND_API_KEY` | Resend email API key |
+| `RESEND_AUDIENCE_ID` | Resend audience ID |
+| `BLOG_BEARER_TOKEN` | Bearer token for blog management |
+
+---
+
+### Memory & Context
+
+| Variable | Description |
+|----------|-------------|
+| `MEM0_API_KEY` | Mem0 memory API key |
+| `MEM0_ORG_ID` | Mem0 organization ID |
+| `MEM0_PROJECT_ID` | Mem0 project ID |
+
+---
+
+### Payments
+
+| Variable | Description |
+|----------|-------------|
+| `DODO_PAYMENTS_API_KEY` | Dodo Payments API key |
+| `DODO_WEBHOOK_PAYMENTS_SECRET` | Dodo webhook verification |
+
+---
+
+### Monitoring & Analytics
+
+| Variable | Description |
+|----------|-------------|
+| `SENTRY_DSN` | Sentry error tracking DSN |
+| `POSTHOG_API_KEY` | PostHog analytics API key |
+
+---
+
+## Web Environment Variables
+
+Set these in `apps/web/.env`:
+
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_API_BASE_URL` | API endpoint (e.g., `http://localhost:8000/api/v1/`) |
+| `NEXT_PUBLIC_BLOG_BEARER_TOKEN` | Optional blog admin token |
+
+---
+
+## Full Example
+
+<Accordion title="Complete apps/api/.env example">
 ```bash
-# Core
+# Environment
 ENV=development
 HOST=http://localhost:8000
 FRONTEND_URL=http://localhost:3000
 
-# Datastores (use docker defaults or set your own)
+# Databases (Docker defaults)
 MONGO_DB=mongodb://mongo:27017/gaia
 REDIS_URL=redis://redis:6379
-
-# Auth (WorkOS for sessions)
-WORKOS_API_KEY=your-workos-api-key
-WORKOS_CLIENT_ID=your-workos-client-id
-WORKOS_COOKIE_PASSWORD=your-random-cookie-secret
-```
-
-### Optional keys by feature (add when needed)
-
-- **LLMs**: `OPENAI_API_KEY` or `GOOGLE_API_KEY` (Gemini) or `HUGGINGFACE_API_KEY`
-- **Speech**: `ASSEMBLYAI_API_KEY`, `DEEPGRAM_API_KEY`
-- **Search & web content**: `TAVILY_API_KEY`, `FIRECRAWL_API_KEY`, `OPENWEATHER_API_KEY`
-- **Cloud media (uploads/images)**: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
-- **Auth (Google OAuth)**: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-- **Code exec sandbox**: `E2B_API_KEY`
-- **Memory (Mem0)**: `MEM0_API_KEY`, `MEM0_ORG_ID`, `MEM0_PROJECT_ID`
-- **Email**: `RESEND_API_KEY`, `RESEND_AUDIENCE_ID`
-- **Blog admin**: `BLOG_BEARER_TOKEN`
-- **Queues/DB (prod)**: `POSTGRES_URL`, `RABBITMQ_URL`, `CHROMADB_HOST`, `CHROMADB_PORT`
-- **Composio**: `COMPOSIO_KEY`, `COMPOSIO_WEBHOOK_SECRET`
-- **Telemetry**: `SENTRY_DSN`, `POSTHOG_API_KEY`
-
-Add only what you need; dev will warn and the feature stays inactive until keys are added.
-
-## Backend Environment Variables (reference)
-
-```bash
-# Core application
-ENV=development
-HOST=localhost
-FRONTEND_URL=http://localhost:3000
-DISABLE_PROFILING=true
-
-# Databases & queues (Docker defaults)
 POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/langgraph
-MONGO_DB=mongodb://mongo:27017/gaia
-REDIS_URL=redis://redis:6379
 CHROMADB_HOST=chromadb
 CHROMADB_PORT=8000
 RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 
-# Auth (WorkOS mandatory), Google OAuth optional in dev
-WORKOS_API_KEY=your-workos-api-key
-WORKOS_CLIENT_ID=your-workos-client-id
-WORKOS_COOKIE_PASSWORD=your-random-cookie-secret
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
+# Auth (required)
+WORKOS_API_KEY=sk_test_xxxx
+WORKOS_CLIENT_ID=client_xxxx
+WORKOS_COOKIE_PASSWORD=your-32-character-random-secret
 
-# Selected integrations (add when used)
-OPENAI_API_KEY=sk-your-openai-api-key
-GOOGLE_API_KEY=your-google-ai-api-key
-HUGGINGFACE_API_KEY=hf_your-huggingface-token
-ASSEMBLYAI_API_KEY=your-assemblyai-api-key
-DEEPGRAM_API_KEY=your-deepgram-api-key
-TAVILY_API_KEY=your-tavily-api-key
-FIRECRAWL_API_KEY=your-firecrawl-api-key
-OPENWEATHER_API_KEY=your-openweather-api-key
-E2B_API_KEY=your-e2b-api-key
-CLOUDINARY_CLOUD_NAME=your-cloud-name
-CLOUDINARY_API_KEY=your-cloudinary-api-key
-CLOUDINARY_API_SECRET=your-cloudinary-api-secret
-MEM0_API_KEY=your-mem0-api-key
-MEM0_ORG_ID=your-mem0-org-id
-MEM0_PROJECT_ID=your-mem0-project-id
-RESEND_API_KEY=your-resend-api-key
-RESEND_AUDIENCE_ID=your-resend-audience-id
-BLOG_BEARER_TOKEN=your-blog-bearer-token
-COMPOSIO_KEY=your-composio-key
-COMPOSIO_WEBHOOK_SECRET=your-composio-webhook-secret
-SENTRY_DSN=your-sentry-dsn
-POSTHOG_API_KEY=your-posthog-api-key
+# Google OAuth (optional in dev)
+GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxx
+
+# AI (add what you need)
+OPENAI_API_KEY=sk-xxxx
+GOOGLE_API_KEY=AIza-xxxx
+
+# Search & Tools
+TAVILY_API_KEY=tvly-xxxx
+FIRECRAWL_API_KEY=fc-xxxx
+
+# Media
+CLOUDINARY_CLOUD_NAME=your-cloud
+CLOUDINARY_API_KEY=xxxx
+CLOUDINARY_API_SECRET=xxxx
+
+# Memory
+MEM0_API_KEY=m0xxxx
+MEM0_ORG_ID=org-xxxx
+MEM0_PROJECT_ID=proj-xxxx
+
+# Monitoring
+SENTRY_DSN=https://xxxx@sentry.io/xxxx
+POSTHOG_API_KEY=phc_xxxx
 ```
+</Accordion>
 
-## Web Environment Variables
+---
 
-<Note>Web envs are typically local and added as needed during build.</Note>
+## See Also
 
-```bash
-# Base url of the backend api
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1/
-
-# Optional blog token for admin blog actions
-NEXT_PUBLIC_BLOG_BEARER_TOKEN=your-blog-management-token-here
-```
-
-## See also
-
-- [Lazy Loading Env. Variables](/developers/extra/lazy-loading)
-- Production requirements: see `backend/app/config/settings.py` `ProductionSettings`
+- [Development Setup](/developers/development-setup)
+- [Lazy Loading](/developers/extra/lazy-loading) - How missing keys are handled
+- [Infisical Setup](/configuration/infisical-setup) - Secret management for production

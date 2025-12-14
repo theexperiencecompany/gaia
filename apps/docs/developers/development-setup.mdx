@@ -1,39 +1,35 @@
 ---
 title: "Development Setup"
-description: "How to set up your local development environment for GAIA."
+description: "How to set up your local development environment for GAIA"
 icon: "laptop-code"
 ---
 
 ## Who This Guide Is For
 
-This development setup guide is designed for:
-
 <CardGroup cols={2}>
   <Card title="Open Source Contributors" icon="git-alt">
-    Developers who want to contribute to the GAIA project by fixing bugs, adding
-    features, or improving documentation
+    Developers who want to contribute by fixing bugs, adding features, or improving documentation
   </Card>
   <Card title="Customizers" icon="wrench">
-    Developers who want to modify GAIA for their specific use cases or integrate
-    it with custom systems
+    Developers who want to modify GAIA for their specific use cases or integrate with custom systems
   </Card>
 </CardGroup>
 
-## Prerequisites
+---
 
-Before you begin, ensure you have the following installed:
+## Prerequisites
 
 <AccordionGroup>
   <Accordion icon="docker" title="Docker & Docker Compose">
     - Docker Desktop or Docker Engine
-    - Docker Compose
+    - Docker Compose v2+
     - At least 4GB of available RAM
     - 10GB of free disk space
   </Accordion>
+  
   <Accordion icon="code" title="Development Tools">
     - Git (for version control)
     - [mise](https://mise.jdx.dev) (task runner and tool manager)
-    - Docker & Docker Compose
   </Accordion>
 
   <Accordion icon="terminal" title="System Requirements">
@@ -43,117 +39,62 @@ Before you begin, ensure you have the following installed:
   </Accordion>
 </AccordionGroup>
 
-## Development Environment Setup
-
-Before running GAIA tasks, you need mise installed and activated. This section shows how to install it on different platforms and ensure it is available in your shell.
+---
 
 ## Install mise
 
+mise is required for all GAIA development.
+
 <Tabs>
-  <Tab title="macOS/Linux (curl)" icon="terminal">
-    ```bash
-    curl https://mise.run | sh
-    ```
-
-    Verify installation:
-
-    ```bash
-    ~/.local/bin/mise --version
-    ```
-  </Tab>
-
   <Tab title="macOS (Homebrew)" icon="leaf">
     ```bash
     brew install mise
     ```
+  </Tab>
 
+  <Tab title="macOS/Linux (curl)" icon="terminal">
     ```bash
-    mise --version
+    curl https://mise.run | sh
+    ```
+    
+    Add to PATH:
+    ```bash
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
     ```
   </Tab>
 
   <Tab title="Windows" icon="windows">
-    <Tabs>
-      <Tab title="winget">
-        ```powershell
-        winget install jdx.mise
-        ```
-      </Tab>
-
-      <Tab title="scoop">
-        ```powershell
-        scoop install mise
-        ```
-      </Tab>
-
-      <Tab title="choco">
-        ```powershell
-        choco install mise
-        ```
-      </Tab>
-    </Tabs>
-
     ```powershell
-    mise --version
+    winget install jdx.mise
     ```
-  </Tab>
-
-  <Tab title="Debian/Ubuntu (apt)" icon="debian">
-    <Tabs>
-      <Tab title="amd64">
-        ```bash
-        sudo apt update -y && sudo apt install -y curl
-        sudo install -dm 755 /etc/apt/keyrings
-        curl -fSs https://mise.jdx.dev/gpg-key.pub | sudo tee /etc/apt/keyrings/mise-archive-keyring.pub >/dev/null
-        echo "deb [signed-by=/etc/apt/keyrings/mise-archive-keyring.pub arch=amd64] https://mise.jdx.dev/deb stable main" | sudo tee /etc/apt/sources.list.d/mise.list
-        sudo apt update
-        sudo apt install -y mise
-        ```
-      </Tab>
-
-      <Tab title="arm64">
-        ```bash
-        sudo apt update -y && sudo apt install -y curl
-        sudo install -dm 755 /etc/apt/keyrings
-        curl -fSs https://mise.jdx.dev/gpg-key.pub | sudo tee /etc/apt/keyrings/mise-archive-keyring.pub >/dev/null
-        echo "deb [signed-by=/etc/apt/keyrings/mise-archive-keyring.pub arch=arm64] https://mise.jdx.dev/deb stable main" | sudo tee /etc/apt/sources.list.d/mise.list
-        sudo apt update
-        sudo apt install -y mise
-        ```
-      </Tab>
-    </Tabs>
-  </Tab>
-
-  <Tab title="Fedora / RHEL / CentOS (dnf)" icon="server">
-    ```bash
-    sudo dnf copr enable jdxcode/mise
-    sudo dnf install mise
-    ```
-  </Tab>
-
-  <Tab title="Snap" icon="box">
-    ```bash
-    sudo snap install mise --classic --beta
+    
+    Or via scoop/choco:
+    ```powershell
+    scoop install mise
+    # or
+    choco install mise
     ```
   </Tab>
 </Tabs>
 
+---
+
 ## Activate mise
 
-Add mise activation to your shell so GAIA commands work.
+Add mise activation to your shell:
 
 <Tabs>
-  <Tab title="bash">
-    ```bash
-    echo 'eval "$(mise activate bash)"' >> ~/.bashrc
-    source ~/.bashrc
-    ```
-  </Tab>
-
   <Tab title="zsh">
     ```bash
     echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
     source ~/.zshrc
+    ```
+  </Tab>
+
+  <Tab title="bash">
+    ```bash
+    echo 'eval "$(mise activate bash)"' >> ~/.bashrc
+    source ~/.bashrc
     ```
   </Tab>
 
@@ -162,175 +103,214 @@ Add mise activation to your shell so GAIA commands work.
     echo 'mise activate fish | source' >> ~/.config/fish/config.fish
     ```
   </Tab>
-
-  <Tab title="Windows (Powershell)">
-    ```powershell
-    $shimPath = "$env:USERPROFILE\AppData\Local\mise\shims"
-    $currentPath = [Environment]::GetEnvironmentVariable('Path','User')
-    $newPath = $currentPath + ";" + $shimPath
-    [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
-    ```
-  </Tab>
 </Tabs>
 
-## Verify mise is active
+Verify mise is working:
 
 ```bash
 mise doctor
 ```
-You should see that mise is activated. If not, restart your terminal.
 
 ---
 
-# Setup
+## Setup
 
 <Tabs>
-  <Tab title="Automated Setup (Recommended)" icon="rocket">
-    We use mise to automate the entire setup process. This is the recommended method for all users.
+  <Tab title="Automated (Recommended)" icon="rocket">
+    <Steps>
+      <Step title="Clone the repository">
+        ```bash
+        git clone https://github.com/heygaia/gaia.git
+        cd gaia
+        ```
+      </Step>
 
+      <Step title="Create environment files">
+        ```bash
+        cp apps/api/.env.example apps/api/.env
+        cp apps/web/.env.example apps/web/.env
+        ```
+        
+        Edit `apps/api/.env` with your secrets. See [Environment Variables](/configuration/environment-variables).
+      </Step>
 
-<Steps>
-  <Step title="Install mise">
-    Ensure mise is installed and activated before continuing.
-  </Step>
+      <Step title="Run setup">
+        ```bash
+        mise setup
+        ```
+        
+        This will:
+        - Check `.env` files exist
+        - Start Docker services
+        - Install Python 3.11 via mise
+        - Install API dependencies (uv sync)
+        - Install Node 22 via mise
+        - Install web dependencies (pnpm install)
+        - Seed AI models
+      </Step>
 
-  <Step title="Setup Environment Variables">
-    ```bash
-    cp apps/api/.env.example apps/api/.env
-    cp apps/web/.env.example apps/web/.env
-    ```
-    Then configure your environment variables by following the docs.
-  </Step>
-
-  <Step title="Run Setup">
-    ```bash
-    mise setup
-    ```
-
-    This will:
-    - check env files  
-    - start docker services  
-    - install Python  
-    - install backend dependencies  
-    - install Node 22 and web deps  
-    - seed models  
-  </Step>
-
-  <Step title="Start Development">
-    ```bash
-    mise dev:api
-    mise dev:web
-    mise dev
-    mise dev:full
-    ```
-
-    See all commands with `mise tasks`.
-  </Step>
-</Steps>
-
+      <Step title="Start development">
+        ```bash
+        mise dev
+        ```
+        
+        This starts:
+        - Docker services (databases, Redis, etc.)
+        - API server on `http://localhost:8000`
+        - Web app on `http://localhost:3000`
+      </Step>
+    </Steps>
   </Tab>
-
 
   <Tab title="Manual Setup" icon="wrench">
-    If you prefer to set up your environment manually or want more control, follow these steps.
+    For more control over the setup process.
 
+    <Steps>
+      <Step title="Clone and setup environment">
+        ```bash
+        git clone https://github.com/heygaia/gaia.git
+        cd gaia
+        cp apps/api/.env.example apps/api/.env
+        cp apps/web/.env.example apps/web/.env
+        ```
+      </Step>
 
-Environment Variables
+      <Step title="Start Docker services">
+        ```bash
+        docker compose -f infra/docker/docker-compose.yml up -d
+        ```
+        
+        Wait for all services to be healthy:
+        ```bash
+        docker compose -f infra/docker/docker-compose.yml ps
+        ```
+      </Step>
 
-<Steps>
-  <Step title="Copy Example Files">
+      <Step title="Install API dependencies">
+        ```bash
+        cd apps/api
+        uv sync
+        cd ../..
+        ```
+      </Step>
+
+      <Step title="Install web dependencies">
+        ```bash
+        cd apps/web
+        pnpm install
+        cd ../..
+        ```
+      </Step>
+
+      <Step title="Start development servers">
+        In separate terminals:
+        
+        ```bash
+        # Terminal 1: API
+        cd apps/api
+        mise dev
+        
+        # Terminal 2: Web
+        cd apps/web
+        mise dev
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Development Commands
+
+| Command | Description |
+|---------|-------------|
+| `mise dev` | Start API + web (recommended) |
+| `mise dev:api` | API server only |
+| `mise dev:web` | Web app only |
+| `mise dev:full` | API + web + ARQ worker |
+| `mise lint` | Lint all code |
+| `mise format` | Format all code |
+| `mise test` | Run all tests |
+
+See [Commands Reference](/developers/commands) for the complete list.
+
+---
+
+## Project Structure
+
+```
+gaia/
+├── apps/
+│   ├── api/           # FastAPI backend (Python)
+│   ├── web/           # Next.js frontend (TypeScript)
+│   └── docs/          # Documentation (Mintlify)
+├── packages/          # Shared packages
+├── infra/
+│   └── docker/        # Docker Compose files
+├── mise.toml          # Root task configuration
+└── nx.json            # Nx build configuration
+```
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="mise command not found">
+    Ensure mise is installed and activated in your shell:
+    ```bash
+    mise doctor
+    ```
+    
+    If not activated, re-run the activation step for your shell.
+  </Accordion>
+
+  <Accordion title="Docker services not starting">
+    Check Docker is running:
+    ```bash
+    docker ps
+    ```
+    
+    Check for port conflicts:
+    ```bash
+    lsof -i :5432  # PostgreSQL
+    lsof -i :6379  # Redis
+    lsof -i :8000  # API
+    ```
+  </Accordion>
+
+  <Accordion title="Missing environment variables">
+    Ensure `.env` files exist:
+    ```bash
+    ls apps/api/.env apps/web/.env
+    ```
+    
+    If missing, copy from examples:
     ```bash
     cp apps/api/.env.example apps/api/.env
     cp apps/web/.env.example apps/web/.env
     ```
-  </Step>
+  </Accordion>
 
-
-  <Step title="Fill in Your Secrets">
-    Edit both `.env` files with your own values.
-  </Step>
-</Steps>
-
-
-Backend Setup
-
-<Steps>
-  <Step title="Start Docker Services">
-    **All services**
-    ```bash
-    docker-compose up -d
-    ```
-
-
-**Backend only**
-```bash
-docker compose --profile backend-only up -d
-```
-
-  </Step>
-
-
-  <Step title="Create Virtual Environment">
-    ```bash
-    python3 -m venv .venv
-    source .venv/bin/activate
-    ```
-  </Step>
-
-
-  <Step title="Install Backend Dependencies">
+  <Accordion title="Python/Node version issues">
+    mise manages tool versions. Let it install them:
     ```bash
     mise install
     ```
-
-
-Or:
-```bash
-uv sync
-```
-
-  </Step>
-</Steps>
-
-
-Web Setup
-
-<Steps>
-  <Step title="Navigate to Web Directory">
+    
+    Check versions:
     ```bash
-    cd apps/web
+    mise current
     ```
-  </Step>
+  </Accordion>
+</AccordionGroup>
 
+---
 
-  <Step title="Install Web Dependencies">
-    ```bash
-    mise install
-    ```
+## Next Steps
 
-
-Or:
-```bash
-pnpm install
-```
-
-  </Step>
-
-
-  <Step title="Start Development Server">
-    ```bash
-    mise dev
-    ```
-  </Step>
-
-
-  <Step title="Return to Root">
-    ```bash
-    cd ..
-    ```
-  </Step>
-</Steps>
-
-
-  </Tab>
-</Tabs>
+- [Commands Reference](/developers/commands) - All available commands
+- [Environment Variables](/configuration/environment-variables) - Configure your setup
+- [Contributing](/developers/contributing) - How to contribute
+- [Code Style](/developers/code-style) - Coding standards

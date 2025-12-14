@@ -1,139 +1,221 @@
 ---
 title: "Docker"
-description: "Understanding GAIA's Docker setup, services, and profiles"
+description: "Understanding GAIA's Docker setup, services, and how it integrates with mise and Nx"
 icon: docker
 ---
 
-# Docker Configuration
+## Overview
 
-GAIA uses Docker Compose to orchestrate multiple services for development. Our setup includes the backend API, databases, message queues, and worker processes.
+GAIA uses Docker Compose to run databases and services locally. In most cases, you don't need to run Docker commands directly—**mise automatically starts Docker** when you run development commands.
+
+<Note>
+Docker files are located in `infra/docker/`. The setup uses Nx to manage Docker as a project with its own targets.
+</Note>
+
+---
 
 ## Quick Start
 
-Start all services:
+### Recommended: Use mise
 
 ```bash
-docker compose up
+mise dev          # Starts Docker + API + web
+mise dev:api      # Starts Docker + API only
+mise dev:web      # Starts Docker + web only
 ```
 
-Start only backend services:
+mise automatically runs `nx run docker:docker:up` before starting dev servers.
+
+### Manual Docker Control
+
+If you need direct Docker control:
 
 ```bash
-docker compose --profile backend-only up
+# Start all services
+docker compose -f infra/docker/docker-compose.yml up -d
+
+# Stop services
+docker compose -f infra/docker/docker-compose.yml down
+
+# View logs
+docker compose -f infra/docker/docker-compose.yml logs -f
 ```
 
-## Service Architecture
+### Using Nx Docker Commands
 
-### Core Services
+```bash
+# Start Docker services via Nx
+npx nx run docker:docker:up
 
-**gaia-backend** - Main FastAPI application
+# Stop Docker services
+npx nx run docker:docker:down
+```
 
-- Port: `8000:80`
-- Auto-reload enabled for development
-- Depends on all database services
+---
 
-**postgres** - Primary database
+## Services
 
-- Port: `5432:5432`
-- Credentials: `postgres/postgres`
+### Core Databases
 
-**redis** - Caching and task queue
+| Service | Port | Description |
+|---------|------|-------------|
+| **postgres** | `5432` | PostgreSQL database (user: `postgres`, pass: `postgres`) |
+| **mongo** | `27017` | MongoDB for document storage |
+| **redis** | `6379` | Redis for caching and task queue |
+| **chromadb** | `8080:8000` | Vector database for embeddings |
+| **rabbitmq** | `5672`, `15672` | Message broker (AMQP + Management UI) |
 
-- Port: `6379:6379`
+### Application Services (Profile-based)
 
-**chromadb** - Vector database for embeddings
-
-- Port: `8080:8000`
-
-**mongo** - Document storage
-
-- Port: `27017:27017`
-
-### Worker Services
-
-**arq_worker** - Background job processing
-
-- Uses Redis for task queue
-- Environment: `WORKER_TYPE=arq_worker`
-
-**rabbitmq** - Message broker
-
-- AMQP Port: `5672:5672`
-- Management UI: `15672:15672`
+| Service | Profile | Description |
+|---------|---------|-------------|
+| **gaia-backend** | `backend`, `all` | FastAPI application on port 8000 |
+| **arq_worker** | `worker`, `all` | Background job processor |
 
 ### Development Tools
 
-**mongo_express** - MongoDB web interface
+| Service | Port | Description |
+|---------|------|-------------|
+| **mongo_express** | `8081` | MongoDB web UI (admin/password) |
 
-- Port: `8081:8081`
-- Credentials: `admin/password`
+---
 
 ## Profiles
 
-Docker Compose profiles let you run specific service groups:
+Docker profiles allow running specific service groups:
 
-### Default Profile (Empty)
+### Default (No Profile)
 
-Runs all services including web, backend, databases, workers, and development tools:
-
-```bash
-docker compose up
-```
-
-### Backend Only
-
-Runs backend services, databases, workers, and development tools - excludes the web:
+Runs only infrastructure services (databases, queues):
 
 ```bash
-docker compose --profile backend-only up
+docker compose -f infra/docker/docker-compose.yml up -d
 ```
 
-<Note>
-  The `backend-only` profile is recommended for development when you want to run
-  the web manually with `mise dev` for faster hot reloading.
-</Note>
+### Backend Profile
 
-## Health Checks
+Adds the FastAPI application to infrastructure:
 
-All services include health checks for reliable startup:
+```bash
+docker compose -f infra/docker/docker-compose.yml --profile backend up -d
+```
 
-- **Backend**: HTTP health endpoint
-- **Databases**: Connection tests
-- **Workers**: Service status checks
+### All Profile
+
+Runs everything including workers:
+
+```bash
+docker compose -f infra/docker/docker-compose.yml --profile all up -d
+```
+
+<Tip>
+For development, we recommend running databases in Docker and the API/web locally with mise for faster hot-reloading.
+</Tip>
+
+---
+
+## Production Setup
+
+For production, use `docker-compose.prod.yml`:
+
+```bash
+docker compose -f infra/docker/docker-compose.prod.yml up -d
+```
+
+Key differences:
+- Uses pre-built images from GHCR
+- No volume mounts for source code
+- Optimized for stability over development speed
+
+---
 
 ## Data Persistence
 
-Persistent volumes maintain data across container restarts:
+Named volumes preserve data across restarts:
 
-- `chroma_data` - Vector embeddings
-- `pgdata` - PostgreSQL data
-- `redis_data` - Redis cache
-- `mongo_data` - MongoDB documents
-- `rabbitmq_data` - Message queue data
+| Volume | Purpose |
+|--------|---------|
+| `chroma_data` | Vector embeddings |
+| `pgdata` | PostgreSQL data |
+| `redis_data` | Redis cache |
+| `mongo_data` | MongoDB documents |
+| `rabbitmq_data` | Message queue state |
+
+### Reset All Data
+
+```bash
+docker compose -f infra/docker/docker-compose.yml down -v
+```
+
+<Warning>
+This deletes all local data including the database. Use with caution.
+</Warning>
+
+---
+
+## Health Checks
+
+All services include health checks:
+
+- **Databases**: Connection/ping tests
+- **Backend**: HTTP `/health` endpoint
+- **RabbitMQ**: `rabbitmqctl status`
+
+Check service health:
+
+```bash
+docker compose -f infra/docker/docker-compose.yml ps
+```
+
+---
 
 ## Common Commands
 
-**View logs:**
-
 ```bash
-docker compose logs -f [service-name]
+# View logs for specific service
+docker compose -f infra/docker/docker-compose.yml logs -f postgres
+
+# Rebuild a service
+docker compose -f infra/docker/docker-compose.yml build gaia-backend
+
+# Restart a single service
+docker compose -f infra/docker/docker-compose.yml restart redis
+
+# Execute command in container
+docker compose -f infra/docker/docker-compose.yml exec mongo mongosh
 ```
 
-**Rebuild services:**
+---
 
-```bash
-docker compose build
-```
+## Troubleshooting
 
-**Clean restart:**
+<AccordionGroup>
+  <Accordion title="Port already in use">
+    Another service is using the port. Stop it or change the port mapping in docker-compose.yml:
+    ```bash
+    lsof -i :8000  # Find what's using port 8000
+    ```
+  </Accordion>
+  
+  <Accordion title="Container won't start">
+    Check logs for the failing service:
+    ```bash
+    docker compose -f infra/docker/docker-compose.yml logs postgres
+    ```
+  </Accordion>
+  
+  <Accordion title="Database connection refused">
+    Ensure containers are healthy:
+    ```bash
+    docker compose -f infra/docker/docker-compose.yml ps
+    ```
+    Wait for `healthy` status before connecting.
+  </Accordion>
+</AccordionGroup>
 
-```bash
-docker compose down -v
-docker compose up
-```
+---
 
-**Stop all services:**
+## See Also
 
-```bash
-docker compose down
-```
+- [Development Setup](/developers/development-setup)
+- [Commands Reference](/developers/commands)
