@@ -67,7 +67,6 @@
     "@mdx-js/loader": "^3.1.0",
     "@mdx-js/react": "^3.1.0",
     "@microsoft/fetch-event-source": "^2.0.1",
-    "@next/bundle-analyzer": "^15.5.0",
     "@next/mdx": "^15.5.0",
     "@next/third-parties": "^15.5.0",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -209,6 +208,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.7",
+    "@next/bundle-analyzer": "^15.5.9",
     "@types/dagre": "^0.7.53",
     "@types/node": "^24.3.0",
     "@types/react": "^19.1.11",
