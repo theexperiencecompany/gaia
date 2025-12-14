@@ -77,6 +77,7 @@
 		"wix.vscode-import-cost",
 		"xabikos.javascriptsnippets",
 		"yoavbls.pretty-ts-errors",
-		"yzhang.markdown-all-in-one"
+		"yzhang.markdown-all-in-one",
+		"expo.vscode-expo-tools"
 	]
 }

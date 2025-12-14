@@ -1,0 +1,37 @@
+# Mobile mise.toml for GAIA
+# Minimal setup for React Native/Expo app
+
+[tools]
+node = "22"
+
+[tasks.dev]
+description = "Start Expo development server"
+run = "pnpm start"
+
+[tasks.android]
+description = "Run on Android"
+run = "pnpm android"
+
+[tasks.ios]
+description = "Run on iOS"
+run = "pnpm ios"
+
+[tasks.web]
+description = "Run on Web"
+run = "pnpm web"
+
+[tasks.deps]
+description = "Install dependencies"
+run = "pnpm install"
+
+[tasks.lint]
+description = "Run linter"
+run = "pnpm lint"
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "rm -rf .expo node_modules"
+
+[tasks."clean:cache"]
+description = "Clear Expo cache"
+run = "pnpm start -c"

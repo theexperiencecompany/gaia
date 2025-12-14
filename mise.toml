@@ -22,7 +22,7 @@ MISE_NODE_COREPACK = "1"
 postinstall = "pnpm install"
 
 [settings]
-npm.package_manager = "pnpm" # Use pnpm as the package manager
+# npm.package_manager = "pnpm" # Use pnpm as the package manager
 experimental = true # Can setup hooks and advanced features
 
 # Development Tasks
@@ -42,6 +42,10 @@ run = "mise worker"
 [tasks."dev:docs"]
 description = "Run ONLY docs"
 run = "nx dev docs"
+
+[tasks."dev:mobile"]
+description = "Run ONLY mobile app"
+run = "nx dev mobile"
 
 [tasks."dev:full"]
 description = "Run API + web + arq in parallel (starts Docker automatically)"
@@ -101,6 +105,10 @@ run = "nx lint api"
 [tasks."lint:web"]
 description = "Lint web only"
 run = "nx lint web"
+
+[tasks."lint:mobile"]
+description = "Lint mobile only"
+run = "nx lint mobile"
 
 [tasks."lint:affected"]
 description = "Lint only affected projects (parallel with caching)"
