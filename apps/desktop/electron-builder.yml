@@ -37,7 +37,7 @@ extraResources:
 mac:
   category: public.app-category.productivity
   icon: resources/icons/icon.icns
-  artifactName: "${productName}-${version}-${arch}.${ext}"
+  artifactName: "${productName}-${arch}.${ext}"
   target:
     - target: dmg
       arch:
@@ -65,7 +65,7 @@ dmg:
 
 win:
   icon: resources/icons/icon.ico
-  artifactName: "${productName}-${version}-${arch}.${ext}"
+  artifactName: "${productName}-${arch}.${ext}"
   target:
     - target: nsis
       arch:
@@ -85,7 +85,7 @@ nsis:
 
 linux:
   icon: resources/icons
-  artifactName: "${productName}-${version}-${arch}.${ext}"
+  artifactName: "${productName}-${arch}.${ext}"
   target:
     - target: AppImage
       arch:
