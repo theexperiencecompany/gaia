@@ -1,7 +1,6 @@
 import "./styles/globals.css";
 import "./styles/tailwind.css";
 
-import { Databuddy } from "@databuddy/sdk/react";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata, Viewport } from "next";
@@ -174,28 +173,6 @@ export default function RootLayout({
 
         <VercelAnalytics />
         <AnalyticsLayout />
-
-        {process.env.NEXT_PUBLIC_DATABUDDY_CLIENT_ID && (
-          <Suspense fallback={undefined}>
-            <Databuddy
-              clientId={process.env.NEXT_PUBLIC_DATABUDDY_CLIENT_ID}
-              trackHashChanges
-              trackAttributes
-              trackOutgoingLinks
-              trackInteractions
-              trackEngagement
-              trackScrollDepth
-              trackExitIntent
-              trackBounceRate
-              trackWebVitals
-              trackErrors
-              enableBatching
-              batchSize={20}
-              batchTimeout={5000}
-              disabled={process.env.NODE_ENV === "development"}
-            />
-          </Suspense>
-        )}
       </body>
     </html>
   );
