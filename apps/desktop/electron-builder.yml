@@ -24,6 +24,9 @@ extraResources:
   # Splash screen for fast startup
   - from: resources/splash.html
     to: splash.html
+  # Experience Company logo for splash screen
+  - from: resources/the_experience_company_white.webp
+    to: the_experience_company_white.webp
   # Use .next-server-prepared which has dereferenced symlinks (created by scripts/prepare-next-server.sh)
   - from: .next-server-prepared
     to: next-server

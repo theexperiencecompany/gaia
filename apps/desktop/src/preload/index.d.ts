@@ -7,6 +7,7 @@ declare global {
       getPlatform: () => Promise<NodeJS.Platform>;
       getVersion: () => Promise<string>;
       isElectron: boolean;
+      signalReady: () => void;
     };
   }
 }

@@ -1,0 +1,1 @@
+export { ElectronRouteGuard } from "./ElectronRouteGuard";

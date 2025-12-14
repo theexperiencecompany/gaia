@@ -11,6 +11,9 @@ const api = {
   
   // Check if running in Electron
   isElectron: true,
+  
+  // Signal that the renderer is ready (for splash screen)
+  signalReady: (): void => ipcRenderer.send('window-ready'),
 };
 
 // Use `contextBridge` APIs to expose Electron APIs to
