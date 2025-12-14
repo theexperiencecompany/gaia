@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 
 import {
+  BlushBrush02Icon,
   BookOpen02Icon,
   CreditCardPosIcon,
   DiscordIcon,
@@ -130,12 +131,14 @@ export const appConfig = {
         href: "/manifesto",
         label: "Manifesto",
         icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
-        description: "Learn about our mission",
+        description: "about our mission",
       },
       {
         href: "/brand",
-        label: "Brand",
-        icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
+        label: "Branding",
+        icon: (
+          <BlushBrush02Icon width={20} height={20} color={"currentColor"} />
+        ),
         description: "Brand guidelines and downloadable assets",
       },
       {

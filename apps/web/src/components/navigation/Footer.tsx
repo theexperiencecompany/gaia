@@ -97,11 +97,11 @@ export default function Footer() {
 
                 <Link href={"https://twitter.com/madebyexp"}>
                   <Image
-                    src="/images/logos/the_experience_company_white.webp"
-                    className="my-5"
+                    src="/brand/experience_logo_white.svg"
+                    className="my-2"
                     alt="The Experience Company Logo"
-                    width={700}
-                    height={100}
+                    width={70}
+                    height={70}
                   />
                 </Link>
 
