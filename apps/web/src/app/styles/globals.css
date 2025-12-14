@@ -22,6 +22,11 @@ main {
   overflow-x: hidden;
 }
 
+textarea,
+input {
+  outline: 0 transparent;
+}
+
 code {
   border-radius: 10px;
   font-family: monospace;

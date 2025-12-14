@@ -1,6 +1,11 @@
 import bundleAnalyzer from "@next/bundle-analyzer";
 import createMDX from "@next/mdx";
 import { withSentryConfig } from "@sentry/nextjs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
@@ -11,6 +16,10 @@ const nextConfig = {
   // Enable standalone output for Electron desktop app bundling
   // This creates a minimal production server with all dependencies
   output: 'standalone',
+  // Explicitly set turbopack workspace root to silence inference warning
+  turbopack: {
+    root: path.join(__dirname, '../..'),
+  },
   experimental: {
     optimizePackageImports: [
       "mermaid",
@@ -102,12 +111,13 @@ export default withSentryConfig(withBundleAnalyzer(withMDX(nextConfig)), {
   // side errors will fail.
   // tunnelRoute: "/monitoring",
 
-  // Automatically tree-shake Sentry logger statements to reduce bundle size
-  disableLogger: true,
-
-  // Enables automatic instrumentation of Vercel Cron Monitors. (Does not yet work with App Router route handlers.)
-  // See the following for more information:
-  // https://docs.sentry.io/product/crons/
-  // https://vercel.com/docs/cron-jobs
-  automaticVercelMonitors: true,
+  // New webpack-based configuration for Sentry options
+  webpack: {
+    // Automatically tree-shake Sentry logger statements to reduce bundle size
+    treeshake: {
+      removeDebugLogging: true,
+    },
+    // Enables automatic instrumentation of Vercel Cron Monitors
+    automaticVercelMonitors: true,
+  },
 });

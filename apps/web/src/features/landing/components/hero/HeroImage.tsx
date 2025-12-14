@@ -18,7 +18,7 @@ export default function HeroImage({
         fill
         priority
         sizes="100vw"
-        onLoadingComplete={() => setInitialLoaded(true)}
+        onLoad={() => setInitialLoaded(true)}
         className={`object-cover duration-200 ${initialloaded || !shouldHaveInitialFade ? "opacity-100" : "opacity-0"} transition`}
       />
 
@@ -28,7 +28,7 @@ export default function HeroImage({
         alt="wallpaper png"
         fill
         sizes="100vw"
-        onLoadingComplete={() => setLoaded(true)}
+        onLoad={() => setLoaded(true)}
         className={`object-cover transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
       />
     </div>
