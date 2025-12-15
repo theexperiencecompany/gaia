@@ -21,7 +21,7 @@ export { ModelSelector } from './components/model-selector';
 export { SuggestionCard } from './components/suggestion-card';
 
 // Hooks
-export { useChat, useSidebar } from './hooks';
+export { useChat, useSidebar, ChatProvider, useChatContext } from './hooks';
 
 // Types
 export type { ChatSession, ChatState, Message, Suggestion } from './types';

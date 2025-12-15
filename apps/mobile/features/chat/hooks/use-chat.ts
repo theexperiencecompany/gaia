@@ -1,17 +1,30 @@
 /**
  * useChat Hook
- * Manages chat state and message handling
+ * Manages chat state and message handling per chatId
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList } from 'react-native';
 import { getAIResponse } from '../services/ai-service';
 import { Message } from '../types';
 
-export function useChat() {
+// Global store for all chat messages, keyed by chatId
+const chatMessagesStore: Record<string, Message[]> = {};
+
+export function useChat(chatId: string | null) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isTyping, setIsTyping] = useState(false);
     const flatListRef = useRef<FlatList>(null);
+
+    // Load messages for the current chatId
+    useEffect(() => {
+        if (chatId) {
+            const chatMessages = chatMessagesStore[chatId] || [];
+            setMessages(chatMessages);
+        } else {
+            setMessages([]);
+        }
+    }, [chatId]);
 
     const scrollToBottom = useCallback(() => {
         if (messages.length > 0) {
@@ -22,6 +35,11 @@ export function useChat() {
     }, [messages.length]);
 
     const sendMessage = useCallback(async (text: string) => {
+        if (!chatId) {
+            console.warn('Cannot send message without an active chatId');
+            return;
+        }
+
         // Add user message
         const userMessage: Message = {
             id: Date.now().toString(),
@@ -30,12 +48,15 @@ export function useChat() {
             timestamp: new Date(),
         };
 
-        setMessages(prev => [...prev, userMessage]);
+        // Update local state and store
+        const updatedMessages = [...(chatMessagesStore[chatId] || []), userMessage];
+        chatMessagesStore[chatId] = updatedMessages;
+        setMessages(updatedMessages);
         setIsTyping(true);
 
         try {
-            // Get AI response
-            const aiResponseText = await getAIResponse(text);
+            // Get AI response with chatId
+            const aiResponseText = await getAIResponse(text, chatId);
 
             const aiMessage: Message = {
                 id: (Date.now() + 1).toString(),
@@ -44,24 +65,22 @@ export function useChat() {
                 timestamp: new Date(),
             };
 
-            setMessages(prev => [...prev, aiMessage]);
+            // Update local state and store
+            const finalMessages = [...updatedMessages, aiMessage];
+            chatMessagesStore[chatId] = finalMessages;
+            setMessages(finalMessages);
         } catch (error) {
             console.error('Error getting AI response:', error);
         } finally {
             setIsTyping(false);
         }
-    }, []);
-
-    const clearMessages = useCallback(() => {
-        setMessages([]);
-    }, []);
+    }, [chatId]);
 
     return {
         messages,
         isTyping,
         flatListRef,
         sendMessage,
-        clearMessages,
         scrollToBottom,
     };
 }

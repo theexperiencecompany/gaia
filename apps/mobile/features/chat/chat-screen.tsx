@@ -21,18 +21,20 @@ import { ChatEmptyState } from './components/chat-empty-state';
 import { ChatHeader } from './components/chat-header';
 import { DEFAULT_SUGGESTIONS } from './data/suggestions';
 import { useChat, useSidebar } from './hooks';
+import { useChatContext } from './hooks/use-chat-context';
 import { Sidebar } from './sidebar';
 import { Message } from './types';
 
 export function ChatScreen() {
+  const { activeChatId, setActiveChatId, createNewChat } = useChatContext();
+  
   const {
     messages,
     isTyping,
     flatListRef,
     sendMessage,
-    clearMessages,
     scrollToBottom,
-  } = useChat();
+  } = useChat(activeChatId);
 
   const {
     isSidebarOpen,
@@ -46,12 +48,12 @@ export function ChatScreen() {
   }, [messages.length, scrollToBottom]);
 
   const handleSelectChat = (chatId: string) => {
-    console.log('Selected chat:', chatId);
+    setActiveChatId(chatId);
     closeSidebar();
   };
 
   const handleNewChat = () => {
-    clearMessages();
+    createNewChat();
     closeSidebar();
   };
 

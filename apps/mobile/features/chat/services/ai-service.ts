@@ -5,10 +5,19 @@
 
 /**
  * Mock AI response function - replace with actual AI integration
+ * @param userMessage - The user's message
+ * @param chatId - The chat session ID for backend context
  */
-export const getAIResponse = async (userMessage: string): Promise<string> => {
+export const getAIResponse = async (userMessage: string, chatId: string): Promise<string> => {
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // In production, send chatId to backend:
+    // const response = await fetch('/api/chat', {
+    //   method: 'POST',
+    //   body: JSON.stringify({ message: userMessage, chatId }),
+    // });
+    // return response.json();
 
     // Simple mock responses
     const responses = [

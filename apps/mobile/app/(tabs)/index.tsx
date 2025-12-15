@@ -1,13 +1,17 @@
 import { ChatScreen } from '@/features/chat/chat-screen';
+import { ChatProvider } from '@/features/chat/hooks/use-chat-context';
 import { ChatTheme } from '@/shared/constants/chat-theme';
 import React from 'react';
-import { SafeAreaView, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function App() {
   return (
-    <SafeAreaView style={styles.container}>
-      <ChatScreen />
-    </SafeAreaView>
+    <ChatProvider>
+      <SafeAreaView style={styles.container}>
+        <ChatScreen />
+      </SafeAreaView>
+    </ChatProvider>
   );
 }
 

@@ -7,6 +7,7 @@ import { ChatTheme } from '@/shared/constants/chat-theme';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useChatContext } from './hooks/use-chat-context';
 
 interface ChatHistoryItem {
   id: string;
@@ -26,6 +27,7 @@ interface CategorySectionProps {
   isExpanded: boolean;
   onToggle: () => void;
   onSelectChat: (chatId: string) => void;
+  activeChatId: string | null;
 }
 
 // Mock data - replace with actual chat history
@@ -50,7 +52,7 @@ const allTimeChats: ChatHistoryItem[] = [
   { id: 'a6', title: 'this is random chat', timestamp: new Date() },
 ];
 
-function CategorySection({ title, items, isExpanded, onToggle, onSelectChat }: CategorySectionProps) {
+function CategorySection({ title, items, isExpanded, onToggle, onSelectChat, activeChatId }: CategorySectionProps) {
   return (
     <View style={styles.categorySection}>
       <TouchableOpacity style={styles.categoryHeader} onPress={onToggle}>
@@ -62,27 +64,31 @@ function CategorySection({ title, items, isExpanded, onToggle, onSelectChat }: C
         />
       </TouchableOpacity>
       
-      {isExpanded && items.map((item) => (
-        <TouchableOpacity
-          key={item.id}
-          style={styles.historyItem}
-          onPress={() => onSelectChat(item.id)}
-        >
-          <Ionicons 
-            name={item.isStarred ? "star" : "chatbubble-outline"} 
-            size={16} 
-            color={ChatTheme.textSecondary} 
-          />
-          <Text style={styles.historyItemText} numberOfLines={1}>
-            {item.title}
-          </Text>
-        </TouchableOpacity>
-      ))}
+      {isExpanded && items.map((item) => {
+        const isActive = item.id === activeChatId;
+        return (
+          <TouchableOpacity
+            key={item.id}
+            style={[styles.historyItem, isActive && styles.historyItemActive]}
+            onPress={() => onSelectChat(item.id)}
+          >
+            <Ionicons 
+              name={item.isStarred ? "star" : "chatbubble-outline"} 
+              size={16} 
+              color={isActive ? ChatTheme.accent : ChatTheme.textSecondary} 
+            />
+            <Text style={[styles.historyItemText, isActive && styles.historyItemTextActive]} numberOfLines={1}>
+              {item.title}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
 
 export function ChatHistory({ onSelectChat, onNewChat }: ChatHistoryProps) {
+  const { activeChatId } = useChatContext();
   const [expandedSections, setExpandedSections] = useState({
     starred: true,
     today: true,
@@ -110,6 +116,7 @@ export function ChatHistory({ onSelectChat, onNewChat }: ChatHistoryProps) {
           isExpanded={expandedSections.starred}
           onToggle={() => toggleSection('starred')}
           onSelectChat={onSelectChat}
+          activeChatId={activeChatId}
         />
       )}
 
@@ -121,6 +128,7 @@ export function ChatHistory({ onSelectChat, onNewChat }: ChatHistoryProps) {
           isExpanded={expandedSections.today}
           onToggle={() => toggleSection('today')}
           onSelectChat={onSelectChat}
+          activeChatId={activeChatId}
         />
       )}
 
@@ -132,6 +140,7 @@ export function ChatHistory({ onSelectChat, onNewChat }: ChatHistoryProps) {
           isExpanded={expandedSections.yesterday}
           onToggle={() => toggleSection('yesterday')}
           onSelectChat={onSelectChat}
+          activeChatId={activeChatId}
         />
       )}
 
@@ -143,6 +152,7 @@ export function ChatHistory({ onSelectChat, onNewChat }: ChatHistoryProps) {
           isExpanded={expandedSections.allTime}
           onToggle={() => toggleSection('allTime')}
           onSelectChat={onSelectChat}
+          activeChatId={activeChatId}
         />
       )}
     </ScrollView>
@@ -202,10 +212,20 @@ const styles = StyleSheet.create({
     paddingVertical: ChatTheme.spacing.sm,
     gap: ChatTheme.spacing.sm,
   },
+  historyItemActive: {
+    backgroundColor: ChatTheme.messageBackground,
+    borderLeftWidth: 3,
+    borderLeftColor: ChatTheme.accent,
+  },
   historyItemText: {
     flex: 1,
     color: ChatTheme.textPrimary,
     fontSize: ChatTheme.fontSize.md,
     fontFamily: ChatTheme.fonts.regular,
+  },
+  historyItemTextActive: {
+    color: ChatTheme.accent,
+    fontWeight: '600',
+    fontFamily: ChatTheme.fonts.semibold,
   },
 });
