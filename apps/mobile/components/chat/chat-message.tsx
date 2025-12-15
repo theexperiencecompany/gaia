@@ -57,7 +57,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
     >
       {!message.isUser && (
         <Image
-          source={require('@/assets/logo/logo.webp')}
+          source={require('@/assets/logo/logo.svg')}
           style={styles.aiIconContainer}
           resizeMode="contain"
         />
