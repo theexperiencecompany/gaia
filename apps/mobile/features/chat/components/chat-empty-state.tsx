@@ -24,7 +24,7 @@ export function ChatEmptyState({ suggestions, onSuggestionPress }: ChatEmptyStat
       <View style={styles.welcomeSection}>
         <View style={styles.logoContainer}>
           <Image
-            source={require('@/assets/logo/logo.svg')}
+            source={require('@/assets/logo/logo.webp')}
             style={styles.logo}
             resizeMode="contain"
           />
