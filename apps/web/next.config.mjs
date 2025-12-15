@@ -117,3 +117,5 @@ export default withSentryConfig(withBundleAnalyzer(withMDX(nextConfig)), {
     automaticVercelMonitors: true,
   },
 });
+
+console.log(nextConfig);

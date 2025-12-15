@@ -1,5 +1,5 @@
-import { ChatScreen } from '@/components/chat/chat-screen';
-import { ChatTheme } from '@/constants/chat-theme';
+import { ChatScreen } from '@/features/chat/chat-screen';
+import { ChatTheme } from '@/shared/constants/chat-theme';
 import React from 'react';
 import { SafeAreaView, StyleSheet } from 'react-native';
 

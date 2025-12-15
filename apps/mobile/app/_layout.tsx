@@ -7,7 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useColorScheme } from '@/shared/hooks/use-color-scheme';
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
