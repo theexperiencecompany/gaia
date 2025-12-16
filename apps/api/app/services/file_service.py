@@ -10,18 +10,17 @@ from typing import Any, Dict, List, Optional
 
 import cloudinary
 import cloudinary.uploader
-from fastapi import HTTPException, UploadFile
-from langchain_core.documents import Document
-
 from app.config.loggers import app_logger as logger
-from app.db.chromadb import ChromaClient
+from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection
-from app.decorators.caching import Cacheable, CacheInvalidator
 from app.db.utils import serialize_document
+from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.files_models import DocumentSummaryModel
 from app.models.message_models import FileData
 from app.utils.embedding_utils import search_documents_by_similarity
 from app.utils.file_utils import generate_file_summary
+from fastapi import HTTPException, UploadFile
+from langchain_core.documents import Document
 
 
 @CacheInvalidator(

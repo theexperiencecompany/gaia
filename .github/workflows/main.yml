@@ -45,9 +45,11 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install API dependencies
-        run: uv sync --frozen --all-extras
-        working-directory: apps/api
+      - name: Install dependencies
+        run: uv sync --frozen --group backend --group dev
+
+      - name: Install prek
+        run: uv tool install prek
 
       - name: Install mypy types
         run: uv run mypy --install-types --non-interactive
@@ -79,4 +81,4 @@ jobs:
     needs: [quality-checks]
     if: github.ref == 'refs/heads/master'
     uses: ./.github/workflows/build.yml
-    secrets: inherit
+    secrets: inherit # pragma: allowlist secret

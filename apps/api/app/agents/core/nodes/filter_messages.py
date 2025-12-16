@@ -28,8 +28,7 @@ def create_filter_messages_node(
             If False, It filters out all the messages having empty names.
         remove_system_messages: If True, removes all system messages from the conversation.
             Except those marked as memory messages if allow_memory_system_messages is True.
-            When this is True, make sure to add SystemMessage after this hook is executed if SystemMessage
-            is required for the agent to function properly.
+            When this is True, make sure to add SystemMessage after this hook is executed if SystemMessage is required for the agent to function properly.
     Returns:
         A callable node that filters messages in the conversation state.
     """
@@ -48,14 +47,9 @@ def create_filter_messages_node(
             allowed_tool_messages_ids = set()
             filtered_messages = []
 
-            # Separate system messages for removal and keep others
             for msg in state["messages"]:
-                # Version-based filtering logic
                 visible_to = msg.additional_kwargs.get("visible_to", set())
                 is_from_target_agent = agent_name in visible_to
-
-                # Note: ToolMessage doesn't have 'name' attribute like other messages
-                # So we are allowing all tool messages that are invoked by AI messages
 
                 # Check if message is an allowed tool message
                 is_allowed_tool_message = (

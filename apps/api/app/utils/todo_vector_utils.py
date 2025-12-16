@@ -4,7 +4,7 @@ from typing import List, Optional
 from bson import ObjectId
 
 from app.config.loggers import todos_logger as logger
-from app.db.chromadb import ChromaClient
+from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import todos_collection
 from app.db.utils import serialize_document
 from app.models.todo_models import TodoResponse

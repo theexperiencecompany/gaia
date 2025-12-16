@@ -8,7 +8,7 @@ import { InboxIcon, QuillWrite01Icon } from "@/icons";
 
 type MailItem = {
   label: string;
-  icon: React.ElementType;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
 };
 
 const mailItems: MailItem[] = [
@@ -22,7 +22,7 @@ const mailItems: MailItem[] = [
 
 type MailButtonProps = {
   label: string;
-  Icon: React.ElementType;
+  Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
 };
 
 function MailButton({ label, Icon }: MailButtonProps) {

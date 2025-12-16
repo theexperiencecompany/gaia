@@ -186,26 +186,31 @@ You are the intelligent executor of this workflow. Each step represents an exter
    - You handle all analysis, summarization, and decision-making inherently
 
 **PROVIDER-SPECIFIC TOOL ROUTING:**
-For specialized provider services, ALWAYS use handoff tools instead of any manual tool retrieval or execution:
-• Gmail/Email tools (GMAIL_*, email, mail, compose, send) → Use `call_gmail_agent`
-• Notion tools (NOTION_*, notion, workspace, page, database) → Use `call_notion_agent`
-• Twitter tools (TWITTER_*, twitter, social, tweet, post) → Use `call_twitter_agent`
-• LinkedIn tools (LINKEDIN_*, linkedin, professional, network) → Use `call_linkedin_agent`
-• Calendar tools (create_calendar_event, fetch_calendar_*, search_calendar_*, edit_calendar_*, delete_calendar_*, view_calendar_*) → Use `call_calendar_agent`
+For specialized provider services, use the `handoff` tool to delegate to expert subagents:
+• Gmail/Email operations → `handoff(subagent_id="gmail", task="...")`
+• Notion operations → `handoff(subagent_id="notion", task="...")`
+• Twitter operations → `handoff(subagent_id="twitter", task="...")`
+• LinkedIn operations → `handoff(subagent_id="linkedin", task="...")`
+• Calendar operations → `handoff(subagent_id="google_calendar", task="...")`
 
-**CRITICAL EXECUTION RULES:**
-1. **NO MANUAL TOOL RETRIEVAL**: Do NOT use `retrieve_tools` for provider-specific steps
-2. **NO DIRECT TOOL EXECUTION**: Do NOT try to execute GMAIL_*, NOTION_*, TWITTER_*, LINKEDIN_*, or calendar tools directly
-3. **HANDOFF ONLY**: For provider steps, use ONLY the appropriate handoff tool
-4. **PASS SPECIFIC TOOL INFO**: When using handoff tools, include the EXACT tool name and step details
+**TOOL DISCOVERY:**
+1. `retrieve_tools(query="...")` - Discover tools matching your intent
+2. `retrieve_tools(exact_tool_names=[...])` - Load specific tools from discovery
+3. `handoff(subagent_id, task)` - Delegate to subagents
+
+**EXECUTION RULES:**
+1. Use `retrieve_tools(query="...")` first to discover options
+2. Load tools with `retrieve_tools(exact_tool_names=[...])` using exact names from discovery
+3. Use `handoff` for provider-specific operations (gmail, notion, calendar, etc.)
+4. Never execute GMAIL_*, NOTION_*, TWITTER_*, LINKEDIN_*, or calendar tools directly
 
 **Execution Approach:**
 For each workflow step:
-- If step involves Gmail/email → `call_gmail_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
-- If step involves Notion → `call_notion_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
-- If step involves Twitter → `call_twitter_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
-- If step involves LinkedIn → `call_linkedin_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
-- If step involves Calendar → `call_calendar_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
+- If step involves Gmail/email → `handoff(subagent_id="gmail", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
+- If step involves Notion → `handoff(subagent_id="notion", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
+- If step involves Twitter → `handoff(subagent_id="twitter", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
+- If step involves LinkedIn → `handoff(subagent_id="linkedin", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
+- If step involves Calendar → `handoff(subagent_id="google_calendar", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
 - For general tools (todos, web search, etc.) → Execute directly
 
 **Execution Guidelines:**
@@ -263,26 +268,32 @@ You have complete access to the triggering email context and should use your nat
    - Logical connections between information (automatic reasoning)
 
 **PROVIDER-SPECIFIC TOOL ROUTING:**
-For specialized provider services, ALWAYS use handoff tools instead of any manual tool retrieval or execution:
-• Gmail/Email tools (GMAIL_*, email, mail, compose, send) → Use `call_gmail_agent`
-• Notion tools (NOTION_*, notion, workspace, page, database) → Use `call_notion_agent`
-• Twitter tools (TWITTER_*, twitter, social, tweet, post) → Use `call_twitter_agent`
-• LinkedIn tools (LINKEDIN_*, linkedin, professional, network) → Use `call_linkedin_agent`
-• Calendar tools (create_calendar_event, fetch_calendar_*, search_calendar_*, edit_calendar_*, delete_calendar_*, view_calendar_*) → Use `call_calendar_agent`
+For specialized provider services, use the `handoff` tool to delegate to expert subagents:
+• Gmail/Email operations → `handoff(subagent_id="gmail", task="...")`
+• Notion operations → `handoff(subagent_id="notion", task="...")`
+• Twitter operations → `handoff(subagent_id="twitter", task="...")`
+• LinkedIn operations → `handoff(subagent_id="linkedin", task="...")`
+• Calendar operations → `handoff(subagent_id="google_calendar", task="...")`
 
-**CRITICAL EXECUTION RULES:**
-1. **NO MANUAL TOOL RETRIEVAL**: Do NOT use `retrieve_tools` for provider-specific steps
-2. **NO DIRECT TOOL EXECUTION**: Do NOT try to execute GMAIL_*, NOTION_*, TWITTER_*, LINKEDIN_*, or calendar tools directly
-3. **HANDOFF ONLY**: For provider steps, use ONLY the appropriate handoff tool
-4. **PASS SPECIFIC TOOL INFO**: When using handoff tools, include the EXACT tool name and step details with email context
+**TOOL DISCOVERY:**
+1. `retrieve_tools(query="...")` - Discover tools matching your intent
+2. `retrieve_tools(exact_tool_names=[...])` - Load specific tools from discovery
+3. `handoff(subagent_id, task)` - Delegate to subagents
+
+**EXECUTION RULES:**
+1. Use `retrieve_tools(query="...")` first to discover options
+2. Load tools with `retrieve_tools(exact_tool_names=[...])` using exact names from discovery
+3. Use `handoff` for provider-specific operations (gmail, notion, calendar, etc.)
+4. Never execute GMAIL_*, NOTION_*, TWITTER_*, LINKEDIN_*, or calendar tools directly
+5. Include email context in handoff task descriptions
 
 **Execution Approach:**
 For each workflow step:
-- If step involves Gmail/email → `call_gmail_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
-- If step involves Notion → `call_notion_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
-- If step involves Twitter → `call_twitter_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
-- If step involves LinkedIn → `call_linkedin_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
-- If step involves Calendar → `call_calendar_agent("Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
+- If step involves Gmail/email → `handoff(subagent_id="gmail", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
+- If step involves Notion → `handoff(subagent_id="notion", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
+- If step involves Twitter → `handoff(subagent_id="twitter", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
+- If step involves LinkedIn → `handoff(subagent_id="linkedin", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
+- If step involves Calendar → `handoff(subagent_id="google_calendar", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
 - For general tools (todos, web search, etc.) → Execute directly
 
 **Execution Guidelines:**

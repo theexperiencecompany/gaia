@@ -18,6 +18,7 @@ interface NewChatSectionProps {
     onDroppedFilesProcessed: () => void;
     hasMessages: boolean;
     conversationId?: string;
+    voiceModeActive: () => void;
   };
   showUseCases: boolean;
 }

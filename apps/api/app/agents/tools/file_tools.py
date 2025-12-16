@@ -1,7 +1,7 @@
 from typing import Annotated, Optional
 
 from app.config.loggers import chat_logger as logger
-from app.db.chromadb import ChromaClient
+from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection
 from app.decorators import with_doc, with_rate_limiting
 from app.templates.docstrings.file_tool_docs import QUERY_FILE

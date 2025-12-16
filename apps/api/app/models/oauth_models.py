@@ -84,6 +84,25 @@ class SubAgentConfig(BaseModel):
     capabilities: str
     use_cases: str
     system_prompt: str
+    use_direct_tools: bool = False
+    disable_retrieve_tools: bool = False
+    specific_tools: Optional[List[str]] = None
+
+
+class ProviderMetadataConfig(BaseModel):
+    """
+    Configuration for fetching and extracting provider-specific user metadata.
+
+    This enables automatic fetching of user info (like username) when an OAuth
+    integration is connected, which can be injected into agent prompts for
+    improved performance.
+    """
+
+    user_info_tool: str  # Tool name to call for user info (e.g., "GITHUB_GET_THE_AUTHENTICATED_USER")
+    username_field: str  # JSON path to username in response (e.g., "data.login" or "data.data.username")
+    extract_fields: Optional[Dict[str, str]] = (
+        None  # Additional fields to extract: {field_name: json_path}
+    )
 
 
 class OAuthIntegration(BaseModel):
@@ -112,6 +131,8 @@ class OAuthIntegration(BaseModel):
     ] = []  # Triggers associated with this integration
     # Sub-agent configuration
     subagent_config: Optional[SubAgentConfig] = None
+    # Provider metadata configuration for fetching user info (username, etc.)
+    metadata_config: Optional[ProviderMetadataConfig] = None
 
 
 class IntegrationConfigResponse(BaseModel):

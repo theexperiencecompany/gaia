@@ -76,16 +76,6 @@ export default function TodosPage() {
     }
   };
 
-  const handleTodoEdit = (todo: Todo) => {
-    selectTodo(todo.id);
-  };
-
-  // Memoize the close handler
-  const handleClose = useCallback(() => {
-    clearSelection();
-    closeRightSidebar();
-  }, [clearSelection, closeRightSidebar]);
-
   // Sync todo sidebar with right sidebar
   useEffect(() => {
     const selectedTodo = selectedTodoId
@@ -110,7 +100,6 @@ export default function TodosPage() {
     selectedTodoId,
     todos,
     projects,
-    handleClose,
     setRightSidebarContent,
     openRightSidebar,
     closeRightSidebar,

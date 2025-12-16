@@ -3,12 +3,13 @@ import inspect
 import time
 from typing import Any, List, Optional, Tuple
 
-from app.config.loggers import chat_logger as logger
-from app.db.chromadb import ChromaClient
-from app.db.mongodb.collections import files_collection, notes_collection
-from app.db.redis import redis_cache
 from bson import ObjectId
 from langchain_core.documents import Document
+
+from app.config.loggers import chat_logger as logger
+from app.db.chroma.chromadb import ChromaClient
+from app.db.mongodb.collections import files_collection, notes_collection
+from app.db.redis import redis_cache
 
 
 async def get_or_compute_embeddings(all_tools, embeddings):

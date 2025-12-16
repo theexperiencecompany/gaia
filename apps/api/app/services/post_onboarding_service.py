@@ -4,11 +4,9 @@ import asyncio
 from datetime import datetime, timezone
 from typing import List
 
-from bson import ObjectId
-
 from app.config.loggers import app_logger as logger
 from app.core.websocket_manager import websocket_manager
-from app.db.chromadb import ChromaClient
+from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import users_collection, workflows_collection
 from app.models.memory_models import MemorySearchResult
 from app.models.user_models import BioStatus, OnboardingPhase
@@ -24,6 +22,7 @@ from app.utils.seeding_utils import (
     seed_initial_goal,
     seed_onboarding_todo,
 )
+from bson import ObjectId
 
 
 async def emit_progress(

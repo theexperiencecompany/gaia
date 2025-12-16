@@ -1,11 +1,14 @@
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
     WORKFLOW_EXECUTION_PROMPT,
 )
-from app.agents.templates.agent_template import AGENT_PROMPT_TEMPLATE
+from app.agents.templates.agent_template import (
+    COMMS_PROMPT_TEMPLATE,
+    EXECUTOR_PROMPT_TEMPLATE,
+)
 from app.config.loggers import llm_logger as logger
 from app.models.message_models import (
     FileData,
@@ -21,14 +24,30 @@ from langchain_core.messages import SystemMessage
 
 
 def create_system_message(
-    user_id: Optional[str] = None, user_name: Optional[str] = None
+    user_id: Optional[str] = None,
+    user_name: Optional[str] = None,
+    agent_type: Literal["comms", "executor"] = "comms",
 ) -> SystemMessage:
-    """Create main system message with user name only."""
+    """Create main system message with user name only.
+
+    Args:
+        user_id: User's ID
+        user_name: User's full name
+        agent_type: Type of agent - "comms", "executor", or "main" (legacy)
+    """
+    template = {
+        "comms": COMMS_PROMPT_TEMPLATE,
+        "executor": EXECUTOR_PROMPT_TEMPLATE,
+    }.get(agent_type, COMMS_PROMPT_TEMPLATE)
+
+    visible_to = {
+        "comms": "comms_agent",
+        "executor": "executor_agent",
+    }.get(agent_type, "comms_agent")
+
     return SystemMessage(
-        content=AGENT_PROMPT_TEMPLATE.format(
-            user_name=user_name or "there",
-        ),
-        additional_kwargs={"visible_to": {"main_agent"}},
+        content=template.format(user_name=user_name or "there"),
+        additional_kwargs={"visible_to": {visible_to}},
     )
 
 

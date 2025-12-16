@@ -2,7 +2,6 @@ import asyncio
 from functools import cache
 from typing import Dict, List, Optional
 
-from app.agents.core.subagents.handoff_tools import get_handoff_tools
 from app.agents.tools import (
     calendar_tool,
     code_exec_tool,
@@ -22,13 +21,9 @@ from app.agents.tools import (
     weather_tool,
     webpage_tool,
 )
+from app.config.loggers import langchain_logger as logger
+from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
-from app.langchain.core.subgraphs.gmail_subgraph import GMAIL_TOOLS
-from app.langchain.core.subgraphs.hubspot_subgraph import HUBSPOT_TOOLS
-from app.services.composio.composio_service import (
-    get_composio_service,
-)
 from langchain_core.tools import BaseTool
 
 
@@ -102,93 +97,67 @@ class ToolRegistry:
         self._categories: Dict[str, ToolCategory] = {}
 
     async def setup(self):
-        await self._initialize_categories()
+        self._initialize_categories()
 
-    async def _initialize_categories(self):
-        """Initialize all tool categories with their metadata and tools."""
-        composio_service = get_composio_service()
+        if settings.ENV == "production":
+            await self.load_all_provider_tools()
 
-        # Helper function to create and register categories
-        def add_category(
-            name: str,
-            tools: Optional[List[BaseTool]] = None,
-            core_tools: Optional[List[BaseTool]] = None,
-            space: str = "general",
-            require_integration: bool = False,
-            integration_name: Optional[str] = None,
-            is_delegated: bool = False,
-        ):
-            category = ToolCategory(
-                name=name,
-                space=space,
-                require_integration=require_integration,
-                integration_name=integration_name,
-                is_delegated=is_delegated,
-            )
-            if core_tools:
-                category.add_tools(core_tools, is_core=True)
-            if tools:
-                category.add_tools(tools)
-            self._categories[name] = category
+    def _add_category(
+        self,
+        name: str,
+        tools: Optional[List[BaseTool]] = None,
+        core_tools: Optional[List[BaseTool]] = None,
+        space: str = "general",
+        require_integration: bool = False,
+        integration_name: Optional[str] = None,
+        is_delegated: bool = False,
+    ):
+        """Helper to create and register a category."""
+        category = ToolCategory(
+            name=name,
+            space=space,
+            require_integration=require_integration,
+            integration_name=integration_name,
+            is_delegated=is_delegated,
+        )
+        if core_tools:
+            category.add_tools(core_tools, is_core=True)
+        if tools:
+            category.add_tools(tools)
+        self._categories[name] = category
 
-        # Core categories (no integration required)
-        add_category(
+    def _initialize_categories(self):
+        """Initialize core tool categories. Provider tools are loaded lazily."""
+
+        self._add_category(
             "search",
             tools=[
                 search_tool.web_search_tool,
-                # search_tool.deep_research_tool,
                 webpage_tool.fetch_webpages,
             ],
         )
 
-        add_category(
+        self._add_category(
             "documents",
             tools=[file_tools.query_file, document_tool.generate_document],
         )
 
-        add_category(
-            "delegation",
-            tools=get_handoff_tools(
-                [
-                    "gmail",
-                    "google_calendar",
-                    "notion",
-                    "twitter",
-                    "linkedin",
-                    "github",
-                    "reddit",
-                    "airtable",
-                    "linear",
-                    "slack",
-                    "hubspot",
-                    "googletasks",
-                    "googlesheets",
-                    "todoist",
-                    "googlemeet",
-                    "google_maps",
-                    "asana",
-                    "trello",
-                    "instagram",
-                    "clickup",
-                ]
-            ),
+        self._add_category("notifications", tools=[*notification_tool.tools])
+        self._add_category(
+            "productivity", tools=[*todo_tool.tools, *reminder_tool.tools]
         )
-
-        add_category("notifications", tools=[*notification_tool.tools])
-        add_category("productivity", tools=[*todo_tool.tools, *reminder_tool.tools])
-        add_category("goal_tracking", tools=goal_tool.tools)
-        add_category("support", tools=[support_tool.create_support_ticket])
-        add_category("memory", tools=memory_tools.tools)
-        add_category("integrations", tools=integration_tool.tools)
-        add_category(
+        self._add_category("goal_tracking", tools=goal_tool.tools)
+        self._add_category("support", tools=[support_tool.create_support_ticket])
+        self._add_category("memory", tools=memory_tools.tools)
+        self._add_category("integrations", tools=integration_tool.tools)
+        self._add_category(
             "development",
             tools=[code_exec_tool.execute_code, flowchart_tool.create_flowchart],
         )
-        add_category("creative", tools=[image_tool.generate_image])
-        add_category("weather", tools=[weather_tool.get_weather])
+        self._add_category("creative", tools=[image_tool.generate_image])
+        self._add_category("weather", tools=[weather_tool.get_weather])
 
-        # Integration-required categories
-        add_category(
+        self._add_category(
             "google_calendar",
             tools=calendar_tool.tools,
             require_integration=True,
@@ -197,65 +166,105 @@ class ToolRegistry:
             space="google_calendar",
         )
 
-        add_category(
+        self._add_category(
             "google_docs",
             tools=google_docs_tool.tools,
             require_integration=True,
             integration_name="google_docs",
         )
 
-        # Provider categories (integration required + delegated)
-        provider_configs = [
-            ("TWITTER", "twitter", None),
-            ("NOTION", "notion", None),
-            ("LINKEDIN", "linkedin", None),
-            ("GOOGLESHEETS", "googlesheets", None),
-            ("REDDIT", "reddit", None),
-            ("AIRTABLE", "airtable", None),
-            ("LINEAR", "linear", None),
-            ("SLACK", "slack", None),
-            ("GOOGLETASKS", "googletasks", None),
-            ("TODOIST", "todoist", None),
-            #
-            # ("MICROSOFT_TEAMS", "microsoft_teams", None),  # action params starts with $
-            # ("ZOOM", "zoom", None),  # action params has parameter named from
-            #
-            ("GOOGLEMEET", "googlemeet", None),
-            ("GOOGLE_MAPS", "google_maps", None),
-            ("ASANA", "asana", None),
-            ("TRELLO", "trello", None),
-            ("INSTAGRAM", "instagram", None),
-            ("CLICKUP", "clickup", None),
-            ("GMAIL", "gmail", GMAIL_TOOLS),
-            ("GITHUB", "github", GITHUB_TOOLS),
-            ("HUBSPOT", "hubspot", HUBSPOT_TOOLS),
+    async def register_provider_tools(
+        self,
+        toolkit_name: str,
+        space_name: str,
+        specific_tools: list[str] | None = None,
+    ):
+        """
+        Register provider tools on-demand when subagent is created.
+        Tools are loaded from Composio and indexed in ChromaDB.
+        """
+        if toolkit_name in self._categories:
+            return self._categories[toolkit_name]
+
+        from app.services.composio.composio_service import get_composio_service
+
+        logger.info(
+            f"Registering provider tools for {toolkit_name} (space: {space_name})"
+        )
+
+        composio_service = get_composio_service()
+
+        if specific_tools:
+            tools = await composio_service.get_tools_by_name(specific_tools)
+        else:
+            tools = await composio_service.get_tools(tool_kit=toolkit_name)
+
+        self._add_category(
+            name=toolkit_name,
+            tools=tools,
+            require_integration=True,
+            integration_name=toolkit_name,
+            is_delegated=True,
+            space=space_name,
+        )
+
+        await self._index_category_tools(toolkit_name)
+
+        logger.info(f"Registered {len(tools)} tools for {toolkit_name}")
+        return self._categories[toolkit_name]
+
+    async def load_all_provider_tools(self):
+        """
+        Load all provider tools from OAuth integrations.
+        This method loads tools for all integrations managed by composio
+        that have subagent configurations and syncs them to the store.
+        Tools are loaded in parallel for better performance.
+        """
+        from app.config.oauth_config import OAUTH_INTEGRATIONS
+
+        async def load_provider(integration):
+            toolkit_name = integration.composio_config.toolkit
+            space_name = integration.subagent_config.tool_space
+            specific_tools = integration.subagent_config.specific_tools
+
+            # Skip if already loaded
+            if toolkit_name in self._categories:
+                return
+
+            try:
+                await self.register_provider_tools(
+                    toolkit_name=toolkit_name,
+                    space_name=space_name,
+                    specific_tools=specific_tools,
+                )
+            except Exception as e:
+                logger.error(f"Failed to load provider tools for {toolkit_name}: {e}")
+
+        # Collect all integrations that need loading
+        integrations_to_load = [
+            integration
+            for integration in OAUTH_INTEGRATIONS
+            if (
+                integration.managed_by == "composio"
+                and integration.composio_config
+                and integration.subagent_config
+                and integration.subagent_config.has_subagent
+            )
         ]
 
-        async def add_provider_category(
-            toolkit_name: str,
-            space_name: str,
-            specific_tools: list[str] | None = None,
-        ):
-            if specific_tools:
-                tools = await composio_service.get_tools_by_name(specific_tools)
-            else:
-                tools = await composio_service.get_tools(tool_kit=toolkit_name)
-            add_category(
-                name=toolkit_name,
-                tools=tools,
-                require_integration=True,
-                integration_name=toolkit_name,
-                is_delegated=True,
-                space=space_name,
-            )
+        # Load all providers in parallel
+        await asyncio.gather(*[load_provider(i) for i in integrations_to_load])
 
-        # Parallelize provider category addition
-        await asyncio.gather(
-            *[
-                add_provider_category(toolkit_name, space_name, specific_tools)
-                for toolkit_name, space_name, specific_tools in provider_configs
-            ]
-        )
+    async def _index_category_tools(self, category_name: str):
+        """Index tools from a category into ChromaDB store."""
+        from app.db.chroma.chroma_tools_store import index_tools_to_store
+
+        category = self._categories.get(category_name)
+        if not category:
+            return
+
+        tools_with_space = [(tool.tool, category.space) for tool in category.tools]
+        await index_tools_to_store(tools_with_space)
 
     def get_category(self, name: str) -> Optional[ToolCategory]:
         """Get a specific category by name."""
@@ -342,7 +351,7 @@ async def get_tool_registry() -> ToolRegistry:
     name="tool_registry",
     required_keys=[],
     strategy=MissingKeyStrategy.ERROR,
-    auto_initialize=False,
+    auto_initialize=True,
 )
 async def init_tool_registry():
     tool_registry = ToolRegistry()

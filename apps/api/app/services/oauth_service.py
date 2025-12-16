@@ -14,6 +14,9 @@ from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
 from app.services.composio.composio_service import get_composio_service
+from app.services.provider_metadata_service import (
+    fetch_and_store_provider_metadata,
+)
 from app.utils.email_utils import add_contact_to_resend, send_welcome_email
 from app.utils.redis_utils import RedisPoolManager
 from bson import ObjectId
@@ -291,3 +294,13 @@ async def handle_oauth_connection(
         logger.info(f"OAuth status cache invalidated for user {user_id}")
     except Exception as e:
         logger.warning(f"Failed to invalidate OAuth status cache: {e}")
+
+    if integration_config.metadata_config:
+        background_tasks.add_task(
+            fetch_and_store_provider_metadata,
+            user_id=user_id,
+            integration_id=integration_config.id,
+        )
+        logger.info(
+            f"Queued metadata fetch for user {user_id} and integration {integration_config.id}"
+        )

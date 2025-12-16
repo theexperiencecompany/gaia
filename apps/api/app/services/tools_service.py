@@ -5,8 +5,8 @@ Service for managing and retrieving tool information.
 from typing import Dict
 
 from app.agents.tools.core.registry import get_tool_registry
-from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 from app.decorators.caching import Cacheable
+from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 
 
 @Cacheable(smart_hash=True, ttl=21600, model=ToolsListResponse)  # 6 hours
@@ -16,6 +16,7 @@ async def get_available_tools() -> ToolsListResponse:
     categories = set()
 
     tool_registry = await get_tool_registry()
+    await tool_registry.load_all_provider_tools()
 
     # Use category-based approach for better performance and integration info
     _categories = tool_registry.get_all_category_objects(
@@ -65,6 +66,7 @@ async def get_tool_categories() -> Dict[str, int]:
     """Get all tool categories with their counts."""
     category_counts: Dict[str, int] = {}
     tool_registry = await get_tool_registry()
+    await tool_registry.load_all_provider_tools()
 
     # Use the new category-based approach for better performance
     all_categories = tool_registry.get_all_category_objects()

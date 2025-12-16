@@ -6,7 +6,6 @@ that can handle specialized tool sets (Gmail, Notion, Twitter, LinkedIn, etc.)
 """
 
 from .base_subagent import SubAgentFactory
-from .provider_subagents import ProviderSubAgents
-from .handoff_tools import get_handoff_tools
+from .handoff_tools import handoff
 
-__all__ = ["SubAgentFactory", "ProviderSubAgents", "get_handoff_tools"]
+__all__ = ["SubAgentFactory", "handoff"]

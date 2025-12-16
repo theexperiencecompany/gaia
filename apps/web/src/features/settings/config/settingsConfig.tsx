@@ -14,7 +14,8 @@ import {
 export interface SettingsMenuItem {
   key: string;
   label: string;
-  icon?: React.ElementType;
+  // Icons are SVG components — accept standard SVG props
+  icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   href?: string;
   action?: () => void;
   color?: "danger" | "default";

@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from typing import List, Optional, cast
 from uuid import uuid4
 
-from app.agents.tools.core.registry import get_tool_registry
+from langchain_core.messages import ToolCall
+
 from app.config.loggers import llm_logger as logger
 from app.models.chat_models import (
     MessageModel,
@@ -12,7 +13,6 @@ from app.models.chat_models import (
     tool_fields,
 )
 from app.services.conversation_service import update_messages
-from langchain_core.messages import ToolCall
 
 
 async def format_tool_progress(tool_call: ToolCall) -> Optional[dict]:
@@ -29,6 +29,8 @@ async def format_tool_progress(tool_call: ToolCall) -> Optional[dict]:
         Dictionary with progress information including formatted message,
         tool name, and category, or None if tool name is missing
     """
+    from app.agents.tools.core.registry import get_tool_registry
+
     tool_registry = await get_tool_registry()
     tool_name_raw = tool_call.get("name")
     if not tool_name_raw:

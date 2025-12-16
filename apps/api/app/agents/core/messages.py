@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from app.helpers.message_helpers import (
     create_system_message,
@@ -29,6 +29,7 @@ async def construct_langchain_messages(
     selected_workflow: Optional[SelectedWorkflowData] = None,
     selected_calendar_event: Optional[SelectedCalendarEventData] = None,
     trigger_context: Optional[dict] = None,
+    agent_type: Literal["comms", "executor"] = "comms",
 ) -> List[AnyMessage]:
     """
     Construct LangChain messages for agent interaction.
@@ -48,12 +49,13 @@ async def construct_langchain_messages(
         selected_workflow: Workflow to execute (overrides everything else)
         selected_calendar_event: Calendar event selected for context
         trigger_context: Email/automation context for workflows
+        agent_type: Type of agent - "comms", "executor", or "main" (legacy)
 
     Returns:
         List of LangChain messages ready for agent processing
     """
     # Start with system message containing user name and instructions
-    system_msg = create_system_message(user_id, user_name)
+    system_msg = create_system_message(user_id, user_name, agent_type)
     chain_msgs = [system_msg]
 
     # Add relevant memories if user context available
@@ -103,7 +105,13 @@ async def construct_langchain_messages(
     ):
         content += f"\n\n{files_str}"
 
+    visible_to = {
+        "comms": "comms_agent",
+        "executor": "executor_agent",
+        "main": "main_agent",
+    }.get(agent_type, "comms_agent")
+
     human_msg = HumanMessage(
-        content=content, additional_kwargs={"visible_to": {"main_agent"}}
+        content=content, additional_kwargs={"visible_to": {visible_to}}
     )
     return [*chain_msgs, human_msg]

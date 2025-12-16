@@ -20,10 +20,7 @@ import {
   Target02Icon,
   ZapIcon,
 } from "@/icons";
-import {
-  getSimpleTimeGreeting,
-  getTimeBasedGreeting,
-} from "@/utils/greetingUtils";
+import { getSimpleTimeGreeting } from "@/utils/greetingUtils";
 
 export default function HomePage() {
   const user = useUser();

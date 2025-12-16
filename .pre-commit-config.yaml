@@ -8,7 +8,7 @@ repos:
       - id: check-toml
       - id: check-merge-conflict
       - id: check-added-large-files
-        exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
+        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
       - id: check-ast
         exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
       - id: check-docstring-first
@@ -21,4 +21,4 @@ repos:
     rev: v1.4.0
     hooks:
       - id: detect-secrets
-        exclude: ^(apps/web/pnpm-lock\.yaml|.*\.env\.example|docs/configuration/environment-variables.mdx)$
+        exclude: ^(pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|.*\.env\.example|docs/configuration/environment-variables.mdx)$

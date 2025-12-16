@@ -121,8 +121,16 @@ description = "Detect secrets in codebase (prek hook)"
 run = "prek run detect-secrets"
 
 [tasks.deps]
-description = "Install all dependencies"
-run = "uv sync"
+description = "Install all dependencies (backend + voice + dev)"
+run = "uv sync --group backend --group dev"
+
+[tasks."deps:backend"]
+description = "Install backend + dev dependencies only (no voice)"
+run = "uv sync --group backend --group dev"
+
+[tasks."deps:voice"]
+description = "Install voice agent + dev dependencies only (no backend)"
+run = "uv sync --group voice_agent --group dev"
 
 [tasks."seed:models"]
 description = "Seed AI models"
@@ -135,3 +143,15 @@ run = "uv run python scripts/seed_workflows.py"
 [tasks.clean]
 description = "Clean up __pycache__ and build artifacts"
 run = "find . -type d -name '__pycache__' -exec rm -rf {} + && find . -type f -name '*.pyc' -delete"
+
+# ─────────────────────────────────────────────────────────────
+# Voice Agent Tasks
+# ─────────────────────────────────────────────────────────────
+[tasks.voice]
+description = "Run voice agent worker"
+run = "uv run python -m app.workers.voice_agent start"
+
+[tasks."voice:download"]
+description = "Download voice agent models (VAD, etc.)"
+run = "uv run python -m app.workers.voice_agent download-files"
+

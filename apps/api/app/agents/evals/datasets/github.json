@@ -1,0 +1,205 @@
+{
+  "name": "Github Capabilities",
+  "description": "Evaluation dataset for GitHub subagent capabilities including PRs, issues, commits, and repository operations. Includes lazy queries, intentional mistakes, and ambiguous items requiring resolution.",
+  "version": "1.4.0",
+  "subagent": "github_agent",
+  "integration_id": "github",
+  "items": [
+    {
+      "input": "make pr for insane-mail branch to develop in gaia-personal",
+      "expected_output": "1. Search for repository 'gaia-personal'. 2. Identify 'Dhruv-Maradiya/gaia-personal'. 3. Create PR from insane-mail branch to develop.",
+      "context": "User provided partial repo name",
+      "tags": ["pull_request", "create", "lazy", "ambiguous"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "Show me all open pull requests in Dhruv-Maradiya/gaia-personal.",
+      "expected_output": "List of open pull requests displayed.",
+      "context": "User wants to see open PRs",
+      "tags": ["pull_request", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "ask aryanranderiya to review pr 9 in Dhruv-Maradiya/gaia-personl",
+      "expected_output": "1. Attempt to access 'Dhruv-Maradiya/gaia-personl'. 2. Catch error/notice typo. 3. Search/Correct to 'Dhruv-Maradiya/gaia-personal'. 4. Request review from aryanranderiya on PR #9.",
+      "context": "User made a typo in repo name (gaia-personl instead of gaia-personal)",
+      "tags": ["pull_request", "review", "mistake", "robustness"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "what files changed in pr 10 gaia-personal?",
+      "expected_output": "1. Search for repository 'gaia-personal'. 2. Identify 'Dhruv-Maradiya/gaia-personal'. 3. List files changed in PR #10.",
+      "context": "User provided partial repo name",
+      "tags": ["pull_request", "files", "lazy", "ambiguous"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "Please add a comment to PR #11 in Dhruv-Maradiya/gaia-personal asking the author to add unit tests for the new authentication logic.",
+      "expected_output": "Comment added to PR #11.",
+      "context": "User wants to add a detailed review comment",
+      "tags": ["pull_request", "comment", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "merge pr #11 in Dhruv-Mradia/gaia-personal",
+      "expected_output": "1. Detect invalid owner 'Dhruv-Mradia'. 2. Search for 'gaia-personal' or check user's repos. 3. Correct to 'Dhruv-Maradiya/gaia-personal'. 4. Merge PR #9.",
+      "context": "User made a typo in owner name (Dhruv-Mradia instead of Dhruv-Maradiya)",
+      "tags": ["pull_request", "merge", "mistake", "robustness"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "commits in pr 10 Dhruv-Maradiya/gaia-personal",
+      "expected_output": "List of commits in PR #10 shown.",
+      "context": "User asking about PR #10 in Dhruv-Maradiya/gaia-personal",
+      "tags": ["pull_request", "commits", "lazy"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "Create a bug report for the login page failure and assign it to aryanranderiya in gaia-personal.",
+      "expected_output": "1. Search for repository 'gaia-personal'. 2. Identify 'Dhruv-Maradiya/gaia-personal'. 3. Create issue and assign to aryanranderiya.",
+      "context": "User provided partial repo name",
+      "tags": ["issue", "create", "detailed", "ambiguous"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "mark issue 1 as bug in Dhruv-Maradiya/gaia-personal",
+      "expected_output": "Label 'bug' added to issue #1.",
+      "context": "User wants to label issue #1 in Dhruv-Maradiya/gaia-personal",
+      "tags": ["issue", "label", "lazy"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "lock issue 2 in Dhruv-Maradiya/gaiaa",
+      "expected_output": "1. Attempt to access 'Dhruv-Maradiya/gaiaa'. 2. Catch error/notice typo. 3. Search/Correct to 'Dhruv-Maradiya/gaia-personal'. 4. Lock issue #2.",
+      "context": "User made a typo in repo name (gaiaa)",
+      "tags": ["issue", "lock", "mistake", "robustness"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "my issues in gaia-personal",
+      "expected_output": "1. Search for repository 'gaia-personal'. 2. Identify 'Dhruv-Maradiya/gaia-personal'. 3. List issues assigned to user.",
+      "context": "User provided partial repo name",
+      "tags": ["issue", "list", "lazy", "ambiguous"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "Create a new label named 'tech-debt' with color 'cccccc' in Dhruv-Maradiya/gaia-personal.",
+      "expected_output": "Label created.",
+      "context": "User wants to create a specific label",
+      "tags": ["label", "create", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "change labels on issue 3 to enhancement backend in Dhruv-Maradiya/gaia-personal",
+      "expected_output": "Labels on issue #3 replaced with 'enhancement' and 'backend'.",
+      "context": "User wants to replace labels on issue #3 in Dhruv-Maradiya/gaia-personal",
+      "tags": ["issue", "label", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "Check if user 'aryanranderiya' has permission to be assigned to issues in Dhruv-Maradiya/gaia-personal, and if so, assign them to issue #4.",
+      "expected_output": "Permissions checked and user assigned.",
+      "context": "User wants to verify permissions before assigning",
+      "tags": ["issue", "assign", "detailed"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "diff last 2 commits on main in gaia-personal",
+      "expected_output": "1. Search for repository 'gaia-personal'. 2. Identify 'Dhruv-Maradiya/gaia-personal'. 3. Compare last 2 commits on main.",
+      "context": "User provided partial repo name",
+      "tags": ["commit", "compare", "lazy", "ambiguous"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "Find which branches contain commit e7c2b37 in Dhruv-Maradiya/gaia-personal.",
+      "expected_output": "List of branches containing the commit.",
+      "context": "User wants to find a commit",
+      "tags": ["commit", "branch", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "fork Dhruv-Mradia/gaia-personal",
+      "expected_output": "1. Detect invalid owner 'Dhruv-Mradia'. 2. Search/Correct to 'Dhruv-Maradiya'. 3. Fork 'Dhruv-Maradiya/gaia-personal' (or handle error if already exists/same user).",
+      "context": "User made a typo in owner name",
+      "tags": ["repository", "fork", "mistake", "robustness"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "find issues about 'shortcuts' in Dhruv-Maradiya/gaia-personal",
+      "expected_output": "Search results for 'shortcuts' issues shown.",
+      "context": "User wants to search issues in Dhruv-Maradiya/gaia-personal",
+      "tags": ["issue", "search", "lazy"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "Read the README file of Dhruv-Maradiya/gaia-personal repository.",
+      "expected_output": "README content displayed.",
+      "context": "User wants to read the README",
+      "tags": ["repository", "content", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show branches in gaia-personal",
+      "expected_output": "1. Search for repository 'gaia-personal'. 2. Identify 'Dhruv-Maradiya/gaia-personal'. 3. List branches.",
+      "context": "User provided partial repo name",
+      "tags": ["branch", "list", "lazy", "ambiguous"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "Create a new private repository named 'my-tool'.",
+      "expected_output": "Private repository 'my-tool' created.",
+      "context": "User wants to create a new repo",
+      "tags": ["repository", "create", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add aryanranderiya to my-tool",
+      "expected_output": "1. Search for 'my-tool' in user's repositories. 2. Identify 'Dhruv-Maradiya/my-tool'. 3. Add aryanranderiya as collaborator.",
+      "context": "User provided partial repo name (assumed to be owned by user)",
+      "tags": ["repository", "collaborator", "lazy", "ambiguous"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "Get the content of 'backend/app/config/secrets.py' from Dhruv-Maradiya/gaia-personal.",
+      "expected_output": "File content displayed.",
+      "context": "User wants to read a specific file",
+      "tags": ["repository", "content", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "Check branch protection rules for 'main' branch in Dhruv-Maradiya/gaia-personal.",
+      "expected_output": "Branch protection rules displayed.",
+      "context": "User wants to check branch protection",
+      "tags": ["branch", "protection", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "repos for user Dhruv-Maradiya",
+      "expected_output": "List of repositories for user Dhruv-Maradiya.",
+      "context": "User wants to list user repos",
+      "tags": ["repository", "list", "lazy"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "Search for all repositories related to 'python agents' created after 2023.",
+      "expected_output": "Search results displayed.",
+      "context": "User wants to search for repositories",
+      "tags": ["repository", "search", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "lock issue 5 in gaia-personal",
+      "expected_output": "1. Search for repository 'gaia-personal'. 2. Identify 'Dhruv-Maradiya/gaia-personal'. 3. Lock issue #5.",
+      "context": "User provided partial repo name",
+      "tags": ["issue", "lock", "lazy", "ambiguous"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "Delete the label 'wontfix' from Dhruv-Maradiya/gaia-personal.",
+      "expected_output": "Label 'wontfix' deleted.",
+      "context": "User wants to delete a label",
+      "tags": ["label", "delete", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    }
+  ]
+}

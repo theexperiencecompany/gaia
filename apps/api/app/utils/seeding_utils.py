@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from app.config.loggers import app_logger as logger
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.db.mongodb.collections import goals_collection
 from app.models.chat_models import (
     ConversationModel,
@@ -170,9 +171,9 @@ async def seed_initial_conversation(user_id: str) -> None:
 
         # Create the welcome message with breaks for bubbles
         welcome_message = (
-            "Hey! I'm Gaia, your personal AI assistant—I'm here to help you actually get things done. 👋<NEW_MESSAGE_BREAK>"
-            "Here's what I can help with: \n - 📧 Manage your Gmail inbox\n - 📅 Schedule calendar events\n - ✅ Create and track todos with smart workflows\n - 🎯 Set goals with visual roadmaps\n - 🔍 Search the web and generate images\n - 🧠 Remember important things about you and a lot more!<NEW_MESSAGE_BREAK>"
-            "Try asking me to: Check your unread emails, create a task for something you need to do, set up a goal with a roadmap, search for information, or just tell me about your day so I can get to know you better!<NEW_MESSAGE_BREAK>"
+            f"Hey! I'm Gaia, your personal AI assistant—I'm here to help you actually get things done. 👋{NEW_MESSAGE_BREAKER}"
+            "Here's what I can help with: \n - 📧 Manage your Gmail inbox\n - 📅 Schedule calendar events\n - ✅ Create and track todos with smart workflows\n - 🎯 Set goals with visual roadmaps\n - 🔍 Search the web and generate images\n - 🧠 Remember important things about you and a lot more!{NEW_MESSAGE_BREAKER}"
+            "Try asking me to: Check your unread emails, create a task for something you need to do, set up a goal with a roadmap, search for information, or just tell me about your day so I can get to know you better!{NEW_MESSAGE_BREAKER}"
             "What would you like to explore first?"
         )
 
