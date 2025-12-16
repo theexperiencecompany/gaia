@@ -49,7 +49,7 @@ run = "nx dev mobile"
 
 [tasks."dev:full"]
 description = "Run API + web + arq in parallel (starts Docker automatically)"
-run = "nx run docker:docker:up && nx run-many -t dev --projects=api,web --parallel=2 & mise dev:arq"
+run = "nx run docker:docker:up && nx run-many -t dev --projects=api,web --parallel=2 && mise dev:arq"
 
 [tasks.dev]
 description = "Run API + web in parallel (starts Docker automatically)"
