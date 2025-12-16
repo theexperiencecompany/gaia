@@ -21,10 +21,78 @@
 // Enable V8 code caching for faster subsequent startups (~20-30% improvement)
 import 'v8-compile-cache';
 
-import { app, shell, BrowserWindow, ipcMain, screen } from 'electron';
+import { app, shell, BrowserWindow, ipcMain, screen, dialog } from 'electron';
 import { join, resolve } from 'node:path';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
+import { autoUpdater } from 'electron-updater';
 import { startNextServer, stopNextServer, getServerUrl } from './server';
+
+// Configure auto-updater
+autoUpdater.autoDownload = false; // Don't auto-download, just notify user
+autoUpdater.autoInstallOnAppQuit = true; // Install on quit if downloaded
+
+/**
+ * Set up auto-updater event handlers
+ * Uses native dialogs to notify user about updates
+ */
+function setupAutoUpdater(): void {
+  // Log updater events for debugging
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[AutoUpdater] Checking for updates...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[AutoUpdater] Update available:', info.version);
+    
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Update Available',
+      message: `A new version of GAIA is available!`,
+      detail: `Version ${info.version} is ready to download. Would you like to update now?`,
+      buttons: ['Download Update', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+    }).then(({ response }) => {
+      if (response === 0) {
+        console.log('[AutoUpdater] User chose to download update');
+        autoUpdater.downloadUpdate();
+      }
+    });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('[AutoUpdater] No updates available');
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    console.log(`[AutoUpdater] Download progress: ${progress.percent.toFixed(1)}%`);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[AutoUpdater] Update downloaded:', info.version);
+    
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Update Ready',
+      message: 'Update downloaded successfully!',
+      detail: `Version ${info.version} has been downloaded. Restart GAIA to apply the update.`,
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+    }).then(({ response }) => {
+      if (response === 0) {
+        console.log('[AutoUpdater] User chose to restart and install');
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  autoUpdater.on('error', (error) => {
+    console.error('[AutoUpdater] Error:', error.message);
+    // Don't show error dialog to user - updates are non-critical
+    // They can manually check for updates or download from website
+  });
+}
 
 // GPU acceleration and performance flags - must be set before app.ready
 app.commandLine.appendSwitch('enable-gpu-rasterization');
@@ -315,6 +383,19 @@ if (!gotTheLock) {
     // No blocking operations before this!
     createSplashWindow();
 
+    // STEP 1.5: Set up auto-updater (production only)
+    // This runs in background and doesn't block startup
+    const isProduction = process.env.NODE_ENV === 'production' || app.isPackaged;
+    if (isProduction) {
+      setupAutoUpdater();
+      // Check for updates after a short delay to not interfere with startup
+      setTimeout(() => {
+        autoUpdater.checkForUpdates().catch((err) => {
+          console.error('[AutoUpdater] Failed to check for updates:', err.message);
+        });
+      }, 3000); // 3 second delay after startup
+    }
+
     // Watch shortcuts in development
     app.on('browser-window-created', (_, window) => {
       optimizer.watchWindowShortcuts(window);
@@ -338,8 +419,6 @@ if (!gotTheLock) {
 
     // STEP 3: Start server AND create window in PARALLEL (non-blocking!)
     // Window creation now polls for server readiness internally
-    const isProduction = process.env.NODE_ENV === 'production' || app.isPackaged;
-    
     if (isProduction) {
       // Start server in background - don't block on it
       startNextServer()

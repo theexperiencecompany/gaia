@@ -13,6 +13,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   release-please:
@@ -21,6 +22,7 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created || steps.release-fallback.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name || steps.release-fallback.outputs.tag_name }}
       version: ${{ steps.release.outputs.version || steps.release-fallback.outputs.version }}
+      paths_released: ${{ steps.release.outputs.paths_released || steps.release-fallback.outputs.paths_released }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,3 +43,25 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: config/release-please-config-fallback.json
           manifest-file: config/.release-please-manifest.json
+
+  # Trigger desktop release build when a release is created
+  trigger-desktop-release:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Desktop Release Workflow
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'desktop-release.yml',
+              ref: 'master',
+              inputs: {
+                tag: '${{ needs.release-please.outputs.tag_name }}'
+              }
+            });
+            console.log('Desktop release workflow triggered for tag: ${{ needs.release-please.outputs.tag_name }}');
