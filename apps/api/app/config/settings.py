@@ -102,6 +102,12 @@ class CommonSettings(BaseAppSettings):
 
     @computed_field  # type: ignore
     @property
+    def WORKOS_DESKTOP_REDIRECT_URI(self) -> str:
+        """WorkOS OAuth callback URL for desktop app."""
+        return f"{self.HOST}/api/v1/oauth/workos/desktop/callback"
+
+    @computed_field  # type: ignore
+    @property
     def COMPOSIO_REDIRECT_URI(self) -> str:
         """Composio OAuth callback URL."""
         return f"{self.HOST}/api/v1/oauth/composio/callback"

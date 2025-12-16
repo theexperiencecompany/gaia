@@ -52,6 +52,12 @@ mac:
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
   darkModeSupport: true
+  # Custom protocol for OAuth deep linking
+  extendInfo:
+    CFBundleURLTypes:
+      - CFBundleURLName: "GAIA Protocol"
+        CFBundleURLSchemes:
+          - gaia
 
 dmg:
   iconSize: 100
@@ -74,6 +80,11 @@ win:
     - target: portable
       arch:
         - x64
+  # Custom protocol for OAuth deep linking
+  protocols:
+    - name: "GAIA Protocol"
+      schemes:
+        - gaia
 
 nsis:
   oneClick: false
@@ -101,6 +112,11 @@ linux:
   category: Utility
   synopsis: Your Personal AI Assistant
   description: GAIA is your personal AI assistant designed to help increase your productivity.
+  # Custom protocol for OAuth deep linking
+  mimeTypes:
+    - x-scheme-handler/gaia
+  desktop:
+    MimeType: x-scheme-handler/gaia
 
 publish:
   provider: github

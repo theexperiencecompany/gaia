@@ -1,10 +1,14 @@
 "use client";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import Footer from "@/components/navigation/Footer";
 import Navbar from "@/components/navigation/Navbar";
 
 export default function LandingLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const isDesktopLogin = pathname === "/desktop-login";
+
   return (
     <div className="relative">
       <div
@@ -12,9 +16,9 @@ export default function LandingLayout({ children }: { children: ReactNode }) {
         className="pointer-events-none fixed inset-0 z-40 bg-black/20 opacity-0 backdrop-blur-sm transition-opacity duration-300 ease-in-out"
       />
 
-      <Navbar />
+      {!isDesktopLogin && <Navbar />}
       {children}
-      <Footer />
+      {!isDesktopLogin && <Footer />}
     </div>
   );
 }

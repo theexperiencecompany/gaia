@@ -110,14 +110,14 @@ export async function startNextServer(): Promise<void> {
       serverProcess = null;
     });
 
-    // Timeout after 15 seconds (reduced from 30 - if it takes this long, something is wrong)
+    // Timeout after 8 seconds - window polling provides additional wait time
     setTimeout(() => {
       if (!resolved && serverProcess) {
         console.warn('Server startup timeout - assuming ready');
         resolved = true;
         resolve();
       }
-    }, 15000);
+    }, 8000);
   });
 }
 

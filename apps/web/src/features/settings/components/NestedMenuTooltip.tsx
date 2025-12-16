@@ -2,11 +2,13 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
+import type { ReactNode } from "react";
 
 interface MenuItem {
   key: string;
   label: string;
-  icon: React.ElementType;
+  icon?: React.ElementType;
+  iconElement?: ReactNode;
   action: () => void;
 }
 
@@ -46,6 +48,12 @@ export function NestedMenuTooltip({
         >
           {menuItems.map((item) => {
             const Icon = item.icon;
+            const iconContent = item.iconElement ? (
+              item.iconElement
+            ) : Icon ? (
+              <Icon className={iconClasses} />
+            ) : null;
+
             return (
               <Button
                 key={item.key}
@@ -56,7 +64,7 @@ export function NestedMenuTooltip({
                   item.action();
                   onOpenChange(false);
                 }}
-                startContent={<Icon className={iconClasses} />}
+                startContent={iconContent}
               >
                 {item.label}
               </Button>
