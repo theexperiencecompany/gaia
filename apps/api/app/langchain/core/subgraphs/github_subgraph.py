@@ -16,13 +16,11 @@ from app.agents.prompts.github_node_prompts import (
     REPOSITORY_MANAGEMENT_PROMPT,
 )
 from app.config.loggers import langchain_logger as logger
-from app.config.oauth_config import get_integration_by_id
 from app.langchain.core.framework.plan_and_execute import (
     OrchestratorNodeConfig,
     OrchestratorSubgraphConfig,
     build_orchestrator_subgraph,
 )
-from app.services.composio.composio_service import get_composio_service
 from langchain_core.language_models import LanguageModelLike
 from langgraph.graph.state import CompiledStateGraph
 
@@ -57,6 +55,7 @@ ISSUE_TOOLS = [
     "GITHUB_LOCK_AN_ISSUE",
     "GITHUB_UNLOCK_AN_ISSUE",
     "GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS",
+    "GITHUB_LIST_ISSUES_ASSIGNED_TO_THE_AUTHENTICATED_USER",
 ]
 
 # Assignee Management Tools
@@ -108,9 +107,12 @@ REPOSITORY_MANAGEMENT_TOOLS = [
     "GITHUB_CREATE_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER",
     "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
     "GITHUB_LIST_ORGANIZATION_REPOSITORIES",
+    "GITHUB_LIST_ORGANIZATIONS",
     "GITHUB_CREATE_A_FORK",
     "GITHUB_SEARCH_REPOSITORIES",
     "GITHUB_ADD_A_REPOSITORY_COLLABORATOR",
+    "GITHUB_STAR_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER",
+    "GITHUB_UNSTAR_A_REPOSITORY_FOR_THE_AUTHENTICATED_USER",
 ]
 
 # Repository Content Tools
@@ -131,6 +133,14 @@ BRANCH_TOOLS = [
     "GITHUB_DELETE_BRANCH_PROTECTION",
 ]
 
+AUTHENTICATED_USER_TOOLS = [
+    "GITHUB_GET_THE_AUTHENTICATED_USER",
+    "GITHUB_LIST_EMAIL_ADDRESSES_FOR_THE_AUTHENTICATED_USER",
+    "GITHUB_LIST_ORGANIZATIONS_FOR_THE_AUTHENTICATED_USER",
+    "GITHUB_LIST_PUBLIC_EMAIL_ADDRESSES_FOR_THE_AUTHENTICATED_USER",
+    "GITHUB_LIST_SOCIAL_ACCOUNTS_FOR_THE_AUTHENTICATED_USER",
+]
+
 # All tools used in GitHub subgraph (merged from all categories)
 GITHUB_TOOLS = (
     PULL_REQUEST_TOOLS
@@ -143,11 +153,14 @@ GITHUB_TOOLS = (
     + REPOSITORY_MANAGEMENT_TOOLS
     + REPOSITORY_CONTENT_TOOLS
     + BRANCH_TOOLS
+    + AUTHENTICATED_USER_TOOLS
 )
 
 
 async def get_node_configs() -> Sequence[OrchestratorNodeConfig]:
     """Get the list of GitHub node configurations."""
+    from app.services.composio.composio_service import get_composio_service
+
     composio_service = get_composio_service()
 
     (
@@ -250,6 +263,8 @@ async def create_github_subgraph(
         CompiledStateGraph with automatic message filtering and cleanup
     """
     logger.info("Creating GitHub subgraph using plan-and-execute framework")
+
+    from app.config.oauth_config import get_integration_by_id
 
     integration = get_integration_by_id("github")
     if not integration or not integration.subagent_config:

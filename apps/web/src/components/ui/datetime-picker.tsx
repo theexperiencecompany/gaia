@@ -301,7 +301,7 @@ function TimePickerInline({
     use12HourFormat ? +format(value, "hh") : value.getHours(),
   );
   const [minute, setMinute] = useState(value.getMinutes());
-  const [second, setSecond] = useState(value.getSeconds());
+  const [second] = useState(value.getSeconds());
 
   useEffect(() => {
     const newTime = buildTime({

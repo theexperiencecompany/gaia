@@ -49,7 +49,12 @@ run = "nx dev mobile"
 
 [tasks."dev:full"]
 description = "Run API + web + arq in parallel (starts Docker automatically)"
-run = "nx run docker:docker:up && nx run-many -t dev --projects=api,web --parallel=2 && mise dev:arq"
+run = "nx run docker:docker:up && nx run-many -t dev --projects=api,web --parallel=2 && mise dev:arq && mise dev:voice"
+
+[tasks."dev:voice"]
+description = "Run ONLY voice agent worker (without docker dependencies)"
+dir = "backend"
+run = "mise voice"
 
 [tasks.dev]
 description = "Run API + web in parallel (starts Docker automatically)"
@@ -172,6 +177,11 @@ run = "mise deps"
 [tasks."setup:deps"]
 description = "Install all dependencies"
 depends = ["setup:api", "setup:web"]
+
+[tasks."setup:voice"]
+description = "Download voice agent models (VAD, etc.)"
+dir = "backend"
+run = "mise voice:download"
 
 [tasks.setup]
 description = "Complete project setup"

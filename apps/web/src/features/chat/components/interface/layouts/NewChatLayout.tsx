@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import type React from "react";
 import { useState } from "react";
-import { ArrowDown02Icon, ChevronUp } from "@/components";
+import { ChevronUp } from "@/components";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import { NewChatSection } from "../sections";
 
@@ -26,6 +26,7 @@ interface NewChatLayoutProps {
     droppedFiles: File[];
     onDroppedFilesProcessed: () => void;
     hasMessages: boolean;
+    voiceModeActive: () => void;
   };
 }
 

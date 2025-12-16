@@ -1,5 +1,8 @@
 from datetime import datetime, timezone
 
+from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi.responses import StreamingResponse
+
 from app.api.v1.dependencies.oauth_dependencies import (
     GET_USER_TZ_TYPE,
     get_current_user,
@@ -17,8 +20,6 @@ from app.services.chat_service import (
 )
 from app.services.conversation_service import update_messages
 from app.utils.chat_utils import create_conversation
-from fastapi import APIRouter, BackgroundTasks, Depends
-from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 

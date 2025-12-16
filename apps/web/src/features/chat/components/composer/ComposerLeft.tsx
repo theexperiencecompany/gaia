@@ -97,7 +97,7 @@ export default function ComposerLeft({
   ];
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-2">
       {/* Add Context Dropdown */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

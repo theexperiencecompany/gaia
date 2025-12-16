@@ -1,19 +1,20 @@
 from typing import List, Optional
 
-from app.config.loggers import chat_logger as logger
+from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+from langsmith import traceable
+from uuid_extensions import uuid7str
+
 from app.agents.core.state import State
 from app.agents.llm.chatbot import chatbot
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
+from app.config.loggers import chat_logger as logger
 from app.models.message_models import MessageDict, SelectedWorkflowData
 from app.services.conversation_service import (
     ConversationModel,
     create_conversation_service,
     update_conversation_description,
 )
-from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
-from langchain_core.runnables import RunnableConfig
-from langsmith import traceable
-from uuid_extensions import uuid7str
 
 
 async def _generate_description_from_message(
@@ -167,3 +168,18 @@ def get_user_id_from_config(config: RunnableConfig) -> str:
         logger.error("No user_id found in config metadata")
 
     return user_id
+
+
+def get_user_name_from_config(config: RunnableConfig) -> str:
+    """Extract user name from the config."""
+    if not config:
+        logger.error("Tool called without config")
+        return ""
+
+    metadata = config.get("metadata", {})
+    user_name = metadata.get("user_name", "")
+
+    if not user_name:
+        logger.error("No user_name found in config metadata")
+
+    return user_name

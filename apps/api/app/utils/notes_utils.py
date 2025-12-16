@@ -1,7 +1,7 @@
 from langchain_core.documents import Document
 
 from app.config.loggers import notes_logger as logger
-from app.db.chromadb import ChromaClient
+from app.db.chromadb.chromadb import ChromaClient
 from app.db.mongodb.collections import notes_collection
 from app.db.redis import delete_cache, set_cache
 from app.models.notes_models import NoteModel, NoteResponse

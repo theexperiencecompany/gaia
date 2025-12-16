@@ -5,19 +5,21 @@ import { Tooltip } from "@heroui/tooltip";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { ArrowUp02Icon, StopIcon } from "@/icons";
+import { ArrowUp02Icon, AudioWaveIcon, StopIcon } from "@/icons";
 import { useComposerFiles } from "@/stores/composerStore";
 
 interface RightSideProps {
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
   searchbarText: string | null | undefined;
   selectedTool?: string | null;
+  setvoiceModeActive: () => void;
 }
 
 export default function RightSide({
   handleFormSubmit,
   searchbarText,
   selectedTool,
+  setvoiceModeActive,
 }: RightSideProps) {
   const { isLoading, stopStream } = useLoading();
   const { selectedWorkflow } = useWorkflowSelection();
@@ -93,8 +95,27 @@ export default function RightSide({
   };
 
   return (
-    <div className="ml-2 flex items-center gap-1">
-      <Tooltip content={getTooltipContent()} placement="right" showArrow>
+    <div className="ml-2 flex items-center gap-2">
+      {/* <Tooltip content="Voice Mode" placement="left" color="primary" showArrow>
+        <Button
+          isIconOnly
+          aria-label="Voice Mode"
+          className="h-9 min-h-9 w-9 max-w-9 min-w-9"
+          color="default"
+          radius="full"
+          type="button"
+          onPress={() => setvoiceModeActive()}
+        >
+          <AudioWaveIcon className="text-zinc-400" />
+        </Button>
+      </Tooltip> */}
+
+      <Tooltip
+        content={getTooltipContent()}
+        placement="right"
+        color={isLoading ? "danger" : "primary"}
+        showArrow
+      >
         <Button
           isIconOnly
           aria-label={isLoading ? "Stop generation" : "Send message"}

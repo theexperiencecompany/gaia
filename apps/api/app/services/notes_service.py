@@ -4,19 +4,18 @@ Service module for handling note operations.
 
 from typing import Any, Dict
 
-from bson import ObjectId
-from fastapi import HTTPException, status
-from langchain_core.documents import Document
-
+from app.agents.prompts.convo_prompts import NOTES_PROMPT
 from app.config.loggers import notes_logger as logger
-from app.db.chromadb import ChromaClient
+from app.db.chromadb.chromadb import ChromaClient
 from app.db.mongodb.collections import notes_collection
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.utils import serialize_document
-from app.agents.prompts.convo_prompts import NOTES_PROMPT
 from app.models.notes_models import NoteModel, NoteResponse
 from app.utils.embedding_utils import search_notes_by_similarity
 from app.utils.notes_utils import insert_note
+from bson import ObjectId
+from fastapi import HTTPException, status
+from langchain_core.documents import Document
 
 
 async def get_note(note_id: str, user_id: str) -> NoteResponse:

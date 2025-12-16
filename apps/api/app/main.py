@@ -6,6 +6,7 @@ This module initializes and runs the FastAPI application.
 
 import time
 
+import app.patches  # noqa: F401 to apply patches
 from app.config.loggers import app_logger as logger
 from app.config.sentry import init_sentry
 from app.core.app_factory import create_app

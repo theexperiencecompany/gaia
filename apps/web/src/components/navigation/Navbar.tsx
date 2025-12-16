@@ -98,7 +98,7 @@ export default function Navbar() {
 
   return (
     <div
-      className={`fixed top-0 left-0 z-50 w-full pt-4 transition-all duration-300 px-4`}
+      className={`fixed top-0 left-0 z-50 w-full px-4 pt-4 transition-all duration-300`}
     >
       <div
         className={`relative mx-auto transition-all duration-300 ${
@@ -107,12 +107,12 @@ export default function Navbar() {
         onMouseLeave={handleNavbarMouseLeave}
       >
         <div
-          className={`navbar_content flex h-14 w-full items-center justify-between  px-3 transition-all duration-300 ${
+          className={`navbar_content flex h-14 w-full items-center justify-between px-3 transition-all duration-300 ${
             activeDropdown
-              ? "rounded-t-2xl  bg-zinc-900"
+              ? "rounded-t-2xl bg-zinc-900"
               : isScrolled
                 ? "rounded-2xl bg-zinc-900/30 backdrop-blur-md"
-                : "rounded-2xl border-transparent bg-transparent "
+                : "rounded-2xl border-transparent bg-transparent"
           }`}
         >
           <Button as={Link} href={"/"} variant="light" className="px-2">
@@ -137,7 +137,6 @@ export default function Navbar() {
                       ? "text-primary"
                       : "text-zinc-300 hover:text-zinc-100"
                   }`}
-                  as={Link}
                   href={href}
                   startContent={icon}
                   external={external}

@@ -186,12 +186,47 @@ services:
     networks:
       - gaia_network
 
+  # Voice Agent Worker
+  voice-agent-worker:
+    container_name: voice-agent-worker
+    profiles: ["backend", "voice"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.voice-agent
+    image: gaia-voice-agent
+    working_dir: /app
+    environment:
+      PYTHONUNBUFFERED: 1
+      FORCE_COLOR: 1
+      WORKER_TYPE: voice_agent_worker
+      DEBUG: 1
+      WATCHFILES_FORCE_POLLING: 1
+      HF_HUB_OFFLINE: "0"
+      LOCAL_FILES_ONLY: "0"
+      HF_HUB_ENABLE_HF_TRANSFER: "1"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - voice_agent_models:/home/appuser/.cache/huggingface
+    restart: on-failure
+    networks:
+      - gaia_network
+
+  chromadb_admin:
+    image: fengzhichao/chromadb-admin
+    container_name: chromadb_admin
+    networks:
+      - gaia_network
+    ports:
+      - "8082:3001"
+
 volumes:
   chroma_data:
   pgdata:
   redis_data:
   mongo_data:
   rabbitmq_data:
+  voice_agent_models:
 
 networks:
   gaia_network:

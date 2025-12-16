@@ -147,10 +147,36 @@ services:
     networks:
       - gaia_network
 
+  # Voice Agent Worker
+  voice-agent-worker:
+    container_name: voice-agent-worker
+    image: ghcr.io/heygaia/gaia-voice-agent:latest
+    profiles: ["", "backend-only"]
+    working_dir: /app
+    environment:
+      PYTHONUNBUFFERED: 1
+      FORCE_COLOR: 1
+      WORKER_TYPE: voice_agent_worker
+      PYTHONDONTWRITEBYTECODE: 1
+      HF_HUB_OFFLINE: "1"
+      HF_HUB_ENABLE_HF_TRANSFER: "1"
+      HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - voice_agent_models:/root/.cache/huggingface
+    restart: always
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
 volumes:
   chroma_data:
   pgdata:
   rabbitmq_data:
+  voice_agent_models:
 
 networks:
   gaia_network:

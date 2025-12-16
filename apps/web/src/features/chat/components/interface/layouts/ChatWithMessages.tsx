@@ -25,6 +25,7 @@ interface ChatWithMessagesProps {
     onDroppedFilesProcessed: () => void;
     hasMessages: boolean;
     conversationId?: string;
+    voiceModeActive: () => void;
   };
 }
 

@@ -3,25 +3,25 @@ Base sub-agent factory for creating provider-specific agents.
 
 This module provides the core framework for building specialized sub-agents
 that can handle specific tool categories with deep domain expertise.
+
+Subagents are now standalone graphs with their own checkpointers,
+invoked via tool-calling pattern similar to executor_agent.
 """
 
 import asyncio
 
+from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.nodes import trim_messages_node
 from app.agents.core.nodes.delete_system_messages import (
     create_delete_system_messages_node,
 )
-from app.agents.core.nodes.filter_messages import create_filter_messages_node
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.memory_tools import search_memory
 from app.config.loggers import langchain_logger as logger
 from app.override.langgraph_bigtool.create_agent import create_agent
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.messages import AIMessage
-from langchain_core.runnables import RunnableConfig
-from langgraph.store.base import BaseStore
-from langgraph_bigtool.graph import State
+from langgraph.checkpoint.memory import InMemorySaver
 
 
 class SubAgentFactory:
@@ -33,7 +33,6 @@ class SubAgentFactory:
         name: str,
         llm: LanguageModelLike,
         tool_space: str = "general",
-        retrieve_tools_limit: int = 10,
         use_direct_tools: bool = False,
         disable_retrieve_tools: bool = False,
     ):
@@ -44,72 +43,45 @@ class SubAgentFactory:
             provider: Provider name (gmail, notion, twitter, linkedin, calendar)
             llm: Language model to use
             tool_space: Tool space to use for retrieval (e.g., "gmail_delegated", "general")
-            retrieve_tools_limit: Maximum number of tools to retrieve with each retrieval
 
         Returns:
-            Compiled LangGraph agent with tool registry and retrieval
+            Compiled LangGraph agent with tool registry, retrieval, and checkpointer
         """
         from app.agents.tools.core.registry import get_tool_registry
 
         logger.info(
             f"Creating {provider} sub-agent graph using tool space '{tool_space}' with "
-            + (
-                "direct tools binding"
-                if use_direct_tools
-                else f"retrieve tools (limit={retrieve_tools_limit})"
-            )
+            + ("direct tools binding" if use_direct_tools else "retrieve tools")
         )
 
         store, tool_registry = await asyncio.gather(
             get_tools_store(), get_tool_registry()
         )
+        tool_dict = tool_registry.get_tool_dict()
 
-        def transform_output(
-            state: State, config: RunnableConfig, store: BaseStore
-        ) -> State:
-            messages = state["messages"]
-            last_message = messages[-1]
-
-            if isinstance(last_message, AIMessage) and not last_message.tool_calls:
-                # If the last message is an AI message without tool calls, and add
-                # name to visible_to to include the agent name for filtering
-                # Note: Here we are adding "main_agent"
-                # because last AI Message should be accessible by main agent
-                last_message.additional_kwargs["visible_to"].add("main_agent")
-
-            return state
-
-        # Build common kwargs for agent creation
         common_kwargs = {
             "llm": llm,
-            "tool_registry": tool_registry.get_tool_dict(),
+            "tool_registry": tool_dict,
             "agent_name": name,
             "pre_model_hooks": [
-                create_filter_messages_node(
-                    agent_name=name,
-                    allow_memory_system_messages=True,
-                ),
                 trim_messages_node,
             ],
             "end_graph_hooks": [
-                transform_output,
                 create_delete_system_messages_node(),
             ],
         }
 
         if use_direct_tools:
-            # Resolve initial tool IDs from the registry for the given tool_space
             initial_tool_ids: list[str] = []
             category = tool_registry.get_category(tool_space)
             if category is not None:
                 initial_tool_ids.extend([t.name for t in category.tools])
 
-            # Always include memory tools for subagents
             try:
                 initial_tool_ids.extend([search_memory.name])
             except Exception as e:
                 logger.warning(
-                    f"Failed to add memory tools to subagent: {e}. Continuing without memory tools."
+                    f"Failed to add memory/list tools to subagent: {e}. Continuing without them."
                 )
 
             common_kwargs.update(
@@ -123,16 +95,29 @@ class SubAgentFactory:
                 {
                     "retrieve_tools_coroutine": get_retrieve_tools_function(
                         tool_space=tool_space,
-                        include_core_tools=False,  # Provider agents don't need core tools
-                        additional_tools=[search_memory],
-                        limit=retrieve_tools_limit,
-                    )
+                        include_subagents=False,
+                    ),
+                    "initial_tool_ids": [search_memory.name],
                 }
             )
 
         builder = create_agent(**common_kwargs)
 
-        subagent_graph = builder.compile(store=store, name=name, checkpointer=False)
+        try:
+            checkpointer_manager = await get_checkpointer_manager()
+            checkpointer = checkpointer_manager.get_checkpointer()
+            logger.debug(f"Using PostgreSQL checkpointer for {provider} sub-agent")
+        except Exception as e:
+            logger.warning(
+                f"PostgreSQL checkpointer unavailable for {provider} sub-agent: {e}. Using InMemorySaver."
+            )
+            checkpointer = InMemorySaver()
 
-        logger.info(f"Successfully created {provider} sub-agent graph")
+        subagent_graph = builder.compile(
+            store=store, name=name, checkpointer=checkpointer
+        )
+
+        logger.info(
+            f"Successfully created {provider} sub-agent graph with checkpointer"
+        )
         return subagent_graph

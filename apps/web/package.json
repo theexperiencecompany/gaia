@@ -54,6 +54,9 @@
     "@heroui/tooltip": "2.2.13",
     "@heroui/user": "2.2.12",
     "@hookform/resolvers": "^5.2.1",
+    "@internationalized/date": "^3.8.2",
+    "@livekit/components-react": "^2.9.14",
+    "@lottiefiles/dotlottie-react": "^0.17.1",
     "@mdx-js/loader": "^3.1.0",
     "@mdx-js/react": "^3.1.0",
     "@microsoft/fetch-event-source": "^2.0.1",
@@ -76,6 +79,8 @@
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@radix-ui/react-visually-hidden": "^1.2.3",
+    "@react-three/drei": "^10.7.6",
+    "@react-three/fiber": "^9.3.0",
     "@react-types/shared": "^3.31.0",
     "@sentry/nextjs": "^10.5.0",
     "@tailwindcss/postcss": "^4.1.12",
@@ -102,6 +107,7 @@
     "@types/react-twemoji": "^0.4.3",
     "@types/react-window": "^1.8.8",
     "@types/react-window-infinite-loader": "^1.0.9",
+    "@types/three": "^0.180.0",
     "@types/tinycolor2": "^1.4.6",
     "@use-gesture/react": "^10.3.1",
     "@vercel/analytics": "^1.5.0",
@@ -131,6 +137,7 @@
     "idb-keyval": "^6.2.2",
     "input-otp": "^1.4.2",
     "little-date": "^1.0.0",
+    "livekit-client": "^2.15.4",
     "lodash": "^4.17.21",
     "madge": "^8.0.0",
     "marked": "^15.0.12",
@@ -168,6 +175,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.12",
     "tailwindcss-animate": "^1.0.7",
+    "three": "^0.180.0",
     "tinycolor2": "^1.6.0",
     "uuid": "^13.0.0",
     "vaul": "^1.1.2",
@@ -187,6 +195,24 @@
     "depcheck": "^1.4.7",
     "schema-dts": "^1.1.5",
     "typescript": "^5.9.2"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "@heroui/shared-utils"
+    ],
+    "onlyBuiltDependencies": [
+      "@heroui/shared-utils",
+      "@parcel/watcher",
+      "@sentry/cli",
+      "@tailwindcss/oxide",
+      "@vercel/speed-insights",
+      "canvas",
+      "core-js",
+      "heapdump",
+      "oxc-resolver",
+      "sharp",
+      "unrs-resolver"
+    ]
   },
   "packageManager": "pnpm@10.18.3"
 }

@@ -1,38 +1,52 @@
 """
-Handoff Tools - Single Source of Truth
+Subagent Tools - Consolidated Delegation Pattern
 
-This module creates handoff tools dynamically from OAuth integration configs.
+This module provides two tools for subagent delegation:
+1. search_subagents - Semantic search for available subagents
+2. handoff - Generic handoff tool that delegates to any subagent
+
+Subagents are lazy-loaded on first invocation via providers.aget().
 All metadata comes from oauth_config.py OAUTH_INTEGRATIONS.
 """
 
-from typing import Annotated, Optional
+from datetime import datetime
+from typing import Annotated, List, Optional, TypedDict
 
+from app.agents.core.subagents.subagent_helpers import (
+    create_subagent_system_message,
+)
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
-from app.services.oauth_service import check_integration_status
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import InjectedToolCallId, tool
-from langgraph.config import get_stream_writer
-from langgraph.graph import MessagesState
-from langgraph.prebuilt import InjectedState
-from langgraph.types import Command, Send
-
-# Handoff tool description template
-HANDOFF_DESCRIPTION_TEMPLATE = (
-    "Delegate to the specialized {provider_name} agent for {domain} tasks. "
-    "This expert agent handles: {capabilities}. "
-    "Use for {use_cases}."
+from app.core.lazy_loader import providers
+from app.helpers.agent_helpers import build_agent_config
+from app.services.oauth_service import (
+    check_integration_status,
 )
+from langchain_core.messages import (
+    AIMessageChunk,
+    HumanMessage,
+)
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
+from langgraph.store.base import BaseStore
+
+SUBAGENTS_NAMESPACE = ("subagents",)
+
+
+class SubagentInfo(TypedDict):
+    """Subagent information structure."""
+
+    id: str
+    name: str
+    connected: bool
 
 
 async def check_integration_connection(
     integration_id: str,
     user_id: str,
-    tool_call_id: str,
-    state: MessagesState,
-) -> Optional[Command]:
-    """Check if integration is connected and return error command if not."""
+) -> Optional[str]:
+    """Check if integration is connected and return error message if not."""
     try:
         integration = get_integration_by_id(integration_id)
         if not integration:
@@ -53,124 +67,193 @@ async def check_integration_connection(
 
         writer({"integration_connection_required": integration_data})
 
-        tool_message = ToolMessage(
-            content=f"Integration {integration.name} is not connected. Please connect it first.",
-            tool_call_id=tool_call_id,
+        return (
+            f"Integration {integration.name} is not connected. Please connect it first."
         )
-
-        return Command(update={"messages": state["messages"] + [tool_message]})
 
     except Exception as e:
         logger.error(f"Error checking integration status for {integration_id}: {e}")
         return None
 
 
-def create_handoff_tool(integration_id: str):
-    """Create a handoff tool dynamically from OAuth integration configuration.
+def _get_subagent_integrations() -> List:
+    """Get all integrations that have subagent configurations."""
+    return [
+        integration
+        for integration in OAUTH_INTEGRATIONS
+        if integration.subagent_config and integration.subagent_config.has_subagent
+    ]
+
+
+def _get_subagent_by_id(subagent_id: str):
+    """Get subagent integration by ID or short_name."""
+    search_id = subagent_id.lower().strip()
+    for integ in OAUTH_INTEGRATIONS:
+        if integ.id.lower() == search_id or (
+            integ.short_name and integ.short_name.lower() == search_id
+        ):
+            if integ.subagent_config and integ.subagent_config.has_subagent:
+                return integ
+    return None
+
+
+async def index_subagents_to_store(store: BaseStore) -> None:
+    """Index all subagents into the store for semantic search with rich descriptions."""
+    from langgraph.store.base import PutOp
+
+    subagent_integrations = _get_subagent_integrations()
+
+    put_ops = []
+    for integration in subagent_integrations:
+        cfg = integration.subagent_config
+        # Create comprehensive description with provider name mentioned multiple times
+        # for better semantic matching
+        provider_name = integration.name
+        short_name = integration.short_name or integration.id
+
+        description = (
+            f"{provider_name} ({short_name}). "
+            f"{provider_name} specializes in {cfg.domain}. "
+            f"Use {provider_name} for: {cfg.use_cases}. "
+            f"{provider_name} capabilities: {cfg.capabilities}"
+        )
+
+        put_ops.append(
+            PutOp(
+                namespace=SUBAGENTS_NAMESPACE,
+                key=integration.id,
+                value={
+                    "id": integration.id,
+                    "name": integration.name,
+                    "description": description,
+                },
+                index=["description"],
+            )
+        )
+
+    if put_ops:
+        await store.abatch(put_ops)
+        logger.info(f"Indexed {len(put_ops)} subagents to store")
+
+
+@tool
+async def handoff(
+    subagent_id: Annotated[
+        str,
+        "The ID of the subagent to delegate to (e.g., 'gmail', 'subagent:gmail', 'google_calendar'). "
+        "Get this from retrieve_tools results (subagent IDs have 'subagent:' prefix).",
+    ],
+    task: Annotated[
+        str,
+        "Detailed description of the task for the subagent, including all relevant context.",
+    ],
+    config: RunnableConfig,
+) -> str:
+    """Delegate a task to a specialized subagent.
+
+    Use this tool to hand off tasks to expert subagents that specialize in specific domains.
+    First use retrieve_tools to find available subagents (they appear with 'subagent:' prefix).
+
+    The subagent will:
+    1. Process the task using its specialized tools
+    2. Return the result of the completed task
 
     Args:
-        integration_id: Integration ID from OAUTH_INTEGRATIONS
-
-    Returns:
-        Handoff tool function or None if integration has no subagent
+        subagent_id: ID of the subagent from retrieve_tools (with or without 'subagent:' prefix)
+        task: Complete task description with all necessary context
     """
-    integration = get_integration_by_id(integration_id)
-    if not integration or not integration.subagent_config:
-        logger.debug(f"Integration {integration_id} has no subagent configuration")
-        return None
+    try:
+        configurable = config.get("configurable", {})
+        user_id = configurable.get("user_id")
 
-    if not integration.subagent_config.has_subagent:
-        return None
+        # Strip 'subagent:' prefix if present
+        clean_id = subagent_id.replace("subagent:", "").strip()
 
-    config = integration.subagent_config
-    tool_name = config.handoff_tool_name
-    agent_name = config.agent_name
-    system_prompt = config.system_prompt or ""
+        integration = _get_subagent_by_id(clean_id)
 
-    description = HANDOFF_DESCRIPTION_TEMPLATE.format(
-        provider_name=integration.name,
-        domain=config.domain,
-        capabilities=config.capabilities,
-        use_cases=config.use_cases,
-    )
+        if not integration or not integration.subagent_config:
+            available = [i.id for i in _get_subagent_integrations()][:5]
+            return (
+                f"Subagent '{subagent_id}' not found. "
+                f"Use retrieve_tools to find available subagents. "
+                f"Examples: {', '.join([f'subagent:{a}' for a in available])}{'...' if len(available) == 5 else ''}"
+            )
 
-    @tool(tool_name, description=description)
-    async def handoff_tool(
-        task_description: Annotated[
-            str,
-            "Description of what the next agent should do, including all of the relevant context.",
-        ],
-        state: Annotated[MessagesState, InjectedState],
-        tool_call_id: Annotated[str, InjectedToolCallId],
-        config: RunnableConfig,
-    ) -> Command:
-        # Check integration connection if required
-        if integration_id:
-            user_id = config.get("metadata", {}).get("user_id")
-            if user_id:
-                error_command = await check_integration_connection(
-                    integration_id, user_id, tool_call_id, state
-                )
-                if error_command:
-                    return error_command
+        subagent_cfg = integration.subagent_config
+        agent_name = subagent_cfg.agent_name
 
-        # Build handoff messages
-        task_description_message = HumanMessage(
-            content=task_description,
-            additional_kwargs={"visible_to": {agent_name}},
-        )
-        system_prompt_message = SystemMessage(
-            content=system_prompt,
-            additional_kwargs={"visible_to": {agent_name}},
-        )
-        tool_message = ToolMessage(
-            content=f"Successfully transferred to {agent_name}",
-            tool_call_id=tool_call_id,
-            additional_kwargs={
-                "visible_to": {"main_agent"},
-                "is_handoff_toolcall": True,
-            },
+        if user_id:
+            error_message = await check_integration_connection(integration.id, user_id)
+            if error_message:
+                return error_message
+
+        subagent_graph = await providers.aget(agent_name)
+        if not subagent_graph:
+            return f"Error: {agent_name} not available"
+
+        thread_id = configurable.get("thread_id", "")
+        subagent_thread_id = f"{integration.id}_{thread_id}"
+
+        user = {
+            "user_id": user_id,
+            "email": configurable.get("email"),
+            "name": configurable.get("user_name"),
+        }
+        user_time_str = configurable.get("user_time", "")
+        user_time = (
+            datetime.fromisoformat(user_time_str) if user_time_str else datetime.now()
         )
 
-        agent_input = {
-            **state,
-            "messages": state["messages"]
-            + [tool_message, system_prompt_message, task_description_message],
+        subagent_runnable_config = build_agent_config(
+            conversation_id=thread_id,
+            user=user,
+            user_time=user_time,
+            thread_id=subagent_thread_id,
+            base_configurable=configurable,
+            agent_name=agent_name,
+        )
+
+        system_message = await create_subagent_system_message(
+            integration_id=integration.id,
+            agent_name=agent_name,
+            user_id=user_id,
+        )
+
+        initial_state = {
+            "messages": [
+                system_message,
+                HumanMessage(
+                    content=task,
+                    additional_kwargs={"visible_to": {agent_name}},
+                ),
+            ]
         }
 
-        return Command(
-            goto=[Send(agent_name, agent_input)],
-            update={"messages": state["messages"] + [tool_message]},
-        )
+        complete_message = ""
+        writer = get_stream_writer()
 
-    return handoff_tool
-
-
-def get_handoff_tools(enabled_providers: list[str] | None = None):
-    """Get handoff tools dynamically from OAuth integration configs.
-
-    Args:
-        enabled_providers: Optional list of integration IDs to filter by.
-                          If None, returns all integrations with subagents.
-
-    Returns:
-        List of handoff tools created from integration configurations
-    """
-    tools = []
-
-    for integration in OAUTH_INTEGRATIONS:
-        if enabled_providers and integration.id not in enabled_providers:
-            continue
-
-        if (
-            not integration.subagent_config
-            or not integration.subagent_config.has_subagent
+        async for event in subagent_graph.astream(
+            initial_state,
+            stream_mode=["messages", "custom"],
+            config=subagent_runnable_config,
         ):
-            continue
+            stream_mode, payload = event
 
-        handoff_tool = create_handoff_tool(integration.id)
-        if handoff_tool:
-            tools.append(handoff_tool)
+            if stream_mode == "custom":
+                writer(payload)
+            elif stream_mode == "messages":
+                chunk, metadata = payload
 
-    logger.info(f"Created {len(tools)} handoff tools from integration configs")
-    return tools
+                if metadata.get("silent"):
+                    continue
+
+                if chunk and isinstance(chunk, AIMessageChunk):
+                    content = str(chunk.content)
+                    if content:
+                        complete_message += content
+
+        return complete_message if complete_message else "Task completed"
+
+    except Exception as e:
+        logger.error(f"Error in handoff to {subagent_id}: {e}")
+        return f"Error executing task: {str(e)}"

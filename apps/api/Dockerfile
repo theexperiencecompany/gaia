@@ -22,37 +22,11 @@ RUN apt-get update && \
   texlive-plain-generic && \
   rm -rf /var/lib/apt/lists/*
 
-# ---- Extraction Stage: Extract heavy dependencies ----
-FROM base AS extract
+# ---- Dependencies Stage: Install application dependencies ----
+FROM base AS dependencies
 WORKDIR /app
 
-# Install tomli for parsing
-RUN pip install tomli
-
-# Copy only pyproject.toml for extraction
-COPY pyproject.toml ./
-COPY scripts/extract_heavy_deps.py ./
-
-# Run script to extract heavy dependencies
-RUN pip install crawl4ai && crawl4ai-setup && python extract_heavy_deps.py && rm -rf /root/.cache/pip
-
-# ---- Heavy Dependencies Stage ----
-FROM base AS heavy-dependencies
-WORKDIR /app
-
-# Copy only the extracted dependencies file, not pyproject.toml
-COPY --from=extract /app/heavy-deps.txt ./
-
-# Run script to extract and install heavy dependencies
-RUN uv pip install --system --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
-  uv pip install --system --no-cache-dir -r heavy-deps.txt && \
-  rm -rf /root/.cache/pip
-
-# ---- Default Dependencies Stage: Install default application dependencies ----
-FROM heavy-dependencies AS default-dependencies
-WORKDIR /app
-
-# Copy only the pyproject.toml for default dependencies
+# Copy only the pyproject.toml for dependencies
 COPY pyproject.toml ./
 
 # Set environment variables
@@ -62,16 +36,16 @@ ENV ENV=production \
   UV_SYSTEM_PYTHON=1 \
   UV_LOGGING=1
 
-# Install default dependencies
+# Install crawl4ai browser dependencies
+RUN pip install crawl4ai && crawl4ai-setup && rm -rf /root/.cache/pip
+
+# Install torch from CPU index first, then backend dependencies only
 RUN --mount=type=cache,target=/root/.cache/uv \
-  if [ "$ENV" = "production" ]; then \
-  uv pip install --no-cache-dir .; \
-  else \
-  uv pip install --no-cache-dir --editable . ; \
-  fi
+  uv pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+  uv pip install --no-cache-dir . --group backend
 
 # ---- Final Stage: Setup application for production ----
-FROM default-dependencies AS final
+FROM dependencies AS final
 WORKDIR /app
 
 # Setup non-root user and permissions

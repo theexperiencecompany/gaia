@@ -5,131 +5,117 @@ description = "Backend of GAIA - The personal AI assistant"
 readme = "../README.md"
 requires-python = ">=3.11"
 
+# ─────────────────────────────────────────────────────────────
+# Core runtime dependencies (merged and deduplicated)
+# ─────────────────────────────────────────────────────────────
 dependencies = [
+  "uvloop>=0.21.0; sys_platform != 'win32'",
+  "pydantic==2.10.4",
+  "pydantic-settings>=2.8.1",
+  "loguru>=0.7.3",
+  "stackprinter>=0.2.12",
+  "beartype>=0.21.0",
+  "python-jose",
+  "orjson>=3.11.3",
+  "ujson>=5.11.0",
+  "httpx==0.28.1",
+  "slowapi>=0.1.9",
+  "fastapi-cache2[redis]>=0.1.8",
+  "aiolimiter>=1.2.1",
+  "typing-extensions==4.12.2",
+  "pendulum>=3.0.0",
+  "uuid7>=0.1.0",
+  "croniter>=3.0.0",
+  "rich==14.0.0",
+  "infisicalsdk>=1.0.7",
+  "aiohttp>=3.9.0",
+  "taskipy>=1.2.1",
+  "urllib3>=2.6.0",
   "langgraph-checkpoint-postgres>=2.0.21",
-  "pyppeteer>=0.0.25",
-  "assemblyai>=0.37.0",
   "beautifulsoup4==4.12.3",
-  "browser-use>=0.1.40",
   "bs4==0.0.2",
   "cloudinary==1.41.0",
-  "deepgram-sdk>=3.10.0",
-  "docx2txt>=0.9",
   "fastapi[standard]==0.115.6",
   "ftfy>=6.3.0",
   "google-api-core==2.24.0",
   "google-api-python-client>=2.162.0",
   "google-auth==2.38.0",
   "googleapis-common-protos==1.66.0",
-  "groq==0.15.0",
   "html2text>=2024.2.26",
-  "httpx==0.28.1",
-  "langchain-groq>=0.3.2",
-  "hyperframe==6.1.0",
-  "idna==3.10",
-  "infisicalsdk>=1.0.7",
-  "itsdangerous>=2.2.0",
-  "jieba==0.42.1",
   "jinja2==3.1.5",
-  "joblib==1.4.2",
   "langchain-chroma>=0.2.2",
   "langchain-google-genai>=2.1.2",
-  "langcodes==3.5.0",
-  "language-data==1.3.0",
-  "llvmlite==0.44.0",
-  "lmnr[all]>=0.4.54",
-  "marisa-trie==1.2.1",
-  "markdown-it-py==3.0.0",
-  "markupsafe==3.0.2",
-  "mdurl==0.1.2",
-  "more-itertools==10.6.0",
   "motor==3.6.0",
-  "openai>=1.69.0",
-  "pendulum>=3.0.0",
   "protobuf==5.29.5",
-  "pydantic==2.10.4",
-  "pydantic-settings>=2.8.1",
-  "PyJWT>=2.10.0",
   "pymongo==4.9.2",
-  "pymupdf>=1.25.5",
-  "pypdf2==3.0.1",
-  "pytesseract>=0.3.13",
   "redis==5.2.1",
-  "rich==14.0.0",
   "starlette==0.41.3",
-  "sumy==0.11.0",
-  "tldextract>=5.1.3",
-  "typing-extensions==4.12.2",
   "langchain-openai>=0.3.1",
-  "pyowm>=3.3.0",
-  "ipython>=9.1.0",
-  "uvicorn>=0.34.1",
-  "hf-xet>=1.0.3",
-  "llama-parse>=0.6.12",
   "llama-cloud-services>=0.6.15",
-  "psycopg2-binary>=2.9.10",
-  "uuid7>=0.1.0",
   "chromadb>=0.6.3",
-  "slowapi>=0.1.9",
-  "fastapi-mcp>=0.3.3",
   "langgraph-bigtool>=0.0.2",
   "aio-pika>=9.5.5",
-  "aiolimiter>=1.2.1",
   "arq>=0.26.0",
-  "croniter>=3.0.0",
   "e2b-code-interpreter>=1.2.0",
   "pypandoc>=1.15",
   "markdown2>=2.5.3",
-  "pandas>=2.3.0",
   "resend>=2.10.0",
   "tomli>=2.2.1",
-  "cfgv>=3.4.0",
-  "ruff>=0.12.2",
-  "mypy>=1.16.1",
-  "types-redis>=4.6.0.20241004",
-  "types-requests>=2.32.4.20250611",
-  "types-pytz>=2025.2.0.20250516",
   "workos>=5.24.0",
-  "asyncpg>=0.30.0",
   "authlib>=1.6.1",
   "composio>=0.8.19",
-  "composio-langchain==0.8.0",
   "dodopayments>=1.49.0",
   "standardwebhooks>=1.0.0",
-  "psycopg[binary,pool]>=3.2.10",
   "langchain-core>=0.3.74",
   "langgraph>=0.6.5",
-  "langchain>=0.3.27",
-  "beartype>=0.21.0",
   "pyinstrument>=5.1.1",
-  "stackprinter>=0.2.12",
-  "loguru>=0.7.3",
-  "fastapi-cache2[redis]>=0.1.8",
-  "orjson>=3.11.3",
-  "ujson>=5.11.0",
-  "uvloop>=0.21.0; sys_platform != 'win32'",
   "mem0ai>=1.0.1",
   "firecrawl-py>=4.3.6",
   "tavily-python>=0.7.12",
-  "types-croniter",
-  "types-python-dateutil",
-  "composio-client>=1.10.0",
   "firecrawl>=4.5.0",
   "posthog>=5.4.0",
   "sentry-sdk[langgraph]>=2.44.0",
   "crawl4ai>=0.7.7",
-  "urllib3==2.6.0",
+  "langchain>=0.3.27",
+  "asyncpg>=0.31.0",
+  "opik>=1.9.47",
 ]
 
+# ─────────────────────────────────────────────────────────────
+# Task runner
+# ─────────────────────────────────────────────────────────────
+[tool.taskipy.tasks]
+dev = "uv run uvicorn app.main:app --port 8000 --reload --log-level warning"
+start = "uv run fastapi run"
+arq = "uv run arq app.worker.WorkerSettings"
+worker = "task arq"
+lint = "uvx ruff check ."
+"lint.fix" = "uvx ruff check . --fix"
+format = "uvx ruff format ."
+mypy = "uvx mypy app --ignore-missing-imports"
+schema = "uvx schemathesis run http://localhost:8000/openapi.json"
+"schema.write" = "uvx schemathesis run http://localhost:8000/openapi.json --report-junit-path report.xml"
+bandit = "uvx bandit -r app"
+pip_audit = "uvx pip-audit"
+detect_secrets = "uvx detect-secrets scan --all-files" # pragma: allowlist secret
+
+# ─────────────────────────────────────────────────────────────
+# Dependency Groups (merged and deduplicated)
+# ─────────────────────────────────────────────────────────────
 [dependency-groups]
+
+# ─────────────── DEV ───────────────
 dev = [
   "mypy>=1.16.1",
   "ruff>=0.4.4",
+  "pre-commit>=4.2.0",
+  "cfgv>=3.4.0",
   "types-pytz>=2025.2.0.20250516",
   "types-croniter>=6.0.0.20250626",
   "types-redis",
   "types-requests>=2.32.4.20250611",
   "types-beautifulsoup4>=4.12.0.20250516",
+  "types-python-dateutil>=2.9.0.20250708",
   "lxml-stubs>=0.5.1",
   "pandas-stubs>=2.3.0.250703",
   "types-deprecated>=1.2.15.20250304",
@@ -146,7 +132,6 @@ dev = [
   "types-psutil>=7.0.0.20250601",
   "types-pyopenssl>=24.1.0.20240722",
   "types-pyasn1>=0.6.0.20250516",
-  "types-python-dateutil>=2.9.0.20250708",
   "types-regex>=2024.11.6.20250403",
   "types-simplejson>=3.20.0.20250326",
   "types-tensorflow>=2.18.0.20250516",
@@ -154,21 +139,127 @@ dev = [
   "types-ujson>=5.10.0.20250326",
 ]
 
-heavy = [
-  "langchain",
-  "langchain-community",
+# ─────────────── BACKEND ───────────────
+backend = [
+  "fastapi[standard]==0.115.6",
+  "uvicorn>=0.34.1",
+  "starlette==0.41.3",
+  "PyJWT>=2.10.0",
+  "authlib>=1.6.1",
+  "workos>=5.24.0",
+  "motor==3.6.0",
+  "pymongo==4.9.2",
+  "redis==5.2.1",
+  "psycopg2-binary>=2.9.10",
+  "psycopg[binary,pool]>=3.2.10",
+  "asyncpg>=0.30.0",
+  "chromadb>=0.6.3",
+  "langchain-core>=0.3.74",
+  "langchain>=0.3.27",
+  "langgraph>=0.6.5",
+  "langgraph-checkpoint-postgres>=2.0.21",
+  "langgraph-bigtool>=0.0.2",
+  "langchain-openai>=0.3.1",
+  "langchain-groq>=0.3.2",
+  "langchain-chroma>=0.2.2",
+  "langchain-google-genai>=2.1.2",
+  "langchain-cerebras>=0.5.0",
+  "openai>=1.69.0",
+  "groq==0.15.0",
+  "lmnr[all]>=0.4.54",
+  "mem0ai>=0.1.118",
+  "llama-parse>=0.6.12",
+  "llama-cloud-services>=0.6.15",
+  "pypdf2==3.0.1",
+  "pymupdf>=1.25.5",
+  "docx2txt>=0.9",
+  "pypandoc>=1.15",
+  "markdown2>=2.5.3",
+  "pytesseract>=0.3.13",
+  "pillow==11.0.0",
+  "pandas>=2.3.0",
+  "beautifulsoup4==4.12.3",
+  "bs4==0.0.2",
+  "lxml>=5.3", # FIXED: Relaxed from lxml==6.0.0 to fix conflict with crawl4ai (<6.dev0)
+  "html2text>=2024.2.26",
+  "tldextract>=5.1.3",
+  "firecrawl-py>=4.3.6",
+  "browser-use>=0.1.40",
+  "pyppeteer>=0.0.25",
+  "tavily-python>=0.7.12",
+  "sumy==0.11.0",
+  "jieba==0.42.1",
+  "langcodes==3.5.0",
+  "language-data==1.3.0",
+  "marisa-trie==1.2.1",
+  "google-api-core==2.24.0",
+  "google-api-python-client>=2.162.0",
+  "google-auth==2.38.0",
+  "googleapis-common-protos==1.66.0",
+  "cloudinary==1.41.0",
+  "assemblyai>=0.37.0",
+  "pyowm>=3.3.0",
+  "resend>=2.10.0",
+  "composio>=0.8.19",
+  "composio-langchain==0.8.0",
+  "composio-client>=1.10.0",
+  "dodopayments>=1.49.0",
+  "standardwebhooks>=1.0.0",
+  "fastapi-mcp>=0.3.3",
+  "arq>=0.26.0",
+  "aio-pika>=9.5.5",
+  "e2b-code-interpreter>=1.2.0",
+  "ipython>=9.1.0",
+  "livekit-api",
+  "jinja2==3.1.5",
+  "markupsafe==3.0.2",
+  "hf-xet>=1.0.3",
+  "tomli>=2.2.1",
+  "itsdangerous>=2.2.0",
+  "hyperframe==6.1.0",
+  "idna==3.10",
+  "joblib==1.4.2",
+  "more-itertools==10.6.0",
+  "protobuf==5.29.5",
+  "llvmlite==0.44.0",
+  "markdown-it-py==3.0.0",
+  "mdurl==0.1.2",
+  "pyinstrument>=5.1.1",
+  "cfgv>=3.4.0",
+  "pre-commit>=4.2.0",
+  "ruff>=0.12.2",
+  "mypy>=1.16.1",
+  "types-redis>=4.6.0.20241004",
+  "types-requests>=2.32.4.20250611",
+  "types-pytz>=2025.2.0.20250516",
+  "types-croniter",
+  "types-python-dateutil",
+  "firecrawl>=4.6.0",
 ]
 
+# ─────────────── VOICE AGENT ───────────────
+voice_agent = [
+  "livekit>=1.0.12",
+  "livekit-agents[turn-detector,silero,deepgram]~=1.2",
+  "livekit-plugins-noise-cancellation~=0.2",
+  "livekit-plugins-elevenlabs~=1.2",
+  "hf_transfer",
+]
+
+# ─────────────────────────────────────────────────────────────
+# UV / Torch CPU index
+# ─────────────────────────────────────────────────────────────
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
-torch = [
-  { index = "pytorch-cpu" },
-]
+torch = [{ index = "pytorch-cpu" }]
 
+# ─────────────────────────────────────────────────────────────
+# URLs
+# ─────────────────────────────────────────────────────────────
 [project.urls]
 Homepage = "https://heygaia.io"
 Documentation = "https://docs.heygaia.io"

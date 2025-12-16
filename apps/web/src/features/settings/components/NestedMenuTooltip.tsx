@@ -7,8 +7,7 @@ import type { ReactNode } from "react";
 interface MenuItem {
   key: string;
   label: string;
-  icon?: React.ElementType;
-  iconElement?: ReactNode;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   action: () => void;
 }
 

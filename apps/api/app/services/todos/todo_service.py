@@ -1037,7 +1037,7 @@ async def get_todos_by_date_range(
         due_date_end=end_date,
         completed=False,
         page=1,
-        per_page=1000,
+        per_page=100,
         include_stats=False,
     )
 
@@ -1064,7 +1064,7 @@ async def get_todos_by_label(user_id: str, label: str) -> List[TodoResponse]:
         mode=SearchMode.TEXT,
         labels=[label],
         page=1,
-        per_page=1000,
+        per_page=100,
         include_stats=False,
     )
 
