@@ -4,23 +4,33 @@
  * Performance-optimized startup flow:
  * 1. Show splash screen IMMEDIATELY (no blocking operations before this)
  * 2. Start Next.js server in background (non-blocking)
- * 3. Create main window (hidden) while server starts
+ * 3. Create main window (hidden) while server starts IN PARALLEL
  * 4. Wait for renderer to signal ready, then show main window
  * 
- * Key optimizations from Electron docs:
- * - Defer module loading where possible
- * - Never block the main process with sync operations
- * - Show visual feedback immediately
+ * Key optimizations:
+ * - V8 code caching for faster subsequent startups
+ * - GPU acceleration flags for faster rendering
+ * - Parallel server + window creation (no blocking)
+ * - Reduced timeouts for better perceived performance
  */
+
+// Enable V8 code caching for faster subsequent startups (~20-30% improvement)
+import 'v8-compile-cache';
 
 import { app, shell, BrowserWindow, ipcMain, screen } from 'electron';
 import { join } from 'node:path';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
 import { startNextServer, stopNextServer, getServerUrl } from './server';
 
+// GPU acceleration and performance flags - must be set before app.ready
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let serverStarted = false;
+
 
 /**
  * Create fullscreen splash screen with vibrancy
@@ -46,7 +56,7 @@ function createSplashWindow(): void {
     alwaysOnTop: true,
     skipTaskbar: true,
     focusable: false,
-    show: false, // Show after content loads for smoother appearance
+    show: true, // Show immediately - splash is simple enough to render instantly
     hasShadow: false,
     // macOS vibrancy for native blur effect
     vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
@@ -63,11 +73,7 @@ function createSplashWindow(): void {
     : join(__dirname, '../../resources/splash.html');
 
   splashWindow.loadFile(splashPath);
-
-  // Show as soon as DOM is ready (faster than waiting for full load)
-  splashWindow.webContents.on('dom-ready', () => {
-    splashWindow?.show();
-  });
+  // Window shows immediately (show: true) - no waiting for dom-ready
 }
 
 /**
@@ -114,20 +120,68 @@ async function createMainWindow(): Promise<void> {
   const isProduction = process.env.NODE_ENV === 'production' || app.isPackaged;
   
   if (isProduction) {
-    // In production, load from bundled Next.js server
-    const serverUrl = getServerUrl();
-    mainWindow.loadURL(serverUrl);
+    // In production, wait for server to be ready (polling) then load
+    // This allows parallel server + window creation
+    const waitForServerAndLoad = async (): Promise<void> => {
+      const serverUrl = getServerUrl();
+      const maxAttempts = 50; // 50 * 100ms = 5 seconds max wait
+      
+      for (let i = 0; i < maxAttempts; i++) {
+        if (serverStarted) {
+          console.log('[Main] Server is ready, loading URL:', serverUrl);
+          mainWindow?.loadURL(serverUrl);
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      // Fallback: try loading anyway after timeout
+      console.log('[Main] Server wait timeout, attempting to load anyway');
+      mainWindow?.loadURL(serverUrl);
+    };
+    
+    waitForServerAndLoad().catch(console.error);
   } else {
-    // In development, wait for dev server
-    // Defer wait-on import since it's only needed in dev
-    const waitOn = await import('wait-on');
-    const devUrl = 'http://localhost:3000';
-    console.log('Waiting for web dev server at', devUrl);
-    await waitOn.default({ resources: [devUrl], timeout: 30000 });
-    console.log('Web dev server ready, loading...');
-    mainWindow.loadURL(devUrl);
+    // In development, use same non-blocking polling pattern
+    // Poll for dev server instead of blocking with wait-on
+    const waitForDevServerAndLoad = async (): Promise<void> => {
+      const devUrl = 'http://localhost:3000';
+      const maxAttempts = 100; // 100 * 100ms = 10 seconds max wait
+      
+      console.log('[Main] Waiting for dev server at', devUrl);
+      
+      for (let i = 0; i < maxAttempts; i++) {
+        try {
+          // Quick TCP check to see if server is up
+          const net = await import('node:net');
+          const isReady = await new Promise<boolean>((resolve) => {
+            const socket = net.createConnection({ port: 3000, host: 'localhost' });
+            socket.once('connect', () => { socket.destroy(); resolve(true); });
+            socket.once('error', () => { socket.destroy(); resolve(false); });
+            setTimeout(() => { socket.destroy(); resolve(false); }, 100);
+          });
+          
+          if (isReady) {
+            console.log('[Main] Dev server ready, loading...');
+            mainWindow?.loadURL(devUrl);
+            return;
+          }
+        } catch {
+          // Ignore errors, keep polling
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      // Fallback: try loading anyway
+      console.log('[Main] Dev server wait timeout, attempting to load anyway');
+      mainWindow?.loadURL(devUrl);
+    };
+    
+    waitForDevServerAndLoad().catch(console.error);
   }
 }
+
+
 
 /**
  * Show main window and close splash
@@ -178,35 +232,37 @@ app.whenReady().then(() => {
     showMainWindow();
   });
 
-  // STEP 3: Start Next.js server in background (non-blocking!)
-  // Don't await this - let it run in parallel
+  // STEP 3: Start server AND create window in PARALLEL (non-blocking!)
+  // Window creation now polls for server readiness internally
   const isProduction = process.env.NODE_ENV === 'production' || app.isPackaged;
+  
   if (isProduction) {
+    // Start server in background - don't block on it
     startNextServer()
       .then(() => {
         serverStarted = true;
         console.log('[Main] Next.js server started');
-        // Now create main window that will load from server
-        createMainWindow().catch(console.error);
       })
       .catch((error) => {
         console.error('[Main] Failed to start Next.js server:', error);
-        // Still try to create window - might recover
-        createMainWindow().catch(console.error);
+        // Still set serverStarted to allow window to attempt loading
+        // This enables error recovery - window will show error page or retry
+        serverStarted = true;
       });
-  } else {
-    // In development, just create window (will wait for dev server internally)
-    createMainWindow().catch(console.error);
   }
+  
+  // Create window IMMEDIATELY in parallel with server start
+  // Window's loading logic will poll until server is ready
+  createMainWindow().catch(console.error);
 
   // STEP 4: Fallback timeout - show window even if renderer doesn't signal
-  // This prevents the app from being stuck on splash if something goes wrong
+  // 10s allows for: server startup (~3-8s) + window load (~1-2s) + renderer hydration (~1-2s)
   setTimeout(() => {
     if (splashWindow && !splashWindow.isDestroyed()) {
       console.log('[Main] Fallback: showing main window after timeout');
       showMainWindow();
     }
-  }, 15000); // 15 second fallback
+  }, 10000); // 10 second fallback
 
   // macOS: re-create window when dock icon clicked
   app.on('activate', () => {

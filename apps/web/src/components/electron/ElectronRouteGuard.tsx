@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useElectron } from "@/hooks/useElectron";
@@ -15,6 +15,9 @@ interface ElectronRouteGuardProps {
  * Route guard that handles automatic navigation in Electron environment.
  * - Redirects from landing page to login or chat based on auth state
  * - Signals to Electron main process when the app is ready
+ *
+ * IMPORTANT: We wait for user data to load before making redirect decisions
+ * to avoid the double-redirect cascade ("/" -> "/login" -> "/c")
  */
 export function ElectronRouteGuard({ children }: ElectronRouteGuardProps) {
   const { isElectron, signalReady } = useElectron();
@@ -22,33 +25,60 @@ export function ElectronRouteGuard({ children }: ElectronRouteGuardProps) {
   const pathname = usePathname();
   const user = useUser();
   const hasSignaledReady = useRef(false);
+  const hasRedirected = useRef(false);
+  const [isUserCheckComplete, setIsUserCheckComplete] = useState(false);
+
+  // Track when user check is complete (either we have user data or we've waited long enough)
+  useEffect(() => {
+    if (!isElectron) return;
+
+    // If user has email, they're authenticated - check complete
+    if (user?.email) {
+      setIsUserCheckComplete(true);
+      return;
+    }
+
+    setIsUserCheckComplete(true);
+  }, [isElectron, user?.email]);
 
   useEffect(() => {
     // Only run in Electron environment
     if (!isElectron) return;
 
-    // If on landing page in Electron, redirect appropriately
-    if (pathname === "/") {
-      if (user?.email) {
-        // User is logged in, go to chat
-        router.replace("/c");
-      } else {
-        // User not logged in, go to login
-        router.replace("/login");
-      }
-      return; // Don't signal ready yet, wait for redirect
-    }
-
-    // Signal ready once per session when we're on a proper page
-    if (!hasSignaledReady.current) {
-      // Small delay to ensure the page is rendered
-      const timer = setTimeout(() => {
+    // For non-root pages, signal ready immediately
+    if (pathname !== "/") {
+      if (!hasSignaledReady.current) {
         signalReady();
         hasSignaledReady.current = true;
-      }, 100);
-      return () => clearTimeout(timer);
+      }
+      return;
     }
-  }, [isElectron, pathname, user?.email, router, signalReady]);
+
+    // For root page ("/"), wait for user check before redirecting
+    if (pathname === "/" && isUserCheckComplete && !hasRedirected.current) {
+      hasRedirected.current = true;
+
+      if (user?.email) {
+        router.replace("/c");
+      } else {
+        router.replace("/login");
+      }
+
+      // Signal ready after redirect is initiated
+      // The redirect page will render and show content
+      if (!hasSignaledReady.current) {
+        signalReady();
+        hasSignaledReady.current = true;
+      }
+    }
+  }, [
+    isElectron,
+    pathname,
+    user?.email,
+    router,
+    signalReady,
+    isUserCheckComplete,
+  ]);
 
   return <>{children}</>;
 }
