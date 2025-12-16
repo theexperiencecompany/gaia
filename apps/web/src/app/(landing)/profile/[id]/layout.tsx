@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 
 import type { PublicHoloCardData } from "@/features/onboarding/api/holoCardApi";
-import { normalizeHouse } from "@/features/onboarding/constants/houses";
+import {
+  getHouseImage,
+  normalizeHouse,
+} from "@/features/onboarding/constants/houses";
 
 export async function generateMetadata({
   params,
@@ -25,6 +28,7 @@ export async function generateMetadata({
 
     const holoCardData: PublicHoloCardData = await response.json();
     const houseName = normalizeHouse(holoCardData.house);
+    const houseImage = getHouseImage(holoCardData.house);
 
     const title = `${holoCardData.name}'s GAIA Card`;
     const description = `${holoCardData.personality_phrase} • ${houseName} • User #${holoCardData.account_number} • Member since ${holoCardData.member_since}`;
@@ -38,7 +42,7 @@ export async function generateMetadata({
         type: "profile",
         images: [
           {
-            url: `/profile/${cardId}/opengraph-image`,
+            url: houseImage,
             width: 1200,
             height: 630,
             alt: `${holoCardData.name}'s GAIA Profile Card`,
@@ -49,7 +53,7 @@ export async function generateMetadata({
         card: "summary_large_image",
         title,
         description,
-        images: [`/profile/${cardId}/opengraph-image`],
+        images: [houseImage],
       },
     };
   } catch (error) {
