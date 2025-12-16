@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 import cloudinary
 import cloudinary.uploader
 from app.config.loggers import app_logger as logger
-from app.db.chromadb.chromadb import ChromaClient
+from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection
 from app.db.utils import serialize_document
 from app.decorators.caching import Cacheable, CacheInvalidator

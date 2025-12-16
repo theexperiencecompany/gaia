@@ -18,8 +18,8 @@ from app.agents.tools.core.store import init_embeddings
 from app.config.loggers import app_logger as logger
 from app.config.posthog import init_posthog
 from app.core.lazy_loader import providers
-from app.db.chromadb.chroma_tools_store import initialize_chroma_tools_store
-from app.db.chromadb.chromadb import init_chroma
+from app.db.chroma.chroma_tools_store import initialize_chroma_tools_store
+from app.db.chroma.chromadb import init_chroma
 from app.db.postgresql import init_postgresql_engine
 from app.services.composio.composio_service import init_composio_service
 

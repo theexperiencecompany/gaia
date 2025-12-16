@@ -6,7 +6,7 @@ from typing import List
 
 from app.config.loggers import app_logger as logger
 from app.core.websocket_manager import websocket_manager
-from app.db.chromadb.chromadb import ChromaClient
+from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import users_collection, workflows_collection
 from app.models.memory_models import MemorySearchResult
 from app.models.user_models import BioStatus, OnboardingPhase

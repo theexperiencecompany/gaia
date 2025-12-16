@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.agents.tools.core.store import init_embeddings
 from app.config.loggers import general_logger as logger
-from app.db.chromadb.chromadb import ChromaClient, init_chromadb_constructor
+from app.db.chroma.chromadb import ChromaClient, init_chromadb_constructor
 from app.db.mongodb.collections import workflows_collection
 
 

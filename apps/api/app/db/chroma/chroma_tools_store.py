@@ -8,7 +8,7 @@ from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import chroma_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.db.chromadb.chromadb import ChromaClient
+from app.db.chroma.chromadb import ChromaClient
 from langgraph.store.base import PutOp
 
 from .chroma_store import ChromaStore
@@ -310,7 +310,7 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     name="chroma_tools_store",
     required_keys=[],
     strategy=MissingKeyStrategy.ERROR,
-    auto_initialize=True,
+    auto_initialize=False,
 )
 async def initialize_chroma_tools_store():
     """Initialize and return the ChromaDB-backed tools store with incremental updates.

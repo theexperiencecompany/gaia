@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from app.agents.prompts.convo_prompts import NOTES_PROMPT
 from app.config.loggers import notes_logger as logger
-from app.db.chromadb.chromadb import ChromaClient
+from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import notes_collection
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.utils import serialize_document

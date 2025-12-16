@@ -97,7 +97,7 @@ class ToolRegistry:
         self._categories: Dict[str, ToolCategory] = {}
 
     async def setup(self):
-        await self._initialize_categories()
+        self._initialize_categories()
 
         if settings.ENV == "production":
             await self.load_all_provider_tools()
@@ -126,7 +126,7 @@ class ToolRegistry:
             category.add_tools(tools)
         self._categories[name] = category
 
-    async def _initialize_categories(self):
+    def _initialize_categories(self):
         """Initialize core tool categories. Provider tools are loaded lazily."""
 
         self._add_category(
@@ -257,7 +257,7 @@ class ToolRegistry:
 
     async def _index_category_tools(self, category_name: str):
         """Index tools from a category into ChromaDB store."""
-        from app.db.chromadb.chroma_tools_store import index_tools_to_store
+        from app.db.chroma.chroma_tools_store import index_tools_to_store
 
         category = self._categories.get(category_name)
         if not category:
@@ -351,7 +351,7 @@ async def get_tool_registry() -> ToolRegistry:
     name="tool_registry",
     required_keys=[],
     strategy=MissingKeyStrategy.ERROR,
-    auto_initialize=False,
+    auto_initialize=True,
 )
 async def init_tool_registry():
     tool_registry = ToolRegistry()

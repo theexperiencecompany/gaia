@@ -7,7 +7,7 @@ from bson import ObjectId
 from langchain_core.documents import Document
 
 from app.config.loggers import chat_logger as logger
-from app.db.chromadb.chromadb import ChromaClient
+from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection, notes_collection
 from app.db.redis import redis_cache
 

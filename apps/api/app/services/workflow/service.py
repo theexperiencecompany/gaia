@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from app.config.loggers import general_logger as logger
-from app.db.chromadb.chromadb import ChromaClient
+from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import workflows_collection
 from app.decorators.caching import Cacheable
 from app.models.workflow_models import (

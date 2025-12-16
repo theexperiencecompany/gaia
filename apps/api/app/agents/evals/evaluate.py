@@ -376,7 +376,6 @@ class SubagentEvaluator:
             },
             project_name="GAIA",
             task_threads=1,
-            nb_samples=1,
         )
         logger.info(f"Evaluation complete: {experiment_name}")
         return eval_results
