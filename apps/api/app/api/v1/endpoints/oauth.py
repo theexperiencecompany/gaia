@@ -42,6 +42,74 @@ async def login_workos():
     return RedirectResponse(url=authorization_url)
 
 
+@router.get("/login/workos/desktop")
+async def login_workos_desktop():
+    """
+    Start the WorkOS SSO authentication flow for desktop app.
+    Uses gaia:// protocol for callback redirect.
+
+    Returns:
+        RedirectResponse: Redirects the user to the WorkOS SSO authorization URL
+    """
+    authorization_url = workos.user_management.get_authorization_url(
+        provider="authkit",
+        redirect_uri=settings.WORKOS_DESKTOP_REDIRECT_URI,
+    )
+
+    return RedirectResponse(url=authorization_url)
+
+
+@router.get("/workos/desktop/callback")
+async def workos_desktop_callback(
+    code: Optional[str] = None,
+) -> RedirectResponse:
+    """
+    Handle the WorkOS SSO callback for desktop app.
+    Redirects to gaia:// protocol with auth token.
+
+    Args:
+        code: Authorization code from WorkOS
+
+    Returns:
+        RedirectResponse to gaia:// deep link with token
+    """
+    try:
+        # Validate code parameter
+        if not code:
+            logger.error("No authorization code received from WorkOS (desktop)")
+            return RedirectResponse(url="gaia://auth/callback?error=missing_code")
+
+        auth_response = workos.user_management.authenticate_with_code(
+            code=code,
+            session={
+                "seal_session": True,
+                "cookie_password": settings.WORKOS_COOKIE_PASSWORD,
+            },
+        )
+
+        # Extract user information
+        email = auth_response.user.email
+        first = auth_response.user.first_name or ""
+        last = auth_response.user.last_name or ""
+        name = f"{first} {last}".strip()
+        picture_url = auth_response.user.profile_picture_url
+
+        # Store user info in our database
+        await store_user_info(name, email, picture_url)
+
+        # Return token via deep link - desktop app will handle storage
+        token = auth_response.sealed_session or auth_response.access_token
+        return RedirectResponse(url=f"gaia://auth/callback?token={token}")
+
+    except HTTPException as e:
+        logger.error(f"HTTP error during WorkOS desktop auth: {e.detail}")
+        return RedirectResponse(url=f"gaia://auth/callback?error={e.detail}")
+
+    except Exception as e:
+        logger.error(f"Unexpected error during WorkOS desktop callback: {str(e)}")
+        return RedirectResponse(url="gaia://auth/callback?error=server_error")
+
+
 @router.get("/workos/callback")
 async def workos_callback(
     code: Optional[str] = None,

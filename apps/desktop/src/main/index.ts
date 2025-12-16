@@ -12,13 +12,17 @@
  * - GPU acceleration flags for faster rendering
  * - Parallel server + window creation (no blocking)
  * - Reduced timeouts for better perceived performance
+ * 
+ * OAuth:
+ * - Registers gaia:// protocol for desktop OAuth deep linking
+ * - Handles auth callbacks from system browser
  */
 
 // Enable V8 code caching for faster subsequent startups (~20-30% improvement)
 import 'v8-compile-cache';
 
 import { app, shell, BrowserWindow, ipcMain, screen } from 'electron';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { electronApp, optimizer } from '@electron-toolkit/utils';
 import { startNextServer, stopNextServer, getServerUrl } from './server';
 
@@ -27,10 +31,60 @@ app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 
+// Register as default protocol handler for gaia:// links
+// This must be done before app.ready
+if (process.defaultApp) {
+  // Development: need to pass the script path
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('gaia', process.execPath, [resolve(process.argv[1])]);
+  }
+} else {
+  // Production: packaged app
+  app.setAsDefaultProtocolClient('gaia');
+}
+
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let serverStarted = false;
+let pendingDeepLink: string | null = null;
 
+/**
+ * Handle deep link URLs (gaia://...)
+ * Called when the app receives a gaia:// URL from the OS
+ */
+function handleDeepLink(url: string): void {
+  console.log('[Main] Deep link received:', url);
+  
+  try {
+    // Parse the URL: gaia://auth/callback?token=xxx
+    const urlObj = new URL(url);
+    
+    if (urlObj.hostname === 'auth' && urlObj.pathname === '/callback') {
+      const token = urlObj.searchParams.get('token');
+      const error = urlObj.searchParams.get('error');
+      
+      if (error) {
+        console.log('[Main] Auth error:', error);
+        // Navigate to login with error
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          const serverUrl = getServerUrl();
+          mainWindow.loadURL(`${serverUrl}/login?error=${encodeURIComponent(error)}`);
+        }
+      } else if (token) {
+        console.log('[Main] Auth token received, storing and navigating');
+        // Send token to renderer to store in cookies/localStorage
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('auth-callback', { token });
+          // Navigate to main app
+          const serverUrl = getServerUrl();
+          mainWindow.loadURL(`${serverUrl}/c`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Main] Failed to parse deep link:', err);
+  }
+}
 
 /**
  * Create fullscreen splash screen with vibrancy
@@ -53,7 +107,7 @@ function createSplashWindow(): void {
     minimizable: false,
     maximizable: false,
     // closable must be true for destroy() to work
-    alwaysOnTop: true,
+    alwaysOnTop: false,
     skipTaskbar: true,
     focusable: false,
     show: true, // Show immediately - splash is simple enough to render instantly
@@ -204,82 +258,140 @@ function showMainWindow(): void {
   // Close splash AFTER main window is visible to avoid flicker
   console.log('[Main] About to close splash window');
   closeSplashWindow();
+  
+  // Process any pending deep link after window is shown
+  if (pendingDeepLink) {
+    console.log('[Main] Processing pending deep link');
+    handleDeepLink(pendingDeepLink);
+    pendingDeepLink = null;
+  }
 }
 
-/**
- * Main startup sequence - optimized for perceived performance
- */
-app.whenReady().then(() => {
-  // Set app user model id for Windows
-  electronApp.setAppUserModelId('io.heygaia.desktop');
+// Request single instance lock for deep link handling on Windows/Linux
+const gotTheLock = app.requestSingleInstanceLock();
 
-  // STEP 1: Show splash IMMEDIATELY - this is the first thing user sees
-  // No blocking operations before this!
-  createSplashWindow();
-
-  // Watch shortcuts in development
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window);
+if (!gotTheLock) {
+  // Another instance is running, quit this one
+  app.quit();
+} else {
+  // Handle second instance (Windows/Linux deep links when app is already running)
+  app.on('second-instance', (_event, commandLine) => {
+    console.log('[Main] Second instance detected, command line:', commandLine);
+    
+    // Find the deep link URL in command line args
+    const url = commandLine.find(arg => arg.startsWith('gaia://'));
+    if (url) {
+      handleDeepLink(url);
+    }
+    
+    // Focus the main window
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
   });
 
-  // STEP 2: Register IPC handlers (fast, non-blocking)
-  ipcMain.handle('get-platform', () => process.platform);
-  ipcMain.handle('get-version', () => app.getVersion());
-  
-  // Handle window-ready signal from renderer
-  ipcMain.on('window-ready', () => {
-    console.log('[Main] Renderer signaled ready');
-    showMainWindow();
+  // macOS: Handle deep links when app is already running
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    console.log('[Main] open-url event:', url);
+    
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      handleDeepLink(url);
+    } else {
+      // Store for later if window isn't ready yet
+      pendingDeepLink = url;
+    }
   });
 
-  // STEP 3: Start server AND create window in PARALLEL (non-blocking!)
-  // Window creation now polls for server readiness internally
-  const isProduction = process.env.NODE_ENV === 'production' || app.isPackaged;
-  
-  if (isProduction) {
-    // Start server in background - don't block on it
-    startNextServer()
-      .then(() => {
-        serverStarted = true;
-        console.log('[Main] Next.js server started');
-      })
-      .catch((error) => {
-        console.error('[Main] Failed to start Next.js server:', error);
-        // Still set serverStarted to allow window to attempt loading
-        // This enables error recovery - window will show error page or retry
-        serverStarted = true;
-      });
-  }
-  
-  // Create window IMMEDIATELY in parallel with server start
-  // Window's loading logic will poll until server is ready
-  createMainWindow().catch(console.error);
+  /**
+   * Main startup sequence - optimized for perceived performance
+   */
+  app.whenReady().then(() => {
+    // Set app user model id for Windows
+    electronApp.setAppUserModelId('io.heygaia.desktop');
 
-  // STEP 4: Fallback timeout - show window even if renderer doesn't signal
-  // 10s allows for: server startup (~3-8s) + window load (~1-2s) + renderer hydration (~1-2s)
-  setTimeout(() => {
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      console.log('[Main] Fallback: showing main window after timeout');
+    // STEP 1: Show splash IMMEDIATELY - this is the first thing user sees
+    // No blocking operations before this!
+    createSplashWindow();
+
+    // Watch shortcuts in development
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window);
+    });
+
+    // STEP 2: Register IPC handlers (fast, non-blocking)
+    ipcMain.handle('get-platform', () => process.platform);
+    ipcMain.handle('get-version', () => app.getVersion());
+    
+    // Handle window-ready signal from renderer
+    ipcMain.on('window-ready', () => {
+      console.log('[Main] Renderer signaled ready');
       showMainWindow();
-    }
-  }, 10000); // 10 second fallback
+    });
+    
+    // Handle open-external requests from renderer (for OAuth)
+    ipcMain.on('open-external', (_event, url: string) => {
+      console.log('[Main] Opening external URL:', url);
+      shell.openExternal(url);
+    });
 
-  // macOS: re-create window when dock icon clicked
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow().catch(console.error);
+    // STEP 3: Start server AND create window in PARALLEL (non-blocking!)
+    // Window creation now polls for server readiness internally
+    const isProduction = process.env.NODE_ENV === 'production' || app.isPackaged;
+    
+    if (isProduction) {
+      // Start server in background - don't block on it
+      startNextServer()
+        .then(() => {
+          serverStarted = true;
+          console.log('[Main] Next.js server started');
+        })
+        .catch((error) => {
+          console.error('[Main] Failed to start Next.js server:', error);
+          // Still set serverStarted to allow window to attempt loading
+          // This enables error recovery - window will show error page or retry
+          serverStarted = true;
+        });
+    }
+    
+    // Create window IMMEDIATELY in parallel with server start
+    // Window's loading logic will poll until server is ready
+    createMainWindow().catch(console.error);
+
+    // STEP 4: Fallback timeout - show window even if renderer doesn't signal
+    // 10s allows for: server startup (~3-8s) + window load (~1-2s) + renderer hydration (~1-2s)
+    setTimeout(() => {
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        console.log('[Main] Fallback: showing main window after timeout');
+        showMainWindow();
+      }
+    }, 10000); // 10 second fallback
+
+    // macOS: re-create window when dock icon clicked
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createMainWindow().catch(console.error);
+      }
+    });
+    
+    // Check for deep link passed via command line (Windows/Linux cold start)
+    const deepLinkArg = process.argv.find(arg => arg.startsWith('gaia://'));
+    if (deepLinkArg) {
+      console.log('[Main] Deep link from command line:', deepLinkArg);
+      pendingDeepLink = deepLinkArg;
     }
   });
-});
 
-// Quit when all windows are closed (except on macOS)
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
+  // Quit when all windows are closed (except on macOS)
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
+  });
 
-// Cleanup on quit
-app.on('before-quit', () => {
-  stopNextServer().catch(console.error);
-});
+  // Cleanup on quit
+  app.on('before-quit', () => {
+    stopNextServer().catch(console.error);
+  });
+}

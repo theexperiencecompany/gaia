@@ -1,5 +1,9 @@
 import { ElectronAPI } from '@electron-toolkit/preload';
 
+interface AuthCallbackData {
+  token: string;
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI;
@@ -8,6 +12,8 @@ declare global {
       getVersion: () => Promise<string>;
       isElectron: boolean;
       signalReady: () => void;
+      openExternal: (url: string) => void;
+      onAuthCallback: (callback: (data: AuthCallbackData) => void) => () => void;
     };
   }
 }

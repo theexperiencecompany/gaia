@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 
 /**
+ * Auth callback data from deep link
+ */
+interface AuthCallbackData {
+  token: string;
+}
+
+/**
  * Type definition for the Electron API exposed via preload
  */
 interface ElectronAPI {
@@ -10,6 +17,8 @@ interface ElectronAPI {
   getVersion: () => Promise<string>;
   isElectron: boolean;
   signalReady: () => void;
+  openExternal: (url: string) => void;
+  onAuthCallback: (callback: (data: AuthCallbackData) => void) => () => void;
 }
 
 /**
@@ -82,10 +91,36 @@ export function useElectron() {
     return null;
   }, []);
 
+  /**
+   * Open a URL in the system's default browser
+   * Used for OAuth flows to open login in external browser
+   */
+  const openExternal = useCallback((url: string) => {
+    if (typeof window !== "undefined" && hasElectronAPI(window)) {
+      window.api.openExternal(url);
+    }
+  }, []);
+
+  /**
+   * Register a callback for auth deep link events
+   * Returns a cleanup function to remove the listener
+   */
+  const onAuthCallback = useCallback(
+    (callback: (data: AuthCallbackData) => void): (() => void) => {
+      if (typeof window !== "undefined" && hasElectronAPI(window)) {
+        return window.api.onAuthCallback(callback);
+      }
+      return () => {}; // No-op cleanup if not in Electron
+    },
+    [],
+  );
+
   return {
     isElectron,
     signalReady,
     getPlatform,
     getVersion,
+    openExternal,
+    onAuthCallback,
   };
 }

@@ -61,7 +61,7 @@ export function ElectronRouteGuard({ children }: ElectronRouteGuardProps) {
       if (user?.email) {
         router.replace("/c");
       } else {
-        router.replace("/login");
+        router.replace("/desktop-login");
       }
 
       // Signal ready after redirect is initiated
