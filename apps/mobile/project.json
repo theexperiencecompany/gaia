@@ -37,7 +37,18 @@
             "options": {
                 "command": "pnpm lint",
                 "cwd": "apps/mobile"
-            }
+            },
+            "cache": true,
+            "inputs": ["default", "{projectRoot}/eslint.config.mjs"]
+        },
+        "type-check": {
+            "executor": "nx:run-commands",
+            "options": {
+                "command": "pnpm tsc --noEmit",
+                "cwd": "apps/mobile"
+            },
+            "cache": true,
+            "inputs": ["default", "{projectRoot}/tsconfig.json"]
         },
         "clean": {
             "executor": "nx:run-commands",

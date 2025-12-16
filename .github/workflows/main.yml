@@ -47,6 +47,7 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --frozen --group backend --group dev
+        working-directory: apps/api
 
       - name: Install prek
         run: uv tool install prek
@@ -55,25 +56,10 @@ jobs:
         run: uv run mypy --install-types --non-interactive
         working-directory: apps/api
 
-      - name: Run affected lint
-        run: npx nx affected -t lint --parallel=3
-        env:
-          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
-
-      - name: Run affected type-check
-        run: npx nx affected -t type-check --parallel=3
-        env:
-          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
-
-      - name: Run affected build
-        run: npx nx affected -t build --parallel=3
+      - name: Run affected quality checks
+        run: npx nx affected -t lint type-check build test --parallel=3
         env:
           NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
-          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
-
-      - name: Run affected tests
-        run: npx nx affected -t test --parallel=3
-        env:
           NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
   # Only trigger builds on master when checks pass

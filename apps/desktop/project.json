@@ -115,7 +115,7 @@
         "cwd": "{projectRoot}"
       },
       "cache": true,
-      "inputs": ["default", "{workspaceRoot}/config/biome.json"]
+      "inputs": ["default", "{workspaceRoot}/biome.json"]
     },
     "lint:fix": {
       "executor": "nx:run-commands",
