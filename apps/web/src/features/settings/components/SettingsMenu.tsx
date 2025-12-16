@@ -7,6 +7,7 @@ import {
   DropdownSection,
   DropdownTrigger,
 } from "@heroui/dropdown";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import {
@@ -149,7 +150,16 @@ export default function SettingsMenu({
   const downloadMenuItems = sortedPlatforms.map((platform: PlatformInfo) => ({
     key: platform.platform,
     label: platform.shortName,
-    icon: CloudDownloadIcon,
+    iconElement: (
+      <div className="relative h-[18px] w-[18px]">
+        <Image
+          src={platform.iconPath}
+          alt={platform.displayName}
+          fill
+          className="object-contain"
+        />
+      </div>
+    ),
     action: () => {
       if (platform.downloadUrl) {
         window.open(platform.downloadUrl, "_blank");

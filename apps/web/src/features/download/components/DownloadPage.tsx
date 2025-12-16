@@ -431,6 +431,158 @@ function WebSection() {
   );
 }
 
+// Landing page variant - 2 column grid with Desktop and Mobile side by side
+export function LandingDownloadSection() {
+  const { isMac, isWindows, isLinux } = usePlatformDetection();
+
+  const renderPrimaryButton = () => {
+    if (isMac) return <MacDownloadButton isPrimary />;
+
+    if (isWindows) {
+      return (
+        <Button
+          as={Link}
+          href={platformConfigs["windows"].downloadUrl || "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          startContent={
+            <div className="relative h-4 w-4">
+              <Image
+                src="/images/icons/windows.svg"
+                alt="Windows"
+                fill
+                className="object-contain"
+              />
+            </div>
+          }
+        >
+          Download for Windows
+        </Button>
+      );
+    }
+
+    if (isLinux)
+      return (
+        <Button
+          as={Link}
+          href={platformConfigs["linux"].downloadUrl || "#"}
+          target="_blank"
+          rel="noopener noreferrer"
+          startContent={
+            <div className="relative h-4 w-4">
+              <Image
+                src="/images/icons/linux.svg"
+                alt="Linux"
+                fill
+                className="object-contain"
+              />
+            </div>
+          }
+        >
+          Download for Linux
+        </Button>
+      );
+
+    return <MacDownloadButton isPrimary />;
+  };
+
+  return (
+    <section className="relative z-10 mx-auto w-full max-w-6xl py-16">
+      <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+        <div className="flex flex-col overflow-hidden rounded-3xl bg-zinc-900/50 backdrop-blur-sm">
+          <div className="relative aspect-video w-full overflow-hidden">
+            <ProgressiveImage
+              webpSrc="/images/screenshots/desktop_dock.webp"
+              pngSrc="/images/screenshots/desktop_dock.png"
+              alt="GAIA Desktop App"
+              className="object-cover object-bottom"
+            />
+          </div>
+          <div className="flex flex-1 flex-col items-center gap-4 p-6 text-center">
+            <div>
+              <h3 className="mb-1 text-xl font-medium text-white">Desktop</h3>
+              <p className="text-sm text-zinc-400">
+                Native app with enhanced performance
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              {renderPrimaryButton()}
+              <Link
+                href={GITHUB_RELEASES_BASE}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1 text-sm text-zinc-500 transition hover:text-zinc-300"
+              >
+                All platforms
+                <ArrowRight02Icon className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile Card */}
+        <div className="flex flex-col overflow-hidden rounded-3xl bg-zinc-900/50 backdrop-blur-sm">
+          <div className="relative aspect-video w-full overflow-hidden">
+            <ProgressiveImage
+              webpSrc="/images/screenshots/phone_dock.webp"
+              pngSrc="/images/screenshots/phone_dock.png"
+              alt="GAIA Mobile App"
+              className="object-cover object-center scale-115"
+            />
+          </div>
+          <div className="flex flex-1 flex-col items-center gap-4 p-6 text-center pt-4">
+            <div className="flex items-center gap-2">
+              <Chip variant="flat" color="warning" size="sm">
+                Coming Soon
+              </Chip>
+              <h3 className="text-xl font-medium text-white">Mobile</h3>
+            </div>
+            <p className="text-sm text-zinc-400">
+              iOS and Android apps in development
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="flat"
+                isDisabled
+                size="sm"
+                startContent={
+                  <div className="relative h-4 w-4">
+                    <Image
+                      src="/images/icons/apple.svg"
+                      alt="iOS"
+                      fill
+                      className="object-contain"
+                    />
+                  </div>
+                }
+              >
+                App Store
+              </Button>
+              <Button
+                variant="flat"
+                isDisabled
+                size="sm"
+                startContent={
+                  <div className="relative h-4 w-4">
+                    <Image
+                      src="/images/icons/google_play.svg"
+                      alt="Android"
+                      fill
+                      className="object-contain"
+                    />
+                  </div>
+                }
+              >
+                Google Play
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function DownloadPage() {
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center">
