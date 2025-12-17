@@ -76,7 +76,7 @@
       "metadata": { "difficulty": "medium" }
     },
     {
-      "input": "my issues in gaia-personal",
+      "input": "list my issues in gaia-personal",
       "expected_output": "1. Search for repository 'gaia-personal'. 2. Identify 'Dhruv-Maradiya/gaia-personal'. 3. List issues assigned to user.",
       "context": "User provided partial repo name",
       "tags": ["issue", "list", "lazy", "ambiguous"],
