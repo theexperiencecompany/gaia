@@ -243,7 +243,7 @@ class ReminderScheduler(BaseSchedulerService):
             {"status": ReminderStatus.SCHEDULED, "scheduled_at": {"$gte": current_time}}
         )
 
-        tasks = []
+        tasks: List[BaseScheduledTask] = []
         async for doc in cursor:
             if "_id" in doc:
                 doc["_id"] = str(doc["_id"])

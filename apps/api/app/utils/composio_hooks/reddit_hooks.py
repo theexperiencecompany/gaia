@@ -135,7 +135,7 @@ def reddit_content_before_hook(
     """Handle Reddit content creation/editing progress."""
     try:
         writer = get_stream_writer()
-        if writer:
+        if writer is not None:
             arguments = params.get("arguments", {})
 
             if tool == "REDDIT_CREATE_REDDIT_POST":
@@ -164,7 +164,7 @@ def reddit_delete_before_hook(
     """Handle Reddit deletion progress."""
     try:
         writer = get_stream_writer()
-        if writer:
+        if writer is not None:
             content_type = "post" if "POST" in tool else "comment"
             payload = {"progress": f"Deleting {content_type}..."}
             writer(payload)
@@ -183,7 +183,7 @@ def reddit_retrieve_before_hook(
     """Handle Reddit content retrieval progress."""
     try:
         writer = get_stream_writer()
-        if writer:
+        if writer is not None:
             if tool == "REDDIT_RETRIEVE_REDDIT_POST":
                 payload = {"progress": "Fetching post details..."}
             elif tool == "REDDIT_RETRIEVE_POST_COMMENTS":
@@ -215,7 +215,7 @@ def reddit_search_after_hook(
         # Process the raw search response
         processed_response = process_reddit_search_results(response["data"])
 
-        if writer and processed_response.get("posts"):
+        if writer is not None and processed_response.get("posts"):
             # Send search results to frontend
             reddit_search_data = []
             for post in processed_response["posts"]:
@@ -269,7 +269,7 @@ def reddit_post_detail_after_hook(
         # Process the post
         processed_post = process_reddit_post(post_response)
 
-        if writer and processed_post:
+        if writer is not None and processed_post:
             # Send post data to frontend
             reddit_post_data = {
                 "id": processed_post.get("id", ""),
@@ -338,7 +338,7 @@ def reddit_comments_after_hook(
                 if processed_comment and processed_comment.get("body"):
                     processed_comments.append(processed_comment)
 
-        if writer and processed_comments:
+        if writer is not None and processed_comments:
             # Transform to frontend format
             reddit_comment_data = []
             for comment in processed_comments[:50]:  # Limit to 50 comments for UI
@@ -386,7 +386,7 @@ def reddit_content_created_after_hook(
 
         response_data = response.get("data", {})
 
-        if writer:
+        if writer is not None:
             if tool == "REDDIT_CREATE_REDDIT_POST":
                 # Extract post info from response
                 post_id = response_data.get("id", "")

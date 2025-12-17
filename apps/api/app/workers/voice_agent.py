@@ -14,7 +14,7 @@ from typing import Optional, Any
 
 import aiohttp
 from app.config.loggers import app_logger as logger
-from livekit import rtc
+from livekit import rtc  # type: ignore[attr-defined]
 from livekit.agents import (
     NOT_GIVEN,
     Agent,

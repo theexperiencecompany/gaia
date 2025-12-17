@@ -78,7 +78,7 @@ def _format_selected_tools(
                 if isinstance(tool_registry[result], BaseTool):
                     tool_names.append(tool_registry[result].name)
                 else:
-                    tool_names.append(tool_registry[result].__name__)
+                    tool_names.append(getattr(tool_registry[result], "__name__", result))
             else:
                 # Handle tools not in registry (e.g., subagent: prefixed)
                 tool_names.append(result)
@@ -223,7 +223,7 @@ def create_agent(
             tools_to_bind.append(retrieve_tools)
         tools_to_bind.extend(selected_tools)
         tools_to_bind.extend(initial_tools)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[arg-type]
+        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
         response = llm_with_tools.invoke(state["messages"])
 
         if not response.tool_calls and not response.content:
@@ -254,7 +254,7 @@ def create_agent(
             tools_to_bind.append(retrieve_tools)
         tools_to_bind.extend(selected_tools)
         tools_to_bind.extend(initial_tools)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[arg-type]
+        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
         response: AIMessage = await llm_with_tools.ainvoke(state["messages"])
 
         if not response.tool_calls and not response.content:
@@ -354,9 +354,9 @@ def create_agent(
         if retrieve_tools_function is not None and retrieve_tools_coroutine is not None:
             select_tools_node = RunnableCallable(select_tools, aselect_tools)
         elif retrieve_tools_function is not None and retrieve_tools_coroutine is None:
-            select_tools_node = select_tools
+            select_tools_node = select_tools  # type: ignore[assignment]
         elif retrieve_tools_coroutine is not None and retrieve_tools_function is None:
-            select_tools_node = aselect_tools
+            select_tools_node = aselect_tools  # type: ignore[assignment]
         else:
             raise ValueError(
                 "One of retrieve_tools_function or retrieve_tools_coroutine must be "

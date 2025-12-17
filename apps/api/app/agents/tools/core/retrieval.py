@@ -158,9 +158,9 @@ def get_retrieve_tools_function(
         for result in subagent_results:
             all_results.append({"id": result.key, "score": result.score})
 
-        all_results.sort(key=lambda x: x["score"], reverse=True)
+        all_results.sort(key=lambda x: x["score"] or 0.0, reverse=True)
 
-        discovered_tools = [r["id"] for r in all_results]
+        discovered_tools: list[str] = [str(r["id"]) for r in all_results]
         return RetrieveToolsResult(
             tools_to_bind=[],
             response=discovered_tools,

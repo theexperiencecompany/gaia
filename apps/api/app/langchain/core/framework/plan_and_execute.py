@@ -385,7 +385,7 @@ class OrchestratorGraph:
     def _build_orchestrator_graph(
         self,
     ) -> StateGraph[OrchestratorState, None, OrchestratorState, OrchestratorState]:
-        workflow = StateGraph(OrchestratorState)
+        workflow: StateGraph[OrchestratorState, None, OrchestratorState, OrchestratorState] = StateGraph(OrchestratorState)  # type: ignore[assignment]
         workflow.add_node("orchestrator", self._orchestrator_step)
 
         # Only add finalizer if prompt is provided

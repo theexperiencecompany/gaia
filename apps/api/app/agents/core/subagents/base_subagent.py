@@ -101,7 +101,7 @@ class SubAgentFactory:
                 }
             )
 
-        builder = create_agent(**common_kwargs)
+        builder = create_agent(**common_kwargs)  # type: ignore[arg-type]
 
         try:
             checkpointer_manager = await get_checkpointer_manager()

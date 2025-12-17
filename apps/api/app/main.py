@@ -11,10 +11,12 @@ from app.config.loggers import app_logger as logger
 from app.config.sentry import init_sentry
 from app.core.app_factory import create_app
 
+from fastapi import FastAPI  # noqa: F401
+
 # Create the FastAPI application
 logger.info("Starting application initialization...")
 app_creation_start = time.time()
-app = create_app()
+app: FastAPI = create_app()  # type: ignore[assignment, no-redef]
 init_sentry()
 
 logger.info(f"Application setup completed in {(time.time() - app_creation_start):.3f}s")

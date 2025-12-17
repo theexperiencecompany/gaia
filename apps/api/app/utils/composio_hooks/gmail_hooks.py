@@ -152,7 +152,7 @@ def gmail_fetch_after_hook(
         # Process the raw response to minimize data for LLM
         processed_response = process_list_messages_response(response["data"])
 
-        if writer and processed_response.get("messages"):
+        if writer is not None and processed_response.get("messages"):
             # Transform to EmailFetchData format for frontend
             email_fetch_data = []
             for msg in processed_response["messages"]:
@@ -214,7 +214,7 @@ def gmail_thread_after_hook(
         # Process the raw thread response
         processed_response = process_get_thread_response(response["data"])
 
-        if writer and processed_response.get("messages"):
+        if writer is not None and processed_response.get("messages"):
             # Transform to EmailThreadData format for frontend
             thread_messages = []
             for msg in processed_response["messages"]:
@@ -317,7 +317,7 @@ def gmail_send_draft_before_hook(tool: str, toolkit: str, params: Any) -> Any:
     """Handle draft sending progress."""
     try:
         writer = get_stream_writer()
-        if not writer:
+        if not writer:  # type: ignore[truthy-function]
             return params
 
         payload = {"progress": "Sending draft..."}
@@ -334,7 +334,7 @@ def gmail_trash_before_hook(tool: str, toolkit: str, params: Any) -> Any:
     """Handle message trash/untrash progress."""
     try:
         writer = get_stream_writer()
-        if not writer:
+        if not writer:  # type: ignore[truthy-function]
             return params
 
         action = (
@@ -359,7 +359,7 @@ def gmail_label_before_hook(tool: str, toolkit: str, params: Any) -> Any:
     """Handle label management progress."""
     try:
         writer = get_stream_writer()
-        if not writer:
+        if not writer:  # type: ignore[truthy-function]
             return params
 
         arguments = params.get("arguments", {})
@@ -387,7 +387,7 @@ def gmail_modify_labels_before_hook(tool: str, toolkit: str, params: Any) -> Any
     """Handle message label modification progress."""
     try:
         writer = get_stream_writer()
-        if not writer:
+        if not writer:  # type: ignore[truthy-function]
             return params
 
         arguments = params.get("arguments", {})
@@ -417,7 +417,7 @@ def gmail_draft_management_before_hook(tool: str, toolkit: str, params: Any) -> 
     """Handle draft management progress."""
     try:
         writer = get_stream_writer()
-        if not writer:
+        if not writer:  # type: ignore[truthy-function]
             return params
 
         action = "Updating" if tool == "GMAIL_UPDATE_DRAFT" else "Deleting"
@@ -435,7 +435,7 @@ def gmail_list_drafts_before_hook(tool: str, toolkit: str, params: Any) -> Any:
     """Handle drafts listing progress."""
     try:
         writer = get_stream_writer()
-        if not writer:
+        if not writer:  # type: ignore[truthy-function]
             return params
 
         arguments = params.get("arguments", {})
@@ -455,7 +455,7 @@ def gmail_get_draft_before_hook(tool: str, toolkit: str, params: Any) -> Any:
     """Handle single draft fetching progress."""
     try:
         writer = get_stream_writer()
-        if not writer:
+        if not writer:  # type: ignore[truthy-function]
             return params
 
         payload = {"progress": "Fetching draft details..."}
@@ -480,7 +480,7 @@ def gmail_get_contacts_before_hook(tool: str, toolkit: str, params: Any) -> Any:
         params["arguments"] = arguments
 
         writer = get_stream_writer()
-        if writer:
+        if writer is not None:
             payload = {"progress": "Fetching contacts..."}
             writer(payload)
 
@@ -495,7 +495,7 @@ def gmail_search_people_before_hook(tool: str, toolkit: str, params: Any) -> Any
     """Handle people search progress."""
     try:
         writer = get_stream_writer()
-        if writer:
+        if writer is not None:
             arguments = params.get("arguments", {})
             query = arguments.get("query", "")
             payload = {"progress": f"Searching for people matching '{query}'..."}
@@ -536,7 +536,7 @@ def gmail_send_draft_after_hook(
     try:
         writer = get_stream_writer()
 
-        if writer and response["data"].get("successful", True):
+        if writer is not None and response["data"].get("successful", True):
             # Send email sent data to frontend
             message_data = response["data"].get("message", {})
 
@@ -630,7 +630,7 @@ def gmail_get_contacts_after_hook(
             llm_contacts.append(llm_contact)
 
         # Send to frontend
-        if writer and contact_list:
+        if writer is not None and contact_list:
             payload = {
                 "contacts_data": contact_list,
                 "total_count": response_data.get("totalPeople", len(contact_list)),
@@ -713,7 +713,7 @@ def gmail_search_people_after_hook(
             llm_people.append(llm_person)
 
         # Send to frontend
-        if writer and people_list:
+        if writer is not None and people_list:
             payload = {
                 "people_search_data": people_list,
                 "result_count": len(people_list),
