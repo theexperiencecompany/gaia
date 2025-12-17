@@ -3,12 +3,11 @@
  * Drawer sidebar with chat history using react-native-gesture-handler
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { ChatHistory } from './chat-history';
-import { SidebarFooter } from './sidebar-footer';
-import { SidebarHeader } from './sidebar-header';
+import { StyleSheet, View } from "react-native";
+import { ChatTheme } from "@/shared/constants/chat-theme";
+import { ChatHistory } from "./chat-history";
+import { SidebarFooter } from "./sidebar-footer";
+import { SidebarHeader } from "./sidebar-header";
 
 interface SidebarProps {
   onClose: () => void;
@@ -18,7 +17,11 @@ interface SidebarProps {
 
 export const SIDEBAR_WIDTH = 280;
 
-export function SidebarContent({ onClose, onSelectChat, onNewChat }: SidebarProps) {
+export function SidebarContent({
+  onClose,
+  onSelectChat,
+  onNewChat,
+}: SidebarProps) {
   return (
     <View style={styles.sidebar}>
       <SidebarHeader onClose={onClose} />

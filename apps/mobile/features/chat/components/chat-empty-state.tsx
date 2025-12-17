@@ -3,20 +3,22 @@
  * Welcome screen with logo and suggestions
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Suggestion } from '../types';
-import { SuggestionCard } from './suggestion-card';
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ChatTheme } from "@/shared/constants/chat-theme";
+import type { Suggestion } from "../types";
+import { SuggestionCard } from "./suggestion-card";
 
 interface ChatEmptyStateProps {
   suggestions: Suggestion[];
   onSuggestionPress: (text: string) => void;
 }
 
-export function ChatEmptyState({ suggestions, onSuggestionPress }: ChatEmptyStateProps) {
+export function ChatEmptyState({
+  suggestions,
+  onSuggestionPress,
+}: ChatEmptyStateProps) {
   return (
-    <ScrollView 
+    <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
@@ -24,7 +26,7 @@ export function ChatEmptyState({ suggestions, onSuggestionPress }: ChatEmptyStat
       <View style={styles.welcomeSection}>
         <View style={styles.logoContainer}>
           <Image
-            source={require('@/assets/logo/logo.webp')}
+            source={require("@/assets/logo/logo.webp")}
             style={styles.logo}
             resizeMode="contain"
           />
@@ -61,7 +63,7 @@ const styles = StyleSheet.create({
     paddingBottom: ChatTheme.spacing.xl,
   },
   welcomeSection: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: ChatTheme.spacing.xl * 2,
   },
   logoContainer: {
@@ -75,16 +77,16 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontFamily: ChatTheme.fonts.semibold,
     color: ChatTheme.textPrimary,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: ChatTheme.spacing.xs,
   },
   subtitle: {
     fontSize: ChatTheme.fontSize.md,
     color: ChatTheme.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
   },
   suggestionsSection: {
-    width: '100%',
+    width: "100%",
   },
   suggestionsTitle: {
     fontSize: ChatTheme.fontSize.md,
@@ -93,9 +95,9 @@ const styles = StyleSheet.create({
     marginBottom: ChatTheme.spacing.md,
   },
   suggestionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: ChatTheme.spacing.sm,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
   },
 });

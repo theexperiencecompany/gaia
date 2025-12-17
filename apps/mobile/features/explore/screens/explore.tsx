@@ -3,17 +3,22 @@
  * Discovery and exploration interface for users
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from "@expo/vector-icons";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { ChatTheme } from "@/shared/constants/chat-theme";
 
 export function ExploreScreen() {
   const exploreCategories = [
-    { id: '1', title: 'Trending Topics', icon: 'trending-up' as const },
-    { id: '2', title: 'Recent Updates', icon: 'time' as const },
-    { id: '3', title: 'Popular Queries', icon: 'flame' as const },
-    { id: '4', title: 'Saved Items', icon: 'bookmark' as const },
+    { id: "1", title: "Trending Topics", icon: "trending-up" as const },
+    { id: "2", title: "Recent Updates", icon: "time" as const },
+    { id: "3", title: "Popular Queries", icon: "flame" as const },
+    { id: "4", title: "Saved Items", icon: "bookmark" as const },
   ];
 
   return (
@@ -22,7 +27,11 @@ export function ExploreScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Explore</Text>
         <TouchableOpacity>
-          <Ionicons name="settings-outline" size={24} color={ChatTheme.textPrimary} />
+          <Ionicons
+            name="settings-outline"
+            size={24}
+            color={ChatTheme.textPrimary}
+          />
         </TouchableOpacity>
       </View>
 
@@ -33,10 +42,18 @@ export function ExploreScreen() {
           {exploreCategories.map((category) => (
             <TouchableOpacity key={category.id} style={styles.categoryCard}>
               <View style={styles.categoryIcon}>
-                <Ionicons name={category.icon} size={24} color={ChatTheme.accent} />
+                <Ionicons
+                  name={category.icon}
+                  size={24}
+                  color={ChatTheme.accent}
+                />
               </View>
               <Text style={styles.categoryTitle}>{category.title}</Text>
-              <Ionicons name="chevron-forward" size={20} color={ChatTheme.textSecondary} />
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={ChatTheme.textSecondary}
+              />
             </TouchableOpacity>
           ))}
         </View>
@@ -45,8 +62,14 @@ export function ExploreScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Coming Soon</Text>
           <View style={styles.placeholderCard}>
-            <Ionicons name="rocket-outline" size={48} color={ChatTheme.textSecondary} />
-            <Text style={styles.placeholderText}>More features coming soon!</Text>
+            <Ionicons
+              name="rocket-outline"
+              size={48}
+              color={ChatTheme.textSecondary}
+            />
+            <Text style={styles.placeholderText}>
+              More features coming soon!
+            </Text>
           </View>
         </View>
       </ScrollView>
@@ -60,9 +83,9 @@ const styles = StyleSheet.create({
     backgroundColor: ChatTheme.background,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: ChatTheme.spacing.lg,
     paddingVertical: ChatTheme.spacing.md,
     borderBottomWidth: 1,
@@ -70,7 +93,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: "700",
     color: ChatTheme.textPrimary,
     fontFamily: ChatTheme.fonts.bold,
   },
@@ -82,14 +105,14 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     color: ChatTheme.textPrimary,
     fontFamily: ChatTheme.fonts.semibold,
     marginBottom: ChatTheme.spacing.md,
   },
   categoryCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: ChatTheme.messageBackground,
     padding: ChatTheme.spacing.md,
     borderRadius: ChatTheme.borderRadius.md,
@@ -101,15 +124,15 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(22, 193, 255, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(22, 193, 255, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: ChatTheme.spacing.md,
   },
   categoryTitle: {
     flex: 1,
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: "500",
     color: ChatTheme.textPrimary,
     fontFamily: ChatTheme.fonts.medium,
   },
@@ -117,8 +140,8 @@ const styles = StyleSheet.create({
     backgroundColor: ChatTheme.messageBackground,
     padding: ChatTheme.spacing.xl,
     borderRadius: ChatTheme.borderRadius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: ChatTheme.border,
   },

@@ -3,18 +3,28 @@
  * Text input with send button for user messages
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useRef, useState } from "react";
+import {
+  Animated,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { ChatTheme } from "@/shared/constants/chat-theme";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
   placeholder?: string;
 }
 
-export function ChatInput({ onSend, placeholder = "What can I do for you today?" }: ChatInputProps) {
-  const [message, setMessage] = useState('');
+export function ChatInput({
+  onSend,
+  placeholder = "What can I do for you today?",
+}: ChatInputProps) {
+  const [message, setMessage] = useState("");
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const [isFocused, setIsFocused] = useState(false);
 
@@ -30,20 +40,22 @@ export function ChatInput({ onSend, placeholder = "What can I do for you today?"
   const handleSend = () => {
     if (message.trim()) {
       onSend(message.trim());
-      setMessage('');
+      setMessage("");
     }
   };
 
   return (
     <View style={styles.container}>
-      <View style={[
-        styles.inputContainer,
-        isFocused && styles.inputContainerFocused,
-      ]}>
+      <View
+        style={[
+          styles.inputContainer,
+          isFocused && styles.inputContainerFocused,
+        ]}
+      >
         <TouchableOpacity style={styles.plusButton}>
           <Ionicons name="add" size={24} color={ChatTheme.iconSecondary} />
         </TouchableOpacity>
-        
+
         <TextInput
           style={styles.input}
           value={message}
@@ -57,7 +69,7 @@ export function ChatInput({ onSend, placeholder = "What can I do for you today?"
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
         />
-          
+
         <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
           <TouchableOpacity
             style={[
@@ -74,7 +86,8 @@ export function ChatInput({ onSend, placeholder = "What can I do for you today?"
       </View>
     </View>
   );
-}const styles = StyleSheet.create({
+}
+const styles = StyleSheet.create({
   container: {
     paddingHorizontal: ChatTheme.spacing.md,
     paddingVertical: ChatTheme.spacing.md,
@@ -83,8 +96,8 @@ export function ChatInput({ onSend, placeholder = "What can I do for you today?"
     borderTopColor: ChatTheme.border,
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: ChatTheme.inputBackground,
     borderRadius: ChatTheme.borderRadius.lg,
     borderWidth: 1,
@@ -92,7 +105,7 @@ export function ChatInput({ onSend, placeholder = "What can I do for you today?"
     paddingHorizontal: ChatTheme.spacing.sm,
     paddingVertical: ChatTheme.spacing.xs,
     minHeight: 48,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -121,8 +134,8 @@ export function ChatInput({ onSend, placeholder = "What can I do for you today?"
     height: 32,
     borderRadius: 16,
     backgroundColor: ChatTheme.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginLeft: ChatTheme.spacing.sm,
     shadowColor: ChatTheme.accent,
     shadowOffset: { width: 0, height: 2 },
@@ -138,6 +151,6 @@ export function ChatInput({ onSend, placeholder = "What can I do for you today?"
   sendIcon: {
     fontSize: 20,
     color: ChatTheme.background,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
 });

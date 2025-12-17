@@ -3,10 +3,9 @@
  * Logo and menu toggle for sidebar
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from "@expo/vector-icons";
+import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ChatTheme } from "@/shared/constants/chat-theme";
 
 interface SidebarHeaderProps {
   onClose: () => void;
@@ -17,7 +16,7 @@ export function SidebarHeader({ onClose }: SidebarHeaderProps) {
     <View style={styles.container}>
       <View style={styles.logoContainer}>
         <Image
-          source={require('@/assets/logo/logo.webp')}
+          source={require("@/assets/logo/logo.webp")}
           style={styles.logo}
           resizeMode="contain"
         />
@@ -32,17 +31,17 @@ export function SidebarHeader({ onClose }: SidebarHeaderProps) {
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: ChatTheme.spacing.md,
     paddingVertical: ChatTheme.spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: ChatTheme.border,
   },
   logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: ChatTheme.spacing.sm,
   },
   logo: {
@@ -51,7 +50,7 @@ const styles = StyleSheet.create({
   },
   logoText: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: ChatTheme.textPrimary,
     letterSpacing: 1,
     fontFamily: ChatTheme.fonts.bold,

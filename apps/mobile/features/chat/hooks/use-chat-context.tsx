@@ -3,7 +3,7 @@
  * Global context for managing active chat session
  */
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, type ReactNode, useContext, useState } from "react";
 
 interface ChatContextValue {
   activeChatId: string | null;
@@ -27,7 +27,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
   };
 
   return (
-    <ChatContext.Provider value={{ activeChatId, setActiveChatId, createNewChat }}>
+    <ChatContext.Provider
+      value={{ activeChatId, setActiveChatId, createNewChat }}
+    >
       {children}
     </ChatContext.Provider>
   );
@@ -36,7 +38,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
 export function useChatContext(): ChatContextValue {
   const context = useContext(ChatContext);
   if (!context) {
-    throw new Error('useChatContext must be used within a ChatProvider');
+    throw new Error("useChatContext must be used within a ChatProvider");
   }
   return context;
 }

@@ -3,12 +3,12 @@
  * Main entry point - redirects to active or new chat
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import { useRouter } from 'expo-router';
-import React, { useEffect } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useChatContext } from '@/features/chat';
+import { useRouter } from "expo-router";
+import { useEffect } from "react";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useChatContext } from "@/features/chat";
+import { ChatTheme } from "@/shared/constants/chat-theme";
 
 export default function IndexScreen() {
   const router = useRouter();
@@ -36,7 +36,7 @@ const styles = StyleSheet.create({
   },
   loading: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
 });

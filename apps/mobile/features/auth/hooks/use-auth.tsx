@@ -3,9 +3,21 @@
  * Manages authentication state and provides auth utilities
  */
 
-import { getAuthToken, removeAuthToken, getUserInfo, removeUserInfo, UserInfo } from '@/shared/utils/auth-storage';
-import { useRouter, useSegments } from 'expo-router';
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { useRouter, useSegments } from "expo-router";
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+import {
+  getAuthToken,
+  getUserInfo,
+  removeAuthToken,
+  removeUserInfo,
+  type UserInfo,
+} from "@/shared/utils/auth-storage";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -31,14 +43,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isLoading) return;
 
-    const inAuthGroup = segments[0] === 'login' || segments[0] === 'signup';
-    
+    const inAuthGroup = segments[0] === "login" || segments[0] === "signup";
+
     if (!isAuthenticated && !inAuthGroup) {
       // Redirect to login if not authenticated
-      router.replace('/login');
+      router.replace("/login");
     } else if (isAuthenticated && inAuthGroup) {
       // Redirect to main app if authenticated
-      router.replace('/(tabs)');
+      router.replace("/(tabs)");
     }
   }, [isAuthenticated, segments, isLoading, router]);
 
@@ -49,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAuthenticated(!!token);
       setUser(userInfo);
     } catch (error) {
-      console.error('Error checking auth status:', error);
+      console.error("Error checking auth status:", error);
       setIsAuthenticated(false);
       setUser(null);
     } finally {
@@ -64,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAuthenticated(!!token);
       setUser(userInfo);
     } catch (error) {
-      console.error('Error refreshing auth status:', error);
+      console.error("Error refreshing auth status:", error);
       setIsAuthenticated(false);
       setUser(null);
     }
@@ -76,14 +88,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await removeUserInfo();
       setIsAuthenticated(false);
       setUser(null);
-      router.replace('/auth/login');
+      router.replace("/auth/login");
     } catch (error) {
-      console.error('Error signing out:', error);
+      console.error("Error signing out:", error);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, isLoading, user, signOut, refreshAuth }}>
+    <AuthContext.Provider
+      value={{ isAuthenticated, isLoading, user, signOut, refreshAuth }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -92,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 }

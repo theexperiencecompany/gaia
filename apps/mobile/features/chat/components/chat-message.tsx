@@ -3,12 +3,20 @@
  * Displays individual chat messages with different styles for user and AI
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
-import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Message } from '../types';
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
+import { useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Animated,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { ChatTheme } from "@/shared/constants/chat-theme";
+import type { Message } from "../types";
 
 interface ChatMessageProps {
   message: Message;
@@ -37,7 +45,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
   const handleCopy = async () => {
     await Clipboard.setStringAsync(message.text);
-    Alert.alert('Copied', 'Message copied to clipboard');
+    Alert.alert("Copied", "Message copied to clipboard");
   };
 
   const handlePin = () => {
@@ -57,16 +65,18 @@ export function ChatMessage({ message }: ChatMessageProps) {
     >
       {!message.isUser && (
         <Image
-          source={require('@/assets/logo/logo.webp')}
+          source={require("@/assets/logo/logo.webp")}
           style={styles.aiIconContainer}
           resizeMode="contain"
         />
       )}
-      
-      <View style={[
-        styles.messageWrapper,
-        message.isUser && styles.messageWrapperUser,
-      ]}>
+
+      <View
+        style={[
+          styles.messageWrapper,
+          message.isUser && styles.messageWrapperUser,
+        ]}
+      >
         <View
           style={[
             styles.messageBubble,
@@ -83,20 +93,20 @@ export function ChatMessage({ message }: ChatMessageProps) {
             {message.text}
           </Text>
         </View>
-        
+
         {!message.isUser && (
           <View style={styles.actionsContainer}>
             <TouchableOpacity onPress={handlePin} style={styles.actionButton}>
-              <MaterialCommunityIcons 
-                name={isPinned ? "pin" : "pin-outline"} 
-                size={14} 
+              <MaterialCommunityIcons
+                name={isPinned ? "pin" : "pin-outline"}
+                size={14}
                 color={isPinned ? ChatTheme.accent : ChatTheme.iconSecondary}
               />
             </TouchableOpacity>
             <TouchableOpacity onPress={handleCopy} style={styles.actionButton}>
-              <Ionicons 
-                name="copy-outline" 
-                size={14} 
+              <Ionicons
+                name="copy-outline"
+                size={14}
                 color={ChatTheme.iconSecondary}
               />
             </TouchableOpacity>
@@ -109,16 +119,16 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginVertical: ChatTheme.spacing.sm,
     paddingHorizontal: ChatTheme.spacing.md,
   },
   userContainer: {
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
   },
   aiContainer: {
-    justifyContent: 'flex-start',
-    alignItems: 'flex-start',
+    justifyContent: "flex-start",
+    alignItems: "flex-start",
   },
   aiIconContainer: {
     width: 28,
@@ -128,20 +138,20 @@ const styles = StyleSheet.create({
   },
   messageWrapper: {
     flex: 1,
-    alignItems: 'flex-start',
+    alignItems: "flex-start",
   },
   messageWrapperUser: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
   },
   messageBubble: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
+    alignSelf: "flex-start",
+    maxWidth: "100%",
     paddingHorizontal: ChatTheme.spacing.md,
     paddingVertical: ChatTheme.spacing.sm + 2,
     borderRadius: ChatTheme.borderRadius.lg,
   },
   messageBubbleUser: {
-    alignSelf: 'flex-end',
+    alignSelf: "flex-end",
   },
   userBubble: {
     backgroundColor: ChatTheme.userMessage,
@@ -161,7 +171,7 @@ const styles = StyleSheet.create({
     color: ChatTheme.textPrimary,
   },
   actionsContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginTop: 4,
     marginLeft: 2,
     gap: 4,

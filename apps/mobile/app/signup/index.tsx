@@ -4,9 +4,7 @@
  * Following Expo Router conventions - separate route for signup
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import { useRouter } from 'expo-router';
-import React from 'react';
+import { useRouter } from "expo-router";
 import {
   Image,
   KeyboardAvoidingView,
@@ -15,48 +13,49 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { ChatTheme } from "@/shared/constants/chat-theme";
 
 export default function SignUpScreen() {
   const router = useRouter();
 
   const handleGoogleSignUp = () => {
-    console.log('Google Sign Up');
+    console.log("Google Sign Up");
     // TODO: Implement Google sign up
-    router.replace('/(tabs)');
+    router.replace("/(tabs)");
   };
 
   const handleSignIn = () => {
-    router.push('/login');
+    router.push("/login");
   };
 
   return (
     <View style={styles.container}>
       {/* Full Background Image */}
-      <Image 
-        source={require('@/assets/background/signup.webp')} 
+      <Image
+        source={require("@/assets/background/signup.webp")}
         style={styles.backgroundImage}
         resizeMode="cover"
         blurRadius={0.5}
         fadeDuration={300}
       />
-      
+
       {/* Dark Overlay */}
       <View style={styles.overlay} />
-      
+
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
           style={styles.keyboardView}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           {/* Sign Up Card */}
           <View style={styles.card}>
             {/* Logo and Title */}
             <View style={styles.header}>
               <View style={styles.logoContainer}>
-                <Image 
-                  source={require('@/assets/logo/logo.webp')} 
+                <Image
+                  source={require("@/assets/logo/logo.webp")}
                   style={styles.logo}
                   resizeMode="contain"
                 />
@@ -72,12 +71,14 @@ export default function SignUpScreen() {
                 onPress={handleGoogleSignUp}
                 activeOpacity={0.8}
               >
-                <Image 
-                  source={require('@/assets/icons/google-logo.png')}
+                <Image
+                  source={require("@/assets/icons/google-logo.png")}
                   style={styles.googleIcon}
                   resizeMode="contain"
                 />
-                <Text style={styles.googleButtonText}>Continue with Google</Text>
+                <Text style={styles.googleButtonText}>
+                  Continue with Google
+                </Text>
               </TouchableOpacity>
 
               {/* Sign In Link */}
@@ -91,7 +92,9 @@ export default function SignUpScreen() {
 
             {/* Footer */}
             <View style={styles.footer}>
-              <Text style={styles.footerText}>By creating an account, you agree to the </Text>
+              <Text style={styles.footerText}>
+                By creating an account, you agree to the{" "}
+              </Text>
               <View style={styles.footerLinks}>
                 <TouchableOpacity>
                   <Text style={styles.footerLink}>Terms of Service</Text>
@@ -112,38 +115,38 @@ export default function SignUpScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0c1f3d',
+    backgroundColor: "#0c1f3d",
   },
   backgroundImage: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
+    position: "absolute",
+    width: "100%",
+    height: "100%",
   },
   overlay: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   safeArea: {
     flex: 1,
   },
   keyboardView: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: ChatTheme.spacing.lg,
   },
   card: {
-    width: '100%',
+    width: "100%",
     maxWidth: 450,
-    backgroundColor: 'rgba(26, 26, 26, 0.95)',
+    backgroundColor: "rgba(26, 26, 26, 0.95)",
     borderRadius: ChatTheme.borderRadius.lg + 4,
     paddingHorizontal: ChatTheme.spacing.xl,
     paddingVertical: ChatTheme.spacing.xl + 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    shadowColor: '#000',
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 10,
@@ -153,16 +156,16 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   header: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: ChatTheme.spacing.xl,
   },
   logoContainer: {
     width: 70,
     height: 70,
     borderRadius: 35,
-    backgroundColor: 'rgba(22, 193, 255, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(22, 193, 255, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: ChatTheme.spacing.md,
   },
   logo: {
@@ -171,24 +174,24 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: "700",
     color: ChatTheme.textPrimary,
     fontFamily: ChatTheme.fonts.bold,
-    textAlign: 'center',
+    textAlign: "center",
   },
   form: {
-    width: '100%',
+    width: "100%",
   },
   googleButton: {
-    backgroundColor: 'rgba(39, 39, 42, 0.8)',
+    backgroundColor: "rgba(39, 39, 42, 0.8)",
     borderRadius: ChatTheme.borderRadius.md,
     paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: ChatTheme.spacing.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: "rgba(255, 255, 255, 0.2)",
   },
   googleIcon: {
     width: 18,
@@ -196,14 +199,14 @@ const styles = StyleSheet.create({
   },
   googleButtonText: {
     fontSize: ChatTheme.fontSize.md,
-    fontWeight: '500',
+    fontWeight: "500",
     color: ChatTheme.textPrimary,
     fontFamily: ChatTheme.fonts.medium,
   },
   signInContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: ChatTheme.spacing.md,
   },
   signInText: {
@@ -215,28 +218,28 @@ const styles = StyleSheet.create({
     fontSize: ChatTheme.fontSize.md,
     color: ChatTheme.accent,
     fontFamily: ChatTheme.fonts.semibold,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   footer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: ChatTheme.spacing.lg,
   },
   footerLinks: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
   },
   footerText: {
     fontSize: ChatTheme.fontSize.sm,
     color: ChatTheme.textSecondary,
     fontFamily: ChatTheme.fonts.regular,
-    textAlign: 'center',
+    textAlign: "center",
   },
   footerLink: {
     fontSize: ChatTheme.fontSize.sm,
     color: ChatTheme.textSecondary,
     fontFamily: ChatTheme.fonts.regular,
-    textDecorationLine: 'underline',
+    textDecorationLine: "underline",
   },
 });

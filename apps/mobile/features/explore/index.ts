@@ -4,4 +4,4 @@
  */
 
 // Screens
-export { ExploreScreen } from './screens/explore';
+export { ExploreScreen } from "./screens/explore";

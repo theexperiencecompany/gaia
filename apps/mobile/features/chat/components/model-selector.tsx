@@ -3,19 +3,18 @@
  * Dropdown modal for selecting AI models
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import { Ionicons } from "@expo/vector-icons";
 import {
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-} from 'react-native';
-import { AIModel } from '../types';
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { ChatTheme } from "@/shared/constants/chat-theme";
+import type { AIModel } from "../types";
 
 interface ModelSelectorProps {
   visible: boolean;
@@ -44,9 +43,9 @@ export function ModelSelector({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <TouchableOpacity 
-        style={styles.overlay} 
-        activeOpacity={1} 
+      <TouchableOpacity
+        style={styles.overlay}
+        activeOpacity={1}
         onPress={onClose}
       >
         <View style={styles.modalContent}>
@@ -69,8 +68,8 @@ export function ModelSelector({
                 activeOpacity={0.7}
               >
                 <View style={styles.modelInfo}>
-                  <Image 
-                    source={{ uri: model.icon }} 
+                  <Image
+                    source={{ uri: model.icon }}
                     style={styles.modelIcon}
                     resizeMode="contain"
                   />
@@ -87,10 +86,10 @@ export function ModelSelector({
                   </View>
                 </View>
                 {selectedModel.id === model.id && (
-                  <Ionicons 
-                    name="checkmark-circle" 
-                    size={24} 
-                    color={ChatTheme.accent} 
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={24}
+                    color={ChatTheme.accent}
                   />
                 )}
               </TouchableOpacity>
@@ -105,34 +104,34 @@ export function ModelSelector({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
     padding: ChatTheme.spacing.lg,
   },
   modalContent: {
     backgroundColor: ChatTheme.background,
     borderRadius: ChatTheme.borderRadius.lg,
-    width: '100%',
+    width: "100%",
     maxWidth: 400,
-    maxHeight: '80%',
-    shadowColor: '#000',
+    maxHeight: "80%",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
   },
   modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: ChatTheme.spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: ChatTheme.border,
   },
   modalTitle: {
     fontSize: ChatTheme.fontSize.lg,
-    fontWeight: '600',
+    fontWeight: "600",
     color: ChatTheme.textPrimary,
   },
   closeButton: {
@@ -142,9 +141,9 @@ const styles = StyleSheet.create({
     maxHeight: 400,
   },
   modelItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: ChatTheme.spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: ChatTheme.border,
@@ -153,8 +152,8 @@ const styles = StyleSheet.create({
     backgroundColor: ChatTheme.messageBackground,
   },
   modelInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: ChatTheme.spacing.sm,
     flex: 1,
   },
@@ -167,13 +166,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modelNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: ChatTheme.spacing.xs,
   },
   modelName: {
     fontSize: ChatTheme.fontSize.md,
-    fontWeight: '500',
+    fontWeight: "500",
     color: ChatTheme.textPrimary,
   },
   modelProvider: {
@@ -189,8 +188,8 @@ const styles = StyleSheet.create({
   },
   proText: {
     fontSize: 10,
-    fontWeight: '700',
-    color: '#fff',
+    fontWeight: "700",
+    color: "#fff",
     letterSpacing: 0.5,
   },
 });

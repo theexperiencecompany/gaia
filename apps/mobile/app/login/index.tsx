@@ -4,12 +4,8 @@
  * Following Expo Router conventions - separate route for login
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import { startOAuthFlow, fetchUserInfo } from '@/shared/services/auth-service';
-import { storeAuthToken, storeUserInfo } from '@/shared/utils/auth-storage';
-import { useAuth } from '@/features/auth';
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { useRouter } from "expo-router";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,8 +16,12 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "@/features/auth";
+import { ChatTheme } from "@/shared/constants/chat-theme";
+import { fetchUserInfo, startOAuthFlow } from "@/shared/services/auth-service";
+import { storeAuthToken, storeUserInfo } from "@/shared/utils/auth-storage";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -30,29 +30,31 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     setIsLoading(true);
-    
+
     try {
       // Start OAuth flow and get token
       const token = await startOAuthFlow();
-      
+
       // Store the authentication token
       await storeAuthToken(token);
-      
+
       // Fetch and store user information
       const userInfo = await fetchUserInfo(token);
       await storeUserInfo(userInfo);
-      
+
       // Refresh auth state to trigger navigation
       await refreshAuth();
-      
+
       // Navigate to main app
-      router.replace('/(tabs)');
+      router.replace("/(tabs)");
     } catch (error) {
-      console.error('Login error:', error);
+      console.error("Login error:", error);
       Alert.alert(
-        'Login Failed',
-        error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.',
-        [{ text: 'OK' }]
+        "Login Failed",
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred. Please try again.",
+        [{ text: "OK" }],
       );
     } finally {
       setIsLoading(false);
@@ -60,35 +62,35 @@ export default function LoginScreen() {
   };
 
   const handleSignUp = () => {
-    router.push('/signup');
+    router.push("/signup");
   };
 
   return (
     <View style={styles.container}>
       {/* Full Background Image */}
-      <Image 
-        source={require('@/assets/background/login.webp')} 
+      <Image
+        source={require("@/assets/background/login.webp")}
         style={styles.backgroundImage}
         resizeMode="cover"
         blurRadius={0.5}
         fadeDuration={300}
       />
-      
+
       {/* Dark Overlay */}
       <View style={styles.overlay} />
-      
+
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
           style={styles.keyboardView}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           {/* Login Card */}
           <View style={styles.card}>
             {/* Logo and Title */}
             <View style={styles.header}>
               <View style={styles.logoContainer}>
-                <Image 
-                  source={require('@/assets/logo/logo.webp')} 
+                <Image
+                  source={require("@/assets/logo/logo.webp")}
                   style={styles.logo}
                   resizeMode="contain"
                 />
@@ -100,7 +102,10 @@ export default function LoginScreen() {
             <View style={styles.form}>
               {/* Login Button */}
               <TouchableOpacity
-                style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+                style={[
+                  styles.loginButton,
+                  isLoading && styles.loginButtonDisabled,
+                ]}
                 onPress={handleLogin}
                 activeOpacity={0.8}
                 disabled={isLoading}
@@ -108,13 +113,17 @@ export default function LoginScreen() {
                 {isLoading ? (
                   <ActivityIndicator color="#000000" />
                 ) : (
-                  <Text style={styles.loginButtonText}>Continue with WorkOS</Text>
+                  <Text style={styles.loginButtonText}>
+                    Continue with WorkOS
+                  </Text>
                 )}
               </TouchableOpacity>
 
               {/* Sign Up Link */}
               <View style={styles.signUpContainer}>
-                <Text style={styles.signUpText}>Don&apos;t have an account? </Text>
+                <Text style={styles.signUpText}>
+                  Don&apos;t have an account?{" "}
+                </Text>
                 <TouchableOpacity onPress={handleSignUp} disabled={isLoading}>
                   <Text style={styles.signUpLink}>Sign up</Text>
                 </TouchableOpacity>
@@ -141,38 +150,38 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a1929',
+    backgroundColor: "#0a1929",
   },
   backgroundImage: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
+    position: "absolute",
+    width: "100%",
+    height: "100%",
   },
   overlay: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   safeArea: {
     flex: 1,
   },
   keyboardView: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: ChatTheme.spacing.lg,
   },
   card: {
-    width: '100%',
+    width: "100%",
     maxWidth: 450,
-    backgroundColor: 'rgba(26, 26, 26, 0.95)',
+    backgroundColor: "rgba(26, 26, 26, 0.95)",
     borderRadius: ChatTheme.borderRadius.lg + 4,
     paddingHorizontal: ChatTheme.spacing.xl,
     paddingVertical: ChatTheme.spacing.xl + 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    shadowColor: '#000',
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 10,
@@ -182,16 +191,16 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   header: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: ChatTheme.spacing.xl,
   },
   logoContainer: {
     width: 70,
     height: 70,
     borderRadius: 35,
-    backgroundColor: 'rgba(22, 193, 255, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(22, 193, 255, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: ChatTheme.spacing.md,
   },
   logo: {
@@ -200,20 +209,20 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: "700",
     color: ChatTheme.textPrimary,
     fontFamily: ChatTheme.fonts.bold,
-    textAlign: 'center',
+    textAlign: "center",
   },
   form: {
-    width: '100%',
+    width: "100%",
   },
   loginButton: {
     backgroundColor: ChatTheme.accent,
     borderRadius: ChatTheme.borderRadius.md,
     paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: ChatTheme.spacing.md,
     shadowColor: ChatTheme.accent,
     shadowOffset: {
@@ -230,14 +239,14 @@ const styles = StyleSheet.create({
   },
   loginButtonText: {
     fontSize: ChatTheme.fontSize.md,
-    fontWeight: '600',
-    color: '#000000',
+    fontWeight: "600",
+    color: "#000000",
     fontFamily: ChatTheme.fonts.semibold,
   },
   signUpContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: ChatTheme.spacing.md,
   },
   signUpText: {
@@ -249,14 +258,14 @@ const styles = StyleSheet.create({
     fontSize: ChatTheme.fontSize.md,
     color: ChatTheme.accent,
     fontFamily: ChatTheme.fonts.semibold,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: ChatTheme.spacing.lg,
-    flexWrap: 'wrap',
+    flexWrap: "wrap",
   },
   footerText: {
     fontSize: ChatTheme.fontSize.sm,
@@ -267,6 +276,6 @@ const styles = StyleSheet.create({
     fontSize: ChatTheme.fontSize.sm,
     color: ChatTheme.textSecondary,
     fontFamily: ChatTheme.fonts.regular,
-    textDecorationLine: 'underline',
+    textDecorationLine: "underline",
   },
 });

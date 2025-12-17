@@ -53,7 +53,7 @@
         "cwd": "apps/mobile"
       },
       "cache": true,
-      "inputs": ["default", "{projectRoot}/eslint.config.mjs"]
+      "inputs": ["default", "{workspaceRoot}/biome.json"]
     },
     "type-check": {
       "executor": "nx:run-commands",

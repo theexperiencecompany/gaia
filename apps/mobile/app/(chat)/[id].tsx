@@ -4,9 +4,8 @@
  * Following Expo Router conventions - logic in app folder, components in features
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import { useLocalSearchParams } from 'expo-router';
-import React, { useEffect } from 'react';
+import { useLocalSearchParams } from "expo-router";
+import { useEffect } from "react";
 import {
   FlatList,
   Keyboard,
@@ -14,24 +13,28 @@ import {
   Platform,
   StyleSheet,
   TouchableWithoutFeedback,
-  View
-} from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import DrawerLayout, { DrawerPosition, DrawerType } from 'react-native-gesture-handler/ReanimatedDrawerLayout';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { 
-  ChatInput, 
-  ChatMessage, 
-  ChatEmptyState, 
-  ChatHeader, 
-  SidebarContent,
-  SIDEBAR_WIDTH,
-  useChat,
-  useSidebar,
-  useChatContext,
+  View,
+} from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import DrawerLayout, {
+  DrawerPosition,
+  DrawerType,
+} from "react-native-gesture-handler/ReanimatedDrawerLayout";
+import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  ChatEmptyState,
+  ChatHeader,
+  ChatInput,
+  ChatMessage,
   DEFAULT_SUGGESTIONS,
-  type Message
-} from '@/features/chat';
+  type Message,
+  SIDEBAR_WIDTH,
+  SidebarContent,
+  useChat,
+  useChatContext,
+  useSidebar,
+} from "@/features/chat";
+import { ChatTheme } from "@/shared/constants/chat-theme";
 
 export default function ChatPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -44,19 +47,10 @@ export default function ChatPage() {
     }
   }, [id, activeChatId, setActiveChatId]);
 
-  const {
-    messages,
-    isTyping,
-    flatListRef,
-    sendMessage,
-    scrollToBottom,
-  } = useChat(activeChatId);
+  const { messages, isTyping, flatListRef, sendMessage, scrollToBottom } =
+    useChat(activeChatId);
 
-  const {
-    drawerRef,
-    closeSidebar,
-    toggleSidebar,
-  } = useSidebar();
+  const { drawerRef, closeSidebar, toggleSidebar } = useSidebar();
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -94,7 +88,7 @@ export default function ChatPage() {
 
   return (
     <GestureHandlerRootView style={styles.flex}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView style={styles.safeArea} edges={["top"]}>
         <DrawerLayout
           ref={drawerRef}
           drawerWidth={SIDEBAR_WIDTH}
@@ -105,13 +99,13 @@ export default function ChatPage() {
         >
           <KeyboardAvoidingView
             style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
             {/* Header */}
             <ChatHeader
               onMenuPress={toggleSidebar}
               onNewChatPress={handleNewChat}
-              onSearchPress={() => console.log('Search pressed')}
+              onSearchPress={() => console.log("Search pressed")}
             />
 
             {/* Messages List */}
@@ -121,7 +115,7 @@ export default function ChatPage() {
                   ref={flatListRef}
                   data={messages}
                   renderItem={renderMessage}
-                  keyExtractor={item => item.id}
+                  keyExtractor={(item) => item.id}
                   contentContainerStyle={styles.messagesList}
                   ListEmptyComponent={renderEmpty}
                   showsVerticalScrollIndicator={false}
@@ -171,8 +165,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: ChatTheme.spacing.md,
   },
   typingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: ChatTheme.spacing.md,
     paddingVertical: ChatTheme.spacing.sm,
     gap: ChatTheme.spacing.xs,

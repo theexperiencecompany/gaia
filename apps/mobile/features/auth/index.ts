@@ -8,10 +8,10 @@
  */
 
 // Components
-export { AuthBackground } from './components/auth-background';
-export { AuthCard } from './components/auth-card';
-export { AuthHeader } from './components/auth-header';
-export { AuthFooter } from './components/auth-footer';
+export { AuthBackground } from "./components/auth-background";
+export { AuthCard } from "./components/auth-card";
+export { AuthFooter } from "./components/auth-footer";
+export { AuthHeader } from "./components/auth-header";
 
 // Hooks
-export { AuthProvider, useAuth } from './hooks/use-auth';
+export { AuthProvider, useAuth } from "./hooks/use-auth";

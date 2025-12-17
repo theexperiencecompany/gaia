@@ -3,10 +3,16 @@
  * Animated card for chat suggestions with press feedback
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import React, { useEffect, useRef } from 'react';
-import { Animated, Image, StyleSheet, Text, TouchableOpacity } from 'react-native';
-import { Suggestion } from '../types';
+import { useEffect, useRef } from "react";
+import {
+  Animated,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+} from "react-native";
+import { ChatTheme } from "@/shared/constants/chat-theme";
+import type { Suggestion } from "../types";
 
 interface SuggestionCardProps {
   suggestion: Suggestion;
@@ -14,7 +20,11 @@ interface SuggestionCardProps {
   onPress: (text: string) => void;
 }
 
-export function SuggestionCard({ suggestion, index, onPress }: SuggestionCardProps) {
+export function SuggestionCard({
+  suggestion,
+  index,
+  onPress,
+}: SuggestionCardProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
@@ -84,18 +94,18 @@ export function SuggestionCard({ suggestion, index, onPress }: SuggestionCardPro
 
 const styles = StyleSheet.create({
   wrapper: {
-    width: '48%',
+    width: "48%",
   },
   card: {
-    width: '100%',
-    backgroundColor: '#222224',
+    width: "100%",
+    backgroundColor: "#222224",
     borderRadius: ChatTheme.borderRadius.lg,
     padding: ChatTheme.spacing.md,
     borderWidth: 1,
     borderColor: ChatTheme.border,
     minHeight: 100,
-    justifyContent: 'space-between',
-    shadowColor: '#000',
+    justifyContent: "space-between",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,

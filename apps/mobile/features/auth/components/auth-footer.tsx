@@ -3,9 +3,8 @@
  * Reusable footer with legal links for auth screens
  */
 
-import { ChatTheme } from '@/shared/constants/chat-theme';
-import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ChatTheme } from "@/shared/constants/chat-theme";
 
 interface AuthFooterProps {
   showSignUpDisclaimer?: boolean;
@@ -13,19 +12,21 @@ interface AuthFooterProps {
 
 export function AuthFooter({ showSignUpDisclaimer = false }: AuthFooterProps) {
   const handleTermsPress = () => {
-    console.log('Navigate to Terms of Service');
+    console.log("Navigate to Terms of Service");
     // TODO: Implement navigation
   };
 
   const handlePrivacyPress = () => {
-    console.log('Navigate to Privacy Policy');
+    console.log("Navigate to Privacy Policy");
     // TODO: Implement navigation
   };
 
   return (
     <View style={styles.footer}>
       {showSignUpDisclaimer && (
-        <Text style={styles.footerText}>By creating an account, you agree to the </Text>
+        <Text style={styles.footerText}>
+          By creating an account, you agree to the{" "}
+        </Text>
       )}
       <View style={styles.footerLinks}>
         <TouchableOpacity onPress={handleTermsPress}>
@@ -42,25 +43,25 @@ export function AuthFooter({ showSignUpDisclaimer = false }: AuthFooterProps) {
 
 const styles = StyleSheet.create({
   footer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: ChatTheme.spacing.lg,
   },
   footerLinks: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
   },
   footerText: {
     fontSize: ChatTheme.fontSize.sm,
     color: ChatTheme.textSecondary,
     fontFamily: ChatTheme.fonts.regular,
-    textAlign: 'center',
+    textAlign: "center",
   },
   footerLink: {
     fontSize: ChatTheme.fontSize.sm,
     color: ChatTheme.textSecondary,
     fontFamily: ChatTheme.fonts.regular,
-    textDecorationLine: 'underline',
+    textDecorationLine: "underline",
   },
 });
