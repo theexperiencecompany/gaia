@@ -43,10 +43,8 @@ jobs:
           node-version: 22
           cache: 'pnpm'
           
-      - name: Sync dependencies (Nx cached)
-        run: npx nx run-many -t sync --parallel=3
-        env:
-          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.GH_TOKEN }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       # Extract version from tag (remove 'v' prefix) and update package.json
       - name: Set version from tag

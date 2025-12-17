@@ -42,8 +42,11 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Sync all dependencies (Nx cached)
-        run: npx nx run-many -t sync --parallel=3
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync Python dependencies (Nx cached)
+        run: npx nx sync api
         env:
           NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
