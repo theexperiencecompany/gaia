@@ -32,13 +32,11 @@ from app.api.v1.endpoints import (
     webhook_composio,
     websocket,
     workflows,
-    voice_token,
 )
 from fastapi import APIRouter
 
 router = APIRouter()
 
-router.include_router(voice_token.router, tags=["Voice"])
 router.include_router(chat.router, tags=["Chat"])
 router.include_router(conversations.router, tags=["Conversations"])
 router.include_router(image.router, tags=["Image"])

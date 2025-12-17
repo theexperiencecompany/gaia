@@ -1,14 +1,14 @@
 import json
-from livekit import api
-from app.config.settings import settings
 import uuid
 from typing import Optional
+
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
 )
 from app.api.v1.middleware.agent_auth import create_agent_token
-
+from app.config.settings import settings
 from fastapi import APIRouter, Depends
+from livekit import api
 
 router = APIRouter()
 
