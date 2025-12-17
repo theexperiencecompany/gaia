@@ -27,17 +27,18 @@ dependencies = [
   "aiohttp>=3.9.0",
   "taskipy>=1.2.1",
   "urllib3>=2.6.0",
+  "ormsgpack>=1.12.0",
 ]
 
 [tool.taskipy.tasks]
-dev = "uv run uvicorn app.main:app --port 8000 --reload --log-level warning"
-start = "uv run fastapi run"
-arq = "uv run arq app.worker.WorkerSettings"
+dev = "uv run --group backend --group voice_agent uvicorn app.main:app --port 8000 --reload --log-level warning"
+start = "uv run --group backend --group voice_agent fastapi run"
+arq = "uv run --group backend --group voice_agent arq app.worker.WorkerSettings"
 worker = "task arq"
 lint = "uvx ruff check ."
 "lint.fix" = "uvx ruff check . --fix"
 format = "uvx ruff format ."
-mypy = "uv run mypy app --ignore-missing-imports"
+mypy = "uv run --group backend --group dev mypy app --ignore-missing-imports"
 schema = "uvx schemathesis run http://localhost:8000/openapi.json"
 "schema.write" = "uvx schemathesis run http://localhost:8000/openapi.json --report-junit-path report.xml"
 bandit = "uvx bandit -r app"
