@@ -3,7 +3,7 @@ Reminder scheduler for managing reminder tasks.
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import reminders_collection
