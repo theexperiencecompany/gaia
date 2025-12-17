@@ -111,13 +111,6 @@
       "metadata": { "difficulty": "medium" }
     },
     {
-      "input": "Find which branches contain commit e7c2b37 in Dhruv-Maradiya/gaia-personal.",
-      "expected_output": "List of branches containing the commit.",
-      "context": "User wants to find a commit",
-      "tags": ["commit", "branch", "detailed"],
-      "metadata": { "difficulty": "medium" }
-    },
-    {
       "input": "fork Dhruv-Mradia/gaia-personal",
       "expected_output": "1. Detect invalid owner 'Dhruv-Mradia'. 2. Search/Correct to 'Dhruv-Maradiya'. 3. Fork 'Dhruv-Maradiya/gaia-personal' (or handle error if already exists/same user).",
       "context": "User made a typo in owner name",
