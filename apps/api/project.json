@@ -3,9 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "root": "apps/api",
   "sourceRoot": "apps/api/app",
-  "implicitDependencies": [
-    "docker"
-  ],
+  "implicitDependencies": ["docker"],
   "release": {
     "docker": {
       "repositoryName": "heygaia/gaia"
@@ -15,7 +13,7 @@
     "sync": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv sync --frozen --group backend --group dev",
+        "command": "uv sync --frozen --group backend --group dev --group voice_agent",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -25,7 +23,7 @@
     "dev": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level info",
+        "command": "uv run --group backend --group voice_agent uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level info",
         "cwd": "{projectRoot}"
       }
     },
@@ -76,7 +74,7 @@
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run mypy app --ignore-missing-imports",
+        "command": "uv run --group backend --group dev mypy app --ignore-missing-imports",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -89,7 +87,7 @@
     "worker": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run arq app.worker.WorkerSettings",
+        "command": "uv run --group backend --group voice_agent arq app.worker.WorkerSettings",
         "cwd": "{projectRoot}"
       }
     },

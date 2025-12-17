@@ -56,7 +56,7 @@ from app.services.post_onboarding_service import (
 
 # Constants
 EMAIL_QUERY = "in:inbox"
-MAX_RESULTS = 500
+MAX_RESULTS = 100
 BATCH_SIZE = 50
 
 

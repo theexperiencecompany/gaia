@@ -5,9 +5,6 @@ description = "Backend of GAIA - The personal AI assistant"
 readme = "../README.md"
 requires-python = ">=3.11"
 
-# ─────────────────────────────────────────────────────────────
-# Core runtime dependencies (merged and deduplicated)
-# ─────────────────────────────────────────────────────────────
 dependencies = [
   "uvloop>=0.21.0; sys_platform != 'win32'",
   "pydantic==2.10.4",
@@ -27,84 +24,28 @@ dependencies = [
   "uuid7>=0.1.0",
   "croniter>=3.0.0",
   "rich==14.0.0",
-  "infisicalsdk>=1.0.7",
   "aiohttp>=3.9.0",
   "taskipy>=1.2.1",
   "urllib3>=2.6.0",
-  "langgraph-checkpoint-postgres>=2.0.21",
-  "beautifulsoup4==4.12.3",
-  "bs4==0.0.2",
-  "cloudinary==1.41.0",
-  "fastapi[standard]==0.115.6",
-  "ftfy>=6.3.0",
-  "google-api-core==2.24.0",
-  "google-api-python-client>=2.162.0",
-  "google-auth==2.38.0",
-  "googleapis-common-protos==1.66.0",
-  "html2text>=2024.2.26",
-  "jinja2==3.1.5",
-  "langchain-chroma>=0.2.2",
-  "langchain-google-genai>=2.1.2",
-  "motor==3.6.0",
-  "protobuf==5.29.5",
-  "pymongo==4.9.2",
-  "redis==5.2.1",
-  "starlette==0.41.3",
-  "langchain-openai>=0.3.1",
-  "llama-cloud-services>=0.6.15",
-  "chromadb>=0.6.3",
-  "langgraph-bigtool>=0.0.2",
-  "aio-pika>=9.5.5",
-  "arq>=0.26.0",
-  "e2b-code-interpreter>=1.2.0",
-  "pypandoc>=1.15",
-  "markdown2>=2.5.3",
-  "resend>=2.10.0",
-  "tomli>=2.2.1",
-  "workos>=5.24.0",
-  "authlib>=1.6.1",
-  "composio>=0.8.19",
-  "dodopayments>=1.49.0",
-  "standardwebhooks>=1.0.0",
-  "langchain-core>=0.3.74",
-  "langgraph>=0.6.5",
-  "pyinstrument>=5.1.1",
-  "mem0ai>=1.0.1",
-  "firecrawl-py>=4.3.6",
-  "tavily-python>=0.7.12",
-  "firecrawl>=4.5.0",
-  "posthog>=5.4.0",
-  "sentry-sdk[langgraph]>=2.44.0",
-  "crawl4ai>=0.7.7",
-  "langchain>=0.3.27",
-  "asyncpg>=0.31.0",
-  "opik>=1.9.47",
+  "ormsgpack>=1.12.0",
 ]
 
-# ─────────────────────────────────────────────────────────────
-# Task runner
-# ─────────────────────────────────────────────────────────────
 [tool.taskipy.tasks]
-dev = "uv run uvicorn app.main:app --port 8000 --reload --log-level warning"
-start = "uv run fastapi run"
-arq = "uv run arq app.worker.WorkerSettings"
+dev = "uv run --group backend --group voice_agent uvicorn app.main:app --port 8000 --reload --log-level warning"
+start = "uv run --group backend --group voice_agent fastapi run"
+arq = "uv run --group backend --group voice_agent arq app.worker.WorkerSettings"
 worker = "task arq"
 lint = "uvx ruff check ."
 "lint.fix" = "uvx ruff check . --fix"
 format = "uvx ruff format ."
-mypy = "uv run mypy app --ignore-missing-imports"
+mypy = "uv run --group backend --group dev mypy app --ignore-missing-imports"
 schema = "uvx schemathesis run http://localhost:8000/openapi.json"
 "schema.write" = "uvx schemathesis run http://localhost:8000/openapi.json --report-junit-path report.xml"
 bandit = "uvx bandit -r app"
 pip_audit = "uvx pip-audit"
-detect_secrets = "uvx detect-secrets scan --all-files" # pragma: allowlist secret
+detect_secrets = "uvx detect-secrets scan --all-files"
 
-# ─────────────────────────────────────────────────────────────
-# Dependency Groups (merged and deduplicated)
-# ─────────────────────────────────────────────────────────────
 [dependency-groups]
-
-# ─────────────── DEV ───────────────
 dev = [
   "mypy>=1.16.1",
   "ruff>=0.4.4",
@@ -139,7 +80,6 @@ dev = [
   "types-ujson>=5.10.0.20250326",
 ]
 
-# ─────────────── BACKEND ───────────────
 backend = [
   "fastapi[standard]==0.115.6",
   "uvicorn>=0.34.1",
@@ -147,6 +87,7 @@ backend = [
   "PyJWT>=2.10.0",
   "authlib>=1.6.1",
   "workos>=5.24.0",
+  "infisicalsdk>=1.0.7",
   "motor==3.6.0",
   "pymongo==4.9.2",
   "redis==5.2.1",
@@ -180,18 +121,21 @@ backend = [
   "pandas>=2.3.0",
   "beautifulsoup4==4.12.3",
   "bs4==0.0.2",
-  "lxml>=5.3", # FIXED: Relaxed from lxml==6.0.0 to fix conflict with crawl4ai (<6.dev0)
+  "lxml>=5.3",
   "html2text>=2024.2.26",
   "tldextract>=5.1.3",
   "firecrawl-py>=4.3.6",
+  "firecrawl>=4.6.0",
   "browser-use>=0.1.40",
   "pyppeteer>=0.0.25",
   "tavily-python>=0.7.12",
+  "crawl4ai>=0.7.7",
   "sumy==0.11.0",
   "jieba==0.42.1",
   "langcodes==3.5.0",
   "language-data==1.3.0",
   "marisa-trie==1.2.1",
+  "ftfy>=6.3.0",
   "google-api-core==2.24.0",
   "google-api-python-client>=2.162.0",
   "google-auth==2.38.0",
@@ -210,7 +154,6 @@ backend = [
   "aio-pika>=9.5.5",
   "e2b-code-interpreter>=1.2.0",
   "ipython>=9.1.0",
-  "livekit-api",
   "jinja2==3.1.5",
   "markupsafe==3.0.2",
   "hf-xet>=1.0.3",
@@ -225,30 +168,20 @@ backend = [
   "markdown-it-py==3.0.0",
   "mdurl==0.1.2",
   "pyinstrument>=5.1.1",
-  "cfgv>=3.4.0",
-  "pre-commit>=4.2.0",
-  "ruff>=0.12.2",
-  "mypy>=1.16.1",
-  "types-redis>=4.6.0.20241004",
-  "types-requests>=2.32.4.20250611",
-  "types-pytz>=2025.2.0.20250516",
-  "types-croniter",
-  "types-python-dateutil",
-  "firecrawl>=4.6.0",
+  "posthog>=5.4.0",
+  "sentry-sdk[langgraph]>=2.44.0",
+  "opik>=1.9.47",
 ]
 
-# ─────────────── VOICE AGENT ───────────────
 voice_agent = [
   "livekit>=1.0.12",
+  "livekit-api",
   "livekit-agents[turn-detector,silero,deepgram]~=1.2",
   "livekit-plugins-noise-cancellation~=0.2",
   "livekit-plugins-elevenlabs~=1.2",
   "hf_transfer",
 ]
 
-# ─────────────────────────────────────────────────────────────
-# UV / Torch CPU index
-# ─────────────────────────────────────────────────────────────
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
@@ -257,9 +190,6 @@ explicit = true
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu" }]
 
-# ─────────────────────────────────────────────────────────────
-# URLs
-# ─────────────────────────────────────────────────────────────
 [project.urls]
 Homepage = "https://heygaia.io"
 Documentation = "https://docs.heygaia.io"
