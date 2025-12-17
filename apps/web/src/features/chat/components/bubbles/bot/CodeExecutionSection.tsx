@@ -109,9 +109,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           >
             <ChartDisplay charts={code_data.charts} />
           </AccordionItem>
-        ) : (
-          <></>
-        )}
+        ) : null}
       </Accordion>
     </div>
   );

@@ -34,7 +34,7 @@ export default function DeepResearchResultsTabs({
         <AccordionItem
           key="1"
           aria-label="Deep Research Results"
-          indicator={<></>}
+          indicator={null}
           title={
             <div className="h-full w-fit rounded-lg bg-white/10 p-1 px-3 text-sm font-medium transition-all hover:bg-white/20">
               {isExpanded

@@ -12,7 +12,7 @@ import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 import { getInitialMonthlyDateRange } from "@/features/calendar/utils/dateRangeUtils";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { CalendarIcon, GoogleCalendarIcon } from "@/icons";
+import { GoogleCalendarIcon } from "@/icons";
 import {
   useCalendarCurrentWeek,
   useCalendarSelectedDate,

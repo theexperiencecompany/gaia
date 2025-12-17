@@ -690,7 +690,6 @@ export default function WorkflowModal({
                               : "Publish Workflow"}
                           </DropdownItem>
 
-                          {/* Conditionally render marketplace item */}
                           {currentWorkflow?.is_public ? (
                             <DropdownItem
                               key="marketplace"
@@ -708,9 +707,7 @@ export default function WorkflowModal({
                             >
                               View on Marketplace
                             </DropdownItem>
-                          ) : (
-                            <></>
-                          )}
+                          ) : null}
 
                           <DropdownItem
                             key="delete"

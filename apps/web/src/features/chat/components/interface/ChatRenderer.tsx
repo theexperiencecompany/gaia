@@ -164,15 +164,12 @@ export default function ChatRenderer({
       })}
       {isLoading && (
         <div className="flex items-center gap-4 pt-3 pl-[40px] text-sm font-medium">
-          {toolInfo?.toolCategory && (
-            <>
-              {getToolCategoryIcon(toolInfo.toolCategory, {
-                size: 18,
-                width: 18,
-                height: 18,
-              })}
-            </>
-          )}
+          {toolInfo?.toolCategory &&
+            getToolCategoryIcon(toolInfo.toolCategory, {
+              size: 18,
+              width: 18,
+              height: 18,
+            })}
           <span>{loadingText || "GAIA is thinking..."}</span>
           <Spinner variant="dots" color="primary" />
         </div>

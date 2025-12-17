@@ -256,6 +256,7 @@ const ChartModal: React.FC<{
 
       {/* Content */}
       <div className="p-6">
+        {/** biome-ignore lint/performance/noImgElement: chart display not fixed height and width */}
         <img
           src={chart.url}
           alt={chart.text}

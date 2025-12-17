@@ -183,9 +183,6 @@ export const useOnboarding = () => {
         return newState;
       });
 
-      // Add a delay before showing bot response (800-1200ms for natural feel)
-      const delay = 800 + Math.random() * 400; // Random delay between 800-1200ms
-
       setOnboardingState((prev) => {
         const newState = { ...prev };
 

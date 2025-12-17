@@ -64,9 +64,7 @@ export default function ChatBubble_Actions_Image({
           <Cancel01Icon height="22" />
           <span>Cancel</span>
         </Button>
-      ) : (
-        <></>
-      )}
+      ) : null}
       <Tooltip
         className={`${fullWidth ? "hidden" : ""}`}
         color="primary"

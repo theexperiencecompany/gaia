@@ -48,7 +48,7 @@ export const ChatWithMessages: React.FC<ChatWithMessagesProps> = ({
         <ChatSection chatRef={chatRef} />
       </div>
       {/* Fixed composer at bottom */}
-      <div className="flex-shrink-0 pb-2">
+      <div className="shrink-0 pb-2">
         <Composer {...composerProps} />
       </div>
     </div>

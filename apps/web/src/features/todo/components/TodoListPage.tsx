@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { TodoSidebar } from "@/components/layout/sidebar/right-variants/TodoSidebar";
 import Spinner from "@/components/ui/spinner";

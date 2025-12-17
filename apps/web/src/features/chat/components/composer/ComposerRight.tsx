@@ -12,14 +12,14 @@ interface RightSideProps {
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
   searchbarText: string | null | undefined;
   selectedTool?: string | null;
-  setvoiceModeActive: () => void;
+  // setvoiceModeActive: () => void;
 }
 
 export default function RightSide({
   handleFormSubmit,
   searchbarText,
   selectedTool,
-  setvoiceModeActive,
+  // setvoiceModeActive,
 }: RightSideProps) {
   const { isLoading, stopStream } = useLoading();
   const { selectedWorkflow } = useWorkflowSelection();

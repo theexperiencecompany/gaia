@@ -64,7 +64,7 @@
     "type-check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx mypy app --ignore-missing-imports",
+        "command": "uv run mypy app --ignore-missing-imports",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -90,4 +90,3 @@
     }
   }
 }
-
