@@ -34,7 +34,7 @@ def _patched_execute(
             disable=(verbose < 1),
             desc=desc,
             total=len(evaluation_tasks),
-        )
+        )  # ty:ignore[call-non-callable]
     ]
     return test_results
 
