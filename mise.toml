@@ -19,13 +19,12 @@ _.python.venv = { path = "apps/api/.venv", create = true }
 MISE_NODE_COREPACK = "1"
 
 [hooks]
-postinstall = "pnpm install"
+postinstall = "pnpm install && nx sync api"
 
 [settings]
 # npm.package_manager = "pnpm" # Use pnpm as the package manager
 experimental = true # Can setup hooks and advanced features
 
-# Sync Tasks (Nx-cached dependency installation)
 [tasks.sync]
 description = "Install all dependencies (Nx cached)"
 run = "nx run-many -t sync --parallel=3"
@@ -66,7 +65,7 @@ run = "nx run docker:docker:up && nx run-many -t dev --projects=api,web --parall
 
 [tasks."dev:voice"]
 description = "Run ONLY voice agent worker (without docker dependencies)"
-dir = "backend"
+dir = "apps/api"
 run = "mise voice"
 
 [tasks.dev]
@@ -191,7 +190,7 @@ depends = ["setup:api", "setup:web"]
 
 [tasks."setup:voice"]
 description = "Download voice agent models (VAD, etc.)"
-dir = "backend"
+dir = "apps/api"
 run = "mise voice:download"
 
 [tasks.setup]

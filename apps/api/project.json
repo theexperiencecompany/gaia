@@ -3,9 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "root": "apps/api",
   "sourceRoot": "apps/api/app",
-  "implicitDependencies": [
-    "docker"
-  ],
+  "implicitDependencies": ["docker"],
   "release": {
     "docker": {
       "repositoryName": "heygaia/gaia"
@@ -15,7 +13,7 @@
     "sync": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv sync --frozen --group backend --group dev",
+        "command": "uv sync --frozen --group backend --group dev --group voice_agent",
         "cwd": "{projectRoot}"
       },
       "cache": true,
