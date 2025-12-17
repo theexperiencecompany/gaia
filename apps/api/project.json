@@ -10,6 +10,16 @@
     }
   },
   "targets": {
+    "sync": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv sync --frozen --group backend --group dev",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": ["{projectRoot}/pyproject.toml", "{projectRoot}/uv.lock"],
+      "outputs": ["{projectRoot}/.venv"]
+    },
     "dev": {
       "executor": "nx:run-commands",
       "options": {

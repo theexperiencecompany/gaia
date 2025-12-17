@@ -3,6 +3,20 @@
   "root": "apps/web",
   "sourceRoot": "apps/web/src",
   "targets": {
+    "sync": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm install --frozen-lockfile --prefer-offline",
+        "cwd": "{workspaceRoot}"
+      },
+      "cache": true,
+      "inputs": [
+        "{workspaceRoot}/pnpm-lock.yaml",
+        "{workspaceRoot}/package.json",
+        "{projectRoot}/package.json"
+      ],
+      "outputs": []
+    },
     "dev": {
       "executor": "nx:run-commands",
       "options": {

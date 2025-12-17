@@ -1,65 +1,76 @@
 {
-    "name": "mobile",
-    "$schema": "../../node_modules/nx/schemas/project-schema.json",
-    "sourceRoot": "apps/mobile",
-    "projectType": "application",
-    "targets": {
-        "dev": {
-            "executor": "nx:run-commands",
-            "options": {
-                "command": "pnpm start",
-                "cwd": "apps/mobile"
-            }
-        },
-        "android": {
-            "executor": "nx:run-commands",
-            "options": {
-                "command": "pnpm android",
-                "cwd": "apps/mobile"
-            }
-        },
-        "ios": {
-            "executor": "nx:run-commands",
-            "options": {
-                "command": "pnpm ios",
-                "cwd": "apps/mobile"
-            }
-        },
-        "web": {
-            "executor": "nx:run-commands",
-            "options": {
-                "command": "pnpm web",
-                "cwd": "apps/mobile"
-            }
-        },
-        "lint": {
-            "executor": "nx:run-commands",
-            "options": {
-                "command": "pnpm lint",
-                "cwd": "apps/mobile"
-            },
-            "cache": true,
-            "inputs": ["default", "{projectRoot}/eslint.config.mjs"]
-        },
-        "type-check": {
-            "executor": "nx:run-commands",
-            "options": {
-                "command": "pnpm tsc --noEmit",
-                "cwd": "apps/mobile"
-            },
-            "cache": true,
-            "inputs": ["default", "{projectRoot}/tsconfig.json"]
-        },
-        "clean": {
-            "executor": "nx:run-commands",
-            "options": {
-                "command": "rm -rf .expo node_modules",
-                "cwd": "apps/mobile"
-            }
-        }
+  "name": "mobile",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/mobile",
+  "projectType": "application",
+  "targets": {
+    "sync": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm install --frozen-lockfile --prefer-offline",
+        "cwd": "{workspaceRoot}"
+      },
+      "cache": true,
+      "inputs": [
+        "{workspaceRoot}/pnpm-lock.yaml",
+        "{workspaceRoot}/package.json",
+        "{projectRoot}/package.json"
+      ],
+      "outputs": []
     },
-    "tags": [
-        "type:app",
-        "platform:mobile"
-    ]
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm start",
+        "cwd": "apps/mobile"
+      }
+    },
+    "android": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm android",
+        "cwd": "apps/mobile"
+      }
+    },
+    "ios": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm ios",
+        "cwd": "apps/mobile"
+      }
+    },
+    "web": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm web",
+        "cwd": "apps/mobile"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm lint",
+        "cwd": "apps/mobile"
+      },
+      "cache": true,
+      "inputs": ["default", "{projectRoot}/eslint.config.mjs"]
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm tsc --noEmit",
+        "cwd": "apps/mobile"
+      },
+      "cache": true,
+      "inputs": ["default", "{projectRoot}/tsconfig.json"]
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "rm -rf .expo node_modules",
+        "cwd": "apps/mobile"
+      }
+    }
+  },
+  "tags": ["type:app", "platform:mobile"]
 }

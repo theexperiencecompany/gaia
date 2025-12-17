@@ -8,34 +8,24 @@
   },
   "defaultBase": "master",
   "namedInputs": {
-    "default": [
-      "{projectRoot}/**/*"
-    ],
-    "production": [
-      "!{projectRoot}/**/*.spec.ts",
-      "!{projectRoot}/**/*.test.ts"
-    ]
+    "default": ["{projectRoot}/**/*"],
+    "production": ["!{projectRoot}/**/*.spec.ts", "!{projectRoot}/**/*.test.ts"]
   },
   "targetDefaults": {
+    "sync": {
+      "cache": true
+    },
     "build": {
       "cache": true,
-      "dependsOn": [
-        "^build"
-      ]
+      "dependsOn": ["sync", "^build"]
     },
     "test": {
       "cache": true,
-      "inputs": [
-        "default",
-        "^production"
-      ]
+      "inputs": ["default", "^production"]
     },
     "lint": {
       "cache": true,
-      "inputs": [
-        "default",
-        "^production"
-      ]
+      "inputs": ["default", "^production"]
     },
     "lint:fix": {
       "cache": false
@@ -45,16 +35,11 @@
     },
     "format:check": {
       "cache": true,
-      "inputs": [
-        "default"
-      ]
+      "inputs": ["default"]
     },
     "type-check": {
       "cache": true,
-      "inputs": [
-        "default",
-        "^production"
-      ]
+      "inputs": ["default", "^production"]
     },
     "dev": {
       "cache": false
@@ -87,9 +72,7 @@
     },
     "groups": {
       "apps": {
-        "projects": [
-          "api"
-        ],
+        "projects": ["api"],
         "projectsRelationship": "independent",
         "docker": {
           "skipVersionActions": true,

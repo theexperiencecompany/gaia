@@ -25,6 +25,19 @@ postinstall = "pnpm install"
 # npm.package_manager = "pnpm" # Use pnpm as the package manager
 experimental = true # Can setup hooks and advanced features
 
+# Sync Tasks (Nx-cached dependency installation)
+[tasks.sync]
+description = "Install all dependencies (Nx cached)"
+run = "nx run-many -t sync --parallel=3"
+
+[tasks."sync:api"]
+description = "Sync API dependencies (Nx cached)"
+run = "nx sync api"
+
+[tasks."sync:web"]
+description = "Sync web dependencies (Nx cached)"
+run = "nx sync web"
+
 # Development Tasks
 [tasks."dev:web"]
 description = "Run ONLY web (starts Docker automatically)"
@@ -164,15 +177,13 @@ fi
 '''
 
 [tasks."setup:api"]
-description = "Set up API dependencies"
-dir = "apps/api"
-run = "mise deps"
+description = "Set up API dependencies (Nx cached)"
+run = "nx sync api"
 depends = ["setup:env"]
 
 [tasks."setup:web"]
-description = "Set up web dependencies"
-dir = "apps/web"
-run = "mise deps"
+description = "Set up web dependencies (Nx cached)"
+run = "nx sync web"
 
 [tasks."setup:deps"]
 description = "Install all dependencies"

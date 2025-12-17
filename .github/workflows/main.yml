@@ -42,12 +42,10 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Install dependencies
-        run: uv sync --frozen --group backend --group dev
-        working-directory: apps/api
+      - name: Sync all dependencies (Nx cached)
+        run: npx nx run-many -t sync --parallel=3
+        env:
+          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
       - name: Install prek
         run: uv tool install prek
