@@ -24,31 +24,42 @@ from pathlib import Path
 from typing import Any, Optional, TypeVar
 
 import nest_asyncio
-import opik
-from app.agents.core.subagents.subagent_helpers import (
+
+# Apply Opik patch BEFORE importing opik to disable ThreadPoolExecutor
+# This must happen before any opik imports, hence the E402 suppressions below
+from app.patches.opik_patch import apply_opik_patch
+
+apply_opik_patch()
+
+import opik  # noqa: E402
+from app.agents.core.subagents.subagent_helpers import (  # noqa: E402
     build_subagent_system_prompt,
 )
-from app.agents.llm.client import init_llm
-from app.config.loggers import app_logger as logger
-from app.config.oauth_config import get_integration_by_id
-from app.config.settings import settings
-from app.core.lazy_loader import providers
-from app.helpers.agent_helpers import build_agent_config
-from app.services.model_service import get_model_by_id
-from langchain_core.messages import (
+from app.agents.llm.client import init_llm  # noqa: E402
+from app.config.loggers import app_logger as logger  # noqa: E402
+from app.config.oauth_config import get_integration_by_id  # noqa: E402
+from app.config.settings import settings  # noqa: E402
+from app.core.lazy_loader import providers  # noqa: E402
+from app.helpers.agent_helpers import build_agent_config  # noqa: E402
+from app.services.model_service import get_model_by_id  # noqa: E402
+from langchain_core.messages import (  # noqa: E402
     AIMessage,
     BaseMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
-from langgraph.graph.state import CompiledStateGraph
-from opik.evaluation import evaluate
-from opik.evaluation.metrics import base_metric, score_result
+from langgraph.graph.state import CompiledStateGraph  # noqa: E402
+from opik.evaluation import evaluate  # noqa: E402
+from opik.evaluation.metrics import base_metric, score_result  # noqa: E402
 
-from .config import SubagentEvalConfig, get_config, list_available_subagents
-from .initialization import init_eval_providers
-from .judge_prompts import SUBAGENT_EVALUATION_PROMPT
+from .config import (  # noqa: E402
+    SubagentEvalConfig,
+    get_config,
+    list_available_subagents,
+)
+from .initialization import init_eval_providers  # noqa: E402
+from .judge_prompts import SUBAGENT_EVALUATION_PROMPT  # noqa: E402
 
 T = TypeVar("T")
 
@@ -374,8 +385,8 @@ class SubagentEvaluator:
                 else "N/A",
                 "judge_prompt_version": self.judge_prompt.commit,
             },
+            task_threads=4,
             project_name="GAIA",
-            task_threads=1,
         )
         logger.info(f"Evaluation complete: {experiment_name}")
         return eval_results
