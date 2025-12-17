@@ -83,6 +83,8 @@
     "@react-three/fiber": "^9.3.0",
     "@react-types/shared": "^3.31.0",
     "@sentry/nextjs": "^10.5.0",
+    "@swc-node/register": "^1.11.1",
+    "@swc/core": "^1.15.5",
     "@tailwindcss/postcss": "^4.1.12",
     "@tanstack/react-query": "^5.85.5",
     "@tanstack/react-query-persist-client": "^5.85.5",
@@ -195,24 +197,6 @@
     "depcheck": "^1.4.7",
     "schema-dts": "^1.1.5",
     "typescript": "^5.9.2"
-  },
-  "pnpm": {
-    "ignoredBuiltDependencies": [
-      "@heroui/shared-utils"
-    ],
-    "onlyBuiltDependencies": [
-      "@heroui/shared-utils",
-      "@parcel/watcher",
-      "@sentry/cli",
-      "@tailwindcss/oxide",
-      "@vercel/speed-insights",
-      "canvas",
-      "core-js",
-      "heapdump",
-      "oxc-resolver",
-      "sharp",
-      "unrs-resolver"
-    ]
   },
   "packageManager": "pnpm@10.18.3"
 }

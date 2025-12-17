@@ -15,10 +15,10 @@ const nextConfig = {
   reactStrictMode: true,
   // Enable standalone output for Electron desktop app bundling
   // This creates a minimal production server with all dependencies
-  output: 'standalone',
+  output: "standalone",
   // Explicitly set turbopack workspace root to silence inference warning
   turbopack: {
-    root: path.join(__dirname, '../..'),
+    root: path.join(__dirname, "../.."),
   },
   experimental: {
     optimizePackageImports: [
@@ -74,11 +74,6 @@ const nextConfig = {
   },
   // This is required to support PostHog trailing slash API requests
   skipTrailingSlashRedirect: true,
-  // modularizeImports: {
-  //   "@radix-ui/react-icons": {
-  //     transform: "@radix-ui/react-icons/dist/{{member}}",
-  //   },
-  // },
 };
 
 const withMDX = createMDX({
@@ -117,5 +112,3 @@ export default withSentryConfig(withBundleAnalyzer(withMDX(nextConfig)), {
     automaticVercelMonitors: true,
   },
 });
-
-console.log(nextConfig);

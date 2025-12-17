@@ -5,10 +5,10 @@ import { Tooltip } from "@heroui/tooltip";
 import type { ReactElement } from "react";
 
 interface MenuItem {
-  iconElement: ReactElement;
+  iconElement?: ReactElement;
   key: string;
   label: string;
-  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   action: () => void;
 }
 

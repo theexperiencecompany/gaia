@@ -436,7 +436,7 @@ async def enrich_calendar_options_with_metadata(
     )
 
     for event in same_day_events:
-        calendar_id = event.get("calendarId")
+        calendar_id = event.get("calendarId") or ""
         event["background_color"] = color_map.get(calendar_id, "#00bbff")
 
     for option in calendar_options:

@@ -34,6 +34,7 @@ export default function CollapsibleListWrapper({
 
   return (
     <div className="w-full">
+      {/* @ts-expect-error - HeroUI Accordion has overly complex union types */}
       <Accordion
         className="w-full max-w-(--breakpoint-sm) px-0"
         defaultExpandedKeys={defaultExpanded ? ["1"] : []}

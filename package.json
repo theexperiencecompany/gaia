@@ -1,33 +1,38 @@
 {
-	"name": "gaia",
-	"dependencies": {
-		"@react-navigation/native": "^7.1.25",
-		"@react-navigation/native-stack": "^7.8.6",
-		"next": "~16.0.1",
-		"nx": "latest",
-		"react": "^19.0.0",
-		"react-dom": "^19.0.0"
-	},
-	"packageManager": "pnpm@10.17.1",
-	"devDependencies": {
-		"@nx/docker": "^22.2.3",
-		"@nx/next": "22.2.3",
-		"nx": "22.2.3"
-	},
-	"pnpm": {
-		"ignoredBuiltDependencies": [
-			"@heroui/shared-utils"
-		],
-		"onlyBuiltDependencies": [
-			"@heroui/shared-utils",
-			"@parcel/watcher",
-			"@sentry/cli",
-			"canvas",
-			"core-js",
-			"electron",
-			"esbuild",
-			"nx",
-			"sharp"
-		]
-	}
+  "name": "gaia",
+  "dependencies": {
+    "@react-navigation/native": "^7.1.25",
+    "@react-navigation/native-stack": "^7.8.6",
+    "next": "~16.0.1",
+    "nx": "latest",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "packageManager": "pnpm@10.17.1",
+  "devDependencies": {
+    "@nx/docker": "^22.2.3",
+    "@nx/next": "22.2.3",
+    "nx": "22.2.3"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "@heroui/shared-utils"
+    ],
+    "onlyBuiltDependencies": [
+      "@heroui/shared-utils",
+      "@parcel/watcher",
+      "@sentry/cli",
+      "@tailwindcss/oxide",
+      "@vercel/speed-insights",
+      "canvas",
+      "core-js",
+      "electron",
+      "esbuild",
+      "heapdump",
+      "nx",
+      "oxc-resolver",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
 }
