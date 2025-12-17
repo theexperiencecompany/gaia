@@ -62,7 +62,7 @@
       },
       "correctness": {
         "noUnusedVariables": "warn",
-        "useExhaustiveDependencies": "warn",
+        "useExhaustiveDependencies": "off",
         "useHookAtTopLevel": "error"
       },
       "style": {

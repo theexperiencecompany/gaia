@@ -19,7 +19,7 @@ export function SimpleChatBubbleUser({
 }) {
   const user = useUser();
 
-  if (hideMobile) return <></>;
+  if (hideMobile) return null;
 
   return (
     <div className={`mb-3 flex items-end justify-end gap-3 ${className}`}>
@@ -28,7 +28,7 @@ export function SimpleChatBubbleUser({
       >
         {children}
       </div>
-      <Avatar className="h-8 w-8 flex-shrink-0 rounded-full border-2 border-white/20">
+      <Avatar className="h-8 w-8 shrink-0 rounded-full border-2 border-white/20">
         <AvatarImage src={user?.profilePicture} alt={user?.name || "User"} />
         <AvatarFallback className="bg-blue-500 text-xs text-white">
           {user?.name ? (

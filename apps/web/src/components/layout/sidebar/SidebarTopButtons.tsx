@@ -40,7 +40,6 @@ export default function SidebarTopButtons() {
   );
   const price = monthlyPlan ? monthlyPlan.amount / 100 : 15;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: need to refresh on refresh trigger
   useEffect(() => {
     refetch();
   }, [refreshTrigger, refetch]);

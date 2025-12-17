@@ -487,8 +487,8 @@ export default function EmailComposeCard({
           </div>
           <Separator className="my-1.5 bg-zinc-700" />
 
-          <ScrollShadow className="relative z-[1] max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed whitespace-pre-line text-zinc-200">
-            <div className="absolute top-0 right-0 z-[2] flex w-full justify-end">
+          <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed whitespace-pre-line text-zinc-200">
+            <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
               <Button
                 variant="light"
                 size="sm"
@@ -500,7 +500,6 @@ export default function EmailComposeCard({
             </div>
             {emailData.is_html ? (
               <div
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitizing html in order to show email styling
                 dangerouslySetInnerHTML={{
                   __html: DOMPurify.sanitize(editData.body),
                 }}

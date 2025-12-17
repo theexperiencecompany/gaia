@@ -87,7 +87,6 @@ export default function Navbar() {
     toggleBackdrop(true);
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: we only need to trigger effect on pathname change
   useEffect(() => {
     setActiveDropdown(null);
     setHoveredItem(null);

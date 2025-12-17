@@ -37,6 +37,7 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
         {/* <HydrationManager /> */}
         <Toaster closeButton richColors position="top-right" theme="dark" />
         <ElectronRouteGuard>
+          {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
           <Suspense fallback={<></>}>{children}</Suspense>
         </ElectronRouteGuard>
       </QueryProvider>
