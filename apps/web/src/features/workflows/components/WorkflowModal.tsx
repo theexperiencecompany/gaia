@@ -186,7 +186,6 @@ export default function WorkflowModal({
   }, [
     mode,
     currentWorkflow,
-    isOpen,
     resetFormValues,
     setIsActivated,
     setCreationPhase,

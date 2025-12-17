@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, Login02Icon } from "@/components";
+import { ChevronRight } from "@/components";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { posthog } from "@/lib";
 

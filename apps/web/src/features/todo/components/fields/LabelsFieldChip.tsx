@@ -4,13 +4,7 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { useState } from "react";
 
-import {
-  Cancel01Icon,
-  GridIcon,
-  LabelIcon,
-  PlusSignIcon,
-  Tag01Icon,
-} from "@/icons";
+import { Cancel01Icon, PlusSignIcon, Tag01Icon } from "@/icons";
 
 import BaseFieldChip from "./BaseFieldChip";
 

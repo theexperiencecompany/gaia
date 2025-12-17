@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Modal, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ArrowRight01Icon, Tick02Icon } from "@/icons";
 

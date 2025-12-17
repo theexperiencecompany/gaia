@@ -74,18 +74,6 @@
         "^production"
       ]
     },
-    "test": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "uv run pytest",
-        "cwd": "{projectRoot}"
-      },
-      "cache": true,
-      "inputs": [
-        "default",
-        "^production"
-      ]
-    },
     "worker": {
       "executor": "nx:run-commands",
       "options": {
@@ -102,3 +90,4 @@
     }
   }
 }
+

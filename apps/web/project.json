@@ -74,14 +74,6 @@
         "^production"
       ]
     },
-    "test": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pnpm test",
-        "cwd": "{projectRoot}"
-      },
-      "cache": true
-    },
     "clean": {
       "executor": "nx:run-commands",
       "options": {

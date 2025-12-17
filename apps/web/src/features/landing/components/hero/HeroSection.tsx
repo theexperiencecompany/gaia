@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Github } from "@/components";
 import ShinyText from "@/components/ui/shimmering-chip";
 import { useLatestRelease } from "@/hooks/useLatestRelease";
-import { ArrowRight01Icon, ChevronRight } from "@/icons";
+import { ChevronRight } from "@/icons";
 import { MotionContainer } from "@/layouts/MotionContainer";
 
 import GetStartedButton from "../shared/GetStartedButton";

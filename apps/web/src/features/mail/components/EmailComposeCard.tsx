@@ -454,7 +454,7 @@ export default function EmailComposeCard({
                 size="sm"
                 onPress={() => setIsRecipientModalOpen(true)}
                 variant={selectedEmails.length === 0 ? "flat" : "light"}
-                isIconOnly={selectedEmails.length === 0 ? false : true}
+                isIconOnly={selectedEmails.length !== 0}
                 endContent={
                   selectedEmails.length === 0 ? (
                     ""

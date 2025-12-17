@@ -1,6 +1,6 @@
 import { Card, CardBody } from "@heroui/card";
 import * as d3 from "d3";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   type DummyLink,
@@ -102,7 +102,7 @@ export default function MemoryGraphDemo() {
 
     // Center view on user node after simulation settles
     const centerOnUser = () => {
-      if (userNode && userNode.x && userNode.y) {
+      if (userNode?.x && userNode.y) {
         const scale = 1.2;
         const translateX = width / 2 - userNode.x * scale;
         const translateY = height / 2 - userNode.y * scale;

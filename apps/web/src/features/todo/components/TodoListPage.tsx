@@ -70,12 +70,6 @@ export default function TodoListPage({
     selectTodo(todo.id);
   };
 
-  // Memoize the close handler
-  const handleClose = useCallback(() => {
-    clearSelection();
-    closeRightSidebar();
-  }, [clearSelection, closeRightSidebar]);
-
   // Sync todo sidebar with right sidebar
   useEffect(() => {
     const selectedTodo = selectedTodoId
@@ -100,10 +94,11 @@ export default function TodoListPage({
     selectedTodoId,
     allTodos,
     projects,
-    handleClose,
     setRightSidebarContent,
     openRightSidebar,
     closeRightSidebar,
+    handleTodoDelete,
+    handleTodoUpdate,
   ]);
 
   // Sync close action from right sidebar back to URL

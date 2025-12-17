@@ -2,10 +2,10 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
+import Image from "next/image";
 import type React from "react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { LabeledField } from "@/features/settings/components/FormField";
@@ -18,7 +18,6 @@ import {
   PencilEdit02Icon,
   UserCircle02Icon,
 } from "@/icons";
-
 import type { ModalAction } from "./SettingsMenu";
 
 export default function AccountSection({
@@ -102,13 +101,13 @@ export default function AccountSection({
                 className="relative mt-5 h-14 w-14 cursor-pointer overflow-hidden rounded-full bg-zinc-800 transition-all duration-200 hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-zinc-900"
               >
                 {user?.profilePicture ? (
-                  <>
-                    <img
-                      src={user.profilePicture}
-                      alt={user?.name || "Profile"}
-                      className="h-full w-full object-cover"
-                    />
-                  </>
+                  <Image
+                    width={56}
+                    height={56}
+                    src={user.profilePicture}
+                    alt={user?.name || "Profile"}
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
                     <UserCircle02Icon className="h-8 w-8 text-zinc-400" />

@@ -1,5 +1,3 @@
-import React from "react";
-
 import type { Workflow } from "../api/workflowApi";
 import WorkflowModal from "./WorkflowModal";
 

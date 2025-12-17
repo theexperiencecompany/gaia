@@ -383,29 +383,26 @@ export default function MemoryManagement({
                 </div>
               ))}
 
-            {selectedTab === "graph" && (
-              <>
-                {loading ? (
-                  <div className="flex h-full items-center justify-center">
-                    <Image
-                      alt="GAIA Logo"
-                      src={"/images/logos/logo.webp"}
-                      width={30}
-                      height={30}
-                      className="animate-spin"
-                    />
-                  </div>
-                ) : (
-                  <div className="h-[80vh]">
-                    <MemoryGraph
-                      ref={graphExportRef}
-                      memories={memories}
-                      relations={relations}
-                    />
-                  </div>
-                )}
-              </>
-            )}
+            {selectedTab === "graph" &&
+              (loading ? (
+                <div className="flex h-full items-center justify-center">
+                  <Image
+                    alt="GAIA Logo"
+                    src={"/images/logos/logo.webp"}
+                    width={30}
+                    height={30}
+                    className="animate-spin"
+                  />
+                </div>
+              ) : (
+                <div className="h-[80vh]">
+                  <MemoryGraph
+                    ref={graphExportRef}
+                    memories={memories}
+                    relations={relations}
+                  />
+                </div>
+              ))}
           </div>
         </div>
       )}

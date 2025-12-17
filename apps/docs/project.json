@@ -8,16 +8,7 @@
         "command": "mintlify dev",
         "cwd": "{projectRoot}"
       }
-    },
-    "build": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "mintlify build",
-        "cwd": "{projectRoot}"
-      },
-      "cache": true,
-      "inputs": ["default"],
-      "outputs": ["{projectRoot}/.mintlify"]
     }
   }
 }
+

@@ -129,7 +129,7 @@ export const useEventSidebar = ({
         now = new Date(selectedDate);
 
         // Validate the date is valid
-        if (isNaN(now.getTime())) {
+        if (Number.isNaN(now.getTime())) {
           console.error("Invalid selectedDate received, using current date");
           now = new Date();
         }
@@ -155,7 +155,7 @@ export const useEventSidebar = ({
       }
 
       // Validate that now is a valid date before using it
-      if (isNaN(now.getTime())) {
+      if (Number.isNaN(now.getTime())) {
         console.error("Invalid date after processing, aborting");
         return;
       }

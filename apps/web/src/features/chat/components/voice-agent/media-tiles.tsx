@@ -1,6 +1,5 @@
 import { useVoiceAssistant } from "@livekit/components-react";
 import { AnimatePresence, motion } from "motion/react";
-import React from "react";
 
 import {
   type AgentState,

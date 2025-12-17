@@ -92,8 +92,8 @@ export const parseCronExpression = (cron: string): CronSchedule => {
   if (dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
     return {
       type: "daily",
-      minute: parseInt(minute),
-      hour: parseInt(hour),
+      minute: parseInt(minute, 10),
+      hour: parseInt(hour, 10),
     };
   }
 
@@ -101,9 +101,9 @@ export const parseCronExpression = (cron: string): CronSchedule => {
   if (dayOfMonth === "*" && month === "*" && dayOfWeek !== "*") {
     return {
       type: "weekly",
-      minute: parseInt(minute),
-      hour: parseInt(hour),
-      dayOfWeek: parseInt(dayOfWeek),
+      minute: parseInt(minute, 10),
+      hour: parseInt(hour, 10),
+      dayOfWeek: parseInt(dayOfWeek, 10),
     };
   }
 
@@ -111,9 +111,9 @@ export const parseCronExpression = (cron: string): CronSchedule => {
   if (dayOfMonth !== "*" && month === "*" && dayOfWeek === "*") {
     return {
       type: "monthly",
-      minute: parseInt(minute),
-      hour: parseInt(hour),
-      dayOfMonth: parseInt(dayOfMonth),
+      minute: parseInt(minute, 10),
+      hour: parseInt(hour, 10),
+      dayOfMonth: parseInt(dayOfMonth, 10),
     };
   }
 
@@ -121,10 +121,10 @@ export const parseCronExpression = (cron: string): CronSchedule => {
   if (dayOfMonth !== "*" && month !== "*" && dayOfWeek === "*") {
     return {
       type: "yearly",
-      minute: parseInt(minute),
-      hour: parseInt(hour),
-      dayOfMonth: parseInt(dayOfMonth),
-      month: parseInt(month),
+      minute: parseInt(minute, 10),
+      hour: parseInt(hour, 10),
+      dayOfMonth: parseInt(dayOfMonth, 10),
+      month: parseInt(month, 10),
     };
   }
 

@@ -5,8 +5,5 @@
     "types": ["node"],
     "outDir": "./out/main"
   },
-  "include": [
-    "src/main/**/*",
-    "electron.vite.config.ts"
-  ]
+  "include": ["src/main/**/*", "electron.vite.config.ts"]
 }

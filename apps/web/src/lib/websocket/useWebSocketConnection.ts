@@ -62,14 +62,6 @@ export function useWebSocketConnection() {
     };
   }, [user?.email]);
 
-  // Log connection status changes
-  useEffect(() => {
-    console.log("[WebSocket] Connection status:", {
-      isConnected: wsManager.isConnected,
-      hasUser: !!user?.email,
-    });
-  }, [wsManager.isConnected, user?.email]);
-
   return {
     isConnected: wsManager.isConnected,
   };

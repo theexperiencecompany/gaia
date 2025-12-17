@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import React from "react";
 
 import { ArrowDown02Icon } from "@/icons";
 

@@ -1,5 +1,3 @@
-import React from "react";
-
 import WorkflowModal from "./WorkflowModal";
 
 interface CreateWorkflowModalProps {

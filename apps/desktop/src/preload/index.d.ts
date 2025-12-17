@@ -1,4 +1,4 @@
-import { ElectronAPI } from '@electron-toolkit/preload';
+import { ElectronAPI } from "@electron-toolkit/preload";
 
 interface AuthCallbackData {
   token: string;
@@ -13,7 +13,9 @@ declare global {
       isElectron: boolean;
       signalReady: () => void;
       openExternal: (url: string) => void;
-      onAuthCallback: (callback: (data: AuthCallbackData) => void) => () => void;
+      onAuthCallback: (
+        callback: (data: AuthCallbackData) => void,
+      ) => () => void;
     };
   }
 }

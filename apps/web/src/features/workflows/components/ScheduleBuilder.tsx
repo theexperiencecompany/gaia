@@ -107,31 +107,31 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
       case "day":
         cronSchedule = {
           type: "daily",
-          hour: parseInt(newSchedule.hour),
-          minute: parseInt(newSchedule.minute),
+          hour: parseInt(newSchedule.hour, 10),
+          minute: parseInt(newSchedule.minute, 10),
         };
         break;
       case "week":
         cronSchedule = {
           type: "weekly",
-          hour: parseInt(newSchedule.hour),
-          minute: parseInt(newSchedule.minute),
-          dayOfWeek: parseInt(newSchedule.dayOfWeek),
+          hour: parseInt(newSchedule.hour, 10),
+          minute: parseInt(newSchedule.minute, 10),
+          dayOfWeek: parseInt(newSchedule.dayOfWeek, 10),
         };
         break;
       case "month":
         cronSchedule = {
           type: "monthly",
-          hour: parseInt(newSchedule.hour),
-          minute: parseInt(newSchedule.minute),
-          dayOfMonth: parseInt(newSchedule.dayOfMonth),
+          hour: parseInt(newSchedule.hour, 10),
+          minute: parseInt(newSchedule.minute, 10),
+          dayOfMonth: parseInt(newSchedule.dayOfMonth, 10),
         };
         break;
       default:
         cronSchedule = {
           type: "daily",
-          hour: parseInt(newSchedule.hour),
-          minute: parseInt(newSchedule.minute),
+          hour: parseInt(newSchedule.hour, 10),
+          minute: parseInt(newSchedule.minute, 10),
         };
     }
 

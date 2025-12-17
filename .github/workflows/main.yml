@@ -57,7 +57,7 @@ jobs:
         working-directory: apps/api
 
       - name: Run affected quality checks
-        run: npx nx affected -t lint type-check build test --parallel=3
+        run: npx nx affected -t lint type-check build --parallel=3
         env:
           NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
           NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}

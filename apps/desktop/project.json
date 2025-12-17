@@ -7,10 +7,7 @@
     "dev": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": [
-          "nx dev web",
-          "pnpm dev"
-        ],
+        "commands": ["nx dev web", "pnpm dev"],
         "cwd": "{projectRoot}",
         "parallel": true
       },
@@ -78,7 +75,7 @@
       "dependsOn": ["build"]
     },
     "dist:win": {
-      "executor": "nx:run-commands",    
+      "executor": "nx:run-commands",
       "options": {
         "command": "nx build web --skip-nx-cache && pnpm dist:win",
         "cwd": "{projectRoot}",

@@ -54,7 +54,6 @@ export const OnboardingInput = ({
       }, 500);
     }
   }, [
-    onboardingState.currentQuestionIndex,
     onboardingState.isProcessing,
     onboardingState.hasAnsweredCurrentQuestion,
     currentQuestion?.fieldName,

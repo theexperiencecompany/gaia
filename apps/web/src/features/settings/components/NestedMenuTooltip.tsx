@@ -2,9 +2,10 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import type { ReactNode } from "react";
+import type { ReactElement } from "react";
 
 interface MenuItem {
+  iconElement: ReactElement;
   key: string;
   label: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;

@@ -142,7 +142,7 @@ export function useNotificationActions(
   };
 
   const handleRedirect = async (
-    notificationId: string,
+    _notificationId: string,
     action: NotificationAction,
   ): Promise<void> => {
     const config = action.config.redirect as RedirectConfig;

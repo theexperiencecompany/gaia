@@ -65,6 +65,7 @@ export function useAudioVolume(
       options.smoothingTimeConstant,
       options.minDecibels,
       options.maxDecibels,
+      options,
     ],
   );
 
@@ -169,6 +170,7 @@ export function useMultibandVolume(
       options.analyserOptions?.smoothingTimeConstant,
       options.analyserOptions?.minDecibels,
       options.analyserOptions?.maxDecibels,
+      options,
     ],
   );
 

@@ -127,7 +127,7 @@ export function useTextProcessor({
       // "in X days" pattern
       const inDaysMatch = cleanText.match(/\bin\s+(\d+)\s+days?\b/i);
       if (inDaysMatch) {
-        const days = parseInt(inDaysMatch[1]);
+        const days = parseInt(inDaysMatch[1], 10);
         commands.dueDate = {
           date: addDays(new Date(), days).toISOString(),
           timezone,

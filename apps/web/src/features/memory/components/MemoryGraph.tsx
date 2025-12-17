@@ -403,7 +403,7 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
         .attr("fill", "#f9fafb")
         .attr("pointer-events", "none")
         .text((d: GraphNode) =>
-          d.label.length > 20 ? d.label.substring(0, 17) + "..." : d.label,
+          d.label.length > 20 ? `${d.label.substring(0, 17)}...` : d.label,
         );
 
       // Add event handlers

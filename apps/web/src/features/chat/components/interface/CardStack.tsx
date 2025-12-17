@@ -44,7 +44,7 @@ export default function CardStack<T extends { id: string }>({
         setCardHeight(height);
       }
     }
-  }, [data.length, isExpanded]);
+  }, []);
 
   return (
     <div className={className} onClick={toggleExpanded}>

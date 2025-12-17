@@ -25,7 +25,7 @@ async function fetchContributorsCount(repo: string): Promise<number> {
 
   const linkHeader = response.headers.get("link");
 
-  if (linkHeader && linkHeader.includes('rel="last"')) {
+  if (linkHeader?.includes('rel="last"')) {
     const match = linkHeader.match(/&page=(\d+)>; rel="last"/);
     return match ? parseInt(match[1], 10) : 1;
   } else {

@@ -5,7 +5,7 @@ import { Tooltip } from "@heroui/tooltip";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { ArrowUp02Icon, AudioWaveIcon, StopIcon } from "@/icons";
+import { ArrowUp02Icon, StopIcon } from "@/icons";
 import { useComposerFiles } from "@/stores/composerStore";
 
 interface RightSideProps {

@@ -68,6 +68,16 @@ export default function FileUpload({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasProcessedInitialFiles = useRef(false);
 
+  const validateFile = useCallback((file: File): string | undefined => {
+    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+      return "File type not supported";
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      return `File exceeds maximum size of ${MAX_FILE_SIZE / (1024 * 1024)}MB`;
+    }
+    return undefined;
+  }, []);
+
   useEffect(() => {
     if (open && initialFiles.length > 0 && !hasProcessedInitialFiles.current) {
       if (initialFiles.length + files.length > MAX_FILES) {
@@ -92,7 +102,7 @@ export default function FileUpload({
     } else if (!open) {
       hasProcessedInitialFiles.current = false;
     }
-  }, [open, initialFiles, files.length]);
+  }, [open, initialFiles, files.length, validateFile]);
 
   useEffect(() => {
     if (
@@ -104,16 +114,6 @@ export default function FileUpload({
       setTimeout(() => fileInputRef.current?.click(), 100);
     }
   }, [open, files.length, initialFiles.length, isPastedFile]);
-
-  const validateFile = (file: File): string | undefined => {
-    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-      return "File01Icon type not supported";
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      return `File01Icon exceeds maximum size of ${MAX_FILE_SIZE / (1024 * 1024)}MB`;
-    }
-    return undefined;
-  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
@@ -310,7 +310,7 @@ export default function FileUpload({
 
       setFiles((prevFiles) => [...prevFiles, ...newFilesWithPreview]);
     },
-    [files.length],
+    [files.length, validateFile],
   );
 
   const closeModal = () => {
@@ -417,7 +417,7 @@ export default function FileUpload({
                         isIconOnly
                         size="sm"
                         variant="faded"
-                        className="absolute -top-0 -right-0 max-h-7 min-h-7 max-w-7 min-w-7 rounded-full"
+                        className="absolute top-0 right-0 max-h-7 min-h-7 max-w-7 min-w-7 rounded-full"
                         onPress={() => removeFile(index)}
                         isDisabled={isUploading}
                       >

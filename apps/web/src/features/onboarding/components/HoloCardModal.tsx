@@ -21,7 +21,6 @@ import {
 } from "@/features/onboarding/hooks/usePersonalization";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { Rocket01Icon } from "@/icons";
-import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 
 interface FeatureModalProps {
   isOpen: boolean;
@@ -212,14 +211,14 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                 >
                   {/* Shimmer Card Placeholder */}
                   <div
-                    className="relative overflow-hidden rounded-2xl shadow-2xl bg-gradient-to-br from-zinc-800 to-zinc-600"
+                    className="relative overflow-hidden rounded-2xl shadow-2xl bg-linear-to-br from-zinc-800 to-zinc-600"
                     style={{
                       height: "470px",
                       width: "330px",
                     }}
                   >
                     {/* Shimmer effect */}
-                    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-linear-to-r from-transparent via-white/10 to-transparent" />
 
                     {/* Card content skeleton */}
                     <div className="flex h-full flex-col justify-between p-6">
