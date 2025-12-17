@@ -382,7 +382,8 @@ class SubagentEvaluator:
                 else "N/A",
                 "judge_prompt_version": self.judge_prompt.commit,
             },
-            task_threads=4,
+            prompt=self.subagent_prompt,
+            task_threads=8,
             project_name="GAIA",
         )
         logger.info(f"Evaluation complete: {experiment_name}")
