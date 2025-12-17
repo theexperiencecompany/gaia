@@ -29,12 +29,12 @@ def _patched_execute(
     # This avoids ThreadPoolExecutor which causes cross-loop Future issues
     test_results: List[Any] = [
         evaluation_task()
-        for evaluation_task in tqdm(
+        for evaluation_task in tqdm(  # type: ignore[operator]
             evaluation_tasks,
             disable=(verbose < 1),
             desc=desc,
             total=len(evaluation_tasks),
-        )  # ty:ignore[call-non-callable]
+        )
     ]
     return test_results
 
