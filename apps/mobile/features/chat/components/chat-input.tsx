@@ -1,5 +1,5 @@
 /**
- * ChatInput Component
+ * Chat Input Component
  * Text input with send button for user messages
  */
 

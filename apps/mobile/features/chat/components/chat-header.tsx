@@ -1,5 +1,5 @@
 /**
- * ChatHeader Component
+ * Chat Header Component
  * Top navigation bar with menu, model selector, and actions
  */
 

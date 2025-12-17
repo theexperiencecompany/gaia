@@ -1,46 +1,34 @@
 /**
- * SignUpScreen Component
- * Sign up screen with Google authentication
+ * Sign Up Screen - app/signup/index.tsx
+ * Handles new user registration with Google authentication
+ * Following Expo Router conventions - separate route for signup
  */
 
 import { ChatTheme } from '@/shared/constants/chat-theme';
-import React, { useState } from 'react';
+import { useRouter } from 'expo-router';
+import React from 'react';
 import {
   Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-interface SignUpScreenProps {
-  onSignUp: () => void;
-  onSignIn: () => void;
-}
-
-export function SignUpScreen({ onSignUp, onSignIn }: SignUpScreenProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+export default function SignUpScreen() {
+  const router = useRouter();
 
   const handleGoogleSignUp = () => {
     console.log('Google Sign Up');
     // TODO: Implement Google sign up
-    onSignUp();
+    router.replace('/(tabs)');
   };
 
-  const handleEmailSignUp = () => {
-    console.log('Email Sign Up with:', email);
-    // TODO: Implement email sign up
-    if (password !== confirmPassword) {
-      console.error('Passwords do not match');
-      return;
-    }
-    onSignUp();
+  const handleSignIn = () => {
+    router.push('/login');
   };
 
   return (
@@ -95,7 +83,7 @@ export function SignUpScreen({ onSignUp, onSignIn }: SignUpScreenProps) {
               {/* Sign In Link */}
               <View style={styles.signInContainer}>
                 <Text style={styles.signInText}>Already have an account? </Text>
-                <TouchableOpacity onPress={onSignIn}>
+                <TouchableOpacity onPress={handleSignIn}>
                   <Text style={styles.signInLink}>Sign in</Text>
                 </TouchableOpacity>
               </View>
@@ -190,63 +178,6 @@ const styles = StyleSheet.create({
   },
   form: {
     width: '100%',
-  },
-  inputContainer: {
-    marginBottom: ChatTheme.spacing.md,
-  },
-  label: {
-    fontSize: ChatTheme.fontSize.md,
-    color: ChatTheme.textPrimary,
-    marginBottom: ChatTheme.spacing.sm,
-    fontFamily: ChatTheme.fonts.medium,
-  },
-  input: {
-    backgroundColor: 'rgba(39, 39, 42, 0.8)',
-    borderRadius: ChatTheme.borderRadius.md,
-    paddingHorizontal: ChatTheme.spacing.md,
-    paddingVertical: 14,
-    fontSize: ChatTheme.fontSize.md,
-    color: ChatTheme.textPrimary,
-    fontFamily: ChatTheme.fonts.regular,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  signUpButton: {
-    backgroundColor: ChatTheme.accent,
-    borderRadius: ChatTheme.borderRadius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginBottom: ChatTheme.spacing.md,
-    shadowColor: ChatTheme.accent,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  signUpButtonText: {
-    fontSize: ChatTheme.fontSize.md,
-    fontWeight: '600',
-    color: '#000000',
-    fontFamily: ChatTheme.fonts.semibold,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: ChatTheme.spacing.md,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  dividerText: {
-    marginHorizontal: ChatTheme.spacing.md,
-    fontSize: ChatTheme.fontSize.sm,
-    color: ChatTheme.textSecondary,
-    fontFamily: ChatTheme.fonts.medium,
   },
   googleButton: {
     backgroundColor: 'rgba(39, 39, 42, 0.8)',

@@ -1,5 +1,5 @@
 /**
- * ChatMessage Component
+ * Chat Message Component
  * Displays individual chat messages with different styles for user and AI
  */
 
@@ -8,7 +8,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Message } from './types';
+import { Message } from '../types';
 
 interface ChatMessageProps {
   message: Message;

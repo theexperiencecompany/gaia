@@ -1,5 +1,5 @@
 /**
- * ChatHistory Component
+ * Chat History Component
  * Displays list of past chat sessions grouped by time
  */
 
@@ -7,7 +7,7 @@ import { ChatTheme } from '@/shared/constants/chat-theme';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useChatContext } from './hooks/use-chat-context';
+import { useChatContext } from '../hooks/use-chat-context';
 
 interface ChatHistoryItem {
   id: string;

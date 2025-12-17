@@ -1,46 +1,66 @@
 /**
- * LoginScreen Component
- * Login screen with SSO and Google authentication
+ * Login Screen - app/login/index.tsx
+ * Handles user authentication with WorkOS SSO
+ * Following Expo Router conventions - separate route for login
  */
 
 import { ChatTheme } from '@/shared/constants/chat-theme';
-import { Ionicons } from '@expo/vector-icons';
+import { startOAuthFlow, fetchUserInfo } from '@/shared/services/auth-service';
+import { storeAuthToken, storeUserInfo } from '@/shared/utils/auth-storage';
+import { useAuth } from '@/features/auth';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-interface LoginScreenProps {
-  onLogin: () => void;
-  onSignUp: () => void;
-}
+export default function LoginScreen() {
+  const router = useRouter();
+  const { refreshAuth } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
 
-export function LoginScreen({ onLogin, onSignUp }: LoginScreenProps) {
-  const [email, setEmail] = useState('');
-
-  const handleSSOLogin = () => {
-    console.log('SSO Login with:', email);
-    // TODO: Implement SSO login
-    onLogin();
-  };
-
-  const handleGoogleLogin = () => {
-    console.log('Google Login');
-    // TODO: Implement Google login
-    onLogin();
+  const handleLogin = async () => {
+    setIsLoading(true);
+    
+    try {
+      // Start OAuth flow and get token
+      const token = await startOAuthFlow();
+      
+      // Store the authentication token
+      await storeAuthToken(token);
+      
+      // Fetch and store user information
+      const userInfo = await fetchUserInfo(token);
+      await storeUserInfo(userInfo);
+      
+      // Refresh auth state to trigger navigation
+      await refreshAuth();
+      
+      // Navigate to main app
+      router.replace('/(tabs)');
+    } catch (error) {
+      console.error('Login error:', error);
+      Alert.alert(
+        'Login Failed',
+        error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSignUp = () => {
-    console.log('Navigate to Sign Up');
-    onSignUp();
+    router.push('/signup');
   };
 
   return (
@@ -73,64 +93,33 @@ export function LoginScreen({ onLogin, onSignUp }: LoginScreenProps) {
                   resizeMode="contain"
                 />
               </View>
-              <Text style={styles.title}>Let's Get You Back In</Text>
+              <Text style={styles.title}>Let&apos;s Get You Back In</Text>
             </View>
 
-        {/* Login Form */}
-        <View style={styles.form}>
-          {/* Email Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Your email address"
-              placeholderTextColor={ChatTheme.textSecondary}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
+            {/* Login Form */}
+            <View style={styles.form}>
+              {/* Login Button */}
+              <TouchableOpacity
+                style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+                onPress={handleLogin}
+                activeOpacity={0.8}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#000000" />
+                ) : (
+                  <Text style={styles.loginButtonText}>Continue with WorkOS</Text>
+                )}
+              </TouchableOpacity>
 
-          {/* SSO Button */}
-          <TouchableOpacity
-            style={styles.ssoButton}
-            onPress={handleSSOLogin}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.ssoButtonText}>Continue with SSO</Text>
-          </TouchableOpacity>
-
-          {/* Divider */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Google Button */}
-          <TouchableOpacity
-            style={styles.googleButton}
-            onPress={handleGoogleLogin}
-            activeOpacity={0.8}
-          >
-            <Image 
-              source={require('@/assets/icons/google-logo.png')}
-              style={styles.googleIcon}
-              resizeMode="contain"
-            />
-            <Text style={styles.googleButtonText}>Continue with Google</Text>
-          </TouchableOpacity>
-
-          {/* Sign Up Link */}
-          <View style={styles.signUpContainer}>
-            <Text style={styles.signUpText}>Don't have an account? </Text>
-            <TouchableOpacity onPress={handleSignUp}>
-              <Text style={styles.signUpLink}>Sign up</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+              {/* Sign Up Link */}
+              <View style={styles.signUpContainer}>
+                <Text style={styles.signUpText}>Don&apos;t have an account? </Text>
+                <TouchableOpacity onPress={handleSignUp} disabled={isLoading}>
+                  <Text style={styles.signUpLink}>Sign up</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
             {/* Footer */}
             <View style={styles.footer}>
@@ -219,31 +208,12 @@ const styles = StyleSheet.create({
   form: {
     width: '100%',
   },
-  inputContainer: {
-    marginBottom: ChatTheme.spacing.md,
-  },
-  label: {
-    fontSize: ChatTheme.fontSize.md,
-    color: ChatTheme.textPrimary,
-    marginBottom: ChatTheme.spacing.sm,
-    fontFamily: ChatTheme.fonts.medium,
-  },
-  input: {
-    backgroundColor: 'rgba(39, 39, 42, 0.8)',
-    borderRadius: ChatTheme.borderRadius.md,
-    paddingHorizontal: ChatTheme.spacing.md,
-    paddingVertical: 14,
-    fontSize: ChatTheme.fontSize.md,
-    color: ChatTheme.textPrimary,
-    fontFamily: ChatTheme.fonts.regular,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  ssoButton: {
+  loginButton: {
     backgroundColor: ChatTheme.accent,
     borderRadius: ChatTheme.borderRadius.md,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: ChatTheme.spacing.md,
     shadowColor: ChatTheme.accent,
     shadowOffset: {
@@ -253,49 +223,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 10,
     elevation: 8,
+    minHeight: 48,
   },
-  ssoButtonText: {
+  loginButtonDisabled: {
+    opacity: 0.6,
+  },
+  loginButtonText: {
     fontSize: ChatTheme.fontSize.md,
     fontWeight: '600',
     color: '#000000',
     fontFamily: ChatTheme.fonts.semibold,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: ChatTheme.spacing.md,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  dividerText: {
-    marginHorizontal: ChatTheme.spacing.md,
-    fontSize: ChatTheme.fontSize.sm,
-    color: ChatTheme.textSecondary,
-    fontFamily: ChatTheme.fonts.medium,
-  },
-  googleButton: {
-    backgroundColor: 'rgba(39, 39, 42, 0.8)',
-    borderRadius: ChatTheme.borderRadius.md,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: ChatTheme.spacing.sm,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  googleIcon: {
-    width: 18,
-    height: 18,
-  },
-  googleButtonText: {
-    fontSize: ChatTheme.fontSize.md,
-    fontWeight: '500',
-    color: ChatTheme.textPrimary,
-    fontFamily: ChatTheme.fonts.medium,
   },
   signUpContainer: {
     flexDirection: 'row',

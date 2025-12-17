@@ -3,7 +3,9 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "root": "apps/api",
   "sourceRoot": "apps/api/app",
-  "implicitDependencies": ["docker"],
+  "implicitDependencies": [
+    "docker"
+  ],
   "release": {
     "docker": {
       "repositoryName": "heygaia/gaia"
@@ -23,7 +25,7 @@
     "dev": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run uvicorn app.main:app --port 8000 --reload --log-level info",
+        "command": "uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level info",
         "cwd": "{projectRoot}"
       }
     },

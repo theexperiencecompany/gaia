@@ -1,27 +1,23 @@
 /**
- * Chat Module Exports
- * Central export point for all chat components
+ * Chat Feature Exports
+ * Centralized exports for all chat-related components and utilities
  */
 
-// Main screen
-export { ChatScreen } from './chat-screen';
-
-// Core components
-export { ChatHistory } from './chat-history';
-export { ChatInput } from './chat-input';
-export { ChatMessage } from './chat-message';
-export { Sidebar } from './sidebar';
-export { SidebarFooter } from './sidebar-footer';
-export { SidebarHeader } from './sidebar-header';
-
-// Sub-components
-export { ChatEmptyState } from './components/chat-empty-state';
+// Components
+export { ChatInput } from './components/chat-input';
+export { ChatMessage } from './components/chat-message';
+export { ChatHistory } from './components/chat-history';
 export { ChatHeader } from './components/chat-header';
+export { ChatEmptyState } from './components/chat-empty-state';
+export { SidebarContent, SIDEBAR_WIDTH } from './components/sidebar';
+export { SidebarHeader } from './components/sidebar-header';
+export { SidebarFooter } from './components/sidebar-footer';
 export { ModelSelector } from './components/model-selector';
 export { SuggestionCard } from './components/suggestion-card';
 
 // Hooks
-export { useChat, useSidebar, ChatProvider, useChatContext } from './hooks';
+export { useChat, useSidebar } from './hooks';
+export { useChatContext, ChatProvider } from './hooks/use-chat-context';
 
 // Types
 export type { ChatSession, ChatState, Message, Suggestion } from './types';
@@ -32,4 +28,3 @@ export { getAIResponse } from './services/ai-service';
 // Data
 export { AI_MODELS, DEFAULT_MODEL } from './data/models';
 export { DEFAULT_SUGGESTIONS } from './data/suggestions';
-

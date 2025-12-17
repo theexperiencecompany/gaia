@@ -1,27 +1,32 @@
 /**
  * useSidebar Hook
- * Manages sidebar open/close state
+ * Manages sidebar with DrawerLayout ref
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef } from 'react';
+import type DrawerLayout from 'react-native-gesture-handler/ReanimatedDrawerLayout';
 
 export function useSidebar() {
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const drawerRef = useRef<DrawerLayout>(null);
 
     const openSidebar = useCallback(() => {
-        setIsSidebarOpen(true);
+        drawerRef.current?.openDrawer();
     }, []);
 
     const closeSidebar = useCallback(() => {
-        setIsSidebarOpen(false);
+        drawerRef.current?.closeDrawer();
     }, []);
 
     const toggleSidebar = useCallback(() => {
-        setIsSidebarOpen(prev => !prev);
+        const drawer = drawerRef.current;
+        if (drawer) {
+            // @ts-ignore - DrawerLayout has internal state we can't access
+            drawer.openDrawer();
+        }
     }, []);
 
     return {
-        isSidebarOpen,
+        drawerRef,
         openSidebar,
         closeSidebar,
         toggleSidebar,

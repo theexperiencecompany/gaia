@@ -8,13 +8,11 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/shared/hooks/use-color-scheme';
+import { AuthProvider } from '@/features/auth';
+import { ChatProvider } from '@/features/chat';
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
-
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -38,12 +36,18 @@ export default function RootLayout() {
     return null;
   }
 
-
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      </Stack>
+      <AuthProvider>
+        <ChatProvider>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="login" options={{ headerShown: false }} />
+            <Stack.Screen name="signup" options={{ headerShown: false }} />
+            <Stack.Screen name="(chat)" options={{ headerShown: false }} />
+          </Stack>
+        </ChatProvider>
+      </AuthProvider>
       <StatusBar style="auto" />
     </ThemeProvider>
   );
