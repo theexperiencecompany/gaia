@@ -82,10 +82,7 @@ class LLMJudgeMetric(base_metric.BaseMetric):
         self.judge_llm = judge_llm
         self.judge_prompt = judge_prompt
         self.system_prompt = system_prompt
-
-    @property
-    def name(self) -> str:
-        return "llm_judge"
+        self.name = "llm_judge"  # type: ignore[misc]
 
     def score(
         self,

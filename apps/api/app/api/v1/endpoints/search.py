@@ -9,7 +9,7 @@ import re
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.decorators import tiered_rate_limit
-from app.models.search_models import URLRequest, MultiURLResponse
+from app.models.search_models import URLRequest, MultiURLResponse, URLResponse
 from app.services.search_service import search_messages
 from app.utils.internet_utils import fetch_url_metadata
 from app.utils.search_utils import perform_search
@@ -108,12 +108,13 @@ async def fetch_url_metadata_endpoint(data: URLRequest):
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Build response mapping
-    response_data = {}
+    response_data: dict[str, URLResponse] = {}
     for url, result in zip(data.urls, results):
         if isinstance(result, Exception):
             # Skip failed URLs - they won't be in the response
             continue
         else:
-            response_data[url] = result
+            if isinstance(result, URLResponse):
+                response_data[url] = result
 
     return MultiURLResponse(results=response_data)

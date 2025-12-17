@@ -422,6 +422,7 @@ class CalendarEventToolRequest(BaseCalendarEvent):
                 end=event_date,
                 calendar_id=self.calendar_id,
                 recurrence=self.recurrence,
+                timezone=None,
             )
 
         # Check if time_str is provided
@@ -450,6 +451,7 @@ class CalendarEventToolRequest(BaseCalendarEvent):
                     end=end_time.isoformat(),
                     calendar_id=self.calendar_id,
                     recurrence=self.recurrence,
+                    timezone=None,
                 )
 
             else:
@@ -481,6 +483,7 @@ class CalendarEventToolRequest(BaseCalendarEvent):
                     end=end_time.isoformat(),
                     calendar_id=self.calendar_id,
                     recurrence=self.recurrence,
+                    timezone=None,
                 )
 
         except ValueError as e:
@@ -625,6 +628,7 @@ class CalendarEventUpdateToolRequest(BaseModel):
             start=processed_start,
             end=processed_end,
             is_all_day=self.is_all_day,
+            timezone=None,
             timezone_offset=None,  # Processed times no longer need timezone_offset
             original_summary=None,
             recurrence=self.recurrence,

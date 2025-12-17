@@ -122,7 +122,7 @@ class ChromaClient:
 
         providers.register(
             name=provider_name,
-            loader_func=_loader,
+            loader_func=_loader,  # type: ignore[arg-type]
             required_keys=[settings.CHROMADB_HOST, settings.CHROMADB_PORT],
             strategy=MissingKeyStrategy.ERROR,
             auto_initialize=True,

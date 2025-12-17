@@ -352,7 +352,7 @@ class ChromaStore(BaseStore):
 
                     # Use ChromaDB's native query with where filter
                     search_result = await collection.query(
-                        query_embeddings=[query_embedding],
+                        query_embeddings=[query_embedding],  # type: ignore[arg-type]
                         n_results=op.limit + op.offset,
                         include=["metadatas", "distances", "documents"],
                         where=where_filter,  # type: ignore[arg-type]
@@ -516,7 +516,7 @@ class ChromaStore(BaseStore):
         try:
             await collection.upsert(
                 ids=[doc_id],
-                embeddings=[embedding] if embedding else None,
+                embeddings=[embedding] if embedding else None,  # type: ignore[arg-type]
                 metadatas=[metadata],
                 documents=[document],
             )

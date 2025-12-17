@@ -3,7 +3,7 @@ Reminder scheduler for managing reminder tasks.
 """
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import reminders_collection
@@ -243,7 +243,7 @@ class ReminderScheduler(BaseSchedulerService):
             {"status": ReminderStatus.SCHEDULED, "scheduled_at": {"$gte": current_time}}
         )
 
-        tasks = []
+        tasks: List[BaseScheduledTask] = []
         async for doc in cursor:
             if "_id" in doc:
                 doc["_id"] = str(doc["_id"])

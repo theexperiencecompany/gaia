@@ -47,7 +47,8 @@ def trim_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> T:
         messages = state.get("messages", [])
 
         # Skip if insufficient messages to process
-        if not messages or len(messages) < 2:
+        messages_list = list(messages) if hasattr(messages, '__iter__') else []
+        if not messages_list or len(messages_list) < 2:
             return state
 
         # Extract model configuration from runnable config

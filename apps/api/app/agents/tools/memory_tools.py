@@ -43,7 +43,7 @@ async def add_memory(
 
     # For async mode, return event_id and status
     if hasattr(memory, "event_id") and memory.event_id:
-        return f"Memory queued for processing (Event ID: {memory.event_id}, Status: {memory.status})"
+        return f"Memory queued for processing (Event ID: {memory.event_id}, Status: {getattr(memory, 'status', 'unknown')})"
 
     # Fallback for sync mode
     return f"Memory stored successfully with ID: {memory.id}"

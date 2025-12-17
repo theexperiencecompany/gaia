@@ -27,6 +27,7 @@ import redis.asyncio as redis
 from app.config.loggers import redis_logger as logger
 from app.config.settings import settings
 from pydantic import TypeAdapter
+from pydantic.type_adapter import TypeAdapter as TypeAdapterType
 
 ONE_YEAR_TTL = 31_536_000
 ONE_HOUR_TTL = 3600
@@ -56,7 +57,7 @@ def serialize_any(data: Any, model: Optional[type] = None) -> str:
         user = User(name="John", email="john@example.com")
         json_str = serialize_any(user, model=User)
     """
-    adapter = TypeAdapter(model or Any)
+    adapter: TypeAdapterType[Any] = TypeAdapter(model or Any)
     return adapter.dump_json(data).decode()
 
 
@@ -86,7 +87,7 @@ def deserialize_any(json_str: str, model: Optional[type] = None) -> Any:
         # Type-safe deserialization
         user = deserialize_any(json_str, model=User)  # Returns User instance
     """
-    adapter = TypeAdapter(model or Any)
+    adapter: TypeAdapterType[Any] = TypeAdapter(model or Any)
     return adapter.validate_json(json_str)
 
 
