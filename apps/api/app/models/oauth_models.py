@@ -74,7 +74,7 @@ class ComposioConfig(BaseModel):
 
 
 class SubAgentConfig(BaseModel):
-    """Configuration for sub-agent metadata."""
+    """Configuration for sub-agent metadata including Acontext self-learning."""
 
     has_subagent: bool = False
     agent_name: str
@@ -87,6 +87,8 @@ class SubAgentConfig(BaseModel):
     use_direct_tools: bool = False
     disable_retrieve_tools: bool = False
     specific_tools: Optional[List[str]] = None
+    enable_acontext: bool = True
+    inject_skills: bool = False
 
 
 class ProviderMetadataConfig(BaseModel):

@@ -221,6 +221,13 @@ class ProductionSettings(CommonSettings):
     OPIK_API_KEY: str
     OPIK_WORKSPACE: str
 
+    # ----------------------------------------------
+    # Acontext Self-Learning
+    # ----------------------------------------------
+    ACONTEXT_BASE_URL: str = "http://localhost:8029/api/v1"
+    ACONTEXT_API_KEY: str
+    ACONTEXT_ENABLED: bool = False
+
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         extra="allow",
@@ -325,6 +332,13 @@ class DevelopmentSettings(CommonSettings):
     POSTHOG_API_KEY: Optional[str] = None
     OPIK_API_KEY: Optional[str] = None
     OPIK_WORKSPACE: Optional[str] = None
+
+    # ----------------------------------------------
+    # Acontext Self-Learning
+    # ----------------------------------------------
+    ACONTEXT_BASE_URL: str = "http://localhost:8029/api/v1"
+    ACONTEXT_API_KEY: Optional[str] = None
+    ACONTEXT_ENABLED: bool = True
 
     # ----------------------------------------------
     # Environment Configuration

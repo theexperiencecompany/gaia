@@ -79,8 +79,7 @@ async def fetch_provider_user_info(
             return None
 
         # Execute the tool to get user info
-        result = await tool.ainvoke({})
-        data = result.data
+        data = await tool.ainvoke({})
 
         logger.info(f"Fetched user info for {integration_id}: {type(data)}")
 

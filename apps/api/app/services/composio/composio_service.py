@@ -128,7 +128,6 @@ class ComposioService:
         - Frontend streaming setup
         - All registered tool-specific hooks (Gmail, etc.)
         """
-        logger.info(f"Loading tools: {tool_names}...")
         start_time = time.time()
 
         modifiers = []

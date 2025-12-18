@@ -47,11 +47,11 @@ from app.helpers.lifespan_helpers import (
     init_reminder_service,
     init_websocket_consumer,
     init_workflow_service,
-    # setup_event_loop_policy,
 )
 from app.services.composio.composio_service import init_composio_service
 from app.services.startup_validation import validate_startup_requirements
 from pydantic import PydanticDeprecatedSince20
+from app.core.acontext_client import init_acontext_client
 
 
 def setup_warnings() -> None:
@@ -96,9 +96,10 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     initialize_chroma_tools_store()
     init_cloudinary()
     validate_startup_requirements()
-    # setup_event_loop_policy()
     init_posthog()
     init_opik()
+    init_acontext_client()
+
     logger.info(f"All lazy providers registered successfully for {context}")
 
     # Define eager services (must be ready before processing requests/tasks)

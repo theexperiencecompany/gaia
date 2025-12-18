@@ -63,6 +63,7 @@ async def create_subagent(integration_id: str):
         name=config.agent_name,
         use_direct_tools=config.use_direct_tools,
         disable_retrieve_tools=config.disable_retrieve_tools,
+        enable_acontext=config.enable_acontext,
     )
 
     logger.info(f"Subagent {config.agent_name} created successfully")

@@ -99,7 +99,11 @@ async def call_executor(
                     if content:
                         complete_message += content
 
-        return complete_message if complete_message else "Task completed"
+        return (
+            complete_message
+            if complete_message
+            else "No response from executor. Do not assume the task is completed."
+        )
 
     except Exception as e:
         logger.error(f"Error calling executor: {e}")

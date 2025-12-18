@@ -258,6 +258,8 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="repository management, issue tracking, pull requests, code review, or any GitHub development task",
             system_prompt=GITHUB_AGENT_SYSTEM_PROMPT,
             specific_tools=GITHUB_TOOLS,
+            enable_acontext=True,
+            inject_skills=True,
         ),
         metadata_config=ProviderMetadataConfig(
             user_info_tool="GITHUB_GET_THE_AUTHENTICATED_USER",
