@@ -40,6 +40,8 @@ class WorkflowService:
         request: CreateWorkflowRequest,
         user_id: str,
         user_timezone: Optional[str] = None,
+        is_todo_workflow: bool = False,
+        source_todo_id: Optional[str] = None,
     ) -> Workflow:
         """Create a new workflow with automatic timezone population."""
         try:
@@ -68,6 +70,8 @@ class WorkflowService:
                 trigger_config=trigger_config,
                 activated=True,  # Default to activated
                 user_id=user_id,
+                is_todo_workflow=is_todo_workflow,
+                source_todo_id=source_todo_id,
             )
 
             # Insert into database
@@ -167,12 +171,27 @@ class WorkflowService:
             raise
 
     @staticmethod
-    async def list_workflows(user_id: str) -> List[Workflow]:
-        """List all workflows for a user."""
+    async def list_workflows(
+        user_id: str, exclude_todo_workflows: bool = True
+    ) -> List[Workflow]:
+        """List all workflows for a user.
+        
+        Args:
+            user_id: User ID to filter by
+            exclude_todo_workflows: If True, filter out auto-generated todo workflows
+        """
         try:
+            # Build query - filter out todo workflows by default
+            query = {"user_id": user_id}
+            if exclude_todo_workflows:
+                query["$or"] = [
+                    {"is_todo_workflow": {"$exists": False}},
+                    {"is_todo_workflow": False},
+                ]
+            
             # Use to_list() for better performance
             docs = (
-                await workflows_collection.find({"user_id": user_id})
+                await workflows_collection.find(query)
                 .sort("created_at", -1)
                 .to_list(length=None)
             )

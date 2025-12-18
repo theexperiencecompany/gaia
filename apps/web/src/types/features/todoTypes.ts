@@ -32,6 +32,7 @@ export interface Todo extends Record<string, unknown> {
   completed: boolean;
   subtasks: SubTask[];
   workflow_id?: string;
+  workflow_categories?: string[];
   created_at: string;
   updated_at: string;
 }

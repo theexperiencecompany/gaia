@@ -91,6 +91,10 @@ class TodoResponse(TodoBase):
     user_id: str = Field(..., description="User ID who owns the todo")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
+    workflow_categories: list[str] = Field(
+        default_factory=list,
+        description="Tool categories from linked workflow steps for icon display",
+    )
 
 
 # Project models

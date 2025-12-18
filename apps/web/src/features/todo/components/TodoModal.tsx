@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Input, Textarea } from "@heroui/input";
+import { Kbd } from "@heroui/kbd";
 import {
   Modal,
   ModalBody,
@@ -9,12 +10,12 @@ import {
   ModalFooter,
   useDisclosure,
 } from "@heroui/react";
-import { useEffect, useMemo } from "react";
-
+import { useCallback, useEffect, useMemo } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useModalForm } from "@/hooks/ui/useModalForm";
+import { usePlatform } from "@/hooks/ui/usePlatform";
 import { PlusSignIcon } from "@/icons";
 import { posthog } from "@/lib";
 import {
@@ -67,6 +68,7 @@ export default function TodoModal({
   buttonClassName = "w-full justify-start text-sm text-primary",
 }: TodoModalProps) {
   const user = useUser();
+  const { isMac, modifierKeyName } = usePlatform();
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
   const { projects, createTodo, updateTodo } = useTodoData({ autoLoad: false });
 
@@ -194,6 +196,27 @@ export default function TodoModal({
       });
     }
   }, [isOpen, mode, todo, setFormData]);
+
+  // Keyboard shortcut handler for Cmd/Ctrl + Enter to submit
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (!isOpen || loading) return;
+
+      const modifierKey = isMac ? e.metaKey : e.ctrlKey;
+      if (modifierKey && e.key === "Enter") {
+        e.preventDefault();
+        handleSubmit();
+      }
+    },
+    [isOpen, loading, isMac, handleSubmit],
+  );
+
+  useEffect(() => {
+    if (isOpen) {
+      document.addEventListener("keydown", handleKeyDown);
+      return () => document.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [isOpen, handleKeyDown]);
 
   const handleDateChange = (date?: string, timezone?: string) => {
     setFormData((prev) => ({
@@ -341,6 +364,9 @@ export default function TodoModal({
                   onPress={handleSubmit}
                   isDisabled={loading}
                   isLoading={loading}
+                  endContent={
+                    !loading && <Kbd keys={[modifierKeyName, "enter"]} />
+                  }
                 >
                   {mode === "edit" ? "Save Changes" : "Add Task"}
                 </Button>
