@@ -181,7 +181,7 @@ class AcontextSpaceManager:
 _space_manager: Optional[AcontextSpaceManager] = None
 
 
-async def get_space_manager():
+async def get_space_manager() -> Optional[AcontextSpaceManager]:
     global _space_manager
     if _space_manager:
         return _space_manager
@@ -210,7 +210,7 @@ async def get_subagent_space(subagent_name: str) -> Optional[str]:
     return await space_manager.get_or_create_space(subagent_name)
 
 
-def get_subagent_session(
+async def get_subagent_session(
     subagent_name: str, thread_id: str, space_id: str
 ) -> Optional[str]:
     """Get or create the Acontext session for a conversation.
@@ -226,10 +226,11 @@ def get_subagent_session(
     Returns:
         Session ID or None if creation fails
     """
-    if _space_manager is None:
+    space_manager = await get_space_manager()
+    if not space_manager:
         return None
 
-    return _space_manager.get_or_create_session(subagent_name, thread_id, space_id)
+    return space_manager.get_or_create_session(subagent_name, thread_id, space_id)
 
 
 async def search_skills(

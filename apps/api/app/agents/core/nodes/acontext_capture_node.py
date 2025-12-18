@@ -150,7 +150,9 @@ def create_acontext_capture_node(subagent_name: str) -> HookType:
             conversation_id = configurable.get("thread_id", "default")
 
             # Get or create session for this conversation (same conversation_id = same session)
-            session_id = get_subagent_session(subagent_name, conversation_id, space_id)
+            session_id = await get_subagent_session(
+                subagent_name, conversation_id, space_id
+            )
             if not session_id:
                 return state
 
