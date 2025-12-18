@@ -11,6 +11,7 @@ import { todoApi } from "@/features/todo/api/todoApi";
 import { useTodoWorkflowWebSocket } from "@/features/todo/hooks/useTodoWorkflowWebSocket";
 import { WorkflowSteps } from "@/features/workflows/components";
 import { PlayIcon, SparklesIcon, UndoIcon, ZapIcon } from "@/icons";
+import { useTodoStore } from "@/stores/todoStore";
 import type { Workflow as WorkflowType } from "@/types/features/workflowTypes";
 
 interface WorkflowSectionProps {
@@ -35,15 +36,28 @@ export default function WorkflowSection({
   const { selectWorkflow } = useWorkflowSelection();
 
   // WebSocket handlers
+  // WebSocket handlers
   const handleWorkflowGenerated = useCallback(
     (wf: WorkflowType) => {
       setWorkflow(wf);
       setIsGenerating(false);
       setError(null);
       onWorkflowLinked?.(wf.id);
+
+      // Sync categories to global store so todo item updates immediately
+      const categories = [
+        ...new Set(
+          wf.steps.map((s) => s.tool_category).filter((c): c is string => !!c),
+        ),
+      ].slice(0, 3);
+
+      useTodoStore.getState().updateTodoOptimistic(todoId, {
+        workflow_categories: categories,
+      });
+
       toast.success("Workflow generated!");
     },
-    [onWorkflowLinked],
+    [onWorkflowLinked, todoId],
   );
 
   const handleWorkflowFailed = useCallback((errorMsg: string) => {
