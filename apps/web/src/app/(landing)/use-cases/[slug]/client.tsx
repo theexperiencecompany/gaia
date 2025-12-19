@@ -160,7 +160,7 @@ export default function UseCaseDetailClient({
         alt="GAIA Use-Cases Wallpaper"
         priority
         fill
-        className="[mask-image:linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)] object-cover opacity-15 z-0 w-screen fixed h-screen left-0 top-0 max-h-screen"
+        className="mask-[linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)] object-cover opacity-15 z-0 w-screen fixed h-screen left-0 top-0 max-h-screen"
       />
       <UseCaseDetailLayout
         breadcrumbs={breadcrumbs}
@@ -224,7 +224,7 @@ export default function UseCaseDetailClient({
         }
         steps={
           steps && steps.length > 0 ? (
-            <div className="w-fit flex-shrink-0">
+            <div className="w-fit shrink-0">
               <div className="sticky top-8 rounded-3xl bg-zinc-900 px-6 pt-4 pb-2">
                 <div className="text-sm font-medium text-zinc-500">
                   Workflow Steps:

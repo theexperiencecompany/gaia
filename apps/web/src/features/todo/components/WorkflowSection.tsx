@@ -47,7 +47,7 @@ export default function WorkflowSection({
       // Sync categories to global store so todo item updates immediately
       const categories = [
         ...new Set(
-          wf.steps.map((s) => s.tool_category).filter((c): c is string => !!c),
+          wf.steps.map((s) => s.category).filter((c): c is string => !!c),
         ),
       ].slice(0, 3);
 
@@ -115,8 +115,8 @@ export default function WorkflowSection({
   // Run workflow
   const handleRun = useCallback(() => {
     if (!workflow) return;
-    selectWorkflow(
-      {
+    try {
+      const workflowData = {
         id: workflow.id,
         title: workflow.title,
         description: workflow.description,
@@ -143,15 +143,9 @@ export default function WorkflowSection({
     } catch (error) {
       console.error("Failed to select workflow for execution:", error);
     }
-  };
+  }, [workflow, selectWorkflow]);
 
-  if (localIsGenerating) {
-    return <WorkflowLoadingState />;
-  }
-
-  if (!workflow) {
-    return <WorkflowEmptyState onGenerateWorkflow={onGenerateWorkflow} />;
-  }
+  const hasWorkflow = !!workflow;
 
   return (
     <div className="space-y-3">
