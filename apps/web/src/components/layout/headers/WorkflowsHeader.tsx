@@ -26,7 +26,11 @@ export default function WorkflowsHeader({
             Browse Use Cases
           </Button>
         </Link>
-        <Button color="primary" onPress={onCreateWorkflow}>
+        <Button
+          color="primary"
+          onPress={onCreateWorkflow}
+          data-keyboard-shortcut="create-workflow"
+        >
           Create Workflow
         </Button>
       </div>

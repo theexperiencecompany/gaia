@@ -2,6 +2,8 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { Kbd } from "@heroui/kbd";
+import { Tooltip } from "@heroui/tooltip";
 import { useRouter } from "next/navigation";
 import Spinner from "@/components/ui/spinner";
 import CalendarSelector from "@/features/calendar/components/CalendarSelector";
@@ -30,17 +32,28 @@ export default function CalendarSidebar() {
 
   return (
     <div className="flex flex-col gap-3">
-      <Button
-        color="primary"
-        size="sm"
-        fullWidth
-        onPress={handleCreateEvent}
-        className="mb-4 flex justify-start text-sm font-medium text-primary"
-        variant="flat"
+      <Tooltip
+        content={
+          <span className="flex items-center gap-2">
+            New Event
+            <Kbd className="text-[10px]">C</Kbd>
+          </span>
+        }
+        placement="right"
       >
-        <CalendarAdd01Icon width={18} height={18} />
-        New Event
-      </Button>
+        <Button
+          color="primary"
+          size="sm"
+          fullWidth
+          onPress={handleCreateEvent}
+          className="mb-4 flex justify-start text-sm font-medium text-primary"
+          variant="flat"
+          data-keyboard-shortcut="create-event"
+        >
+          <CalendarAdd01Icon width={18} height={18} />
+          New Event
+        </Button>
+      </Tooltip>
 
       <div>
         <div className={cn(accordionItemStyles.trigger)}>Your Calendars</div>

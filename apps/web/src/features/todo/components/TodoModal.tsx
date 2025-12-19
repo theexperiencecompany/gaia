@@ -8,6 +8,7 @@ import {
   ModalBody,
   ModalContent,
   ModalFooter,
+  Tooltip,
   useDisclosure,
 } from "@heroui/react";
 import { useCallback, useEffect, useMemo } from "react";
@@ -263,16 +264,27 @@ export default function TodoModal({
 
   return (
     <>
-      <Button
-        className={buttonClassName}
-        color="primary"
-        size="sm"
-        variant="flat"
-        startContent={<PlusSignIcon className="h-4 w-4 outline-0" />}
-        onPress={onOpen}
+      <Tooltip
+        content={
+          <span className="flex items-center gap-2">
+            {buttonText}
+            <Kbd className="text-[10px]">C</Kbd>
+          </span>
+        }
+        placement="right"
       >
-        {buttonText}
-      </Button>
+        <Button
+          className={buttonClassName}
+          color="primary"
+          size="sm"
+          variant="flat"
+          startContent={<PlusSignIcon className="h-4 w-4 outline-0" />}
+          onPress={onOpen}
+          data-keyboard-shortcut="create-todo"
+        >
+          {buttonText}
+        </Button>
+      </Tooltip>
 
       <Modal
         isOpen={isOpen}

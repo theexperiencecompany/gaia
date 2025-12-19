@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { SidebarHeaderButton } from "@/components";
+import ContactSupport from "@/components/layout/sidebar/ContactSupport";
 import SidebarTopButtons from "@/components/layout/sidebar/SidebarTopButtons";
 import UserContainer from "@/components/layout/sidebar/UserContainer";
 import {
@@ -77,9 +78,9 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="relative z-[4] p-2 px-3 pb-3">
-        {/* <ContactSupport /> */}
+      <SidebarFooter className="relative z-4 p-2 px-3 pb-3">
         <UserContainer />
+        <ContactSupport />
       </SidebarFooter>
     </Sidebar>
   );

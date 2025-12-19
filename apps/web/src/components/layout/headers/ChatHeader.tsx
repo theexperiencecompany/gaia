@@ -34,7 +34,7 @@ export default function ChatHeader() {
           aria-label="Search"
           tooltip={
             <div className="flex items-center gap-2">
-              SearchIcon
+              Search
               <Kbd keys={[modifierKeyName]}> K</Kbd>
             </div>
           }
