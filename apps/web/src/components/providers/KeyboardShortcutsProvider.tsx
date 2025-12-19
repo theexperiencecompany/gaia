@@ -83,9 +83,9 @@ export default function KeyboardShortcutsProvider({
   const hotkeyOptions = { enableOnFormTags: false, preventDefault: true };
 
   // ===========================================
-  // SHORTCUTS MODAL: Cmd/Ctrl + / (backslash broken in react-hotkeys-hook)
+  // SHORTCUTS MODAL: ? key
   // ===========================================
-  useHotkeys("mod+/", () => openShortcutsModal(), hotkeyOptions);
+  useHotkeys("?", () => openShortcutsModal(), hotkeyOptions);
 
   // ===========================================
   // CREATE: C key (context-aware)

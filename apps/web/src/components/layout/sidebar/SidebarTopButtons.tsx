@@ -163,9 +163,6 @@ export default function SidebarTopButtons() {
                     <div className="flex w-[17px] min-w-[17px] items-center justify-center">
                       <span className="group-topbtns-hover:text-white text-xs">
                         {React.cloneElement(icon, {
-                          // color: isRouteActive(route)
-                          //   ? "#00bbff"
-                          //   : "#9b9b9b",
                           width: 18,
                           height: 18,
                         })}

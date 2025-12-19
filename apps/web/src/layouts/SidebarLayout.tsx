@@ -1,8 +1,8 @@
 import { Button } from "@heroui/button";
+import { Kbd } from "@heroui/kbd";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-
 import { SidebarHeaderButton } from "@/components";
 import ContactSupport from "@/components/layout/sidebar/ContactSupport";
 import SidebarTopButtons from "@/components/layout/sidebar/SidebarTopButtons";
@@ -16,6 +16,7 @@ import {
   SidebarHeader,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { usePlatform } from "@/hooks/ui/usePlatform";
 import { SidebarLeft01Icon, SidebarRight01Icon } from "@/icons";
 
 interface SidebarLayoutProps {
@@ -25,12 +26,21 @@ interface SidebarLayoutProps {
 // Custom SidebarTrigger with dynamic icons
 export const CustomSidebarTrigger = () => {
   const { open, toggleSidebar } = useSidebar();
+  const { isMac } = usePlatform();
 
   return (
     <SidebarHeaderButton
       onClick={toggleSidebar}
       aria-label="Toggle Sidebar"
-      tooltip={open ? "Collapse Sidebar" : "Open Sidebar"}
+      tooltip={
+        <span className="flex items-center gap-2 text-xs">
+          {open ? "Collapse Sidebar" : "Open Sidebar"}
+          <div>
+            <Kbd className="text-xs rounded-md">{isMac ? "⌘" : "Ctrl"}</Kbd>
+            <Kbd className="text-xs rounded-md">B</Kbd>
+          </div>
+        </span>
+      }
     >
       {open ? (
         <SidebarLeft01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-500 transition group-hover/btn:text-primary" />

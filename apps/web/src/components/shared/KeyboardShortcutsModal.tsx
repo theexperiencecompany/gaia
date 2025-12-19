@@ -59,8 +59,9 @@ export default function KeyboardShortcutsModal({
     <Modal
       isOpen={isOpen}
       onOpenChange={onOpenChange}
-      size="lg"
+      size="4xl"
       backdrop="blur"
+      className="rounded-2xl bg-zinc-900/90 backdrop-blur-3xl outline-0 border-0"
     >
       <ModalContent>
         <ModalHeader className="flex flex-col gap-1">

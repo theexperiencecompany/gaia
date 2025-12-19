@@ -5,7 +5,7 @@ Handles CRUD operations and execution coordination.
 
 import uuid
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from app.config.loggers import general_logger as logger
 from app.db.chroma.chromadb import ChromaClient
@@ -182,7 +182,7 @@ class WorkflowService:
         """
         try:
             # Build query - filter out todo workflows by default
-            query = {"user_id": user_id}
+            query: dict[str, Any] = {"user_id": user_id}
             if exclude_todo_workflows:
                 query["$or"] = [
                     {"is_todo_workflow": {"$exists": False}},

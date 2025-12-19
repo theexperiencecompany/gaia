@@ -4,12 +4,12 @@ import { Kbd } from "@heroui/kbd";
 import { Fragment } from "react";
 
 import {
+  BubbleChatAddIcon,
   Calendar03Icon,
   CheckListIcon,
   ConnectIcon,
   DashboardSquare02Icon,
   MessageMultiple02Icon,
-  PlusSignIcon,
   Target02Icon,
   ZapIcon,
 } from "@/icons";
@@ -35,9 +35,8 @@ export interface KeyboardShortcut {
  * Parse keys string into display-friendly array
  * Examples:
  *   "g>d" -> ["G", "D"]
- *   "mod+\" -> ["⌘/Ctrl", "\"]
+ *   "shift+/" -> ["?"]
  *   "c" -> ["C"]
- *   "shift+c" -> ["Shift", "C"]
  */
 export function parseDisplayKeys(keys: string): string[] {
   // Handle sequential keys (g>d)
@@ -45,8 +44,11 @@ export function parseDisplayKeys(keys: string): string[] {
     return keys.split(">").map((k) => k.toUpperCase());
   }
 
-  // Handle modifier combinations (mod+\, shift+c)
+  // Handle modifier combinations
   if (keys.includes("+")) {
+    // Special case: shift+/ displays as ?
+    if (keys === "shift+/") return ["?"];
+
     return keys.split("+").map((k) => {
       const lower = k.toLowerCase();
       if (lower === "mod") return "⌘/Ctrl";
@@ -66,13 +68,41 @@ export function parseDisplayKeys(keys: string): string[] {
  * All keyboard shortcuts in the application
  */
 export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
-  // Create Actions (context-aware)
+  // Create Actions - Page specific
   {
-    id: "create",
+    id: "create_chat",
     keys: "c",
-    description: "Create new item (context-aware)",
+    description: "New Chat",
     category: "create",
-    icon: <PlusSignIcon width={16} height={16} />,
+    icon: <BubbleChatAddIcon width={16} height={16} />,
+  },
+  {
+    id: "create_todo",
+    keys: "c",
+    description: "New Todo (on Todos page)",
+    category: "create",
+    icon: <CheckListIcon width={16} height={16} />,
+  },
+  {
+    id: "create_goal",
+    keys: "c",
+    description: "New Goal (on Goals page)",
+    category: "create",
+    icon: <Target02Icon width={16} height={16} />,
+  },
+  {
+    id: "create_workflow",
+    keys: "c",
+    description: "New Workflow (on Workflows page)",
+    category: "create",
+    icon: <ZapIcon width={16} height={16} />,
+  },
+  {
+    id: "create_event",
+    keys: "c",
+    description: "New Event (on Calendar page)",
+    category: "create",
+    icon: <Calendar03Icon width={16} height={16} />,
   },
 
   // Navigation shortcuts (G -> X sequences)
@@ -136,7 +166,7 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
   // General shortcuts
   {
     id: "shortcuts_menu",
-    keys: "mod+/",
+    keys: "?",
     description: "Show keyboard shortcuts",
     category: "general",
   },
