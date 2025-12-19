@@ -21,12 +21,13 @@ export const SidebarHeaderButton = ({
   onClick,
   tooltip,
   "aria-label": ariaLabel,
+  ...rest
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   tooltip?: ReactNode;
   "aria-label": string;
-}) => {
+} & React.HTMLAttributes<HTMLButtonElement>) => {
   const button = (
     <Button
       aria-label={ariaLabel}
@@ -34,6 +35,7 @@ export const SidebarHeaderButton = ({
       variant="ghost"
       className={`group/btn group rounded-xl p-1! hover:bg-[#00bbff]/20 hover:text-primary`}
       onClick={onClick}
+      {...rest}
     >
       {children}
     </Button>

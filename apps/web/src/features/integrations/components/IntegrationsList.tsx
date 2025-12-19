@@ -21,7 +21,7 @@ const IntegrationRow: React.FC<{
 
   return (
     <div
-      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-xl bg-zinc-800/40 px-4 py-3 transition hover:bg-zinc-700"
+      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/40 px-4 py-3 transition hover:bg-zinc-700 transition-all"
       onClick={handleClick}
     >
       <div className="flex-shrink-0">

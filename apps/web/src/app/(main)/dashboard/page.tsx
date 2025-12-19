@@ -142,7 +142,7 @@ export default function HomePage() {
   const secondLineSections = sections.slice(2);
 
   return (
-    <div className="flex flex-col p-6 min-h-screen h-fit overflow-y-scroll">
+    <div className="flex flex-col p-6 min-h-screen h-fit overflow-y-scroll outline-none">
       <div className="flex flex-col p-3 mb-10 space-y-1">
         <div className="flex items-center gap-3 mb-9">
           <h2 className="text-4xl font-medium text-zinc-700">
@@ -154,7 +154,7 @@ export default function HomePage() {
                 src={user?.profilePicture}
                 name={user?.name || "User"}
                 size="sm"
-                className="flex-shrink-0 ml-1 hover:scale-120 rotate-6 transition"
+                className="shrink-0 ml-1 hover:scale-120 rotate-6 transition"
               />
             )}
             <h1 className="font-medium text-4xl text-zinc-700">

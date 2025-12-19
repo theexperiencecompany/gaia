@@ -1,3 +1,5 @@
+"use client";
+
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
 
@@ -33,7 +35,6 @@ export default function WorkflowStep({
 
   return (
     <div className="relative flex items-start gap-5">
-      {/* Timeline dot with number */}
       <div
         className={`relative z-10 flex ${dotSize} shrink-0 items-center justify-center rounded-full border-1 border-primary bg-primary/10 backdrop-blur-3xl`}
       >
@@ -42,7 +43,6 @@ export default function WorkflowStep({
         </span>
       </div>
 
-      {/* Step content */}
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-2">
           <Tooltip

@@ -114,22 +114,22 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
         ),
     ),
     "goal_tracking": TieredRateLimits(
-        free=RateLimitConfig(day=1, month=3),
-        pro=RateLimitConfig(day=30, month=900),
+        free=RateLimitConfig(day=3, month=10),
+        pro=RateLimitConfig(day=500, month=1500),
         info=FeatureInfo(
             title="Goal Tracking", description="Create and track personal goals"
         ),
     ),
     "todo_operations": TieredRateLimits(
-        free=RateLimitConfig(day=20, month=100),
-        pro=RateLimitConfig(day=500, month=15000),
+        free=RateLimitConfig(day=50, month=1000),
+        pro=RateLimitConfig(day=1000, month=15000),
         info=FeatureInfo(
             title="Todo Operations", description="Create, update, and manage todo items"
         ),
     ),
     "calendar_management": TieredRateLimits(
-        free=RateLimitConfig(day=2, month=5),
-        pro=RateLimitConfig(day=50, month=1500),
+        free=RateLimitConfig(day=5, month=50),
+        pro=RateLimitConfig(day=1000, month=15000),
         info=FeatureInfo(
             title="Calendar Management",
             description="Create, update, and manage calendar events",

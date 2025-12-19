@@ -2,6 +2,23 @@
 Workflow generation prompts for GAIA workflow system.
 """
 
+# Template for generating workflow descriptions from todo items
+TODO_WORKFLOW_DESCRIPTION_TEMPLATE = """This workflow was automatically generated from a todo item to help the user accomplish their task.
+
+**Todo Task:** {title}
+{details_section}
+
+**Purpose:** Break down this todo into actionable automated steps. The user will click "Run Workflow" when they're ready to execute it, and the AI assistant will carry out each step in sequence.
+
+**Important Context:**
+- This is a todo-driven workflow - focus on practical steps to complete the user's task
+- Each step should use external tools to accomplish concrete actions
+- Keep steps minimal and efficient - only include what's necessary to complete the todo
+- The user expects this workflow to help them finish their todo item faster
+
+Generate practical, executable steps that will help the user complete: "{title}"
+"""
+
 WORKFLOW_GENERATION_SYSTEM_PROMPT = """Create a practical workflow plan for this goal using ONLY the available tools listed below.
 
 TITLE: {title}

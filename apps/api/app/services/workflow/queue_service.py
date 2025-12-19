@@ -127,3 +127,68 @@ class WorkflowQueueService:
                 f"Error queuing workflow regeneration for {workflow_id}: {str(e)}"
             )
             return False
+
+    @staticmethod
+    async def queue_todo_workflow_generation(
+        todo_id: str, user_id: str, title: str, description: str = ""
+    ) -> bool:
+        """Queue todo workflow generation as a background task.
+        
+        This triggers process_workflow_generation_task which:
+        1. Creates workflow with is_todo_workflow=True
+        2. Links it to the todo
+        3. Broadcasts WebSocket event when complete
+        """
+        try:
+            pool = await RedisPoolManager.get_pool()
+
+            job = await pool.enqueue_job(
+                "process_workflow_generation_task",
+                todo_id,
+                user_id,
+                title,
+                description,
+            )
+
+            if job:
+                # Set a Redis flag to indicate workflow generation is pending
+                # This allows status endpoint to return is_generating=true
+                # Note: ArqRedis pool IS the redis connection
+                await pool.set(
+                    f"todo_workflow_generating:{todo_id}",
+                    "1",
+                    ex=300  # 5 minute TTL
+                )
+                
+                logger.info(
+                    f"Queued todo workflow generation for {todo_id} with job ID {job.job_id}"
+                )
+                return True
+            else:
+                logger.error(f"Failed to queue todo workflow generation for {todo_id}")
+                return False
+
+        except Exception as e:
+            logger.error(
+                f"Error queuing todo workflow generation for {todo_id}: {str(e)}"
+            )
+            return False
+
+    @staticmethod
+    async def is_workflow_generating(todo_id: str) -> bool:
+        """Check if workflow generation is in progress for a todo."""
+        try:
+            pool = await RedisPoolManager.get_pool()
+            result = await pool.get(f"todo_workflow_generating:{todo_id}")
+            return result is not None
+        except Exception:
+            return False
+
+    @staticmethod
+    async def clear_workflow_generating_flag(todo_id: str) -> None:
+        """Clear the workflow generating flag after completion."""
+        try:
+            pool = await RedisPoolManager.get_pool()
+            await pool.delete(f"todo_workflow_generating:{todo_id}")
+        except Exception as e:
+            logger.warning(f"Failed to clear generating flag for {todo_id}: {e}")

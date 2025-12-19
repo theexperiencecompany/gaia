@@ -68,15 +68,15 @@ const DummyComposer: React.FC = () => {
 
       {/* Composer */}
       <div className="searchbar_container relative w-full pb-1">
-        {/* Integration Banner */}
+        {/* Integration Banner - uses searchbar class to match composer width */}
         <Button
-          className="absolute -top-4 z-[0] flex h-fit w-[92%] rounded-full bg-zinc-800/40 px-4 py-2 pb-8 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 sm:w-[46%]"
+          className="searchbar absolute -top-4 z-0 flex h-fit rounded-full bg-zinc-800/40 px-4 py-2 pb-8 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400"
           onPress={handleIntegrationsClick}
           aria-label="Connect your tools to GAIA"
         >
           <div className="flex w-full items-center justify-between">
             <span className="text-xs">Connect your tools to GAIA</span>
-            <div className="ml-3 flex items-center gap-1">
+            <div className="flex items-center gap-1">
               {dummyIntegrations.slice(0, 7).map((integration) => (
                 <div
                   key={integration.id}
@@ -100,7 +100,7 @@ const DummyComposer: React.FC = () => {
         {/* Main Composer */}
         <div
           ref={composerRef}
-          className="searchbar relative z-[2] rounded-3xl bg-zinc-800 px-1 pt-1 pb-2"
+          className="searchbar relative z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2"
         >
           {/* Textarea Input */}
           <form

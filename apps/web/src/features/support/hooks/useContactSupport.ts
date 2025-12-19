@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { type SupportRequest, supportApi } from "../api/supportApi";
@@ -31,6 +31,16 @@ export function useContactSupport(initialValues?: ContactSupportInitialValues) {
     attachments: [],
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Reset form when initialValues change (e.g., when modal opens with different type)
+  useEffect(() => {
+    setFormData({
+      type: initialValues?.type || "",
+      title: initialValues?.title || "",
+      description: initialValues?.description || "",
+      attachments: [],
+    });
+  }, [initialValues?.type, initialValues?.title, initialValues?.description]);
 
   const handleInputChange = (field: keyof ContactFormData, value: string) => {
     setFormData((prev) => ({

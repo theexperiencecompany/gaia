@@ -79,8 +79,6 @@ async def workos_mobile_callback(code: Optional[str] = None) -> RedirectResponse
         # Store user info in DB
         await store_user_info(name, email, picture_url)
 
-        # Send token back via deep link for mobile to handle storage
-        print("this is auth response",auth_response)
         token = auth_response.sealed_session or auth_response.access_token
         return RedirectResponse(url=f"gaiamobile://auth/callback?token={token}") 
 

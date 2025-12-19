@@ -160,14 +160,14 @@ export default function ChatOptionsDropdown({
         </DropdownTrigger>
         <DropdownMenu aria-label="Static Actions">
           <DropdownItem key="star" textValue="Star" onPress={handleStarToggle}>
-            <div className="flex flex-row items-center justify-between gap-2">
-              <StarIcon color="white" width={16} />
-              {starred ? "Remove" : "Add"} star
+            <div className="flex flex-row items-center justify-start gap-2">
+              <StarIcon color="white" width={17} height={17} />
+              {starred ? "Unstar" : "Star"}
             </div>
           </DropdownItem>
           <DropdownItem key="edit" textValue="Rename" onPress={openEditModal}>
-            <div className="flex flex-row items-center justify-between gap-2">
-              <PencilEdit02Icon color="white" width={16} />
+            <div className="flex flex-row items-center justify-start gap-2">
+              <PencilEdit02Icon color="white" width={17} height={17} />
               Rename
             </div>
           </DropdownItem>
@@ -180,10 +180,11 @@ export default function ChatOptionsDropdown({
             onMouseOver={() => setDangerStateHovered(true)}
             onPress={handleDelete}
           >
-            <div className="flex flex-row items-center justify-between gap-2">
+            <div className="flex flex-row items-center justify-start gap-2">
               <Delete02Icon
                 color={dangerStateHovered ? "white" : "red"}
-                width={16}
+                width={17}
+                height={17}
               />
               Delete
             </div>

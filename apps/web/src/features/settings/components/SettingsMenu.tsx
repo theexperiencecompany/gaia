@@ -10,6 +10,7 @@ import {
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
+import { useKeyboardShortcuts } from "@/components/providers/KeyboardShortcutsProvider";
 import {
   type ConfirmAction,
   ConfirmActionDialog,
@@ -33,13 +34,13 @@ import {
   CustomerService01Icon,
   Github,
   GitPullRequestIcon,
+  KeyboardIcon,
   Layers01Icon,
   Logout02Icon,
   MapsIcon,
   QuillWrite01Icon,
   Settings01Icon,
 } from "@/icons";
-
 import { settingsPageItems, socialMediaItems } from "../config/settingsConfig";
 import { useNestedMenu } from "../hooks/useNestedMenu";
 import { NestedMenuTooltip } from "./NestedMenuTooltip";
@@ -77,6 +78,9 @@ export default function SettingsMenu({
   const docsLink = getLinkByLabel("Documentation");
   const githubLink = getLinkByLabel("GitHub");
   const [supportModalOpen, setSupportModalOpen] = useState(false);
+  const [supportModalType, setSupportModalType] = useState<
+    string | undefined
+  >();
   const [modalAction, setModalAction] = useState<ModalAction | null>(null);
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
 
@@ -85,6 +89,7 @@ export default function SettingsMenu({
   const downloadMenu = useNestedMenu();
 
   const { currentPlatform, desktopPlatforms } = usePlatformDetection();
+  const { openShortcutsModal } = useKeyboardShortcuts();
 
   const iconClasses = "w-[18px] h-[18px]";
 
@@ -131,13 +136,19 @@ export default function SettingsMenu({
       key: "contact_support",
       label: "Contact Support",
       icon: BubbleChatQuestionIcon,
-      action: () => setSupportModalOpen(true),
+      action: () => {
+        setSupportModalType("support");
+        setSupportModalOpen(true);
+      },
     },
     {
       key: "feature_request",
       label: "Request a Feature",
       icon: GitPullRequestIcon,
-      action: () => setSupportModalOpen(true),
+      action: () => {
+        setSupportModalType("feature");
+        setSupportModalOpen(true);
+      },
     },
   ];
 
@@ -216,6 +227,12 @@ export default function SettingsMenu({
       showDivider: true,
       items: [
         ...settingsPageItems.filter((item) => item.key !== "subscription"),
+        {
+          key: "keyboard_shortcuts",
+          label: "Keyboard Shortcuts",
+          icon: KeyboardIcon,
+          action: openShortcutsModal,
+        },
       ],
     },
     {
@@ -366,7 +383,13 @@ export default function SettingsMenu({
 
       <ContactSupportModal
         isOpen={supportModalOpen}
-        onOpenChange={() => setSupportModalOpen(false)}
+        onOpenChange={() => {
+          setSupportModalOpen(false);
+          setSupportModalType(undefined);
+        }}
+        initialValues={
+          supportModalType ? { type: supportModalType } : undefined
+        }
       />
 
       <ConfirmActionDialog

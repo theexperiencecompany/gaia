@@ -72,7 +72,7 @@ export default function AddGoalDialog({
             endContent={
               <Button
                 isIconOnly
-                className="font-medium"
+                className="font-medium text-zinc-800"
                 color="primary"
                 onPress={handleAddGoal}
               >
@@ -82,6 +82,7 @@ export default function AddGoalDialog({
             label="What goal do you want to achieve?"
             value={goalTitle}
             variant="faded"
+            autoFocus
             onChange={(e: { target: { value: SetStateAction<string> } }) =>
               setGoalTitle(e.target.value)
             }

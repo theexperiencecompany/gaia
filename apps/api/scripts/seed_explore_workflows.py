@@ -280,7 +280,7 @@ def get_engineering_workflows() -> list[dict[str, Any]]:
                 create_step(
                     3,
                     "Create Notion Summary",
-                    "NOTION_CREATE_PAGE",
+                    "NOTION_CREATE_NOTION_PAGE",
                     "notion",
                     "Generate a formatted weekly standup document with commits and PRs",
                 ),
@@ -377,7 +377,7 @@ def get_engineering_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Get Linear Tickets",
-                    "LINEAR_LIST_ISSUES",
+                    "LINEAR_LIST_LINEAR_ISSUES",
                     "linear",
                     "Retrieve your assigned Linear tickets and their status",
                 ),
@@ -405,14 +405,14 @@ def get_engineering_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Fetch Spec Document",
-                    "NOTION_GET_PAGE",
+                    "NOTION_FETCH_BLOCK_CONTENTS",
                     "notion",
                     "Retrieve the requirements document from Notion",
                 ),
                 create_step(
                     2,
                     "Create Linear Issues",
-                    "LINEAR_CREATE_ISSUE",
+                    "LINEAR_CREATE_LINEAR_ISSUE",
                     "linear",
                     "Generate Linear tickets from extracted requirements",
                 ),
@@ -446,7 +446,7 @@ def get_engineering_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Post to Slack",
-                    "SLACK_SENDS_A_MESSAGE_TO_A_SLACK_CHANNEL",
+                    "SLACK_SEND_MESSAGE",
                     "slack",
                     "Send prioritized PR list to the engineering channel",
                 ),
@@ -481,7 +481,7 @@ def get_engineering_workflows() -> list[dict[str, Any]]:
                 create_step(
                     3,
                     "Post Summary to Slack",
-                    "SLACK_SENDS_A_MESSAGE_TO_A_SLACK_CHANNEL",
+                    "SLACK_SEND_MESSAGE",
                     "slack",
                     "Send formatted PR summary to the team channel",
                 ),
@@ -569,7 +569,7 @@ def get_founders_workflows() -> list[dict[str, Any]]:
                 create_step(
                     3,
                     "Create Team Brief",
-                    "NOTION_CREATE_PAGE",
+                    "NOTION_CREATE_NOTION_PAGE",
                     "notion",
                     "Generate a formatted weekly team update document",
                 ),
@@ -804,7 +804,7 @@ def get_marketing_workflows() -> list[dict[str, Any]]:
                 create_step(
                     3,
                     "Create Content Calendar",
-                    "NOTION_CREATE_PAGE",
+                    "NOTION_CREATE_NOTION_PAGE",
                     "notion",
                     "Generate a monthly content calendar with topics and publish dates",
                 ),
@@ -1014,7 +1014,7 @@ def get_knowledge_worker_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Save to Notion",
-                    "NOTION_CREATE_PAGE",
+                    "NOTION_CREATE_NOTION_PAGE",
                     "notion",
                     "Create an organized Notion page with summarized research and key findings",
                 ),
@@ -1105,7 +1105,7 @@ def get_knowledge_worker_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Create Structured Page",
-                    "NOTION_CREATE_PAGE",
+                    "NOTION_CREATE_NOTION_PAGE",
                     "notion",
                     "Convert raw ideas into a well-organized Notion page with sections and formatting",
                 ),
@@ -1210,7 +1210,7 @@ def get_student_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Fetch Lecture Notes",
-                    "NOTION_GET_PAGE",
+                    "NOTION_FETCH_BLOCK_CONTENTS",
                     "notion",
                     "Retrieve lecture notes from your Notion study workspace",
                 ),
@@ -1279,7 +1279,7 @@ def get_student_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Save Research Notes",
-                    "NOTION_CREATE_PAGE",
+                    "NOTION_CREATE_NOTION_PAGE",
                     "notion",
                     "Create a structured research note with summary, key findings, and citations",
                 ),
@@ -1335,14 +1335,14 @@ def get_student_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Create Trello Board",
-                    "TRELLO_CREATE_A_NEW_BOARD",
+                    "TRELLO_ADD_BOARDS",
                     "trello",
                     "Set up a new Trello board with standard project columns",
                 ),
                 create_step(
                     2,
                     "Add Project Tasks",
-                    "TRELLO_CREATE_A_NEW_CARD",
+                    "TRELLO_ADD_CARDS",
                     "trello",
                     "Create task cards for project milestones and deliverables",
                 ),
@@ -1368,7 +1368,7 @@ def get_student_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Fetch Week's Notes",
-                    "NOTION_SEARCH",
+                    "NOTION_SEARCH_NOTION_PAGE",
                     "notion",
                     "Search for all lecture notes and study materials from this week",
                 ),

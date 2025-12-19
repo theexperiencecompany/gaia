@@ -225,6 +225,16 @@ class Workflow(BaseScheduledTask):
         default=0, description="Number of successful executions"
     )
 
+    # Todo workflow flags (for auto-generated workflows linked to todos)
+    is_todo_workflow: bool = Field(
+        default=False,
+        description="Whether this workflow was auto-generated for a todo item",
+    )
+    source_todo_id: Optional[str] = Field(
+        default=None,
+        description="ID of the source todo if is_todo_workflow=True",
+    )
+
     def __init__(self, **data):
         """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields."""
         # Ensure user_id is provided (it's required by BaseScheduledTask)
