@@ -6,13 +6,7 @@ import Link from "next/link";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { LinkSquare02Icon, ZapIcon } from "@/icons";
 
-interface WorkflowsHeaderProps {
-  onCreateWorkflow: () => void;
-}
-
-export default function WorkflowsHeader({
-  onCreateWorkflow,
-}: WorkflowsHeaderProps) {
+export default function WorkflowsHeader() {
   return (
     <div className="flex w-full items-center justify-between">
       <HeaderTitle icon={<ZapIcon width={20} height={20} />} text="Workflows" />
@@ -26,13 +20,6 @@ export default function WorkflowsHeader({
             Browse Use Cases
           </Button>
         </Link>
-        <Button
-          color="primary"
-          onPress={onCreateWorkflow}
-          data-keyboard-shortcut="create-workflow"
-        >
-          Create Workflow
-        </Button>
       </div>
     </div>
   );

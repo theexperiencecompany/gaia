@@ -107,10 +107,7 @@ export default function WorkflowPage() {
   }, []);
 
   // Memoize the header component to prevent recreating on every render
-  const headerComponent = useMemo(
-    () => <WorkflowsHeader onCreateWorkflow={onOpen} />,
-    [onOpen],
-  );
+  const headerComponent = useMemo(() => <WorkflowsHeader />, []);
 
   // Use useLayoutEffect to set header synchronously before paint (faster)
   // Don't include setHeader in deps - it's stable from Zustand
