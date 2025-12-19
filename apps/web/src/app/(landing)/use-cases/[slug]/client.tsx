@@ -48,9 +48,8 @@ export default function UseCaseDetailClient({
         id: step.id || `step_${index}`,
         title: step.title,
         description: step.description,
-        tool_name: step.tool_name || step.tool_category,
-        tool_category: step.tool_category,
-        tool_inputs: step.tool_inputs || {},
+        category: step.category,
+        inputs: step.inputs || {},
         order: step.order ?? index,
       }));
 
@@ -118,12 +117,12 @@ export default function UseCaseDetailClient({
   const showCreator = !!communityWorkflow && !!creatorName;
 
   // Prepare tools - Type-safe extraction from steps, mapped to Tool format for ToolsList
-  const tools = (useCase?.steps || communityWorkflow?.steps || [])
-    .filter((step) => step.tool_name)
-    .map((step) => ({
-      name: step.tool_name || step.tool_category,
-      category: step.tool_category,
-    }));
+  const tools = (useCase?.steps || communityWorkflow?.steps || []).map(
+    (step) => ({
+      name: step.category,
+      category: step.category,
+    }),
+  );
 
   // Prepare run count
   const runCount = communityWorkflow
@@ -150,9 +149,7 @@ export default function UseCaseDetailClient({
         id: `step-${index}`,
         title: step.title,
         description: step.description,
-        tool_name: useCase.integrations[index % useCase.integrations.length],
-        tool_category:
-          useCase.integrations[index % useCase.integrations.length],
+        category: useCase.integrations[index % useCase.integrations.length],
       }))
     : communityWorkflow?.steps;
 

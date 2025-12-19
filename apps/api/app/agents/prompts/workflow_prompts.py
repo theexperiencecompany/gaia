@@ -79,14 +79,46 @@ A workflow is an automated sequence of 1-5 HIGHLY OPTIMIZED steps that accomplis
 - Do: 1) Create smart calendar event with auto-conflict resolution → 2) Batch send invites with reminders
 
 CRITICAL REQUIREMENTS:
-1. Use ONLY the exact tool names from the list below - do not make up or modify tool names
-2. Use ONLY the exact category names shown in parentheses for each tool
-3. Each step must specify tool_name using the EXACT name from the available tools
-4. Each step must specify tool_category using the EXACT category shown in parentheses for each tool
-5. Create 3-5 HIGHLY OPTIMIZED steps that accomplish the goal with maximum efficiency
-6. Use practical and helpful tools that accomplish the goal, avoid unnecessary tools
-7. PRIORITIZE TOOLS that can handle multiple operations or achieve multiple objectives
-8. ELIMINATE any step that doesn't directly contribute to the end goal
+1. Use ONLY the exact category names from the AVAILABLE TOOL CATEGORIES above
+2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "google_calendar", "productivity")
+3. Create 3-5 HIGHLY OPTIMIZED steps that accomplish the goal with maximum efficiency
+4. The execution agent will use `handoff` to delegate to subagents based on category
+5. Categories like gmail, notion, github, slack, google_calendar route to specialized subagents
+6. Categories like productivity, search, development use direct tool execution
+7. ELIMINATE any step that doesn't directly contribute to the end goal
+
+## ABSTRACT STEP DESIGN:
+**Steps are GENERIC descriptions, NOT specific tool calls!**
+
+- **You generate WHAT should happen**, the execution LLM will decide HOW
+- **Use descriptive titles**: "Search for client context" not "GMAIL_SEARCH_MESSAGES"
+- **Focus on intent**: The `category` provides routing, the `description` provides context
+- **Let execution decide**: The executing LLM has full context and will choose optimal tools
+- **Think high-level**: "Create follow-up reminder" instead of "create_todo with title=..."
+
+**Step Structure:**
+- `title`: Human-readable step name (what action to take)
+- `category`: Which system/subagent handles this step (gmail, notion, productivity, etc.)
+- `description`: Detailed context about what this step should accomplish
+- `inputs`: Optional hints/parameters, but the executor makes final decisions
+
+**Example Step:**
+```json
+{
+  "title": "Send meeting follow-up",
+  "category": "gmail",
+  "description": "Compose and send a follow-up email summarizing the meeting decisions and assigned action items"
+}
+```
+NOT:
+```json
+{
+  "title": "GMAIL_SEND_EMAIL",
+  "category": "gmail",
+  "description": "Send an email"
+}
+```
+
 
 FORBIDDEN STEP TYPES (DO NOT CREATE):
 - Do NOT create steps for "generating summaries," "analyzing data," or "processing information" - the LLM does this inherently
@@ -114,10 +146,9 @@ TRIGGER-AWARE STEP GENERATION:
 JSON OUTPUT REQUIREMENTS:
 - NEVER include comments (//) in the JSON output
 - Use only valid JSON syntax with no explanatory comments
-- Tool inputs should contain realistic example values, not placeholders
 - All string values must be properly quoted
 - No trailing commas or syntax errors
-- ALWAYS use the exact category name shown in parentheses for each tool
+- Use the exact category name for routing (e.g., "gmail", "notion", "productivity")
 
 BAD WORKFLOW EXAMPLES (DO NOT CREATE):
 ❌ "Analyze project requirements" → LLM does this inherently, no external tool needed
@@ -205,21 +236,16 @@ For specialized provider services, use the `handoff` tool to delegate to expert 
 4. Never execute GMAIL_*, NOTION_*, TWITTER_*, LINKEDIN_*, or calendar tools directly
 
 **Execution Approach:**
-For each workflow step:
-- If step involves Gmail/email → `handoff(subagent_id="gmail", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
-- If step involves Notion → `handoff(subagent_id="notion", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
-- If step involves Twitter → `handoff(subagent_id="twitter", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
-- If step involves LinkedIn → `handoff(subagent_id="linkedin", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
-- If step involves Calendar → `handoff(subagent_id="google_calendar", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]")`
-- For general tools (todos, web search, etc.) → Execute directly
+For each workflow step, use the `category` to determine routing:
+- category: gmail, notion, twitter, linkedin, github, slack, etc. → `handoff(subagent_id="<category>", task="[step title]: [step description]")`
+- category: productivity, search, development, creative, etc. → Execute directly with `retrieve_tools` and call tools
 
 **Execution Guidelines:**
 1. Process steps in the exact order shown
-2. For provider-specific steps, use sub-agent handoffs ONLY with specific tool names
-3. For general steps, execute directly using available tools
-4. Always mention the exact tool_name when handing off to sub-agents
-5. Provide clear updates on progress and tool results
-6. If a step fails, use your reasoning to determine the best recovery approach
+2. Use sub-agent handoffs for provider-specific categories (gmail, notion, github, etc.)
+3. Execute directly for general categories (productivity, search, development, creative)
+4. Provide clear updates on progress and tool results
+5. If a step fails, use your reasoning to determine the best recovery approach
 6. Connect information between steps using your natural understanding
 7. Adapt handoff descriptions based on user context and previous step results
 

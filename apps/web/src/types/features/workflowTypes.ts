@@ -29,9 +29,8 @@ export interface WorkflowStepData {
   id: string;
   title: string;
   description: string;
-  tool_name: string;
-  tool_category: string;
-  tool_inputs?: Record<string, unknown>;
+  category: string;
+  inputs?: Record<string, unknown>;
   order?: number;
 }
 
@@ -41,10 +40,9 @@ export interface WorkflowStepData {
 export interface WorkflowStepType {
   id: string;
   title: string;
-  tool_name: string;
-  tool_category: string;
+  category: string;
   description: string;
-  tool_inputs: Record<string, unknown>;
+  inputs: Record<string, unknown>;
   order: number;
   executed_at?: string;
   result?: Record<string, unknown>;
@@ -58,10 +56,9 @@ export interface WorkflowStepType {
 export interface PublicWorkflowStep {
   id?: string;
   title: string;
-  tool_name?: string;
-  tool_category: string;
+  category: string;
   description: string;
-  tool_inputs?: Record<string, unknown>;
+  inputs?: Record<string, unknown>;
   order?: number;
 }
 

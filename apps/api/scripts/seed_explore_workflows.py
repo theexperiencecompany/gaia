@@ -58,19 +58,17 @@ def generate_run_count() -> tuple[int, int]:
 def create_step(
     step_number: int,
     title: str,
-    tool_name: str,
-    tool_category: str,
+    category: str,
     description: str,
-    tool_inputs: dict[str, Any] | None = None,
+    inputs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Helper to create a workflow step."""
+    """Helper to create a workflow step with the new abstract schema."""
     return {
         "id": f"step_{step_number}",
         "title": title,
-        "tool_name": tool_name,
-        "tool_category": tool_category,
+        "category": category,
         "description": description,
-        "tool_inputs": tool_inputs or {},
+        "inputs": inputs or {},
         "order": step_number - 1,
     }
 

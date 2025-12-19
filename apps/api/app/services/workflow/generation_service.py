@@ -2,13 +2,15 @@
 
 from typing import List
 
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
+
 from app.agents.llm.client import init_llm
 from app.agents.prompts.trigger_prompts import generate_trigger_context
 from app.agents.templates.workflow_template import WORKFLOW_GENERATION_TEMPLATE
 from app.config.loggers import general_logger as logger
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.workflow_models import WorkflowStep
-from langchain_core.output_parsers import PydanticOutputParser
-from pydantic import BaseModel, Field
 
 
 class WorkflowPlan(BaseModel):
@@ -34,7 +36,6 @@ class WorkflowGenerationService:
 
             tool_registry = await get_tool_registry()
 
-            # Create structured tool information with categories
             tools_with_categories = []
             category_names = []
             categories = tool_registry.get_all_category_objects()
@@ -46,6 +47,19 @@ class WorkflowGenerationService:
                     for tool in category_tools
                 ]
                 tools_with_categories.append(f"{category}: {', '.join(tool_names)}")
+
+            # Add subagent capabilities for provider-specific categories
+
+            for integration in OAUTH_INTEGRATIONS:
+                if (
+                    integration.subagent_config
+                    and integration.subagent_config.has_subagent
+                ):
+                    cfg = integration.subagent_config
+                    category_names.append(integration.id)
+                    tools_with_categories.append(
+                        f"{integration.id} (subagent): {cfg.capabilities}"
+                    )
 
             for tool in tool_registry.get_core_tools():
                 tool_name = tool.name if hasattr(tool, "name") else str(tool)

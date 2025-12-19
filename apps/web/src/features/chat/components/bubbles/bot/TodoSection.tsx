@@ -93,14 +93,12 @@ export default function TodoSection({
             id: string;
             title: string;
             description: string;
-            tool_name: string;
-            tool_category: string;
+            category: string;
           }) => ({
             id: step.id,
             title: step.title,
             description: step.description,
-            tool_name: step.tool_name,
-            tool_category: step.tool_category,
+            category: step.category,
           }),
         ),
       };

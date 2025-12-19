@@ -5,8 +5,7 @@ interface WorkflowStepsProps {
     id: string;
     title: string;
     description: string;
-    tool_name: string;
-    tool_category: string;
+    category: string;
   }>;
   size?: "small" | "large";
 }

@@ -148,9 +148,8 @@ export default function UnifiedWorkflowCard({
         id: step.id || `step_${index}`,
         title: step.title,
         description: step.description,
-        tool_name: step.tool_name || step.tool_category,
-        tool_category: step.tool_category,
-        tool_inputs: step.tool_inputs || {},
+        category: step.category,
+        inputs: step.inputs || {},
         order: step.order ?? index,
       }));
 
@@ -246,7 +245,7 @@ export default function UnifiedWorkflowCard({
 
   // Render tool icons
   const renderToolIcons = () => {
-    const categories = [...new Set(steps.map((step) => step.tool_category))];
+    const categories = [...new Set(steps.map((step) => step.category))];
     const displayIcons = categories.slice(0, 3);
 
     return (
