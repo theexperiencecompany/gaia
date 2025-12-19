@@ -41,6 +41,57 @@ async def login_workos():
 
     return RedirectResponse(url=authorization_url)
 
+@router.get("/login/workos/mobile")
+async def login_workos_mobile():
+    """Start WorkOS SSO flow for mobile apps (Expo)."""
+    authorization_url = workos.user_management.get_authorization_url(
+        provider="authkit",
+        redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI, 
+    )
+    return {"url": authorization_url}
+
+
+@router.get("/workos/mobile/callback")
+async def workos_mobile_callback(code: Optional[str] = None) -> RedirectResponse:
+    """
+    Handle WorkOS SSO callback for mobile (Expo) apps.
+    Returns a deep link redirect to the mobile app with the auth token.
+    """
+    try:
+        if not code:
+            logger.error("No authorization code received from WorkOS (mobile)")
+            return RedirectResponse(url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=missing_code")
+
+        auth_response = workos.user_management.authenticate_with_code(
+            code=code,
+            session={
+                "seal_session": True,
+                "cookie_password": settings.WORKOS_COOKIE_PASSWORD,
+            },
+        )
+
+        # Extract user information
+        email = auth_response.user.email
+        first = auth_response.user.first_name or ""
+        last = auth_response.user.last_name or ""
+        name = f"{first} {last}".strip()
+        picture_url = auth_response.user.profile_picture_url
+
+        # Store user info in DB
+        await store_user_info(name, email, picture_url)
+
+        token = auth_response.sealed_session or auth_response.access_token
+        return RedirectResponse(url=f"gaiamobile://auth/callback?token={token}") 
+
+    except HTTPException as e:
+        logger.error(f"HTTP error during WorkOS mobile auth: {e.detail}")
+        return RedirectResponse(url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error={e.detail}")
+
+    except Exception as e:
+        logger.error(f"Unexpected error during WorkOS mobile callback: {str(e)}")
+        return RedirectResponse(url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=server_error")
+
+
 
 @router.get("/login/workos/desktop")
 async def login_workos_desktop():

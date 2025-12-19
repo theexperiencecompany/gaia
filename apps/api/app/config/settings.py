@@ -221,6 +221,18 @@ class ProductionSettings(CommonSettings):
     OPIK_API_KEY: str
     OPIK_WORKSPACE: str
 
+    # ----------------------------------------------
+    # Opik Evaluation Config
+    # ----------------------------------------------
+    EVAL_USER_ID: Optional[str] = None
+    EVAL_USER_EMAIL: Optional[str] = None
+    EVAL_USER_NAME: Optional[str] = None
+
+    # ----------------------------------------------
+    # Debug Config
+    # ----------------------------------------------
+    DEBUG_EMAIL_PROCESSING: bool = False
+
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         extra="allow",
