@@ -45,9 +45,11 @@ def apply_opik_patch() -> None:
 
     Call this BEFORE running any Opik evaluations.
     """
-    import opik.evaluation.engine.evaluation_tasks_executor as executor_module
+    try:
+        import opik.evaluation.engine.evaluation_tasks_executor as executor_module
 
-    # Replace the execute function
-    executor_module.execute = _patched_execute  # type: ignore[assignment]
+        executor_module.execute = _patched_execute  # type: ignore[assignment]
 
-    print("✓ Applied Opik monkey patch: ThreadPoolExecutor disabled")
+        print("✓ Applied Opik monkey patch: ThreadPoolExecutor disabled")
+    except (ImportError, AttributeError) as e:
+        print(f"⚠ Failed to apply Opik monkey patch: {e}")

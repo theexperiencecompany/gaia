@@ -2,7 +2,7 @@
 reviews:
   # Disable the review status message
   review_status: false
-  
+
   # Configure which branches to review
   branches:
     - "master"

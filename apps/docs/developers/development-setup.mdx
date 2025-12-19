@@ -8,10 +8,12 @@ icon: "laptop-code"
 
 <CardGroup cols={2}>
   <Card title="Open Source Contributors" icon="git-alt">
-    Developers who want to contribute by fixing bugs, adding features, or improving documentation
+    Developers who want to contribute by fixing bugs, adding features, or
+    improving documentation
   </Card>
   <Card title="Customizers" icon="wrench">
-    Developers who want to modify GAIA for their specific use cases or integrate with custom systems
+    Developers who want to modify GAIA for their specific use cases or integrate
+    with custom systems
   </Card>
 </CardGroup>
 
@@ -130,7 +132,7 @@ mise doctor
         cp apps/api/.env.example apps/api/.env
         cp apps/web/.env.example apps/web/.env
         ```
-        
+
         Edit `apps/api/.env` with your secrets. See [Environment Variables](/configuration/environment-variables).
       </Step>
 
@@ -138,7 +140,7 @@ mise doctor
         ```bash
         mise setup
         ```
-        
+
         This will:
         - Check `.env` files exist
         - Start Docker services
@@ -153,13 +155,14 @@ mise doctor
         ```bash
         mise dev
         ```
-        
+
         This starts:
         - Docker services (databases, Redis, etc.)
         - API server on `http://localhost:8000`
         - Web app on `http://localhost:3000`
       </Step>
     </Steps>
+
   </Tab>
 
   <Tab title="Manual Setup" icon="wrench">
@@ -179,7 +182,7 @@ mise doctor
         ```bash
         docker compose -f infra/docker/docker-compose.yml up -d
         ```
-        
+
         Wait for all services to be healthy:
         ```bash
         docker compose -f infra/docker/docker-compose.yml ps
@@ -204,18 +207,19 @@ mise doctor
 
       <Step title="Start development servers">
         In separate terminals:
-        
+
         ```bash
         # Terminal 1: API
         cd apps/api
         mise dev
-        
+
         # Terminal 2: Web
         cd apps/web
         mise dev
         ```
       </Step>
     </Steps>
+
   </Tab>
 </Tabs>
 
@@ -223,15 +227,15 @@ mise doctor
 
 ## Development Commands
 
-| Command | Description |
-|---------|-------------|
-| `mise dev` | Start API + web (recommended) |
-| `mise dev:api` | API server only |
-| `mise dev:web` | Web app only |
-| `mise dev:full` | API + web + ARQ worker |
-| `mise lint` | Lint all code |
-| `mise format` | Format all code |
-| `mise test` | Run all tests |
+| Command         | Description                   |
+| --------------- | ----------------------------- |
+| `mise dev`      | Start API + web (recommended) |
+| `mise dev:api`  | API server only               |
+| `mise dev:web`  | Web app only                  |
+| `mise dev:full` | API + web + ARQ worker        |
+| `mise lint`     | Lint all code                 |
+| `mise format`   | Format all code               |
+| `mise test`     | Run all tests                 |
 
 See [Commands Reference](/developers/commands) for the complete list.
 
@@ -266,32 +270,17 @@ gaia/
     If not activated, re-run the activation step for your shell.
   </Accordion>
 
-  <Accordion title="Docker services not starting">
-    Check Docker is running:
-    ```bash
-    docker ps
-    ```
-    
-    Check for port conflicts:
-    ```bash
-    lsof -i :5432  # PostgreSQL
-    lsof -i :6379  # Redis
-    lsof -i :8000  # API
-    ```
-  </Accordion>
+<Accordion title="Docker services not starting">
+  Check Docker is running: ```bash docker ps ``` Check for port conflicts:
+  ```bash lsof -i :5432 # PostgreSQL lsof -i :6379 # Redis lsof -i :8000 # API
+  ```
+</Accordion>
 
-  <Accordion title="Missing environment variables">
-    Ensure `.env` files exist:
-    ```bash
-    ls apps/api/.env apps/web/.env
-    ```
-    
-    If missing, copy from examples:
-    ```bash
-    cp apps/api/.env.example apps/api/.env
-    cp apps/web/.env.example apps/web/.env
-    ```
-  </Accordion>
+<Accordion title="Missing environment variables">
+  Ensure `.env` files exist: ```bash ls apps/api/.env apps/web/.env ``` If
+  missing, copy from examples: ```bash cp apps/api/.env.example apps/api/.env cp
+  apps/web/.env.example apps/web/.env ```
+</Accordion>
 
   <Accordion title="Python/Node version issues">
     mise manages tool versions. Let it install them:

@@ -7,15 +7,14 @@ enabling them to maintain context and learn from past interactions.
 
 from typing import Annotated, Dict, Optional
 
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-
+from app.decorators import with_doc
+from app.services.memory_service import memory_service
 from app.templates.docstrings.memory_tool_docs import (
     ADD_MEMORY,
     SEARCH_MEMORY,
 )
-from app.decorators import with_doc
-from app.services.memory_service import memory_service
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
 
 
 @tool
@@ -41,9 +40,13 @@ async def add_memory(
     if not memory:
         return "Failed to store memory"
 
-    # For async mode, return event_id and status
-    if hasattr(memory, "event_id") and memory.event_id:
-        return f"Memory queued for processing (Event ID: {memory.event_id}, Status: {getattr(memory, 'status', 'unknown')})"
+    # For async mode, return event_id and status from metadata
+    mem_metadata = memory.metadata or {}
+    event_id = mem_metadata.get("event_id")
+    status = mem_metadata.get("status", "unknown")
+
+    if event_id:
+        return f"Memory queued for processing (Event ID: {event_id}, Status: {status})"
 
     # Fallback for sync mode
     return f"Memory stored successfully with ID: {memory.id}"

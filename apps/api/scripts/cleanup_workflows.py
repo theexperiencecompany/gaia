@@ -6,13 +6,16 @@ This removes workflows with malformed or outdated step structures.
 
 import asyncio
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-# Add the parent directory to Python path to import our modules
-sys.path.append("/Users/aryan/Projects/GAIA/gaia/backend")
+# Add the backend directory to Python path so we can import from app
+backend_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(backend_dir))
 
-from app.db.mongodb.collections import workflows_collection
-from app.config.loggers import arq_worker_logger as logger
+
+from app.config.loggers import arq_worker_logger as logger  # noqa: E402
+from app.db.mongodb.collections import workflows_collection  # noqa: E402
 
 
 async def cleanup_old_workflow_steps():

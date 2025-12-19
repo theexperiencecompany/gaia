@@ -4,9 +4,9 @@ packages:
   - libs/*
 
 onlyBuiltDependencies:
-  - '@heroui/shared-utils'
-  - '@parcel/watcher'
-  - '@sentry/cli'
+  - "@heroui/shared-utils"
+  - "@parcel/watcher"
+  - "@sentry/cli"
   - canvas
   - core-js
   - electron

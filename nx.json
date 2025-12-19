@@ -6,6 +6,7 @@
       "sources": []
     }
   },
+  "useDaemonProcess": false,
   "defaultBase": "master",
   "namedInputs": {
     "default": ["{projectRoot}/**/*"],

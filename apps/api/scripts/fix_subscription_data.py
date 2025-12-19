@@ -12,7 +12,7 @@ This script handles:
 IMPORTANT: Run this script from the correct directory!
 
 1. If running locally:
-    cd /path/to/your/gaia/backend
+    cd /path/to/your/gaia/apps/api
     python scripts/fix_subscription_data.py
 
 2. If running inside Docker container:
@@ -34,7 +34,7 @@ Script options (interactive):
 
 import asyncio
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Add the backend directory to Python path so we can import from app
@@ -131,7 +131,12 @@ async def update_invalid_subscriptions(invalid_subscriptions, target_plan_id):
         invalid_ids = [sub["_id"] for sub in invalid_subscriptions]
         result = await subscriptions_collection.update_many(
             {"_id": {"$in": invalid_ids}},
-            {"$set": {"plan_id": target_plan_id, "updated_at": datetime.utcnow()}},
+            {
+                "$set": {
+                    "plan_id": target_plan_id,
+                    "updated_at": datetime.now(timezone.utc),
+                }
+            },
         )
 
         print(f"✅ Updated {result.modified_count} subscriptions")

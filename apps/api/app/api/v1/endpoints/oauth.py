@@ -16,7 +16,6 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
 from workos import WorkOSClient
 
-
 router = APIRouter()
 http_async_client = httpx.AsyncClient()
 
@@ -412,6 +411,15 @@ async def callback(
         # Store user info and get user_id
         user_id = await store_user_info(user_name, user_email, user_picture)
 
+        # Verify user_id matches the state token if we have one (security check)
+        if state_data and str(user_id) != state_data["user_id"]:
+            logger.error(
+                f"User ID mismatch: state={state_data['user_id']}, token={user_id}"
+            )
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=user_mismatch"
+            )
+
         # Store token in the repository
         await token_repository.store_token(
             user_id=str(user_id),
@@ -424,15 +432,6 @@ async def callback(
                 "scope": tokens.get("scope", ""),
             },
         )
-
-        # Verify user_id matches the state token if we have one (security check)
-        if state_data and str(user_id) != state_data["user_id"]:
-            logger.error(
-                f"User ID mismatch: state={state_data['user_id']}, token={user_id}"
-            )
-            return RedirectResponse(
-                url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=user_mismatch"
-            )
 
         # Invalidate OAuth status cache for this user
         try:

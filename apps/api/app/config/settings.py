@@ -108,6 +108,12 @@ class CommonSettings(BaseAppSettings):
 
     @computed_field  # type: ignore
     @property
+    def WORKOS_MOBILE_REDIRECT_URI(self) -> str:
+        """WorkOS OAuth callback URL for mobile app."""
+        return f"{self.HOST}/api/v1/oauth/workos/mobile/callback"
+
+    @computed_field  # type: ignore
+    @property
     def COMPOSIO_REDIRECT_URI(self) -> str:
         """Composio OAuth callback URL."""
         return f"{self.HOST}/api/v1/oauth/composio/callback"
@@ -339,9 +345,21 @@ class DevelopmentSettings(CommonSettings):
     OPIK_WORKSPACE: Optional[str] = None
 
     # ----------------------------------------------
+    # Opik Evaluation Config
+    # ----------------------------------------------
+    EVAL_USER_ID: Optional[str] = None
+    EVAL_USER_EMAIL: Optional[str] = None
+    EVAL_USER_NAME: Optional[str] = None
+
+    # ----------------------------------------------
     # Environment Configuration
     # ----------------------------------------------
     ENV: Literal["production", "development"] = "development"
+
+    # ----------------------------------------------
+    # Debug Config
+    # ----------------------------------------------
+    DEBUG_EMAIL_PROCESSING: bool = False
 
     # Default to show warnings in development environment
     SHOW_MISSING_KEY_WARNINGS: bool = True

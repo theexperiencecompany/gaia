@@ -5,12 +5,15 @@ icon: "wrench"
 ---
 
 ### TL;DR
+
 - Backend: implement tool, register in the Tool Registry.
 - Frontend: add the tool key and payload type to the Tool Registry, and (optionally) a renderer.
 - If the tool needs API keys, add envs in `settings.py` and use a lazy provider.
 
 ### Backend (LangChain)
-1) Implement the tool
+
+1. Implement the tool
+
 ```python
 # api/app/langchain/tools/my_tool.py
 from langchain_core.tools import tool
@@ -21,7 +24,8 @@ def my_tool(arg: str) -> str:
   return f"You sent: {arg}"
 ```
 
-2) Register in the Tool Registry
+2. Register in the Tool Registry
+
 ```python
 # api/app/langchain/tools/core/registry.py
 # Inside ToolRegistry._initialize_categories()
@@ -31,7 +35,8 @@ category.add_tool(my_tool)
 # category.add_tools([my_tool], is_core=True)
 ```
 
-3) If it needs env-backed clients
+3. If it needs env-backed clients
+
 ```python
 from app.core.lazy_loader import lazy_provider, MissingKeyStrategy
 from app.config.settings import settings
@@ -46,7 +51,9 @@ def create_my_api_client():
 ```
 
 ### Web (types + optional renderer)
-1) Add the tool and payload type to the registry
+
+1. Add the tool and payload type to the registry
+
 ```ts
 // apps/web/src/config/registries/toolRegistry.ts
 import type { MyToolData } from "@/types"; // or a feature-specific type
@@ -60,7 +67,8 @@ export type ToolName = keyof typeof TOOL_REGISTRY;
 export type ToolDataMap = { [K in ToolName]: (typeof TOOL_REGISTRY)[K] };
 ```
 
-2) (Optional) Add a UI renderer
+2. (Optional) Add a UI renderer
+
 ```tsx
 // apps/web/src/features/chat/components/bubbles/bot/TextBubble.tsx
 const TOOL_RENDERERS: Partial<RendererMap> = {
@@ -74,7 +82,8 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 Done. The backend tool becomes available to agents; the frontend knows how to type and render its outputs.
 
 See also:
+
 - Backend registry: `apps/api/app/langchain/tools/core/registry.py`
 - Web tool registry: `apps/web/src/config/registries/toolRegistry.ts`
 - Unified renderers: `apps/web/src/features/chat/components/bubbles/bot/TextBubble.tsx`
-- Lazy providers: `api/app/core/lazy_loader.py` 
+- Lazy providers: `api/app/core/lazy_loader.py`

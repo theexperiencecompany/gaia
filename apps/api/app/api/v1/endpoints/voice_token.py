@@ -8,6 +8,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
 from app.api.v1.middleware.agent_auth import create_agent_token
 from app.config.settings import settings
 from fastapi import APIRouter, Depends
+from fastapi.exceptions import HTTPException
 from livekit import api
 
 router = APIRouter()
@@ -21,7 +22,8 @@ def get_token(
     user_id = user.get("user_id")
     user_email: str = user.get("email", "")
     if not user_id or not isinstance(user_id, str):
-        return "Invalid or missing user_id"
+        raise HTTPException(status_code=401, detail="Invalid or missing user_id")
+
     room_name = f"voice_session_{user_id}_{uuid.uuid4().hex}"
 
     identity = f"user_{user_id}"
@@ -35,22 +37,28 @@ def get_token(
     }
     if conversationId:
         metadata["conversationId"] = conversationId
-    at = (
-        api.AccessToken(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)
-        .with_identity(identity)
-        .with_name(display_name)
-        .with_metadata(json.dumps(metadata))
-        .with_grants(
-            api.VideoGrants(
-                room_join=True,
-                room=room_name,
-                can_publish=True,
-                can_subscribe=True,
-                can_publish_data=True,
-                can_update_own_metadata=True,
+    try:
+        at = (
+            api.AccessToken(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)
+            .with_identity(identity)
+            .with_name(display_name)
+            .with_metadata(json.dumps(metadata))
+            .with_grants(
+                api.VideoGrants(
+                    room_join=True,
+                    room=room_name,
+                    can_publish=True,
+                    can_subscribe=True,
+                    can_publish_data=True,
+                    can_update_own_metadata=True,
+                )
             )
         )
-    )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate voice token: {str(e)}"
+        )
 
     return {
         "serverUrl": settings.LIVEKIT_URL,

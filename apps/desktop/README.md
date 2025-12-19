@@ -83,6 +83,7 @@ apps/desktop/
 - `resources/icon.icns` - macOS icon (needs to be generated)
 
 To generate macOS .icns from PNG:
+
 ```bash
 # Using iconutil (macOS only)
 mkdir icon.iconset

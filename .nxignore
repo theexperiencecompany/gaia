@@ -1,0 +1,23 @@
+# NX Ignore File
+# Exclude directories from NX's file watching to reduce inotify usage
+
+# Python virtual environment (50k+ files)
+apps/api/.venv
+
+# Python cache
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+# Next.js build output (watched separately by Next.js)
+apps/web/.next
+apps/docs/.next
+
+# Logs
+**/logs
+
+# Other build artifacts
+apps/desktop/dist
+apps/desktop/out
+

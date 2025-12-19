@@ -3,5 +3,12 @@
   "extends": "//",
   "files": {
     "includes": ["**/*.{js,jsx,ts,tsx,json}", "!.expo"]
+  },
+  "linter": {
+    "rules": {
+      "suspicious": {
+        "noUnknownAtRules": "off"
+      }
+    }
   }
 }

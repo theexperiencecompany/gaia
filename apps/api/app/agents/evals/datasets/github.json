@@ -153,7 +153,7 @@
       "metadata": { "difficulty": "medium" }
     },
     {
-      "input": "Get the content of 'backend/app/config/secrets.py' from Dhruv-Maradiya/gaia-personal.",
+      "input": "Get the content of 'apps/api/app/config/secrets.py' from Dhruv-Maradiya/gaia-personal.",
       "expected_output": "File content displayed.",
       "context": "User wants to read a specific file",
       "tags": ["repository", "content", "detailed"],

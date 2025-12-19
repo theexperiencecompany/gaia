@@ -23,7 +23,7 @@
     "dev": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group voice_agent uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level info",
+        "command": "uv run --group backend --group voice_agent uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --log-level info",
         "cwd": "{projectRoot}"
       }
     },

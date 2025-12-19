@@ -9,7 +9,8 @@ icon: docker
 GAIA uses Docker Compose to run databases and services locally. In most cases, you don't need to run Docker commands directly—**mise automatically starts Docker** when you run development commands.
 
 <Note>
-Docker files are located in `infra/docker/`. The setup uses Nx to manage Docker as a project with its own targets.
+  Docker files are located in `infra/docker/`. The setup uses Nx to manage
+  Docker as a project with its own targets.
 </Note>
 
 ---
@@ -57,25 +58,25 @@ npx nx run docker:docker:down
 
 ### Core Databases
 
-| Service | Port | Description |
-|---------|------|-------------|
-| **postgres** | `5432` | PostgreSQL database (user: `postgres`, pass: `postgres`) |
-| **mongo** | `27017` | MongoDB for document storage |
-| **redis** | `6379` | Redis for caching and task queue |
-| **chromadb** | `8080:8000` | Vector database for embeddings |
-| **rabbitmq** | `5672`, `15672` | Message broker (AMQP + Management UI) |
+| Service      | Port            | Description                                              |
+| ------------ | --------------- | -------------------------------------------------------- |
+| **postgres** | `5432`          | PostgreSQL database (user: `postgres`, pass: `postgres`) |
+| **mongo**    | `27017`         | MongoDB for document storage                             |
+| **redis**    | `6379`          | Redis for caching and task queue                         |
+| **chromadb** | `8080:8000`     | Vector database for embeddings                           |
+| **rabbitmq** | `5672`, `15672` | Message broker (AMQP + Management UI)                    |
 
 ### Application Services (Profile-based)
 
-| Service | Profile | Description |
-|---------|---------|-------------|
+| Service          | Profile          | Description                      |
+| ---------------- | ---------------- | -------------------------------- |
 | **gaia-backend** | `backend`, `all` | FastAPI application on port 8000 |
-| **arq_worker** | `worker`, `all` | Background job processor |
+| **arq_worker**   | `worker`, `all`  | Background job processor         |
 
 ### Development Tools
 
-| Service | Port | Description |
-|---------|------|-------------|
+| Service           | Port   | Description                     |
+| ----------------- | ------ | ------------------------------- |
 | **mongo_express** | `8081` | MongoDB web UI (admin/password) |
 
 ---
@@ -109,7 +110,8 @@ docker compose -f infra/docker/docker-compose.yml --profile all up -d
 ```
 
 <Tip>
-For development, we recommend running databases in Docker and the API/web locally with mise for faster hot-reloading.
+  For development, we recommend running databases in Docker and the API/web
+  locally with mise for faster hot-reloading.
 </Tip>
 
 ---
@@ -123,6 +125,7 @@ docker compose -f infra/docker/docker-compose.prod.yml up -d
 ```
 
 Key differences:
+
 - Uses pre-built images from GHCR
 - No volume mounts for source code
 - Optimized for stability over development speed
@@ -133,12 +136,12 @@ Key differences:
 
 Named volumes preserve data across restarts:
 
-| Volume | Purpose |
-|--------|---------|
-| `chroma_data` | Vector embeddings |
-| `pgdata` | PostgreSQL data |
-| `redis_data` | Redis cache |
-| `mongo_data` | MongoDB documents |
+| Volume          | Purpose             |
+| --------------- | ------------------- |
+| `chroma_data`   | Vector embeddings   |
+| `pgdata`        | PostgreSQL data     |
+| `redis_data`    | Redis cache         |
+| `mongo_data`    | MongoDB documents   |
 | `rabbitmq_data` | Message queue state |
 
 ### Reset All Data
@@ -148,7 +151,7 @@ docker compose -f infra/docker/docker-compose.yml down -v
 ```
 
 <Warning>
-This deletes all local data including the database. Use with caution.
+  This deletes all local data including the database. Use with caution.
 </Warning>
 
 ---
@@ -191,25 +194,19 @@ docker compose -f infra/docker/docker-compose.yml exec mongo mongosh
 
 <AccordionGroup>
   <Accordion title="Port already in use">
-    Another service is using the port. Stop it or change the port mapping in docker-compose.yml:
-    ```bash
-    lsof -i :8000  # Find what's using port 8000
-    ```
+    Another service is using the port. Stop it or change the port mapping in
+    docker-compose.yml: ```bash lsof -i :8000 # Find what's using port 8000 ```
   </Accordion>
-  
+
   <Accordion title="Container won't start">
-    Check logs for the failing service:
-    ```bash
-    docker compose -f infra/docker/docker-compose.yml logs postgres
-    ```
+    Check logs for the failing service: ```bash docker compose -f
+    infra/docker/docker-compose.yml logs postgres ```
   </Accordion>
-  
+
   <Accordion title="Database connection refused">
-    Ensure containers are healthy:
-    ```bash
-    docker compose -f infra/docker/docker-compose.yml ps
-    ```
-    Wait for `healthy` status before connecting.
+    Ensure containers are healthy: ```bash docker compose -f
+    infra/docker/docker-compose.yml ps ``` Wait for `healthy` status before
+    connecting.
   </Accordion>
 </AccordionGroup>
 

@@ -29,7 +29,7 @@ from livekit.agents import (
     metrics,
 )
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
-from livekit.plugins import deepgram, elevenlabs, noise_cancellation, silero
+from livekit.plugins import deepgram, elevenlabs, noise_cancellation, silero  # type: ignore[attr-defined]
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 _settings_instance: Any = None
@@ -108,7 +108,7 @@ class CustomLLM(LLM):
                 logger.error(f"Failed to send conversation ID: {e}")
 
     @asynccontextmanager
-    async def chat(self, chat_ctx: ChatContext, **kwargs):
+    async def chat(self, chat_ctx: ChatContext, **kwargs):  # type: ignore[override]
         """
         Stream Server-Sent Events from your backend and yield tiny ChatChunks so
         LiveKit can TTS-stream them immediately to ElevenLabs.
@@ -248,7 +248,7 @@ async def entrypoint(ctx: JobContext):
         room=ctx.room,
     )
 
-    session = AgentSession(
+    session: AgentSession = AgentSession(
         llm=custom_llm,
         stt=deepgram.STT(model="nova-3", language="multi"),
         tts=elevenlabs.TTS(

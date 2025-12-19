@@ -17,7 +17,7 @@ python.uv_venv_auto = true
 
 [tasks.dev]
 description = "Run development server with hot reload"
-run = "uv run --group backend --group voice_agent uvicorn app.main:app --port 8000 --reload --log-level info"
+run = "uv run --group backend --group voice_agent uvicorn app.main:app --port 8000 --reload --reload-dir app --log-level info"
 
 [tasks.start]
 description = "Run production server"

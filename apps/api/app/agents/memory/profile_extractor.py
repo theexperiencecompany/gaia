@@ -14,31 +14,23 @@ import json
 import os
 import re
 import time
-from typing import Dict, List
 from difflib import SequenceMatcher
+from typing import Dict, List
 
+import ftfy
 from app.agents.llm.client import init_llm
 from app.config.loggers import memory_logger as logger
+from app.config.settings import settings
+from app.constants.general import (
+    DEDUPLICATION_SIMILARITY_THRESHOLD,
+    MAX_EMAILS_PER_PLATFORM,
+    PROFILE_EXTRACTION_LLM_MODEL,
+    PROFILE_EXTRACTION_LLM_PROVIDER,
+)
+from bs4 import BeautifulSoup  # For HTML cleaning
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
-from bs4 import BeautifulSoup  # For HTML cleaning
-import ftfy  # For fixing text encoding issues
 
-# Debug flag - synced with email_processor
-DEBUG_EMAIL_PROCESSING = True
-
-# Email processing limits
-MAX_EMAILS_PER_PLATFORM = 20  # Maximum emails to fetch per platform from Gmail API
-
-DEDUPLICATION_SIMILARITY_THRESHOLD = (
-    0.9  # Similarity threshold for considering emails duplicates (0.0-1.0)
-)
-
-# LLM Configuration for profile extraction
-PROFILE_EXTRACTION_LLM_PROVIDER = "gemini"  # Use Gemini for profile extraction
-PROFILE_EXTRACTION_LLM_MODEL = "gemini-2.0-flash"
-
-# Platform configuration
 PLATFORM_CONFIG = {
     "twitter": {
         "sender_domains": [
@@ -449,7 +441,7 @@ async def extract_username_with_llm(
     )
 
     # Debug: Log deduplication results
-    if DEBUG_EMAIL_PROCESSING:
+    if settings.DEBUG_EMAIL_PROCESSING:
         debug_dir = os.path.join(os.path.dirname(__file__), "debug_logs")
         os.makedirs(debug_dir, exist_ok=True)
         dedup_file = os.path.join(debug_dir, f"{platform}_deduplication.json")
@@ -504,7 +496,7 @@ async def extract_username_with_llm(
 
     # Debug: Log what's being sent to LLM
     debug_dir = os.path.join(os.path.dirname(__file__), "debug_logs")
-    if DEBUG_EMAIL_PROCESSING:
+    if settings.DEBUG_EMAIL_PROCESSING:
         os.makedirs(debug_dir, exist_ok=True)
         llm_input_file = os.path.join(debug_dir, f"{platform}_llm_input.json")
         with open(llm_input_file, "w") as f:
@@ -556,7 +548,7 @@ async def extract_username_with_llm(
         )
 
         # Debug: Log LLM response
-        if DEBUG_EMAIL_PROCESSING:
+        if settings.DEBUG_EMAIL_PROCESSING:
             debug_dir = os.path.join(os.path.dirname(__file__), "debug_logs")
             llm_output_file = os.path.join(debug_dir, f"{platform}_llm_output.json")
             with open(llm_output_file, "w") as f:

@@ -96,10 +96,11 @@ class TriggerConfig(BaseModel):
         if self.type != TriggerType.SCHEDULE or not self.cron_expression:
             return None
 
-        from app.utils.cron_utils import get_next_run_time
         from datetime import timezone as dt_timezone
-        import pytz
         from typing import Union
+
+        import pytz
+        from app.utils.cron_utils import get_next_run_time
 
         try:
             # Use user_timezone parameter, fallback to trigger config timezone, then UTC
@@ -291,6 +292,7 @@ class CreateWorkflowRequest(BaseModel):
     steps: Optional[List[WorkflowStep]] = Field(
         default=None,
         description="Optional pre-existing steps (e.g., from explore/community workflows). If provided, step generation will be skipped.",
+        max_length=10,
     )
     generate_immediately: bool = Field(
         default=False, description="Generate steps immediately vs background"

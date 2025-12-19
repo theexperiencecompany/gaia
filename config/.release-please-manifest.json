@@ -1,5 +1,5 @@
 {
-  "apps/api": "0.9.1",
-  "apps/web": "0.9.0",
+  "apps/api": "0.10.1",
+  "apps/web": "0.10.1",
   "apps/desktop": "0.1.0"
 }

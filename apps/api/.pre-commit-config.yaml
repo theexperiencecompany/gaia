@@ -29,4 +29,3 @@ repos:
     hooks:
       - id: pip-audit
         args: [--skip-editable]
-

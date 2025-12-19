@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.10.1 (2025-11-22)
+
+## What's Changed
+
+- fix: Allow sending messages with file uploads and improve tool hashing + batch processing by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/346
+
+**Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.10.0...v0.10.1
+
+## 0.10.0 (2025-11-22)
+
+## What's Changed
+
+- fix: Remove dummy data from explore workflows, workflows ui improvements & minor bug fixes by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/328
+- fix: gemini empty ai response by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/330
+- feat: enhance ComparisonTable with integration props and improve layout by @SahilSoni27 in https://github.com/theexperiencecompany/gaia/pull/332
+- release: v0.9.1 by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/333
+- fix: checkpointer posgresql issue by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/335
+- chore: release master by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/334
+- refactor(ui): Updated pricing bento cards with new labels and feature sets by @darsh145 in https://github.com/theexperiencecompany/gaia/pull/329
+- fix: pricing page issues and payment issues by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/337
+- fix: integrate Mem0 v2 API and overhaul memory service & onboarding fixes by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/339
+- fix: memory issues related to mem0 by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/340
+- feat: enhance subscription settings UI and add new subscription illustration by @darsh145 in https://github.com/theexperiencecompany/gaia/pull/342
+- fix: fixed weird message behaviour with indexdb by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/341
+- chore: added integration tools and enhanced security for redirect by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/343
+- release: security fixes and dexie fixes by @Dhruv-Maradiya in https://github.com/theexperiencecompany/gaia/pull/344
+
+## New Contributors
+
+- @SahilSoni27 made their first contribution in https://github.com/theexperiencecompany/gaia/pull/332
+- @darsh145 made their first contribution in https://github.com/theexperiencecompany/gaia/pull/329
+
+**Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.9.0...v0.10.0
+
 ## 0.9.0 (2025-11-18)
 
 ## What's Changed

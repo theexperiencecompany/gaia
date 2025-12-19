@@ -26,11 +26,8 @@ Use these prefixes in your commit messages:
 - `chore:`, `docs:`, `refactor:` - No version bump
 
 <CodeGroup>
-```bash Example Commits
-feat: add user authentication
-fix: resolve login button issue
-feat!: change API response format
-```
+  ```bash Example Commits feat: add user authentication fix: resolve login
+  button issue feat!: change API response format ```
 </CodeGroup>
 
 ### 2. Push to Master
@@ -64,9 +61,9 @@ When you merge the Release PR, Release Please:
 ## Best Practices
 
 <Tip>
-- **Use squash-merge** for PRs to maintain clean commit history
-- **Write clear commit messages** that explain the change's impact
-- **Review Release PRs** before merging to ensure correct version bumps
+  - **Use squash-merge** for PRs to maintain clean commit history - **Write
+  clear commit messages** that explain the change's impact - **Review Release
+  PRs** before merging to ensure correct version bumps
 </Tip>
 
 ## Manual Version Override
@@ -104,22 +101,39 @@ END_COMMIT_OVERRIDE
 ```
 
 <Note>
-This allows you to correct commit messages that will appear in the release notes after the fact.
+  This allows you to correct commit messages that will appear in the release
+  notes after the fact.
 </Note>
 
 ## Resources
 
 <CardGroup cols={2}>
-  <Card title="Release Please Docs" icon="book" href="https://github.com/googleapis/release-please">
+  <Card
+    title="Release Please Docs"
+    icon="book"
+    href="https://github.com/googleapis/release-please"
+  >
     Official Release Please documentation
   </Card>
-  <Card title="Conventional Commits" icon="git-alt" href="https://www.conventionalcommits.org/">
+  <Card
+    title="Conventional Commits"
+    icon="git-alt"
+    href="https://www.conventionalcommits.org/"
+  >
     Learn about conventional commit specification
   </Card>
-  <Card title="Customizing Guide" icon="wrench" href="https://github.com/googleapis/release-please/blob/main/docs/customizing.md">
+  <Card
+    title="Customizing Guide"
+    icon="wrench"
+    href="https://github.com/googleapis/release-please/blob/main/docs/customizing.md"
+  >
     Advanced customization options
   </Card>
-  <Card title="Troubleshooting Guide" icon="bug" href="https://github.com/googleapis/release-please/blob/main/docs/troubleshooting.md">
+  <Card
+    title="Troubleshooting Guide"
+    icon="bug"
+    href="https://github.com/googleapis/release-please/blob/main/docs/troubleshooting.md"
+  >
     Common issues and solutions
   </Card>
 </CardGroup>

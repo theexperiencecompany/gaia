@@ -27,7 +27,7 @@ Spoiler: It was not just a wrapper. It took about a day of intense wrestling, bu
 
 ## The First Decision: Tauri vs. Electron
 
-I'll be honest—I really, *really* wanted to use Tauri.
+I'll be honest—I really, _really_ wanted to use Tauri.
 
 If you've been following the space, you know Tauri v2 is the new hotness. It's written in Rust, uses the OS's native webview (WebKit on macOS, WebView2 on Windows), and produces tiny binaries (\~10MB vs Electron's \~150MB). As a founder who cares about performance, that sounded like a dream.
 
@@ -39,7 +39,7 @@ With Tauri, supporting this required the "Sidecar" pattern—essentially bundlin
 
 I ran the numbers and realized the "Tauri Advantage" evaporated for our use case:
 
-1.  **Complexity:** We'd have to manage Rust, the Tauri configuration, *and* a separate Node.js packaging flow using `pkg` or `nexe`.
+1.  **Complexity:** We'd have to manage Rust, the Tauri configuration, _and_ a separate Node.js packaging flow using `pkg` or `nexe`.
 2.  **Size:** Once you bundle the Node.js runtime (sidecar) + the WebView overhead, we were looking at \~80-100MB anyway.
 3.  **Maturity:** Electron is boring. But "boring" means when you Google "Electron Next.js standalone pnpm," you get answers. With Tauri v2 sidecars, we were largely on our own.
 
@@ -71,16 +71,16 @@ Here is a snippet of how we handle the background server spawn in `main/index.ts
 ```typescript
 // Don't wait for this to finish to show the window
 startNextServer(port).catch((err) => {
-  console.error('Failed to start Next.js server:', err);
+  console.error("Failed to start Next.js server:", err);
 });
 
 // Show splash immediately
 const mainWindow = createWindow();
-mainWindow.loadFile(join(__dirname, '../renderer/splash.html'));
+mainWindow.loadFile(join(__dirname, "../renderer/splash.html"));
 
 // Poll for readiness
 waitOn({ resources: [`http://localhost:${port}`] }).then(() => {
-   mainWindow.loadURL(`http://localhost:${port}`);
+  mainWindow.loadURL(`http://localhost:${port}`);
 });
 ```
 
@@ -117,8 +117,8 @@ rsync -aL --delete "$SOURCE" "$DEST"
 
 EXIT_CODE=$?
 
-# rsync code 23 = partial transfer. 
-# We ignore it because it usually means it skipped some unreadable symlinks 
+# rsync code 23 = partial transfer.
+# We ignore it because it usually means it skipped some unreadable symlinks
 # that we don't actually need for the runtime.
 if [ $EXIT_CODE -eq 0 ] || [ $EXIT_CODE -eq 23 ]; then
   echo "Rsync completed (ignoring code 23)."
@@ -139,8 +139,8 @@ However, Next.js `output: standalone` and Nx caching do not get along. We kept h
 
 We aren't the only ones. We found multiple issues tracking this exact behavior:
 
-  * [Nx Issue \#27724](https://github.com/nrwl/nx/issues/27724)
-  * [Nx Issue \#30733](https://github.com/nrwl/nx/issues/30733)
+- [Nx Issue \#27724](https://github.com/nrwl/nx/issues/27724)
+- [Nx Issue \#30733](https://github.com/nrwl/nx/issues/30733)
 
 Essentially, Nx tries to hard-link files that Next.js is messing with, and the whole thing explodes. We lost hours debugging this. In the end, we had to forcibly disable the cache specifically for the desktop distribution step.
 
@@ -169,7 +169,7 @@ We also broke our UI. The HeroUI styling completely vanished because of how we w
 In `tailwind.css`, we had a line pointing to the theme:
 `@source "../../../../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";`
 
-In a standard web build, this path was fine. But inside the Electron monorepo structure, it was pointing to the *web app's* `node_modules` instead of the *root* `node_modules`. To make matters weirder, despite using `node-linker=hoisted` in our `.npmrc` (which flattens dependencies), the `@heroui/theme` package wasn't even *in* the web folder—it was sitting in the root the whole time.
+In a standard web build, this path was fine. But inside the Electron monorepo structure, it was pointing to the _web app's_ `node_modules` instead of the _root_ `node_modules`. To make matters weirder, despite using `node-linker=hoisted` in our `.npmrc` (which flattens dependencies), the `@heroui/theme` package wasn't even _in_ the web folder—it was sitting in the root the whole time.
 
 We had to manually fix the paths in `tailwind.css` to align with the actual file structure generated during the build.
 

@@ -264,9 +264,9 @@ class SubagentEvaluator:
         runnable_config = build_agent_config(
             conversation_id=f"eval_{self.config.id}_{datetime.now().timestamp()}",
             user={
-                "user_id": "691f716ce014f3ad5e8dc9a6",
-                "email": "dhruvmaradiya0@gmail.com",
-                "name": "Dhruv",
+                "user_id": settings.EVAL_USER_ID,
+                "email": settings.EVAL_USER_EMAIL,
+                "name": settings.EVAL_USER_NAME,
             },
             user_model_config=await get_model_by_id("gemini-2.0-flash"),
             user_time=datetime.now(),

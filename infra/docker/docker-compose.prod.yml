@@ -96,7 +96,7 @@ services:
       retries: 5
     networks:
       - gaia_network
-    
+
   # Redis Service
   redis:
     image: redis:alpine

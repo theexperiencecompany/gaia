@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag to build for (e.g., v1.0.0)'
+        description: "Release tag to build for (e.g., v1.0.0)"
         required: false
 
 concurrency:
@@ -30,19 +30,19 @@ jobs:
             target: linux
 
     runs-on: ${{ matrix.os }}
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: pnpm/action-setup@v4
         with:
           version: 10.17.1
-          
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
-          
+          cache: "pnpm"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -61,13 +61,13 @@ jobs:
           else
             echo "No tag provided, using version from package.json"
           fi
-        
+
       - name: Build Desktop (${{ matrix.target }})
         run: nx dist:${{ matrix.target }} desktop
         env:
           NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
+
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:

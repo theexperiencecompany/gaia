@@ -27,7 +27,7 @@ While I was architecting the migration, **Dhruv (CTO)** was rewriting core backe
 
 This is the story of how we migrated GAIA to an Nx workspace without halting the feature factory, and the "Let's f\*\*king do it" meeting that started it all.
 
------
+---
 
 ## The "Let's F\*\*king Do It" Meeting
 
@@ -37,7 +37,7 @@ It started with a simple realization: **We need notifications.**
 
 Notifications on the web are notoriously terrible. We looked at WhatsApp, but the costs are high and Meta's support for general AI assistants is worsening by the day. SMS is barely an option. We realized that if we wanted GAIA to be truly useful, we needed a native Mobile App.
 
-I asked Dhruv: *"How long do you think a mobile app would take? A couple of weeks? A month?"*
+I asked Dhruv: _"How long do you think a mobile app would take? A couple of weeks? A month?"_
 
 We broke it down right there in the call. We already had the API. We didn't need to brainstorm the UI because the design system was already built for the web. The only "hard" part was chat state management; the rest was just CRUD.
 
@@ -50,12 +50,12 @@ But we didn't stop there. I looked at my own dock—ChatGPT, Notion Calendar, To
 **The Velocity:**
 The result of that call was terrifyingly fast.
 
-  * **The Desktop App** was ready the next day.
-  * **The Mobile App shell (MVP UI)** was ready the next day too.
+- **The Desktop App** was ready the next day.
+- **The Mobile App shell (MVP UI)** was ready the next day too.
 
-Suddenly, we went from managing one web repo to managing Web, Mobile, Desktop, and Backend simultaneously. That was the moment our old architecture broke. That was the moment we *needed* Nx.
+Suddenly, we went from managing one web repo to managing Web, Mobile, Desktop, and Backend simultaneously. That was the moment our old architecture broke. That was the moment we _needed_ Nx.
 
------
+---
 
 ## The "Enterprise" Fear: Why We Almost Skipped Nx
 
@@ -66,12 +66,12 @@ Nx is massive. It's feature-rich. Usually, when you see a platform that big, you
 1.  The learning curve will be a vertical wall.
 2.  The documentation will be terrible (a classic trait of large, enterprise-focused platforms).
 
-We thought, *"Do we really want to spend two weeks just configuring a build tool?"*
+We thought, _"Do we really want to spend two weeks just configuring a build tool?"_
 
 **The Surprise:**
 We were wrong. Nx wasn't an "all-or-nothing" monolith. It allowed us to adopt features incrementally. We didn't have to set up distributed cloud caching or complex code generators on Day 1. We could start small—using it just as a smart task runner—and integrate more features as we needed them. The documentation was actually helpful, guiding us through a "progressive adoption" rather than forcing a complete ecosystem rewrite.
 
------
+---
 
 ## The Coordination Crisis & Git Gymnastics
 
@@ -79,7 +79,7 @@ The hardest part of this migration wasn't the code; it was the choreography. We 
 
 ### The "Decoupled" Mobile Strategy
 
-We made a tactical decision with Sankalp on the mobile front. Since the "Shared State Magic" inside the monorepo wasn't ready, we didn't want him blocked. We told him: *"Build the UI. Just the visuals. Mock the data."*
+We made a tactical decision with Sankalp on the mobile front. Since the "Shared State Magic" inside the monorepo wasn't ready, we didn't want him blocked. We told him: _"Build the UI. Just the visuals. Mock the data."_
 
 He started building the basic React Native UI structure completely decoupled from the logic. This allowed him to make progress on the pixels while I sorted out the plumbing.
 
@@ -88,46 +88,46 @@ He started building the basic React Native UI structure completely decoupled fro
 If I moved files around while Dhruv and Vinit were editing them on the backend, we would have faced the "Merge Conflict from Hell." Here is exactly how we landed this:
 
 1.  **Stabilize:** We waited for Dhruv and Vinit to finish their sprint tasks and merged them into `develop`.
-2.  **Sync:** I pulled `develop` into my feature branch *before* moving a single file.
+2.  **Sync:** I pulled `develop` into my feature branch _before_ moving a single file.
 3.  **Shift:** I physically moved `backend/` $\rightarrow$ `apps/backend/` and `frontend/` $\rightarrow$ `apps/frontend/`.
 4.  **Mobile Merge:** Once the structure was solid, we merged Sankalp's mobile UI work into `apps/mobile`.
 
------
+---
 
 ## The Strategic Pivot: Why `gaia-ui` Stayed Behind
 
 Mid-migration, we hit a decision point regarding our design system, `gaia-ui`.
 
-Technically, Nx supports this easily. We could have pulled the UI library in and preserved the Git history. Sankalp asked, *"Should we move the UI in now?"*
+Technically, Nx supports this easily. We could have pulled the UI library in and preserved the Git history. Sankalp asked, _"Should we move the UI in now?"_
 
 My instinct was "Yes, put everything in the Monorepo." But then Dhruv, Sankalp, and I took a step back to look at the product strategy, not just the code.
 
 **The Argument for Separation:**
-We want `gaia-ui` to be more than just *our* internal library. We want traction. We want other developers to find it, star it, and use it in their projects.
+We want `gaia-ui` to be more than just _our_ internal library. We want traction. We want other developers to find it, star it, and use it in their projects.
 
-Sankalp made the critical point: *"If we bury it inside the monorepo, contributing becomes a nightmare."*
+Sankalp made the critical point: _"If we bury it inside the monorepo, contributing becomes a nightmare."_
 
 If a developer wants to fix a button padding in `gaia-ui` but they have to clone our entire Desktop/Web/Mobile/Python monorepo just to do it, they won't bother. It creates too much friction.
 
 **The Verdict:**
 We decided to keep `gaia-ui` in a separate repository to lower the barrier for open-source contribution and increase visibility.
 
------
+---
 
 ## The Clean-Up: Migrating Release Please
 
 One detail that often gets overlooked in these blog posts is the Ops side. Moving folders breaks automation.
 
-We rely on `release-please` to automate our changelogs and versioning. Since we moved the root of our applications into `apps/backend` and `apps/frontend`, our old configuration broke immediately. We had to restructure our release manifest to point to the new paths—a small but necessary step to ensure that when we shipped this new architecture, we could actually *release* it.
+We rely on `release-please` to automate our changelogs and versioning. Since we moved the root of our applications into `apps/backend` and `apps/frontend`, our old configuration broke immediately. We had to restructure our release manifest to point to the new paths—a small but necessary step to ensure that when we shipped this new architecture, we could actually _release_ it.
 
------
+---
 
 ## The Great Debate: Nx AND Mise?
 
 This was the biggest architectural debate we had.
 
-We were already using **[mise](https://mise.jdx.dev)** (formerly rtx) to manage our tools. When we introduced Nx, we got confused. Nx *also* has a task runner.
-We thought: *"Should we just delete mise and use Nx for everything?"*
+We were already using **[mise](https://mise.jdx.dev)** (formerly rtx) to manage our tools. When we introduced Nx, we got confused. Nx _also_ has a task runner.
+We thought: _"Should we just delete mise and use Nx for everything?"_
 
 **The "Install Hell" Problem:**
 If we removed mise, a new developer joining GAIA would have a miserable Day 1. They would have to manually install Python 3.11, Node 22, `uv`, `pnpm`, and `prek`. Then they'd have to run `npm install` manually. Nx is an amazing build tool, but it is **not** an environment manager.
@@ -152,7 +152,7 @@ postinstall = "pnpm install" # Automates the dependency installation
 
 ### 2\. Nx Manages the Tasks (Called by Mise)
 
-We don't use mise to *run* the build logic directly. We use mise to *call* Nx.
+We don't use mise to _run_ the build logic directly. We use mise to _call_ Nx.
 
 This was a massive Quality of Life improvement. Look at the difference:
 
@@ -164,7 +164,7 @@ This was a massive Quality of Life improvement. Look at the difference:
 
 It abstracts away the complexity. A new developer doesn't need to know the parallelization flags or the project names. They just run the mise task.
 
------
+---
 
 ## Killing Your Darlings: Goodbye `mprocs`
 
@@ -178,7 +178,7 @@ Nx now has a native interactive terminal that handles parallel processes beautif
 
 We realized that to keep the stack clean, we had to stop hoarding tools. We deprecated `mprocs` and embraced the Nx way.
 
------
+---
 
 ## The Result
 

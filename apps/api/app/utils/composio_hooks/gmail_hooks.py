@@ -74,9 +74,12 @@ def gmail_compose_before_hook(
             if isinstance(recipients, str):
                 recipients = [recipients]
         else:
+            extra_recipients = arguments.get("extra_recipients", [])
+            if not isinstance(extra_recipients, list):
+                extra_recipients = []
             recipients = [
                 arguments.get("recipient_email", ""),
-                *arguments.get("extra_recipients", []),
+                *extra_recipients,
             ]
 
         # Build the email compose data
