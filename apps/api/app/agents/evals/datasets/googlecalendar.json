@@ -1,0 +1,184 @@
+{
+  "name": "Google Calendar Capabilities",
+  "description": "Evaluation dataset for Google Calendar subagent capabilities including event management, calendar operations, free/busy queries, and scheduling. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "google_calendar_agent",
+  "integration_id": "googlecalendar",
+  "items": [
+    {
+      "input": "create meeting tomorrow at 2pm called Team Standup",
+      "expected_output": "Create event with summary 'Team Standup' and start_datetime set to tomorrow 2pm.",
+      "context": "User wants to create event",
+      "tags": ["event", "create", "schedule"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show my calendar events for today",
+      "expected_output": "List events for today with timeMin and timeMax set to today.",
+      "context": "User wants daily schedule",
+      "tags": ["event", "list", "today"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "what's on my calendar this week",
+      "expected_output": "List events with date range for current week.",
+      "context": "User wants weekly events",
+      "tags": ["event", "list", "week"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "schedule meeting with john@example.com for friday at 10am",
+      "expected_output": "Create event with attendee john@example.com for Friday 10am.",
+      "context": "User wants meeting with attendee",
+      "tags": ["event", "create", "attendee", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "find the meeting about budget review",
+      "expected_output": "Find event using query 'budget review'.",
+      "context": "User wants to search events",
+      "tags": ["event", "find", "search"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "reschedule the standup to 3pm",
+      "expected_output": "1. Find event 'standup'. 2. Patch event with new start time.",
+      "context": "User wants to update event time",
+      "tags": ["event", "update", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create event 'Client Call' for 1 hour 30 minutes",
+      "expected_output": "Create event with event_duration_hour=1 and event_duration_minutes=30.",
+      "context": "User specifies duration",
+      "tags": ["event", "create", "duration"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "delete the cancelled meeting",
+      "expected_output": "1. Find cancelled meeting. 2. Request confirmation. 3. Delete event.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["event", "delete", "search", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "check when I'm free tomorrow",
+      "expected_output": "Query free/busy or find free slots for tomorrow.",
+      "context": "User wants availability",
+      "tags": ["freebusy", "query"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "when am I available for a meeting this week",
+      "expected_output": "Find free slots for current week.",
+      "context": "User wants free time slots",
+      "tags": ["freebusy", "free_slots", "week"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list my calendars",
+      "expected_output": "List all calendars in user's calendar list.",
+      "context": "User wants to see calendars",
+      "tags": ["calendar", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create calendar called 'Personal Projects'",
+      "expected_output": "Create new calendar with summary 'Personal Projects'.",
+      "context": "User wants new calendar",
+      "tags": ["calendar", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add sarah@company.com to the team meeting",
+      "expected_output": "1. Find team meeting event. 2. Patch event to add attendee.",
+      "context": "User wants to add attendee",
+      "tags": ["event", "update", "attendee", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "remove john from the project kickoff event",
+      "expected_output": "1. Find project kickoff event. 2. Remove attendee john.",
+      "context": "User wants to remove attendee",
+      "tags": ["event", "attendee", "remove", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "quick add lunch with boss tomorrow noon",
+      "expected_output": "Quick add event with natural language text.",
+      "context": "User wants natural language scheduling",
+      "tags": ["event", "quickadd", "lazy"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "update meeting description to include agenda",
+      "expected_output": "1. Find meeting. 2. Patch event with updated description.",
+      "context": "User wants to update event",
+      "tags": ["event", "update", "description", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get calender events",
+      "expected_output": "1. Recognize 'calender' as typo for 'calendar'. 2. List calendar events.",
+      "context": "User made typo",
+      "tags": ["event", "list", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "move sprint planning to Work calendar",
+      "expected_output": "1. Find sprint planning event. 2. Move event to Work calendar.",
+      "context": "User wants to move event between calendars",
+      "tags": ["event", "move", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "what time is it in my timezone",
+      "expected_output": "Get current date and time for user's timezone.",
+      "context": "User wants current time",
+      "tags": ["time", "get"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show all instances of weekly standup",
+      "expected_output": "1. Find weekly standup event. 2. Get event instances.",
+      "context": "User wants recurring event instances",
+      "tags": ["event", "instances", "recurring", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "delete my secondary calendar",
+      "expected_output": "1. List calendars. 2. Find secondary calendar. 3. Request confirmation. 4. Delete calendar.",
+      "context": "User wants to delete calendar - needs consent",
+      "tags": ["calendar", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get my calendar settings",
+      "expected_output": "List user settings for calendar.",
+      "context": "User wants settings",
+      "tags": ["settings", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "update Work calendar description",
+      "expected_output": "1. Find Work calendar. 2. Patch calendar with new description.",
+      "context": "User wants to update calendar",
+      "tags": ["calendar", "update", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create all-day event for company holiday on Dec 25",
+      "expected_output": "Create event with all-day format for December 25.",
+      "context": "User wants all-day event",
+      "tags": ["event", "create", "allday"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "find meetings with john next week",
+      "expected_output": "Find events with query 'john' and date range for next week.",
+      "context": "User wants filtered event search",
+      "tags": ["event", "find", "filter", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    }
+  ]
+}

@@ -23,12 +23,14 @@ from app.agents.prompts.subagent_prompts import (
     INSTAGRAM_AGENT_SYSTEM_PROMPT,
     LINEAR_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
+    MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
     REDDIT_AGENT_SYSTEM_PROMPT,
     SLACK_AGENT_SYSTEM_PROMPT,
     TODOIST_AGENT_SYSTEM_PROMPT,
     TRELLO_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
+    ZOOM_AGENT_SYSTEM_PROMPT,
 )
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
 from app.models.oauth_models import (
@@ -440,34 +442,54 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=TODOIST_AGENT_SYSTEM_PROMPT,
         ),
     ),
-    # OAuthIntegration(
-    #     id="microsoft_teams",
-    #     name="Microsoft Teams",
-    #     description="Collaborate with teams, send messages, manage channels, and automate team workflows",
-    #     category="communication",
-    #     provider="microsoft_teams",
-    #     scopes=[],
-    #     available=True,
-    #     short_name="teams",
-    #     managed_by="composio",
-    #     composio_config=ComposioConfig(
-    #         auth_config_id="ac_0kzvAbsi2xu3", toolkit="MICROSOFTTEAMS"
-    #     ),
-    # ),
-    # OAuthIntegration(
-    #     id="zoom",
-    #     name="Zoom",
-    #     description="Create and manage Zoom meetings, webinars, and video conferencing",
-    #     category="communication",
-    #     provider="zoom",
-    #     scopes=[],
-    #     available=True,
-    #     short_name="zoom",
-    #     managed_by="composio",
-    #     composio_config=ComposioConfig(
-    #         auth_config_id="ac_fABNBG17lf2A", toolkit="ZOOM"
-    #     ),
-    # ),
+    OAuthIntegration(
+        id="microsoft_teams",
+        name="Microsoft Teams",
+        description="Collaborate with teams, send messages, manage channels, and automate team workflows",
+        category="communication",
+        provider="microsoft_teams",
+        scopes=[],
+        available=True,
+        short_name="teams",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_0kzvAbsi2xu3", toolkit="MICROSOFTTEAMS"
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="microsoft_teams_agent",
+            tool_space="microsoft_teams",
+            handoff_tool_name="call_microsoft_teams_agent",
+            domain="team collaboration and communication",
+            capabilities="sending messages, managing channels, scheduling meetings, managing teams, file sharing, chat operations, call management, and automating team workflows",
+            use_cases="team messaging, channel management, meeting coordination, file sharing, or any Microsoft Teams collaboration task",
+            system_prompt=MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
+        ),
+    ),
+    OAuthIntegration(
+        id="zoom",
+        name="Zoom",
+        description="Create and manage Zoom meetings, webinars, and video conferencing",
+        category="communication",
+        provider="zoom",
+        scopes=[],
+        available=True,
+        short_name="zoom",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_fABNBG17lf2A", toolkit="ZOOM"
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="zoom_agent",
+            tool_space="zoom",
+            handoff_tool_name="call_zoom_agent",
+            domain="video conferencing and webinar management",
+            capabilities="creating meetings, scheduling webinars, managing participants, cloud recording, meeting invitations, attendance tracking, and automating video conferencing workflows",
+            use_cases="scheduling meetings, managing webinars, recording conferences, tracking attendance, or any Zoom video conferencing task",
+            system_prompt=ZOOM_AGENT_SYSTEM_PROMPT,
+        ),
+    ),
     OAuthIntegration(
         id="googlemeet",
         name="Google Meet",

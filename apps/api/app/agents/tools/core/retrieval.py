@@ -46,9 +46,7 @@ def get_retrieve_tools_function(
 
         This is your primary interface to the tool ecosystem. It supports TWO modes:
 
-        --------------------------------
-        DISCOVERY MODE (query)
-        --------------------------------
+        —DISCOVERY MODE (query)
         Use natural language to semantically search for relevant tools.
 
         IMPORTANT BEHAVIOR:
@@ -74,27 +72,20 @@ def get_retrieve_tools_function(
 
         Discovery mode ONLY returns tool names. Tools are NOT loaded.
 
-        --------------------------------
-        BINDING MODE (exact_tool_names)
-        --------------------------------
+        —BINDING MODE (exact_tool_names)
         Load tools by their exact names.
-
         - Use this ONLY after discovery or when exact names are already known
         - Invalid or unknown tool names are ignored
         - Successfully validated tools become available for execution
 
-        --------------------------------
-        RECOMMENDED WORKFLOW
-        --------------------------------
+        —RECOMMENDED WORKFLOW
         1. Call retrieve_tools(query="your intent") to discover tools
         2. Review returned tool names
         3. Retry discovery with alternate queries if needed
         4. Call retrieve_tools(exact_tool_names=[...]) to bind tools
         5. Execute bound tools
 
-        --------------------------------
-        TOOL NAME FORMATS
-        --------------------------------
+        —TOOL NAME FORMATS
         - Regular tools: "GMAIL_SEND_DRAFT", "CREATE_TODO"
         - Subagent tools: "subagent:gmail", "subagent:notion"
 
@@ -102,20 +93,40 @@ def get_retrieve_tools_function(
         - Subagent tools require delegation via the `handoff` tool
         - Discovery may return subagents alongside regular tools
 
-        Args:
-            query:
-                Natural language description of intent for discovery.
-                Results are limited and best-effort.
-                Retry with different phrasing if needed.
+        —ARGS
+        query:
+            Natural language description of intent for discovery.
+            Results are limited and best-effort.
+            Retry with different phrasing if needed.
 
-            exact_tool_names:
-                Exact tool names to load and bind for execution.
+        exact_tool_names:
+            Exact tool names to load and bind for execution.
 
-        Returns:
-            RetrieveToolsResult with:
-            - tools_to_bind: tools that are loaded and executable
-            - response: tool names discovered or validated
+        —RETURNS
+        RetrieveToolsResult with:
+        - tools_to_bind: tools that are loaded and executable
+        - response: tool names discovered or validated
 
+        —EXAMPLES
+        1. Find and reply to email (Gmail)
+        Discover:
+          retrieve_tools(query="find emails, reply to thread")
+          → returns ["GMAIL_LIST_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
+        Bind & Execute:
+          retrieve_tools(exact_tool_names=["GMAIL_LIST_EMAILS","GMAIL_REPLY_TO_THREAD"])
+          → GMAIL_LIST_EMAILS(...) returns email list
+          → GMAIL_REPLY_TO_THREAD(...) sends reply
+
+        2. Search, delete, and recreate tasks with subtasks (Todo)
+        Discover:
+          retrieve_tools(query="search todos, delete task, create with subtasks")
+          → returns ["search_todos", "delete_todo", "create_todo", "add_subtask", ...]
+        Bind & Execute:
+          retrieve_tools(exact_tool_names=["search_todos","delete_todo","create_todo","add_subtask"])
+          → search_todos(...) finds matching tasks
+          → delete_todo(...) removes old task
+          → create_todo(...) creates new task
+          → add_subtask(...) adds subtasks
         """
         from app.agents.tools.core.registry import get_tool_registry
 

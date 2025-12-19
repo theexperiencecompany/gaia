@@ -650,6 +650,8 @@ Before acting on any GitHub entity, you MUST verify its existence:
 - Issues → search issues
 - Labels → list labels
 - Users / assignees → list eligible collaborators
+- Repositories → list repositories
+- Organization → list organizations
 
 Never assume user-provided identifiers are exact.
 
@@ -682,6 +684,75 @@ Always report:
 - what was verified
 - what changed
 - what action ultimately succeeded
+
+—Examples
+1. Create PR and request review (wrong identifiers)
+Flow:
+  retrieve_tools(query="create pull request, list branches, list repositories")
+  retrieve_tools(exact_tool_names=["GITHUB_CREATE_A_PULL_REQUEST"])
+  → GITHUB_CREATE_A_PULL_REQUEST(...) fails (not found)
+
+Recovery:
+  retrieve_tools(exact_tool_names=["GITHUB_LIST_BRANCHES","GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER"])
+  → GITHUB_LIST_BRANCHES() and GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER()
+  → verify correct branch and repository
+  → GITHUB_CREATE_A_PULL_REQUEST(...) succeeds
+
+Then:
+  retrieve_tools(query="request review, list assignees")
+  retrieve_tools(exact_tool_names=["GITHUB_REQUEST_REVIEWERS_FOR_A_PULL_REQUEST"])
+  → GITHUB_REQUEST_REVIEWERS_FOR_A_PULL_REQUEST(user_name) fails
+
+Recovery:
+  retrieve_tools(exact_tool_names=["GITHUB_LIST_ASSIGNEES"])
+  → GITHUB_LIST_ASSIGNEES()
+  → verify reviewer
+  → GITHUB_REQUEST_REVIEWERS_FOR_A_PULL_REQUEST(...) succeeds
+
+Outcome:
+  PR created
+  Review requested
+
+2. Find issue and assign to xyz (wrong repo or assignee)
+Flow:
+  retrieve_tools(query="list issues, list repositories")
+  retrieve_tools(exact_tool_names=["GITHUB_LIST_REPOSITORY_ISSUES"])
+  → GITHUB_LIST_REPOSITORY_ISSUES(...) returns empty or irrelevant or fails
+
+Recovery:
+  retrieve_tools(exact_tool_names=["GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER"])
+  → GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER()
+  → identify correct repository
+  → GITHUB_LIST_REPOSITORY_ISSUES(...) finds matching issue
+
+Then:
+  retrieve_tools(query="assign issue, list assignees")
+  retrieve_tools(exact_tool_names=["GITHUB_ADD_ASSIGNEES_TO_AN_ISSUE"])
+  → GITHUB_ADD_ASSIGNEES_TO_AN_ISSUE(user_name) fails
+
+Recovery:
+  retrieve_tools(exact_tool_names=["GITHUB_LIST_ASSIGNEES"])
+  → GITHUB_LIST_ASSIGNEES()
+  → verify assignee
+  → GITHUB_ADD_ASSIGNEES_TO_AN_ISSUE(...) succeeds
+
+Outcome:
+  Issue assigned to authenticated user
+
+3. Delete label that does not exist (verified escalation)
+Flow:
+  retrieve_tools(query="delete label, list labels")
+  retrieve_tools(exact_tool_names=["GITHUB_DELETE_A_LABEL"])
+  → GITHUB_DELETE_A_LABEL(...) fails (not found)
+
+Recovery:
+  retrieve_tools(exact_tool_names=["GITHUB_LIST_LABELS_FOR_A_REPOSITORY"])
+  → no exact or close match found
+
+Escalation:
+  Do not retry deletion
+  Report label does not exist
+  Ask for confirmation or alternative action
 """,
 )
 
