@@ -28,10 +28,10 @@ Self-host GAIA with Docker Compose. Keep it simple: start with minimal env vars,
     ```
   </Step>
   <Step title="Set minimal env vars">
-    Add a minimal `backend/.env` (see the “Minimal .env to boot locally” section
+    Add a minimal `apps/api/.env` (see the “Minimal .env to boot locally” section
     in [Environment Variables](/configuration/environment-variables)).
   </Step>
-  <Step title="Start services">```bash docker compose up -d ```</Step>
+  <Step title="Start services">```bash docker compose -f infra/docker/docker-compose.yml up -d ```</Step>
   <Step title="Open GAIA">
     - Web: http://localhost:3000 - Backend API: http://localhost:8000
   </Step>

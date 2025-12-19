@@ -51,18 +51,21 @@ GAIA uses Docker Compose to orchestrate all the required services. This makes de
 
 ```
 gaia/
-├── docker-compose.yml          # Main compose file
-├── docker-compose.prod.yml     # Production overrides
 ├── apps/
-│   ├── backend/
+│   ├── api/
 │   │   ├── Dockerfile
-│   │   ├── .env                # Backend environment variables
+│   │   ├── .env                # API environment variables
 │   │   └── ...
 │   ├── web/
 │   │   ├── Dockerfile
 │   │   ├── .env                # Web environment variables
 │   │   └── ...
-└── docs/
+│   └── docs/
+├── infra/
+│   └── docker/
+│       ├── docker-compose.yml      # Development compose file
+│       └── docker-compose.prod.yml # Production compose file
+└── ...
 ```
 
 ## Quick Start
@@ -81,8 +84,13 @@ gaia/
 </Step>
 
 <Step title="Start All Services">
-  ```bash # Start in detached mode (background) docker compose up -d # Or start
-  with logs visible docker compose up ```
+  ```bash 
+  # Start in detached mode (background) 
+  docker compose -f infra/docker/docker-compose.yml up -d 
+  
+  # Or start with logs visible 
+  docker compose -f infra/docker/docker-compose.yml up 
+  ```
 </Step>
 
   <Step title="Verify Deployment">
@@ -128,10 +136,19 @@ The Docker Compose setup includes the following services:
 {" "}
 
 <Accordion icon="server" title="Backend (gaia-backend)">
-  **FastAPI Python Application** - Port: 8000 - Auto-reload enabled in
-  development - RESTful API and WebSocket support ```yaml gaia-backend:
-  container_name: gaia-backend build: ./backend ports: - "8000:80" command:
-  ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--reload"] ```
+  **FastAPI Python Application** 
+  - Port: 8000 
+  - Auto-reload enabled in development 
+  - RESTful API and WebSocket support 
+  
+  ```yaml 
+  gaia-backend:
+    container_name: gaia-backend
+    build: ./apps/api
+    ports:
+      - "8000:80"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--reload"]
+  ```
 </Accordion>
 
   <Accordion icon="database" title="Databases">
