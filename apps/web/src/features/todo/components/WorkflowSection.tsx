@@ -36,9 +36,9 @@ export default function WorkflowSection({
   const { selectWorkflow } = useWorkflowSelection();
 
   // WebSocket handlers
-  // WebSocket handlers
   const handleWorkflowGenerated = useCallback(
     (wf: WorkflowType) => {
+      console.log("[WorkflowSection] WebSocket received workflow:", wf);
       setWorkflow(wf);
       setIsGenerating(false);
       setError(null);
@@ -61,6 +61,7 @@ export default function WorkflowSection({
   );
 
   const handleWorkflowFailed = useCallback((errorMsg: string) => {
+    console.log("[WorkflowSection] WebSocket workflow failed:", errorMsg);
     setIsGenerating(false);
     setError(errorMsg);
     toast.error("Failed to generate workflow");

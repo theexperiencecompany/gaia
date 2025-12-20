@@ -24,39 +24,15 @@ class TriggerType(str, Enum):
 class WorkflowStep(BaseModel):
     """A single step in a workflow."""
 
-    id: str = Field(description="Unique identifier for the step")
+    id: str = Field(default="", description="Unique identifier for the step")
     title: str = Field(description="Clear, actionable title for the step")
     category: str = Field(
-        default="general", description="Category for routing (e.g., gmail, notion, productivity)"
+        default="general",
+        description="Category for routing (e.g., gmail, notion, productivity)",
     )
     description: str = Field(
         description="Detailed description of what this step accomplishes"
     )
-    inputs: Dict[str, Any] = Field(
-        default_factory=dict, description="Context/inputs for execution"
-    )
-    order: int = Field(description="Order of execution (0-based)")
-    executed_at: Optional[datetime] = Field(default=None)
-    result: Optional[Dict[str, Any]] = Field(default=None)
-
-    @classmethod
-    def create_step(
-        cls,
-        step_number: int,
-        title: str,
-        category: str,
-        description: str,
-        inputs: Optional[Dict[str, Any]] = None,
-    ):
-        """Create a workflow step with auto-generated ID."""
-        return cls(
-            id=f"step_{step_number}",
-            title=title,
-            category=category,
-            description=description,
-            inputs=inputs or {},
-            order=step_number,
-        )
 
 
 class TriggerConfig(BaseModel):

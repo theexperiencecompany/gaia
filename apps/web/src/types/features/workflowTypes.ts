@@ -30,8 +30,6 @@ export interface WorkflowStepData {
   title: string;
   description: string;
   category: string;
-  inputs?: Record<string, unknown>;
-  order?: number;
 }
 
 /**
@@ -42,10 +40,6 @@ export interface WorkflowStepType {
   title: string;
   category: string;
   description: string;
-  inputs: Record<string, unknown>;
-  order: number;
-  executed_at?: string;
-  result?: Record<string, unknown>;
 }
 
 /**
@@ -58,8 +52,6 @@ export interface PublicWorkflowStep {
   title: string;
   category: string;
   description: string;
-  inputs?: Record<string, unknown>;
-  order?: number;
 }
 
 // ============================================================================

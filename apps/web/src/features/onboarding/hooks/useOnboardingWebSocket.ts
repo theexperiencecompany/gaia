@@ -18,7 +18,7 @@ export interface PersonalizationData {
     id: string;
     title: string;
     description: string;
-    steps: Array<{ tool_category: string }>;
+    steps: Array<{ category: string }>;
   }>;
 }
 

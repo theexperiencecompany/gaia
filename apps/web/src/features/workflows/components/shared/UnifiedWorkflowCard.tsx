@@ -149,8 +149,6 @@ export default function UnifiedWorkflowCard({
         title: step.title,
         description: step.description,
         category: step.category,
-        inputs: step.inputs || {},
-        order: step.order ?? index,
       }));
 
       const workflowRequest = {

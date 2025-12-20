@@ -1,7 +1,7 @@
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 interface ActionItemsIndicatorProps {
-  steps: Array<{ tool_category: string }>;
+  steps: Array<{ category: string }>;
   iconSize?: number;
 }
 
@@ -13,7 +13,7 @@ export function ActionItemsIndicator({
   steps,
   iconSize = 16,
 }: ActionItemsIndicatorProps) {
-  const categories = [...new Set(steps.map((s) => s.tool_category))];
+  const categories = [...new Set(steps.map((s) => s.category))];
   const displayIcons = categories.slice(0, 3);
 
   if (displayIcons.length === 0) return null;

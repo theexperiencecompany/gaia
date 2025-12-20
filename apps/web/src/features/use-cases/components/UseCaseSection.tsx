@@ -60,7 +60,7 @@ export default function UseCaseSection({
             action_type: "workflow" as const,
             integrations:
               w.steps
-                ?.map((s) => s.tool_category)
+                ?.map((s) => s.category)
                 .filter((v, i, a) => a.indexOf(v) === i) || [],
             categories: w.categories || ["featured"],
             published_id: w.id,

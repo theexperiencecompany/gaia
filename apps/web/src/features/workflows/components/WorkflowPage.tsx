@@ -26,7 +26,6 @@ import {
   workflowApi,
 } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
-import CreateWorkflowModal from "./CreateWorkflowModal";
 import EditWorkflowModal from "./EditWorkflowModal";
 import UnifiedWorkflowCard from "./shared/UnifiedWorkflowCard";
 import { WorkflowListSkeleton } from "./WorkflowSkeletons";
@@ -38,7 +37,6 @@ export default function WorkflowPage() {
   const workflowId = searchParams.get("id");
   const { setHeader } = useHeader();
 
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
   const {
     isOpen: isEditOpen,
     onOpen: onEditOpen,
@@ -66,7 +64,7 @@ export default function WorkflowPage() {
     action_type: "workflow",
     integrations:
       workflow.steps
-        ?.map((s) => s.tool_category)
+        ?.map((s) => s.category)
         .filter((v, i, a) => a.indexOf(v) === i) || [],
     categories: workflow.categories || ["featured"],
     published_id: workflow.id,
@@ -130,10 +128,6 @@ export default function WorkflowPage() {
       }
     }
   }, [workflowId, workflows, onEditOpen]);
-
-  const handleWorkflowCreated = useCallback(() => {
-    refetch();
-  }, [refetch]);
 
   const handleWorkflowDeleted = useCallback(
     (workflowId: string) => {
@@ -267,7 +261,16 @@ export default function WorkflowPage() {
                   onCardClick={() => handleWorkflowClick(workflow.id)}
                 />
               ),
-              <Button color="primary" variant="flat" onPress={onOpen}>
+              <Button
+                color="primary"
+                variant="flat"
+                onPress={() => {
+                  const btn = document.querySelector(
+                    '[data-keyboard-shortcut="create-workflow"]',
+                  ) as HTMLButtonElement;
+                  btn?.click();
+                }}
+              >
                 Create Your First Workflow
               </Button>,
             )}
@@ -308,13 +311,6 @@ export default function WorkflowPage() {
           )}
         </>
       )}
-
-      <CreateWorkflowModal
-        isOpen={isOpen}
-        onOpenChange={onOpenChange}
-        onWorkflowCreated={handleWorkflowCreated}
-        onWorkflowListRefresh={refetch}
-      />
 
       <EditWorkflowModal
         isOpen={isEditOpen}
