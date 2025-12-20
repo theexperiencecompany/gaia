@@ -1,7 +1,3 @@
-"""
-ARQ worker for processing reminder tasks.
-"""
-
 from arq import cron
 
 from app.workers.config.worker_settings import WorkerSettings
@@ -18,6 +14,7 @@ from app.workers.tasks import (
     process_reminder,
     process_workflow_generation_task,
     store_memories_batch,
+    regenerate_workflow_steps,
 )
 
 # Configure the worker settings with all task functions and lifecycle hooks
@@ -28,6 +25,7 @@ WorkerSettings.functions = [
     check_inactive_users,
     process_workflow_generation_task,
     execute_workflow_by_id,
+    regenerate_workflow_steps,
     generate_workflow_steps,
     process_gmail_emails_to_memory,
     process_personalization_task,
