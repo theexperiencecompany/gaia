@@ -12,6 +12,7 @@ import {
   ThumbsDownIcon,
   ThumbsUpIcon,
 } from "@/icons";
+import { posthog } from "@/lib";
 import { useReplyToMessage } from "@/stores/replyToMessageStore";
 
 interface ChatBubbleActionsProps {
@@ -86,6 +87,32 @@ export default function ChatBubble_Actions({
     }
   };
 
+  const handleThumbsUp = () => {
+    // Track message feedback with full message content
+    posthog.capture("chat:message_feedback", {
+      message_id,
+      message_role: messageRole,
+      message_content: text,
+      conversation_id: convoIdParam,
+      is_positive: true,
+    });
+
+    toast.success("Thanks for your feedback!");
+  };
+
+  const handleThumbsDown = () => {
+    // Track message feedback with full message content
+    posthog.capture("chat:message_feedback", {
+      message_id,
+      message_role: messageRole,
+      message_content: text,
+      conversation_id: convoIdParam,
+      is_positive: false,
+    });
+
+    toast.info("Thanks for your feedback!");
+  };
+
   return (
     <>
       {!loading && (
@@ -130,14 +157,13 @@ export default function ChatBubble_Actions({
           </Tooltip>
 
           {messageRole === "assistant" && (
-            <Tooltip content="Pin message" placement="bottom">
+            <Tooltip content="Helpful response" placement="bottom">
               <Button
                 isIconOnly
                 className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
                 variant="light"
                 radius="lg"
-                onPress={handlePinToggle}
-                color={pinned ? "primary" : "default"}
+                onPress={handleThumbsUp}
               >
                 <ThumbsUpIcon
                   className={`cursor-pointer`}
@@ -149,14 +175,13 @@ export default function ChatBubble_Actions({
           )}
 
           {messageRole === "assistant" && (
-            <Tooltip content="Pin message" placement="bottom">
+            <Tooltip content="Not helpful" placement="bottom">
               <Button
                 isIconOnly
                 className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
                 variant="light"
                 radius="lg"
-                onPress={handlePinToggle}
-                color={pinned ? "primary" : "default"}
+                onPress={handleThumbsDown}
               >
                 <ThumbsDownIcon
                   className={`cursor-pointer`}
