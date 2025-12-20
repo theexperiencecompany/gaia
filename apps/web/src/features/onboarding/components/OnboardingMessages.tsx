@@ -46,6 +46,7 @@ export const OnboardingMessages = ({
               follow_up_actions={undefined}
               image_data={undefined}
               memory_data={undefined}
+              replyToMessage={undefined}
               setOpenImage={() => {}}
               setImageData={() => {}}
               text={message.content}
@@ -83,6 +84,7 @@ export const OnboardingMessages = ({
               follow_up_actions={undefined}
               image_data={undefined}
               memory_data={undefined}
+              replyToMessage={undefined}
               disableActions={true}
             />
           )}
