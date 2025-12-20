@@ -78,6 +78,7 @@ async def _core_agent_logic(
             selected_tool=request.selectedTool,
             selected_workflow=request.selectedWorkflow,
             selected_calendar_event=request.selectedCalendarEvent,
+            reply_to_message=request.replyToMessage,
             trigger_context=trigger_context,
         ),
         GraphManager.get_graph("comms_agent"),

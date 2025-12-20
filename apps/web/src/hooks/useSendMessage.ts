@@ -7,6 +7,10 @@ import { db, type IMessage } from "@/lib/db/chatDb";
 import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
+import {
+  type ReplyToMessageData,
+  useReplyToMessageStore,
+} from "@/stores/replyToMessageStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
@@ -18,6 +22,7 @@ type SendMessageOverrides = {
   selectedToolCategory?: string | null;
   selectedWorkflow?: WorkflowData | null;
   selectedCalendarEvent?: SelectedCalendarEventData | null;
+  replyToMessage?: ReplyToMessageData | null;
 };
 
 export const useSendMessage = () => {
@@ -28,6 +33,7 @@ export const useSendMessage = () => {
       const composerState = useComposerStore.getState();
       const workflowState = useWorkflowSelectionStore.getState();
       const calendarEventState = useCalendarEventSelectionStore.getState();
+      const replyState = useReplyToMessageStore.getState();
 
       const files = overrides?.files ?? composerState.uploadedFileData;
       const normalizedFiles = (files ??
@@ -44,6 +50,8 @@ export const useSendMessage = () => {
         overrides?.selectedCalendarEvent ??
         calendarEventState.selectedCalendarEvent ??
         null;
+      const replyToMessage =
+        overrides?.replyToMessage ?? replyState.replyToMessage ?? null;
 
       const trimmedContent = content.trim();
       // Allow sending if there's text OR tool OR workflow OR calendar event OR files
@@ -74,6 +82,7 @@ export const useSendMessage = () => {
         toolCategory: selectedToolCategory ?? undefined,
         selectedWorkflow: selectedWorkflow ?? undefined,
         selectedCalendarEvent: selectedCalendarEvent ?? undefined,
+        replyToMessage: replyToMessage ?? undefined,
       };
 
       // For new conversations: use Zustand optimistic message (no conversationId yet)
@@ -102,6 +111,7 @@ export const useSendMessage = () => {
           selectedWorkflow,
           selectedCalendarEvent,
           optimisticId,
+          replyToMessage,
         );
         return;
       }
@@ -124,6 +134,8 @@ export const useSendMessage = () => {
         workflowId: selectedWorkflow?.id ?? null,
         selectedWorkflow: selectedWorkflow,
         selectedCalendarEvent: selectedCalendarEvent,
+        replyToMessageId: replyToMessage?.id ?? null,
+        replyToMessageData: replyToMessage,
         optimistic: true,
       };
       try {
@@ -143,6 +155,7 @@ export const useSendMessage = () => {
           selectedWorkflow,
           selectedCalendarEvent,
           optimisticId,
+          replyToMessage,
         );
       } catch (error) {
         console.error("[useSendMessage] Stream failed:", error);

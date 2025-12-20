@@ -12,6 +12,7 @@ from app.agents.templates.agent_template import (
 from app.config.loggers import llm_logger as logger
 from app.models.message_models import (
     FileData,
+    ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
@@ -243,6 +244,21 @@ Time: {time}"""
 
     if event.calendarTitle:
         context += f"\nCalendar: {event.calendarTitle}"
+
+    return f"{context}\n\n{existing_content}" if existing_content else context
+
+
+def format_reply_context(
+    reply_to_message: ReplyToMessageData, existing_content: str = ""
+) -> str:
+    """Format reply-to-message context for AI conversation.
+
+    This adds context about which message the user is replying to,
+    helping the AI understand the conversation thread context.
+    """
+    role_label = "their own" if reply_to_message.role == "user" else "your"
+
+    context = f"""[The user is responding to {role_label} earlier message: "{reply_to_message.content}"]"""
 
     return f"{context}\n\n{existing_content}" if existing_content else context
 

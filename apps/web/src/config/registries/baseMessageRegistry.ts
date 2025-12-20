@@ -36,6 +36,10 @@ export const BASE_MESSAGE_SCHEMA = {
   // Core non-tool fields
   image_data: undefined as ImageData | null | undefined,
   memory_data: undefined as MemoryData | null | undefined,
+  replyToMessage: undefined as
+    | { id: string; content: string; role: "user" | "assistant" }
+    | null
+    | undefined,
   // Tool fields (spread from tool registry)
   ...TOOLS_MESSAGE_SCHEMA,
 };

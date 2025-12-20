@@ -5,13 +5,21 @@ import { toast } from "sonner";
 
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
-import { Copy01Icon, PinIcon } from "@/icons";
+import {
+  Copy01Icon,
+  LinkBackwardIcon,
+  PinIcon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
+} from "@/icons";
+import { useReplyToMessage } from "@/stores/replyToMessageStore";
 
 interface ChatBubbleActionsProps {
   loading: boolean;
   text: string;
   pinned?: boolean;
   message_id: string;
+  messageRole?: "user" | "assistant";
 }
 
 export default function ChatBubble_Actions({
@@ -19,9 +27,22 @@ export default function ChatBubble_Actions({
   loading,
   text,
   pinned = false,
+  messageRole = "assistant",
 }: ChatBubbleActionsProps) {
   const { id: convoIdParam } = useParams<{ id: string }>();
   const { updateConvoMessages } = useConversation();
+  const { setReplyToMessage } = useReplyToMessage();
+
+  const handleReply = () => {
+    // Truncate content for preview (first 150 chars)
+    const truncatedContent =
+      text.length > 150 ? `${text.slice(0, 150)}...` : text;
+    setReplyToMessage({
+      id: message_id,
+      content: truncatedContent,
+      role: messageRole,
+    });
+  };
 
   const copyToClipboard = () => {
     // Remove NEW_MESSAGE_BREAK tokens for cleaner copy
@@ -68,11 +89,26 @@ export default function ChatBubble_Actions({
   return (
     <>
       {!loading && (
-        <div className="flex w-fit items-center pl-2">
+        <div className="flex w-fit items-center">
+          <Tooltip content="Reply" placement="bottom">
+            <Button
+              isIconOnly
+              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+              variant="light"
+              onPress={handleReply}
+            >
+              <LinkBackwardIcon
+                className="cursor-pointer"
+                height="18"
+                width="18"
+              />
+            </Button>
+          </Tooltip>
+
           <Tooltip content="Copy to clipboard" placement="bottom">
             <Button
               isIconOnly
-              className="aspect-square size-[30px] min-w-[30px] rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
               variant="light"
               onPress={copyToClipboard}
             >
@@ -83,7 +119,7 @@ export default function ChatBubble_Actions({
           <Tooltip content="Pin message" placement="bottom">
             <Button
               isIconOnly
-              className="aspect-square size-[30px] min-w-[30px] rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
               variant="light"
               radius="lg"
               onPress={handlePinToggle}
@@ -93,6 +129,43 @@ export default function ChatBubble_Actions({
             </Button>
           </Tooltip>
 
+          {messageRole === "assistant" && (
+            <Tooltip content="Pin message" placement="bottom">
+              <Button
+                isIconOnly
+                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                variant="light"
+                radius="lg"
+                onPress={handlePinToggle}
+                color={pinned ? "primary" : "default"}
+              >
+                <ThumbsUpIcon
+                  className={`cursor-pointer`}
+                  height="20"
+                  width="20"
+                />
+              </Button>
+            </Tooltip>
+          )}
+
+          {messageRole === "assistant" && (
+            <Tooltip content="Pin message" placement="bottom">
+              <Button
+                isIconOnly
+                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                variant="light"
+                radius="lg"
+                onPress={handlePinToggle}
+                color={pinned ? "primary" : "default"}
+              >
+                <ThumbsDownIcon
+                  className={`cursor-pointer`}
+                  height="20"
+                  width="20"
+                />
+              </Button>
+            </Tooltip>
+          )}
           {/*
           <TranslateDropdown
             text={text}

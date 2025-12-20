@@ -164,6 +164,8 @@ export const useChatStream = () => {
       memory_data: sourceMessage.memory_data ?? null,
       pinned: sourceMessage.pinned ?? false,
       isConvoSystemGenerated: sourceMessage.isConvoSystemGenerated ?? false,
+      replyToMessageId: sourceMessage.replyToMessage?.id ?? null,
+      replyToMessageData: sourceMessage.replyToMessage ?? null,
     };
   };
 
@@ -542,6 +544,11 @@ export const useChatStream = () => {
     selectedWorkflow: WorkflowData | null = null,
     selectedCalendarEvent: SelectedCalendarEventData | null = null,
     optimisticUserId?: string,
+    replyToMessage: {
+      id: string;
+      content: string;
+      role: "user" | "assistant";
+    } | null = null,
   ) => {
     if (streamInProgressRef.current) {
       return;
@@ -617,6 +624,7 @@ export const useChatStream = () => {
         controller,
         selectedWorkflow,
         selectedCalendarEvent,
+        replyToMessage,
       );
     } catch (error) {
       console.error("Error initiating chat stream:", error);
