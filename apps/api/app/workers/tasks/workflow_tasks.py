@@ -113,7 +113,7 @@ async def process_workflow_generation_task(
             title=title,
             details_section=f"**Details:** {description}" if description else "",
         )
-        
+
         # Create standalone workflow with todo workflow flag
         workflow_request = CreateWorkflowRequest(
             title=f"Todo: {title}",
@@ -151,17 +151,21 @@ async def process_workflow_generation_task(
                 # Broadcast WebSocket event for real-time UI update
                 try:
                     websocket_manager = get_websocket_manager()
-                    await websocket_manager.broadcast_to_user(user_id, {
-                        "type": "workflow.generated",
-                        "todo_id": todo_id,
-                        "workflow": workflow.model_dump(mode="json"),
-                    })
+                    await websocket_manager.broadcast_to_user(
+                        user_id,
+                        {
+                            "type": "workflow.generated",
+                            "todo_id": todo_id,
+                            "workflow": workflow.model_dump(mode="json"),
+                        },
+                    )
                     logger.info(f"WebSocket event sent for workflow {workflow.id}")
                 except Exception as ws_error:
                     logger.warning(f"Failed to send WebSocket event: {ws_error}")
 
                 # Clear the generating flag
                 from app.services.workflow.queue_service import WorkflowQueueService
+
                 await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
 
                 return f"Successfully generated standalone workflow {workflow.id} for todo {todo_id}"
@@ -181,26 +185,30 @@ async def process_workflow_generation_task(
             f"Failed to process workflow generation for todo {todo_id}: {str(e)}"
         )
         logger.error(error_msg)
-        
+
         # Clear the generating flag on failure too
         try:
             from app.services.workflow.queue_service import WorkflowQueueService
+
             await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
-        except Exception:
+        except Exception:  # nosec B110 - Intentional: cleanup should not raise
             pass
-        
+
         # Broadcast failure WebSocket event so frontend can handle it
         try:
             websocket_manager = get_websocket_manager()
-            await websocket_manager.broadcast_to_user(user_id, {
-                "type": "workflow.generation_failed",
-                "todo_id": todo_id,
-                "error": str(e),
-            })
+            await websocket_manager.broadcast_to_user(
+                user_id,
+                {
+                    "type": "workflow.generation_failed",
+                    "todo_id": todo_id,
+                    "error": str(e),
+                },
+            )
             logger.info(f"WebSocket failure event sent for todo {todo_id}")
         except Exception as ws_error:
             logger.warning(f"Failed to send failure WebSocket event: {ws_error}")
-        
+
         raise
 
 
@@ -508,16 +516,23 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
 
         # Fetch the updated workflow to get the generated steps
         updated_workflow = await WorkflowService.get_workflow(workflow_id, user_id)
-        
+
         # If this is a todo workflow, send WebSocket event
-        if updated_workflow and updated_workflow.is_todo_workflow and updated_workflow.source_todo_id:
+        if (
+            updated_workflow
+            and updated_workflow.is_todo_workflow
+            and updated_workflow.source_todo_id
+        ):
             try:
                 websocket_manager = get_websocket_manager()
-                await websocket_manager.broadcast_to_user(user_id, {
-                    "type": "workflow.generated",
-                    "todo_id": updated_workflow.source_todo_id,
-                    "workflow": updated_workflow.model_dump(mode="json"),
-                })
+                await websocket_manager.broadcast_to_user(
+                    user_id,
+                    {
+                        "type": "workflow.generated",
+                        "todo_id": updated_workflow.source_todo_id,
+                        "workflow": updated_workflow.model_dump(mode="json"),
+                    },
+                )
                 logger.info(f"WebSocket event sent for todo workflow {workflow_id}")
             except Exception as ws_error:
                 logger.warning(f"Failed to send WebSocket event: {ws_error}")

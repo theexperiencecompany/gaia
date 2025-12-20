@@ -10,7 +10,7 @@
 python = "3.12"
 node = "22"
 "npm:mintlify" = "latest"
-prek = "latest"
+prek = "0.2.23"
 uv = "latest"
 "npm:nx" = "latest"
 

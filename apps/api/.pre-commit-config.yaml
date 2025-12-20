@@ -5,13 +5,27 @@ repos:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
         stages: [pre-commit]
+        priority: 0
       - id: ruff-format
         stages: [pre-commit]
+        priority: 0
 
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.8.3
+  - repo: local
     hooks:
       - id: bandit
+        name: Bandit Security Check
+        language: system
+        entry: uvx bandit -r app
+        types: [python]
+        pass_filenames: false
+        priority: 10
+
+      - id: pip-audit
+        name: Pip Audit
+        language: system
+        entry: bash -c "uv export --no-dev --frozen --no-emit-header 2>/dev/null | uvx pip-audit --disable-pip --no-deps -r /dev/stdin"
+        pass_filenames: false
+        priority: 10
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.9.0
@@ -23,9 +37,4 @@ repos:
           - types-requests
           - types-pytz
           - types-croniter
-
-  - repo: https://github.com/trailofbits/pip-audit
-    rev: v2.7.1
-    hooks:
-      - id: pip-audit
-        args: [--skip-editable]
+        priority: 10

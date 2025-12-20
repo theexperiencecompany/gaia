@@ -175,7 +175,7 @@ class WorkflowService:
         user_id: str, exclude_todo_workflows: bool = True
     ) -> List[Workflow]:
         """List all workflows for a user.
-        
+
         Args:
             user_id: User ID to filter by
             exclude_todo_workflows: If True, filter out auto-generated todo workflows
@@ -188,7 +188,7 @@ class WorkflowService:
                     {"is_todo_workflow": {"$exists": False}},
                     {"is_todo_workflow": False},
                 ]
-            
+
             # Use to_list() for better performance
             docs = (
                 await workflows_collection.find(query)

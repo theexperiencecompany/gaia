@@ -60,7 +60,9 @@ async def _get_workflow_categories_for_todos(
     Returns a dict mapping todo_id -> list of unique tool categories.
     """
     # Collect workflow IDs from todos
-    workflow_ids = [todo.get("workflow_id") for todo in todos if todo.get("workflow_id")]
+    workflow_ids = [
+        todo.get("workflow_id") for todo in todos if todo.get("workflow_id")
+    ]
 
     if not workflow_ids:
         return {}
@@ -336,14 +338,14 @@ class TodoService:
         todo_id_str = str(result.inserted_id)
         try:
             from app.services.workflow.queue_service import WorkflowQueueService
-            
+
             success = await WorkflowQueueService.queue_todo_workflow_generation(
                 todo_id=todo_id_str,
                 user_id=user_id,
                 title=todo.title,
                 description=todo.description or "",
             )
-            
+
             if success:
                 todos_logger.info(
                     f"Queued workflow generation for todo '{todo.title}' (ID: {todo_id_str})"
@@ -395,8 +397,12 @@ class TodoService:
         # Enrich with workflow categories
         serialized = serialize_document(todo)
         if todo.get("workflow_id"):
-            workflow_categories = await _get_workflow_categories_for_todos([todo], user_id)
-            serialized["workflow_categories"] = workflow_categories.get(serialized["id"], [])
+            workflow_categories = await _get_workflow_categories_for_todos(
+                [todo], user_id
+            )
+            serialized["workflow_categories"] = workflow_categories.get(
+                serialized["id"], []
+            )
         else:
             serialized["workflow_categories"] = []
 
