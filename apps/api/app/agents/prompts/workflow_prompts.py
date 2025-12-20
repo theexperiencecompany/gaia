@@ -121,19 +121,19 @@ CRITICAL REQUIREMENTS:
 
 **Example Step:**
 ```json
-{
+{{
   "title": "Send meeting follow-up",
   "category": "gmail",
   "description": "Compose and send a follow-up email summarizing the meeting decisions and assigned action items"
-}
+}}
 ```
 NOT:
 ```json
-{
+{{
   "title": "GMAIL_SEND_EMAIL",
   "category": "gmail",
   "description": "Send an email"
-}
+}}
 ```
 
 
@@ -194,13 +194,13 @@ ANTI-PATTERNS TO AVOID (INEFFICIENT WORKFLOWS):
    ↳ INSTEAD: 1) Comprehensive travel search 2) Weather forecast 3) Complete calendar event
 ❌ "Email organization" → 1) List emails 2) Read each 3) Categorize 4) Create label 5) Apply to each 6) Clean up 7) Archive
    ↳ INSTEAD: 1) Search filtered emails 2) Batch create and apply labels
-❌ "Project planning" → 1) Research topic 2) Analyze requirements 3) Create outline 4) Write sections 5) Review content 6) Format document 7) Save file
    ↳ INSTEAD: 1) Comprehensive research 2) Generate complete project plan
 
 Available Tools:
 {tools}
 
 {format_instructions}"""
+
 
 WORKFLOW_EXECUTION_PROMPT = """You are executing a workflow manually for the user. The user has selected a specific workflow to run in this chat session.
 

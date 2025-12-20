@@ -1,39 +1,16 @@
 """Workflow generation service for LLM-based step creation."""
 
-import re
 from typing import List
-
-from langchain_core.output_parsers import PydanticOutputParser
-from pydantic import BaseModel, Field
 
 from app.agents.llm.client import init_llm
 from app.agents.prompts.trigger_prompts import generate_trigger_context
-from app.agents.templates.workflow_template import WORKFLOW_GENERATION_TEMPLATE
+from app.agents.templates.workflow_template import (
+    WORKFLOW_GENERATION_TEMPLATE,
+    workflow_parser,
+)
 from app.config.loggers import general_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
-
-
-class GeneratedStep(BaseModel):
-    """Minimal schema for LLM-generated steps - only fields LLM should output."""
-
-    title: str = Field(description="Human-readable step name")
-    category: str = Field(description="Category for routing (gmail, github, etc)")
-    description: str = Field(description="What this step accomplishes")
-
-
-class GeneratedWorkflow(BaseModel):
-    """Schema for LLM output - minimal fields only."""
-
-    steps: List[GeneratedStep] = Field(description="List of workflow steps")
-
-
-def extract_json_from_response(response: str) -> str:
-    """Extract JSON from markdown code blocks if present."""
-    # Try ```json or ``` blocks
-    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", response)
-    if match:
-        return match.group(1).strip()
-    return response.strip()
+from app.models.workflow_models import GeneratedStep
 
 
 def enrich_steps(generated_steps: List[GeneratedStep]) -> List[dict]:
@@ -58,16 +35,14 @@ class WorkflowGenerationService:
     async def generate_steps_with_llm(
         description: str, title: str, trigger_config=None
     ) -> list:
-        """Generate workflow steps using LLM with structured output."""
+        """Generate workflow steps using LLM with Pydantic parser."""
         try:
-            logger.info(f"[WorkflowGen] Starting generation for: {title}")
+            logger.info(f"[WorkflowGen] ========== START: {title} ==========")
 
-            # Use minimal schema for parsing - LLM only outputs title, category, description
-            parser = PydanticOutputParser(pydantic_object=GeneratedWorkflow)
-
-            # Import here to avoid circular dependency at module level
+            # Import here to avoid circular dependency
             from app.agents.tools.core.registry import get_tool_registry
 
+            logger.info("[WorkflowGen] Getting tool registry...")
             tool_registry = await get_tool_registry()
 
             tools_with_categories = []
@@ -82,7 +57,7 @@ class WorkflowGenerationService:
                 ]
                 tools_with_categories.append(f"{category}: {', '.join(tool_names)}")
 
-            # Add subagent capabilities for provider-specific categories
+            # Add subagent capabilities
             for integration in OAUTH_INTEGRATIONS:
                 if (
                     integration.subagent_config
@@ -98,53 +73,46 @@ class WorkflowGenerationService:
                 tool_name = tool.name if hasattr(tool, "name") else str(tool)
                 tools_with_categories.append(f"Always Available: {tool_name}")
 
-            logger.info(f"[WorkflowGen] Available categories: {category_names}")
+            logger.info(f"[WorkflowGen] Categories: {len(category_names)}")
 
             trigger_context = generate_trigger_context(trigger_config)
 
-            # Initialize LLM
             llm = init_llm()
 
-            # Format the prompt using the template
+            logger.info("[WorkflowGen] Formatting prompt...")
+            # format_instructions is pre-filled via partial_variables
             formatted_prompt = WORKFLOW_GENERATION_TEMPLATE.format(
                 description=description,
                 title=title,
                 trigger_context=trigger_context,
                 tools="\n".join(tools_with_categories),
                 categories=", ".join(category_names),
-                format_instructions=parser.get_format_instructions(),
             )
+            logger.info(f"[WorkflowGen] Prompt: {len(formatted_prompt)} chars")
 
-            logger.info(
-                f"[WorkflowGen] Prompt length: {len(formatted_prompt)} chars, calling LLM..."
-            )
-
-            # Generate workflow plan using LLM directly
+            logger.info("[WorkflowGen] === CALLING LLM ===")
             llm_response = await llm.ainvoke(formatted_prompt)
+            logger.info("[WorkflowGen] === LLM RESPONDED ===")
 
-            # Extract content (handle different response types)
+            # Parse response
             response_content = getattr(llm_response, "content", str(llm_response))
-            logger.info(
-                f"[WorkflowGen] LLM response length: {len(response_content)} chars"
-            )
+            logger.info(f"[WorkflowGen] Response: {len(response_content)} chars")
+            logger.debug(f"[WorkflowGen] Full response:\n{response_content}")
 
-            # Extract JSON from markdown code blocks if present
-            json_content = extract_json_from_response(response_content)
-            if json_content != response_content:
-                logger.info("[WorkflowGen] Extracted JSON from markdown code block")
+            logger.info("[WorkflowGen] === PARSING ===")
+            result = workflow_parser.parse(response_content)
+            logger.info(f"[WorkflowGen] === SUCCESS: {len(result.steps)} steps ===")
 
-            # Parse with minimal schema
-            result = parser.parse(json_content)
-            logger.info(f"[WorkflowGen] Successfully parsed {len(result.steps)} steps")
-
-            # Enrich with id/order (fields LLM doesn't generate)
+            # Enrich with id
             steps_data = enrich_steps(result.steps)
 
             logger.info(
-                f"[WorkflowGen] Generated {len(steps_data)} workflow steps for: {title}"
+                f"[WorkflowGen] ========== DONE: {len(steps_data)} steps =========="
             )
             return steps_data
 
         except Exception as e:
-            logger.error(f"[WorkflowGen] Failed to generate steps: {e}", exc_info=True)
+            logger.error(
+                f"[WorkflowGen] ========== FAILED: {e} ==========", exc_info=True
+            )
             return []

@@ -35,6 +35,21 @@ class WorkflowStep(BaseModel):
     )
 
 
+# LLM Output Models for Workflow Generation
+class GeneratedStep(BaseModel):
+    """Minimal schema for LLM-generated workflow steps."""
+
+    title: str = Field(description="Human-readable step name")
+    category: str = Field(description="Category for routing")
+    description: str = Field(description="What this step accomplishes")
+
+
+class GeneratedWorkflow(BaseModel):
+    """Schema for LLM workflow generation output."""
+
+    steps: List[GeneratedStep] = Field(description="List of workflow steps")
+
+
 class TriggerConfig(BaseModel):
     """Configuration for workflow triggers."""
 

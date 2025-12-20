@@ -502,7 +502,7 @@ export function LandingDownloadSection() {
             <div>
               <h3 className="mb-1 text-xl font-medium text-white">Desktop</h3>
               <p className="text-sm text-zinc-400">
-                Native app with enhanced performance
+                Experience GAIA on desktop with enhanced features
               </p>
             </div>
             <div className="flex flex-col gap-2">
