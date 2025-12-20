@@ -7,6 +7,7 @@ from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import TriggerConfig
+from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import LangchainProvider
 from app.utils.composio_hooks.registry import (
     master_after_execute_hook,
@@ -23,6 +24,7 @@ class ComposioService:
         self.composio = Composio(
             provider=LangchainProvider(), api_key=api_key, timeout=120
         )
+        custom_tools_registry.initialize(self.composio)
 
     async def connect_account(
         self, provider: str, user_id: str, state_token: Optional[str] = None
@@ -84,9 +86,16 @@ class ComposioService:
         logger.info(f"Loading {tool_kit} toolkit...")
         start_time = time.time()
 
+        custom_tool_names = custom_tools_registry.get_tool_names(tool_kit.lower())
+
         # Run the first tools.get() call asynchronously
         tools = await asyncio.to_thread(
-            self.composio.tools.get, user_id="", toolkits=[tool_kit], limit=1000
+            lambda: self.composio.tools.get(  # type: ignore[call-overload]
+                user_id="",
+                toolkits=[tool_kit],
+                tools=custom_tool_names,
+                limit=1000,
+            )
         )
 
         exclude_tools = exclude_tools or []
@@ -101,11 +110,13 @@ class ComposioService:
 
         # Run the second tools.get() call asynchronously
         result = await asyncio.to_thread(
-            self.composio.tools.get,
-            user_id="",
-            toolkits=[tool_kit],
-            modifiers=[master_before_modifier, master_after_modifier],
-            limit=1000,
+            lambda: self.composio.tools.get(  # type: ignore[call-overload]
+                user_id="",
+                toolkits=[tool_kit],
+                tools=custom_tool_names,
+                modifiers=[master_before_modifier, master_after_modifier],
+                limit=1000,
+            )
         )
 
         tools_time = time.time() - start_time
@@ -372,7 +383,6 @@ class ComposioService:
     name="composio_service",
     required_keys=[settings.COMPOSIO_KEY],
     strategy=MissingKeyStrategy.WARN,
-    auto_initialize=False,
 )
 def init_composio_service():
     # This condition is just for type checking purposes and will never be false at runtime

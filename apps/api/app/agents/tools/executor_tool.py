@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Annotated
 
 from app.agents.core.graph_manager import GraphManager
+from app.agents.core.subagents.subagent_helpers import create_agent_context_message
 from app.config.loggers import llm_logger as logger
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.message_helpers import create_system_message
@@ -62,9 +63,16 @@ async def call_executor(
             user_name=get_user_name_from_config(config),
         )
 
+        context_message = await create_agent_context_message(
+            agent_name="executor_agent",
+            configurable=configurable,
+            query=task,
+        )
+
         initial_state = {
             "messages": [
                 system_message,
+                context_message,
                 HumanMessage(
                     content=task,
                     additional_kwargs={"visible_to": {"executor_agent"}},

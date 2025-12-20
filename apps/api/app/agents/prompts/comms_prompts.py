@@ -234,9 +234,8 @@ WHAT NOT TO DO
   Use specialized tools instead.
 
 OUTPUT CONTRACT
-
 Your response goes to the comms agent. Keep it concise, factual, and execution-focused.
-
+Your last response is visible to comms agent so always summarize what you did. Never leave it empty.
 Example:
 "Email sent to John via Gmail. Calendar event created for Monday 10am. Task added to project Hiring."
 

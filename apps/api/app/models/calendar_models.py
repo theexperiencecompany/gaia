@@ -633,3 +633,127 @@ class CalendarEventUpdateToolRequest(BaseModel):
             original_summary=None,
             recurrence=self.recurrence,
         )
+
+
+class CreateEventInput(BaseModel):
+    summary: str = Field(..., description="Title of the event")
+    start_datetime: str = Field(
+        ...,
+        description="Start time in ISO format (e.g., '2024-01-15T10:00:00'). Use user's timezone.",
+    )
+    duration_hours: int = Field(
+        default=0, description="Duration hours (0-23)", ge=0, le=23
+    )
+    duration_minutes: int = Field(
+        default=30, description="Duration minutes (0-59)", ge=0, le=59
+    )
+    calendar_id: str = Field(default="primary", description="Calendar ID")
+    description: Optional[str] = Field(default=None, description="Event description")
+    location: Optional[str] = Field(default=None, description="Event location")
+    attendees: Optional[List[str]] = Field(
+        default=None, description="List of attendee email addresses"
+    )
+    is_all_day: bool = Field(default=False, description="All-day event")
+    confirm_immediately: bool = Field(
+        default=False,
+        description="If True, create event immediately. If False (default), send to frontend for confirmation.",
+    )
+
+
+class ListCalendarsInput(BaseModel):
+    short: bool = Field(
+        default=True,
+        description="Return only essential fields (id, summary, description, backgroundColor)",
+    )
+
+
+class FetchEventsInput(BaseModel):
+    calendar_id: str = Field(default="primary", description="Calendar ID")
+    time_min: Optional[str] = Field(
+        default=None, description="Start time filter (ISO format)"
+    )
+    time_max: Optional[str] = Field(
+        default=None, description="End time filter (ISO format)"
+    )
+    max_results: int = Field(
+        default=20, description="Maximum events to return (1-250)", ge=1, le=250
+    )
+
+
+class FindEventInput(BaseModel):
+    query: str = Field(..., description="Search query text")
+    calendar_id: str = Field(default="primary", description="Calendar ID to search")
+    time_min: Optional[str] = Field(
+        default=None, description="Start time filter (ISO format)"
+    )
+    time_max: Optional[str] = Field(
+        default=None, description="End time filter (ISO format)"
+    )
+
+
+class GetEventInput(BaseModel):
+    event_id: str = Field(..., description="Event ID")
+    calendar_id: str = Field(default="primary", description="Calendar ID")
+
+
+class DeleteEventInput(BaseModel):
+    event_id: str = Field(..., description="Event ID to delete")
+    calendar_id: str = Field(default="primary", description="Calendar ID")
+    send_updates: str = Field(
+        default="all",
+        description="Notify attendees: 'all', 'externalOnly', 'none'",
+    )
+
+
+class PatchEventInput(BaseModel):
+    event_id: str = Field(..., description="Event ID to update")
+    calendar_id: str = Field(default="primary", description="Calendar ID")
+    summary: Optional[str] = Field(default=None, description="New title")
+    description: Optional[str] = Field(default=None, description="New description")
+    start_datetime: Optional[str] = Field(
+        default=None, description="New start time (ISO format)"
+    )
+    end_datetime: Optional[str] = Field(
+        default=None, description="New end time (ISO format)"
+    )
+    location: Optional[str] = Field(default=None, description="New location")
+    attendees: Optional[List[str]] = Field(
+        default=None, description="New attendees list"
+    )
+    send_updates: str = Field(default="all", description="Notify attendees")
+
+
+class AddRecurrenceInput(BaseModel):
+    event_id: str = Field(..., description="Event ID to add recurrence to")
+    calendar_id: str = Field(default="primary", description="Calendar ID")
+    frequency: Literal["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] = Field(
+        ..., description="Recurrence frequency"
+    )
+    interval: int = Field(default=1, description="Interval between occurrences", ge=1)
+    count: Optional[int] = Field(
+        default=None, description="Number of occurrences (don't use with until_date)"
+    )
+    until_date: Optional[str] = Field(
+        default=None,
+        description="End date for recurrence (YYYY-MM-DD) (don't use with count)",
+    )
+    by_day: Optional[List[str]] = Field(
+        default=None,
+        description="Days of week: 'SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'",
+    )
+
+    @field_validator("by_day")
+    @classmethod
+    def validate_by_day(cls, v):
+        if v:
+            valid_days = {"SU", "MO", "TU", "WE", "TH", "FR", "SA"}
+            for day in v:
+                if day not in valid_days:
+                    raise ValueError(f"Invalid day: {day}. Must be one of {valid_days}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_recurrence(self):
+        if self.count is not None and self.until_date is not None:
+            raise ValueError("Cannot specify both 'count' and 'until_date'")
+        return self

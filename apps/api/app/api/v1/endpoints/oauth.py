@@ -391,7 +391,7 @@ async def callback(
             logger.warning(f"Failed to invalidate OAuth status cache: {e}")
 
         # Initialize calendar preferences (select all calendars by default)
-        await initialize_calendar_preferences(
+        initialize_calendar_preferences(
             user_id=str(user_id),
             access_token=access_token,
         )

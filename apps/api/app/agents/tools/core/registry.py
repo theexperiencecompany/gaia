@@ -3,7 +3,6 @@ from functools import cache
 from typing import Dict, List, Optional
 
 from app.agents.tools import (
-    calendar_tool,
     code_exec_tool,
     document_tool,
     file_tools,
@@ -156,15 +155,6 @@ class ToolRegistry:
         )
         self._add_category("creative", tools=[image_tool.generate_image])
         self._add_category("weather", tools=[weather_tool.get_weather])
-
-        self._add_category(
-            "google_calendar",
-            tools=calendar_tool.tools,
-            require_integration=True,
-            integration_name="google_calendar",
-            is_delegated=True,
-            space="google_calendar",
-        )
 
         self._add_category(
             "google_docs",

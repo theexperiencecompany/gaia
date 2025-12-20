@@ -71,7 +71,7 @@ async def get_calendar_list(
         )
         access_token = str(token.get("access_token", ""))
 
-        return await calendar_service.list_calendars(access_token)
+        return calendar_service.list_calendars(access_token)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -138,7 +138,7 @@ async def query_events(
         )
         access_token = str(token.get("access_token", ""))
 
-        return await calendar_service.get_calendar_events(
+        return calendar_service.get_calendar_events(
             user_id=user_id,
             access_token=access_token,
             page_token=None,
@@ -220,7 +220,7 @@ async def get_events(
         )
         access_token = str(token.get("access_token", ""))
 
-        return await calendar_service.get_calendar_events(
+        return calendar_service.get_calendar_events(
             user_id=user_id,
             access_token=access_token,
             page_token=page_token,
@@ -298,7 +298,7 @@ async def get_events_by_calendar(
         )
         access_token = str(token.get("access_token", ""))
 
-        return await calendar_service.get_calendar_events_by_id(
+        return calendar_service.get_calendar_events_by_id(
             calendar_id=calendar_id,
             access_token=access_token,
             page_token=page_token,
@@ -339,9 +339,7 @@ async def create_event(
         )
         access_token = str(token.get("access_token", ""))
 
-        return await calendar_service.create_calendar_event(
-            event, access_token, user_id
-        )
+        return calendar_service.create_calendar_event(event, access_token, user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -360,7 +358,7 @@ async def get_calendar_preferences(
         HTTPException: If the user is not authenticated or preferences are not found.
     """
     try:
-        return await calendar_service.get_user_calendar_preferences(
+        return calendar_service.get_user_calendar_preferences(
             str(current_user.get("user_id", ""))
         )
     except HTTPException as e:
@@ -388,7 +386,7 @@ async def update_calendar_preferences(
         HTTPException: If the user is not authenticated.
     """
     try:
-        return await calendar_service.update_user_calendar_preferences(
+        return calendar_service.update_user_calendar_preferences(
             current_user["user_id"], preferences.selected_calendars
         )
     except Exception as e:
@@ -424,7 +422,7 @@ async def delete_event(
         )
         access_token = str(token.get("access_token", ""))
 
-        return await delete_calendar_event(event, access_token, user_id)
+        return delete_calendar_event(event, access_token, user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -459,7 +457,7 @@ async def update_event(
         )
         access_token = str(token.get("access_token", ""))
 
-        return await update_calendar_event(event, access_token, user_id)
+        return update_calendar_event(event, access_token, user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -496,7 +494,7 @@ async def create_events_batch(
 
         for event in batch_request.events:
             try:
-                created_event = await calendar_service.create_calendar_event(
+                created_event = calendar_service.create_calendar_event(
                     event, access_token, user_id
                 )
                 results["successful"].append(created_event)
@@ -545,9 +543,7 @@ async def update_events_batch(
 
         for event in batch_request.events:
             try:
-                updated_event = await update_calendar_event(
-                    event, access_token, user_id
-                )
+                updated_event = update_calendar_event(event, access_token, user_id)
                 results["successful"].append(updated_event)
             except Exception as e:
                 results["failed"].append(
@@ -594,7 +590,7 @@ async def delete_events_batch(
 
         for event in batch_request.events:
             try:
-                await delete_calendar_event(event, access_token, user_id)
+                delete_calendar_event(event, access_token, user_id)
                 results["successful"].append(
                     {
                         "event_id": event.event_id,
