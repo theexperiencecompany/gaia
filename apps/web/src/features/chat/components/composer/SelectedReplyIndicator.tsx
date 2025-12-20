@@ -40,8 +40,9 @@ const ReplyConnectorLine: React.FC = () => (
       <path
         d="M0 3 L5 3 Q11 3 11 9 L11 20"
         stroke="currentColor"
-        strokeWidth="1"
+        strokeWidth="1.5"
         strokeLinecap="round"
+        strokeLinejoin="round"
         fill="none"
       />
     </svg>
@@ -78,9 +79,9 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
   // Display-only mode: similar to composer version but slightly smaller, with connector line
   if (isDisplayOnly && replyToMessage) {
     return (
-      <div className="relative mb-1 mr-6">
+      <div className="relative mr-6">
         <div
-          className="flex items-center gap-2 cursor-pointer px-2.5 py-1.5 rounded-2xl border-dashed border-zinc-500 border-1.5 hover:bg-zinc-700/50 transition-colors max-w-70"
+          className="flex items-center gap-2 cursor-pointer px-2.5 py-1.5 rounded-2xl border-zinc-700 border-2 hover:bg-zinc-700/50 transition-colors max-w-70"
           onClick={handleClick}
         >
           <div className="shrink-0 text-zinc-400">
