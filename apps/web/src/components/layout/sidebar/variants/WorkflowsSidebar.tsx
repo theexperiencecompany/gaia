@@ -5,12 +5,10 @@ import { Kbd } from "@heroui/kbd";
 import { useDisclosure } from "@heroui/modal";
 import { Tooltip } from "@heroui/tooltip";
 import { CreateWorkflowModal } from "@/features/workflows/components";
-import { useWorkflows } from "@/features/workflows/hooks";
 import { ZapIcon } from "@/icons";
 
 export default function WorkflowsSidebar() {
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
-  const { refetch } = useWorkflows(false);
 
   return (
     <>
@@ -39,12 +37,7 @@ export default function WorkflowsSidebar() {
         </Tooltip>
       </div>
 
-      <CreateWorkflowModal
-        isOpen={isOpen}
-        onOpenChange={onOpenChange}
-        onWorkflowCreated={refetch}
-        onWorkflowListRefresh={refetch}
-      />
+      <CreateWorkflowModal isOpen={isOpen} onOpenChange={onOpenChange} />
     </>
   );
 }

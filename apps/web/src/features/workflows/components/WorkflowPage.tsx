@@ -317,7 +317,6 @@ export default function WorkflowPage() {
         onOpenChange={handleModalClose}
         onWorkflowUpdated={() => refetch()}
         onWorkflowDeleted={handleWorkflowDeleted}
-        onWorkflowListRefresh={refetch}
         workflow={selectedWorkflow}
       />
     </div>

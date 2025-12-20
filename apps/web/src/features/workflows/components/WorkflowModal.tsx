@@ -49,6 +49,7 @@ import {
   workflowToFormData,
 } from "../schemas/workflowFormSchema";
 import { useWorkflowModalStore } from "../stores/workflowModalStore";
+import { useWorkflowsStore } from "../stores/workflowsStore";
 import { getTriggerEnabledIntegrations } from "../utils/triggerDisplay";
 import { ScheduleBuilder } from "./ScheduleBuilder";
 import WorkflowSteps from "./shared/WorkflowSteps";
@@ -58,7 +59,6 @@ interface WorkflowModalProps {
   onOpenChange: (open: boolean) => void;
   onWorkflowSaved?: (workflowId: string) => void;
   onWorkflowDeleted?: (workflowId: string) => void;
-  onWorkflowListRefresh?: () => void;
   mode: "create" | "edit";
   existingWorkflow?: Workflow | null;
 }
@@ -68,7 +68,6 @@ export default function WorkflowModal({
   onOpenChange,
   onWorkflowSaved,
   onWorkflowDeleted,
-  onWorkflowListRefresh,
   mode,
   existingWorkflow,
 }: WorkflowModalProps) {
@@ -82,6 +81,14 @@ export default function WorkflowModal({
 
   const { selectWorkflow } = useWorkflowSelection();
   const { integrations } = useIntegrations();
+
+  // Get workflows store actions for optimistic updates
+  const {
+    addWorkflow: addToStore,
+    updateWorkflow: updateInStore,
+    removeWorkflow: removeFromStore,
+    fetchWorkflows,
+  } = useWorkflowsStore();
 
   // Zustand UI state
   const {
@@ -311,8 +318,13 @@ export default function WorkflowModal({
           duration: 3000,
         });
 
+        // Optimistic update: add to store immediately for instant UI feedback
+        addToStore(result.workflow);
+
+        // Notify parent callbacks if provided (for backwards compatibility)
         if (onWorkflowSaved) onWorkflowSaved(result.workflow.id);
-        if (onWorkflowListRefresh) onWorkflowListRefresh();
+        // Refresh full list in background to ensure consistency
+        fetchWorkflows();
 
         handleClose();
       } else {
@@ -345,13 +357,14 @@ export default function WorkflowModal({
         });
       }
 
+      // Optimistic update: update in store immediately
+      updateInStore(currentWorkflow.id, updateRequest);
+
       if (onWorkflowSaved) {
         onWorkflowSaved(currentWorkflow.id);
       }
-      // Refresh workflow list after update
-      if (onWorkflowListRefresh) {
-        onWorkflowListRefresh();
-      }
+      // Refresh full list in background to ensure consistency
+      fetchWorkflows();
       handleClose();
     } catch (error) {
       console.error("Failed to update workflow:", error);
@@ -377,13 +390,14 @@ export default function WorkflowModal({
         // Call the actual delete API
         await workflowApi.deleteWorkflow(existingWorkflow.id);
 
+        // Optimistic update: remove from store immediately
+        removeFromStore(existingWorkflow.id);
+
         if (onWorkflowDeleted) {
           onWorkflowDeleted(existingWorkflow.id);
         }
-        // Refresh workflow list after deletion
-        if (onWorkflowListRefresh) {
-          onWorkflowListRefresh();
-        }
+        // Refresh full list in background to ensure consistency
+        fetchWorkflows();
         handleClose();
       } catch (error) {
         console.error("Failed to delete workflow:", error);
@@ -410,10 +424,10 @@ export default function WorkflowModal({
       });
       setIsActivated(newActivated);
 
-      // Refresh workflow list after activation/deactivation
-      if (onWorkflowListRefresh) {
-        onWorkflowListRefresh();
-      }
+      // Optimistic update: update activation state in store
+      updateInStore(currentWorkflow.id, { activated: newActivated });
+      // Refresh full list in background to ensure consistency
+      fetchWorkflows();
     } catch (error) {
       console.error("Failed to toggle workflow activation:", error);
     } finally {
@@ -460,7 +474,8 @@ export default function WorkflowModal({
       }
 
       if (onWorkflowSaved) onWorkflowSaved(currentWorkflow.id);
-      if (onWorkflowListRefresh) onWorkflowListRefresh();
+      // Refresh workflow list to sync with server
+      fetchWorkflows();
 
       setIsRegeneratingSteps(false);
     } catch (error) {
@@ -706,6 +721,8 @@ export default function WorkflowModal({
                                   setCurrentWorkflow((prev) =>
                                     prev ? { ...prev, is_public: true } : null,
                                   );
+                                  // Navigate to marketplace after publishing
+                                  router.push("/use-cases#community-section");
                                 }
                               } catch (error) {
                                 console.error(
@@ -713,11 +730,12 @@ export default function WorkflowModal({
                                   error,
                                 );
                               }
-                              if (onWorkflowListRefresh)
-                                onWorkflowListRefresh();
-                              else if (key === "publish")
-                                router.push("/use-cases#community-section");
-                              else if (key === "delete") await handleDelete();
+                              // Refresh workflow list to sync with server
+                              fetchWorkflows();
+                            } else if (key === "marketplace") {
+                              router.push("/use-cases#community-section");
+                            } else if (key === "delete") {
+                              await handleDelete();
                             }
                           }}
                         >

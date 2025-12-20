@@ -6,7 +6,6 @@ interface EditWorkflowModalProps {
   onOpenChange: (open: boolean) => void;
   onWorkflowUpdated?: (workflowId: string) => void;
   onWorkflowDeleted?: (workflowId: string) => void;
-  onWorkflowListRefresh?: () => void;
   workflow: Workflow | null;
 }
 
@@ -15,7 +14,6 @@ export default function EditWorkflowModal({
   onOpenChange,
   onWorkflowUpdated,
   onWorkflowDeleted,
-  onWorkflowListRefresh,
   workflow,
 }: EditWorkflowModalProps) {
   return (
@@ -24,7 +22,6 @@ export default function EditWorkflowModal({
       onOpenChange={onOpenChange}
       onWorkflowSaved={onWorkflowUpdated}
       onWorkflowDeleted={onWorkflowDeleted}
-      onWorkflowListRefresh={onWorkflowListRefresh}
       mode="edit"
       existingWorkflow={workflow}
     />
