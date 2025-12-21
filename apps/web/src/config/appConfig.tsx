@@ -142,6 +142,12 @@ export const appConfig = {
         description: "Brand guidelines and downloadable assets",
       },
       {
+        href: "/thanks",
+        label: "Tools We Love",
+        icon: <HeartHandIcon width={20} height={20} color={"currentColor"} />,
+        description: "Open source tools that power GAIA",
+      },
+      {
         href: "/contact",
         label: "Contact",
         icon: <HeartHandIcon width={20} height={20} color={"currentColor"} />,

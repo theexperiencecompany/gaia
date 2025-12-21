@@ -73,7 +73,7 @@
     },
     "groups": {
       "apps": {
-        "projects": ["api"],
+        "projects": ["api", "voice-agent"],
         "projectsRelationship": "independent",
         "docker": {
           "skipVersionActions": true,

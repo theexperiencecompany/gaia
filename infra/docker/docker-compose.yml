@@ -5,7 +5,7 @@ services:
   gaia-backend:
     container_name: gaia-backend
     profiles: ["backend", "all"]
-    build: ./api
+    build: ../../apps/api
     image: gaia
     working_dir: /app
     command:
@@ -29,9 +29,9 @@ services:
       FORCE_COLOR: 1
       WORKER_TYPE: main_app
     env_file:
-      - ./api/.env
+      - ../../apps/api/.env
     volumes:
-      - ./api:/app
+      - ../../apps/api:/app
     ports:
       - "8000:80"
     restart: on-failure
@@ -155,13 +155,13 @@ services:
     profiles: ["worker", "all"]
     working_dir: /app
     env_file:
-      - ./api/.env
+      - ../../apps/api/.env
     environment:
       - WORKER_TYPE=arq_worker
     command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     volumes:
-      - ./api:/app
+      - ../../apps/api:/app
     depends_on:
       redis:
         condition: service_healthy
@@ -190,7 +190,7 @@ services:
     container_name: voice-agent-worker
     profiles: ["backend", "voice"]
     build:
-      context: ./backend
+      context: ../../apps/api
       dockerfile: Dockerfile.voice-agent
     image: gaia-voice-agent
     working_dir: /app
@@ -204,7 +204,7 @@ services:
       LOCAL_FILES_ONLY: "0"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
     env_file:
-      - ./backend/.env
+      - ../../apps/api/.env
     volumes:
       - voice_agent_models:/home/appuser/.cache/huggingface
     restart: on-failure

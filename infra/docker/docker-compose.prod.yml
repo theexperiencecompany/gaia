@@ -33,7 +33,7 @@ services:
       # Disable output buffering for streaming
       PYTHONIOENCODING: utf-8
     env_file:
-      - ./api/.env
+      - ../../apps/api/.env
     ports:
       - "8000:80"
     restart: on-failure
@@ -139,7 +139,7 @@ services:
     profiles: ["", "backend-only"]
     working_dir: /app
     env_file:
-      - ./api/.env
+      - ../../apps/api/.env
     environment:
       - WORKER_TYPE=arq_worker
     command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
@@ -162,7 +162,7 @@ services:
       HF_HUB_ENABLE_HF_TRANSFER: "1"
       HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
     env_file:
-      - ./backend/.env
+      - ../../apps/api/.env
     volumes:
       - voice_agent_models:/root/.cache/huggingface
     restart: always
