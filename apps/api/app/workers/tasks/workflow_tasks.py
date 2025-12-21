@@ -43,7 +43,6 @@ from app.services.workflow.conversation_service import (
     add_workflow_execution_messages,
     get_or_create_workflow_conversation,
 )
-from app.services.workflow.queue_service import WorkflowQueueService
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.services.workflow.service import WorkflowService
 from bson import ObjectId

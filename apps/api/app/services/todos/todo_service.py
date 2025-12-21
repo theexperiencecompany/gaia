@@ -39,7 +39,6 @@ from app.models.todo_models import (
 from app.services.todos.sync_service import (
     sync_subtask_to_goal_completion,
 )
-from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.todo_vector_utils import (
     bulk_index_todos,
     delete_todo_embedding,
