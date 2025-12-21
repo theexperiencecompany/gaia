@@ -79,8 +79,7 @@ async function fetchToolsMetadata(): Promise<Record<string, ToolMetadata>> {
 
     const data = await response.json();
     const resultCount = Object.keys(data.results || {}).length;
-    console.log
-      (`${logPrefix} ✓ Successfully fetched metadata for ${resultCount}/${tools.length} tools,
+    console.log(`${logPrefix} ✓ Successfully fetched metadata for ${resultCount}/${tools.length} tools,
     `);
     return data.results || {};
   } catch (error) {
