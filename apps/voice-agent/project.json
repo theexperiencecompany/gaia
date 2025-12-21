@@ -1,0 +1,23 @@
+{
+  "name": "voice-agent",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "root": "apps/voice-agent",
+  "sourceRoot": "apps/voice-agent",
+  "implicitDependencies": ["api"],
+  "release": {
+    "docker": {
+      "repositoryName": "heygaia/gaia-voice-agent"
+    }
+  },
+  "targets": {
+    "docker-build": {
+      "executor": "@nx-tools/nx-container:build",
+      "options": {
+        "file": "apps/api/Dockerfile.voice-agent",
+        "context": "apps/api",
+        "tags": ["ghcr.io/heygaia/gaia-voice-agent:latest"]
+      }
+    }
+  }
+}

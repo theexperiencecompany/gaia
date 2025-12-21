@@ -357,8 +357,8 @@ async def unpublish_workflow(
 
 
 @router.get("/workflows/explore", response_model=PublicWorkflowsResponse)
-@limiter.limit("100/minute")
-@limiter.limit("1000/hour")
+@limiter.limit("500/minute")
+@limiter.limit("5000/hour")
 async def get_explore_workflows(
     request: Request,
     limit: int = 25,
@@ -376,8 +376,8 @@ async def get_explore_workflows(
 
 
 @router.get("/workflows/community", response_model=PublicWorkflowsResponse)
-@limiter.limit("100/minute")
-@limiter.limit("1000/hour")
+@limiter.limit("500/minute")
+@limiter.limit("5000/hour")
 async def get_public_workflows(
     request: Request,
     limit: int = 20,
@@ -397,8 +397,8 @@ async def get_public_workflows(
 
 
 @router.get("/workflows/public/{workflow_id}", response_model=WorkflowResponse)
-@limiter.limit("100/minute")
-@limiter.limit("1000/hour")
+@limiter.limit("500/minute")
+@limiter.limit("5000/hour")
 async def get_public_workflow(request: Request, workflow_id: str):
     """Get a public workflow by ID without authentication."""
     try:
@@ -430,8 +430,8 @@ async def get_public_workflow(request: Request, workflow_id: str):
 
 
 @router.get("/workflows/{workflow_id}", response_model=WorkflowResponse)
-@limiter.limit("100/minute")
-@limiter.limit("1000/hour")
+@limiter.limit("500/minute")
+@limiter.limit("5000/hour")
 async def get_workflow(
     request: Request, workflow_id: str, user: dict = Depends(get_current_user)
 ):
