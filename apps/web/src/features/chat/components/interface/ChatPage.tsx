@@ -26,8 +26,6 @@ const ChatPage = React.memo(function MainChat() {
   const setActiveConversationId = useChatStore(
     (state) => state.setActiveConversationId,
   );
-  const conversations = useChatStore((state) => state.conversations);
-  const upsertConversation = useChatStore((state) => state.upsertConversation);
 
   // Fetching status on chat-page to resolve caching issues when new integration is connected
   useFetchIntegrationStatus({
@@ -51,11 +49,15 @@ const ChatPage = React.memo(function MainChat() {
     setActiveConversationId(convoIdParam || null);
 
     // Mark conversation as read if it's unread
+    // Using getState() to avoid re-running when conversations update
     if (convoIdParam) {
+      const conversations = useChatStore.getState().conversations;
       const conversation = conversations.find((c) => c.id === convoIdParam);
       if (conversation?.isUnread) {
         // Optimistically update local state
-        upsertConversation({ ...conversation, isUnread: false });
+        useChatStore
+          .getState()
+          .upsertConversation({ ...conversation, isUnread: false });
         db.updateConversationFields(convoIdParam, { isUnread: false });
         // Fire API call (don't await to avoid blocking)
         chatApi.markAsRead(convoIdParam).catch(console.error);
@@ -70,8 +72,8 @@ const ChatPage = React.memo(function MainChat() {
   }, [
     convoIdParam,
     setActiveConversationId,
-    conversations,
-    upsertConversation,
+    // NOTE: Not including conversations or upsertConversation in deps
+    // to avoid re-triggering when manually toggling read/unread status
   ]);
 
   const {

@@ -68,10 +68,10 @@ export const ChatTab: FC<ChatTabProps> = ({
     >
       <Button
         className={`w-full justify-start px-2 font-light text-sm ${
-          isActive
-            ? "text-zinc-300"
-            : isUnread
-              ? "text-white"
+          isUnread
+            ? "text-zinc-300 font-normal"
+            : isActive
+              ? "text-zinc-300"
               : "text-zinc-500 hover:text-zinc-300"
         }`}
         size="sm"
