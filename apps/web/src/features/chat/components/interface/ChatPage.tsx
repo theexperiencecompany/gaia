@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-
+import { chatApi } from "@/features/chat/api/chatApi";
 import { VoiceApp } from "@/features/chat/components/composer/VoiceModeOverlay";
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
+import { db } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 import {
   useComposerTextActions,
@@ -25,6 +26,8 @@ const ChatPage = React.memo(function MainChat() {
   const setActiveConversationId = useChatStore(
     (state) => state.setActiveConversationId,
   );
+  const conversations = useChatStore((state) => state.conversations);
+  const upsertConversation = useChatStore((state) => state.upsertConversation);
 
   // Fetching status on chat-page to resolve caching issues when new integration is connected
   useFetchIntegrationStatus({
@@ -43,16 +46,33 @@ const ChatPage = React.memo(function MainChat() {
     convoIdParam,
   } = useChatLayout();
 
-  // Set active conversation ID based on URL param
+  // Set active conversation ID and mark as read when opening
   useEffect(() => {
     setActiveConversationId(convoIdParam || null);
+
+    // Mark conversation as read if it's unread
+    if (convoIdParam) {
+      const conversation = conversations.find((c) => c.id === convoIdParam);
+      if (conversation?.isUnread) {
+        // Optimistically update local state
+        upsertConversation({ ...conversation, isUnread: false });
+        db.updateConversationFields(convoIdParam, { isUnread: false });
+        // Fire API call (don't await to avoid blocking)
+        chatApi.markAsRead(convoIdParam).catch(console.error);
+      }
+    }
 
     // Clear optimistic message when navigating to a different conversation
     // This prevents stale optimistic message from showing in wrong conversations
     return () => {
       useChatStore.getState().clearOptimisticMessage();
     };
-  }, [convoIdParam, setActiveConversationId]);
+  }, [
+    convoIdParam,
+    setActiveConversationId,
+    conversations,
+    upsertConversation,
+  ]);
 
   const {
     scrollContainerRef,

@@ -38,6 +38,7 @@ export interface Conversation {
   starred?: boolean;
   is_system_generated?: boolean;
   system_purpose?: SystemPurpose;
+  is_unread?: boolean;
   createdAt: string;
   updatedAt?: string;
 }
@@ -85,6 +86,7 @@ export const chatApi = {
       starred?: boolean;
       is_system_generated?: boolean;
       system_purpose?: SystemPurpose;
+      is_unread?: boolean;
       createdAt: string;
       updatedAt?: string;
       messages: MessageType[];
@@ -195,6 +197,16 @@ export const chatApi = {
         errorMessage: "Failed to rename conversation",
       },
     );
+  },
+
+  // Mark conversation as read
+  markAsRead: async (conversationId: string): Promise<void> => {
+    return apiService.patch(`/conversations/${conversationId}/read`, {});
+  },
+
+  // Mark conversation as unread
+  markAsUnread: async (conversationId: string): Promise<void> => {
+    return apiService.patch(`/conversations/${conversationId}/unread`, {});
   },
 
   // Save incomplete conversation when stream is cancelled

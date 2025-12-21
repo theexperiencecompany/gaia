@@ -15,6 +15,8 @@ from app.services.conversation_service import (
     get_conversation,
     get_conversations,
     get_starred_messages,
+    mark_conversation_as_read,
+    mark_conversation_as_unread,
     pin_message,
     star_conversation,
     update_conversation_description,
@@ -164,4 +166,28 @@ async def update_conversation_description_endpoint(
     response = await update_conversation_description(
         conversation_id, body.description, user
     )
+    return JSONResponse(content=response)
+
+
+@router.patch("/conversations/{conversation_id}/read")
+async def mark_as_read_endpoint(
+    conversation_id: str,
+    user: dict = Depends(get_current_user),
+) -> JSONResponse:
+    """
+    Mark a conversation as read.
+    """
+    response = await mark_conversation_as_read(conversation_id, user)
+    return JSONResponse(content=response)
+
+
+@router.patch("/conversations/{conversation_id}/unread")
+async def mark_as_unread_endpoint(
+    conversation_id: str,
+    user: dict = Depends(get_current_user),
+) -> JSONResponse:
+    """
+    Mark a conversation as unread.
+    """
+    response = await mark_conversation_as_unread(conversation_id, user)
     return JSONResponse(content=response)

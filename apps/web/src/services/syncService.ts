@@ -189,6 +189,7 @@ export const batchSyncConversations = async (): Promise<void> => {
           starred: conversation.starred ?? false,
           isSystemGenerated: conversation.is_system_generated ?? false,
           systemPurpose: conversation.system_purpose ?? null,
+          isUnread: conversation.is_unread ?? false,
           createdAt: new Date(conversation.createdAt),
           updatedAt: conversation.updatedAt
             ? new Date(conversation.updatedAt)

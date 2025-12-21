@@ -75,6 +75,7 @@ export default function ChatsList() {
       starred: conv.starred ?? false,
       isSystemGenerated: conv.is_system_generated ?? false,
       systemPurpose: conv.system_purpose ?? null,
+      isUnread: conv.is_unread ?? false,
       createdAt: new Date(conv.createdAt),
       updatedAt: conv.updatedAt
         ? new Date(conv.updatedAt)
@@ -208,6 +209,7 @@ export default function ChatsList() {
                           conversation.isSystemGenerated ?? false
                         }
                         systemPurpose={conversation.systemPurpose ?? undefined}
+                        isUnread={conversation.isUnread ?? false}
                       />
                     ))}
                 </div>
@@ -237,6 +239,7 @@ export default function ChatsList() {
                       id={conversation.id}
                       name={conversation.title || "New chat"}
                       starred={conversation.starred ?? false}
+                      isUnread={conversation.isUnread ?? false}
                     />
                   ))}
                 </div>
@@ -272,6 +275,7 @@ export default function ChatsList() {
                         id={conversation.id}
                         name={conversation.title || "New chat"}
                         starred={conversation.starred ?? false}
+                        isUnread={conversation.isUnread ?? false}
                       />
                     ))}
                 </div>

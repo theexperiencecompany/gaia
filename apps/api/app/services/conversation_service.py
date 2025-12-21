@@ -35,6 +35,7 @@ async def create_conversation_service(
         "description": conversation.description,
         "is_system_generated": conversation.is_system_generated or False,
         "system_purpose": conversation.system_purpose,
+        "is_unread": conversation.is_unread or False,
         "messages": [],
         "createdAt": created_at,
     }
@@ -75,6 +76,7 @@ async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
         "starred": 1,
         "is_system_generated": 1,
         "system_purpose": 1,
+        "is_unread": 1,
         "createdAt": 1,
         "updatedAt": 1,
     }
@@ -340,6 +342,7 @@ async def create_system_conversation(
         description=description,
         is_system_generated=True,
         system_purpose=system_purpose,
+        is_unread=True,
     ).model_dump(exclude_unset=True, exclude_none=True)
 
     conversation_data["user_id"] = user_id
@@ -438,6 +441,39 @@ async def update_conversation_description(
     }
 
 
+async def mark_conversation_as_read(conversation_id: str, user: dict) -> dict:
+    """
+    Mark a conversation as read (set is_unread to False).
+    """
+    user_id = user.get("user_id")
+    await conversations_collection.update_one(
+        {"user_id": user_id, "conversation_id": conversation_id},
+        {"$set": {"is_unread": False}, "$currentDate": {"updatedAt": True}},
+    )
+    return {
+        "message": "Conversation marked as read",
+        "conversation_id": conversation_id,
+    }
+
+
+async def mark_conversation_as_unread(conversation_id: str, user: dict) -> dict:
+    """Mark a conversation as unread."""
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated"
+        )
+
+    await conversations_collection.update_one(
+        {"user_id": user_id, "conversation_id": conversation_id},
+        {"$set": {"is_unread": True}, "$currentDate": {"updatedAt": True}},
+    )
+    return {
+        "message": "Conversation marked as unread",
+        "conversation_id": conversation_id,
+    }
+
+
 def _convert_datetime_to_iso(obj: dict, *fields: str) -> None:
     """Convert datetime fields to ISO format strings in place."""
     for field in fields:
@@ -509,6 +545,7 @@ async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dic
                 "starred": 1,
                 "is_system_generated": 1,
                 "system_purpose": 1,
+                "is_unread": 1,
                 "createdAt": 1,
                 "updatedAt": 1,
                 "messages": 1,

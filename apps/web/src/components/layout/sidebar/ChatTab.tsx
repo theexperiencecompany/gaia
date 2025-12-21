@@ -1,5 +1,6 @@
 "use client";
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { type FC, useEffect, useState } from "react";
@@ -16,6 +17,7 @@ interface ChatTabProps {
   starred: boolean | undefined;
   isSystemGenerated?: boolean;
   systemPurpose?: SystemPurpose;
+  isUnread?: boolean;
 }
 
 export const ChatTab: FC<ChatTabProps> = ({
@@ -24,6 +26,7 @@ export const ChatTab: FC<ChatTabProps> = ({
   starred,
   isSystemGenerated = false,
   systemPurpose,
+  isUnread = false,
 }) => {
   const [currentConvoId, setCurrentConvoId] = useState<string | null>(null);
   const pathname = usePathname();
@@ -64,8 +67,12 @@ export const ChatTab: FC<ChatTabProps> = ({
       onMouseOver={() => setButtonHovered(true)}
     >
       <Button
-        className={`w-full justify-start px-2 text-sm ${
-          isActive ? "text-zinc-300" : "text-zinc-500 hover:text-zinc-300"
+        className={`w-full justify-start px-2 font-light text-sm ${
+          isActive
+            ? "text-zinc-300"
+            : isUnread
+              ? "text-white"
+              : "text-zinc-500 hover:text-zinc-300"
         }`}
         size="sm"
         as={Link}
@@ -80,7 +87,14 @@ export const ChatTab: FC<ChatTabProps> = ({
           })
         }
       >
-        {name.replace('"', "")}
+        <div className="flex items-center truncate justify-between w-full">
+          <span>{name.replace('"', "")}</span>
+          {isUnread && (
+            <div className="rounded-full text-xs border border-primary/40 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-primary bg-primary/10">
+              UNREAD
+            </div>
+          )}
+        </div>
       </Button>
 
       <div className={`absolute right-0`}>
@@ -89,6 +103,7 @@ export const ChatTab: FC<ChatTabProps> = ({
           chatId={id}
           chatName={name}
           starred={starred}
+          isUnread={isUnread}
         />
       </div>
     </div>

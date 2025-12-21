@@ -104,6 +104,7 @@ class ConversationModel(BaseModel):
     description: str = "New Chat"
     is_system_generated: Optional[bool] = False
     system_purpose: Optional[SystemPurpose] = None
+    is_unread: Optional[bool] = False
 
 
 class UpdateMessagesRequest(BaseModel):

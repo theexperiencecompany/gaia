@@ -31,17 +31,20 @@ import { useDeleteConversation } from "@/hooks/useDeleteConversation";
 import {
   ArrowDown01Icon,
   Delete02Icon,
+  MessageNotificationIcon,
   MoreVerticalIcon,
   PencilEdit02Icon,
   StarIcon,
 } from "@/icons";
 import { db } from "@/lib/db/chatDb";
+import { useChatStore } from "@/stores/chatStore";
 
 export default function ChatOptionsDropdown({
   buttonHovered,
   chatId,
   chatName,
   starred = false,
+  isUnread = false,
   logo2 = false,
   btnChildren = undefined,
 }: {
@@ -49,6 +52,7 @@ export default function ChatOptionsDropdown({
   chatId: string;
   chatName: string;
   starred: boolean | undefined;
+  isUnread?: boolean;
   logo2?: boolean;
   btnChildren?: ReactNode;
 }) {
@@ -75,6 +79,33 @@ export default function ChatOptionsDropdown({
       await fetchConversations();
     } catch (error) {
       console.error("Failed to update star", error);
+    }
+  };
+
+  const handleReadToggle = async () => {
+    const newIsUnread = !isUnread;
+
+    // Optimistic update - update store immediately for instant UI feedback
+    useChatStore
+      .getState()
+      .updateConversation(chatId, { isUnread: newIsUnread });
+
+    try {
+      // Also update IndexedDB for persistence
+      await db.updateConversationFields(chatId, { isUnread: newIsUnread });
+
+      // API call in background
+      if (newIsUnread) {
+        chatApi.markAsUnread(chatId).catch(console.error);
+      } else {
+        chatApi.markAsRead(chatId).catch(console.error);
+      }
+    } catch (error) {
+      // Revert on error
+      useChatStore
+        .getState()
+        .updateConversation(chatId, { isUnread: isUnread });
+      console.error("Failed to toggle read status", error);
     }
   };
 
@@ -160,15 +191,25 @@ export default function ChatOptionsDropdown({
         </DropdownTrigger>
         <DropdownMenu aria-label="Static Actions">
           <DropdownItem key="star" textValue="Star" onPress={handleStarToggle}>
-            <div className="flex flex-row items-center justify-between gap-2">
-              <StarIcon color="white" width={16} />
+            <div className="flex flex-row items-center justify-start gap-2">
+              <StarIcon color="white" width={18} height={18} />
               {starred ? "Remove" : "Add"} star
             </div>
           </DropdownItem>
           <DropdownItem key="edit" textValue="Rename" onPress={openEditModal}>
-            <div className="flex flex-row items-center justify-between gap-2">
-              <PencilEdit02Icon color="white" width={16} />
+            <div className="flex flex-row items-center justify-start gap-2">
+              <PencilEdit02Icon color="white" width={18} height={18} />
               Rename
+            </div>
+          </DropdownItem>
+          <DropdownItem
+            key="read"
+            textValue={isUnread ? "Mark read" : "Mark unread"}
+            onPress={handleReadToggle}
+          >
+            <div className="flex flex-row items-center justify-start gap-2">
+              <MessageNotificationIcon color="white" width={18} height={18} />
+              {isUnread ? "Mark read" : "Mark unread"}
             </div>
           </DropdownItem>
           <DropdownItem
@@ -180,10 +221,11 @@ export default function ChatOptionsDropdown({
             onMouseOver={() => setDangerStateHovered(true)}
             onPress={handleDelete}
           >
-            <div className="flex flex-row items-center justify-between gap-2">
+            <div className="flex flex-row items-center justify-start gap-2">
               <Delete02Icon
                 color={dangerStateHovered ? "white" : "red"}
-                width={16}
+                width={18}
+                height={18}
               />
               Delete
             </div>

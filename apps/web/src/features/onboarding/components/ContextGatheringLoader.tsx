@@ -323,7 +323,7 @@ export default function ContextGatheringLoader({
           {/* Real progress bar */}
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-primary via-purple-500 to-pink-500 transition-all duration-700 ease-out"
+              className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
               style={{ width: `${getProgressPercentage()}%` }}
             />
           </div>

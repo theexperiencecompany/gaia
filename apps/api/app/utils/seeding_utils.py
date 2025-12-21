@@ -161,8 +161,9 @@ async def seed_initial_conversation(user_id: str) -> None:
         conversation_id = str(uuid4())
         conversation = ConversationModel(
             conversation_id=conversation_id,
-            description="Welcome to Gaia",
+            description="Hey, Welcome!",
             is_system_generated=False,
+            is_unread=True,
         )
 
         # We need to pass a dict with user_id to create_conversation_service
