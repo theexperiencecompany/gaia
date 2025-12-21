@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.0 (2025-12-21)
+
+## What's Changed
+* feat: Add support for Unread chats post onboarding and after running workflows by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/388
+
+
+**Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/v0.11.0...v0.12.0
+
 ## [0.11.0](https://github.com/theexperiencecompany/gaia/compare/v0.10.1...v0.11.0) (2025-12-19)
 
 
