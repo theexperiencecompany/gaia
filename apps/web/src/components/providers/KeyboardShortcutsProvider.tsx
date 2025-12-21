@@ -61,6 +61,7 @@ export default function KeyboardShortcutsProvider({
     { prefix: "/calendar", navigate: "/calendar?create=true" },
     { prefix: "/workflows", selector: "create-workflow" },
     { prefix: "/goals", selector: "create-goal" },
+    { prefix: "/integrations", selector: "create-integration" },
   ] as const;
 
   const triggerCreateAction = useCallback(() => {

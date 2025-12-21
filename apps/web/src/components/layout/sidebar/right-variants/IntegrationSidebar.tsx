@@ -5,7 +5,7 @@ import { Chip } from "@heroui/chip";
 import React, { useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { Separator, SidebarHeader } from "@/components/ui";
+import { RaisedButton, Separator, SidebarHeader } from "@/components/ui";
 import { SidebarContent } from "@/components/ui/sidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -105,14 +105,14 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         </div>
 
         {!isConnected ? (
-          <Button
-            color="primary"
-            fullWidth
-            onPress={handleConnect}
-            isDisabled={!isAvailable}
+          <RaisedButton
+            color="#00bbff"
+            className="font-medium text-black!"
+            onClick={handleConnect}
+            disabled={!isAvailable}
           >
             {isAvailable ? "Connect" : "Coming Soon"}
-          </Button>
+          </RaisedButton>
         ) : (
           onDisconnect && (
             <Button
@@ -143,19 +143,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               {integrationTools.map((tool) => (
                 <Chip
                   key={tool.name}
-                  variant="flat"
+                  variant="bordered"
                   color="default"
-                  radius="sm"
-                  className="pl-1"
-                  startContent={
-                    tool.integration?.requiredIntegration &&
-                    getToolCategoryIcon(tool.integration.requiredIntegration, {
-                      size: 18,
-                      width: 18,
-                      height: 18,
-                      showBackground: false,
-                    })
-                  }
+                  radius="full"
+                  className="font-light border-1 text-zinc-300"
                 >
                   {category
                     ? formatToolName(tool.name)

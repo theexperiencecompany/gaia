@@ -1,11 +1,19 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import type React from "react";
+import { useMemo, useState } from "react";
+import { Separator } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import {
+  CATEGORY_DISPLAY_ORDER,
+  getCategoryLabel,
+} from "../constants/categories";
 import { useIntegrationSearch } from "../hooks/useIntegrationSearch";
 import { useIntegrations } from "../hooks/useIntegrations";
 import type { Integration } from "../types";
+import { CategoryFilter } from "./CategoryFilter";
 import { IntegrationsSearchInput } from "./IntegrationsSearchInput";
+import { MCPIntegrationModal } from "./MCPIntegrationModal";
 
 const IntegrationRow: React.FC<{
   integration: Integration;
@@ -21,10 +29,10 @@ const IntegrationRow: React.FC<{
 
   return (
     <div
-      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/40 px-4 py-3 transition hover:bg-zinc-700 transition-all"
+      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-all duration-200"
       onClick={handleClick}
     >
-      <div className="flex-shrink-0">
+      <div className="shrink-0">
         {getToolCategoryIcon(integration.id, {
           size: 32,
           width: 32,
@@ -34,13 +42,13 @@ const IntegrationRow: React.FC<{
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="text-sm font-medium">{integration.name}</div>
-        <div className="truncate text-xs font-light text-zinc-400">
+        <div className="font-medium">{integration.name}</div>
+        <div className="truncate text-sm font-light text-zinc-400">
           {integration.description}
         </div>
       </div>
 
-      <div className="flex-shrink-0">
+      <div className="shrink-0">
         {isConnected && (
           <Chip size="sm" variant="flat" color="success">
             Connected
@@ -49,10 +57,9 @@ const IntegrationRow: React.FC<{
 
         {isAvailable && !isConnected && (
           <Button
-            size="sm"
             variant="flat"
             color="primary"
-            className="text-xs text-primary"
+            className="text-sm text-primary"
             onPress={() => {
               onConnect(integration.id);
             }}
@@ -71,13 +78,59 @@ const IntegrationRow: React.FC<{
   );
 };
 
+interface IntegrationSectionProps {
+  title: string;
+  integrations: Integration[];
+  chipColor?: "primary" | "default";
+  onConnect: (id: string) => void;
+  onIntegrationClick?: (id: string) => void;
+}
+
+const IntegrationSection: React.FC<IntegrationSectionProps> = ({
+  title,
+  integrations,
+  chipColor = "default",
+  onConnect,
+  onIntegrationClick,
+}) => {
+  if (integrations.length === 0) return null;
+
+  return (
+    <div className="mb-8">
+      <div className="mb-4 flex items-center gap-3 pl-4">
+        <h2 className="text-base font-semibold">{title}</h2>
+        <Chip size="sm" variant="flat" color={chipColor}>
+          {integrations.length}
+        </Chip>
+      </div>
+      <div className="flex flex-col gap-2">
+        {integrations.map((integration) => (
+          <IntegrationRow
+            key={integration.id}
+            integration={integration}
+            onConnect={onConnect}
+            onClick={(id) => onIntegrationClick?.(id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export const IntegrationsList: React.FC<{
   onIntegrationClick?: (integrationId: string) => void;
 }> = ({ onIntegrationClick }) => {
   const { integrations, connectIntegration } = useIntegrations();
+  const [isMCPModalOpen, setIsMCPModalOpen] = useState(false);
 
-  const { searchQuery, setSearchQuery, clearSearch, filteredIntegrations } =
-    useIntegrationSearch(integrations);
+  const {
+    searchQuery,
+    setSearchQuery,
+    clearSearch,
+    selectedCategory,
+    setSelectedCategory,
+    filteredIntegrations,
+  } = useIntegrationSearch(integrations);
 
   const handleConnect = async (integrationId: string) => {
     try {
@@ -87,50 +140,66 @@ export const IntegrationsList: React.FC<{
     }
   };
 
-  // Separate featured integrations
-  const featuredIntegrations = filteredIntegrations.filter(
-    (i) => i.isFeatured && i.loginEndpoint,
-  );
+  // Separate featured integrations (only for "all" category or when featured are in the selected category)
+  const featuredIntegrations = useMemo(() => {
+    return filteredIntegrations.filter((i) => i.isFeatured && i.loginEndpoint);
+  }, [filteredIntegrations]);
 
-  // Regular integrations (non-featured)
-  const connectedIntegrations = filteredIntegrations.filter(
-    (i) => !i.isFeatured && i.status === "connected",
-  );
-  const availableIntegrations = filteredIntegrations.filter(
-    (i) => !i.isFeatured && i.status === "not_connected" && i.loginEndpoint,
-  );
-  const comingSoonIntegrations = filteredIntegrations.filter(
-    (i) => !i.loginEndpoint,
-  );
+  // Non-featured integrations
+  const nonFeaturedIntegrations = useMemo(() => {
+    return filteredIntegrations.filter((i) => !i.isFeatured);
+  }, [filteredIntegrations]);
 
-  const hasResults =
-    featuredIntegrations.length > 0 ||
-    connectedIntegrations.length > 0 ||
-    availableIntegrations.length > 0 ||
-    comingSoonIntegrations.length > 0;
+  // Group non-featured integrations by category
+  const integrationsByCategory = useMemo(() => {
+    const grouped: Record<string, Integration[]> = {};
+
+    for (const category of CATEGORY_DISPLAY_ORDER) {
+      grouped[category] = nonFeaturedIntegrations.filter(
+        (i) => i.category === category,
+      );
+    }
+
+    return grouped;
+  }, [nonFeaturedIntegrations]);
+
+  const hasResults = filteredIntegrations.length > 0;
 
   return (
     <div>
-      <div className="mb-6 space-y-3 flex justify-end">
-        <IntegrationsSearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          onClear={clearSearch}
-        />
+      {/* Search and Category Filter */}
+      <div className="mb-6 space-y-4">
+        <div className="flex justify-between items-center">
+          <CategoryFilter
+            selectedCategory={selectedCategory}
+            onCategoryChange={setSelectedCategory}
+          />
+          <IntegrationsSearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            onClear={clearSearch}
+          />
+        </div>
       </div>
 
-      {!hasResults && searchQuery && (
+      {/* No Results State */}
+      {!hasResults && (searchQuery || selectedCategory !== "all") && (
         <div className="py-16 text-center space-y-2">
           <p className="text-sm text-zinc-400">
-            No integrations found for &ldquo;{searchQuery}&rdquo;
+            {searchQuery
+              ? `No integrations found for "${searchQuery}"`
+              : `No ${getCategoryLabel(selectedCategory).toLowerCase()} integrations found`}
           </p>
           <Button
-            onPress={clearSearch}
+            onPress={() => {
+              clearSearch();
+              setSelectedCategory("all");
+            }}
             variant="light"
             color="primary"
             size="sm"
           >
-            Clear search
+            Clear filters
           </Button>
         </div>
       )}
@@ -144,74 +213,52 @@ export const IntegrationsList: React.FC<{
         </div>
       )}
 
-      {/* Featured Integrations Section */}
+      {/* Featured Section */}
       {featuredIntegrations.length > 0 && (
-        <div className="mb-8">
-          <div className="mb-4 flex items-center gap-2">
-            <h2 className="text-base font-semibold">Featured Integrations</h2>
-            <Chip size="sm" variant="flat" color="primary">
-              {featuredIntegrations.length}
-            </Chip>
-          </div>
-          <div className="flex flex-col gap-2">
-            {featuredIntegrations.map((integration) => (
-              <IntegrationRow
-                key={integration.id}
-                integration={integration}
-                onConnect={handleConnect}
-                onClick={(id) => onIntegrationClick?.(id)}
-              />
-            ))}
-          </div>
-        </div>
+        <>
+          <IntegrationSection
+            title="Featured"
+            integrations={featuredIntegrations}
+            chipColor="primary"
+            onConnect={handleConnect}
+            onIntegrationClick={onIntegrationClick}
+          />
+          <Separator className="border-zinc-800 border-t-1 mb-8" />
+        </>
       )}
 
-      {/* All Integrations Section */}
-      {(connectedIntegrations.length > 0 ||
-        availableIntegrations.length > 0 ||
-        comingSoonIntegrations.length > 0) && (
-        <div>
-          <div className="mb-4 flex items-center gap-2">
-            <h2 className="text-base font-semibold">All Integrations</h2>
-            <Chip size="sm" variant="flat" color="default">
-              {connectedIntegrations.length +
-                availableIntegrations.length +
-                comingSoonIntegrations.length}
-            </Chip>
-          </div>
-          <div className="flex flex-col gap-2">
-            {connectedIntegrations.length > 0 &&
-              connectedIntegrations.map((integration) => (
-                <IntegrationRow
-                  key={integration.id}
-                  integration={integration}
-                  onConnect={handleConnect}
-                  onClick={(id) => onIntegrationClick?.(id)}
-                />
-              ))}
+      {/* Category Sections */}
+      {selectedCategory === "all" ? (
+        // When "All" is selected, show integrations grouped by category
+        CATEGORY_DISPLAY_ORDER.map((category) => {
+          const categoryIntegrations = integrationsByCategory[category];
+          if (!categoryIntegrations || categoryIntegrations.length === 0)
+            return null;
 
-            {availableIntegrations.length > 0 &&
-              availableIntegrations.map((integration) => (
-                <IntegrationRow
-                  key={integration.id}
-                  integration={integration}
-                  onConnect={handleConnect}
-                  onClick={(id) => onIntegrationClick?.(id)}
-                />
-              ))}
-
-            {comingSoonIntegrations.length > 0 &&
-              comingSoonIntegrations.map((integration) => (
-                <IntegrationRow
-                  key={integration.id}
-                  integration={integration}
-                  onConnect={handleConnect}
-                  onClick={(id) => onIntegrationClick?.(id)}
-                />
-              ))}
-          </div>
-        </div>
+          return (
+            <IntegrationSection
+              key={category}
+              title={getCategoryLabel(category)}
+              integrations={categoryIntegrations}
+              onConnect={handleConnect}
+              onIntegrationClick={onIntegrationClick}
+            />
+          );
+        })
+      ) : (
+        // When a specific category is selected, show flat list (non-featured only)
+        <IntegrationSection
+          title={getCategoryLabel(selectedCategory)}
+          integrations={nonFeaturedIntegrations}
+          onConnect={handleConnect}
+          onIntegrationClick={onIntegrationClick}
+        />
       )}
+
+      <MCPIntegrationModal
+        isOpen={isMCPModalOpen}
+        onClose={() => setIsMCPModalOpen(false)}
+      />
     </div>
   );
 };

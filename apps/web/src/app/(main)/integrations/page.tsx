@@ -6,10 +6,11 @@ import { useCallback, useEffect, useState } from "react";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
+import { MCPIntegrationModal } from "@/features/integrations/components/MCPIntegrationModal";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
-import { ConnectIcon, MessageFavourite02Icon } from "@/icons";
+import { ConnectIcon, MessageFavourite02Icon, PlusSignIcon } from "@/icons";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function IntegrationsPage() {
@@ -26,15 +27,24 @@ export default function IntegrationsPage() {
     string | null
   >(null);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [isMCPModalOpen, setIsMCPModalOpen] = useState(false);
 
   // Set header
   useEffect(() => {
     setHeader(
-      <div className="py-2">
+      <div className="py-2 flex items-center justify-between w-full">
         <HeaderTitle
           icon={<ConnectIcon width={20} height={20} />}
           text="Integrations"
         />
+        <Button
+          color="primary"
+          variant="flat"
+          startContent={<PlusSignIcon width={16} height={16} />}
+          onPress={() => setIsMCPModalOpen(true)}
+        >
+          Create Custom Integration
+        </Button>
       </div>,
     );
     return () => setHeader(null);
@@ -129,6 +139,11 @@ export default function IntegrationsPage() {
           description:
             "I would like to request a new integration for:\n\n[Please describe the integration you need and how you plan to use it]",
         }}
+      />
+
+      <MCPIntegrationModal
+        isOpen={isMCPModalOpen}
+        onClose={() => setIsMCPModalOpen(false)}
       />
     </div>
   );

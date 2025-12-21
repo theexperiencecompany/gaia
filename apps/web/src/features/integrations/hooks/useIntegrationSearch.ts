@@ -2,10 +2,13 @@
 
 import Fuse from "fuse.js";
 import { useMemo, useState } from "react";
+import type { IntegrationCategoryId } from "../constants/categories";
 import type { Integration } from "../types";
 
 export function useIntegrationSearch(integrations: Integration[]) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] =
+    useState<IntegrationCategoryId>("all");
 
   const fuse = useMemo(() => {
     return new Fuse(integrations, {
@@ -15,16 +18,31 @@ export function useIntegrationSearch(integrations: Integration[]) {
   }, [integrations]);
 
   const filteredIntegrations = useMemo(() => {
-    if (!searchQuery.trim()) return integrations;
-    return fuse.search(searchQuery).map((r) => r.item);
-  }, [searchQuery, fuse, integrations]);
+    let results = integrations;
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      results = fuse.search(searchQuery).map((r) => r.item);
+    }
+
+    // Apply category filter
+    if (selectedCategory !== "all") {
+      results = results.filter((i) => i.category === selectedCategory);
+    }
+
+    return results;
+  }, [searchQuery, selectedCategory, fuse, integrations]);
 
   const clearSearch = () => setSearchQuery("");
+  const clearCategory = () => setSelectedCategory("all");
 
   return {
     searchQuery,
     setSearchQuery,
     clearSearch,
+    selectedCategory,
+    setSelectedCategory,
+    clearCategory,
     filteredIntegrations,
   };
 }
