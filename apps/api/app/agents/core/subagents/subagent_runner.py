@@ -256,6 +256,7 @@ async def call_subagent(
             user=user,
             conversation_id=conversation_id,
             user_time=user_time,
+            user_model_config=user_model_config,
         ):
             yield chunk
     """
