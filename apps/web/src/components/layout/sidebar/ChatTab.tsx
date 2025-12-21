@@ -1,6 +1,5 @@
 "use client";
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { type FC, useEffect, useState } from "react";
