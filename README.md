@@ -2,17 +2,13 @@
 
 <img alt="logo" src="apps/web/public/images/logos/macos.png" width=150 height=150 /> <br/>
 
-[![GAIA](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/theexperiencecompany/gaia/refs/heads/master/frontend/public/badge.json)](https://heygaia.io) [![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Latest Release](https://img.shields.io/github/v/release/theexperiencecompany/gaia?color=00bbff)](https://github.com/theexperiencecompany/gaia/releases)
+[![GAIA](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/theexperiencecompany/gaia/refs/heads/master/apps/web/public/badge.json)](https://heygaia.io) [![Documentation](https://img.shields.io/badge/Docs-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Latest Release](https://img.shields.io/github/v/release/theexperiencecompany/gaia?color=00bbff)](https://github.com/theexperiencecompany/gaia/releases)
 
-[![stars](https://img.shields.io/github/stars/theexperiencecompany/gaia)](https://github.com/theexperiencecompany/gaia/stargazers) [![stars](https://img.shields.io/github/forks/theexperiencecompany/gaia)](https://github.com/theexperiencecompany/gaia/forks) [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v3/monitor/1zjmp.svg)](https://uptime.betterstack.com/?utm_source=status_badge)
-
-<!-- [![Quality Checks](https://github.com/theexperiencecompany/gaia/actions/workflows/main.yml/badge.svg)](https://github.com/theexperiencecompany/gaia/actions/workflows/main.yml) -->
-
-![GitHub branch check runs](https://img.shields.io/github/check-runs/theexperiencecompany/gaia/master?logo=github) ![GitHub deployments](https://img.shields.io/github/deployments/theexperiencecompany/gaia/production?logo=github&label=production)
+[![Better Stack Badge](https://uptime.betterstack.com/status-badges/v3/monitor/1zjmp.svg)](https://uptime.betterstack.com/?utm_source=status_badge) [![Quality Checks](https://github.com/theexperiencecompany/gaia/actions/workflows/main.yml/badge.svg)](https://github.com/theexperiencecompany/gaia/actions/workflows/main.yml) ![GitHub deployments](https://img.shields.io/github/deployments/theexperiencecompany/gaia/production?logo=github&label=Production%20Deployment)
 
 [![contributors](https://img.shields.io/github/contributors/theexperiencecompany/gaia)](https://github.com/theexperiencecompany/gaia/graphs/contributors) [![open issues](https://img.shields.io/github/issues/theexperiencecompany/gaia)](https://github.com/theexperiencecompany/gaia/issues/) ![last update](https://img.shields.io/github/commit-activity/m/theexperiencecompany/gaia) [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Strict-red.svg)](https://polyformproject.org/licenses/noncommercial-1.0.0/)
 
-[![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![Twitter Follow](https://img.shields.io/twitter/follow/trygaia?style=social)](https://x.com/intent/user?screen_name=trygaia) [![Whatsapp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io)[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/theexperiencecompany/gaia)
+[![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![Twitter Follow](https://img.shields.io/twitter/follow/trygaia?style=social)](https://x.com/intent/user?screen_name=trygaia) [![Whatsapp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/theexperiencecompany/gaia)
 
 </div>
 
@@ -21,6 +17,47 @@
 <b>[GAIA](https://heygaia.io)</b> is your proactive, personal AI assistant designed to increase your productivity.
 
 It's designed to help users manage their digital lives by automating tasks, handling communication, and increasing productivity - going beyond traditional assistants like Siri, Google Assistant and ChatGPT.
+
+## Features
+
+- **Truly Proactive AI**: Doesn't wait for commands - acts ahead of time on your upcoming deadlines, important emails, and tasks
+- **Automated Workflows**: Create multi-step workflows to eliminate repetitive tasks - from email triage to research to document creation
+- **Smart Todo Management**: Your todos become mini-workflows - GAIA researches, drafts, and handles the work automatically
+- **Unified Productivity Hub**: All your tasks, emails, calendar, and goals in one place with intelligent context
+- **Graph-Based Memory**: Builds a living knowledge graph of your work - tasks link to projects, meetings link to documents, everything connects
+- **200+ App Integrations**: Connects with your favorite tools (Gmail, Slack, Calendar, Google Docs, Notion, Linear, GitHub, and more)
+- **Multi-Platform**: Web | Desktop - macOS, Windows, Linux  | Mobile
+- **Open Source & Self-Hostable**: Full transparency with the ability to self-host on your own infrastructure
+
+
+
+<div align="center">
+  <table>
+    <tr>
+      <td width="50%">
+      <center>
+        <img src="apps/web/public/images/screenshots/desktop_dock.png" alt="GAIA Desktop App" style="width:100%; border-radius:12px;">
+        <em>GAIA on Desktop</em>
+        <br/>
+         <a href="https://heygaia.io/download">
+          <img src="https://img.shields.io/badge/Download-00bbff?logoColor=white" alt="Download">
+        </a>
+      </center>
+      </td>
+      <td width="50%">
+      <center>
+        <img src="apps/web/public/images/screenshots/website_tab.png" alt="GAIA Web App" style="width:100%; border-radius:12px;">
+        <em>GAIA on Web</em>
+        <br/>
+         <a href="https://heygaia.io/signup">
+          <img src="https://img.shields.io/badge/Get_Started-00bbff?logoColor=white" alt="Get Started">
+        </a>
+      </center>
+      </td>
+    </tr>
+  </table>
+</div>
+
 
 ## Quick Start
 

@@ -149,6 +149,7 @@ export default function ContactSupportModal({
       onOpenChange={onOpenChange}
       size="2xl"
       backdrop="blur"
+      isDismissable={false}
     >
       <ModalContent>
         {() => (
@@ -204,8 +205,8 @@ export default function ContactSupportModal({
                 <div
                   className={`cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all duration-200 ${
                     dragActive
-                      ? "scale-[1.02] border-blue-500 bg-blue-50 shadow-lg"
-                      : "hover:bg-zinc-750 border-zinc-700 bg-zinc-800 hover:border-blue-400"
+                      ? "scale-[1.02] border-primary bg-blue-50 shadow-lg"
+                      : "hover:bg-zinc-750 border-zinc-700 bg-zinc-800 hover:border-primary"
                   }`}
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
@@ -237,7 +238,7 @@ export default function ContactSupportModal({
                       >
                         {dragActive
                           ? "Drop your images here"
-                          : "Upload01Icon Images (Optional)"}
+                          : "Upload Images (Optional)"}
                       </p>
                       <p className="text-sm text-zinc-400">
                         {dragActive

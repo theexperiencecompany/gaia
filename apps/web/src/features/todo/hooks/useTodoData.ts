@@ -42,9 +42,10 @@ export function useTodoData(options: UseTodoDataOptions = {}) {
       hasLoadedRef.current = true;
       const parsedFilters = JSON.parse(filtersString) as TodoFilters;
       loadTodos(parsedFilters);
+      loadProjects(); // Load projects so todo chips can display project name/color
       loadCounts(); // Also load counts for dashboard summary
     }
-  }, [autoLoad, filtersString, loadTodos, loadCounts]);
+  }, [autoLoad, filtersString, loadTodos, loadCounts, loadProjects]);
 
   // Refresh function that reloads current filter
   const refresh = useCallback(() => {

@@ -6,7 +6,13 @@ import Image from "next/image";
 
 import { CursorMagicSelection03Icon } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { Mail01Icon, PlayIcon, Timer02Icon, UserCircle02Icon } from "@/icons";
+import {
+  DateTimeIcon,
+  Mail01Icon,
+  PlayIcon,
+  TimeScheduleIcon,
+  UserCircle02Icon,
+} from "@/icons";
 import { formatRunCount } from "@/utils/formatters";
 
 import type { Workflow } from "../../api/workflowApi";
@@ -48,7 +54,7 @@ interface TriggerIconProps {
 export function TriggerIcon({
   triggerType,
   integrationId,
-  size = 15,
+  size = 20,
 }: TriggerIconProps) {
   // Try to get icon from integrationId first
   if (integrationId) {
@@ -76,7 +82,7 @@ export function TriggerIcon({
   // Fallback icons for basic trigger types
   switch (triggerType) {
     case "schedule":
-      return <Timer02Icon width={size} height={size} />;
+      return <DateTimeIcon width={size} height={size} />;
     case "manual":
       return <CursorMagicSelection03Icon width={size} height={size} />;
     default:
@@ -108,7 +114,7 @@ export function TriggerDisplay({
             <TriggerIcon
               triggerType={triggerType}
               integrationId={integrationId}
-              size={15}
+              size={17}
             />
           </div>
           {triggerLabel}
@@ -116,7 +122,7 @@ export function TriggerDisplay({
 
         {nextRunText && (
           <div className="flex items-center gap-1 text-xs text-zinc-500">
-            <Timer02Icon width={15} height={15} />
+            <TimeScheduleIcon width={15} height={15} />
             {nextRunText}
           </div>
         )}

@@ -10,9 +10,10 @@ import type { Workflow } from "@/types/features/workflowTypes";
 
 // Get unique tool categories from workflow steps (max 4)
 const getWorkflowIcons = (workflow: Workflow): string[] => {
-  return Array.from(
-    new Set(workflow.steps.map((step) => step.tool_category)),
-  ).slice(0, 4);
+  return Array.from(new Set(workflow.steps.map((step) => step.category))).slice(
+    0,
+    4,
+  );
 };
 
 // Memoized workflow row component

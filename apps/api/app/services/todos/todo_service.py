@@ -4,7 +4,11 @@ from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from app.config.loggers import todos_logger
-from app.db.mongodb.collections import projects_collection, todos_collection
+from app.db.mongodb.collections import (
+    projects_collection,
+    todos_collection,
+    workflows_collection,
+)
 from app.db.redis import (
     CACHE_TTL,
     STATS_CACHE_TTL,
@@ -32,12 +36,9 @@ from app.models.todo_models import (
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
-from app.models.workflow_models import (
-    CreateWorkflowRequest,
-    TriggerConfig,
-    TriggerType,
+from app.services.todos.sync_service import (
+    sync_subtask_to_goal_completion,
 )
-from app.services.workflow.service import WorkflowService
 from app.utils.todo_vector_utils import (
     bulk_index_todos,
     delete_todo_embedding,
@@ -55,6 +56,50 @@ from pymongo import ReturnDocument
 
 # Special constants
 INBOX_PROJECT_ID = "inbox"
+
+
+async def _get_workflow_categories_for_todos(
+    todos: list[dict], user_id: str
+) -> dict[str, list[str]]:
+    """
+    Fetch workflow step categories for todos that have linked workflows.
+    Returns a dict mapping todo_id -> list of unique tool categories.
+    """
+    # Collect workflow IDs from todos
+    workflow_ids = [
+        todo.get("workflow_id") for todo in todos if todo.get("workflow_id")
+    ]
+
+    if not workflow_ids:
+        return {}
+
+    # Batch fetch workflows
+    workflows = await workflows_collection.find(
+        {"_id": {"$in": workflow_ids}, "user_id": user_id}
+    ).to_list(length=None)
+
+    # Build mapping: workflow_id -> categories
+    workflow_categories: dict[str, list[str]] = {}
+    for workflow in workflows:
+        workflow_id = workflow.get("_id")
+        steps = workflow.get("steps", [])
+        # Get unique categories from steps (max 3 for display)
+        categories = list(
+            dict.fromkeys(
+                step.get("category") for step in steps if step.get("category")
+            )
+        )[:3]
+        workflow_categories[workflow_id] = categories
+
+    # Build final mapping: todo_id -> categories
+    result: dict[str, list[str]] = {}
+    for todo in todos:
+        todo_id = str(todo.get("_id", todo.get("id", "")))
+        workflow_id = todo.get("workflow_id")
+        if workflow_id and workflow_id in workflow_categories:
+            result[todo_id] = workflow_categories[workflow_id]
+
+    return result
 
 
 class TodoService:
@@ -295,29 +340,29 @@ class TodoService:
         result = await todos_collection.insert_one(todo_dict)
         created_todo = await todos_collection.find_one({"_id": result.inserted_id})
 
-        # Create standalone workflow instead of queuing embedded workflow generation
+        # Queue workflow generation in background (same flow as Generate button)
+        todo_id_str = str(result.inserted_id)
         try:
-            # Create workflow using standalone workflow system
-            workflow_request = CreateWorkflowRequest(
-                title=f"Todo: {todo.title}",
-                description=todo.description or f"Workflow for todo: {todo.title}",
-                trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
-                generate_immediately=False,  # Generate in background
+            from app.services.workflow.queue_service import WorkflowQueueService
+
+            success = await WorkflowQueueService.queue_todo_workflow_generation(
+                todo_id=todo_id_str,
+                user_id=user_id,
+                title=todo.title,
+                description=todo.description or "",
             )
 
-            workflow = await WorkflowService.create_workflow(workflow_request, user_id)
-
-            # Update the todo with the workflow_id
-            await todos_collection.update_one(
-                {"_id": result.inserted_id}, {"$set": {"workflow_id": workflow.id}}
-            )
-
-            todos_logger.info(
-                f"Created standalone workflow {workflow.id} for todo '{todo.title}' (ID: {result.inserted_id})"
-            )
+            if success:
+                todos_logger.info(
+                    f"Queued workflow generation for todo '{todo.title}' (ID: {todo_id_str})"
+                )
+            else:
+                todos_logger.warning(
+                    f"Failed to queue workflow generation for todo '{todo.title}'"
+                )
         except Exception as e:
             todos_logger.warning(
-                f"Failed to create workflow for todo '{todo.title}': {str(e)}"
+                f"Failed to queue workflow for todo '{todo.title}': {str(e)}"
             )
 
         # Index for search
@@ -355,7 +400,19 @@ class TodoService:
         if not todo:
             raise ValueError(f"Todo {todo_id} not found")
 
-        response = TodoResponse(**serialize_document(todo))
+        # Enrich with workflow categories
+        serialized = serialize_document(todo)
+        if todo.get("workflow_id"):
+            workflow_categories = await _get_workflow_categories_for_todos(
+                [todo], user_id
+            )
+            serialized["workflow_categories"] = workflow_categories.get(
+                serialized["id"], []
+            )
+        else:
+            serialized["workflow_categories"] = []
+
+        response = TodoResponse(**serialized)
 
         # Cache the response
         await set_cache(cache_key, response.model_dump(), CACHE_TTL)
@@ -402,8 +459,16 @@ class TodoService:
         cursor = cursor.skip(skip).limit(params.per_page)
         todos = await cursor.to_list(params.per_page)
 
-        # Build response
-        data = [TodoResponse(**serialize_document(todo)) for todo in todos]
+        # Fetch workflow categories for todos with linked workflows
+        workflow_categories = await _get_workflow_categories_for_todos(todos, user_id)
+
+        # Build response with workflow categories
+        data = []
+        for todo in todos:
+            serialized = serialize_document(todo)
+            todo_id = serialized.get("id", "")
+            serialized["workflow_categories"] = workflow_categories.get(todo_id, [])
+            data.append(TodoResponse(**serialized))
         meta = PaginationMeta(
             total=total,
             page=params.page,
@@ -482,12 +547,6 @@ class TodoService:
 
                     if not new_subtask_id:
                         continue  # Skip subtasks without IDs
-
-                    # Since we don't have the old state anymore, we sync all subtasks
-                    # The sync service will handle checking if state actually changed
-                    from app.services.todos.sync_service import (
-                        sync_subtask_to_goal_completion,
-                    )
 
                     await sync_subtask_to_goal_completion(
                         todo_id, new_subtask_id, new_completed, user_id

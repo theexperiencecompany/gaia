@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import List, Optional, Union
 
-from app.models.message_models import FileData, SelectedWorkflowData
+from app.models.message_models import FileData, ReplyToMessageData, SelectedWorkflowData
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
@@ -90,6 +90,7 @@ class MessageModel(BaseModel):
     tool_data: Optional[List[ToolDataEntry]] = None
     follow_up_actions: Optional[List[str]] = None
     metadata: Optional[dict] = None
+    replyToMessage: Optional[ReplyToMessageData] = None
 
 
 class SystemPurpose(str, Enum):

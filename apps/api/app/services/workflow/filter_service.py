@@ -40,9 +40,9 @@ async def _should_process_email_for_workflow(
         for i, step in enumerate(workflow.steps, 1):
             workflow_steps_text += f"{i}. {step.title}\n"
             workflow_steps_text += f"   Description: {step.description}\n"
-            workflow_steps_text += f"   Tool: {step.tool_name}\n"
-            if hasattr(step, "tool_inputs") and step.tool_inputs:
-                workflow_steps_text += f"   Inputs: {step.tool_inputs}\n"
+            workflow_steps_text += f"   Category: {step.category}\n"
+            if hasattr(step, "inputs") and step.inputs:
+                workflow_steps_text += f"   Inputs: {step.inputs}\n"
             workflow_steps_text += "\n"
 
         print(f"{workflow_steps_text=}")

@@ -13,7 +13,7 @@ import {
 export const metadata: Metadata = generatePageMetadata({
   title: "Download",
   description:
-    "Download GAIA for your desktop. Available for macOS (Intel & Apple Silicon), Windows, and Linux. Get the native experience with enhanced performance and system integration.",
+    "Download GAIA for your desktop. Available for macOS (Intel & Apple Silicon), Windows, and Linux. Get the desktop app with enhanced performance and system integration.",
   path: "/download",
   keywords: [
     "GAIA Download",
@@ -65,7 +65,7 @@ function generateDownloadSchema(): WithContext<SoftwareApplication> {
 export default function Download() {
   const webPageSchema = generateWebPageSchema(
     "Download GAIA",
-    "Download GAIA for macOS, Windows, and Linux. Get the native desktop experience.",
+    "Download GAIA for macOS, Windows, and Linux. Experience GAIA on desktop.",
     `${siteConfig.url}/download`,
     [
       { name: "Home", url: siteConfig.url },

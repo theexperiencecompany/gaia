@@ -71,7 +71,7 @@ export default function RightSidebar({
     <aside
       className="absolute top-0 right-0 z-50 flex h-full flex-col bg-secondary-bg transition-transform duration-300 ease-in-out"
       style={{
-        width: "350px",
+        width: "380px",
         transform: isOpen ? "translateX(0)" : "translateX(100%)",
       }}
     >

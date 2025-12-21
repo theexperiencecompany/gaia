@@ -24,38 +24,30 @@ class TriggerType(str, Enum):
 class WorkflowStep(BaseModel):
     """A single step in a workflow."""
 
-    id: str = Field(description="Unique identifier for the step")
+    id: str = Field(default="", description="Unique identifier for the step")
     title: str = Field(description="Clear, actionable title for the step")
-    tool_name: str = Field(description="Specific tool to be used")
-    tool_category: str = Field(default="general", description="Category of the tool")
+    category: str = Field(
+        default="general",
+        description="Category for routing (e.g., gmail, notion, productivity)",
+    )
     description: str = Field(
         description="Detailed description of what this step accomplishes"
     )
-    tool_inputs: Dict[str, Any] = Field(
-        default_factory=dict, description="Expected inputs for the tool"
-    )
-    order: int = Field(description="Order of execution (0-based)")
-    executed_at: Optional[datetime] = Field(default=None)
-    result: Optional[Dict[str, Any]] = Field(default=None)
 
-    @classmethod
-    def create_step(
-        cls,
-        step_number: int,
-        title: str,
-        tool_name: str,
-        description: str,
-        tool_inputs: Optional[Dict[str, Any]] = None,
-    ):
-        """Create a workflow step with auto-generated ID."""
-        return cls(
-            id=f"step_{step_number}",
-            title=title,
-            tool_name=tool_name,
-            description=description,
-            tool_inputs=tool_inputs or {},
-            order=step_number,
-        )
+
+# LLM Output Models for Workflow Generation
+class GeneratedStep(BaseModel):
+    """Minimal schema for LLM-generated workflow steps."""
+
+    title: str = Field(description="Human-readable step name")
+    category: str = Field(description="Category for routing")
+    description: str = Field(description="What this step accomplishes")
+
+
+class GeneratedWorkflow(BaseModel):
+    """Schema for LLM workflow generation output."""
+
+    steps: List[GeneratedStep] = Field(description="List of workflow steps")
 
 
 class TriggerConfig(BaseModel):
@@ -222,6 +214,16 @@ class Workflow(BaseScheduledTask):
     total_executions: int = Field(default=0, description="Total number of executions")
     successful_executions: int = Field(
         default=0, description="Number of successful executions"
+    )
+
+    # Todo workflow flags (for auto-generated workflows linked to todos)
+    is_todo_workflow: bool = Field(
+        default=False,
+        description="Whether this workflow was auto-generated for a todo item",
+    )
+    source_todo_id: Optional[str] = Field(
+        default=None,
+        description="ID of the source todo if is_todo_workflow=True",
     )
 
     def __init__(self, **data):

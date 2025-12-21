@@ -26,7 +26,6 @@ import {
   workflowApi,
 } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
-import CreateWorkflowModal from "./CreateWorkflowModal";
 import EditWorkflowModal from "./EditWorkflowModal";
 import UnifiedWorkflowCard from "./shared/UnifiedWorkflowCard";
 import { WorkflowListSkeleton } from "./WorkflowSkeletons";
@@ -38,7 +37,6 @@ export default function WorkflowPage() {
   const workflowId = searchParams.get("id");
   const { setHeader } = useHeader();
 
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
   const {
     isOpen: isEditOpen,
     onOpen: onEditOpen,
@@ -66,7 +64,7 @@ export default function WorkflowPage() {
     action_type: "workflow",
     integrations:
       workflow.steps
-        ?.map((s) => s.tool_category)
+        ?.map((s) => s.category)
         .filter((v, i, a) => a.indexOf(v) === i) || [],
     categories: workflow.categories || ["featured"],
     published_id: workflow.id,
@@ -75,42 +73,8 @@ export default function WorkflowPage() {
     creator: workflow.creator,
   });
 
-  const loadExploreWorkflows = useCallback(async () => {
-    setIsLoadingExplore(true);
-    try {
-      const response = await workflowApi.getExploreWorkflows(25, 0);
-      const useCases = response.workflows.map(convertToUseCase);
-      setExploreWorkflows(useCases);
-    } catch (error) {
-      console.error("Error loading explore workflows:", error);
-    } finally {
-      setIsLoadingExplore(false);
-    }
-  }, []);
-
-  const loadCommunityWorkflows = useCallback(async () => {
-    setIsLoadingCommunity(true);
-    setCommunityError(null);
-    try {
-      const response = await workflowApi.getCommunityWorkflows(12, 0);
-      setCommunityWorkflows(response.workflows);
-    } catch (error) {
-      console.error("Error loading community workflows:", error);
-      setCommunityError(
-        error instanceof Error
-          ? error.message
-          : "Failed to load community workflows",
-      );
-    } finally {
-      setIsLoadingCommunity(false);
-    }
-  }, []);
-
   // Memoize the header component to prevent recreating on every render
-  const headerComponent = useMemo(
-    () => <WorkflowsHeader onCreateWorkflow={onOpen} />,
-    [onOpen],
-  );
+  const headerComponent = useMemo(() => <WorkflowsHeader />, []);
 
   // Use useLayoutEffect to set header synchronously before paint (faster)
   // Don't include setHeader in deps - it's stable from Zustand
@@ -119,10 +83,43 @@ export default function WorkflowPage() {
     return () => setHeader(null);
   }, [headerComponent]);
 
+  // Fetch explore and community workflows once on mount
   useEffect(() => {
+    const loadExploreWorkflows = async () => {
+      setIsLoadingExplore(true);
+      try {
+        const response = await workflowApi.getExploreWorkflows(25, 0);
+        const useCases = response.workflows.map(convertToUseCase);
+        setExploreWorkflows(useCases);
+      } catch (error) {
+        console.error("Error loading explore workflows:", error);
+      } finally {
+        setIsLoadingExplore(false);
+      }
+    };
+
+    const loadCommunityWorkflows = async () => {
+      setIsLoadingCommunity(true);
+      setCommunityError(null);
+      try {
+        const response = await workflowApi.getCommunityWorkflows(12, 0);
+        setCommunityWorkflows(response.workflows);
+      } catch (error) {
+        console.error("Error loading community workflows:", error);
+        setCommunityError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load community workflows",
+        );
+      } finally {
+        setIsLoadingCommunity(false);
+      }
+    };
+
     loadExploreWorkflows();
     loadCommunityWorkflows();
-  }, [loadExploreWorkflows, loadCommunityWorkflows]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (workflowId && workflows.length > 0) {
@@ -133,10 +130,6 @@ export default function WorkflowPage() {
       }
     }
   }, [workflowId, workflows, onEditOpen]);
-
-  const handleWorkflowCreated = useCallback(() => {
-    refetch();
-  }, [refetch]);
 
   const handleWorkflowDeleted = useCallback(
     (workflowId: string) => {
@@ -270,7 +263,16 @@ export default function WorkflowPage() {
                   onCardClick={() => handleWorkflowClick(workflow.id)}
                 />
               ),
-              <Button color="primary" variant="flat" onPress={onOpen}>
+              <Button
+                color="primary"
+                variant="flat"
+                onPress={() => {
+                  const btn = document.querySelector(
+                    '[data-keyboard-shortcut="create-workflow"]',
+                  ) as HTMLButtonElement;
+                  btn?.click();
+                }}
+              >
                 Create Your First Workflow
               </Button>,
             )}
@@ -297,7 +299,7 @@ export default function WorkflowPage() {
               communityError,
               "No community workflows yet",
               "Be the first to publish a workflow to the community",
-              loadCommunityWorkflows,
+              () => window.location.reload(),
               (workflow) => (
                 <UnifiedWorkflowCard
                   key={workflow.id}
@@ -312,19 +314,11 @@ export default function WorkflowPage() {
         </>
       )}
 
-      <CreateWorkflowModal
-        isOpen={isOpen}
-        onOpenChange={onOpenChange}
-        onWorkflowCreated={handleWorkflowCreated}
-        onWorkflowListRefresh={refetch}
-      />
-
       <EditWorkflowModal
         isOpen={isEditOpen}
         onOpenChange={handleModalClose}
         onWorkflowUpdated={() => refetch()}
         onWorkflowDeleted={handleWorkflowDeleted}
-        onWorkflowListRefresh={refetch}
         workflow={selectedWorkflow}
       />
     </div>

@@ -316,11 +316,22 @@ export const todoApi = {
     }
   },
 
-  // Generate workflow for a todo (now creates standalone workflow)
+  // Generate workflow for a todo (background generation + WebSocket notification)
+  // Returns immediately with status: 'generating' or 'exists'
   generateWorkflow: async (
     todoId: string,
-  ): Promise<{ workflow: Workflow; message: string }> => {
-    return apiService.post<{ workflow: Workflow; message: string }>(
+  ): Promise<{
+    status: "generating" | "exists";
+    workflow?: Workflow;
+    todo_id?: string;
+    message: string;
+  }> => {
+    return apiService.post<{
+      status: "generating" | "exists";
+      workflow?: Workflow;
+      todo_id?: string;
+      message: string;
+    }>(
       `/todos/${todoId}/workflow`,
       {},
       {

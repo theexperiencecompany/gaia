@@ -84,7 +84,7 @@ export default function ChatBubbleBot(
         className="relative flex flex-col pb-9"
       >
         <div className="flex items-end gap-1">
-          <div className="relative bottom-0 min-w-[40px] flex-shrink-0">
+          <div className="relative bottom-0 min-w-[40px] shrink-0">
             {shouldShowTextBubble(
               text,
               isConvoSystemGenerated,
@@ -95,7 +95,7 @@ export default function ChatBubbleBot(
                 src={"/images/logos/logo.webp"}
                 width={30}
                 height={30}
-                className={`${isLoading && isLastMessage ? "animate-spin" : ""} relative z-[5] transition duration-900`}
+                className={`${isLoading && isLastMessage ? "animate-spin" : ""} relative z-5 transition duration-900`}
               />
             )}
           </div>
@@ -113,14 +113,14 @@ export default function ChatBubbleBot(
           </div>
         </div>
 
-        <div className="ml-[43px] flex flex-col">
+        <div className="ml-10.75 flex flex-col">
           {!!follow_up_actions && follow_up_actions?.length > 0 && (
             <FollowUpActions actions={follow_up_actions} loading={!!loading} />
           )}
 
           <div
             ref={actionsRef}
-            className={`absolute -bottom-5 flex flex-col transition-all ${disableActions ? "hidden" : loading ? "opacity-0!" : "opacity-100"}`}
+            className={`absolute -bottom-7 flex flex-col transition-all ${disableActions ? "hidden" : loading ? "opacity-0!" : "opacity-100"}`}
             style={{
               opacity: disableActions ? 1 : 0,
               visibility: disableActions ? "visible" : "hidden",
@@ -141,6 +141,7 @@ export default function ChatBubbleBot(
                   message_id={message_id}
                   pinned={pinned}
                   text={text}
+                  messageRole="assistant"
                 />
               ))}
           </div>

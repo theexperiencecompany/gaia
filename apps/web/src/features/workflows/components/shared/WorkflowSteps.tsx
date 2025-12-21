@@ -1,3 +1,5 @@
+"use client";
+
 import WorkflowStep from "./WorkflowStep";
 
 interface WorkflowStepsProps {
@@ -5,8 +7,7 @@ interface WorkflowStepsProps {
     id: string;
     title: string;
     description: string;
-    tool_name: string;
-    tool_category: string;
+    category: string;
   }>;
   size?: "small" | "large";
 }
@@ -19,18 +20,15 @@ export default function WorkflowSteps({
   const timelineTopPosition = size === "large" ? "top-5" : "top-4";
 
   return (
-    <div className="py-5">
-      <div className="relative">
-        {/* Timeline line */}
-        <div
-          className={`absolute ${timelineTopPosition} bottom-8 ${timelineLeftPosition} w-[1px] bg-gradient-to-b from-primary via-primary/80 to-transparent`}
-        />
+    <div className="relative">
+      <div
+        className={`absolute ${timelineTopPosition} bottom-8 ${timelineLeftPosition} w-px bg-linear-to-b from-primary via-primary/80 to-transparent`}
+      />
 
-        <div className="space-y-8">
-          {steps.map((step, index) => (
-            <WorkflowStep key={step.id} step={step} index={index} size={size} />
-          ))}
-        </div>
+      <div className="space-y-8">
+        {steps.map((step, index) => (
+          <WorkflowStep key={step.id} step={step} index={index} size={size} />
+        ))}
       </div>
     </div>
   );

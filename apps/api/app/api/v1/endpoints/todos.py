@@ -30,11 +30,6 @@ from app.models.todo_models import (
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
-from app.models.workflow_models import (
-    CreateWorkflowRequest,
-    TriggerConfig,
-    TriggerType,
-)
 from app.services.todos.sync_service import sync_subtask_to_goal_completion
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.workflow.service import WorkflowService
@@ -295,7 +290,13 @@ async def generate_workflow(
     user: dict = Depends(get_current_user),
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ):
-    """Generate a standalone workflow for a specific todo with automatic timezone detection."""
+    """Generate a workflow for a todo (background generation + WebSocket notification).
+
+    This endpoint returns immediately with 'generating' status. The frontend should
+    display a skeleton and listen for the 'workflow.generated' WebSocket event.
+    """
+    from app.services.workflow.queue_service import WorkflowQueueService
+
     try:
         todo: TodoResponse = await TodoService.get_todo(todo_id, user["user_id"])
 
@@ -306,26 +307,30 @@ async def generate_workflow(
             )
             if existing_workflow:
                 return {
+                    "status": "exists",
                     "workflow": existing_workflow,
                     "message": "Workflow already exists for this todo",
                 }
 
-        # Create standalone workflow
-        workflow_request = CreateWorkflowRequest(
-            title=f"Todo: {todo.title}",
-            description=todo.description or f"Workflow for todo: {todo.title}",
-            trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
-            generate_immediately=True,  # Generate steps immediately
+        # Queue background generation - will send WebSocket event when complete
+        success = await WorkflowQueueService.queue_todo_workflow_generation(
+            todo_id=todo_id,
+            user_id=user["user_id"],
+            title=todo.title,
+            description=todo.description or "",
         )
 
-        workflow = await WorkflowService.create_workflow(
-            workflow_request, user["user_id"], user_timezone=user_timezone
-        )
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to queue workflow generation",
+            )
 
-        update_request = TodoUpdateRequest(workflow_id=workflow.id)
-        await TodoService.update_todo(todo_id, update_request, user["user_id"])
-
-        return {"workflow": workflow, "message": "Workflow generated successfully"}
+        return {
+            "status": "generating",
+            "todo_id": todo_id,
+            "message": "Workflow generation started. Listen for 'workflow.generated' WebSocket event.",
+        }
 
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
@@ -339,13 +344,16 @@ async def generate_workflow(
 
 
 @router.get("/todos/{todo_id}/workflow-status")
-# @tiered_rate_limit("todo_operations") # Commented out because it's a polling endpoint
 async def get_workflow_status(todo_id: str, user: dict = Depends(get_current_user)):
     """
     Get the standalone workflow for a todo.
     Returns the workflow if it exists, otherwise returns None.
+    Detects generating state when:
+    - Workflow generation is queued (Redis flag)
+    - Workflow exists but has no steps yet
     """
     try:
+        from app.services.workflow.queue_service import WorkflowQueueService
         from app.services.workflow.service import WorkflowService
 
         # Verify todo exists and get workflow_id
@@ -353,17 +361,34 @@ async def get_workflow_status(todo_id: str, user: dict = Depends(get_current_use
 
         # Get standalone workflow if workflow_id exists
         workflow = None
-        if todo.workflow_id:
+        is_generating = False
+        workflow_status = "not_started"
+
+        # Check if workflow generation is queued/pending (Redis flag)
+        if await WorkflowQueueService.is_workflow_generating(todo_id):
+            is_generating = True
+            workflow_status = "generating"
+        elif todo.workflow_id:
             workflow = await WorkflowService.get_workflow(
                 todo.workflow_id, user["user_id"]
             )
 
+            if workflow:
+                # Workflow exists - check if steps are generated
+                has_steps = workflow.steps and len(workflow.steps) > 0
+                if has_steps:
+                    workflow_status = "completed"
+                else:
+                    # Workflow exists but no steps = still generating
+                    is_generating = True
+                    workflow_status = "generating"
+
         return {
             "todo_id": todo_id,
-            "has_workflow": workflow is not None,
-            "is_generating": False,  # Since we generate immediately now
-            "workflow_status": "completed" if workflow else "not_started",
-            "workflow": workflow,
+            "has_workflow": workflow is not None and not is_generating,
+            "is_generating": is_generating,
+            "workflow_status": workflow_status,
+            "workflow": workflow if not is_generating else None,
         }
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

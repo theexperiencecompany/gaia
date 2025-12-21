@@ -35,6 +35,7 @@ interface IconConfig {
  * - Replaces spaces, dashes, and multiple underscores with single underscore
  */
 const normalizeCategoryName = (name: string): string => {
+  if (!name) return "general";
   return name
     .toLowerCase()
     .trim()

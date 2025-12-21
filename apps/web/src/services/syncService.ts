@@ -79,6 +79,8 @@ const mapApiMessagesToStored = (
       tool_data: message.tool_data,
       selectedCalendarEvent: message.selectedCalendarEvent,
       selectedWorkflow: message.selectedWorkflow,
+      replyToMessageId: message.replyToMessage?.id ?? null,
+      replyToMessageData: message.replyToMessage ?? null,
     } satisfies IMessage;
   });
 

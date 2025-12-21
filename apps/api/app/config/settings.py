@@ -237,7 +237,7 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     # Debug Config
     # ----------------------------------------------
-    DEBUG_EMAIL_PROCESSING: bool = True
+    DEBUG_EMAIL_PROCESSING: bool = False
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",

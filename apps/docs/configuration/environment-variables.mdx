@@ -22,16 +22,27 @@ GAIA uses Pydantic settings to load environment variables with validation. Setti
 
 <Steps>
   <Step title="Copy environment files">
-    ```bash cp apps/api/.env.example apps/api/.env cp apps/web/.env.example
-    apps/web/.env ```
+    ```bash 
+    cp apps/api/.env.example apps/api/.env 
+    cp apps/web/.env.example apps/web/.env 
+    ```
   </Step>
   <Step title="Set required variables">
-    At minimum, set these in `apps/api/.env`: ```bash ENV=development
-    MONGO_DB=mongodb://mongo:27017/gaia REDIS_URL=redis://redis:6379
-    WORKOS_API_KEY=your-workos-api-key WORKOS_CLIENT_ID=your-workos-client-id
-    WORKOS_COOKIE_PASSWORD=your-32-char-random-secret ```
+    At minimum, set these in `apps/api/.env`: 
+    ```bash 
+    ENV=development
+    MONGO_DB=mongodb://mongo:27017/gaia 
+    REDIS_URL=redis://redis:6379
+    WORKOS_API_KEY=your-workos-api-key 
+    WORKOS_CLIENT_ID=your-workos-client-id
+    WORKOS_COOKIE_PASSWORD=your-32-char-random-secret 
+    ```
   </Step>
-  <Step title="Start development">```bash mise dev ```</Step>
+  <Step title="Start development">
+    ```bash 
+    mise dev 
+    ```
+  </Step>
 </Steps>
 
 ---
@@ -155,12 +166,30 @@ These are required in **both** development and production:
 
 ---
 
+### Voice Agent
+
+| Variable              | Description                       |
+| --------------------- | --------------------------------- |
+| `LIVEKIT_URL`         | LiveKit server URL                |
+| `LIVEKIT_API_KEY`     | LiveKit API key                   |
+| `LIVEKIT_API_SECRET`  | LiveKit API secret                |
+| `AGENT_SECRET`        | Voice agent authentication secret |
+| `DEEPGRAM_API_KEY`    | Deepgram speech-to-text API key   |
+| `ELEVENLABS_API_KEY`  | ElevenLabs TTS API key            |
+| `ELEVENLABS_TTS_MODEL`| ElevenLabs TTS model ID           |
+| `ELEVENLABS_VOICE_ID` | ElevenLabs voice ID               |
+| `GAIA_BACKEND_URL`    | Backend URL for voice agent       |
+
+---
+
 ### Monitoring & Analytics
 
 | Variable          | Description               |
 | ----------------- | ------------------------- |
 | `SENTRY_DSN`      | Sentry error tracking DSN |
 | `POSTHOG_API_KEY` | PostHog analytics API key |
+| `OPIK_API_KEY`    | Opik evaluation API key   |
+| `OPIK_WORKSPACE`  | Opik workspace ID         |
 
 ---
 
@@ -241,4 +270,4 @@ POSTHOG_API_KEY=phc_xxxx
 - [Development Setup](/developers/development-setup)
 - [Lazy Loading](/developers/extra/lazy-loading) - How missing keys are handled
 - [Infisical Setup](/configuration/infisical-setup) - Secret management for production
-```
+

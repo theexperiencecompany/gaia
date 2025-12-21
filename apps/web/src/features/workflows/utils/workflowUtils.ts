@@ -6,24 +6,24 @@ import type { WorkflowStepType } from "@/types/features/workflowTypes";
 import type { ToolInfo } from "@/types/shared/contentTypes";
 
 /**
- * Extract unique tools from workflow steps
+ * Extract unique categories from workflow steps
  * @param steps - Array of workflow steps
  * @returns Array of unique tools with their categories
  */
 export function extractToolsFromSteps(
-  steps: Array<{ tool_name: string; tool_category: string }>,
+  steps: Array<{ category: string }>,
 ): ToolInfo[] {
   if (!steps || steps.length === 0) return [];
 
-  // Use a Map to track unique tools by name
+  // Use a Map to track unique categories
   const toolsMap = new Map<string, ToolInfo>();
 
   steps.forEach((step) => {
-    if (step.tool_name && step.tool_category && !toolsMap.has(step.tool_name)) {
-      toolsMap.set(step.tool_name, {
-        name: step.tool_name,
-        description: "", // Not available in workflow steps
-        category: step.tool_category,
+    if (step.category && !toolsMap.has(step.category)) {
+      toolsMap.set(step.category, {
+        name: step.category,
+        description: "",
+        category: step.category,
       });
     }
   });
@@ -44,8 +44,8 @@ export function extractCategoriesFromSteps(
   const categoriesSet = new Set<string>();
 
   steps.forEach((step) => {
-    if (step.tool_category) {
-      categoriesSet.add(step.tool_category);
+    if (step.category) {
+      categoriesSet.add(step.category);
     }
   });
 

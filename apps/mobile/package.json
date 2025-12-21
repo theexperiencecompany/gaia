@@ -1,7 +1,7 @@
 {
-  "name": "gia-mobile",
+  "name": "gaia-mobile",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "scripts": {
     "start": "expo start --port 8083",
     "reset-project": "node ./scripts/reset-project.js",

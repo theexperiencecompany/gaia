@@ -9,6 +9,7 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Input, Textarea } from "@heroui/input";
+import { Kbd } from "@heroui/kbd";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { Select, SelectItem } from "@heroui/select";
 import { Skeleton } from "@heroui/skeleton";
@@ -17,14 +18,15 @@ import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
+import { useHotkeys } from "react-hotkeys-hook";
 import { toast } from "sonner";
-
 import CustomSpinner from "@/components/ui/spinner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { usePlatform } from "@/hooks/ui/usePlatform";
 import {
   AlertCircleIcon,
   ArrowDown01Icon,
@@ -47,6 +49,7 @@ import {
   workflowToFormData,
 } from "../schemas/workflowFormSchema";
 import { useWorkflowModalStore } from "../stores/workflowModalStore";
+import { useWorkflowsStore } from "../stores/workflowsStore";
 import { getTriggerEnabledIntegrations } from "../utils/triggerDisplay";
 import { ScheduleBuilder } from "./ScheduleBuilder";
 import WorkflowSteps from "./shared/WorkflowSteps";
@@ -56,7 +59,6 @@ interface WorkflowModalProps {
   onOpenChange: (open: boolean) => void;
   onWorkflowSaved?: (workflowId: string) => void;
   onWorkflowDeleted?: (workflowId: string) => void;
-  onWorkflowListRefresh?: () => void;
   mode: "create" | "edit";
   existingWorkflow?: Workflow | null;
 }
@@ -66,7 +68,6 @@ export default function WorkflowModal({
   onOpenChange,
   onWorkflowSaved,
   onWorkflowDeleted,
-  onWorkflowListRefresh,
   mode,
   existingWorkflow,
 }: WorkflowModalProps) {
@@ -80,6 +81,14 @@ export default function WorkflowModal({
 
   const { selectWorkflow } = useWorkflowSelection();
   const { integrations } = useIntegrations();
+
+  // Get workflows store actions for optimistic updates
+  const {
+    addWorkflow: addToStore,
+    updateWorkflow: updateInStore,
+    removeWorkflow: removeFromStore,
+    fetchWorkflows,
+  } = useWorkflowsStore();
 
   // Zustand UI state
   const {
@@ -126,6 +135,46 @@ export default function WorkflowModal({
 
   // Watch form data for change detection
   const formData = watch();
+
+  // Platform detection for keyboard shortcuts
+  const { modifierKeyName } = usePlatform();
+
+  // Check if save button should be disabled (used for hotkey)
+  const isSaveDisabled = useCallback(() => {
+    return (
+      !formData.title.trim() ||
+      !formData.description.trim() ||
+      (formData.activeTab === "schedule" &&
+        formData.trigger_config.type === "schedule" &&
+        !formData.trigger_config.cron_expression) ||
+      (mode === "edit" && !hasFormChanges()) ||
+      isCreating
+    );
+  }, [formData, mode, isCreating]);
+
+  // Keyboard shortcut: Escape to close modal
+  useHotkeys(
+    "escape",
+    () => {
+      if (isOpen && creationPhase === "form") {
+        handleClose();
+      }
+    },
+    { enableOnFormTags: true, enabled: isOpen && creationPhase === "form" },
+    [isOpen, creationPhase],
+  );
+
+  // Keyboard shortcut: Mod+Enter to save
+  useHotkeys(
+    "mod+enter",
+    () => {
+      if (isOpen && creationPhase === "form" && !isSaveDisabled()) {
+        handleSubmit(handleSave)();
+      }
+    },
+    { enableOnFormTags: true, enabled: isOpen && creationPhase === "form" },
+    [isOpen, creationPhase, isSaveDisabled],
+  );
 
   // Handle initial step generation (for empty workflows)
   const handleInitialGeneration = () => {
@@ -269,8 +318,13 @@ export default function WorkflowModal({
           duration: 3000,
         });
 
+        // Optimistic update: add to store immediately for instant UI feedback
+        addToStore(result.workflow);
+
+        // Notify parent callbacks if provided (for backwards compatibility)
         if (onWorkflowSaved) onWorkflowSaved(result.workflow.id);
-        if (onWorkflowListRefresh) onWorkflowListRefresh();
+        // Refresh full list in background to ensure consistency
+        fetchWorkflows();
 
         handleClose();
       } else {
@@ -303,13 +357,14 @@ export default function WorkflowModal({
         });
       }
 
+      // Optimistic update: update in store immediately
+      updateInStore(currentWorkflow.id, updateRequest);
+
       if (onWorkflowSaved) {
         onWorkflowSaved(currentWorkflow.id);
       }
-      // Refresh workflow list after update
-      if (onWorkflowListRefresh) {
-        onWorkflowListRefresh();
-      }
+      // Refresh full list in background to ensure consistency
+      fetchWorkflows();
       handleClose();
     } catch (error) {
       console.error("Failed to update workflow:", error);
@@ -335,13 +390,14 @@ export default function WorkflowModal({
         // Call the actual delete API
         await workflowApi.deleteWorkflow(existingWorkflow.id);
 
+        // Optimistic update: remove from store immediately
+        removeFromStore(existingWorkflow.id);
+
         if (onWorkflowDeleted) {
           onWorkflowDeleted(existingWorkflow.id);
         }
-        // Refresh workflow list after deletion
-        if (onWorkflowListRefresh) {
-          onWorkflowListRefresh();
-        }
+        // Refresh full list in background to ensure consistency
+        fetchWorkflows();
         handleClose();
       } catch (error) {
         console.error("Failed to delete workflow:", error);
@@ -368,10 +424,10 @@ export default function WorkflowModal({
       });
       setIsActivated(newActivated);
 
-      // Refresh workflow list after activation/deactivation
-      if (onWorkflowListRefresh) {
-        onWorkflowListRefresh();
-      }
+      // Optimistic update: update activation state in store
+      updateInStore(currentWorkflow.id, { activated: newActivated });
+      // Refresh full list in background to ensure consistency
+      fetchWorkflows();
     } catch (error) {
       console.error("Failed to toggle workflow activation:", error);
     } finally {
@@ -418,7 +474,8 @@ export default function WorkflowModal({
       }
 
       if (onWorkflowSaved) onWorkflowSaved(currentWorkflow.id);
-      if (onWorkflowListRefresh) onWorkflowListRefresh();
+      // Refresh workflow list to sync with server
+      fetchWorkflows();
 
       setIsRegeneratingSteps(false);
     } catch (error) {
@@ -588,9 +645,10 @@ export default function WorkflowModal({
         if (!open) handleFormReset();
         onOpenChange(open);
       }}
+      isDismissable={false}
       hideCloseButton
       size={mode === "create" ? "3xl" : "4xl"}
-      className={`max-h-[70vh] ${mode !== "create" ? "min-w-[80vw]" : ""}`}
+      className={`max-h-[70vh] bg-secondary-bg ${mode !== "create" ? "min-w-[80vw]" : ""}`}
       backdrop="blur"
     >
       <ModalContent>
@@ -633,22 +691,9 @@ export default function WorkflowModal({
                             <MoreVerticalIcon />
                           </Button>
                         </DropdownTrigger>
-                        <DropdownMenu>
-                          <DropdownItem
-                            key="publish"
-                            startContent={
-                              <PlayIcon className="relative top-1 h-4 w-4" />
-                            }
-                            classNames={{
-                              description: "text-wrap",
-                              base: "items-start!",
-                            }}
-                            description={
-                              currentWorkflow?.is_public
-                                ? "Remove from community marketplace"
-                                : "Share to community marketplace"
-                            }
-                            onPress={async () => {
+                        <DropdownMenu
+                          onAction={async (key) => {
+                            if (key === "publish") {
                               if (!currentWorkflow?.id) return;
 
                               try {
@@ -676,6 +721,8 @@ export default function WorkflowModal({
                                   setCurrentWorkflow((prev) =>
                                     prev ? { ...prev, is_public: true } : null,
                                   );
+                                  // Navigate to marketplace after publishing
+                                  router.push("/use-cases#community-section");
                                 }
                               } catch (error) {
                                 console.error(
@@ -683,7 +730,29 @@ export default function WorkflowModal({
                                   error,
                                 );
                               }
+                              // Refresh workflow list to sync with server
+                              fetchWorkflows();
+                            } else if (key === "marketplace") {
+                              router.push("/use-cases#community-section");
+                            } else if (key === "delete") {
+                              await handleDelete();
+                            }
+                          }}
+                        >
+                          <DropdownItem
+                            key="publish"
+                            startContent={
+                              <PlayIcon className="relative top-1 h-4 w-4" />
+                            }
+                            classNames={{
+                              description: "text-wrap",
+                              base: "items-start!",
                             }}
+                            description={
+                              currentWorkflow?.is_public
+                                ? "Remove from community marketplace"
+                                : "Share to community marketplace"
+                            }
                           >
                             {currentWorkflow?.is_public
                               ? "Unpublish Workflow"
@@ -701,9 +770,6 @@ export default function WorkflowModal({
                                 base: "items-start!",
                               }}
                               description="Open community marketplace"
-                              onPress={() => {
-                                router.push("/use-cases#community-section");
-                              }}
                             >
                               View on Marketplace
                             </DropdownItem>
@@ -718,7 +784,6 @@ export default function WorkflowModal({
                               base: "items-start!",
                             }}
                             description="Permanently delete this workflow"
-                            onPress={handleDelete}
                           >
                             Delete Workflow
                           </DropdownItem>
@@ -902,7 +967,11 @@ export default function WorkflowModal({
 
                     {/* Right side: Cancel and Save */}
                     <div className="flex items-center gap-3">
-                      <Button variant="flat" onPress={handleClose}>
+                      <Button
+                        variant="flat"
+                        onPress={handleClose}
+                        endContent={<Kbd keys={["escape"]} />}
+                      >
                         Cancel
                       </Button>
                       <Button
@@ -916,6 +985,11 @@ export default function WorkflowModal({
                             formData.trigger_config.type === "schedule" &&
                             !formData.trigger_config.cron_expression) ||
                           (mode === "edit" && !hasFormChanges())
+                        }
+                        endContent={
+                          !isCreating && (
+                            <Kbd keys={[modifierKeyName, "enter"]} />
+                          )
                         }
                       >
                         {getButtonText()}
