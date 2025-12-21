@@ -12,9 +12,10 @@ from app.services.composio.langchain_composio_service import LangchainProvider
 from app.utils.composio_hooks.registry import (
     master_after_execute_hook,
     master_before_execute_hook,
+    master_schema_modifier,
 )
 from app.utils.query_utils import add_query_param
-from composio import Composio, after_execute, before_execute
+from composio import Composio, after_execute, before_execute, schema_modifier
 
 COMPOSIO_SOCIAL_CONFIGS = get_composio_social_configs()
 
@@ -82,6 +83,7 @@ class ComposioService:
         - User ID extraction from RunnableConfig metadata
         - Frontend streaming setup
         - All registered tool-specific hooks (Gmail, etc.)
+        - Schema modifications for tool descriptions and defaults
         """
         logger.info(f"Loading {tool_kit} toolkit...")
         start_time = time.time()
@@ -101,20 +103,26 @@ class ComposioService:
         exclude_tools = exclude_tools or []
         tools_name = [tool.name for tool in tools if tool.name not in exclude_tools]
 
+        # Create modifiers for hooks and schema modifications
         master_before_modifier = before_execute(tools=tools_name)(
             master_before_execute_hook
         )
         master_after_modifier = after_execute(tools=tools_name)(
             master_after_execute_hook
         )
+        master_schema_mod = schema_modifier(tools=tools_name)(master_schema_modifier)
 
-        # Run the second tools.get() call asynchronously
+        # Run the second tools.get() call asynchronously with all modifiers
         result = await asyncio.to_thread(
             lambda: self.composio.tools.get(  # type: ignore[call-overload]
                 user_id="",
                 toolkits=[tool_kit],
                 tools=custom_tool_names,
-                modifiers=[master_before_modifier, master_after_modifier],
+                modifiers=[
+                    master_schema_mod,
+                    master_before_modifier,
+                    master_after_modifier,
+                ],
                 limit=1000,
             )
         )
@@ -130,6 +138,7 @@ class ComposioService:
         tool_names: list[str],
         use_before_hook: bool = True,
         use_after_hook: bool = True,
+        use_schema_modifier: bool = True,
     ):
         """
         Get specific tools by names with unified master hooks.
@@ -138,11 +147,19 @@ class ComposioService:
         - User ID extraction from RunnableConfig metadata
         - Frontend streaming setup
         - All registered tool-specific hooks (Gmail, etc.)
+        - Schema modifications for tool descriptions and defaults
         """
         logger.info(f"Loading tools: {tool_names}...")
         start_time = time.time()
 
         modifiers = []
+
+        # Add schema modifier first (modifies schema before agent sees it)
+        if use_schema_modifier:
+            master_schema_mod = schema_modifier(tools=tool_names)(
+                master_schema_modifier
+            )
+            modifiers.append(master_schema_mod)
 
         # Add hooks based on flags
         if use_before_hook:
@@ -174,6 +191,7 @@ class ComposioService:
         tool_name: str,
         use_before_hook: bool = True,
         use_after_hook: bool = True,
+        use_schema_modifier: bool = True,
         user_id: str = "",
     ):
         """
@@ -183,12 +201,20 @@ class ComposioService:
             tool_name: Name of the specific tool to retrieve (e.g., 'GMAIL_SEND_EMAIL')
             use_before_hook: Whether to apply master before execute hook
             use_after_hook: Whether to apply master after execute hook
+            use_schema_modifier: Whether to apply schema modifiers
 
         Returns:
             The specific tool with selected hooks applied, or None if not found
         """
         try:
             modifiers = []
+
+            # Add schema modifier first
+            if use_schema_modifier:
+                master_schema_mod = schema_modifier(tools=[tool_name])(
+                    master_schema_modifier
+                )
+                modifiers.append(master_schema_mod)
 
             # Add hooks based on flags
             if use_before_hook:

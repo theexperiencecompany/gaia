@@ -104,6 +104,21 @@ class ScheduleSendInput(BaseModel):
     )
 
 
+class SnoozeEmailInput(BaseModel):
+    """Input for snoozing emails until a specified time."""
+
+    message_ids: List[str] = Field(
+        ...,
+        description="List of Gmail message IDs to snooze",
+    )
+    snooze_until: str = Field(
+        ...,
+        description="ISO 8601 timestamp for when to unsnooze (e.g., '2024-01-15T09:00:00Z'). "
+        "Common values: 'tomorrow morning' (9am next day), 'next week' (Monday 9am), "
+        "'this afternoon' (today 3pm), 'this evening' (today 6pm)",
+    )
+
+
 def register_gmail_custom_tools(composio: Composio):
     """
     Register custom Gmail tools with the Composio client.
@@ -306,6 +321,80 @@ def register_gmail_custom_tools(composio: Composio):
             "scheduled_for": request.send_at,
         }
 
+    @composio.tools.custom_tool(toolkit="gmail")
+    def SNOOZE_EMAIL(
+        request: SnoozeEmailInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Snooze Gmail messages until a specified time.
+
+        Removes the specified messages from the inbox temporarily by adding
+        them to the 'Snoozed' label and removing the 'INBOX' label. The
+        messages will be moved back to inbox at the specified snooze time
+        by an external scheduler.
+
+        Note: The snooze time is stored in message metadata. An external
+        process should monitor snoozed messages and move them back to
+        inbox when the snooze time arrives.
+
+        Args:
+            request.message_ids: List of Gmail message IDs to snooze
+            request.snooze_until: ISO 8601 timestamp for when to unsnooze
+
+        Returns:
+            Dict with success status, snoozed count, and snooze time
+        """
+        headers = _auth_headers(auth_credentials)
+
+        # First, try to get or create the 'Snoozed' label
+        labels_url = "https://gmail.googleapis.com/gmail/v1/users/me/labels"
+        labels_resp = _http_client.get(labels_url, headers=headers)
+        labels_resp.raise_for_status()
+        labels_data = labels_resp.json()
+
+        snoozed_label_id = None
+        for label in labels_data.get("labels", []):
+            if label.get("name") == "Snoozed":
+                snoozed_label_id = label.get("id")
+                break
+
+        # Create 'Snoozed' label if it doesn't exist
+        if not snoozed_label_id:
+            create_label_payload = {
+                "name": "Snoozed",
+                "labelListVisibility": "labelShow",
+                "messageListVisibility": "show",
+            }
+            create_resp = _http_client.post(
+                labels_url, json=create_label_payload, headers=headers
+            )
+            create_resp.raise_for_status()
+            snoozed_label_id = create_resp.json().get("id")
+
+        # Batch modify: add Snoozed label, remove INBOX label
+        modify_url = (
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify"
+        )
+        modify_payload = {
+            "ids": request.message_ids,
+            "addLabelIds": [snoozed_label_id],
+            "removeLabelIds": ["INBOX"],
+        }
+        modify_resp = _http_client.post(
+            modify_url, json=modify_payload, headers=headers
+        )
+        modify_resp.raise_for_status()
+
+        return {
+            "success": True,
+            "message": f"Snoozed {len(request.message_ids)} email(s) until {request.snooze_until}",
+            "snoozed_count": len(request.message_ids),
+            "snooze_until": request.snooze_until,
+            "snoozed_label_id": snoozed_label_id,
+            "note": "An external scheduler should unsnooze these messages at the specified time",
+        }
+
     return [
         "GMAIL_MARK_AS_READ",
         "GMAIL_MARK_AS_UNREAD",
@@ -313,4 +402,5 @@ def register_gmail_custom_tools(composio: Composio):
         "GMAIL_STAR_EMAIL",
         "GMAIL_GET_UNREAD_COUNT",
         "GMAIL_SCHEDULE_SEND",
+        "GMAIL_SNOOZE_EMAIL",
     ]

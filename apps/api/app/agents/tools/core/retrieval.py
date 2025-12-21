@@ -111,10 +111,10 @@ def get_retrieve_tools_function(
         1. Find and reply to email (Gmail)
         Discover:
           retrieve_tools(query="find emails, reply to thread")
-          → returns ["GMAIL_LIST_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
+          → returns ["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
         Bind & Execute:
-          retrieve_tools(exact_tool_names=["GMAIL_LIST_EMAILS","GMAIL_REPLY_TO_THREAD"])
-          → GMAIL_LIST_EMAILS(...) returns email list
+          retrieve_tools(exact_tool_names=["GMAIL_FETCH_EMAILS","GMAIL_REPLY_TO_THREAD"])
+          → GMAIL_FETCH_EMAILS(...) returns email list
           → GMAIL_REPLY_TO_THREAD(...) sends reply
 
         2. Search, delete, and recreate tasks with subtasks (Todo)

@@ -3,17 +3,22 @@ Core registry and master hooks for Composio tool system.
 
 This module provides the central registry and master execution hooks that handle
 ALL Composio tools with built-in user_id extraction and frontend streaming.
+
+Also provides schema modifiers for customizing tool schemas before they are
+presented to agents.
 """
 
 from typing import Any, Callable, List, Optional, Union
 
+from composio.types import Tool, ToolExecuteParams
+
 from app.config.loggers import app_logger as logger
-from composio.types import ToolExecuteParams
 
 
 class ComposioHookRegistry:
     """
-    Enhanced registry for managing before_execute and after_execute hooks.
+    Enhanced registry for managing before_execute, after_execute hooks,
+    and schema modifiers.
 
     Supports conditional execution based on tool name/toolkit with a single
     master hook system that handles ALL tools.
@@ -27,6 +32,9 @@ class ComposioHookRegistry:
 
         # Registry for after_execute hooks
         self._after_hooks: List[Callable[[str, str, Any], Any]] = []
+
+        # Registry for schema modifiers
+        self._schema_modifiers: List[Callable[[str, str, Tool], Tool]] = []
 
     def register_before_hook(
         self, hook_func: Callable[[str, str, ToolExecuteParams], ToolExecuteParams]
@@ -68,6 +76,26 @@ class ComposioHookRegistry:
                 # Continue with other hooks even if one fails
         return modified_response
 
+    def register_schema_modifier(
+        self, modifier_func: Callable[[str, str, Tool], Tool]
+    ) -> None:
+        """Register a schema modifier function."""
+        self._schema_modifiers.append(modifier_func)
+        logger.debug(f"Registered schema_modifier: {modifier_func.__name__}")
+
+    def execute_schema_modifiers(self, tool: str, toolkit: str, schema: Tool) -> Tool:
+        """Execute all registered schema modifiers."""
+        modified_schema = schema
+        for modifier_func in self._schema_modifiers:
+            try:
+                modified_schema = modifier_func(tool, toolkit, modified_schema)
+            except Exception as e:
+                logger.error(
+                    f"Error executing schema_modifier {modifier_func.__name__} for {tool}: {e}"
+                )
+                # Continue with other modifiers even if one fails
+        return modified_schema
+
 
 # Global registry instance
 hook_registry = ComposioHookRegistry()
@@ -97,6 +125,19 @@ def master_after_execute_hook(tool: str, toolkit: str, response: Any) -> Any:
     """
     # Execute all registered tool-specific hooks
     return hook_registry.execute_after_hooks(tool, toolkit, response)
+
+
+def master_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
+    """
+    Master schema modifier that handles ALL tools.
+
+    This modifies tool schemas before they are presented to agents.
+    Useful for:
+    - Adding/modifying tool descriptions
+    - Setting default values for arguments
+    - Adding custom guidance to tool usage
+    """
+    return hook_registry.execute_schema_modifiers(tool, toolkit, schema)
 
 
 def register_before_hook(
@@ -227,6 +268,72 @@ def register_after_hook(
             return response
 
         hook_registry.register_after_hook(conditional_hook)
+        return func
+
+    return decorator
+
+
+def register_schema_modifier(
+    tools: Optional[Union[str, List[str]]] = None,
+    toolkits: Optional[Union[str, List[str]]] = None,
+):
+    """
+    Decorator for registering schema modifiers.
+
+    Schema modifiers transform a tool's schema before the tool is seen by an agent.
+    Useful for modifying descriptions, setting defaults, or adding custom guidance.
+
+    Args:
+        tools: Single tool name or list of tool names to target
+        toolkits: Single toolkit name or list of toolkit names to target
+
+    Usage:
+        @register_schema_modifier(tools=["GMAIL_SEND_EMAIL"])
+        def add_draft_guidance(tool, toolkit, schema):
+            schema.description += "\\n\\nPrefer creating drafts first."
+            return schema
+
+        @register_schema_modifier(tools=["GMAIL_FETCH_EMAILS"])
+        def set_fetch_defaults(tool, toolkit, schema):
+            # Set default values for parameters
+            props = schema.input_parameters.get("properties", {})
+            if "max_results" in props:
+                props["max_results"]["default"] = 10
+            return schema
+    """
+
+    def decorator(
+        func: Callable[[str, str, Tool], Tool],
+    ) -> Callable[[str, str, Tool], Tool]:
+        # Normalize tools and toolkits to lists
+        target_tools = []
+        if tools:
+            target_tools = [tools] if isinstance(tools, str) else tools
+
+        target_toolkits = []
+        if toolkits:
+            target_toolkits = [toolkits] if isinstance(toolkits, str) else toolkits
+
+        def conditional_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
+            # Check if this modifier should run for this tool/toolkit
+            should_run = False
+
+            # If no specific tools/toolkits specified, run for all
+            if not target_tools and not target_toolkits:
+                should_run = True
+            else:
+                # Check tool match
+                if target_tools and tool in target_tools:
+                    should_run = True
+                # Check toolkit match
+                if target_toolkits and toolkit in target_toolkits:
+                    should_run = True
+
+            if should_run:
+                return func(tool, toolkit, schema)
+            return schema
+
+        hook_registry.register_schema_modifier(conditional_modifier)
         return func
 
     return decorator
