@@ -643,10 +643,10 @@ class SingleEventInput(BaseModel):
         ...,
         description="Start time in ISO format (e.g., '2024-01-15T10:00:00'). Use user's timezone.",
     )
-    duration_hours: int = Field(
+    duration_hours: float = Field(
         default=0, description="Duration hours (0-23)", ge=0, le=23
     )
-    duration_minutes: int = Field(
+    duration_minutes: float = Field(
         default=30, description="Duration minutes (0-59)", ge=0, le=59
     )
     calendar_id: str = Field(default="primary", description="Calendar ID")

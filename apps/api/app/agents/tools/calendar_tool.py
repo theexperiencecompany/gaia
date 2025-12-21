@@ -104,7 +104,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Get a day's schedule summary with events, busy hours, and next event."""
         import asyncio
 
         access_token = _get_access_token(auth_credentials)
@@ -321,7 +320,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Get one or more calendar events by ID."""
         access_token = _get_access_token(auth_credentials)
         headers = _auth_headers(access_token)
 
@@ -373,7 +371,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Delete one or more calendar events."""
         access_token = _get_access_token(auth_credentials)
         headers = _auth_headers(access_token)
         params = {"sendUpdates": request.send_updates}
@@ -512,7 +509,6 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Create one or more calendar events with ID mapping for recurrence."""
         access_token = _get_access_token(auth_credentials)
         headers = _auth_headers(access_token)
         headers["Content-Type"] = "application/json"
