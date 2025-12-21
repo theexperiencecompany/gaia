@@ -446,6 +446,10 @@ async def mark_conversation_as_read(conversation_id: str, user: dict) -> dict:
     Mark a conversation as read (set is_unread to False).
     """
     user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated"
+        )
     await conversations_collection.update_one(
         {"user_id": user_id, "conversation_id": conversation_id},
         {"$set": {"is_unread": False}, "$currentDate": {"updatedAt": True}},
