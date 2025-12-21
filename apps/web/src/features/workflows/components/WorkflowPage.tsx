@@ -73,37 +73,6 @@ export default function WorkflowPage() {
     creator: workflow.creator,
   });
 
-  const loadExploreWorkflows = useCallback(async () => {
-    setIsLoadingExplore(true);
-    try {
-      const response = await workflowApi.getExploreWorkflows(25, 0);
-      const useCases = response.workflows.map(convertToUseCase);
-      setExploreWorkflows(useCases);
-    } catch (error) {
-      console.error("Error loading explore workflows:", error);
-    } finally {
-      setIsLoadingExplore(false);
-    }
-  }, []);
-
-  const loadCommunityWorkflows = useCallback(async () => {
-    setIsLoadingCommunity(true);
-    setCommunityError(null);
-    try {
-      const response = await workflowApi.getCommunityWorkflows(12, 0);
-      setCommunityWorkflows(response.workflows);
-    } catch (error) {
-      console.error("Error loading community workflows:", error);
-      setCommunityError(
-        error instanceof Error
-          ? error.message
-          : "Failed to load community workflows",
-      );
-    } finally {
-      setIsLoadingCommunity(false);
-    }
-  }, []);
-
   // Memoize the header component to prevent recreating on every render
   const headerComponent = useMemo(() => <WorkflowsHeader />, []);
 
@@ -114,10 +83,43 @@ export default function WorkflowPage() {
     return () => setHeader(null);
   }, [headerComponent]);
 
+  // Fetch explore and community workflows once on mount
   useEffect(() => {
+    const loadExploreWorkflows = async () => {
+      setIsLoadingExplore(true);
+      try {
+        const response = await workflowApi.getExploreWorkflows(25, 0);
+        const useCases = response.workflows.map(convertToUseCase);
+        setExploreWorkflows(useCases);
+      } catch (error) {
+        console.error("Error loading explore workflows:", error);
+      } finally {
+        setIsLoadingExplore(false);
+      }
+    };
+
+    const loadCommunityWorkflows = async () => {
+      setIsLoadingCommunity(true);
+      setCommunityError(null);
+      try {
+        const response = await workflowApi.getCommunityWorkflows(12, 0);
+        setCommunityWorkflows(response.workflows);
+      } catch (error) {
+        console.error("Error loading community workflows:", error);
+        setCommunityError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load community workflows",
+        );
+      } finally {
+        setIsLoadingCommunity(false);
+      }
+    };
+
     loadExploreWorkflows();
     loadCommunityWorkflows();
-  }, [loadExploreWorkflows, loadCommunityWorkflows]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (workflowId && workflows.length > 0) {
@@ -297,7 +299,7 @@ export default function WorkflowPage() {
               communityError,
               "No community workflows yet",
               "Be the first to publish a workflow to the community",
-              loadCommunityWorkflows,
+              () => window.location.reload(),
               (workflow) => (
                 <UnifiedWorkflowCard
                   key={workflow.id}
