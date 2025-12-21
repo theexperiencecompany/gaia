@@ -468,10 +468,17 @@ async def mark_conversation_as_unread(conversation_id: str, user: dict) -> dict:
             status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated"
         )
 
-    await conversations_collection.update_one(
+    update_result = await conversations_collection.update_one(
         {"user_id": user_id, "conversation_id": conversation_id},
         {"$set": {"is_unread": True}, "$currentDate": {"updatedAt": True}},
     )
+
+    if update_result.modified_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found or update failed",
+        )
+
     return {
         "message": "Conversation marked as unread",
         "conversation_id": conversation_id,
