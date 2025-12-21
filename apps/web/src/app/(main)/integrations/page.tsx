@@ -6,11 +6,12 @@ import { useCallback, useEffect, useState } from "react";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
-import { MCPIntegrationModal } from "@/features/integrations/components/MCPIntegrationModal";
+import { IntegrationsSearchInput } from "@/features/integrations/components/IntegrationsSearchInput";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
-import { ConnectIcon, MessageFavourite02Icon, PlusSignIcon } from "@/icons";
+import { ConnectIcon, MessageFavourite02Icon } from "@/icons";
+import { useIntegrationsStore } from "@/stores/integrationsStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function IntegrationsPage() {
@@ -23,32 +24,33 @@ export default function IntegrationsPage() {
   const setRightSidebarVariant = useRightSidebar((state) => state.setVariant);
   const { setHeader } = useHeader();
 
+  // Integrations store for search
+  const searchQuery = useIntegrationsStore((state) => state.searchQuery);
+  const setSearchQuery = useIntegrationsStore((state) => state.setSearchQuery);
+  const clearSearch = useIntegrationsStore((state) => state.clearSearch);
+
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<
     string | null
   >(null);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
-  const [isMCPModalOpen, setIsMCPModalOpen] = useState(false);
 
-  // Set header
+  // Set header with search input
   useEffect(() => {
     setHeader(
-      <div className="py-2 flex items-center justify-between w-full">
+      <div className="py-2 flex items-center justify-between w-full gap-4">
         <HeaderTitle
           icon={<ConnectIcon width={20} height={20} />}
           text="Integrations"
         />
-        <Button
-          color="primary"
-          variant="flat"
-          startContent={<PlusSignIcon width={16} height={16} />}
-          onPress={() => setIsMCPModalOpen(true)}
-        >
-          Create Custom Integration
-        </Button>
+        <IntegrationsSearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          onClear={clearSearch}
+        />
       </div>,
     );
     return () => setHeader(null);
-  }, []);
+  }, [searchQuery, setSearchQuery, clearSearch, setHeader]);
 
   // Set sidebar to sidebar mode (not sheet)
   useEffect(() => {
@@ -122,7 +124,7 @@ export default function IntegrationsPage() {
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pb-20">
         <div className="flex w-full justify-center px-5">
           <div className="w-full">
             <IntegrationsList onIntegrationClick={handleIntegrationClick} />
@@ -139,11 +141,6 @@ export default function IntegrationsPage() {
           description:
             "I would like to request a new integration for:\n\n[Please describe the integration you need and how you plan to use it]",
         }}
-      />
-
-      <MCPIntegrationModal
-        isOpen={isMCPModalOpen}
-        onClose={() => setIsMCPModalOpen(false)}
       />
     </div>
   );

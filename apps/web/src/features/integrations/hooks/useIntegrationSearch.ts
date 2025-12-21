@@ -1,14 +1,15 @@
 "use client";
 
 import Fuse from "fuse.js";
-import { useMemo, useState } from "react";
-import type { IntegrationCategoryId } from "../constants/categories";
+import { useMemo } from "react";
+import { useIntegrationsStore } from "@/stores/integrationsStore";
 import type { Integration } from "../types";
 
 export function useIntegrationSearch(integrations: Integration[]) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] =
-    useState<IntegrationCategoryId>("all");
+  const searchQuery = useIntegrationsStore((state) => state.searchQuery);
+  const selectedCategory = useIntegrationsStore(
+    (state) => state.selectedCategory,
+  );
 
   const fuse = useMemo(() => {
     return new Fuse(integrations, {
@@ -33,16 +34,7 @@ export function useIntegrationSearch(integrations: Integration[]) {
     return results;
   }, [searchQuery, selectedCategory, fuse, integrations]);
 
-  const clearSearch = () => setSearchQuery("");
-  const clearCategory = () => setSelectedCategory("all");
-
   return {
-    searchQuery,
-    setSearchQuery,
-    clearSearch,
-    selectedCategory,
-    setSelectedCategory,
-    clearCategory,
     filteredIntegrations,
   };
 }

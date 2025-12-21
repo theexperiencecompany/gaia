@@ -10,6 +10,7 @@ import {
   ModalHeader,
 } from "@heroui/react";
 import { useState } from "react";
+import { ConnectIcon, KeyIcon, PuzzleIcon } from "@/icons";
 
 interface MCPIntegrationModalProps {
   isOpen: boolean;
@@ -75,6 +76,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
               value={name}
               onValueChange={setName}
               isRequired
+              startContent={<PuzzleIcon width={16} height={16} />}
             />
 
             <Input
@@ -83,6 +85,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
               value={serverUrl}
               onValueChange={setServerUrl}
               isRequired
+              startContent={<ConnectIcon width={16} height={16} />}
             />
 
             <Input
@@ -92,6 +95,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
               onValueChange={setApiKey}
               type="password"
               description="If provided, API key authentication will be used. Leave empty to automatically detect OAuth requirements."
+              startContent={<KeyIcon width={16} height={16} />}
             />
           </div>
         </ModalBody>

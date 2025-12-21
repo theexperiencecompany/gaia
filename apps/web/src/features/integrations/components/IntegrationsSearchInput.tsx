@@ -17,7 +17,7 @@ export const IntegrationsSearchInput: React.FC<
       type="text"
       value={value}
       isClearable
-      fullWidth
+      className="max-w-xl"
       radius="full"
       startContent={<SearchIcon width={16} height={16} />}
       onValueChange={onChange}

@@ -1,19 +1,19 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Separator } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useIntegrationsStore } from "@/stores/integrationsStore";
 import {
-  CATEGORY_DISPLAY_ORDER,
   getCategoryLabel,
+  getUniqueCategories,
+  sortCategories,
 } from "../constants/categories";
 import { useIntegrationSearch } from "../hooks/useIntegrationSearch";
 import { useIntegrations } from "../hooks/useIntegrations";
 import type { Integration } from "../types";
 import { CategoryFilter } from "./CategoryFilter";
-import { IntegrationsSearchInput } from "./IntegrationsSearchInput";
-import { MCPIntegrationModal } from "./MCPIntegrationModal";
 
 const IntegrationRow: React.FC<{
   integration: Integration;
@@ -121,16 +121,18 @@ export const IntegrationsList: React.FC<{
   onIntegrationClick?: (integrationId: string) => void;
 }> = ({ onIntegrationClick }) => {
   const { integrations, connectIntegration } = useIntegrations();
-  const [isMCPModalOpen, setIsMCPModalOpen] = useState(false);
 
-  const {
-    searchQuery,
-    setSearchQuery,
-    clearSearch,
-    selectedCategory,
-    setSelectedCategory,
-    filteredIntegrations,
-  } = useIntegrationSearch(integrations);
+  // Get state from store
+  const searchQuery = useIntegrationsStore((state) => state.searchQuery);
+  const selectedCategory = useIntegrationsStore(
+    (state) => state.selectedCategory,
+  );
+  const setSelectedCategory = useIntegrationsStore(
+    (state) => state.setSelectedCategory,
+  );
+  const clearFilters = useIntegrationsStore((state) => state.clearFilters);
+
+  const { filteredIntegrations } = useIntegrationSearch(integrations);
 
   const handleConnect = async (integrationId: string) => {
     try {
@@ -140,46 +142,46 @@ export const IntegrationsList: React.FC<{
     }
   };
 
-  // Separate featured integrations (only for "all" category or when featured are in the selected category)
+  // Derive categories from backend integrations data
+  const availableCategories = useMemo(() => {
+    const uniqueCategories = getUniqueCategories(integrations);
+    return sortCategories(uniqueCategories);
+  }, [integrations]);
+
+  // Separate featured integrations
   const featuredIntegrations = useMemo(() => {
     return filteredIntegrations.filter((i) => i.isFeatured && i.loginEndpoint);
   }, [filteredIntegrations]);
 
-  // Non-featured integrations
-  const nonFeaturedIntegrations = useMemo(() => {
-    return filteredIntegrations.filter((i) => !i.isFeatured);
-  }, [filteredIntegrations]);
-
-  // Group non-featured integrations by category
+  // Group ALL integrations by category (featured will appear in both Featured and their category)
   const integrationsByCategory = useMemo(() => {
     const grouped: Record<string, Integration[]> = {};
 
-    for (const category of CATEGORY_DISPLAY_ORDER) {
-      grouped[category] = nonFeaturedIntegrations.filter(
+    for (const category of availableCategories) {
+      grouped[category] = filteredIntegrations.filter(
         (i) => i.category === category,
       );
     }
 
     return grouped;
-  }, [nonFeaturedIntegrations]);
+  }, [filteredIntegrations, availableCategories]);
+
+  // For when a specific category is selected
+  const integrationsInSelectedCategory = useMemo(() => {
+    return filteredIntegrations.filter((i) => i.category === selectedCategory);
+  }, [filteredIntegrations, selectedCategory]);
 
   const hasResults = filteredIntegrations.length > 0;
 
   return (
     <div>
-      {/* Search and Category Filter */}
-      <div className="mb-6 space-y-4">
-        <div className="flex justify-between items-center">
-          <CategoryFilter
-            selectedCategory={selectedCategory}
-            onCategoryChange={setSelectedCategory}
-          />
-          <IntegrationsSearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            onClear={clearSearch}
-          />
-        </div>
+      {/* Category Filter - categories derived from backend data */}
+      <div className="mb-6">
+        <CategoryFilter
+          categories={availableCategories}
+          selectedCategory={selectedCategory}
+          onCategoryChange={setSelectedCategory}
+        />
       </div>
 
       {/* No Results State */}
@@ -191,10 +193,7 @@ export const IntegrationsList: React.FC<{
               : `No ${getCategoryLabel(selectedCategory).toLowerCase()} integrations found`}
           </p>
           <Button
-            onPress={() => {
-              clearSearch();
-              setSelectedCategory("all");
-            }}
+            onPress={clearFilters}
             variant="light"
             color="primary"
             size="sm"
@@ -230,7 +229,7 @@ export const IntegrationsList: React.FC<{
       {/* Category Sections */}
       {selectedCategory === "all" ? (
         // When "All" is selected, show integrations grouped by category
-        CATEGORY_DISPLAY_ORDER.map((category) => {
+        availableCategories.map((category) => {
           const categoryIntegrations = integrationsByCategory[category];
           if (!categoryIntegrations || categoryIntegrations.length === 0)
             return null;
@@ -246,19 +245,14 @@ export const IntegrationsList: React.FC<{
           );
         })
       ) : (
-        // When a specific category is selected, show flat list (non-featured only)
+        // When a specific category is selected, show all integrations in that category
         <IntegrationSection
           title={getCategoryLabel(selectedCategory)}
-          integrations={nonFeaturedIntegrations}
+          integrations={integrationsInSelectedCategory}
           onConnect={handleConnect}
           onIntegrationClick={onIntegrationClick}
         />
       )}
-
-      <MCPIntegrationModal
-        isOpen={isMCPModalOpen}
-        onClose={() => setIsMCPModalOpen(false)}
-      />
     </div>
   );
 };

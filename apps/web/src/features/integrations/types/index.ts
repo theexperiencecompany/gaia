@@ -6,7 +6,12 @@ export interface Integration {
   id: string;
   name: string;
   description: string;
-  category: "productivity" | "communication" | "developer" | "social";
+  category:
+    | "productivity"
+    | "communication"
+    | "developer"
+    | "social"
+    | "business";
   status: "connected" | "not_connected" | "error";
   loginEndpoint?: string;
   disconnectEndpoint?: string;
