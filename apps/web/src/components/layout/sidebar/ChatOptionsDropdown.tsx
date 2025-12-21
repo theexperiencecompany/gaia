@@ -193,7 +193,7 @@ export default function ChatOptionsDropdown({
           <DropdownItem key="star" textValue="Star" onPress={handleStarToggle}>
             <div className="flex flex-row items-center justify-start gap-2">
               <StarIcon color="white" width={18} height={18} />
-              {starred ? "Remove" : "Add"} star
+              {starred ? "Unstar" : "Star"}
             </div>
           </DropdownItem>
           <DropdownItem key="edit" textValue="Rename" onPress={openEditModal}>
@@ -204,12 +204,12 @@ export default function ChatOptionsDropdown({
           </DropdownItem>
           <DropdownItem
             key="read"
-            textValue={isUnread ? "Mark read" : "Mark unread"}
+            textValue={isUnread ? "Mark as read" : "Mark as unread"}
             onPress={handleReadToggle}
           >
             <div className="flex flex-row items-center justify-start gap-2">
               <MessageNotificationIcon color="white" width={18} height={18} />
-              {isUnread ? "Mark read" : "Mark unread"}
+              {isUnread ? "Mark as read" : "Mark as unread"}
             </div>
           </DropdownItem>
           <DropdownItem

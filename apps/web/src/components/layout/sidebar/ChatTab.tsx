@@ -69,7 +69,7 @@ export const ChatTab: FC<ChatTabProps> = ({
       <Button
         className={`w-full justify-start px-2 font-light text-sm ${
           isUnread
-            ? "text-zinc-300 font-normal"
+            ? "text-white font-normal"
             : isActive
               ? "text-zinc-300"
               : "text-zinc-500 hover:text-zinc-300"
@@ -87,13 +87,14 @@ export const ChatTab: FC<ChatTabProps> = ({
           })
         }
       >
-        <div className="flex items-center truncate justify-between w-full">
-          <span>{name.replace('"', "")}</span>
+        <div className="flex items-center truncate justify-start w-full gap-2">
           {isUnread && (
-            <div className="rounded-full text-xs border border-primary/40 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-primary bg-primary/10">
-              UNREAD
-            </div>
+            // <div className="rounded-full text-xs border border-primary/40 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-primary bg-primary/10">
+            //   UNREAD
+            // </div>
+            <div className="size-2.5 bg-primary rounded-full" />
           )}
+          <span>{name.replace('"', "")}</span>
         </div>
       </Button>
 
