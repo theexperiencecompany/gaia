@@ -102,6 +102,9 @@ class ToolRegistry:
         if settings.ENV == "production":
             await self.load_all_provider_tools()
 
+        # Always load MCP tools (no auth required)
+        await self.load_all_mcp_tools()
+
     def _add_category(
         self,
         name: str,
@@ -172,6 +175,32 @@ class ToolRegistry:
             require_integration=True,
             integration_name="google_docs",
         )
+
+    async def register_mcp_tools(self, server_name: str = "deepwiki"):
+        """
+        Register MCP server tools.
+        Connects to an MCP server and adds its tools to the registry.
+        """
+        if server_name in self._categories:
+            return self._categories[server_name]
+
+        try:
+            from app.services.mcp.mcp_service import get_mcp_service
+
+            mcp_service = get_mcp_service()
+            tools = await mcp_service.connect_deepwiki()
+
+            if tools:
+                self._add_category(
+                    name=f"mcp_{server_name}",
+                    tools=tools,
+                    space="mcp",
+                )
+                await self._index_category_tools(f"mcp_{server_name}")
+                logger.info(f"Registered {len(tools)} MCP tools from {server_name}")
+                return self._categories[f"mcp_{server_name}"]
+        except Exception as e:
+            logger.error(f"Failed to register MCP tools from {server_name}: {e}")
 
     async def register_provider_tools(
         self,
@@ -254,6 +283,61 @@ class ToolRegistry:
 
         # Load all providers in parallel
         await asyncio.gather(*[load_provider(i) for i in integrations_to_load])
+
+    async def load_all_mcp_tools(self):
+        """
+        Load all tools from MCP-managed integrations.
+        Similar to load_all_provider_tools but for MCP servers.
+        """
+        from app.config.oauth_config import OAUTH_INTEGRATIONS
+
+        async def load_mcp_integration(integration):
+            category_name = f"mcp_{integration.id}"
+
+            # Skip if already loaded
+            if category_name in self._categories:
+                return
+
+            try:
+                from app.services.mcp.mcp_service import (
+                    MCPServerConfig,
+                    get_mcp_service,
+                )
+
+                mcp_service = get_mcp_service()
+                config = MCPServerConfig(
+                    name=integration.id,
+                    url=integration.mcp_config.server_url,
+                )
+                tools = await mcp_service.connect(config)
+
+                if tools:
+                    space = (
+                        integration.subagent_config.tool_space
+                        if integration.subagent_config
+                        else "mcp"
+                    )
+                    self._add_category(
+                        name=category_name,
+                        tools=tools,
+                        space=space,
+                    )
+                    await self._index_category_tools(category_name)
+                    logger.info(
+                        f"Registered {len(tools)} MCP tools from {integration.id}"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to load MCP tools for {integration.id}: {e}")
+
+        # Collect all MCP integrations
+        mcp_integrations = [
+            integration
+            for integration in OAUTH_INTEGRATIONS
+            if integration.managed_by == "mcp" and integration.mcp_config
+        ]
+
+        # Load all MCP tools in parallel
+        await asyncio.gather(*[load_mcp_integration(i) for i in mcp_integrations])
 
     async def _index_category_tools(self, category_name: str):
         """Index tools from a category into ChromaDB store."""

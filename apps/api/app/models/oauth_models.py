@@ -105,6 +105,14 @@ class ProviderMetadataConfig(BaseModel):
     )
 
 
+class MCPConfig(BaseModel):
+    """Configuration for MCP (Model Context Protocol) integration."""
+
+    server_url: str
+    transport: str = "sse"  # sse, http, streamable_http
+    requires_auth: bool = False
+
+
 class OAuthIntegration(BaseModel):
     """OAuth integration configuration."""
 
@@ -123,9 +131,11 @@ class OAuthIntegration(BaseModel):
     is_featured: bool = False  # Featured integrations displayed at the top
     # Short name for slash command dropdowns and quick access
     short_name: Optional[str] = None  # e.g., "gmail", "calendar", "drive", "docs"
-    managed_by: Literal["self", "composio"]
+    managed_by: Literal["self", "composio", "mcp"]
     # Composio-specific configuration
     composio_config: Optional[ComposioConfig] = None
+    # MCP-specific configuration
+    mcp_config: Optional[MCPConfig] = None
     associated_triggers: List[
         TriggerConfig
     ] = []  # Triggers associated with this integration

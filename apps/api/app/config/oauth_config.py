@@ -33,6 +33,7 @@ from app.agents.prompts.subagent_prompts import (
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
 from app.models.oauth_models import (
     ComposioConfig,
+    MCPConfig,
     OAuthIntegration,
     OAuthScope,
     ProviderMetadataConfig,
@@ -616,6 +617,33 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="managing tasks, organizing projects, tracking time, building workflows, assigning work, and comprehensive productivity management",
             use_cases="task management, project organization, time tracking, or any ClickUp operation",
             system_prompt=CLICKUP_AGENT_SYSTEM_PROMPT,
+        ),
+    ),
+    # MCP Integrations (no authentication required)
+    OAuthIntegration(
+        id="deepwiki",
+        name="DeepWiki",
+        description="AI-powered documentation for any GitHub repository. Ask questions and explore codebases.",
+        category="developer",
+        provider="deepwiki",
+        scopes=[],
+        available=True,
+        short_name="deepwiki",
+        managed_by="mcp",
+        mcp_config=MCPConfig(
+            server_url="https://mcp.deepwiki.com/sse",
+            transport="sse",
+            requires_auth=False,
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=False,
+            agent_name="deepwiki_agent",
+            tool_space="mcp",
+            handoff_tool_name="call_deepwiki_agent",
+            domain="GitHub repository documentation and code understanding",
+            capabilities="reading wiki structure, viewing documentation contents, asking questions about any GitHub repository",
+            use_cases="exploring codebases, understanding repositories, asking questions about GitHub projects",
+            system_prompt="You are a DeepWiki agent that helps users explore and understand GitHub repositories.",
         ),
     ),
 ]
