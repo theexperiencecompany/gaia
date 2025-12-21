@@ -27,6 +27,7 @@ import {
   useComposerUI,
   useInputText,
 } from "@/stores/composerStore";
+import { useReplyToMessage } from "@/stores/replyToMessageStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
 import type { FileData, SearchMode } from "@/types/shared";
 
@@ -34,6 +35,7 @@ import ComposerInput, { type ComposerInputRef } from "./ComposerInput";
 import ComposerToolbar from "./ComposerToolbar";
 import IntegrationsBanner from "./IntegrationsBanner";
 import SelectedCalendarEventIndicator from "./SelectedCalendarEventIndicator";
+import SelectedReplyIndicator from "./SelectedReplyIndicator";
 import SelectedToolIndicator from "./SelectedToolIndicator";
 import SelectedWorkflowIndicator from "./SelectedWorkflowIndicator";
 
@@ -93,6 +95,8 @@ const Composer: React.FC<MainSearchbarProps> = ({
   const { selectedWorkflow, clearSelectedWorkflow } = useWorkflowSelection();
   const { selectedCalendarEvent, clearSelectedCalendarEvent } =
     useCalendarEventSelection();
+  const { replyToMessage, clearReplyToMessage, setInputFocusCallback } =
+    useReplyToMessage();
   const { autoSend } = useWorkflowSelectionStore();
 
   const sendMessage = useSendMessage();
@@ -106,6 +110,18 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   // Ref to prevent duplicate execution in StrictMode
   const autoSendExecutedRef = useRef(false);
+
+  // Set up input focus callback for reply-to-message functionality
+  useEffect(() => {
+    setInputFocusCallback(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    });
+
+    // Clean up on unmount
+    return () => setInputFocusCallback(null);
+  }, [inputRef, setInputFocusCallback]);
 
   // When workflow is selected, handle auto-send with a brief delay to allow UI to update
   useEffect(() => {
@@ -231,6 +247,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
       selectedToolCategory: selectedToolCategory ?? null,
       selectedWorkflow,
       selectedCalendarEvent,
+      replyToMessage,
     });
 
     clearInputText();
@@ -238,6 +255,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
     clearToolSelection();
     clearSelectedWorkflow();
     clearSelectedCalendarEvent();
+    clearReplyToMessage();
 
     if (inputRef) inputRef.current?.focus();
     scrollToBottom();
@@ -437,7 +455,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
         hasMessages={hasMessages}
         onToggleSlashCommand={handleToggleSlashCommandDropdown}
       />
-      <div className="searchbar relative z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
+      <div className="searchbar relative transition-all z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
         <FilePreview files={uploadedFiles} onRemove={removeUploadedFile} />
         <SelectedToolIndicator
           toolName={selectedTool}
@@ -451,6 +469,26 @@ const Composer: React.FC<MainSearchbarProps> = ({
         <SelectedCalendarEventIndicator
           event={selectedCalendarEvent}
           onRemove={clearSelectedCalendarEvent}
+        />
+        <SelectedReplyIndicator
+          replyToMessage={replyToMessage}
+          onRemove={clearReplyToMessage}
+          onNavigate={(messageId) => {
+            // Scroll to the message being replied to
+            const messageElement = document.getElementById(messageId);
+            if (messageElement) {
+              messageElement.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+              });
+              // Brief visual highlight
+              messageElement.style.transition = "all 0.3s ease";
+              messageElement.style.scale = "1.02";
+              setTimeout(() => {
+                messageElement.style.scale = "1";
+              }, 300);
+            }
+          }}
         />
         <ComposerInput
           ref={composerInputRef}

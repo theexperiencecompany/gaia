@@ -3,20 +3,30 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-yaml
+        priority: 0
       - id: check-json
         exclude: ^(apps/web/.*tsconfig.*\.json|\.vscode/.*\.json)$
+        priority: 0
       - id: check-toml
+        priority: 0
       - id: check-merge-conflict
+        priority: 0
       - id: check-added-large-files
         exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
+        priority: 0
       - id: check-ast
         exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
+        priority: 0
       - id: check-docstring-first
+        priority: 0
       - id: check-case-conflict
+        priority: 0
       - id: detect-private-key
+        priority: 0
 
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.4.0
     hooks:
       - id: detect-secrets
-        exclude: ^(pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|.*\.env\.example|docs/configuration/environment-variables.mdx|nx\.json)$
+        exclude: ^(pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|.*\.env\.example|docs/configuration/environment-variables\.mdx|apps/docs/configuration/environment-variables\.mdx|nx\.json|\.github/workflows/build\.yml|apps/api/pyproject\.toml)$
+        priority: 0

@@ -56,8 +56,7 @@ def get_token(
         )
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate voice token: {str(e)}"
+            status_code=500, detail=f"Failed to generate voice token: {str(e)}"
         )
 
     return {

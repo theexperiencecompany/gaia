@@ -291,12 +291,12 @@ async def generate_workflow(
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ):
     """Generate a workflow for a todo (background generation + WebSocket notification).
-    
+
     This endpoint returns immediately with 'generating' status. The frontend should
     display a skeleton and listen for the 'workflow.generated' WebSocket event.
     """
     from app.services.workflow.queue_service import WorkflowQueueService
-    
+
     try:
         todo: TodoResponse = await TodoService.get_todo(todo_id, user["user_id"])
 
@@ -319,7 +319,7 @@ async def generate_workflow(
             title=todo.title,
             description=todo.description or "",
         )
-        
+
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -363,7 +363,7 @@ async def get_workflow_status(todo_id: str, user: dict = Depends(get_current_use
         workflow = None
         is_generating = False
         workflow_status = "not_started"
-        
+
         # Check if workflow generation is queued/pending (Redis flag)
         if await WorkflowQueueService.is_workflow_generating(todo_id):
             is_generating = True
@@ -372,7 +372,7 @@ async def get_workflow_status(todo_id: str, user: dict = Depends(get_current_use
             workflow = await WorkflowService.get_workflow(
                 todo.workflow_id, user["user_id"]
             )
-            
+
             if workflow:
                 # Workflow exists - check if steps are generated
                 has_steps = workflow.steps and len(workflow.steps) > 0

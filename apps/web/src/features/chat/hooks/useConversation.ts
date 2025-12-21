@@ -25,6 +25,7 @@ const mapStoredMessageToConversationMessage = (
     memory_data: message.memory_data ?? undefined,
     pinned: message.pinned ?? undefined,
     isConvoSystemGenerated: message.isConvoSystemGenerated ?? undefined,
+    replyToMessage: message.replyToMessageData ?? undefined,
   } as MessageType;
 };
 

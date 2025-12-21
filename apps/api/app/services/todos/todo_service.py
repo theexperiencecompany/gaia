@@ -344,6 +344,8 @@ class TodoService:
         # Queue workflow generation in background (same flow as Generate button)
         todo_id_str = str(result.inserted_id)
         try:
+            from app.services.workflow.queue_service import WorkflowQueueService
+
             success = await WorkflowQueueService.queue_todo_workflow_generation(
                 todo_id=todo_id_str,
                 user_id=user_id,

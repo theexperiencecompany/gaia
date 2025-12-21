@@ -17,17 +17,17 @@
 # - windows-x64: Windows on x86_64
 
 [platforms.linux-x64]
-url = "https://github.com/j178/prek/releases/download/v0.2.14/prek-x86_64-unknown-linux-musl.tar.gz"
+url = "https://github.com/j178/prek/releases/download/v0.2.23/prek-x86_64-unknown-linux-musl.tar.gz"
 
 [platforms.linux-arm64]
-url = "https://github.com/j178/prek/releases/download/v0.2.14/prek-aarch64-unknown-linux-musl.tar.gz"
+url = "https://github.com/j178/prek/releases/download/v0.2.23/prek-aarch64-unknown-linux-musl.tar.gz"
 
 [platforms.macos-arm64]
-url = "https://github.com/j178/prek/releases/download/v0.2.14/prek-aarch64-apple-darwin.tar.gz"
+url = "https://github.com/j178/prek/releases/download/v0.2.23/prek-aarch64-apple-darwin.tar.gz"
 
 [platforms.macos-x64]
-url = "https://github.com/j178/prek/releases/download/v0.2.14/prek-x86_64-apple-darwin.tar.gz"
+url = "https://github.com/j178/prek/releases/download/v0.2.23/prek-x86_64-apple-darwin.tar.gz"
 
 [platforms.windows-x64]
-url = "https://github.com/j178/prek/releases/download/v0.2.14/prek-x86_64-pc-windows-msvc.zip"
+url = "https://github.com/j178/prek/releases/download/v0.2.23/prek-x86_64-pc-windows-msvc.zip"
 bin = "prek.exe"

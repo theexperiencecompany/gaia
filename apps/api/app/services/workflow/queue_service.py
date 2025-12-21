@@ -133,7 +133,7 @@ class WorkflowQueueService:
         todo_id: str, user_id: str, title: str, description: str = ""
     ) -> bool:
         """Queue todo workflow generation as a background task.
-        
+
         This triggers process_workflow_generation_task which:
         1. Creates workflow with is_todo_workflow=True
         2. Links it to the todo
@@ -157,9 +157,9 @@ class WorkflowQueueService:
                 await pool.set(
                     f"todo_workflow_generating:{todo_id}",
                     "1",
-                    ex=300  # 5 minute TTL
+                    ex=300,  # 5 minute TTL
                 )
-                
+
                 logger.info(
                     f"Queued todo workflow generation for {todo_id} with job ID {job.job_id}"
                 )

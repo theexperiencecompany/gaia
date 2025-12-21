@@ -1,14 +1,6 @@
 {
   "separate-pull-requests": false,
-  "include-component-in-tag": false,
-  "plugins": [
-    {
-      "type": "linked-versions",
-      "groupName": "gaia",
-      "components": ["api", "web", "desktop"],
-      "merge": true
-    }
-  ],
+  "include-component-in-tag": true,
   "packages": {
     "apps/api": {
       "release-type": "python",
@@ -25,6 +17,12 @@
     "apps/desktop": {
       "release-type": "node",
       "component": "desktop",
+      "changelog-path": "CHANGELOG.md",
+      "changelog-type": "github"
+    },
+    "apps/mobile": {
+      "release-type": "node",
+      "component": "mobile",
       "changelog-path": "CHANGELOG.md",
       "changelog-type": "github"
     }

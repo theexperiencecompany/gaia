@@ -10,7 +10,7 @@
 python = "3.12"
 node = "22"
 "npm:mintlify" = "latest"
-prek = "latest"
+prek = "0.2.23"
 uv = "latest"
 "npm:nx" = "latest"
 
@@ -18,8 +18,8 @@ uv = "latest"
 _.python.venv = { path = "apps/api/.venv", create = true }
 MISE_NODE_COREPACK = "1"
 
-[hooks]
-postinstall = "pnpm install && nx sync api"
+# [hooks]
+# postinstall = "pnpm install && nx sync api"
 
 [settings]
 # npm.package_manager = "pnpm" # Use pnpm as the package manager

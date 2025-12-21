@@ -40,12 +40,13 @@ async def login_workos():
 
     return RedirectResponse(url=authorization_url)
 
+
 @router.get("/login/workos/mobile")
 async def login_workos_mobile():
     """Start WorkOS SSO flow for mobile apps (Expo)."""
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
-        redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI, 
+        redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
     )
     return {"url": authorization_url}
 
@@ -59,7 +60,9 @@ async def workos_mobile_callback(code: Optional[str] = None) -> RedirectResponse
     try:
         if not code:
             logger.error("No authorization code received from WorkOS (mobile)")
-            return RedirectResponse(url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=missing_code")
+            return RedirectResponse(
+                url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=missing_code"
+            )
 
         auth_response = workos.user_management.authenticate_with_code(
             code=code,
@@ -80,16 +83,19 @@ async def workos_mobile_callback(code: Optional[str] = None) -> RedirectResponse
         await store_user_info(name, email, picture_url)
 
         token = auth_response.sealed_session or auth_response.access_token
-        return RedirectResponse(url=f"gaiamobile://auth/callback?token={token}") 
+        return RedirectResponse(url=f"gaiamobile://auth/callback?token={token}")
 
     except HTTPException as e:
         logger.error(f"HTTP error during WorkOS mobile auth: {e.detail}")
-        return RedirectResponse(url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error={e.detail}")
+        return RedirectResponse(
+            url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error={e.detail}"
+        )
 
     except Exception as e:
         logger.error(f"Unexpected error during WorkOS mobile callback: {str(e)}")
-        return RedirectResponse(url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=server_error")
-
+        return RedirectResponse(
+            url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=server_error"
+        )
 
 
 @router.get("/login/workos/desktop")

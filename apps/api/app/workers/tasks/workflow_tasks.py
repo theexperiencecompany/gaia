@@ -125,7 +125,6 @@ async def process_workflow_generation_task(
             title=title,
             details_section=f"**Details:** {description}" if description else "",
         )
-
         # Create standalone workflow with todo workflow flag
         workflow_request = CreateWorkflowRequest(
             title=f"Todo: {title}",
@@ -172,6 +171,9 @@ async def process_workflow_generation_task(
                 except Exception as ws_error:
                     logger.warning(f"Failed to send WebSocket event: {ws_error}")
 
+                # Clear the generating flag
+                from app.services.workflow.queue_service import WorkflowQueueService
+
                 await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
 
                 return f"Successfully generated standalone workflow {workflow.id} for todo {todo_id}"
@@ -194,8 +196,10 @@ async def process_workflow_generation_task(
 
         # Clear the generating flag on failure too
         try:
+            from app.services.workflow.queue_service import WorkflowQueueService
+
             await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
-        except Exception:
+        except Exception:  # nosec B110 - Intentional: cleanup should not raise
             pass
 
         # Broadcast failure WebSocket event so frontend can handle it

@@ -52,6 +52,14 @@ export interface IMessage {
   isConvoSystemGenerated?: boolean;
   metadata?: Record<string, unknown>;
   optimistic?: boolean; // Temporary message waiting for backend ID
+
+  // Reply data
+  replyToMessageId?: string | null;
+  replyToMessageData?: {
+    id: string;
+    content: string;
+    role: "user" | "assistant";
+  } | null;
 }
 
 class MessageQueue {
