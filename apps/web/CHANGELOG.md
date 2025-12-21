@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.11.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.11.0...web-v0.11.0) (2025-12-21)
+
+
+### release
+
+* v0.11.0 - New Monorepo setup using NX, Beta Desktop & Mobile app setup, Voice Mode etc ([#378](https://github.com/theexperiencecompany/gaia/issues/378)) ([8e72443](https://github.com/theexperiencecompany/gaia/commit/8e72443a1f56edf8e864cd0258ba26f03c81ddc1))
+
+
+### Features
+
+* Add keyboard shortcuts in navigation, fixed workflow generation from todos ([#379](https://github.com/theexperiencecompany/gaia/issues/379)) ([21d743b](https://github.com/theexperiencecompany/gaia/commit/21d743b0bafcc47ff0ee418fc8e93efe96fe954d))
+* Add support for Unread chats post onboarding and after running workflows ([#388](https://github.com/theexperiencecompany/gaia/issues/388)) ([b81f56e](https://github.com/theexperiencecompany/gaia/commit/b81f56e1b714c71de3059bff04cfecb60d0f62a3))
+* Add support for Unread conversations ([#392](https://github.com/theexperiencecompany/gaia/issues/392)) ([c4a8e37](https://github.com/theexperiencecompany/gaia/commit/c4a8e375c3bfbd3911b4fef664f7c170d5c69c6c))
+* **mobile:** Setup NativeWindCSS and reusable components ([#380](https://github.com/theexperiencecompany/gaia/issues/380)) ([80d995e](https://github.com/theexperiencecompany/gaia/commit/80d995ef423773e31530fa8fe6178a39db1fde78))
+* Reply to message ([#386](https://github.com/theexperiencecompany/gaia/issues/386)) ([01c6935](https://github.com/theexperiencecompany/gaia/commit/01c69353cfd979ed95594893949d926385983a90))
+* Setup a monorepo with apps/ directory structure using NX ([#369](https://github.com/theexperiencecompany/gaia/issues/369)) ([230ecb9](https://github.com/theexperiencecompany/gaia/commit/230ecb9611b4fbc16b676010aa831c1a38d0f71e))
+
+
+### Bug Fixes
+
+* standardize quotes in pnpm-workspace.yaml for consistency and formatting ([fd10238](https://github.com/theexperiencecompany/gaia/commit/fd102387491d1747b55968d1648a0ae1a15f3dd9))
+
+
+### Miscellaneous Chores
+
+* release 0.5.1 ([a011469](https://github.com/theexperiencecompany/gaia/commit/a011469403974c3e0dc3e19fb39a6c6e8e6e9647))
+
 ## [0.11.0](https://github.com/theexperiencecompany/gaia/compare/v0.10.1...v0.11.0) (2025-12-19)
 
 
