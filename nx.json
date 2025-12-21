@@ -76,6 +76,7 @@
         "projects": ["api", "voice-agent"],
         "projectsRelationship": "independent",
         "docker": {
+          "groupPreVersionCommand": "npx nx run-many -t docker:build -p api,voice-agent",
           "skipVersionActions": true,
           "registryUrl": "ghcr.io"
         },
@@ -85,6 +86,7 @@
       }
     },
     "docker": {
+      "preVersionCommand": "",
       "versionSchemes": {
         "production": "{currentDate|YYMM.DD}.{shortCommitSha}",
         "develop": "develop-{shortCommitSha}"

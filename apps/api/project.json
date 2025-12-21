@@ -10,6 +10,12 @@
     }
   },
   "targets": {
+    "build": {
+      "executor": "nx:noop",
+      "cache": true,
+      "inputs": ["production"],
+      "outputs": []
+    },
     "sync": {
       "executor": "nx:run-commands",
       "options": {

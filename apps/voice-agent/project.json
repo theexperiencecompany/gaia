@@ -11,13 +11,14 @@
     }
   },
   "targets": {
-    "docker-build": {
-      "executor": "@nx-tools/nx-container:build",
+    "docker:build": {
+      "executor": "nx:run-commands",
       "options": {
-        "file": "apps/api/Dockerfile.voice-agent",
-        "context": "apps/api",
-        "tags": ["ghcr.io/heygaia/gaia-voice-agent:latest"]
-      }
+        "command": "docker build -f Dockerfile.voice-agent -t ghcr.io/heygaia/gaia-voice-agent:latest .",
+        "cwd": "apps/api"
+      },
+      "cache": true,
+      "inputs": ["production", "^production"]
     }
   }
 }
