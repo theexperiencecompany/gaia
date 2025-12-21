@@ -9,6 +9,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone_from_preferences,
 )
+from app.api.v1.middleware.rate_limiter import limiter
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
 from app.decorators import tiered_rate_limit
@@ -20,6 +21,7 @@ from app.models.workflow_models import (
     TriggerConfig,
     TriggerType,
     UpdateWorkflowRequest,
+    Workflow,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     WorkflowListResponse,
@@ -27,9 +29,8 @@ from app.models.workflow_models import (
     WorkflowStatusResponse,
 )
 from app.services.workflow import WorkflowService
-from fastapi import APIRouter, Depends, HTTPException, status
 from app.utils.workflow_utils import transform_workflow_document
-from app.models.workflow_models import Workflow
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 router = APIRouter()
 
@@ -62,7 +63,9 @@ async def create_workflow(
 
 
 @router.get("/workflows", response_model=WorkflowListResponse)
-async def list_workflows(user: dict = Depends(get_current_user)):
+@limiter.limit("100/minute")
+@limiter.limit("1000/hour")
+async def list_workflows(request: Request, user: dict = Depends(get_current_user)):
     """List all workflows for the current user."""
     try:
         workflows = await WorkflowService.list_workflows(user["user_id"])
@@ -354,7 +357,10 @@ async def unpublish_workflow(
 
 
 @router.get("/workflows/explore", response_model=PublicWorkflowsResponse)
+@limiter.limit("100/minute")
+@limiter.limit("1000/hour")
 async def get_explore_workflows(
+    request: Request,
     limit: int = 25,
     offset: int = 0,
 ):
@@ -370,7 +376,10 @@ async def get_explore_workflows(
 
 
 @router.get("/workflows/community", response_model=PublicWorkflowsResponse)
+@limiter.limit("100/minute")
+@limiter.limit("1000/hour")
 async def get_public_workflows(
+    request: Request,
     limit: int = 20,
     offset: int = 0,
 ):
@@ -388,7 +397,9 @@ async def get_public_workflows(
 
 
 @router.get("/workflows/public/{workflow_id}", response_model=WorkflowResponse)
-async def get_public_workflow(workflow_id: str):
+@limiter.limit("100/minute")
+@limiter.limit("1000/hour")
+async def get_public_workflow(request: Request, workflow_id: str):
     """Get a public workflow by ID without authentication."""
     try:
         workflow_doc = await workflows_collection.find_one(
@@ -419,7 +430,11 @@ async def get_public_workflow(workflow_id: str):
 
 
 @router.get("/workflows/{workflow_id}", response_model=WorkflowResponse)
-async def get_workflow(workflow_id: str, user: dict = Depends(get_current_user)):
+@limiter.limit("100/minute")
+@limiter.limit("1000/hour")
+async def get_workflow(
+    request: Request, workflow_id: str, user: dict = Depends(get_current_user)
+):
     """Get a specific workflow by ID."""
     try:
         workflow = await WorkflowService.get_workflow(workflow_id, user["user_id"])
