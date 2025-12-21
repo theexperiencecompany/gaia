@@ -1,33 +1,52 @@
 """Docstrings for calendar-related tools."""
 
 CUSTOM_CREATE_EVENT = """
-CALENDAR — CREATE EVENT
+CALENDAR — CREATE EVENT(S)
 
-Creates a calendar event with optional attendees and location. By default, sends event to frontend for user confirmation.
+Creates one or more calendar events. Supports batch creation with ID mapping for adding recurrence.
 
-TIMEZONE HANDLING:
-• Convert all times to user's timezone before calling
-• Use ISO format: "2025-01-15T10:00:00"
-• Duration is specified in hours and minutes
-
-CONFIRMATION BEHAVIOR:
-• confirm_immediately=False (default): Sends event to frontend for user confirmation
-• confirm_immediately=True: Creates event immediately without confirmation
+TIMEZONE: Use ISO format with user's timezone: "2025-01-15T10:00:00"
 
 Args:
-    summary (str): Required. Title of the event.
-    start_datetime (str): Required. Start time in ISO format (use user's timezone).
-    duration_hours (int): Duration hours (0-23), default 0.
-    duration_minutes (int): Duration minutes (0-59), default 30.
-    calendar_id (str): Calendar ID, default "primary".
-    description (str): Optional. Event description.
-    location (str): Optional. Event location.
-    attendees (List[str]): Optional. List of attendee email addresses.
-    is_all_day (bool): True for all-day events, default False.
-    confirm_immediately (bool): If True, create immediately. Default False (send to frontend).
+    events (List): List of events to create, each with:
+        - summary (str): Required. Title.
+        - start_datetime (str): Required. Start time (ISO format).
+        - duration_hours/minutes (int): Duration, default 30min.
+        - calendar_id (str): Calendar ID, default "primary".
+        - description, location, attendees: Optional.
+        - is_all_day (bool): Default False.
+    confirm_immediately (bool): If True, create immediately. Default False.
+
+Returns (when confirm_immediately=True):
+    {
+        "created_events": [{"index": 0, "summary": "...", "event_id": "abc123", ...}],
+        "total_created": N
+    }
+    Use event_id with ADD_RECURRENCE to make events recurring.
+"""
+
+CUSTOM_GET_DAY_SUMMARY = """
+CALENDAR — GET DAY SUMMARY
+
+Gets a quick summary of a day's schedule including events, busy hours, and next upcoming event.
+Uses user's timezone from their profile preferences.
+
+USE THIS TOOL FIRST when user asks:
+• "What does my day look like?"
+• "What's on my schedule today/tomorrow?"
+• "Am I busy on Thursday?"
+
+Args:
+    date (str): Optional. Date to get summary for (YYYY-MM-DD). Defaults to today.
 
 Returns:
-    Dict with success status and event details, or streams confirmation to frontend.
+    {
+        "date": "2025-01-15",
+        "events": [...],
+        "total_events": N,
+        "next_event": {...} or null,
+        "busy_hours": 5.5
+    }
 """
 
 CUSTOM_LIST_CALENDARS = """
@@ -45,18 +64,23 @@ Returns:
 CUSTOM_FETCH_EVENTS = """
 CALENDAR — FETCH EVENTS
 
-Fetches events from a calendar within an optional time range.
+Fetches events from one or more calendars within an optional time range.
 
-DEFAULT BEHAVIOR: Fetches future events starting from current time.
+USAGE:
+• "What does my day look like?" → calendar_ids=None (fetches ALL selected calendars)
+• Events from specific calendar → calendar_ids=["calendar_id_here"]
+• Events from primary only → calendar_ids=["primary"]
+
+DEFAULT BEHAVIOR: If calendar_ids is None, fetches from ALL user's selected calendars.
 
 Args:
-    calendar_id (str): Calendar ID, default "primary".
+    calendar_ids (List[str]): Optional. Calendar IDs to fetch from. If None, fetches from all selected calendars.
     time_min (str): Optional. Start time filter in ISO format. Defaults to current time.
     time_max (str): Optional. End time filter in ISO format.
-    max_results (int): Maximum events to return (1-250), default 20.
+    max_results (int): Maximum events to return (1-250), default 50.
 
 Returns:
-    Dict with success status and list of events.
+    Dict with success status, events list, calendars_fetched, and has_more flag.
 """
 
 CUSTOM_FIND_EVENT = """
@@ -75,30 +99,38 @@ Returns:
 """
 
 CUSTOM_GET_EVENT = """
-CALENDAR — GET EVENT
+CALENDAR — GET EVENT(S)
 
-Gets a single calendar event by ID.
+Gets one or more calendar events by ID.
 
 Args:
-    event_id (str): Required. The event ID to retrieve.
-    calendar_id (str): Calendar ID containing the event, default "primary".
+    events (List): List of events to get, each with:
+        - event_id (str): Required. The event ID.
+        - calendar_id (str): Calendar ID, default "primary".
 
 Returns:
-    Dict with success status and full event details.
+    {
+        "events": [{"event_id": "...", "calendar_id": "...", "event": {...}}],
+        "total_retrieved": N
+    }
 """
 
 CUSTOM_DELETE_EVENT = """
-CALENDAR — DELETE EVENT
+CALENDAR — DELETE EVENT(S)
 
-Deletes a calendar event by ID.
+Deletes one or more calendar events.
 
 Args:
-    event_id (str): Required. The event ID to delete.
-    calendar_id (str): Calendar ID containing the event, default "primary".
+    events (List): List of events to delete, each with:
+        - event_id (str): Required. The event ID.
+        - calendar_id (str): Calendar ID, default "primary".
     send_updates (str): Notify attendees: 'all', 'externalOnly', 'none'. Default 'all'.
 
 Returns:
-    Dict with success status and confirmation message.
+    {
+        "deleted": [{"event_id": "...", "calendar_id": "..."}],
+        "total_deleted": N
+    }
 """
 
 CUSTOM_PATCH_EVENT = """

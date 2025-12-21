@@ -19,6 +19,7 @@ from app.config.loggers import common_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.core.lazy_loader import providers
 from app.helpers.agent_helpers import build_agent_config
+from app.models.models_models import ModelConfig
 from app.services.oauth_service import check_integration_status
 from langchain_core.messages import AIMessageChunk, HumanMessage
 
@@ -73,6 +74,7 @@ async def prepare_subagent_execution(
     user_time: datetime,
     conversation_id: str,
     base_configurable: Optional[dict] = None,
+    user_model_config: Optional[ModelConfig] = None,
 ) -> tuple[Optional[SubagentExecutionContext], Optional[str]]:
     """
     Prepare everything needed to execute a subagent.
@@ -86,6 +88,7 @@ async def prepare_subagent_execution(
         user_time: User's local time
         conversation_id: Thread/conversation ID
         base_configurable: Optional configurable to inherit from (for handoff tool)
+        user_model_config: Optional model configuration for LLM settings
 
     Returns:
         Tuple of (SubagentExecutionContext, None) on success, or
@@ -120,6 +123,7 @@ async def prepare_subagent_execution(
         thread_id=subagent_thread_id,
         base_configurable=base_configurable,
         agent_name=agent_name,
+        user_model_config=user_model_config,
     )
     configurable = config.get("configurable", {})
 
@@ -227,6 +231,7 @@ async def call_subagent(
     conversation_id: str,
     user_time: datetime,
     skip_integration_check: bool = True,
+    user_model_config: Optional[ModelConfig] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Directly invoke a subagent with streaming - drop-in for call_agent in chat_service.
@@ -269,13 +274,13 @@ async def call_subagent(
                 yield "data: [DONE]\n\n"
                 return
 
-    # Use shared preparation function
     ctx, error = await prepare_subagent_execution(
         subagent_id=subagent_id,
         task=query,
         user=user,
         user_time=user_time,
         conversation_id=conversation_id,
+        user_model_config=user_model_config,
     )
 
     if error or ctx is None:

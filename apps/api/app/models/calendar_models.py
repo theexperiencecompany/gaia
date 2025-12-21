@@ -635,7 +635,9 @@ class CalendarEventUpdateToolRequest(BaseModel):
         )
 
 
-class CreateEventInput(BaseModel):
+class SingleEventInput(BaseModel):
+    """Single event definition for creation."""
+
     summary: str = Field(..., description="Title of the event")
     start_datetime: str = Field(
         ...,
@@ -654,9 +656,18 @@ class CreateEventInput(BaseModel):
         default=None, description="List of attendee email addresses"
     )
     is_all_day: bool = Field(default=False, description="All-day event")
+
+
+class CreateEventInput(BaseModel):
+    """Input for creating one or more calendar events."""
+
+    events: List[SingleEventInput] = Field(
+        ...,
+        description="List of events to create",
+    )
     confirm_immediately: bool = Field(
         default=False,
-        description="If True, create event immediately. If False (default), send to frontend for confirmation.",
+        description="If True, create events immediately. If False (default), send to frontend for confirmation.",
     )
 
 
@@ -668,15 +679,30 @@ class ListCalendarsInput(BaseModel):
 
 
 class FetchEventsInput(BaseModel):
-    calendar_id: str = Field(default="primary", description="Calendar ID")
+    """Input for fetching events from one or more calendars."""
+
+    calendar_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Calendar IDs to fetch from. If None, fetches from all user's selected calendars. Use ['primary'] for just the primary calendar.",
+    )
     time_min: Optional[str] = Field(
-        default=None, description="Start time filter (ISO format)"
+        default=None,
+        description="Start time filter (ISO format). Defaults to current time.",
     )
     time_max: Optional[str] = Field(
         default=None, description="End time filter (ISO format)"
     )
     max_results: int = Field(
-        default=20, description="Maximum events to return (1-250)", ge=1, le=250
+        default=30, description="Maximum events to return (1-250)", ge=1, le=250
+    )
+
+
+class GetDaySummaryInput(BaseModel):
+    """Input for getting a day's schedule summary."""
+
+    date: Optional[str] = Field(
+        default_factory=lambda: datetime.now().strftime("%Y-%m-%d"),
+        description="Date to get summary for (YYYY-MM-DD format). Defaults to today.",
     )
 
 
@@ -691,14 +717,29 @@ class FindEventInput(BaseModel):
     )
 
 
-class GetEventInput(BaseModel):
+class EventReference(BaseModel):
+    """Reference to a specific event by ID and calendar."""
+
     event_id: str = Field(..., description="Event ID")
     calendar_id: str = Field(default="primary", description="Calendar ID")
 
 
+class GetEventInput(BaseModel):
+    """Input for getting one or more events by ID."""
+
+    events: List[EventReference] = Field(
+        ...,
+        description="List of events to get (each with event_id and calendar_id)",
+    )
+
+
 class DeleteEventInput(BaseModel):
-    event_id: str = Field(..., description="Event ID to delete")
-    calendar_id: str = Field(default="primary", description="Calendar ID")
+    """Input for deleting one or more events."""
+
+    events: List[EventReference] = Field(
+        ...,
+        description="List of events to delete (each with event_id and calendar_id)",
+    )
     send_updates: str = Field(
         default="all",
         description="Notify attendees: 'all', 'externalOnly', 'none'",
