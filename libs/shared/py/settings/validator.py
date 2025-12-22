@@ -25,15 +25,15 @@ class SettingsGroup:
         all_required: bool = True,
     ):
         """
-        Initialize a settings group.
-
-        Args:
-            name: The name of the settings group
-            keys: List of configuration keys in this group
-            description: Description of what this group enables
-            affected_features: Description of features affected if missing
-            required_in_prod: Whether required in production
-            all_required: Whether all keys are required (True) or any one is sufficient (False)
+        Create a SettingsGroup representing a related set of configuration keys and their metadata.
+        
+        Parameters:
+            name (str): Human-readable name of the group.
+            keys (List[str]): Configuration keys that belong to this group.
+            description (str): Short description of what the group enables.
+            affected_features (str): Description of features affected when the group is missing.
+            required_in_prod (bool): Whether this group is required in production (default True).
+            all_required (bool): If True, all keys must be present; if False, at least one key must be present (default True).
         """
         self.name = name
         self.keys = keys
@@ -47,17 +47,40 @@ class SettingsValidator:
     """Validates settings against registered groups."""
 
     def __init__(self) -> None:
+        """
+        Initialize validator state for settings validation.
+        
+        Attributes:
+            groups (List[SettingsGroup]): Registered settings groups to validate.
+            missing_groups (List[Tuple[SettingsGroup, List[str]]]): Collected groups that have missing keys and the list of those keys.
+            show_warnings (bool): Whether validation results should be logged.
+            is_production (bool): Whether the validator is running in production mode (affects logging severity and scope).
+        """
         self.groups: List[SettingsGroup] = []
         self.missing_groups: List[Tuple[SettingsGroup, List[str]]] = []
         self.show_warnings: bool = True
         self.is_production: bool = True
 
     def register_group(self, group: SettingsGroup) -> None:
-        """Register a settings group for validation."""
+        """
+        Register a SettingsGroup to be validated during settings checks.
+        
+        Parameters:
+            group (SettingsGroup): The settings group to register.
+        """
         self.groups.append(group)
 
     def configure(self, show_warnings: bool, is_production: bool) -> None:
-        """Configure the validator."""
+        """
+        Configure validator behavior and reset previously recorded validation state.
+        
+        Parameters:
+            show_warnings (bool): If True, validation failures will be logged; otherwise logging is suppressed.
+            is_production (bool): If True, validation messages are treated as production severity (affects log prefixing and whether groups required only in production are enforced).
+        
+        Side effects:
+            Resets the internal list of recorded missing groups.
+        """
         self.show_warnings = show_warnings
         self.is_production = is_production
         self.missing_groups = []
@@ -66,10 +89,15 @@ class SettingsValidator:
         self, settings_obj: Any
     ) -> List[Tuple[SettingsGroup, List[str]]]:
         """
-        Validate settings against registered groups.
-
+        Identify registered settings groups that lack required configuration values.
+        
+        Parameters:
+            settings_obj (Any): An object whose attributes correspond to configuration keys to validate.
+        
         Returns:
-            List of tuples with missing groups and their missing keys
+            List[Tuple[SettingsGroup, List[str]]]: A list of tuples for each group considered missing and the group's missing keys. A group is included if:
+                - group.all_required is True and one or more of its keys are missing or None, or
+                - group.all_required is False and all of its keys are missing or None.
         """
         self.missing_groups = []
 
@@ -88,7 +116,11 @@ class SettingsValidator:
         return self.missing_groups
 
     def log_validation_results(self) -> None:
-        """Log validation results with warnings for missing configuration."""
+        """
+        Log warnings for any registered settings groups that have missing configuration.
+        
+        Only emits messages when warnings are enabled and there are missing groups. In production mode, skips groups that are not required in production; for groups that are logged the message is prefixed with "CRITICAL" when required in production and "WARNING" otherwise. Each message lists the group's name, the missing keys, and, if present, the affected features.
+        """
         if not self.show_warnings or not self.missing_groups:
             return
 

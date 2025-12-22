@@ -28,7 +28,15 @@ class BaseAppSettings(BaseSettings):
 
     @classmethod
     def from_env(cls, **kwargs):
-        """Create settings from environment variables with fallback handling."""
+        """
+        Create a settings instance from environment values and provided overrides, with a fallback that fills missing string-typed fields with empty strings if direct construction fails.
+        
+        Parameters:
+            **kwargs: Field overrides to pass to the settings constructor; values take precedence over environment.
+        
+        Returns:
+            An instance of the settings class populated from environment and the given overrides. If initial construction fails, any string-typed fields not supplied in `kwargs` are set to the empty string before instantiation.
+        """
         try:
             return cls(**kwargs)
         except Exception as e:

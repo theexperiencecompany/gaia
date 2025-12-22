@@ -43,7 +43,14 @@ _settings_instance: Optional[VoiceAgentSettings] = None
 
 @lru_cache(maxsize=1)
 def get_settings() -> VoiceAgentSettings:
-    """Get cached settings instance."""
+    """
+    Provide a lazily-initialized, cached VoiceAgentSettings instance.
+    
+    On the first call this function injects Infisical secrets and constructs the settings; subsequent calls return the same cached instance.
+    
+    Returns:
+        VoiceAgentSettings: the cached settings instance.
+    """
     global _settings_instance
     if _settings_instance is None:
         inject_infisical_secrets()
@@ -53,7 +60,12 @@ def get_settings() -> VoiceAgentSettings:
 
 
 def load_settings() -> VoiceAgentSettings:
-    """Dynamically loads settings, triggering Infisical only on the first call."""
+    """
+    Provide the module-level VoiceAgentSettings instance, initializing it on first access.
+    
+    Returns:
+        VoiceAgentSettings: The cached settings instance; if not already created, it will be instantiated and Infisical secrets injected on first call.
+    """
     return get_settings()
 
 

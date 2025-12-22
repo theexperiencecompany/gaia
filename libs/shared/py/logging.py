@@ -39,20 +39,12 @@ LOG_CONFIG = {
 
 def configure_loguru():
     """
-    Configure production-ready logging with console output.
-
-    Sets up:
-    - Console: Colored output for development and containers
-    - Standard library interception for unified logging
-
-    Environment variables:
-    - LOG_LEVEL: Minimum level (default: INFO)
-    - LOG_DIAGNOSE: Error diagnosis (default: false)
-    - LOG_BACKTRACE: Stack traces (default: true)
-    - LOG_COLORIZE: Colored output (default: true)
-
+    Configure Loguru for unified, production-ready console logging and intercept selected standard-library loggers.
+    
+    This sets up a colored, structured console sink (with thread-safe queuing and exception catching) using settings from LOG_CONFIG, and installs handlers that route logs from selected namespaces (uvicorn, fastapi, livekit, and gaia_shared) into Loguru so they appear with consistent formatting and contextual logger names.
+    
     Returns:
-        Configured logger instance
+        The configured Loguru logger instance.
     """
     # Remove default handler
     logger.remove()
@@ -73,6 +65,13 @@ def configure_loguru():
     class InterceptHandler(logging.Handler):
         def emit(self, record):
             # Only intercept loggers from specific namespaces
+            """
+            Route a stdlib LogRecord into the configured Loguru logger for selected application namespaces.
+            
+            Only records whose logger name begins with or equals one of: "gaia_shared", "uvicorn", "fastapi", or "livekit" are forwarded. The record's level is mapped to a Loguru level (falling back to the numeric level if unmapped), a short, uppercased `logger_name` is derived (with known names mapped to "UVICORN", "FASTAPI", or "LIVEKIT"), and the message is emitted through Loguru with the original exception information and an adjusted call-depth so the logged source points at the originating caller.
+            Parameters:
+                record (logging.LogRecord): The standard library LogRecord to be forwarded to Loguru.
+            """
             app_namespaces = [
                 "gaia_shared",
                 "uvicorn",
@@ -132,18 +131,14 @@ def configure_loguru():
 
 def get_contextual_logger(name: str, **context):
     """
-    Create a contextual logger with automatic context injection.
-
-    Args:
-        name: Logger name (e.g., "auth", "database", "api")
-        **context: Additional context (user_id, request_id, etc.)
-
+    Create a logger bound to the provided context and inject a short, uppercased `logger_name` into that context.
+    
+    Parameters:
+        name (str): Logical logger name; a `logger_name` key will be added to the context using the name uppercased and truncated to 7 characters.
+        **context: Arbitrary key/value metadata (e.g., user_id, request_id) that will be bound to the returned logger.
+    
     Returns:
-        Bound logger with context included in all messages
-
-    Examples:
-        >>> auth_logger = get_contextual_logger("auth", user_id=123)
-        >>> auth_logger.info("User login")  # Includes user_id=123
+        A Loguru logger bound with the provided context so all subsequent log calls include the bound metadata.
     """
     context["logger_name"] = name.upper()[:7]
     return logger.bind(**context)

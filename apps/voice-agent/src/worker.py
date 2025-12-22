@@ -36,7 +36,15 @@ logger = get_contextual_logger("voice")
 
 
 def _extract_meta_data(md: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-    """Extract agentToken and conversationId from participant metadata JSON."""
+    """
+    Extract agentToken and conversationId from a participant metadata JSON string.
+    
+    Parameters:
+        md (Optional[str]): JSON-encoded participant metadata string.
+    
+    Returns:
+        tuple[Optional[str], Optional[str]]: (agentToken, conversationId) — each returned as a string when present and non-empty in the JSON, otherwise `None`.
+    """
     if not md:
         return None, None
     try:
@@ -100,11 +108,36 @@ class CustomLLM(LLM):
     @asynccontextmanager
     async def chat(self, chat_ctx: ChatContext, **kwargs):  # type: ignore[override]
         """
-        Stream Server-Sent Events from your backend and yield tiny ChatChunks so
-        LiveKit can TTS-stream them immediately to ElevenLabs.
+        Stream backend server-sent events (SSE) and produce small incremental ChatChunk deltas suitable for immediate TTS playback.
+        
+        This method extracts the latest user message from the provided ChatContext, sends it to the configured backend chat-stream endpoint, and consumes the SSE response. It yields successive ChatChunk objects containing incremental response text as the backend produces it. If the backend returns a conversation_id, the method updates the client's conversation_id. Chunks are aggregated and flushed based on punctuation and length heuristics to provide smooth, timely TTS streaming.
+        
+        Parameters:
+            chat_ctx (ChatContext): Conversation context used to extract the latest user message.
+            **kwargs: Ignored by this implementation; preserved for interface compatibility.
+        
+        Returns:
+            AsyncGenerator[ChatChunk, None]: An asynchronous generator that yields ChatChunk instances with incremental `delta` text content for TTS.
         """
 
         async def gen() -> AsyncGenerator[ChatChunk, None]:
+            """
+            Stream backend chat SSE responses and yield incremental ChatChunk objects.
+            
+            Sends the latest user message to the backend chat-stream endpoint, consumes server-
+            sent event lines, and incrementally emits ChatChunk items containing response
+            deltas. While streaming, it:
+            - updates and persists `conversation_id` values received from the backend;
+            - accumulates response pieces into an internal text buffer, normalizing simple
+              markers and spacing;
+            - flushes the buffer and yields a ChatChunk when ending punctuation with
+              sufficient length or a length threshold is reached; and
+            - yields any remaining buffered text as a final ChatChunk when the stream ends.
+            
+            Returns:
+                Async generator that yields ChatChunk objects with delta content extracted
+                from the backend stream.
+            """
             user_message = _extract_latest_user_text(chat_ctx)
 
             timeout = aiohttp.ClientTimeout(total=self.request_timeout_s)
@@ -221,7 +254,14 @@ def prewarm(proc: JobProcess):
 
 
 async def entrypoint(ctx: JobContext):
-    """Initialize and run the voice agent with STT, TTS, and LLM."""
+    """
+    Initialize and run the live voice agent inside the provided job context.
+    
+    This sets up the LLM, STT, TTS, turn-detection, and VAD components; registers event handlers for participant connect/metadata changes and agent session events; connects to the room; starts the agent session; and registers a shutdown callback to log final usage metrics.
+    
+    Parameters:
+        ctx (JobContext): Job context containing the LiveKit room, process userdata (must include preloaded VAD at ctx.proc.userdata["vad"]), and lifecycle helpers (connect, add_shutdown_callback). The room is used for participant events and as the audio/video session target.
+    """
     from src.config import load_settings
 
     settings = load_settings()
@@ -271,7 +311,16 @@ async def entrypoint(ctx: JobContext):
     async def _extract_and_set_participant_credentials(
         md: Optional[str], origin: str, who: str
     ):
-        """Extract and set agent token and conversation ID from participant metadata."""
+        """
+        Parse participant metadata and apply any extracted agent token and conversation ID to the active CustomLLM.
+        
+        If the metadata is missing or cannot be parsed, no changes are made. When an agent token is present it is set on the module-level CustomLLM; when a conversation ID is present it is set on the CustomLLM (the operation is awaited).
+        
+        Parameters:
+            md (Optional[str]): Participant metadata JSON string containing agent credentials.
+            origin (str): Context or event source that provided the metadata (for caller context).
+            who (str): Identifier of the participant the metadata came from (for caller context).
+        """
         token, conv_id = _extract_meta_data(md)
         if token:
             custom_llm.set_agent_token(token)

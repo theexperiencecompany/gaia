@@ -4,7 +4,15 @@ import sys
 
 
 def main():
-    """Main entrypoint for voice-agent CLI."""
+    """
+    Entry point for the voice-agent command-line interface.
+    
+    Parses the first positional argument as a subcommand and dispatches:
+    - "download-files": import and run src.worker.download_files()
+    - "start": import and run src.worker.start_worker()
+    
+    If no subcommand is provided, prints usage and exits with status 1. If the subcommand is unrecognized, prints an error and exits with status 1.
+    """
     if len(sys.argv) < 2:
         print("Usage: python -m src <command>")
         print("Commands: start, download-files")

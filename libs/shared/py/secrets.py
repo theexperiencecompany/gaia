@@ -22,16 +22,18 @@ class InfisicalConfigError(Exception):
 
 def inject_infisical_secrets():
     """
-    Load secrets from Infisical and inject into environment.
-
-    Required environment variables:
+    Inject Infisical-managed secrets into the process environment.
+    
+    Required environment variables (must be set to fetch secrets):
     - INFISICAL_TOKEN
     - INFISICAL_PROJECT_ID
     - INFISICAL_MACHINE_INDENTITY_CLIENT_ID
     - INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET
-
-    In development, missing Infisical config logs a warning and returns.
-    In production, raises InfisicalConfigError.
+    
+    Behavior:
+    - Fetches secrets for the current ENV (defaults to "production") and sets them on os.environ.
+    - Existing environment variables are not overwritten; local environment values take precedence.
+    - If any required Infisical configuration is missing: in production the function raises InfisicalConfigError; in non-production it logs a warning and returns without injecting secrets.
     """
     INFISICAL_TOKEN = os.getenv("INFISICAL_TOKEN")
     INFISICAL_PROJECT_ID = os.getenv("INFISICAL_PROJECT_ID")
