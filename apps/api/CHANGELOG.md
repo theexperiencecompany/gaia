@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.12.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.12.0...api-v0.12.0) (2025-12-22)
+
+
+### Features
+
+* Add new `voice-agent` app to monorepo and introduce shared Python and TypeScript libraries ([#403](https://github.com/theexperiencecompany/gaia/issues/403)) ([3537679](https://github.com/theexperiencecompany/gaia/commit/353767926fc65d591aabca0ee16e744d5b2c11bd))
+* Add new `voice-agent` application and introduce shared Python and TypeScript libraries with updated project configuration. ([5f3d854](https://github.com/theexperiencecompany/gaia/commit/5f3d854d1b80e56529f3592c465e26da5ce20451))
+
+
+### Bug Fixes
+
+* Correct Infisical machine identity variable typo, update Dockerfiles to use `uv sync` for dependency installation, and add error handling to voice agent command execution. ([aec25ce](https://github.com/theexperiencecompany/gaia/commit/aec25ce706ed793e1cb3ddd207fbc35529b1194d))
+
+
+### Code Refactoring
+
+* Add voice agent as an app in monorepo with python shared packages ([#404](https://github.com/theexperiencecompany/gaia/issues/404)) ([6ce927e](https://github.com/theexperiencecompany/gaia/commit/6ce927e3343347c398f55b5a494fb72f050637a3))
+
 ## 0.12.0 (2025-12-21)
 
 ## What's Changed
