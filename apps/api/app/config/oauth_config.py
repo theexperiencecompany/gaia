@@ -33,6 +33,7 @@ from app.agents.prompts.subagent_prompts import (
     ZOOM_AGENT_SYSTEM_PROMPT,
 )
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
+from app.langchain.core.subgraphs.slack_subgraph import SLACK_TOOLS
 from app.models.oauth_models import (
     ComposioConfig,
     OAuthIntegration,
@@ -386,6 +387,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="sending messages, managing channels, organizing conversations, sharing files, setting reminders, and automating team communication workflows",
             use_cases="sending Slack messages, managing channels, team communication, or automating workspace workflows",
             system_prompt=SLACK_AGENT_SYSTEM_PROMPT,
+            specific_tools=SLACK_TOOLS,
         ),
     ),
     OAuthIntegration(
