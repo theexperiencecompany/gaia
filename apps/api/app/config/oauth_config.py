@@ -15,6 +15,7 @@ from app.agents.prompts.subagent_prompts import (
     CLICKUP_AGENT_SYSTEM_PROMPT,
     GITHUB_AGENT_SYSTEM_PROMPT,
     GMAIL_AGENT_SYSTEM_PROMPT,
+    GOOGLE_DOCS_AGENT_SYSTEM_PROMPT,
     GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
     GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
     GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
@@ -102,17 +103,27 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
     OAuthIntegration(
         id="google_docs",
         name="Google Docs",
-        description="Create and edit documents in your workspace",
+        description="Create, edit, and share documents in your workspace",
         category="productivity",
-        provider="google",
-        scopes=[
-            OAuthScope(
-                scope="https://www.googleapis.com/auth/documents",
-                description="Create and edit documents",
-            ),
-        ],
+        provider="googledocs",
+        scopes=[],
+        is_featured=True,
         short_name="docs",
-        managed_by="self",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_PLACEHOLDER",  # TODO: Replace with actual auth_config_id
+            toolkit="GOOGLEDOCS",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="google_docs_agent",
+            tool_space="googledocs",
+            handoff_tool_name="call_google_docs_agent",
+            domain="document creation, editing, and collaboration",
+            capabilities="creating documents, editing content, formatting text, sharing with collaborators, managing document structure, inserting tables and images, and using templates",
+            use_cases="creating documents, editing docs, sharing with team members, formatting content, or any Google Docs operation",
+            system_prompt=GOOGLE_DOCS_AGENT_SYSTEM_PROMPT,
+        ),
     ),
     OAuthIntegration(
         id="gmail",

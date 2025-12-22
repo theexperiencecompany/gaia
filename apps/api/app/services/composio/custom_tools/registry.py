@@ -3,6 +3,9 @@ from typing import Callable, Dict, List
 from app.agents.tools.calendar_tool import (
     register_calendar_custom_tools,
 )
+from app.agents.tools.google_docs_tool import (
+    register_google_docs_custom_tools,
+)
 from app.agents.tools.notion_tool import (
     register_notion_custom_tools,
 )
@@ -48,6 +51,7 @@ class CustomToolsRegistry:
 
         self._register_toolkit("gmail", register_gmail_custom_tools)
         self._register_toolkit("googlecalendar", register_calendar_custom_tools)
+        self._register_toolkit("googledocs", register_google_docs_custom_tools)
         self._register_toolkit("notion", register_notion_custom_tools)
 
     def _register_toolkit(
