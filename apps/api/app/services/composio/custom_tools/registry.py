@@ -15,6 +15,9 @@ from app.agents.tools.linkedin_tool import (
 from app.agents.tools.notion_tool import (
     register_notion_custom_tools,
 )
+from app.agents.tools.twitter_tool import (
+    register_twitter_custom_tools,
+)
 from app.config.loggers import app_logger as logger
 from app.services.composio.custom_tools.gmail_tools import (
     register_gmail_custom_tools,
@@ -61,6 +64,7 @@ class CustomToolsRegistry:
         self._register_toolkit("googlesheets", register_google_sheets_custom_tools)
         self._register_toolkit("notion", register_notion_custom_tools)
         self._register_toolkit("linkedin", register_linkedin_custom_tools)
+        self._register_toolkit("twitter", register_twitter_custom_tools)
 
     def _register_toolkit(
         self,

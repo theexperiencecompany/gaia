@@ -27,6 +27,10 @@ import type {
 import type { NotificationRecord } from "@/types/features/notificationTypes";
 import type { RedditData } from "@/types/features/redditTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
+import type {
+  TwitterSearchData,
+  TwitterUserData,
+} from "@/types/features/twitterTypes";
 
 // Tool Registry
 // Single source of truth for tool names and their data payload types.
@@ -82,6 +86,8 @@ export const TOOL_REGISTRY = {
   notification_data: null as unknown as { notifications: NotificationRecord[] },
   integration_connection_required: null as unknown as IntegrationConnectionData,
   integration_list_data: null as unknown as Record<string, never>,
+  twitter_search_data: null as unknown as TwitterSearchData,
+  twitter_user_data: null as unknown as TwitterUserData[],
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;

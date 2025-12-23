@@ -11,9 +11,7 @@ from app.config.loggers import chat_logger as logger
 from app.decorators.documentation import with_doc
 from app.models.linkedin_models import (
     AddCommentInput,
-    CreateArticlePostInput,
-    CreateDocumentPostInput,
-    CreateImagePostInput,
+    CreatePostInput,
     DeleteReactionInput,
     GetPostCommentsInput,
     GetPostReactionsInput,
@@ -21,9 +19,7 @@ from app.models.linkedin_models import (
 )
 from app.templates.docstrings.linkedin_tool_docs import (
     CUSTOM_ADD_COMMENT_DOC,
-    CUSTOM_CREATE_ARTICLE_POST_DOC,
-    CUSTOM_CREATE_DOCUMENT_POST_DOC,
-    CUSTOM_CREATE_IMAGE_POST_DOC,
+    CUSTOM_CREATE_POST_DOC,
     CUSTOM_DELETE_REACTION_DOC,
     CUSTOM_GET_POST_COMMENTS_DOC,
     CUSTOM_GET_POST_REACTIONS_DOC,
@@ -200,13 +196,13 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
     """Register LinkedIn tools as Composio custom tools."""
 
     @composio.tools.custom_tool(toolkit="LINKEDIN")
-    @with_doc(CUSTOM_CREATE_IMAGE_POST_DOC)
-    def CUSTOM_CREATE_IMAGE_POST(
-        request: CreateImagePostInput,
+    @with_doc(CUSTOM_CREATE_POST_DOC)
+    def CUSTOM_CREATE_POST(
+        request: CreatePostInput,
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Create a LinkedIn post with an image."""
+        """Create a LinkedIn post with optional media (image, document, or article)."""
         access_token = _get_access_token(auth_credentials)
         headers = _linkedin_headers(access_token)
 
@@ -214,19 +210,95 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
             # Get author URN
             author_urn = _get_author_urn(access_token, request.organization_id)
 
-            # Upload image from URL
-            image_urn = _upload_image_from_url(
-                access_token, request.image_url, author_urn
-            )
+            # Determine media type and build content accordingly
+            media_type = "text"
+            content: Dict[str, Any] | None = None
 
-            if not image_urn:
-                return {
-                    "success": False,
-                    "error": "Failed to upload image to LinkedIn",
+            # Priority: document > image > article (if multiple provided, use this order)
+            if request.document_url:
+                # Document post
+                media_type = "document"
+                if not request.document_title:
+                    return {
+                        "success": False,
+                        "error": "document_title is required when document_url is provided",
+                    }
+
+                document_urn = _upload_document_from_url(
+                    access_token, request.document_url, author_urn
+                )
+                if not document_urn:
+                    return {
+                        "success": False,
+                        "error": "Failed to upload document to LinkedIn",
+                    }
+                content = {
+                    "media": {
+                        "title": request.document_title,
+                        "id": document_urn,
+                    }
                 }
 
-            # Create the post with the image
-            post_data = {
+            elif request.image_urls or request.image_url:
+                # Image post - single or carousel
+                urls_to_upload = request.image_urls or (
+                    [request.image_url] if request.image_url else []
+                )
+
+                # Limit to max 20 images (LinkedIn carousel limit)
+                if len(urls_to_upload) > 20:
+                    return {
+                        "success": False,
+                        "error": "Maximum 20 images allowed in a carousel post",
+                    }
+
+                # Upload all images
+                image_urns = []
+                for url in urls_to_upload:
+                    urn = _upload_image_from_url(access_token, url, author_urn)
+                    if not urn:
+                        return {
+                            "success": False,
+                            "error": f"Failed to upload image: {url}",
+                        }
+                    image_urns.append(urn)
+
+                if len(image_urns) == 1:
+                    # Single image post
+                    media_type = "image"
+                    content = {
+                        "media": {
+                            "title": request.image_title or "",
+                            "id": image_urns[0],
+                        }
+                    }
+                else:
+                    # Multi-image carousel
+                    media_type = "carousel"
+                    content = {
+                        "multiImage": {"images": [{"id": urn} for urn in image_urns]}
+                    }
+
+            elif request.article_url:
+                # Article/link post
+                media_type = "article"
+                article_content: Dict[str, Any] = {
+                    "source": request.article_url,
+                }
+                if request.article_title:
+                    article_content["title"] = request.article_title
+                if request.article_description:
+                    article_content["description"] = request.article_description
+                if request.thumbnail_url:
+                    thumbnail_urn = _upload_image_from_url(
+                        access_token, request.thumbnail_url, author_urn
+                    )
+                    if thumbnail_urn:
+                        article_content["thumbnail"] = thumbnail_urn
+                content = {"article": article_content}
+
+            # Build the post data
+            post_data: Dict[str, Any] = {
                 "author": author_urn,
                 "commentary": request.commentary,
                 "visibility": request.visibility,
@@ -235,15 +307,13 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
                     "targetEntities": [],
                     "thirdPartyDistributionChannels": [],
                 },
-                "content": {
-                    "media": {
-                        "title": request.image_title or "",
-                        "id": image_urn,
-                    }
-                },
                 "lifecycleState": "PUBLISHED",
                 "isReshareDisabledByAuthor": False,
             }
+
+            # Add content if media is present
+            if content:
+                post_data["content"] = content
 
             resp = _http_client.post(
                 f"{LINKEDIN_REST_BASE}/posts",
@@ -260,163 +330,17 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
                 "post_id": post_id,
                 "url": f"https://www.linkedin.com/feed/update/{post_id}",
                 "author": author_urn,
-                "image_urn": image_urn,
+                "media_type": media_type,
             }
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"Error creating image post: {e}")
+            logger.error(f"Error creating post: {e}")
             return {
                 "success": False,
                 "error": f"API error: {e.response.status_code} - {e.response.text}",
             }
         except Exception as e:
-            logger.error(f"Error creating image post: {e}")
-            return {"success": False, "error": str(e)}
-
-    @composio.tools.custom_tool(toolkit="LINKEDIN")
-    @with_doc(CUSTOM_CREATE_ARTICLE_POST_DOC)
-    def CUSTOM_CREATE_ARTICLE_POST(
-        request: CreateArticlePostInput,
-        execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Create a LinkedIn post sharing an article/link."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _linkedin_headers(access_token)
-
-        try:
-            author_urn = _get_author_urn(access_token, request.organization_id)
-
-            # Build article content
-            article_content: Dict[str, Any] = {
-                "source": request.article_url,
-            }
-
-            if request.article_title:
-                article_content["title"] = request.article_title
-            if request.article_description:
-                article_content["description"] = request.article_description
-
-            # Upload thumbnail if provided
-            if request.thumbnail_url:
-                thumbnail_urn = _upload_image_from_url(
-                    access_token, request.thumbnail_url, author_urn
-                )
-                if thumbnail_urn:
-                    article_content["thumbnail"] = thumbnail_urn
-
-            post_data = {
-                "author": author_urn,
-                "commentary": request.commentary,
-                "visibility": request.visibility,
-                "distribution": {
-                    "feedDistribution": "MAIN_FEED",
-                    "targetEntities": [],
-                    "thirdPartyDistributionChannels": [],
-                },
-                "content": {
-                    "article": article_content,
-                },
-                "lifecycleState": "PUBLISHED",
-                "isReshareDisabledByAuthor": False,
-            }
-
-            resp = _http_client.post(
-                f"{LINKEDIN_REST_BASE}/posts",
-                headers=headers,
-                json=post_data,
-            )
-            resp.raise_for_status()
-
-            post_id = resp.headers.get("x-restli-id", "")
-
-            return {
-                "success": True,
-                "post_id": post_id,
-                "url": f"https://www.linkedin.com/feed/update/{post_id}",
-                "author": author_urn,
-                "article_url": request.article_url,
-            }
-
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Error creating article post: {e}")
-            return {
-                "success": False,
-                "error": f"API error: {e.response.status_code} - {e.response.text}",
-            }
-        except Exception as e:
-            logger.error(f"Error creating article post: {e}")
-            return {"success": False, "error": str(e)}
-
-    @composio.tools.custom_tool(toolkit="LINKEDIN")
-    @with_doc(CUSTOM_CREATE_DOCUMENT_POST_DOC)
-    def CUSTOM_CREATE_DOCUMENT_POST(
-        request: CreateDocumentPostInput,
-        execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Create a LinkedIn post with a document (PDF, slides, etc.)."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _linkedin_headers(access_token)
-
-        try:
-            author_urn = _get_author_urn(access_token, request.organization_id)
-
-            # Upload document from URL
-            document_urn = _upload_document_from_url(
-                access_token, request.document_url, author_urn
-            )
-
-            if not document_urn:
-                return {
-                    "success": False,
-                    "error": "Failed to upload document to LinkedIn",
-                }
-
-            post_data = {
-                "author": author_urn,
-                "commentary": request.commentary,
-                "visibility": request.visibility,
-                "distribution": {
-                    "feedDistribution": "MAIN_FEED",
-                    "targetEntities": [],
-                    "thirdPartyDistributionChannels": [],
-                },
-                "content": {
-                    "media": {
-                        "title": request.document_title,
-                        "id": document_urn,
-                    }
-                },
-                "lifecycleState": "PUBLISHED",
-                "isReshareDisabledByAuthor": False,
-            }
-
-            resp = _http_client.post(
-                f"{LINKEDIN_REST_BASE}/posts",
-                headers=headers,
-                json=post_data,
-            )
-            resp.raise_for_status()
-
-            post_id = resp.headers.get("x-restli-id", "")
-
-            return {
-                "success": True,
-                "post_id": post_id,
-                "url": f"https://www.linkedin.com/feed/update/{post_id}",
-                "author": author_urn,
-                "document_urn": document_urn,
-            }
-
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Error creating document post: {e}")
-            return {
-                "success": False,
-                "error": f"API error: {e.response.status_code} - {e.response.text}",
-            }
-        except Exception as e:
-            logger.error(f"Error creating document post: {e}")
+            logger.error(f"Error creating post: {e}")
             return {"success": False, "error": str(e)}
 
     @composio.tools.custom_tool(toolkit="LINKEDIN")
@@ -672,11 +596,7 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
 
     # Return list of registered tool names
     return [
-        # Content tools
-        "LINKEDIN_CUSTOM_CREATE_IMAGE_POST",
-        "LINKEDIN_CUSTOM_CREATE_ARTICLE_POST",
-        "LINKEDIN_CUSTOM_CREATE_DOCUMENT_POST",
-        # Engagement tools
+        "LINKEDIN_CUSTOM_CREATE_POST",
         "LINKEDIN_CUSTOM_ADD_COMMENT",
         "LINKEDIN_CUSTOM_GET_POST_COMMENTS",
         "LINKEDIN_CUSTOM_REACT_TO_POST",

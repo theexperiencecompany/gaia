@@ -10,6 +10,7 @@ from . import (
     gmail_hooks,  # noqa: F401
     reddit_hooks,  # noqa: F401
     slack_hooks,  # noqa: F401
+    twitter_hooks,  # noqa: F401
     user_id_hooks,  # noqa: F401
 )
 

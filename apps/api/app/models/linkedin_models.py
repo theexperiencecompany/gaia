@@ -1,87 +1,78 @@
 """Pydantic models for LinkedIn custom tools."""
 
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 
-class CreateImagePostInput(BaseModel):
-    """Input for creating a LinkedIn post with an image."""
+class CreatePostInput(BaseModel):
+    """Unified input for creating LinkedIn posts with optional media (image, document, or article).
+
+    This model supports:
+    - Text-only posts: Just provide commentary
+    - Single image post: Provide commentary + image_url
+    - Multi-image carousel: Provide commentary + image_urls (list of URLs, max 20)
+    - Document posts: Provide commentary + document_url + document_title
+    - Article posts: Provide commentary + article_url
+
+    Only one media type should be provided per post.
+    """
 
     commentary: str = Field(
         ...,
-        description="The text content of the post. Supports mentions and hashtags.",
+        description="The main text content of the post. Supports @-mentions and hashtags. Maximum 3000 characters.",
         min_length=1,
         max_length=3000,
     )
-    image_url: str = Field(
-        ...,
-        description="URL of the image to include in the post (must be publicly accessible)",
-    )
-    image_title: Optional[str] = Field(None, description="Optional title for the image")
-    image_description: Optional[str] = Field(
-        None, description="Optional description for the image"
-    )
     visibility: Literal["PUBLIC", "CONNECTIONS"] = Field(
         "PUBLIC",
-        description="Post visibility: 'PUBLIC' for everyone, 'CONNECTIONS' for 1st degree only",
+        description="Post visibility: 'PUBLIC' for everyone, 'CONNECTIONS' for 1st degree connections only",
     )
     organization_id: Optional[str] = Field(
         None,
         description="Organization URN to post on behalf of (e.g., 'urn:li:organization:12345'). If omitted, posts as the authenticated user.",
     )
 
-
-class CreateArticlePostInput(BaseModel):
-    """Input for creating a LinkedIn post sharing an article/link."""
-
-    commentary: str = Field(
-        ...,
-        description="The text content accompanying the shared article",
-        min_length=1,
-        max_length=3000,
+    # ===== Image Media Fields =====
+    image_url: Optional[str] = Field(
+        None,
+        description="URL of a single image to include. Use image_urls for multi-image carousel posts.",
     )
-    article_url: str = Field(..., description="URL of the article to share")
+    image_urls: Optional[List[str]] = Field(
+        None,
+        description="List of image URLs for a multi-image carousel post (max 20 images). Takes priority over image_url if both provided.",
+    )
+    image_title: Optional[str] = Field(
+        None,
+        description="Optional title for single-image posts (not used for carousels)",
+    )
+
+    # ===== Document Media Fields =====
+    document_url: Optional[str] = Field(
+        None,
+        description="URL of a document to share (PDF, PPT, etc. - must be publicly accessible). Use for document posts.",
+    )
+    document_title: Optional[str] = Field(
+        None,
+        description="Title for the document (required if document_url is provided)",
+    )
+
+    # ===== Article/Link Media Fields =====
+    article_url: Optional[str] = Field(
+        None,
+        description="URL of an article or external link to share. Use for sharing web content with link preview.",
+    )
     article_title: Optional[str] = Field(
-        None, description="Custom title for the article preview"
+        None,
+        description="Custom title for the article preview (overrides auto-fetched title)",
     )
     article_description: Optional[str] = Field(
-        None, description="Custom description for the article preview"
+        None,
+        description="Custom description for the article preview (overrides auto-fetched description)",
     )
     thumbnail_url: Optional[str] = Field(
-        None, description="Custom thumbnail image URL for the article preview"
-    )
-    visibility: Literal["PUBLIC", "CONNECTIONS"] = Field(
-        "PUBLIC",
-        description="Post visibility: 'PUBLIC' for everyone, 'CONNECTIONS' for 1st degree only",
-    )
-    organization_id: Optional[str] = Field(
         None,
-        description="Organization URN to post on behalf of. If omitted, posts as the authenticated user.",
-    )
-
-
-class CreateDocumentPostInput(BaseModel):
-    """Input for creating a LinkedIn post with a document (PDF, etc.)."""
-
-    commentary: str = Field(
-        ...,
-        description="The text content of the post",
-        min_length=1,
-        max_length=3000,
-    )
-    document_url: str = Field(
-        ...,
-        description="URL of the document to share (PDF, PPT, etc. - must be publicly accessible)",
-    )
-    document_title: str = Field(..., description="Title for the document")
-    visibility: Literal["PUBLIC", "CONNECTIONS"] = Field(
-        "PUBLIC",
-        description="Post visibility: 'PUBLIC' for everyone, 'CONNECTIONS' for 1st degree only",
-    )
-    organization_id: Optional[str] = Field(
-        None,
-        description="Organization URN to post on behalf of. If omitted, posts as the authenticated user.",
+        description="Custom thumbnail image URL for the article preview",
     )
 
 

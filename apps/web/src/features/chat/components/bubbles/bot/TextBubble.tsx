@@ -73,6 +73,10 @@ import type {
   RedditSearchData,
 } from "@/types/features/redditTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
+import type {
+  TwitterSearchData,
+  TwitterUserData,
+} from "@/types/features/twitterTypes";
 
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
 import { CalendarDeleteSection } from "./CalendarDeleteSection";
@@ -94,6 +98,8 @@ import RedditPostSection from "./RedditPostSection";
 import RedditSearchSection from "./RedditSearchSection";
 import SupportTicketSection from "./SupportTicketSection";
 import TodoSection from "./TodoSection";
+import TwitterSearchSection from "./TwitterSearchSection";
+import TwitterUserSection from "./TwitterUserSection";
 
 // Map of tool_name -> renderer function for unified tool_data rendering
 type RendererMap = {
@@ -282,6 +288,22 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   integration_list_data: (_data, index) => {
     return <IntegrationListSection key={`tool-integration-list-${index}`} />;
   },
+
+  // Twitter
+  twitter_search_data: (data, index) => (
+    <TwitterSearchSection
+      key={`tool-twitter-search-${index}`}
+      twitter_search_data={data as TwitterSearchData}
+    />
+  ),
+  twitter_user_data: (data, index) => (
+    <TwitterUserSection
+      key={`tool-twitter-users-${index}`}
+      twitter_user_data={
+        (Array.isArray(data) ? data : [data]) as TwitterUserData[]
+      }
+    />
+  ),
 
   reddit_data: (data) => {
     const items = (Array.isArray(data) ? data : [data]) as RedditData[];
