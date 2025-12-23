@@ -215,7 +215,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         ),
         metadata_config=ProviderMetadataConfig(
             user_info_tool="TWITTER_USER_LOOKUP_ME",
-            username_field="data.data.username",
+            username_field="data.username",
         ),
     ),
     OAuthIntegration(
