@@ -1,0 +1,25 @@
+{
+  "name": "shared-typescript",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "root": "libs/shared/ts",
+  "sourceRoot": "libs/shared/ts/src",
+  "projectType": "library",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo '⏳ shared-typescript lint: placeholder - no config yet'",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo '⏳ shared-typescript build: placeholder - no config yet'",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true
+    }
+  }
+}

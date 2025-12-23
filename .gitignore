@@ -7,6 +7,7 @@ __pycache__
 .env.*
 api/.env
 */.env
+!.env.example
 *.pyc
 .vercel
 .DS_Store
@@ -19,6 +20,7 @@ venv/
 
 .ruff_cache
 .mypy_cache
+*.egg-info/
 
 */logs/
 

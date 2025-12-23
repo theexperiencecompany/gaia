@@ -50,10 +50,10 @@ try:
     print(f"[DEBUG] ENV: {os.environ.get('ENV')}")
     print(f"[DEBUG] INFISICAL_PROJECT_ID: {os.environ.get('INFISICAL_PROJECT_ID')}")
     print(
-        f"[DEBUG] INFISICAL_MACHINE_INDENTITY_CLIENT_ID: {os.environ.get('INFISICAL_MACHINE_INDENTITY_CLIENT_ID')}"
+        f"[DEBUG] INFISICAL_MACHINE_IDENTITY_CLIENT_ID: {os.environ.get('INFISICAL_MACHINE_IDENTITY_CLIENT_ID')}"
     )
     print(
-        f"[DEBUG] INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET: {os.environ.get('INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET')}"
+        f"[DEBUG] INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET: {os.environ.get('INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET')}"
     )
     # Debug: Print if DODO_PAYMENTS_API_KEY is present after injection
     dodo_key = os.environ.get("DODO_PAYMENTS_API_KEY")

@@ -6,10 +6,9 @@ readme = "../README.md"
 requires-python = ">=3.11"
 
 dependencies = [
+  "gaia-shared",
   "uvloop>=0.21.0; sys_platform != 'win32'",
   "pydantic==2.10.4",
-  "pydantic-settings>=2.8.1",
-  "loguru>=0.7.3",
   "stackprinter>=0.2.12",
   "beartype>=0.21.0",
   "python-jose",
@@ -25,27 +24,12 @@ dependencies = [
   "croniter>=3.0.0",
   "rich==14.0.0",
   "aiohttp>=3.9.0",
-  "taskipy>=1.2.1",
   "urllib3>=2.6.0",
   "ormsgpack>=1.12.0",
   "filelock>=3.20.1",
   "langchain-mcp-adapters>=0.1.7",
 ]
 
-[tool.taskipy.tasks]
-dev = "uv run --group backend --group voice_agent uvicorn app.main:app --port 8000 --reload --log-level warning"
-start = "uv run --group backend --group voice_agent fastapi run"
-arq = "uv run --group backend --group voice_agent arq app.worker.WorkerSettings"
-worker = "task arq"
-lint = "uvx ruff check ."
-"lint.fix" = "uvx ruff check . --fix"
-format = "uvx ruff format ."
-mypy = "uv run --group backend --group dev mypy app --ignore-missing-imports"
-schema = "uvx schemathesis run http://localhost:8000/openapi.json"
-"schema.write" = "uvx schemathesis run http://localhost:8000/openapi.json --report-junit-path report.xml"
-bandit = "uvx bandit -r app"
-pip_audit = "uvx pip-audit"
-detect_secrets = "uvx detect-secrets scan --all-files"
 
 [dependency-groups]
 dev = [
@@ -176,21 +160,13 @@ backend = [
   "opik>=1.9.47",
 ]
 
-voice_agent = [
-  "livekit>=1.0.12",
-  "livekit-api",
-  "livekit-agents[turn-detector,silero,deepgram]~=1.2",
-  "livekit-plugins-noise-cancellation~=0.2",
-  "livekit-plugins-elevenlabs~=1.2",
-  "hf_transfer",
-]
-
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
+gaia-shared = { workspace = true }
 torch = [{ index = "pytorch-cpu" }]
 
 [project.urls]

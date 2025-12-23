@@ -1,13 +1,13 @@
 # Voice Agent Dockerfile
-# Lightweight build specifically for the voice agent worker
+# Build from repo root with: docker build -f apps/voice-agent/Dockerfile .
 
 FROM python:3.12-slim AS base
 WORKDIR /app
 
-# Copy uv installer
+# Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Install minimal system dependencies
+# Install system dependencies
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
   build-essential \
@@ -16,21 +16,25 @@ RUN apt-get update && \
   libglib2.0-0 && \
   rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files
-COPY pyproject.toml ./
-
-# Set environment variables
+# Environment variables
 ENV PYTHONUNBUFFERED=1 \
   UV_COMPILE_BYTECODE=1 \
   UV_LINK_MODE=copy \
   UV_SYSTEM_PYTHON=1
 
-# Install base dependencies + voice-agent group
-RUN --mount=type=cache,target=/root/.cache/uv \
-  uv pip install . --group voice_agent
+# Copy workspace structure for uv to resolve dependencies
+COPY pyproject.toml uv.lock ./
+COPY libs ./libs
+COPY apps/voice-agent/pyproject.toml ./apps/voice-agent/
 
-# Copy entire app directory
-COPY app/ ./app/
+# Install dependencies from pyproject.toml using workspace sync
+RUN --mount=type=cache,target=/root/.cache/uv \
+  uv sync --frozen --package gaia-voice-agent
+
+# Copy app source
+COPY apps/voice-agent/src/ ./apps/voice-agent/src/
+
+WORKDIR /app/apps/voice-agent
 
 # Setup non-root user
 RUN adduser --disabled-password --gecos '' appuser \
@@ -39,6 +43,8 @@ RUN adduser --disabled-password --gecos '' appuser \
   && chown -R appuser:appuser /app
 
 USER appuser
-RUN python -m app.workers.voice_agent download-files
 
-CMD ["python", "-m", "app.workers.voice_agent", "start"]
+# Download model files
+RUN uv run python -m src download-files
+
+CMD ["uv", "run", "python", "-m", "src", "start"]

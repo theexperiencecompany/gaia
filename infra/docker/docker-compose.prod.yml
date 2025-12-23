@@ -6,7 +6,7 @@ services:
     container_name: gaia-backend
     profiles: ["", "backend-only"]
     image: ghcr.io/theexperiencecompany/gaia:latest
-    working_dir: /app
+    working_dir: /app/apps/api
     command:
       [
         "python",
@@ -137,7 +137,7 @@ services:
     container_name: arq_worker
     image: ghcr.io/theexperiencecompany/gaia:latest
     profiles: ["", "backend-only"]
-    working_dir: /app
+    working_dir: /app/apps/api
     env_file:
       - ../../apps/api/.env
     environment:
@@ -152,7 +152,7 @@ services:
     container_name: voice-agent-worker
     image: ghcr.io/theexperiencecompany/gaia-voice-agent:latest
     profiles: ["", "backend-only"]
-    working_dir: /app
+    working_dir: /app/apps/voice-agent
     environment:
       PYTHONUNBUFFERED: 1
       FORCE_COLOR: 1

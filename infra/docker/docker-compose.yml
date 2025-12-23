@@ -5,9 +5,11 @@ services:
   gaia-backend:
     container_name: gaia-backend
     profiles: ["backend", "all"]
-    build: ../../apps/api
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
     image: gaia
-    working_dir: /app
+    working_dir: /app/apps/api
     command:
       [
         "python",
@@ -31,7 +33,7 @@ services:
     env_file:
       - ../../apps/api/.env
     volumes:
-      - ../../apps/api:/app
+      - ../../apps/api/app:/app/apps/api/app
     ports:
       - "8000:80"
     restart: on-failure
@@ -153,7 +155,7 @@ services:
     container_name: arq_worker
     image: gaia
     profiles: ["worker", "all"]
-    working_dir: /app
+    working_dir: /app/apps/api
     env_file:
       - ../../apps/api/.env
     environment:
@@ -161,7 +163,7 @@ services:
     command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     volumes:
-      - ../../apps/api:/app
+      - ../../apps/api/app:/app/apps/api/app
     depends_on:
       redis:
         condition: service_healthy
@@ -178,7 +180,7 @@ services:
       ME_CONFIG_BASICAUTH_USERNAME: admin
       ME_CONFIG_BASICAUTH_PASSWORD: password # pragma: allowlist secret
     ports:
-      - "8081:8081"
+      - "8083:8081"
     depends_on:
       mongo:
         condition: service_healthy
@@ -190,10 +192,10 @@ services:
     container_name: voice-agent-worker
     profiles: ["backend", "voice"]
     build:
-      context: ../../apps/api
-      dockerfile: Dockerfile.voice-agent
+      context: ../..
+      dockerfile: apps/voice-agent/Dockerfile
     image: gaia-voice-agent
-    working_dir: /app
+    working_dir: /app/apps/voice-agent
     environment:
       PYTHONUNBUFFERED: 1
       FORCE_COLOR: 1

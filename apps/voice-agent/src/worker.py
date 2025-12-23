@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from typing import Optional, Any
 
 import aiohttp
-from app.config.loggers import app_logger as logger
+from shared.py.logging import get_contextual_logger
 from livekit import rtc  # type: ignore[attr-defined]
 from livekit.agents import (
     NOT_GIVEN,
@@ -32,17 +32,7 @@ from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
 from livekit.plugins import deepgram, elevenlabs, noise_cancellation, silero  # type: ignore[attr-defined]
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-_settings_instance: Any = None
-
-
-def load_settings():
-    """Dynamically loads settings, triggering Infisical only on the first call."""
-    global _settings_instance
-    if _settings_instance is None:
-        from app.config.settings import settings
-
-        _settings_instance = settings
-    return _settings_instance
+logger = get_contextual_logger("voice")
 
 
 def _extract_meta_data(md: Optional[str]) -> tuple[Optional[str], Optional[str]]:
@@ -154,7 +144,7 @@ class CustomLLM(LLM):
                                     yield ChatChunk(
                                         id="custom", delta=ChoiceDelta(content=chunk)
                                     )
-                                    text_buffer.clear()  # Clear buffer after yielding to avoid duplicate final flush
+                                    text_buffer.clear()
                             break
 
                         try:
@@ -177,7 +167,7 @@ class CustomLLM(LLM):
                             if piece.strip() == "":
                                 piece = " "
 
-                                last = text_buffer[-1]
+                                last = text_buffer[-1] if text_buffer else ""
                                 if (
                                     last
                                     and not last.endswith(" ")
@@ -189,7 +179,6 @@ class CustomLLM(LLM):
                         if piece is None or piece == "":
                             continue
 
-                        # Ensure only strings are appended to text_buffer
                         if isinstance(piece, str):
                             text_buffer.append(piece)
                         elif isinstance(piece, (list, tuple, set)):
@@ -198,29 +187,24 @@ class CustomLLM(LLM):
                             text_buffer.append(str(piece))
                         joined = "".join(text_buffer)
 
-                        #  Control when to send buffered text chunks to the text-to-speech (TTS) system for streaming playback.
                         should_flush = False
 
-                        # Natural sentence boundary
                         if any(joined.endswith(p) for p in [".", "!", "?"]):
-                            if len(joined) >= 40:  # avoid ultra-short chunks
+                            if len(joined) >= 40:
                                 should_flush = True
 
-                        # Mid-sentence, buffer getting long
                         elif len(joined) >= 120:
                             should_flush = True
 
                         if should_flush:
                             out = joined.strip()
                             text_buffer.clear()
-                            if len(out) >= 15:  # safety: never flush tiny fragments
-                                # small debounce to coalesce nearby tokens
+                            if len(out) >= 15:
                                 yield ChatChunk(
                                     id="custom", delta=ChoiceDelta(content=out)
                                 )
                                 await asyncio.sleep(0.1)
 
-                    # Final flush (only if buffer is not empty, and wasn't just flushed)
                     if text_buffer:
                         tail = "".join(text_buffer).strip()
                         if len(tail) >= 1:
@@ -238,6 +222,7 @@ def prewarm(proc: JobProcess):
 
 async def entrypoint(ctx: JobContext):
     """Initialize and run the voice agent with STT, TTS, and LLM."""
+    from src.config import load_settings
 
     settings = load_settings()
 
@@ -283,7 +268,6 @@ async def entrypoint(ctx: JobContext):
 
     ctx.add_shutdown_callback(log_usage)
 
-    # --- Register event listeners BEFORE connecting ---
     async def _extract_and_set_participant_credentials(
         md: Optional[str], origin: str, who: str
     ):
@@ -294,12 +278,11 @@ async def entrypoint(ctx: JobContext):
         if conv_id:
             await custom_llm.set_conversation_id(conv_id)
 
-    background_tasks = set()
+    background_tasks: set[Any] = set()
 
     @ctx.room.on("participant_connected")
     def _on_participant_connected(p: rtc.RemoteParticipant):
         """Handle new participant connection and process their metadata."""
-        logger.info("ddd")
         task = asyncio.create_task(
             _extract_and_set_participant_credentials(
                 getattr(p, "metadata", None), "participant_connected", p.identity
@@ -334,10 +317,27 @@ async def entrypoint(ctx: JobContext):
     )
 
 
+def download_files():
+    """Download required model files."""
+    logger.info("Downloading model files...")
+    # The livekit-agents CLI handles model downloads
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
+
+
+def start_worker():
+    """Start the voice agent worker."""
+    from src.config import load_settings
+
+    load_settings()
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))
+
+
 if __name__ == "__main__":
     is_download_command = any(arg.endswith("download-files") for arg in sys.argv)
 
     if not is_download_command:
+        from src.config import load_settings
+
         load_settings()
 
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm))

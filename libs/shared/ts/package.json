@@ -1,0 +1,14 @@
+{
+  "name": "@gaia/shared",
+  "version": "0.1.0",
+  "description": "Shared TypeScript utilities for GAIA applications",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "eslint src/",
+    "format": "prettier --write src/"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

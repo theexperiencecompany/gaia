@@ -3,8 +3,8 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "root": "apps/voice-agent",
-  "sourceRoot": "apps/voice-agent",
-  "implicitDependencies": ["api"],
+  "sourceRoot": "apps/voice-agent/src",
+  "implicitDependencies": ["shared-python", "docker"],
   "release": {
     "docker": {
       "repositoryName": "theexperiencecompany/gaia-voice-agent"
@@ -14,11 +14,43 @@
     "docker:build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker build -f Dockerfile.voice-agent -t ghcr.io/theexperiencecompany/gaia-voice-agent:latest .",
-        "cwd": "apps/api"
+        "command": "docker build -f apps/voice-agent/Dockerfile -t ghcr.io/theexperiencecompany/gaia-voice-agent:latest .",
+        "cwd": "."
       },
       "cache": true,
       "inputs": ["production", "^production"]
+    },
+    "sync": {
+      "dependsOn": ["shared-python:sync"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv sync --frozen",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": ["{projectRoot}/pyproject.toml", "{projectRoot}/uv.lock"]
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uv run python -m src start",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uvx ruff check src/",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "uvx ruff format src/",
+        "cwd": "{projectRoot}"
+      }
     }
   }
 }
