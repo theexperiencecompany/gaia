@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.12.1](https://github.com/theexperiencecompany/gaia/compare/api-v0.12.0...api-v0.12.1) (2025-12-23)
+
+
+### Features
+
+* Add new `voice-agent` app to monorepo and introduce shared Python and TypeScript libraries ([#403](https://github.com/theexperiencecompany/gaia/issues/403)) ([3537679](https://github.com/theexperiencecompany/gaia/commit/353767926fc65d591aabca0ee16e744d5b2c11bd))
+* Add new `voice-agent` application and introduce shared Python and TypeScript libraries with updated project configuration. ([5f3d854](https://github.com/theexperiencecompany/gaia/commit/5f3d854d1b80e56529f3592c465e26da5ce20451))
+
+
+### Bug Fixes
+
+* Add docker push to docker:build commands to push images to GHCR ([b4749b8](https://github.com/theexperiencecompany/gaia/commit/b4749b8e8bbd8cf8b3c5cfa36476129d0b0cd760))
+* **ci:** Update Docker build commands to include additional image tags for API and voice-agent applications ([878fdbb](https://github.com/theexperiencecompany/gaia/commit/878fdbbec7a387e9046ed48084c4d7298b7090fa))
+* **ci:** Update Dockerfiles to use `uv run` for command execution in API and voice-agent applications ([#407](https://github.com/theexperiencecompany/gaia/issues/407)) ([7739606](https://github.com/theexperiencecompany/gaia/commit/7739606cdd390e16b8b3d2889daea7fc42e2ca40))
+* Correct Infisical machine identity variable typo, update Dockerfiles to use `uv sync` for dependency installation, and add error handling to voice agent command execution. ([aec25ce](https://github.com/theexperiencecompany/gaia/commit/aec25ce706ed793e1cb3ddd207fbc35529b1194d))
+* fixed deps group issues in api ([6a5b2e5](https://github.com/theexperiencecompany/gaia/commit/6a5b2e50840fbcf95d8795ea0e109137f8da9b0b))
+* temporary removed auto-loading of tools in prod ([2fc4315](https://github.com/theexperiencecompany/gaia/commit/2fc4315f254a882aaf90aba6f9e85ebdbfa27e73))
+* Update Dockerfiles to use `uv run` for command execution in API and voice-agent applications ([600a74d](https://github.com/theexperiencecompany/gaia/commit/600a74de0812a528417e41f86cc09ad0c81dea43))
+
+
+### Code Refactoring
+
+* Add voice agent as an app in monorepo with python shared packages ([#404](https://github.com/theexperiencecompany/gaia/issues/404)) ([6ce927e](https://github.com/theexperiencecompany/gaia/commit/6ce927e3343347c398f55b5a494fb72f050637a3))
+
 ## 0.12.0 (2025-12-21)
 
 ## What's Changed
