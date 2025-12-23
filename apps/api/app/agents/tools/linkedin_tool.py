@@ -25,171 +25,18 @@ from app.templates.docstrings.linkedin_tool_docs import (
     CUSTOM_GET_POST_REACTIONS_DOC,
     CUSTOM_REACT_TO_POST_DOC,
 )
+from app.utils.linkedin_utils import (
+    LINKEDIN_REST_BASE,
+    get_access_token,
+    get_author_urn,
+    linkedin_headers,
+    upload_document_from_url,
+    upload_image_from_url,
+)
 from composio import Composio
-
-LINKEDIN_API_BASE = "https://api.linkedin.com/v2"
-LINKEDIN_REST_BASE = "https://api.linkedin.com/rest"
-
-# LinkedIn API version - use a recent stable version
-LINKEDIN_VERSION = "202401"
 
 # Reusable sync HTTP client
 _http_client = httpx.Client(timeout=60)
-
-
-def _get_access_token(auth_credentials: Dict[str, Any]) -> str:
-    """Extract access token from auth_credentials."""
-    token = auth_credentials.get("access_token")
-    if not token:
-        raise ValueError("Missing access_token in auth_credentials")
-    return token
-
-
-def _linkedin_headers(access_token: str) -> Dict[str, str]:
-    """Return headers for LinkedIn API v2 requests."""
-    return {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-        "X-Restli-Protocol-Version": "2.0.0",
-        "LinkedIn-Version": LINKEDIN_VERSION,
-    }
-
-
-def _get_author_urn(access_token: str, organization_id: str | None = None) -> str:
-    """Get the author URN (person or organization)."""
-    if organization_id:
-        # If org ID provided, use it directly
-        if organization_id.startswith("urn:li:organization:"):
-            return organization_id
-        return f"urn:li:organization:{organization_id}"
-
-    # Get the authenticated user's URN
-    try:
-        resp = _http_client.get(
-            f"{LINKEDIN_API_BASE}/userinfo",
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        sub = data.get("sub")
-        if sub:
-            return f"urn:li:person:{sub}"
-    except Exception as e:
-        logger.error(f"Error getting user info: {e}")
-
-    raise ValueError("Could not determine author URN")
-
-
-def _upload_image_from_url(
-    access_token: str,
-    image_url: str,
-    author_urn: str,
-) -> str | None:
-    """Download image from URL and upload to LinkedIn, returning the asset URN."""
-    headers = _linkedin_headers(access_token)
-
-    try:
-        # Step 1: Initialize upload
-        init_data = {
-            "initializeUploadRequest": {
-                "owner": author_urn,
-            }
-        }
-
-        init_resp = _http_client.post(
-            f"{LINKEDIN_REST_BASE}/images?action=initializeUpload",
-            headers=headers,
-            json=init_data,
-        )
-        init_resp.raise_for_status()
-        init_result = init_resp.json()
-
-        upload_url = init_result.get("value", {}).get("uploadUrl")
-        image_urn = init_result.get("value", {}).get("image")
-
-        if not upload_url or not image_urn:
-            logger.error("Failed to get upload URL from LinkedIn")
-            return None
-
-        # Step 2: Download image from URL
-        img_resp = _http_client.get(image_url, follow_redirects=True)
-        img_resp.raise_for_status()
-        image_data = img_resp.content
-        content_type = img_resp.headers.get("content-type", "image/jpeg")
-
-        # Step 3: Upload to LinkedIn
-        upload_headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": content_type,
-        }
-        upload_resp = _http_client.put(
-            upload_url,
-            headers=upload_headers,
-            content=image_data,
-        )
-        upload_resp.raise_for_status()
-
-        return image_urn
-
-    except Exception as e:
-        logger.error(f"Error uploading image: {e}")
-        return None
-
-
-def _upload_document_from_url(
-    access_token: str,
-    document_url: str,
-    author_urn: str,
-) -> str | None:
-    """Download document from URL and upload to LinkedIn, returning the asset URN."""
-    headers = _linkedin_headers(access_token)
-
-    try:
-        # Step 1: Initialize upload
-        init_data = {
-            "initializeUploadRequest": {
-                "owner": author_urn,
-            }
-        }
-
-        init_resp = _http_client.post(
-            f"{LINKEDIN_REST_BASE}/documents?action=initializeUpload",
-            headers=headers,
-            json=init_data,
-        )
-        init_resp.raise_for_status()
-        init_result = init_resp.json()
-
-        upload_url = init_result.get("value", {}).get("uploadUrl")
-        document_urn = init_result.get("value", {}).get("document")
-
-        if not upload_url or not document_urn:
-            logger.error("Failed to get upload URL from LinkedIn")
-            return None
-
-        # Step 2: Download document from URL
-        doc_resp = _http_client.get(document_url, follow_redirects=True)
-        doc_resp.raise_for_status()
-        document_data = doc_resp.content
-        content_type = doc_resp.headers.get("content-type", "application/pdf")
-
-        # Step 3: Upload to LinkedIn
-        upload_headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": content_type,
-        }
-        upload_resp = _http_client.put(
-            upload_url,
-            headers=upload_headers,
-            content=document_data,
-        )
-        upload_resp.raise_for_status()
-
-        return document_urn
-
-    except Exception as e:
-        logger.error(f"Error uploading document: {e}")
-        return None
 
 
 def register_linkedin_custom_tools(composio: Composio) -> List[str]:
@@ -203,12 +50,12 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Create a LinkedIn post with optional media (image, document, or article)."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _linkedin_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = linkedin_headers(access_token)
 
         try:
             # Get author URN
-            author_urn = _get_author_urn(access_token, request.organization_id)
+            author_urn = get_author_urn(access_token, request.organization_id)
 
             # Determine media type and build content accordingly
             media_type = "text"
@@ -224,7 +71,7 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
                         "error": "document_title is required when document_url is provided",
                     }
 
-                document_urn = _upload_document_from_url(
+                document_urn = upload_document_from_url(
                     access_token, request.document_url, author_urn
                 )
                 if not document_urn:
@@ -255,7 +102,7 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
                 # Upload all images
                 image_urns = []
                 for url in urls_to_upload:
-                    urn = _upload_image_from_url(access_token, url, author_urn)
+                    urn = upload_image_from_url(access_token, url, author_urn)
                     if not urn:
                         return {
                             "success": False,
@@ -290,7 +137,7 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
                 if request.article_description:
                     article_content["description"] = request.article_description
                 if request.thumbnail_url:
-                    thumbnail_urn = _upload_image_from_url(
+                    thumbnail_urn = upload_image_from_url(
                         access_token, request.thumbnail_url, author_urn
                     )
                     if thumbnail_urn:
@@ -351,11 +198,11 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Add a comment to a LinkedIn post."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _linkedin_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = linkedin_headers(access_token)
 
         try:
-            author_urn = _get_author_urn(access_token)
+            author_urn = get_author_urn(access_token)
 
             # URL encode the post URN for the path
             encoded_urn = request.post_urn.replace(":", "%3A")
@@ -405,8 +252,8 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Retrieve comments on a LinkedIn post."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _linkedin_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = linkedin_headers(access_token)
 
         try:
             encoded_urn = request.post_urn.replace(":", "%3A")
@@ -464,11 +311,11 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Add a reaction to a LinkedIn post."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _linkedin_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = linkedin_headers(access_token)
 
         try:
-            author_urn = _get_author_urn(access_token)
+            author_urn = get_author_urn(access_token)
             encoded_urn = request.post_urn.replace(":", "%3A")
 
             reaction_data = {
@@ -508,11 +355,11 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Remove your reaction from a LinkedIn post."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _linkedin_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = linkedin_headers(access_token)
 
         try:
-            author_urn = _get_author_urn(access_token)
+            author_urn = get_author_urn(access_token)
             encoded_post_urn = request.post_urn.replace(":", "%3A")
             encoded_author_urn = author_urn.replace(":", "%3A")
 
@@ -546,8 +393,8 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Retrieve reactions on a LinkedIn post."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _linkedin_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = linkedin_headers(access_token)
 
         try:
             encoded_urn = request.post_urn.replace(":", "%3A")

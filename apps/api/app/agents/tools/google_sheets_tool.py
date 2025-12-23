@@ -4,7 +4,7 @@ These tools provide Google Sheets functionality using the access_token from Comp
 auth_credentials. Uses Google Drive API for sharing and Sheets API for spreadsheet operations.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import httpx
 from app.config.loggers import chat_logger as logger
@@ -31,118 +31,20 @@ from app.templates.docstrings.google_sheets_tool_docs import (
 from app.templates.docstrings.google_sheets_tool_docs import (
     CUSTOM_SHARE_SPREADSHEET_DOC as SHARE_DOC,
 )
+from app.utils.google_sheets_utils import (
+    DRIVE_API_BASE,
+    SHEETS_API_BASE,
+    auth_headers,
+    get_access_token,
+    get_column_index_by_header,
+    get_sheet_id_by_name,
+    hex_to_rgb,
+    parse_a1_range,
+)
 from composio import Composio
-
-DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
-SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets"
 
 # Reusable sync HTTP client
 _http_client = httpx.Client(timeout=60)
-
-
-def _get_access_token(auth_credentials: Dict[str, Any]) -> str:
-    """Extract access token from auth_credentials."""
-    token = auth_credentials.get("access_token")
-    if not token:
-        raise ValueError("Missing access_token in auth_credentials")
-    return token
-
-
-def _auth_headers(access_token: str) -> Dict[str, str]:
-    """Return Bearer token header for Google APIs."""
-    return {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
-
-
-def _hex_to_rgb(hex_color: str) -> Dict[str, float]:
-    """Convert hex color (#RRGGBB) to Google API RGB format (0-1 floats)."""
-    hex_color = hex_color.lstrip("#")
-    r = int(hex_color[0:2], 16) / 255.0
-    g = int(hex_color[2:4], 16) / 255.0
-    b = int(hex_color[4:6], 16) / 255.0
-    return {"red": r, "green": g, "blue": b}
-
-
-def _parse_a1_range(range_str: str) -> Dict[str, int]:
-    """Parse A1 notation (e.g., 'A1:B10') to row/column indices."""
-    import re
-
-    # Handle ranges like "A1:B10" or single cells like "A1"
-    parts = range_str.replace("$", "").upper().split(":")
-    start = parts[0]
-    end = parts[1] if len(parts) > 1 else parts[0]
-
-    def parse_cell(cell: str) -> tuple:
-        match = re.match(r"([A-Z]+)(\d+)", cell)
-        if not match:
-            return 0, 0
-        col_str, row_str = match.groups()
-        col = (
-            sum(
-                (ord(c) - ord("A") + 1) * (26**i)
-                for i, c in enumerate(reversed(col_str))
-            )
-            - 1
-        )
-        row = int(row_str) - 1
-        return row, col
-
-    start_row, start_col = parse_cell(start)
-    end_row, end_col = parse_cell(end)
-
-    return {
-        "startRowIndex": start_row,
-        "endRowIndex": end_row + 1,
-        "startColumnIndex": start_col,
-        "endColumnIndex": end_col + 1,
-    }
-
-
-def _get_sheet_id_by_name(
-    spreadsheet_id: str, sheet_name: str, headers: Dict[str, str]
-) -> Optional[int]:
-    """Get sheet ID by its name."""
-    try:
-        resp = _http_client.get(
-            f"{SHEETS_API_BASE}/{spreadsheet_id}",
-            headers=headers,
-            params={"fields": "sheets.properties"},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        for sheet in data.get("sheets", []):
-            if sheet.get("properties", {}).get("title") == sheet_name:
-                return sheet["properties"]["sheetId"]
-        return None
-    except Exception as e:
-        logger.error(f"Error getting sheet ID: {e}")
-        return None
-
-
-def _get_column_index_by_header(
-    spreadsheet_id: str,
-    sheet_name: str,
-    column_name: str,
-    headers: Dict[str, str],
-) -> Optional[int]:
-    """Get column index by header name (first row)."""
-    try:
-        resp = _http_client.get(
-            f"{SHEETS_API_BASE}/{spreadsheet_id}/values/{sheet_name}!1:1",
-            headers=headers,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        header_row = data.get("values", [[]])[0]
-        for idx, header in enumerate(header_row):
-            if header.lower() == column_name.lower():
-                return idx
-        return None
-    except Exception as e:
-        logger.error(f"Error getting column index: {e}")
-        return None
 
 
 def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
@@ -156,8 +58,8 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Share a Google Spreadsheet with one or more recipients."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = auth_headers(access_token)
 
         shared = []
         errors = []
@@ -228,15 +130,15 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Create a pivot table from spreadsheet data."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = auth_headers(access_token)
 
         try:
             # Get source and destination sheet IDs
-            source_sheet_id = _get_sheet_id_by_name(
+            source_sheet_id = get_sheet_id_by_name(
                 request.spreadsheet_id, request.source_sheet_name, headers
             )
-            dest_sheet_id = _get_sheet_id_by_name(
+            dest_sheet_id = get_sheet_id_by_name(
                 request.spreadsheet_id, request.destination_sheet_name, headers
             )
 
@@ -254,7 +156,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
             # Get column indices for row/column/value fields
             row_indices = []
             for row_field in request.rows:
-                idx = _get_column_index_by_header(
+                idx = get_column_index_by_header(
                     request.spreadsheet_id,
                     request.source_sheet_name,
                     row_field,
@@ -275,7 +177,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
 
             col_indices = []
             for col_field in request.columns:
-                idx = _get_column_index_by_header(
+                idx = get_column_index_by_header(
                     request.spreadsheet_id,
                     request.source_sheet_name,
                     col_field,
@@ -296,7 +198,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
 
             value_specs = []
             for val in request.values:
-                idx = _get_column_index_by_header(
+                idx = get_column_index_by_header(
                     request.spreadsheet_id,
                     request.source_sheet_name,
                     val.column,
@@ -318,11 +220,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
             # Build source range
             source_range = {"sheetId": source_sheet_id}
             if request.source_range:
-                range_spec = _parse_a1_range(request.source_range)
+                range_spec = parse_a1_range(request.source_range)
                 source_range.update(range_spec)
 
             # Parse destination cell
-            dest_range = _parse_a1_range(request.destination_cell)
+            dest_range = parse_a1_range(request.destination_cell)
 
             # Build pivot table request
             pivot_table = {
@@ -386,11 +288,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Set data validation rules on a range."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = auth_headers(access_token)
 
         try:
-            sheet_id = _get_sheet_id_by_name(
+            sheet_id = get_sheet_id_by_name(
                 request.spreadsheet_id, request.sheet_name, headers
             )
             if sheet_id is None:
@@ -399,7 +301,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                     "error": f"Sheet '{request.sheet_name}' not found",
                 }
 
-            range_spec = _parse_a1_range(request.range)
+            range_spec = parse_a1_range(request.range)
             range_spec["sheetId"] = sheet_id
 
             # Build condition based on validation type
@@ -541,11 +443,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Add conditional formatting rules to a range."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = auth_headers(access_token)
 
         try:
-            sheet_id = _get_sheet_id_by_name(
+            sheet_id = get_sheet_id_by_name(
                 request.spreadsheet_id, request.sheet_name, headers
             )
             if sheet_id is None:
@@ -554,7 +456,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                     "error": f"Sheet '{request.sheet_name}' not found",
                 }
 
-            range_spec = _parse_a1_range(request.range)
+            range_spec = parse_a1_range(request.range)
             range_spec["sheetId"] = sheet_id
 
             rule: Dict[str, Any] = {"ranges": [range_spec]}
@@ -566,18 +468,18 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 if request.min_color:
                     color_scale["minpoint"] = {
                         "type": "MIN",
-                        "color": _hex_to_rgb(request.min_color),
+                        "color": hex_to_rgb(request.min_color),
                     }
                 if request.mid_color:
                     color_scale["midpoint"] = {
                         "type": "PERCENTILE",
                         "value": "50",
-                        "color": _hex_to_rgb(request.mid_color),
+                        "color": hex_to_rgb(request.mid_color),
                     }
                 if request.max_color:
                     color_scale["maxpoint"] = {
                         "type": "MAX",
-                        "color": _hex_to_rgb(request.max_color),
+                        "color": hex_to_rgb(request.max_color),
                     }
 
                 rule["gradientRule"] = {
@@ -642,12 +544,12 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 # Build format
                 format_spec: Dict[str, Any] = {}
                 if request.background_color:
-                    format_spec["backgroundColor"] = _hex_to_rgb(
+                    format_spec["backgroundColor"] = hex_to_rgb(
                         request.background_color
                     )
                 if request.text_color:
                     format_spec["textFormat"] = {
-                        "foregroundColor": _hex_to_rgb(request.text_color)
+                        "foregroundColor": hex_to_rgb(request.text_color)
                     }
                 if request.bold is not None:
                     format_spec.setdefault("textFormat", {})["bold"] = request.bold
@@ -707,11 +609,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Create a chart from spreadsheet data."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = auth_headers(access_token)
 
         try:
-            source_sheet_id = _get_sheet_id_by_name(
+            source_sheet_id = get_sheet_id_by_name(
                 request.spreadsheet_id, request.sheet_name, headers
             )
             if source_sheet_id is None:
@@ -721,7 +623,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 }
 
             dest_sheet_name = request.destination_sheet_name or request.sheet_name
-            dest_sheet_id = _get_sheet_id_by_name(
+            dest_sheet_id = get_sheet_id_by_name(
                 request.spreadsheet_id, dest_sheet_name, headers
             )
             if dest_sheet_id is None:
@@ -731,11 +633,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                 }
 
             # Parse data range
-            data_range = _parse_a1_range(request.data_range)
+            data_range = parse_a1_range(request.data_range)
             data_range["sheetId"] = source_sheet_id
 
             # Parse anchor cell
-            anchor = _parse_a1_range(request.anchor_cell)
+            anchor = parse_a1_range(request.anchor_cell)
 
             # Map chart types
             chart_type_map = {
