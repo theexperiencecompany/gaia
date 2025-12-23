@@ -111,7 +111,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="docs",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_PLACEHOLDER",  # TODO: Replace with actual auth_config_id
+            auth_config_id="ac_coVAA1WRsbdK",  # TODO: Replace with actual auth_config_id
             toolkit="GOOGLEDOCS",
         ),
         subagent_config=SubAgentConfig(

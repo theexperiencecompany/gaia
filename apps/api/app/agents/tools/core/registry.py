@@ -8,7 +8,6 @@ from app.agents.tools import (
     file_tools,
     flowchart_tool,
     goal_tool,
-    google_docs_tool,
     image_tool,
     integration_tool,
     memory_tools,
@@ -155,13 +154,6 @@ class ToolRegistry:
         )
         self._add_category("creative", tools=[image_tool.generate_image])
         self._add_category("weather", tools=[weather_tool.get_weather])
-
-        self._add_category(
-            "google_docs",
-            tools=google_docs_tool.tools,
-            require_integration=True,
-            integration_name="google_docs",
-        )
 
     async def register_provider_tools(
         self,
