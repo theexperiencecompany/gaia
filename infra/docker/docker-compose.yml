@@ -12,6 +12,8 @@ services:
     working_dir: /app/apps/api
     command:
       [
+        "uv",
+        "run",
         "python",
         "-m",
         "uvicorn",
@@ -30,6 +32,7 @@ services:
       # PYTHONPROFILEIMPORTTIME: 1
       FORCE_COLOR: 1
       WORKER_TYPE: main_app
+      PYTHONPATH: /app/apps/api
     env_file:
       - ../../apps/api/.env
     volumes:
@@ -160,7 +163,8 @@ services:
       - ../../apps/api/.env
     environment:
       - WORKER_TYPE=arq_worker
-    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
+      - PYTHONPATH=/app/apps/api
+    command: ["uv", "run", "python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     volumes:
       - ../../apps/api/app:/app/apps/api/app

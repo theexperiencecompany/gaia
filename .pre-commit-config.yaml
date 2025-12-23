@@ -12,7 +12,7 @@ repos:
       - id: check-merge-conflict
         priority: 0
       - id: check-added-large-files
-        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
+        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock)$
         priority: 0
       - id: check-ast
         exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$

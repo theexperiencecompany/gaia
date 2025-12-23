@@ -36,7 +36,8 @@ ENV ENV=production \
   UV_COMPILE_BYTECODE=1 \
   UV_LINK_MODE=copy \
   UV_SYSTEM_PYTHON=1 \
-  UV_LOGGING=1
+  UV_LOGGING=1 \
+  PYTHONPATH=/app/apps/api
 
 # Install crawl4ai browser dependencies
 RUN pip install crawl4ai && crawl4ai-setup && rm -rf /root/.cache/pip

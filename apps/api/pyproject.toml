@@ -1,6 +1,6 @@
 [project]
 name = "gaia"
-version = "0.11.0"
+version = "0.12.0"
 description = "Backend of GAIA - The personal AI assistant"
 readme = "../README.md"
 requires-python = ">=3.11"
@@ -28,6 +28,7 @@ dependencies = [
   "ormsgpack>=1.12.0",
   "filelock>=3.20.1",
   "langchain-mcp-adapters>=0.1.7",
+  "livekit-api>=1.1.0",
 ]
 
 

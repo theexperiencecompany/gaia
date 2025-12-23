@@ -1864,7 +1864,7 @@ wheels = [
 
 [[package]]
 name = "gaia"
-version = "0.11.0"
+version = "0.12.0"
 source = { virtual = "apps/api" }
 dependencies = [
     { name = "aiohttp" },
@@ -1875,6 +1875,7 @@ dependencies = [
     { name = "filelock" },
     { name = "gaia-shared" },
     { name = "httpx" },
+    { name = "livekit-api" },
     { name = "orjson" },
     { name = "ormsgpack" },
     { name = "pendulum" },
@@ -2027,6 +2028,7 @@ requires-dist = [
     { name = "filelock", specifier = ">=3.20.1" },
     { name = "gaia-shared", editable = "libs" },
     { name = "httpx", specifier = "==0.28.1" },
+    { name = "livekit-api", specifier = ">=1.1.0" },
     { name = "orjson", specifier = ">=3.11.3" },
     { name = "ormsgpack", specifier = ">=1.12.0" },
     { name = "pendulum", specifier = ">=3.0.0" },

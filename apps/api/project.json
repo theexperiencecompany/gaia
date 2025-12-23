@@ -19,7 +19,7 @@
     "docker:build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker build -f apps/api/Dockerfile -t ghcr.io/theexperiencecompany/gaia:latest .",
+        "command": "docker build -f apps/api/Dockerfile -t apps-api -t ghcr.io/theexperiencecompany/gaia:latest . && docker push ghcr.io/theexperiencecompany/gaia:latest",
         "cwd": "."
       },
       "cache": true,

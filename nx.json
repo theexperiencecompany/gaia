@@ -71,6 +71,9 @@
     "releaseTag": {
       "pattern": "release/{projectName}/{version}"
     },
+    "changelog": {
+      "automaticFromRef": true
+    },
     "groups": {
       "apps": {
         "projects": ["api", "voice-agent"],
