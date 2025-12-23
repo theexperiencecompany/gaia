@@ -9,6 +9,9 @@ from app.agents.tools.google_docs_tool import (
 from app.agents.tools.google_sheets_tool import (
     register_google_sheets_custom_tools,
 )
+from app.agents.tools.linkedin_tool import (
+    register_linkedin_custom_tools,
+)
 from app.agents.tools.notion_tool import (
     register_notion_custom_tools,
 )
@@ -57,6 +60,7 @@ class CustomToolsRegistry:
         self._register_toolkit("googledocs", register_google_docs_custom_tools)
         self._register_toolkit("googlesheets", register_google_sheets_custom_tools)
         self._register_toolkit("notion", register_notion_custom_tools)
+        self._register_toolkit("linkedin", register_linkedin_custom_tools)
 
     def _register_toolkit(
         self,
