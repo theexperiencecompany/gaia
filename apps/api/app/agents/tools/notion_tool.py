@@ -4,6 +4,8 @@ These tools wrap existing Composio Notion tools and add markdown conversion:
 - FETCH_PAGE_AS_MARKDOWN: Calls NOTION_FETCH_ALL_BLOCK_CONTENTS → converts to markdown
 - INSERT_MARKDOWN: Converts markdown → calls NOTION_ADD_MULTIPLE_PAGE_CONTENT
 - MOVE_PAGE: Uses execute_request (no existing Composio equivalent)
+
+Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
 from typing import Any, Dict, List
@@ -34,29 +36,24 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        try:
-            # Build parent object based on type
-            if request.parent_type == "page_id":
-                parent = {"type": "page_id", "page_id": request.parent_id}
-            else:
-                parent = {"type": "database_id", "database_id": request.parent_id}
+        # Build parent object based on type
+        if request.parent_type == "page_id":
+            parent = {"type": "page_id", "page_id": request.parent_id}
+        else:
+            parent = {"type": "database_id", "database_id": request.parent_id}
 
-            response = execute_request(
-                endpoint=f"/pages/{request.page_id}",
-                method="PATCH",
-                body={"parent": parent},
-            )
+        response = execute_request(
+            endpoint=f"/pages/{request.page_id}",
+            method="PATCH",
+            body={"parent": parent},
+        )
 
-            data = response.data if hasattr(response, "data") else response
-            return {
-                "success": True,
-                "page_id": data.get("id"),
-                "new_parent": parent,
-                "url": data.get("url"),
-            }
-        except Exception as e:
-            logger.error(f"Error moving page: {e}")
-            return {"success": False, "error": str(e)}
+        data = response.data if hasattr(response, "data") else response
+        return {
+            "page_id": data.get("id"),
+            "new_parent": parent,
+            "url": data.get("url"),
+        }
 
     @composio.tools.custom_tool(toolkit="NOTION")
     @with_doc(FETCH_PAGE_AS_MARKDOWN_DOC)
@@ -65,70 +62,65 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        # Get page title using NOTION_GET_PAGE_PROPERTY_ACTION
+        title = ""
         try:
-            # Get page title using NOTION_GET_PAGE_PROPERTY_ACTION
-            title = ""
-            try:
-                title_response = composio.tools.execute(
-                    slug="NOTION_GET_PAGE_PROPERTY_ACTION",
-                    params={
-                        "page_id": request.page_id,
-                        "property_id": "title",
-                    },
-                    auth_credentials=auth_credentials,
-                )
-                title_data = (
-                    title_response.data
-                    if hasattr(title_response, "data")
-                    else title_response
-                )
-                # Extract title from results array
-                results = title_data.get("results", [])
-                for item in results:
-                    if item.get("type") == "title" and item.get("title"):
-                        title = item["title"].get("plain_text", "")
-                        break
-            except Exception as e:
-                logger.warning(f"Could not fetch title: {e}")
-
-            # Call NOTION_FETCH_ALL_BLOCK_CONTENTS via composio
-            blocks_response = composio.tools.execute(
-                slug="NOTION_FETCH_ALL_BLOCK_CONTENTS",
+            title_response = composio.tools.execute(
+                slug="NOTION_GET_PAGE_PROPERTY_ACTION",
                 params={
-                    "block_id": request.page_id,
-                    "recursive": request.recursive,
-                    "page_size": 100,
+                    "page_id": request.page_id,
+                    "property_id": "title",
                 },
                 auth_credentials=auth_credentials,
             )
-
-            # Extract blocks from response
-            blocks_data = (
-                blocks_response.data
-                if hasattr(blocks_response, "data")
-                else blocks_response
+            title_data = (
+                title_response.data
+                if hasattr(title_response, "data")
+                else title_response
             )
-            blocks = blocks_data.get("results", blocks_data.get("blocks", []))
-
-            # Convert to markdown (with block IDs for insertion positioning)
-            markdown = blocks_to_markdown(
-                blocks, include_block_ids=request.include_block_ids
-            )
-
-            # Prepend title as H1 if present
-            if title:
-                markdown = f"# {title}\n\n{markdown}"
-
-            return {
-                "success": True,
-                "page_id": request.page_id,
-                "title": title,
-                "markdown": markdown,
-                "block_count": len(blocks),
-            }
+            # Extract title from results array
+            results = title_data.get("results", [])
+            for item in results:
+                if item.get("type") == "title" and item.get("title"):
+                    title = item["title"].get("plain_text", "")
+                    break
         except Exception as e:
-            logger.error(f"Error fetching page as markdown: {e}")
-            return {"success": False, "error": str(e)}
+            logger.warning(f"Could not fetch title: {e}")
+
+        # Call NOTION_FETCH_ALL_BLOCK_CONTENTS via composio
+        blocks_response = composio.tools.execute(
+            slug="NOTION_FETCH_ALL_BLOCK_CONTENTS",
+            params={
+                "block_id": request.page_id,
+                "recursive": request.recursive,
+                "page_size": 100,
+            },
+            auth_credentials=auth_credentials,
+        )
+
+        # Extract blocks from response
+        blocks_data = (
+            blocks_response.data
+            if hasattr(blocks_response, "data")
+            else blocks_response
+        )
+        blocks = blocks_data.get("results", blocks_data.get("blocks", []))
+
+        # Convert to markdown (with block IDs for insertion positioning)
+        markdown = blocks_to_markdown(
+            blocks, include_block_ids=request.include_block_ids
+        )
+
+        # Prepend title as H1 if present
+        if title:
+            markdown = f"# {title}\n\n{markdown}"
+
+        return {
+            "page_id": request.page_id,
+            "title": title,
+            "markdown": markdown,
+            "block_count": len(blocks),
+        }
 
     @composio.tools.custom_tool(toolkit="NOTION")
     @with_doc(INSERT_MARKDOWN_DOC)
@@ -137,42 +129,39 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        try:
-            # Convert markdown to Notion blocks
-            content_blocks = markdown_to_notion_blocks(request.markdown)
+        # Convert markdown to Notion blocks
+        content_blocks = markdown_to_notion_blocks(request.markdown)
 
-            if not content_blocks:
-                return {"success": False, "error": "No content to insert"}
-
-            # Build params for NOTION_ADD_MULTIPLE_PAGE_CONTENT
-            params: Dict[str, Any] = {
-                "parent_block_id": request.parent_block_id,
-                "content_blocks": content_blocks,
-            }
-
-            # Add after param if specified
-            if request.after:
-                params["after"] = request.after
-
-            # Call NOTION_ADD_MULTIPLE_PAGE_CONTENT
-            response = composio.tools.execute(
-                slug="NOTION_ADD_MULTIPLE_PAGE_CONTENT",
-                params=params,
-                auth_credentials=auth_credentials,
+        if not content_blocks:
+            raise ValueError(
+                "No content to insert - markdown conversion produced no blocks"
             )
 
-            data = response.data if hasattr(response, "data") else response
+        # Build params for NOTION_ADD_MULTIPLE_PAGE_CONTENT
+        params: Dict[str, Any] = {
+            "parent_block_id": request.parent_block_id,
+            "content_blocks": content_blocks,
+        }
 
-            return {
-                "success": True,
-                "parent_block_id": request.parent_block_id,
-                "blocks_added": len(content_blocks),
-                "after": request.after,
-                "response": data,
-            }
-        except Exception as e:
-            logger.error(f"Error inserting markdown: {e}")
-            return {"success": False, "error": str(e)}
+        # Add after param if specified
+        if request.after:
+            params["after"] = request.after
+
+        # Call NOTION_ADD_MULTIPLE_PAGE_CONTENT
+        response = composio.tools.execute(
+            slug="NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+            params=params,
+            auth_credentials=auth_credentials,
+        )
+
+        data = response.data if hasattr(response, "data") else response
+
+        return {
+            "parent_block_id": request.parent_block_id,
+            "blocks_added": len(content_blocks),
+            "after": request.after,
+            "response": data,
+        }
 
     return [
         "NOTION_MOVE_PAGE",

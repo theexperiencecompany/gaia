@@ -2,6 +2,8 @@
 
 These tools provide Linear functionality using the access_token from Composio's
 auth_credentials. Uses Linear GraphQL API for all operations.
+
+Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
 from datetime import datetime, timedelta
@@ -147,7 +149,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             states = states_data.get("workflowStates", {}).get("nodes", [])
             result["states"] = fuzzy_match(request.state_name, states, "name", limit=3)
 
-        return {"success": True, "data": result}
+        return {"data": result}
 
     @composio.tools.custom_tool(toolkit="linear")
     @with_doc(CUSTOM_GET_MY_TASKS_DOC)
@@ -161,7 +163,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         viewer_id = viewer_data.get("viewer", {}).get("id")
 
         if not viewer_id:
-            return {"success": False, "error": "Could not get current user"}
+            raise ValueError("Could not get current user")
 
         issues_data = graphql_request(
             QUERY_MY_ISSUES,
@@ -222,7 +224,6 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         formatted = [format_issue_summary(i) for i in filtered[: request.limit]]
 
         return {
-            "success": True,
             "filter": request.filter,
             "count": len(formatted),
             "issues": formatted,
@@ -270,7 +271,6 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         formatted = [format_issue_summary(i) for i in filtered[: request.limit]]
 
         return {
-            "success": True,
             "query": request.query,
             "count": len(formatted),
             "issues": formatted,
@@ -285,10 +285,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     ) -> Dict[str, Any]:
         """Get complete issue details in one call."""
         if not request.issue_id and not request.issue_identifier:
-            return {
-                "success": False,
-                "error": "Provide either issue_id or issue_identifier",
-            }
+            raise ValueError("Provide either issue_id or issue_identifier")
 
         issue = None
 
@@ -300,18 +297,16 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         elif request.issue_identifier:
             parts = request.issue_identifier.split("-")
             if len(parts) != 2:
-                return {
-                    "success": False,
-                    "error": f"Invalid identifier format: {request.issue_identifier}",
-                }
+                raise ValueError(
+                    f"Invalid identifier format: {request.issue_identifier}"
+                )
             team_key = parts[0]
             try:
                 number = float(parts[1])
-            except ValueError:
-                return {
-                    "success": False,
-                    "error": f"Invalid issue number in: {request.issue_identifier}",
-                }
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid issue number in: {request.issue_identifier}"
+                ) from e
 
             data = graphql_request(
                 QUERY_ISSUE_BY_IDENTIFIER,
@@ -323,10 +318,9 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                 issue = teams[0]["issue"]
 
         if not issue:
-            return {
-                "success": False,
-                "error": f"Issue not found: {request.issue_id or request.issue_identifier}",
-            }
+            raise ValueError(
+                f"Issue not found: {request.issue_id or request.issue_identifier}"
+            )
 
         result = {
             "id": issue.get("id"),
@@ -427,7 +421,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                 {"title": a.get("title"), "url": a.get("url")} for a in attachments
             ]
 
-        return {"success": True, "issue": result}
+        return {"issue": result}
 
     @composio.tools.custom_tool(toolkit="linear")
     @with_doc(CUSTOM_CREATE_ISSUE_DOC)
@@ -470,11 +464,10 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         )
         create_result = result.get("issueCreate", {})
         if not create_result.get("success"):
-            return {"success": False, "error": "Failed to create issue"}
+            raise RuntimeError("Failed to create issue")
 
         created = create_result.get("issue", {})
         response: Dict[str, Any] = {
-            "success": True,
             "issue": {
                 "id": created.get("id"),
                 "identifier": created.get("identifier"),
@@ -537,18 +530,16 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         if not parent_id and request.parent_identifier:
             parts = request.parent_identifier.split("-")
             if len(parts) != 2:
-                return {
-                    "success": False,
-                    "error": f"Invalid parent identifier: {request.parent_identifier}",
-                }
+                raise ValueError(
+                    f"Invalid parent identifier: {request.parent_identifier}"
+                )
             team_key = parts[0]
             try:
                 number = float(parts[1])
-            except ValueError:
-                return {
-                    "success": False,
-                    "error": f"Invalid issue number in: {request.parent_identifier}",
-                }
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid issue number in: {request.parent_identifier}"
+                ) from e
 
             data = graphql_request(
                 QUERY_ISSUE_BY_IDENTIFIER,
@@ -560,18 +551,18 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                 parent_id = teams[0]["issue"].get("id")
 
         if not parent_id:
-            return {"success": False, "error": "Could not resolve parent issue"}
+            raise ValueError("Could not resolve parent issue")
 
         parent_data = graphql_request(
             QUERY_ISSUE_BY_ID, {"id": parent_id}, auth_credentials
         )
         parent_issue = parent_data.get("issue")
         if not parent_issue:
-            return {"success": False, "error": "Parent issue not found"}
+            raise ValueError("Parent issue not found")
 
         team_id = parent_issue.get("team", {}).get("id")
         if not team_id:
-            return {"success": False, "error": "Could not get parent's team"}
+            raise ValueError("Could not get parent's team")
 
         created_issues = []
         errors = []
@@ -606,11 +597,9 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                 errors.append({"title": sub_issue.title, "error": "Failed to create"})
 
         return {
-            "success": len(errors) == 0,
             "parent": request.parent_identifier or parent_id,
             "created_count": len(created_issues),
             "sub_issues": created_issues,
-            "errors": errors if errors else None,
         }
 
     @composio.tools.custom_tool(toolkit="linear")
@@ -641,11 +630,10 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
 
         create_result = result.get("issueRelationCreate", {})
         if not create_result.get("success"):
-            return {"success": False, "error": "Failed to create relation"}
+            raise RuntimeError("Failed to create relation")
 
         relation = create_result.get("issueRelation", {})
         return {
-            "success": True,
             "relation": {
                 "id": relation.get("id"),
                 "type": request.relation_type,
@@ -682,7 +670,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                     pass
 
         if not issue_id:
-            return {"success": False, "error": "Could not resolve issue"}
+            raise ValueError("Could not resolve issue")
 
         data = graphql_request(
             QUERY_ISSUE_HISTORY,
@@ -730,7 +718,6 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             activities.append(entry)
 
         return {
-            "success": True,
             "issue": request.issue_identifier or issue_id,
             "activity_count": len(activities),
             "activities": activities,
@@ -794,7 +781,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                 }
             )
 
-        return {"success": True, "sprint_count": len(sprints), "sprints": sprints}
+        return {"sprint_count": len(sprints), "sprints": sprints}
 
     @composio.tools.custom_tool(toolkit="linear")
     @with_doc(CUSTOM_BULK_UPDATE_ISSUES_DOC)
@@ -805,7 +792,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
     ) -> Dict[str, Any]:
         """Batch update multiple issues at once."""
         if not request.issue_ids:
-            return {"success": False, "error": "No issue IDs provided"}
+            raise ValueError("No issue IDs provided")
 
         input_data: Dict[str, Any] = {}
         if request.state_id is not None:
@@ -824,7 +811,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             input_data["labelIds"] = request.labels_to_add
 
         if not input_data:
-            return {"success": False, "error": "No updates specified"}
+            raise ValueError("No updates specified")
 
         result = graphql_request(
             MUTATION_UPDATE_ISSUES,
@@ -833,11 +820,10 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         )
         update_result = result.get("issueBatchUpdate", {})
         if not update_result.get("success"):
-            return {"success": False, "error": "Batch update failed"}
+            raise RuntimeError("Batch update failed")
 
         updated = update_result.get("issues", [])
         return {
-            "success": True,
             "updated_count": len(updated),
             "updated_issues": [
                 {"id": i.get("id"), "identifier": i.get("identifier")} for i in updated
@@ -877,7 +863,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                 }
             )
 
-        return {"success": True, "count": len(formatted), "notifications": formatted}
+        return {"count": len(formatted), "notifications": formatted}
 
     @composio.tools.custom_tool(toolkit="linear")
     @with_doc(CUSTOM_GET_WORKSPACE_CONTEXT_DOC)
@@ -929,7 +915,6 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                 sla_at_risk.append(format_issue_summary(issue))
 
         return {
-            "success": True,
             "user": {
                 "id": viewer.get("id"),
                 "name": viewer.get("name"),

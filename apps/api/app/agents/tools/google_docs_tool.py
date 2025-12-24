@@ -3,6 +3,8 @@
 These tools provide Google Docs functionality using the access_token from Composio's
 auth_credentials. Uses Google Drive API for sharing operations and composio.tools.execute
 for calling other Composio tools.
+
+Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
 from typing import Any, Dict, List
@@ -93,26 +95,19 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
                         "error": f"Failed to share: {e.response.status_code} - {e.response.text}",
                     }
                 )
-            except Exception as e:
-                logger.error(f"Error sharing with {recipient.email}: {e}")
-                errors.append(
-                    {
-                        "email": recipient.email,
-                        "role": recipient.role,
-                        "error": str(e),
-                    }
-                )
+
+        # If all shares failed, raise an exception
+        if errors and not shared:
+            raise RuntimeError(
+                f"Failed to share document with all recipients: {errors}"
+            )
 
         doc_url = f"https://docs.google.com/document/d/{request.document_id}/edit"
 
         return {
-            "success": len(errors) == 0,
             "document_id": request.document_id,
             "url": doc_url,
             "shared": shared,
-            "errors": errors if errors else None,
-            "total_shared": len(shared),
-            "total_failed": len(errors),
         }
 
     @composio.tools.custom_tool(toolkit="GOOGLEDOCS")
@@ -123,64 +118,53 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Create a Table of Contents by parsing document headings."""
-        try:
-            # Step 1: Get document content using composio.tools.execute
-            get_doc_result = composio.tools.execute(
-                slug="GOOGLEDOCS_GET_DOCUMENT_BY_ID",
-                params={"id": request.document_id},
-                auth_credentials=auth_credentials,
-            )
+        # Step 1: Get document content using composio.tools.execute
+        get_doc_result = composio.tools.execute(
+            slug="GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+            params={"id": request.document_id},
+            auth_credentials=auth_credentials,
+        )
 
-            doc_data = (
-                get_doc_result.data
-                if hasattr(get_doc_result, "data")
-                else get_doc_result
-            )
+        doc_data = (
+            get_doc_result.data if hasattr(get_doc_result, "data") else get_doc_result
+        )
 
-            if not doc_data or "body" not in doc_data:
-                return {
-                    "success": False,
-                    "error": "Failed to get document or document has no body content",
-                }
+        if not doc_data or "body" not in doc_data:
+            raise ValueError("Failed to get document or document has no body content")
 
-            # Step 2: Extract headings from document
-            headings = extract_headings_from_document(
-                doc_data, request.include_heading_levels
-            )
+        # Step 2: Extract headings from document
+        headings = extract_headings_from_document(
+            doc_data, request.include_heading_levels
+        )
 
-            # Step 3: Generate TOC text
-            toc_text = generate_toc_text(headings, request.title)
+        # Step 3: Generate TOC text
+        toc_text = generate_toc_text(headings, request.title)
 
-            # Step 4: Insert TOC at specified position using composio.tools.execute
-            insert_result = composio.tools.execute(
-                slug="GOOGLEDOCS_INSERT_TEXT_ACTION",
-                params={
-                    "document_id": request.document_id,
-                    "text": toc_text,
-                    "insertion_index": request.insertion_index,
-                },
-                auth_credentials=auth_credentials,
-            )
-
-            insert_data = (
-                insert_result.data if hasattr(insert_result, "data") else insert_result
-            )
-
-            doc_url = f"https://docs.google.com/document/d/{request.document_id}/edit"
-
-            return {
-                "success": True,
+        # Step 4: Insert TOC at specified position using composio.tools.execute
+        insert_result = composio.tools.execute(
+            slug="GOOGLEDOCS_INSERT_TEXT_ACTION",
+            params={
                 "document_id": request.document_id,
-                "url": doc_url,
-                "headings_found": len(headings),
-                "toc_content": toc_text,
-                "headings": headings,
-                "insert_response": insert_data,
-            }
+                "text": toc_text,
+                "insertion_index": request.insertion_index,
+            },
+            auth_credentials=auth_credentials,
+        )
 
-        except Exception as e:
-            logger.error(f"Error creating TOC: {e}")
-            return {"success": False, "error": str(e)}
+        insert_data = (
+            insert_result.data if hasattr(insert_result, "data") else insert_result
+        )
+
+        doc_url = f"https://docs.google.com/document/d/{request.document_id}/edit"
+
+        return {
+            "document_id": request.document_id,
+            "url": doc_url,
+            "headings_found": len(headings),
+            "toc_content": toc_text,
+            "headings": headings,
+            "insert_response": insert_data,
+        }
 
     return [
         "GOOGLEDOCS_CUSTOM_SHARE_DOC",

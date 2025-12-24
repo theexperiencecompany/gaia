@@ -58,16 +58,16 @@ Add the Infisical configuration to your backend `.env` file:
 ```bash
 # Infisical Configuration
 INFISICAL_PROJECT_ID=your-project-id-from-infisical
-INFISICAL_MACHINE_INDENTITY_CLIENT_ID=your-client-id
-INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET=your-client-secret
+INFISICAL_MACHINE_IDENTITY_CLIENT_ID=your-client-id
+INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=your-client-secret
 
 # Optional: Set environment (defaults to 'production')
 ENV=development
 ```
 
 <Warning>
-  The `INFISICAL_PROJECT_ID`, `INFISICAL_MACHINE_INDENTITY_CLIENT_ID`, and
-  `INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET` must be set in your local `.env`
+  The `INFISICAL_PROJECT_ID`, `INFISICAL_MACHINE_IDENTITY_CLIENT_ID`, and
+  `INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET` must be set in your local `.env`
   file - they cannot be stored in Infisical itself since they're needed to
   authenticate with Infisical.
 </Warning>
@@ -98,8 +98,8 @@ For local development, you can choose between:
 # backend/.env
 ENV=development
 INFISICAL_PROJECT_ID=your-dev-project-id
-INFISICAL_MACHINE_INDENTITY_CLIENT_ID=your-client-id
-INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET=your-client-secret
+INFISICAL_MACHINE_IDENTITY_CLIENT_ID=your-client-id
+INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=your-client-secret
 ```
 
 **Option B: Use Local Environment Variables**
@@ -120,8 +120,8 @@ For production, **always use Infisical**:
 # backend/.env (production)
 ENV=production
 INFISICAL_PROJECT_ID=your-prod-project-id
-INFISICAL_MACHINE_INDENTITY_CLIENT_ID=your-prod-client-id
-INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET=your-prod-client-secret
+INFISICAL_MACHINE_IDENTITY_CLIENT_ID=your-prod-client-id
+INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=your-prod-client-secret
 ```
 
 ## Troubleshooting
@@ -136,8 +136,8 @@ INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET=your-prod-client-secret
 {" "}
 
 <Accordion title="Authentication failed">
-  **Solution**: - Verify your `INFISICAL_MACHINE_INDENTITY_CLIENT_ID` and
-  `INFISICAL_MACHINE_INDENTITY_CLIENT_SECRET` - Ensure the machine identity has
+  **Solution**: - Verify your `INFISICAL_MACHINE_IDENTITY_CLIENT_ID` and
+  `INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET` - Ensure the machine identity has
   proper permissions - Check that the identity is enabled
 </Accordion>
 

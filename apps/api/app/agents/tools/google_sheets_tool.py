@@ -2,6 +2,8 @@
 
 These tools provide Google Sheets functionality using the access_token from Composio's
 auth_credentials. Uses Google Drive API for sharing and Sheets API for spreadsheet operations.
+
+Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
 from typing import Any, Dict, List
@@ -107,14 +109,16 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                     }
                 )
 
+        # If all operations failed, raise an exception
+        if shared == [] and errors:
+            raise RuntimeError(f"Failed to share spreadsheet: {errors}")
+
         url = f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
 
         return {
-            "success": len(errors) == 0,
             "spreadsheet_id": request.spreadsheet_id,
             "url": url,
             "shared": shared,
-            "errors": errors if errors else None,
             "total_shared": len(shared),
             "total_failed": len(errors),
         }
@@ -133,152 +137,125 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         access_token = get_access_token(auth_credentials)
         headers = auth_headers(access_token)
 
-        try:
-            # Get source and destination sheet IDs
-            source_sheet_id = get_sheet_id_by_name(
-                request.spreadsheet_id, request.source_sheet_name, headers
+        # Get source and destination sheet IDs
+        source_sheet_id = get_sheet_id_by_name(
+            request.spreadsheet_id, request.source_sheet_name, headers
+        )
+        dest_sheet_id = get_sheet_id_by_name(
+            request.spreadsheet_id, request.destination_sheet_name, headers
+        )
+
+        if source_sheet_id is None:
+            raise ValueError(f"Source sheet '{request.source_sheet_name}' not found")
+        if dest_sheet_id is None:
+            raise ValueError(
+                f"Destination sheet '{request.destination_sheet_name}' not found"
             )
-            dest_sheet_id = get_sheet_id_by_name(
-                request.spreadsheet_id, request.destination_sheet_name, headers
+
+        # Get column indices for row/column/value fields
+        row_indices = []
+        for row_field in request.rows:
+            idx = get_column_index_by_header(
+                request.spreadsheet_id,
+                request.source_sheet_name,
+                row_field,
+                headers,
             )
-
-            if source_sheet_id is None:
-                return {
-                    "success": False,
-                    "error": f"Source sheet '{request.source_sheet_name}' not found",
-                }
-            if dest_sheet_id is None:
-                return {
-                    "success": False,
-                    "error": f"Destination sheet '{request.destination_sheet_name}' not found",
-                }
-
-            # Get column indices for row/column/value fields
-            row_indices = []
-            for row_field in request.rows:
-                idx = get_column_index_by_header(
-                    request.spreadsheet_id,
-                    request.source_sheet_name,
-                    row_field,
-                    headers,
-                )
-                if idx is None:
-                    return {
-                        "success": False,
-                        "error": f"Column '{row_field}' not found in headers",
-                    }
-                row_indices.append(
-                    {
-                        "sourceColumnOffset": idx,
-                        "sortOrder": "ASCENDING",
-                        "showTotals": True,
-                    }
-                )
-
-            col_indices = []
-            for col_field in request.columns:
-                idx = get_column_index_by_header(
-                    request.spreadsheet_id,
-                    request.source_sheet_name,
-                    col_field,
-                    headers,
-                )
-                if idx is None:
-                    return {
-                        "success": False,
-                        "error": f"Column '{col_field}' not found",
-                    }
-                col_indices.append(
-                    {
-                        "sourceColumnOffset": idx,
-                        "sortOrder": "ASCENDING",
-                        "showTotals": True,
-                    }
-                )
-
-            value_specs = []
-            for val in request.values:
-                idx = get_column_index_by_header(
-                    request.spreadsheet_id,
-                    request.source_sheet_name,
-                    val.column,
-                    headers,
-                )
-                if idx is None:
-                    return {
-                        "success": False,
-                        "error": f"Value column '{val.column}' not found",
-                    }
-                spec: Dict[str, Any] = {
+            if idx is None:
+                raise ValueError(f"Column '{row_field}' not found in headers")
+            row_indices.append(
+                {
                     "sourceColumnOffset": idx,
-                    "summarizeFunction": val.aggregation,
+                    "sortOrder": "ASCENDING",
+                    "showTotals": True,
                 }
-                if val.name:
-                    spec["name"] = val.name
-                value_specs.append(spec)
+            )
 
-            # Build source range
-            source_range = {"sheetId": source_sheet_id}
-            if request.source_range:
-                range_spec = parse_a1_range(request.source_range)
-                source_range.update(range_spec)
+        col_indices = []
+        for col_field in request.columns:
+            idx = get_column_index_by_header(
+                request.spreadsheet_id,
+                request.source_sheet_name,
+                col_field,
+                headers,
+            )
+            if idx is None:
+                raise ValueError(f"Column '{col_field}' not found")
+            col_indices.append(
+                {
+                    "sourceColumnOffset": idx,
+                    "sortOrder": "ASCENDING",
+                    "showTotals": True,
+                }
+            )
 
-            # Parse destination cell
-            dest_range = parse_a1_range(request.destination_cell)
-
-            # Build pivot table request
-            pivot_table = {
-                "source": source_range,
-                "rows": row_indices,
-                "values": value_specs,
+        value_specs = []
+        for val in request.values:
+            idx = get_column_index_by_header(
+                request.spreadsheet_id,
+                request.source_sheet_name,
+                val.column,
+                headers,
+            )
+            if idx is None:
+                raise ValueError(f"Value column '{val.column}' not found")
+            spec: Dict[str, Any] = {
+                "sourceColumnOffset": idx,
+                "summarizeFunction": val.aggregation,
             }
-            if col_indices:
-                pivot_table["columns"] = col_indices
+            if val.name:
+                spec["name"] = val.name
+            value_specs.append(spec)
 
-            batch_request = {
-                "requests": [
-                    {
-                        "updateCells": {
-                            "rows": [{"values": [{"pivotTable": pivot_table}]}],
-                            "start": {
-                                "sheetId": dest_sheet_id,
-                                "rowIndex": dest_range["startRowIndex"],
-                                "columnIndex": dest_range["startColumnIndex"],
-                            },
-                            "fields": "pivotTable",
-                        }
+        # Build source range
+        source_range = {"sheetId": source_sheet_id}
+        if request.source_range:
+            range_spec = parse_a1_range(request.source_range)
+            source_range.update(range_spec)
+
+        # Parse destination cell
+        dest_range = parse_a1_range(request.destination_cell)
+
+        # Build pivot table request
+        pivot_table = {
+            "source": source_range,
+            "rows": row_indices,
+            "values": value_specs,
+        }
+        if col_indices:
+            pivot_table["columns"] = col_indices
+
+        batch_request = {
+            "requests": [
+                {
+                    "updateCells": {
+                        "rows": [{"values": [{"pivotTable": pivot_table}]}],
+                        "start": {
+                            "sheetId": dest_sheet_id,
+                            "rowIndex": dest_range["startRowIndex"],
+                            "columnIndex": dest_range["startColumnIndex"],
+                        },
+                        "fields": "pivotTable",
                     }
-                ]
-            }
+                }
+            ]
+        }
 
-            resp = _http_client.post(
-                f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
-                headers=headers,
-                json=batch_request,
-            )
-            resp.raise_for_status()
+        resp = _http_client.post(
+            f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
+            headers=headers,
+            json=batch_request,
+        )
+        resp.raise_for_status()
 
-            url = (
-                f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
-            )
+        url = f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
 
-            return {
-                "success": True,
-                "spreadsheet_id": request.spreadsheet_id,
-                "url": url,
-                "pivot_sheet": request.destination_sheet_name,
-                "source_range": f"{request.source_sheet_name}!{request.source_range or 'entire sheet'}",
-            }
-
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Error creating pivot table: {e}")
-            return {
-                "success": False,
-                "error": f"API error: {e.response.status_code} - {e.response.text}",
-            }
-        except Exception as e:
-            logger.error(f"Error creating pivot table: {e}")
-            return {"success": False, "error": str(e)}
+        return {
+            "spreadsheet_id": request.spreadsheet_id,
+            "url": url,
+            "pivot_sheet": request.destination_sheet_name,
+            "source_range": f"{request.source_sheet_name}!{request.source_range or 'entire sheet'}",
+        }
 
     @composio.tools.custom_tool(toolkit="GOOGLESHEETS")
     @with_doc(DATA_VALIDATION_DOC)
@@ -291,149 +268,119 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         access_token = get_access_token(auth_credentials)
         headers = auth_headers(access_token)
 
-        try:
-            sheet_id = get_sheet_id_by_name(
-                request.spreadsheet_id, request.sheet_name, headers
-            )
-            if sheet_id is None:
-                return {
-                    "success": False,
-                    "error": f"Sheet '{request.sheet_name}' not found",
-                }
+        sheet_id = get_sheet_id_by_name(
+            request.spreadsheet_id, request.sheet_name, headers
+        )
+        if sheet_id is None:
+            raise ValueError(f"Sheet '{request.sheet_name}' not found")
 
-            range_spec = parse_a1_range(request.range)
-            range_spec["sheetId"] = sheet_id
+        range_spec = parse_a1_range(request.range)
+        range_spec["sheetId"] = sheet_id
 
-            # Build condition based on validation type
-            condition: Dict[str, Any] = {}
+        # Build condition based on validation type
+        condition: Dict[str, Any] = {}
 
-            if request.validation_type == "dropdown_list":
-                if not request.values:
-                    return {
-                        "success": False,
-                        "error": "values required for dropdown_list",
-                    }
+        if request.validation_type == "dropdown_list":
+            if not request.values:
+                raise ValueError("values required for dropdown_list")
+            condition = {
+                "type": "ONE_OF_LIST",
+                "values": [{"userEnteredValue": v} for v in request.values],
+            }
+        elif request.validation_type == "dropdown_range":
+            if not request.source_range:
+                raise ValueError("source_range required for dropdown_range")
+            condition = {
+                "type": "ONE_OF_RANGE",
+                "values": [{"userEnteredValue": f"={request.source_range}"}],
+            }
+        elif request.validation_type == "number":
+            if request.min_value is not None and request.max_value is not None:
                 condition = {
-                    "type": "ONE_OF_LIST",
-                    "values": [{"userEnteredValue": v} for v in request.values],
+                    "type": "NUMBER_BETWEEN",
+                    "values": [
+                        {"userEnteredValue": str(request.min_value)},
+                        {"userEnteredValue": str(request.max_value)},
+                    ],
                 }
-            elif request.validation_type == "dropdown_range":
-                if not request.source_range:
-                    return {
-                        "success": False,
-                        "error": "source_range required for dropdown_range",
-                    }
+            elif request.min_value is not None:
                 condition = {
-                    "type": "ONE_OF_RANGE",
-                    "values": [{"userEnteredValue": f"={request.source_range}"}],
+                    "type": "NUMBER_GREATER_THAN_EQ",
+                    "values": [{"userEnteredValue": str(request.min_value)}],
                 }
-            elif request.validation_type == "number":
-                if request.min_value is not None and request.max_value is not None:
-                    condition = {
-                        "type": "NUMBER_BETWEEN",
-                        "values": [
-                            {"userEnteredValue": str(request.min_value)},
-                            {"userEnteredValue": str(request.max_value)},
-                        ],
-                    }
-                elif request.min_value is not None:
-                    condition = {
-                        "type": "NUMBER_GREATER_THAN_EQ",
-                        "values": [{"userEnteredValue": str(request.min_value)}],
-                    }
-                elif request.max_value is not None:
-                    condition = {
-                        "type": "NUMBER_LESS_THAN_EQ",
-                        "values": [{"userEnteredValue": str(request.max_value)}],
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "error": "min_value or max_value required for number validation",
-                    }
-            elif request.validation_type == "date":
-                if request.min_value is not None and request.max_value is not None:
-                    condition = {
-                        "type": "DATE_BETWEEN",
-                        "values": [
-                            {"userEnteredValue": str(request.min_value)},
-                            {"userEnteredValue": str(request.max_value)},
-                        ],
-                    }
-                elif request.min_value is not None:
-                    condition = {
-                        "type": "DATE_AFTER",
-                        "values": [{"userEnteredValue": str(request.min_value)}],
-                    }
-                elif request.max_value is not None:
-                    condition = {
-                        "type": "DATE_BEFORE",
-                        "values": [{"userEnteredValue": str(request.max_value)}],
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "error": "min_value or max_value required for date validation",
-                    }
-            elif request.validation_type == "custom_formula":
-                if not request.formula:
-                    return {
-                        "success": False,
-                        "error": "formula required for custom_formula",
-                    }
+            elif request.max_value is not None:
                 condition = {
-                    "type": "CUSTOM_FORMULA",
-                    "values": [{"userEnteredValue": request.formula}],
+                    "type": "NUMBER_LESS_THAN_EQ",
+                    "values": [{"userEnteredValue": str(request.max_value)}],
                 }
-
-            validation_rule: Dict[str, Any] = {
-                "condition": condition,
-                "strict": request.strict,
-                "showCustomUi": request.show_dropdown,
+            else:
+                raise ValueError(
+                    "min_value or max_value required for number validation"
+                )
+        elif request.validation_type == "date":
+            if request.min_value is not None and request.max_value is not None:
+                condition = {
+                    "type": "DATE_BETWEEN",
+                    "values": [
+                        {"userEnteredValue": str(request.min_value)},
+                        {"userEnteredValue": str(request.max_value)},
+                    ],
+                }
+            elif request.min_value is not None:
+                condition = {
+                    "type": "DATE_AFTER",
+                    "values": [{"userEnteredValue": str(request.min_value)}],
+                }
+            elif request.max_value is not None:
+                condition = {
+                    "type": "DATE_BEFORE",
+                    "values": [{"userEnteredValue": str(request.max_value)}],
+                }
+            else:
+                raise ValueError("min_value or max_value required for date validation")
+        elif request.validation_type == "custom_formula":
+            if not request.formula:
+                raise ValueError("formula required for custom_formula")
+            condition = {
+                "type": "CUSTOM_FORMULA",
+                "values": [{"userEnteredValue": request.formula}],
             }
 
-            if request.input_message:
-                validation_rule["inputMessage"] = request.input_message
+        validation_rule: Dict[str, Any] = {
+            "condition": condition,
+            "strict": request.strict,
+            "showCustomUi": request.show_dropdown,
+        }
 
-            batch_request = {
-                "requests": [
-                    {
-                        "setDataValidation": {
-                            "range": range_spec,
-                            "rule": validation_rule,
-                        }
+        if request.input_message:
+            validation_rule["inputMessage"] = request.input_message
+
+        batch_request = {
+            "requests": [
+                {
+                    "setDataValidation": {
+                        "range": range_spec,
+                        "rule": validation_rule,
                     }
-                ]
-            }
+                }
+            ]
+        }
 
-            resp = _http_client.post(
-                f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
-                headers=headers,
-                json=batch_request,
-            )
-            resp.raise_for_status()
+        resp = _http_client.post(
+            f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
+            headers=headers,
+            json=batch_request,
+        )
+        resp.raise_for_status()
 
-            url = (
-                f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
-            )
+        url = f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
 
-            return {
-                "success": True,
-                "spreadsheet_id": request.spreadsheet_id,
-                "url": url,
-                "range_applied": f"{request.sheet_name}!{request.range}",
-                "validation_type": request.validation_type,
-            }
-
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Error setting data validation: {e}")
-            return {
-                "success": False,
-                "error": f"API error: {e.response.status_code} - {e.response.text}",
-            }
-        except Exception as e:
-            logger.error(f"Error setting data validation: {e}")
-            return {"success": False, "error": str(e)}
+        return {
+            "spreadsheet_id": request.spreadsheet_id,
+            "url": url,
+            "range_applied": f"{request.sheet_name}!{request.range}",
+            "validation_type": request.validation_type,
+        }
 
     @composio.tools.custom_tool(toolkit="GOOGLESHEETS")
     @with_doc(CONDITIONAL_FORMAT_DOC)
@@ -446,160 +393,129 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         access_token = get_access_token(auth_credentials)
         headers = auth_headers(access_token)
 
-        try:
-            sheet_id = get_sheet_id_by_name(
-                request.spreadsheet_id, request.sheet_name, headers
-            )
-            if sheet_id is None:
-                return {
-                    "success": False,
-                    "error": f"Sheet '{request.sheet_name}' not found",
+        sheet_id = get_sheet_id_by_name(
+            request.spreadsheet_id, request.sheet_name, headers
+        )
+        if sheet_id is None:
+            raise ValueError(f"Sheet '{request.sheet_name}' not found")
+
+        range_spec = parse_a1_range(request.range)
+        range_spec["sheetId"] = sheet_id
+
+        rule: Dict[str, Any] = {"ranges": [range_spec]}
+
+        if request.format_type == "color_scale":
+            # Build gradient rule
+            color_scale: Dict[str, Any] = {}
+
+            if request.min_color:
+                color_scale["minpoint"] = {
+                    "type": "MIN",
+                    "color": hex_to_rgb(request.min_color),
+                }
+            if request.mid_color:
+                color_scale["midpoint"] = {
+                    "type": "PERCENTILE",
+                    "value": "50",
+                    "color": hex_to_rgb(request.mid_color),
+                }
+            if request.max_color:
+                color_scale["maxpoint"] = {
+                    "type": "MAX",
+                    "color": hex_to_rgb(request.max_color),
                 }
 
-            range_spec = parse_a1_range(request.range)
-            range_spec["sheetId"] = sheet_id
+            rule["gradientRule"] = {
+                "minpoint": color_scale.get("minpoint"),
+                "maxpoint": color_scale.get("maxpoint"),
+            }
+            if "midpoint" in color_scale:
+                rule["gradientRule"]["midpoint"] = color_scale["midpoint"]
 
-            rule: Dict[str, Any] = {"ranges": [range_spec]}
+        else:
+            # Boolean rule (value_based or custom_formula)
+            bool_condition: Dict[str, Any] = {}
 
-            if request.format_type == "color_scale":
-                # Build gradient rule
-                color_scale: Dict[str, Any] = {}
-
-                if request.min_color:
-                    color_scale["minpoint"] = {
-                        "type": "MIN",
-                        "color": hex_to_rgb(request.min_color),
-                    }
-                if request.mid_color:
-                    color_scale["midpoint"] = {
-                        "type": "PERCENTILE",
-                        "value": "50",
-                        "color": hex_to_rgb(request.mid_color),
-                    }
-                if request.max_color:
-                    color_scale["maxpoint"] = {
-                        "type": "MAX",
-                        "color": hex_to_rgb(request.max_color),
-                    }
-
-                rule["gradientRule"] = {
-                    "minpoint": color_scale.get("minpoint"),
-                    "maxpoint": color_scale.get("maxpoint"),
+            if request.format_type == "custom_formula":
+                if not request.formula:
+                    raise ValueError("formula required for custom_formula")
+                bool_condition = {
+                    "type": "CUSTOM_FORMULA",
+                    "values": [{"userEnteredValue": request.formula}],
                 }
-                if "midpoint" in color_scale:
-                    rule["gradientRule"]["midpoint"] = color_scale["midpoint"]
-
-            else:
-                # Boolean rule (value_based or custom_formula)
-                bool_condition: Dict[str, Any] = {}
-
-                if request.format_type == "custom_formula":
-                    if not request.formula:
-                        return {
-                            "success": False,
-                            "error": "formula required for custom_formula",
-                        }
-                    bool_condition = {
-                        "type": "CUSTOM_FORMULA",
-                        "values": [{"userEnteredValue": request.formula}],
-                    }
-                else:  # value_based
-                    condition_map = {
-                        "greater_than": "NUMBER_GREATER",
-                        "less_than": "NUMBER_LESS",
-                        "equal_to": "NUMBER_EQ",
-                        "not_equal_to": "NUMBER_NOT_EQ",
-                        "contains": "TEXT_CONTAINS",
-                        "not_contains": "TEXT_NOT_CONTAINS",
-                        "between": "NUMBER_BETWEEN",
-                        "is_empty": "BLANK",
-                        "is_not_empty": "NOT_BLANK",
-                    }
-
-                    if not request.condition:
-                        return {
-                            "success": False,
-                            "error": "condition required for value_based",
-                        }
-
-                    api_condition = condition_map.get(request.condition)
-                    if not api_condition:
-                        return {
-                            "success": False,
-                            "error": f"Unknown condition: {request.condition}",
-                        }
-
-                    bool_condition = {"type": api_condition}
-
-                    if request.condition not in ["is_empty", "is_not_empty"]:
-                        if not request.condition_values:
-                            return {
-                                "success": False,
-                                "error": "condition_values required",
-                            }
-                        bool_condition["values"] = [
-                            {"userEnteredValue": v} for v in request.condition_values
-                        ]
-
-                # Build format
-                format_spec: Dict[str, Any] = {}
-                if request.background_color:
-                    format_spec["backgroundColor"] = hex_to_rgb(
-                        request.background_color
-                    )
-                if request.text_color:
-                    format_spec["textFormat"] = {
-                        "foregroundColor": hex_to_rgb(request.text_color)
-                    }
-                if request.bold is not None:
-                    format_spec.setdefault("textFormat", {})["bold"] = request.bold
-                if request.italic is not None:
-                    format_spec.setdefault("textFormat", {})["italic"] = request.italic
-
-                rule["booleanRule"] = {
-                    "condition": bool_condition,
-                    "format": format_spec,
+            else:  # value_based
+                condition_map = {
+                    "greater_than": "NUMBER_GREATER",
+                    "less_than": "NUMBER_LESS",
+                    "equal_to": "NUMBER_EQ",
+                    "not_equal_to": "NUMBER_NOT_EQ",
+                    "contains": "TEXT_CONTAINS",
+                    "not_contains": "TEXT_NOT_CONTAINS",
+                    "between": "NUMBER_BETWEEN",
+                    "is_empty": "BLANK",
+                    "is_not_empty": "NOT_BLANK",
                 }
 
-            batch_request = {
-                "requests": [
-                    {
-                        "addConditionalFormatRule": {
-                            "rule": rule,
-                            "index": 0,
-                        }
+                if not request.condition:
+                    raise ValueError("condition required for value_based")
+
+                api_condition = condition_map.get(request.condition)
+                if not api_condition:
+                    raise ValueError(f"Unknown condition: {request.condition}")
+
+                bool_condition = {"type": api_condition}
+
+                if request.condition not in ["is_empty", "is_not_empty"]:
+                    if not request.condition_values:
+                        raise ValueError("condition_values required")
+                    bool_condition["values"] = [
+                        {"userEnteredValue": v} for v in request.condition_values
+                    ]
+
+            # Build format
+            format_spec: Dict[str, Any] = {}
+            if request.background_color:
+                format_spec["backgroundColor"] = hex_to_rgb(request.background_color)
+            if request.text_color:
+                format_spec["textFormat"] = {
+                    "foregroundColor": hex_to_rgb(request.text_color)
+                }
+            if request.bold is not None:
+                format_spec.setdefault("textFormat", {})["bold"] = request.bold
+            if request.italic is not None:
+                format_spec.setdefault("textFormat", {})["italic"] = request.italic
+
+            rule["booleanRule"] = {
+                "condition": bool_condition,
+                "format": format_spec,
+            }
+
+        batch_request = {
+            "requests": [
+                {
+                    "addConditionalFormatRule": {
+                        "rule": rule,
+                        "index": 0,
                     }
-                ]
-            }
+                }
+            ]
+        }
 
-            resp = _http_client.post(
-                f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
-                headers=headers,
-                json=batch_request,
-            )
-            resp.raise_for_status()
+        resp = _http_client.post(
+            f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
+            headers=headers,
+            json=batch_request,
+        )
+        resp.raise_for_status()
 
-            url = (
-                f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
-            )
+        url = f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
 
-            return {
-                "success": True,
-                "spreadsheet_id": request.spreadsheet_id,
-                "url": url,
-                "range_applied": f"{request.sheet_name}!{request.range}",
-                "format_type": request.format_type,
-            }
-
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Error adding conditional format: {e}")
-            return {
-                "success": False,
-                "error": f"API error: {e.response.status_code} - {e.response.text}",
-            }
-        except Exception as e:
-            logger.error(f"Error adding conditional format: {e}")
-            return {"success": False, "error": str(e)}
+        return {
+            "spreadsheet_id": request.spreadsheet_id,
+            "url": url,
+            "range_applied": f"{request.sheet_name}!{request.range}",
+            "format_type": request.format_type,
+        }
 
     @composio.tools.custom_tool(toolkit="GOOGLESHEETS")
     @with_doc(CREATE_CHART_DOC)
@@ -612,162 +528,142 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         access_token = get_access_token(auth_credentials)
         headers = auth_headers(access_token)
 
-        try:
-            source_sheet_id = get_sheet_id_by_name(
-                request.spreadsheet_id, request.sheet_name, headers
-            )
-            if source_sheet_id is None:
-                return {
-                    "success": False,
-                    "error": f"Sheet '{request.sheet_name}' not found",
-                }
+        source_sheet_id = get_sheet_id_by_name(
+            request.spreadsheet_id, request.sheet_name, headers
+        )
+        if source_sheet_id is None:
+            raise ValueError(f"Sheet '{request.sheet_name}' not found")
 
-            dest_sheet_name = request.destination_sheet_name or request.sheet_name
-            dest_sheet_id = get_sheet_id_by_name(
-                request.spreadsheet_id, dest_sheet_name, headers
-            )
-            if dest_sheet_id is None:
-                return {
-                    "success": False,
-                    "error": f"Destination sheet '{dest_sheet_name}' not found",
-                }
+        dest_sheet_name = request.destination_sheet_name or request.sheet_name
+        dest_sheet_id = get_sheet_id_by_name(
+            request.spreadsheet_id, dest_sheet_name, headers
+        )
+        if dest_sheet_id is None:
+            raise ValueError(f"Destination sheet '{dest_sheet_name}' not found")
 
-            # Parse data range
-            data_range = parse_a1_range(request.data_range)
-            data_range["sheetId"] = source_sheet_id
+        # Parse data range
+        data_range = parse_a1_range(request.data_range)
+        data_range["sheetId"] = source_sheet_id
 
-            # Parse anchor cell
-            anchor = parse_a1_range(request.anchor_cell)
+        # Parse anchor cell
+        anchor = parse_a1_range(request.anchor_cell)
 
-            # Map chart types
-            chart_type_map = {
-                "BAR": "BAR",
-                "COLUMN": "COLUMN",
-                "LINE": "LINE",
-                "AREA": "AREA",
-                "SCATTER": "SCATTER",
-                "COMBO": "COMBO",
-                "PIE": "PIE",
-            }
+        # Map chart types
+        chart_type_map = {
+            "BAR": "BAR",
+            "COLUMN": "COLUMN",
+            "LINE": "LINE",
+            "AREA": "AREA",
+            "SCATTER": "SCATTER",
+            "COMBO": "COMBO",
+            "PIE": "PIE",
+        }
 
-            api_chart_type = chart_type_map.get(request.chart_type, "BAR")
+        api_chart_type = chart_type_map.get(request.chart_type, "BAR")
 
-            # Build chart spec
-            if request.chart_type == "PIE":
-                # Pie charts use different structure
-                chart_spec: Dict[str, Any] = {
-                    "pieChart": {
-                        "legendPosition": request.legend_position,
-                        "domain": {
-                            "sourceRange": {"sources": [data_range]},
-                        },
-                        "series": {
-                            "sourceRange": {"sources": [data_range]},
-                        },
-                    }
-                }
-            else:
-                # Basic chart structure for bar, line, column, etc.
-                chart_spec = {
-                    "basicChart": {
-                        "chartType": api_chart_type,
-                        "legendPosition": request.legend_position,
-                        "domains": [
-                            {
-                                "domain": {
-                                    "sourceRange": {"sources": [data_range]},
-                                }
-                            }
-                        ],
-                        "series": [
-                            {
-                                "series": {
-                                    "sourceRange": {"sources": [data_range]},
-                                },
-                                "targetAxis": "LEFT_AXIS",
-                            }
-                        ],
-                        "headerCount": 1,
-                    }
-                }
-
-                # Add axis titles
-                if request.x_axis_title or request.y_axis_title:
-                    chart_spec["basicChart"]["axis"] = []
-                    if request.x_axis_title:
-                        chart_spec["basicChart"]["axis"].append(
-                            {
-                                "position": "BOTTOM_AXIS",
-                                "title": request.x_axis_title,
-                            }
-                        )
-                    if request.y_axis_title:
-                        chart_spec["basicChart"]["axis"].append(
-                            {
-                                "position": "LEFT_AXIS",
-                                "title": request.y_axis_title,
-                            }
-                        )
-
-            # Add title
-            if request.title:
-                chart_spec["title"] = request.title
-
-            # Build full chart request
-            chart_request = {
-                "chart": {
-                    "spec": chart_spec,
-                    "position": {
-                        "overlayPosition": {
-                            "anchorCell": {
-                                "sheetId": dest_sheet_id,
-                                "rowIndex": anchor["startRowIndex"],
-                                "columnIndex": anchor["startColumnIndex"],
-                            },
-                            "widthPixels": request.width,
-                            "heightPixels": request.height,
-                        }
+        # Build chart spec
+        if request.chart_type == "PIE":
+            # Pie charts use different structure
+            chart_spec: Dict[str, Any] = {
+                "pieChart": {
+                    "legendPosition": request.legend_position,
+                    "domain": {
+                        "sourceRange": {"sources": [data_range]},
+                    },
+                    "series": {
+                        "sourceRange": {"sources": [data_range]},
                     },
                 }
             }
-
-            batch_request = {"requests": [{"addChart": chart_request}]}
-
-            resp = _http_client.post(
-                f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
-                headers=headers,
-                json=batch_request,
-            )
-            resp.raise_for_status()
-
-            result = resp.json()
-            chart_id = None
-            for reply in result.get("replies", []):
-                if "addChart" in reply:
-                    chart_id = reply["addChart"]["chart"]["chartId"]
-                    break
-
-            url = (
-                f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
-            )
-
-            return {
-                "success": True,
-                "spreadsheet_id": request.spreadsheet_id,
-                "url": url,
-                "chart_id": chart_id,
-                "chart_type": request.chart_type,
+        else:
+            # Basic chart structure for bar, line, column, etc.
+            chart_spec = {
+                "basicChart": {
+                    "chartType": api_chart_type,
+                    "legendPosition": request.legend_position,
+                    "domains": [
+                        {
+                            "domain": {
+                                "sourceRange": {"sources": [data_range]},
+                            }
+                        }
+                    ],
+                    "series": [
+                        {
+                            "series": {
+                                "sourceRange": {"sources": [data_range]},
+                            },
+                            "targetAxis": "LEFT_AXIS",
+                        }
+                    ],
+                    "headerCount": 1,
+                }
             }
 
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Error creating chart: {e}")
-            return {
-                "success": False,
-                "error": f"API error: {e.response.status_code} - {e.response.text}",
+            # Add axis titles
+            if request.x_axis_title or request.y_axis_title:
+                chart_spec["basicChart"]["axis"] = []
+                if request.x_axis_title:
+                    chart_spec["basicChart"]["axis"].append(
+                        {
+                            "position": "BOTTOM_AXIS",
+                            "title": request.x_axis_title,
+                        }
+                    )
+                if request.y_axis_title:
+                    chart_spec["basicChart"]["axis"].append(
+                        {
+                            "position": "LEFT_AXIS",
+                            "title": request.y_axis_title,
+                        }
+                    )
+
+        # Add title
+        if request.title:
+            chart_spec["title"] = request.title
+
+        # Build full chart request
+        chart_request = {
+            "chart": {
+                "spec": chart_spec,
+                "position": {
+                    "overlayPosition": {
+                        "anchorCell": {
+                            "sheetId": dest_sheet_id,
+                            "rowIndex": anchor["startRowIndex"],
+                            "columnIndex": anchor["startColumnIndex"],
+                        },
+                        "widthPixels": request.width,
+                        "heightPixels": request.height,
+                    }
+                },
             }
-        except Exception as e:
-            logger.error(f"Error creating chart: {e}")
-            return {"success": False, "error": str(e)}
+        }
+
+        batch_request = {"requests": [{"addChart": chart_request}]}
+
+        resp = _http_client.post(
+            f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
+            headers=headers,
+            json=batch_request,
+        )
+        resp.raise_for_status()
+
+        result = resp.json()
+        chart_id = None
+        for reply in result.get("replies", []):
+            if "addChart" in reply:
+                chart_id = reply["addChart"]["chart"]["chartId"]
+                break
+
+        url = f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
+
+        return {
+            "spreadsheet_id": request.spreadsheet_id,
+            "url": url,
+            "chart_id": chart_id,
+            "chart_type": request.chart_type,
+        }
 
     return [
         "GOOGLESHEETS_CUSTOM_SHARE_SPREADSHEET",
