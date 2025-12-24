@@ -2,7 +2,12 @@
 
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { format, parseISO } from "date-fns";
-import { BadgeCheck, Calendar, Link as LinkIcon, MapPin } from "lucide-react";
+import {
+  Calendar01Icon,
+  CheckmarkBadge02Icon,
+  LinkIcon,
+  MapsIcon,
+} from "@/icons";
 import type { TwitterUserData } from "@/types/features/twitterTypes";
 
 /**
@@ -63,7 +68,7 @@ function TwitterUserCard({
                 {user.name}
               </span>
               {user.verified && (
-                <BadgeCheck className="h-4 w-4 text-[#1d9bf0] shrink-0" />
+                <CheckmarkBadge02Icon className="h-4 w-4 text-[#1d9bf0] shrink-0" />
               )}
             </div>
             <span className="text-xs text-default-500">@{user.username}</span>
@@ -95,7 +100,7 @@ function TwitterUserCard({
       <div className="flex flex-wrap items-center gap-3 text-xs text-default-500">
         {user.location && (
           <div className="flex items-center gap-1">
-            <MapPin className="h-3.5 w-3.5" />
+            <MapsIcon className="h-3.5 w-3.5" />
             <span>{user.location}</span>
           </div>
         )}
@@ -109,7 +114,7 @@ function TwitterUserCard({
         )}
         {user.created_at && (
           <div className="flex items-center gap-1">
-            <Calendar className="h-3.5 w-3.5" />
+            <Calendar01Icon className="h-3.5 w-3.5" />
             <span>Joined {formatJoinDate(user.created_at)}</span>
           </div>
         )}

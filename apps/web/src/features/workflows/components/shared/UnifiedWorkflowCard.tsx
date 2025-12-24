@@ -246,7 +246,11 @@ export default function UnifiedWorkflowCard({
 
   // Render tool icons
   const renderToolIcons = () => {
-    const categories = [...new Set(steps.map((step) => step.tool_category))];
+    const categories = [
+      ...new Set(
+        steps.map((step) => step.tool_category).filter((cat) => cat != null),
+      ),
+    ];
     const displayIcons = categories.slice(0, 3);
 
     return (

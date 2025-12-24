@@ -3,13 +3,13 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { format, parseISO } from "date-fns";
 import {
-  BadgeCheck,
-  ExternalLink,
-  Heart,
-  MessageCircle,
-  Repeat2,
-  Share,
-} from "lucide-react";
+  CheckmarkBadge02Icon,
+  FavouriteIcon,
+  Link01Icon,
+  MessageIcon,
+  RepeatIcon,
+  ShareIcon,
+} from "@/icons";
 import type { TwitterTweetData } from "@/types/features/twitterTypes";
 
 /**
@@ -67,7 +67,7 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
               {author.name}
             </span>
             {author.verified && (
-              <BadgeCheck className="h-4 w-4 text-[#1d9bf0] shrink-0" />
+              <CheckmarkBadge02Icon className="h-4 w-4 text-[#1d9bf0] shrink-0" />
             )}
           </div>
           <div className="flex items-center gap-1 text-xs text-default-500">
@@ -81,31 +81,29 @@ function TwitterCard({ tweet }: { tweet: TwitterTweetData }) {
           </div>
         </div>
 
-        {/* X Logo in corner */}
-        <ExternalLink className="h-4 w-4 text-default-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        <Link01Icon className="h-4 w-4 text-default-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
       </div>
 
-      {/* Tweet Text */}
       <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
         {tweet.text}
       </p>
 
-      {/* Engagement Metrics */}
       <div className="flex items-center gap-6 pt-2 text-default-500">
-        <div className="flex items-center gap-1.5 text-xs hover:text-[#1d9bf0] transition-colors">
-          <MessageCircle className="h-4 w-4" />
-          <span>{formatNumber(metrics.reply_count)}</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-xs hover:text-green-500 transition-colors">
-          <Repeat2 className="h-4 w-4" />
-          <span>{formatNumber(metrics.retweet_count)}</span>
-        </div>
         <div className="flex items-center gap-1.5 text-xs hover:text-pink-500 transition-colors">
-          <Heart className="h-4 w-4" />
+          <FavouriteIcon className="h-4 w-4" />
           <span>{formatNumber(metrics.like_count)}</span>
         </div>
         <div className="flex items-center gap-1.5 text-xs hover:text-[#1d9bf0] transition-colors">
-          <Share className="h-4 w-4" />
+          <MessageIcon className="h-4 w-4" />
+          <span>{formatNumber(metrics.reply_count)}</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-xs hover:text-green-500 transition-colors">
+          <RepeatIcon className="h-4 w-4" />
+          <span>{formatNumber(metrics.retweet_count)}</span>
+        </div>
+
+        <div className="flex items-center gap-1.5 text-xs hover:text-[#1d9bf0] transition-colors">
+          <ShareIcon className="h-4 w-4" />
         </div>
       </div>
     </div>
