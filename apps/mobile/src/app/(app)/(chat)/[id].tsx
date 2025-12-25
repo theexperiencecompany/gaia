@@ -1,10 +1,12 @@
 import { useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Text,
   TouchableWithoutFeedback,
   View,
 } from "react-native";
@@ -32,14 +34,22 @@ export default function ChatPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { activeChatId, setActiveChatId, createNewChat } = useChatContext();
 
+  // Set active chat ID when navigating to this page
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (id && id !== activeChatId) {
+    if (id) {
       setActiveChatId(id);
     }
-  }, [id, activeChatId, setActiveChatId]);
+  }, [id]); // Only depend on id, not activeChatId
 
-  const { messages, isTyping, flatListRef, sendMessage, scrollToBottom } =
-    useChat(activeChatId);
+  const {
+    messages,
+    isTyping,
+    isLoading,
+    flatListRef,
+    sendMessage,
+    scrollToBottom,
+  } = useChat(activeChatId);
 
   const { drawerRef, closeSidebar, toggleSidebar } = useSidebar();
 
@@ -65,12 +75,25 @@ export default function ChatPage() {
     <ChatMessage message={item} />
   );
 
-  const renderEmpty = () => (
-    <ChatEmptyState
-      suggestions={DEFAULT_SUGGESTIONS}
-      onSuggestionPress={sendMessage}
-    />
-  );
+  const renderEmpty = () => {
+    if (isLoading) {
+      return (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#16c1ff" />
+          <Text className="text-muted-foreground mt-4 text-sm">
+            Loading messages...
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <ChatEmptyState
+        suggestions={DEFAULT_SUGGESTIONS}
+        onSuggestionPress={sendMessage}
+      />
+    );
+  };
 
   return (
     <GestureHandlerRootView className="flex-1">
@@ -106,10 +129,22 @@ export default function ChatPage() {
                   data={messages}
                   renderItem={renderMessage}
                   keyExtractor={(item) => item.id}
-                  contentContainerStyle={{ flexGrow: 1, paddingBottom: 32 }}
+                  contentContainerStyle={{
+                    flexGrow: 1,
+                    paddingTop: 16,
+                    paddingBottom: 32,
+                  }}
                   ListEmptyComponent={renderEmpty}
-                  showsVerticalScrollIndicator={false}
+                  showsVerticalScrollIndicator={true}
                   keyboardShouldPersistTaps="handled"
+                  initialNumToRender={20}
+                  maxToRenderPerBatch={10}
+                  windowSize={10}
+                  onContentSizeChange={() => {
+                    if (messages.length > 0) {
+                      flatListRef.current?.scrollToEnd({ animated: false });
+                    }
+                  }}
                 />
               </View>
             </TouchableWithoutFeedback>

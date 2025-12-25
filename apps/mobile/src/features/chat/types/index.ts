@@ -1,9 +1,7 @@
-export interface Message {
-  id: string;
-  text: string;
-  isUser: boolean;
-  timestamp: Date;
-}
+// Re-export Message from chat-api for backwards compatibility
+export type { Message } from "@/features/chat/api/chat-api";
+
+import type { Message } from "@/features/chat/api/chat-api";
 
 export interface ChatSession {
   id: string;
@@ -32,3 +30,4 @@ export interface AIModel {
   isPro?: boolean;
   isDefault?: boolean;
 }
+
