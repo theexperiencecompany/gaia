@@ -28,7 +28,7 @@ class WorkflowStep(BaseModel):
     title: str = Field(description="Clear, actionable title for the step")
     category: str = Field(
         default="general",
-        description="Category for routing (e.g., gmail, notion, productivity)",
+        description="Category for routing (e.g., gmail, notion, todos, reminders)",
     )
     description: str = Field(
         description="Detailed description of what this step accomplishes"

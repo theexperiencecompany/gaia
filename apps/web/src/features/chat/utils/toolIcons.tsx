@@ -1,7 +1,8 @@
 import Image from "next/image";
 import {
+  AlarmClockIcon,
   Brain02Icon,
-  CheckmarkCircle02Icon,
+  CheckListIcon,
   ConnectIcon,
   FileEmpty02Icon,
   Image02Icon,
@@ -56,10 +57,15 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zin`c-200",
     isImage: true,
   },
-  productivity: {
-    icon: CheckmarkCircle02Icon,
+  todos: {
+    icon: CheckListIcon,
     bgColor: "bg-emerald-500/20 backdrop-blur",
     iconColor: "text-emerald-400",
+  },
+  reminders: {
+    icon: AlarmClockIcon,
+    bgColor: "bg-blue-500/20 backdrop-blur",
+    iconColor: "text-blue-400",
   },
   documents: {
     icon: FileEmpty02Icon,

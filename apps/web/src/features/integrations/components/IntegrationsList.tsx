@@ -50,29 +50,39 @@ const IntegrationRow: React.FC<{
       </div>
 
       <div className="shrink-0">
-        {isConnected && (
-          <Chip size="sm" variant="flat" color="success">
-            Connected
-          </Chip>
-        )}
+        {/* MCP integrations don't show any status - they're always available without connection */}
+        {integration.managedBy !== "mcp" && (
+          <>
+            {isConnected && (
+              <Chip size="sm" variant="flat" color="success">
+                Connected
+              </Chip>
+            )}
 
-        {isAvailable && !isConnected && (
-          <Button
-            variant="flat"
-            color="primary"
-            className="text-sm text-primary"
-            onPress={() => {
-              onConnect(integration.id);
-            }}
-          >
-            Connect
-          </Button>
-        )}
+            {isAvailable && !isConnected && (
+              <Button
+                variant="flat"
+                color="primary"
+                className="text-sm text-primary"
+                onPress={() => {
+                  onConnect(integration.id);
+                }}
+              >
+                Connect
+              </Button>
+            )}
 
-        {!isAvailable && (
-          <Chip size="sm" variant="flat" color="default" className="text-xs">
-            Soon
-          </Chip>
+            {!isAvailable && (
+              <Chip
+                size="sm"
+                variant="flat"
+                color="default"
+                className="text-xs"
+              >
+                Soon
+              </Chip>
+            )}
+          </>
         )}
       </div>
     </div>

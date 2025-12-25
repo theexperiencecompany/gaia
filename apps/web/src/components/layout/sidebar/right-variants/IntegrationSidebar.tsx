@@ -11,6 +11,7 @@ import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithInte
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { Integration } from "@/features/integrations/types";
+import { InformationCircleIcon } from "@/icons";
 
 interface IntegrationSidebarProps {
   integration: Integration;
@@ -26,7 +27,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   category,
 }) => {
   const isConnected = integration.status === "connected";
-  const isAvailable = !!integration.loginEndpoint;
+  // Use backend's 'available' field - MCP integrations have available=true but loginEndpoint=null
+  const isAvailable = integration.available ?? !!integration.loginEndpoint;
+  const isMCP = integration.managedBy === "mcp";
   const { tools } = useToolsWithIntegrations();
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -87,15 +90,20 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               {integration.name}
             </h1>
 
-            {isConnected && (
-              <Chip size="sm" variant="flat" color="success">
-                Connected
-              </Chip>
-            )}
-            {!isAvailable && (
-              <Chip size="sm" variant="flat" color="default">
-                Coming Soon
-              </Chip>
+            {/* MCP integrations don't show status chips */}
+            {!isMCP && (
+              <>
+                {isConnected && (
+                  <Chip size="sm" variant="flat" color="success">
+                    Connected
+                  </Chip>
+                )}
+                {!isAvailable && (
+                  <Chip size="sm" variant="flat" color="default">
+                    Coming Soon
+                  </Chip>
+                )}
+              </>
             )}
           </div>
 
@@ -104,28 +112,45 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           </p>
         </div>
 
-        {!isConnected ? (
-          <RaisedButton
-            color="#00bbff"
-            className="font-medium text-black!"
-            onClick={handleConnect}
-            disabled={!isAvailable}
+        {/* MCP integrations don't need connect/disconnect buttons */}
+        {!isMCP && (
+          <>
+            {!isConnected ? (
+              <RaisedButton
+                color="#00bbff"
+                className="font-medium text-black!"
+                onClick={handleConnect}
+                disabled={!isAvailable}
+              >
+                {isAvailable ? "Connect" : "Coming Soon"}
+              </RaisedButton>
+            ) : (
+              onDisconnect && (
+                <Button
+                  color="danger"
+                  variant="light"
+                  fullWidth
+                  onPress={handleDisconnect}
+                  isLoading={isDisconnecting}
+                  isDisabled={isDisconnecting}
+                >
+                  Disconnect
+                </Button>
+              )
+            )}
+          </>
+        )}
+
+        {/* MCP integrations show info message */}
+        {isMCP && (
+          <Chip
+            variant="flat"
+            color="success"
+            startContent={<InformationCircleIcon size={16} />}
+            className="w-full py-4 px-3"
           >
-            {isAvailable ? "Connect" : "Coming Soon"}
-          </RaisedButton>
-        ) : (
-          onDisconnect && (
-            <Button
-              color="danger"
-              variant="light"
-              fullWidth
-              onPress={handleDisconnect}
-              isLoading={isDisconnecting}
-              isDisabled={isDisconnecting}
-            >
-              Disconnect
-            </Button>
-          )
+            <span className="text-sm">Always connected — no setup needed!</span>
+          </Chip>
         )}
         {integrationTools.length > 0 && (
           <>

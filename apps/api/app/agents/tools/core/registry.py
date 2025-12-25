@@ -139,9 +139,8 @@ class ToolRegistry:
         )
 
         self._add_category("notifications", tools=[*notification_tool.tools])
-        self._add_category(
-            "productivity", tools=[*todo_tool.tools, *reminder_tool.tools]
-        )
+        self._add_category("todos", tools=[*todo_tool.tools])
+        self._add_category("reminders", tools=[*reminder_tool.tools])
         self._add_category("goal_tracking", tools=goal_tool.tools)
         self._add_category("support", tools=[support_tool.create_support_ticket])
         self._add_category("memory", tools=memory_tools.tools)
