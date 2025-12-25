@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { ScrollView, Text, View, Pressable } from "react-native";
+import {
+  ActivityIndicator,
+  ScrollView,
+  Text,
+  View,
+  Pressable,
+} from "react-native";
+import { useRouter } from "expo-router";
 import { PressableFeedback } from "heroui-native";
 import {
   BubbleChatIcon,
@@ -7,47 +14,18 @@ import {
   HugeiconsIcon,
 } from "@/components/icons";
 import { useChatContext } from "../../hooks/use-chat-context";
-
-interface ChatHistoryItem {
-  id: string;
-  title: string;
-  timestamp: Date;
-  isStarred?: boolean;
-}
+import {
+  useConversations,
+  groupConversationsByDate,
+  type Conversation,
+} from "../../hooks/use-conversations";
 
 interface ChatHistoryProps {
   onSelectChat: (chatId: string) => void;
 }
 
-// Mock data - replace with actual chat history
-const starredChats: ChatHistoryItem[] = [
-  {
-    id: "s1",
-    title: "this is random chat",
-    timestamp: new Date(),
-    isStarred: true,
-  },
-];
-
-const todayChats: ChatHistoryItem[] = [
-  { id: "t1", title: "Greeting message", timestamp: new Date() },
-];
-
-const yesterdayChats: ChatHistoryItem[] = [
-  { id: "y1", title: "Greeting message", timestamp: new Date() },
-];
-
-const allTimeChats: ChatHistoryItem[] = [
-  { id: "a1", title: "Casual greeting", timestamp: new Date() },
-  { id: "a2", title: "hello message text", timestamp: new Date() },
-  { id: "a3", title: "hello message example", timestamp: new Date() },
-  { id: "a4", title: "General greeting", timestamp: new Date() },
-  { id: "a5", title: "General greeting message re", timestamp: new Date() },
-  { id: "a6", title: "this is random chat", timestamp: new Date() },
-];
-
 interface ChatItemProps {
-  item: ChatHistoryItem;
+  item: Conversation;
   isActive: boolean;
   onPress: () => void;
 }
@@ -82,7 +60,7 @@ function ChatItem({ item, isActive, onPress }: ChatItemProps) {
           />
         )}
         <HugeiconsIcon
-          icon={item.isStarred ? FavouriteIcon : BubbleChatIcon}
+          icon={item.is_starred ? FavouriteIcon : BubbleChatIcon}
           size={16}
           color={isActive ? "#ffffff" : "#666666"}
         />
@@ -103,7 +81,7 @@ function ChatItem({ item, isActive, onPress }: ChatItemProps) {
 
 interface SectionProps {
   title: string;
-  items: ChatHistoryItem[];
+  items: Conversation[];
   activeChatId: string | null;
   onSelectChat: (chatId: string) => void;
   isExpanded: boolean;
@@ -163,13 +141,17 @@ function Section({
 
 export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
   const { activeChatId } = useChatContext();
+  const { conversations, isLoading, error } = useConversations();
+  const router = useRouter();
+
   const [expandedSections, setExpandedSections] = useState<
     Record<string, boolean>
   >({
     starred: true,
     today: true,
     yesterday: true,
-    allTime: true,
+    lastWeek: true,
+    older: true,
   });
 
   const toggleSection = (section: string) => {
@@ -179,39 +161,109 @@ export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
     }));
   };
 
+  const handleSelectChat = (chatId: string) => {
+    onSelectChat(chatId);
+    router.push(`/(app)/(chat)/${chatId}`);
+  };
+
+  const groupedChats = groupConversationsByDate(conversations);
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="small" color="#16c1ff" />
+        <Text style={{ color: "#888888", marginTop: 12, fontSize: 12 }}>
+          Loading conversations...
+        </Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 24,
+        }}
+      >
+        <Text style={{ color: "#ff6b6b", fontSize: 12, textAlign: "center" }}>
+          {error}
+        </Text>
+      </View>
+    );
+  }
+
+  if (conversations.length === 0) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 24,
+        }}
+      >
+        <Text style={{ color: "#888888", fontSize: 14, textAlign: "center" }}>
+          No conversations yet
+        </Text>
+        <Text
+          style={{
+            color: "#666666",
+            fontSize: 12,
+            textAlign: "center",
+            marginTop: 8,
+          }}
+        >
+          Start a new chat to begin
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={{ flex: 1 }}>
       <Section
-        title="Starred Chats"
-        items={starredChats}
+        title="Starred"
+        items={groupedChats.starred}
         activeChatId={activeChatId}
-        onSelectChat={onSelectChat}
+        onSelectChat={handleSelectChat}
         isExpanded={expandedSections.starred}
         onToggle={() => toggleSection("starred")}
       />
       <Section
         title="Today"
-        items={todayChats}
+        items={groupedChats.today}
         activeChatId={activeChatId}
-        onSelectChat={onSelectChat}
+        onSelectChat={handleSelectChat}
         isExpanded={expandedSections.today}
         onToggle={() => toggleSection("today")}
       />
       <Section
         title="Yesterday"
-        items={yesterdayChats}
+        items={groupedChats.yesterday}
         activeChatId={activeChatId}
-        onSelectChat={onSelectChat}
+        onSelectChat={handleSelectChat}
         isExpanded={expandedSections.yesterday}
         onToggle={() => toggleSection("yesterday")}
       />
       <Section
-        title="All Time"
-        items={allTimeChats}
+        title="Last 7 Days"
+        items={groupedChats.lastWeek}
         activeChatId={activeChatId}
-        onSelectChat={onSelectChat}
-        isExpanded={expandedSections.allTime}
-        onToggle={() => toggleSection("allTime")}
+        onSelectChat={handleSelectChat}
+        isExpanded={expandedSections.lastWeek}
+        onToggle={() => toggleSection("lastWeek")}
+      />
+      <Section
+        title="Older"
+        items={groupedChats.older}
+        activeChatId={activeChatId}
+        onSelectChat={handleSelectChat}
+        isExpanded={expandedSections.older}
+        onToggle={() => toggleSection("older")}
       />
     </ScrollView>
   );

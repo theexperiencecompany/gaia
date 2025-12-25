@@ -16,12 +16,10 @@ export default function AppLayout() {
     );
   }
 
-  // If not authenticated, redirect to the login screen
   if (!isAuthenticated) {
     return <Redirect href="/login" />;
   }
 
-  // If authenticated, render the children routes
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <HeroUINativeProvider>
