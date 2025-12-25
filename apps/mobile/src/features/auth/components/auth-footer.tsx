@@ -1,6 +1,5 @@
-import { View } from "react-native";
-import { Button } from "@/components/ui/button";
-import { Text } from "@/components/ui/text";
+import { Text, View } from "react-native";
+import { PressableFeedback } from "heroui-native";
 
 interface AuthFooterProps {
   showSignUpDisclaimer?: boolean;
@@ -25,27 +24,17 @@ export function AuthFooter({ showSignUpDisclaimer = false }: AuthFooterProps) {
         </Text>
       )}
       <View className="flex-row flex-wrap justify-center">
-        <Button
-          variant="link"
-          size="sm"
-          onPress={handleTermsPress}
-          className="p-0 h-auto"
-        >
+        <PressableFeedback onPress={handleTermsPress}>
           <Text className="text-sm text-zinc-400 underline">
             Terms of Service
           </Text>
-        </Button>
+        </PressableFeedback>
         <Text className="text-sm text-zinc-400 mx-1"> and </Text>
-        <Button
-          variant="link"
-          size="sm"
-          onPress={handlePrivacyPress}
-          className="p-0 h-auto"
-        >
+        <PressableFeedback onPress={handlePrivacyPress}>
           <Text className="text-sm text-zinc-400 underline">
             Privacy Policy
           </Text>
-        </Button>
+        </PressableFeedback>
       </View>
     </View>
   );

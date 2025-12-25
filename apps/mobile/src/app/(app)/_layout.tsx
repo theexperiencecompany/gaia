@@ -1,5 +1,7 @@
 import { Redirect, Stack } from "expo-router";
 import { ActivityIndicator, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { HeroUINativeProvider } from "heroui-native";
 import { useAuth } from "@/features/auth";
 
 export default function AppLayout() {
@@ -21,9 +23,13 @@ export default function AppLayout() {
 
   // If authenticated, render the children routes
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="(chat)/[id]" />
-    </Stack>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <HeroUINativeProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(chat)/[id]" />
+        </Stack>
+      </HeroUINativeProvider>
+    </GestureHandlerRootView>
   );
 }

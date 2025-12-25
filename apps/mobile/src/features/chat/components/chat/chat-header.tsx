@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Text, View } from "react-native";
+import { PressableFeedback } from "heroui-native";
 import {
   ArrowDown01Icon,
   Edit01Icon,
@@ -34,24 +35,20 @@ export function ChatHeader({
 
   return (
     <View className="flex-row items-center justify-between px-6 py-4 border-b border-border/10 bg-surface-1">
-      <TouchableOpacity
-        onPress={onMenuPress}
-        className="p-1"
-        activeOpacity={0.7}
-      >
-        <HugeiconsIcon icon={Menu01Icon} size={24} color="#ffffff" />
-      </TouchableOpacity>
+      <PressableFeedback onPress={onMenuPress}>
+        <View className="p-1">
+          <HugeiconsIcon icon={Menu01Icon} size={24} color="#ffffff" />
+        </View>
+      </PressableFeedback>
 
-      <TouchableOpacity
-        className="flex-row items-center gap-2 px-3 py-1.5"
-        activeOpacity={0.7}
-        onPress={() => setIsModelSelectorVisible(true)}
-      >
-        <Text className="text-sm text-foreground font-bold tracking-tight">
-          {selectedModel.name}
-        </Text>
-        <HugeiconsIcon icon={ArrowDown01Icon} size={14} color="#666666" />
-      </TouchableOpacity>
+      <PressableFeedback onPress={() => setIsModelSelectorVisible(true)}>
+        <View className="flex-row items-center gap-2 px-3 py-1.5">
+          <Text className="text-sm text-foreground font-bold tracking-tight">
+            {selectedModel.name}
+          </Text>
+          <HugeiconsIcon icon={ArrowDown01Icon} size={14} color="#666666" />
+        </View>
+      </PressableFeedback>
 
       <ModelSelector
         visible={isModelSelectorVisible}
@@ -63,21 +60,17 @@ export function ChatHeader({
 
       <View className="flex-row gap-1">
         {onSearchPress && (
-          <TouchableOpacity
-            className="p-1"
-            activeOpacity={0.7}
-            onPress={onSearchPress}
-          >
-            <HugeiconsIcon icon={Search01Icon} size={20} color="#ffffff" />
-          </TouchableOpacity>
+          <PressableFeedback onPress={onSearchPress}>
+            <View className="p-1">
+              <HugeiconsIcon icon={Search01Icon} size={20} color="#ffffff" />
+            </View>
+          </PressableFeedback>
         )}
-        <TouchableOpacity
-          className="p-1"
-          onPress={onNewChatPress}
-          activeOpacity={0.7}
-        >
-          <HugeiconsIcon icon={Edit01Icon} size={18} color="#bbbbbb" />
-        </TouchableOpacity>
+        <PressableFeedback onPress={onNewChatPress}>
+          <View className="p-1">
+            <HugeiconsIcon icon={Edit01Icon} size={18} color="#bbbbbb" />
+          </View>
+        </PressableFeedback>
       </View>
     </View>
   );

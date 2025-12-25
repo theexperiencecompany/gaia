@@ -1,10 +1,11 @@
-import { Image, TextInput, TouchableOpacity, View } from "react-native";
+import { Image, View } from "react-native";
+import { Button, TextField } from "heroui-native";
 import {
   HugeiconsIcon,
   PencilEdit02Icon,
   Search01Icon,
 } from "@/components/icons";
-import { Text } from "@/components/ui/text";
+import { Text } from "react-native";
 
 interface SidebarHeaderProps {
   onNewChat: () => void;
@@ -27,23 +28,20 @@ export function SidebarHeader({ onNewChat }: SidebarHeaderProps) {
 
       <View className="flex-row items-center gap-4">
         {/* Search Bar */}
-        <View className="flex-1 flex-row items-center bg-secondary/20 rounded-xl px-3 h-10 border border-border/30">
-          <HugeiconsIcon icon={Search01Icon} size={16} color="#8e8e93" />
-          <TextInput
-            className="flex-1 ml-2 text-foreground text-sm"
-            placeholder="Search"
-            placeholderTextColor="#666666"
-          />
+        <View className="flex-1">
+          <TextField>
+            <TextField.Input placeholder="Search">
+              <TextField.InputStartContent>
+                <HugeiconsIcon icon={Search01Icon} size={16} color="#8e8e93" />
+              </TextField.InputStartContent>
+            </TextField.Input>
+          </TextField>
         </View>
 
         {/* New Chat Button */}
-        <TouchableOpacity
-          onPress={onNewChat}
-          className="h-10 w-10 items-center justify-center rounded-xl bg-secondary/20 border border-border/30"
-          activeOpacity={0.7}
-        >
+        <Button variant="secondary" isIconOnly onPress={onNewChat}>
           <HugeiconsIcon icon={PencilEdit02Icon} size={18} color="#ffffff" />
-        </TouchableOpacity>
+        </Button>
       </View>
     </View>
   );

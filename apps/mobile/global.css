@@ -1,68 +1,120 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import 'uniwind';
+@import 'heroui-native/styles';
 
-@layer base {
+/* Path to HeroUI Native lib for component styles - using monorepo root node_modules */
+@source './../../node_modules/heroui-native/lib';
+
+@theme {
+  /* Primitive Colors (Do not change between light and dark) */
+  --white: oklch(100% 0 0);
+  --black: oklch(0% 0 0);
+  --snow: oklch(0.9911 0 0);
+  --eclipse: oklch(0.2103 0.0059 285.89);
+
+  /* Base radius */
+  --radius: 0.5rem;
+
+  /* Opacity */
+  --opacity-disabled: 0.5;
+}
+
+@layer theme {
   :root {
-    --background: 0 0% 10%;
-    --foreground: 0 0% 100%;
-    --card: 0 0% 15%;
-    --card-foreground: 0 0% 100%;
-    --popover: 0 0% 15%;
-    --popover-foreground: 0 0% 100%;
-    --primary: 196 100% 50%;
-    --primary-foreground: 0 0% 0%;
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 56%;
-    --accent: 196 100% 50%;
-    --accent-foreground: 0 0% 0%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 16%;
-    --input: 0 0% 15%;
-    --ring: 196 100% 50%;
-    --surface-0: 0 0% 4%;
-    --surface-1: 0 0% 8%;
-    --surface-2: 0 0% 13%;
-    --surface-3: 0 0% 20%;
-    --radius: 0.75rem;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-  }
+    @variant light {
+      /* Base Colors */
+      --background: oklch(0.9702 0 0);
+      --foreground: var(--eclipse);
 
-  .dark {
-    --background: 0 0% 10%;
-    --foreground: 0 0% 100%;
-    --card: 0 0% 15%;
-    --card-foreground: 0 0% 100%;
-    --popover: 0 0% 15%;
-    --popover-foreground: 0 0% 100%;
-    --primary: 196 100% 50%;
-    --primary-foreground: 0 0% 0%;
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 56%;
-    --accent: 196 100% 50%;
-    --accent-foreground: 0 0% 0%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 16%;
-    --input: 0 0% 15%;
-    --ring: 196 100% 50%;
-    --surface-0: 0 0% 4%;
-    --surface-1: 0 0% 8%;
-    --surface-2: 0 0% 13%;
-    --surface-3: 0 0% 20%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+      /* Surface: Used for non-overlay components (cards, accordions, disclosure groups) */
+      --surface: var(--white);
+      --surface-foreground: var(--foreground);
+
+      /* Overlay: Used for floating/overlay components (dialogs, popovers, modals, menus) */
+      --overlay: var(--white);
+      --overlay-foreground: var(--foreground);
+
+      --muted: oklch(55.2% 0.016 285.938);
+
+      --default: oklch(94% 0.001 286.375);
+      --default-foreground: var(--eclipse);
+
+      --accent: oklch(0.6204 0.195 253.83);
+      --accent-foreground: var(--snow);
+
+      /* Form Field Defaults - Colors */
+      --field-background: var(--white);
+      --field-foreground: oklch(0.2103 0.0059 285.89);
+      --field-placeholder: var(--muted);
+      --field-border: transparent; /* no border by default on form fields */
+
+      /* Status Colors */
+      --success: oklch(0.7329 0.1935 150.81);
+      --success-foreground: var(--eclipse);
+
+      --warning: oklch(0.7819 0.1585 72.33);
+      --warning-foreground: var(--eclipse);
+
+      --danger: oklch(0.6532 0.2328 25.74);
+      --danger-foreground: var(--snow);
+
+      /* Component Colors */
+      --segment: var(--white);
+      --segment-foreground: var(--eclipse);
+
+      /* Misc Colors */
+      --border: oklch(0 0 0 / 0%);
+      --divider: oklch(72% 0.004 286.32);
+      --link: var(--foreground);
+    }
+
+    @variant dark {
+      /* Base Colors */
+      --background: var(--black);
+      --foreground: var(--snow);
+
+      /* Surface: Used for non-overlay components (cards, accordions, disclosure groups) */
+      --surface: oklch(0.2103 0.0059 285.89);
+      --surface-foreground: var(--foreground);
+
+      /* Overlay: Used for floating/overlay components (dialogs, popovers, modals, menus) - lighter for contrast */
+      --overlay: oklch(
+        0.2563 0.0058 271.19
+      ); /* Lighter than surface for visibility in dark mode */
+      --overlay-foreground: var(--foreground);
+
+      --muted: oklch(70.5% 0.015 286.067);
+
+      --default: oklch(27.4% 0.006 286.033);
+      --default-foreground: var(--snow);
+
+      --accent: oklch(0.6204 0.195 253.83);
+      --accent-foreground: var(--snow);
+
+      /* Form Field Defaults - Colors (only the ones that are different from light theme) */
+      --field-background: var(--default);
+      --field-foreground: var(--foreground);
+      --field-placeholder: var(--muted);
+      --field-border: transparent; /* no border by default on form fields */
+
+      /* Status Colors */
+      --success: oklch(0.7329 0.1935 150.81);
+      --success-foreground: var(--eclipse);
+
+      --warning: oklch(0.8203 0.1388 76.34);
+      --warning-foreground: var(--eclipse);
+
+      --danger: oklch(0.594 0.1967 24.63);
+      --danger-foreground: var(--snow);
+
+      /* Component Colors */
+      --segment: oklch(0.3964 0.01 285.93);
+      --segment-foreground: var(--foreground);
+
+      /* Misc Colors */
+      --border: oklch(1 0 0 / 0%);
+      --divider: oklch(38% 0.006 286.033);
+      --link: var(--foreground);
+    }
   }
 }

@@ -1,8 +1,8 @@
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Animated, Image, TouchableOpacity, View } from "react-native";
+import { Alert, Animated, Image, Text, View } from "react-native";
+import { PressableFeedback } from "heroui-native";
 import { Copy01Icon, HugeiconsIcon, PinIcon } from "@/components/icons";
-import { Text } from "@/components/ui/text";
 import type { Message } from "../../types";
 
 interface ChatMessageProps {
@@ -28,7 +28,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [fadeAnim, scaleAnim]);
 
   const handleCopy = async () => {
     await Clipboard.setStringAsync(message.text);
@@ -61,47 +61,43 @@ export function ChatMessage({ message }: ChatMessageProps) {
         <View
           className={`px-5 py-4 ${
             isUser
-              ? "bg-primary rounded-3xl rounded-tr-sm"
+              ? "bg-accent rounded-3xl rounded-tr-sm"
               : "bg-surface-2 rounded-3xl rounded-tl-sm"
           } shadow-sm`}
         >
           <Text
             className={`text-base leading-5 ${
-              isUser ? "text-black" : "text-white"
+              isUser ? "text-accent-foreground" : "text-foreground"
             }`}
           >
             {message.text}
           </Text>
         </View>
 
-        {/* Message Content */}
+        {/* Message Actions */}
         {!isUser && (
           <View className="mt-4 flex-row items-center gap-4 opacity-40">
-            <TouchableOpacity
-              className="flex-row items-center gap-1.5"
-              onPress={handleCopy}
-              activeOpacity={0.6}
-            >
-              <HugeiconsIcon icon={Copy01Icon} size={14} color="#ffffff" />
-              <Text className="text-[10px] font-bold uppercase tracking-wider text-white">
-                Copy
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              className="flex-row items-center gap-1.5"
-              onPress={handlePin}
-              activeOpacity={0.6}
-            >
-              <HugeiconsIcon
-                icon={PinIcon}
-                size={14}
-                color="#ffffff"
-                fill={isPinned ? "#ffffff" : "none"}
-              />
-              <Text className="text-[10px] font-bold uppercase tracking-wider text-white">
-                Pin
-              </Text>
-            </TouchableOpacity>
+            <PressableFeedback onPress={handleCopy}>
+              <View className="flex-row items-center gap-1.5">
+                <HugeiconsIcon icon={Copy01Icon} size={14} color="#ffffff" />
+                <Text className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  Copy
+                </Text>
+              </View>
+            </PressableFeedback>
+            <PressableFeedback onPress={handlePin}>
+              <View className="flex-row items-center gap-1.5">
+                <HugeiconsIcon
+                  icon={PinIcon}
+                  size={14}
+                  color="#ffffff"
+                  fill={isPinned ? "#ffffff" : "none"}
+                />
+                <Text className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  Pin
+                </Text>
+              </View>
+            </PressableFeedback>
           </View>
         )}
       </View>

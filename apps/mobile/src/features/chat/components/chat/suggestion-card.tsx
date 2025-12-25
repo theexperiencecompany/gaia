@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
-import { Animated, Image, Pressable } from "react-native";
-import { Card } from "@/components/ui/card";
-import { Text } from "@/components/ui/text";
+import { Animated, Image, Text, View } from "react-native";
+import { PressableFeedback } from "heroui-native";
 import type { Suggestion } from "../../types";
 
 interface SuggestionCardProps {
@@ -34,53 +33,31 @@ export function SuggestionCard({
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
-
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.95,
-      tension: 100,
-      friction: 5,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      tension: 100,
-      friction: 5,
-      useNativeDriver: true,
-    }).start();
-  };
+  }, [fadeAnim, scaleAnim, index]);
 
   return (
     <Animated.View
-      className="w-[48%]"
+      className="w-[48%] mb-3"
       style={{
         opacity: fadeAnim,
         transform: [{ scale: scaleAnim }],
       }}
     >
-      <Pressable
-        onPress={() => onPress(suggestion.text)}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-      >
-        <Card className="px-5 py-5 min-h-[120px] justify-between border-transparent bg-surface-2 shadow-md">
+      <PressableFeedback onPress={() => onPress(suggestion.text)}>
+        <View className="px-5 py-5 min-h-30 justify-between bg-surface-2 rounded-xl">
           <Image
             source={{ uri: suggestion.iconUrl }}
             className="w-8 h-8 rounded-lg opacity-80"
             resizeMode="contain"
           />
           <Text
-            className="text-[13px] font-semibold text-foreground/80 mt-4 leading-relaxed"
+            className="text-sm font-semibold text-foreground/80 mt-4 leading-relaxed"
             numberOfLines={2}
           >
             {suggestion.text}
           </Text>
-        </Card>
-      </Pressable>
+        </View>
+      </PressableFeedback>
     </Animated.View>
   );
 }

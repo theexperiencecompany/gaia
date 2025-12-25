@@ -1,13 +1,11 @@
 import { useState } from "react";
-import { ScrollView, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, View, Pressable } from "react-native";
+import { PressableFeedback } from "heroui-native";
 import {
-  ArrowDown01Icon,
-  ArrowUp01Icon,
   BubbleChatIcon,
   FavouriteIcon,
   HugeiconsIcon,
 } from "@/components/icons";
-import { Text } from "@/components/ui/text";
 import { useChatContext } from "../../hooks/use-chat-context";
 
 interface ChatHistoryItem {
@@ -19,15 +17,6 @@ interface ChatHistoryItem {
 
 interface ChatHistoryProps {
   onSelectChat: (chatId: string) => void;
-}
-
-interface CategorySectionProps {
-  title: string;
-  items: ChatHistoryItem[];
-  isExpanded: boolean;
-  onToggle: () => void;
-  onSelectChat: (chatId: string) => void;
-  activeChatId: string | null;
 }
 
 // Mock data - replace with actual chat history
@@ -57,125 +46,173 @@ const allTimeChats: ChatHistoryItem[] = [
   { id: "a6", title: "this is random chat", timestamp: new Date() },
 ];
 
-function CategorySection({
+interface ChatItemProps {
+  item: ChatHistoryItem;
+  isActive: boolean;
+  onPress: () => void;
+}
+
+function ChatItem({ item, isActive, onPress }: ChatItemProps) {
+  return (
+    <PressableFeedback onPress={onPress}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 24,
+          paddingVertical: 8,
+          gap: 12,
+          backgroundColor: isActive ? "#103543" : "transparent",
+          borderRadius: isActive ? 12 : 0,
+          position: "relative",
+        }}
+      >
+        {isActive && (
+          <View
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 12,
+              bottom: 12,
+              width: 3,
+              backgroundColor: "#16c1ff",
+              borderTopRightRadius: 4,
+              borderBottomRightRadius: 4,
+            }}
+          />
+        )}
+        <HugeiconsIcon
+          icon={item.isStarred ? FavouriteIcon : BubbleChatIcon}
+          size={16}
+          color={isActive ? "#ffffff" : "#666666"}
+        />
+        <Text
+          style={{
+            flex: 1,
+            color: isActive ? "#ffffff" : "#cccccc",
+            fontSize: 14,
+          }}
+          numberOfLines={1}
+        >
+          {item.title}
+        </Text>
+      </View>
+    </PressableFeedback>
+  );
+}
+
+interface SectionProps {
+  title: string;
+  items: ChatHistoryItem[];
+  activeChatId: string | null;
+  onSelectChat: (chatId: string) => void;
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
+function Section({
   title,
   items,
+  activeChatId,
+  onSelectChat,
   isExpanded,
   onToggle,
-  onSelectChat,
-  activeChatId,
-}: CategorySectionProps) {
-  return (
-    <View className="mb-2">
-      <TouchableOpacity onPress={onToggle} activeOpacity={0.6}>
-        <View className="px-6 py-3 flex-row items-center justify-between opacity-50">
-          <Text className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
-            {title}
-          </Text>
-          <HugeiconsIcon
-            icon={isExpanded ? ArrowDown01Icon : ArrowUp01Icon}
-            size={12}
-            color="#8e8e93"
-          />
-        </View>
-      </TouchableOpacity>
+}: SectionProps) {
+  if (items.length === 0) return null;
 
+  return (
+    <View style={{ marginBottom: 8 }}>
+      <Pressable
+        onPress={onToggle}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 24,
+          paddingVertical: 12,
+          opacity: 0.6,
+        }}
+      >
+        <Text
+          style={{
+            flex: 1,
+            fontSize: 10,
+            fontWeight: "700",
+            color: "#888888",
+            textTransform: "uppercase",
+            letterSpacing: 2,
+          }}
+        >
+          {title}
+        </Text>
+        <Text style={{ color: "#888888", fontSize: 12 }}>
+          {isExpanded ? "▼" : "▶"}
+        </Text>
+      </Pressable>
       {isExpanded &&
-        items.map((item) => {
-          const isActive = activeChatId === item.id;
-          return (
-            <TouchableOpacity
-              key={item.id}
-              className={`flex-row items-center px-6 py-2 gap-3 relative ${
-                isActive ? "bg-[#103543] rounded-xl" : "bg-transparent"
-              }`}
-              onPress={() => onSelectChat(item.id)}
-              activeOpacity={0.7}
-            >
-              {isActive && (
-                <View className="absolute left-0 top-3 bottom-3 w-1 bg-primary rounded-r-full" />
-              )}
-              <HugeiconsIcon
-                icon={item.isStarred ? FavouriteIcon : BubbleChatIcon}
-                size={16}
-                color={isActive ? "#ffffff" : "#666666"}
-              />
-              <Text className={`flex-1`} numberOfLines={1}>
-                {item.title}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+        items.map((item) => (
+          <ChatItem
+            key={item.id}
+            item={item}
+            isActive={activeChatId === item.id}
+            onPress={() => onSelectChat(item.id)}
+          />
+        ))}
     </View>
   );
 }
 
 export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
   const { activeChatId } = useChatContext();
-  const [expandedSections, setExpandedSections] = useState({
+  const [expandedSections, setExpandedSections] = useState<
+    Record<string, boolean>
+  >({
     starred: true,
     today: true,
     yesterday: true,
     allTime: true,
   });
 
-  const toggleSection = (section: keyof typeof expandedSections) => {
-    setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  const toggleSection = (section: string) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
   };
 
   return (
-    <ScrollView
-      className="flex-1"
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: 16 }}
-    >
-      {/* Starred Chats */}
-      {starredChats.length > 0 && (
-        <CategorySection
-          title="Starred Chats"
-          items={starredChats}
-          isExpanded={expandedSections.starred}
-          onToggle={() => toggleSection("starred")}
-          onSelectChat={onSelectChat}
-          activeChatId={activeChatId}
-        />
-      )}
-
-      {/* Today */}
-      {todayChats.length > 0 && (
-        <CategorySection
-          title="Today"
-          items={todayChats}
-          isExpanded={expandedSections.today}
-          onToggle={() => toggleSection("today")}
-          onSelectChat={onSelectChat}
-          activeChatId={activeChatId}
-        />
-      )}
-
-      {/* Yesterday */}
-      {yesterdayChats.length > 0 && (
-        <CategorySection
-          title="Yesterday"
-          items={yesterdayChats}
-          isExpanded={expandedSections.yesterday}
-          onToggle={() => toggleSection("yesterday")}
-          onSelectChat={onSelectChat}
-          activeChatId={activeChatId}
-        />
-      )}
-
-      {/* All Time */}
-      {allTimeChats.length > 0 && (
-        <CategorySection
-          title="All time"
-          items={allTimeChats}
-          isExpanded={expandedSections.allTime}
-          onToggle={() => toggleSection("allTime")}
-          onSelectChat={onSelectChat}
-          activeChatId={activeChatId}
-        />
-      )}
+    <ScrollView style={{ flex: 1 }}>
+      <Section
+        title="Starred Chats"
+        items={starredChats}
+        activeChatId={activeChatId}
+        onSelectChat={onSelectChat}
+        isExpanded={expandedSections.starred}
+        onToggle={() => toggleSection("starred")}
+      />
+      <Section
+        title="Today"
+        items={todayChats}
+        activeChatId={activeChatId}
+        onSelectChat={onSelectChat}
+        isExpanded={expandedSections.today}
+        onToggle={() => toggleSection("today")}
+      />
+      <Section
+        title="Yesterday"
+        items={yesterdayChats}
+        activeChatId={activeChatId}
+        onSelectChat={onSelectChat}
+        isExpanded={expandedSections.yesterday}
+        onToggle={() => toggleSection("yesterday")}
+      />
+      <Section
+        title="All Time"
+        items={allTimeChats}
+        activeChatId={activeChatId}
+        onSelectChat={onSelectChat}
+        isExpanded={expandedSections.allTime}
+        onToggle={() => toggleSection("allTime")}
+      />
     </ScrollView>
   );
 }

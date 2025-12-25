@@ -88,7 +88,7 @@ export default function ChatPage() {
           keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
         >
           <SafeAreaView
-            className="flex-1 bg-surface-1"
+            style={{ flex: 1, backgroundColor: "#141414" }}
             edges={["top", "bottom"]}
           >
             {/* Header */}

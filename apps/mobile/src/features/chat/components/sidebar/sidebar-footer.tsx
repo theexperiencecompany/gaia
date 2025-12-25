@@ -1,10 +1,4 @@
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ActivityIndicator, Image, Text, View } from "react-native";
 import {
   ArrowDown01Icon,
   HugeiconsIcon,
@@ -14,15 +8,12 @@ import {
   UserIcon,
 } from "@/components/icons";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Text } from "@/components/ui/text";
+  Avatar,
+  Button,
+  Divider,
+  Popover,
+  PressableFeedback,
+} from "heroui-native";
 import { useAuth } from "@/features/auth";
 
 export function SidebarFooter() {
@@ -37,22 +28,6 @@ export function SidebarFooter() {
     return name[0].toUpperCase();
   };
 
-  const getAvatarColor = (email?: string) => {
-    if (!email) return "#00aa88";
-    const colors = [
-      "#00aa88",
-      "#0088cc",
-      "#8855cc",
-      "#cc5588",
-      "#cc8855",
-      "#55cc88",
-    ];
-    const hash = email
-      .split("")
-      .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return colors[hash % colors.length];
-  };
-
   if (isLoading) {
     return (
       <View className="border-t border-border py-2">
@@ -64,74 +39,78 @@ export function SidebarFooter() {
   }
 
   return (
-    <View className="border-t border-border/20 py-3">
-      <TouchableOpacity
-        className="flex-row items-center px-6 py-3 gap-3"
-        activeOpacity={0.7}
-      >
-        <HugeiconsIcon icon={InformationCircleIcon} size={20} color="#8e8e93" />
-        <Text className="text-foreground text-sm font-medium">
-          Need Support?
-        </Text>
-      </TouchableOpacity>
+    <View
+      style={{
+        borderTopWidth: 1,
+        borderTopColor: "#2a2a2a",
+        paddingVertical: 12,
+      }}
+    >
+      <PressableFeedback>
+        <View className="flex-row items-center px-6 py-3 gap-3">
+          <HugeiconsIcon
+            icon={InformationCircleIcon}
+            size={20}
+            color="#8e8e93"
+          />
+          <Text className="text-foreground text-sm font-medium">
+            Need Support?
+          </Text>
+        </View>
+      </PressableFeedback>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Pressable className="flex-row items-center px-6 py-3 gap-3 active:opacity-70">
-            {user?.picture ? (
-              <Image
-                source={{ uri: user.picture }}
-                className="w-8 h-8 rounded-full"
-              />
-            ) : (
-              <View
-                className="w-8 h-8 rounded-full justify-center items-center"
-                style={{ backgroundColor: getAvatarColor(user?.email) }}
-              >
-                <Text className="text-white text-xs font-bold">
-                  {getInitials(user?.name)}
+      <Popover>
+        <Popover.Trigger>
+          <PressableFeedback>
+            <View className="flex-row items-center px-6 py-3 gap-3">
+              <Avatar alt="user" size="sm" color="accent">
+                {user?.picture ? (
+                  <Avatar.Image source={{ uri: user.picture }} />
+                ) : null}
+                <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
+              </Avatar>
+              <View className="flex-1">
+                <Text
+                  className="text-foreground text-sm font-semibold"
+                  numberOfLines={1}
+                >
+                  {user?.name || "User"}
+                </Text>
+                <Text className="text-muted-foreground text-[9px] uppercase font-bold tracking-[0.15em] opacity-60">
+                  GAIA Free
                 </Text>
               </View>
-            )}
-            <View className="flex-1">
-              <Text
-                className="text-foreground text-sm font-semibold"
-                numberOfLines={1}
-              >
-                {user?.name || "User"}
-              </Text>
-              <Text className="text-muted-foreground text-[9px] uppercase font-bold tracking-[0.15em] opacity-60">
-                GAIA Free
-              </Text>
+              <HugeiconsIcon icon={ArrowDown01Icon} size={16} color="#8e8e93" />
             </View>
-            <HugeiconsIcon icon={ArrowDown01Icon} size={16} color="#8e8e93" />
-          </Pressable>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          className="w-56"
-          side="top"
-          align="end"
-          portalHost="sidebar-footer"
-        >
-          <DropdownMenuLabel>My Account</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            <DropdownMenuItem>
-              <HugeiconsIcon icon={UserIcon} size={18} color="#8e8e93" />
-              <Text>Profile</Text>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <HugeiconsIcon icon={Settings01Icon} size={18} color="#8e8e93" />
-              <Text>Settings</Text>
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onPress={() => signOut()}>
-            <HugeiconsIcon icon={Logout01Icon} size={18} color="#ef4444" />
-            <Text className="text-destructive">Log out</Text>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </PressableFeedback>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Overlay />
+          <Popover.Content placement="top" width={224}>
+            <Popover.Title>My Account</Popover.Title>
+            <Divider className="my-2" />
+            <View className="gap-1">
+              <Button variant="ghost" className="justify-start">
+                <HugeiconsIcon icon={UserIcon} size={18} color="#8e8e93" />
+                <Button.Label>Profile</Button.Label>
+              </Button>
+              <Button variant="ghost" className="justify-start">
+                <HugeiconsIcon
+                  icon={Settings01Icon}
+                  size={18}
+                  color="#8e8e93"
+                />
+                <Button.Label>Settings</Button.Label>
+              </Button>
+            </View>
+            <Divider className="my-2" />
+            <Button variant="danger" onPress={() => signOut()}>
+              <HugeiconsIcon icon={Logout01Icon} size={18} color="#ffffff" />
+              <Button.Label>Log out</Button.Label>
+            </Button>
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover>
     </View>
   );
 }

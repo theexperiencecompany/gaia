@@ -1,5 +1,4 @@
-import { Image, ScrollView, View } from "react-native";
-import { Text } from "@/components/ui/text";
+import { Image, Text, View } from "react-native";
 import type { Suggestion } from "../../types";
 import { SuggestionCard } from "./suggestion-card";
 
@@ -13,16 +12,8 @@ export function ChatEmptyState({
   onSuggestionPress,
 }: ChatEmptyStateProps) {
   return (
-    <ScrollView
-      className="flex-1"
-      contentContainerStyle={{
-        flexGrow: 1,
-        paddingHorizontal: 24,
-        paddingTop: 64,
-        paddingBottom: 32,
-      }}
-      showsVerticalScrollIndicator={false}
-    >
+    <View className="flex-1 px-6 pt-16 pb-8">
+      {/* Header with logo and greeting */}
       <View className="items-center mb-12">
         <View className="mb-8">
           <Image
@@ -39,11 +30,12 @@ export function ChatEmptyState({
         </Text>
       </View>
 
+      {/* Suggestions */}
       <View className="w-full">
         <Text className="text-base font-medium text-muted-foreground mb-4">
           Suggestions
         </Text>
-        <View className="flex-row flex-wrap gap-2 justify-between">
+        <View className="flex-row flex-wrap justify-between gap-3">
           {suggestions.map((suggestion, index) => (
             <SuggestionCard
               key={suggestion.id}
@@ -54,6 +46,6 @@ export function ChatEmptyState({
           ))}
         </View>
       </View>
-    </ScrollView>
+    </View>
   );
 }
