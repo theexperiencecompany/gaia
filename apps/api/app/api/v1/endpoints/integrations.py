@@ -42,13 +42,14 @@ def _build_integrations_config():
             available=integration.available,
             loginEndpoint=(
                 f"integrations/login/{integration.id}"
-                if integration.available
+                if integration.available and integration.managed_by != "mcp"
                 else None
             ),
             isSpecial=integration.is_special,
             displayPriority=integration.display_priority,
             includedIntegrations=integration.included_integrations,
             isFeatured=integration.is_featured,
+            managedBy=integration.managed_by,
         )
         integration_configs.append(config.model_dump())
 
@@ -226,6 +227,12 @@ async def login_integration(
             provider_key, user["user_id"], state_token=state_token
         )
         return RedirectResponse(url=url["redirect_url"])
+    elif integration.managed_by == "mcp":
+        # MCP integrations don't need OAuth - they're always connected
+        raise HTTPException(
+            status_code=400,
+            detail=f"{integration.name} doesn't require connection. It's always available.",
+        )
     elif integration.provider == "google":
         # Get base scopes
         base_scopes = ["openid", "profile", "email"]

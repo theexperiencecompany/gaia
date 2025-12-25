@@ -285,7 +285,7 @@ class ToolRegistry:
         from app.config.oauth_config import OAUTH_INTEGRATIONS
 
         async def load_mcp_integration(integration):
-            category_name = f"mcp_{integration.id}"
+            category_name = integration.id
 
             # Skip if already loaded
             if category_name in self._categories:
@@ -314,6 +314,7 @@ class ToolRegistry:
                         name=category_name,
                         tools=tools,
                         space=space,
+                        integration_name=integration.id,
                     )
                     await self._index_category_tools(category_name)
                     logger.info(

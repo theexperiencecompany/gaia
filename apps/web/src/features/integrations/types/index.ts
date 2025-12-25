@@ -21,6 +21,8 @@ export interface Integration {
   displayPriority?: number;
   includedIntegrations?: string[];
   isFeatured?: boolean;
+  managedBy?: "self" | "composio" | "mcp";
+  available?: boolean;
 }
 
 export interface IntegrationStatus {

@@ -120,7 +120,10 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
             result[integration.id] = False
             continue
 
-        if integration.managed_by == "composio":
+        # MCP integrations are always connected (no auth required)
+        if integration.managed_by == "mcp":
+            result[integration.id] = True
+        elif integration.managed_by == "composio":
             composio_providers.append(integration.provider)
             composio_id_to_provider[integration.id] = integration.provider
         elif integration.managed_by == "self":

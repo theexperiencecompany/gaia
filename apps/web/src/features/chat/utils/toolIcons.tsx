@@ -251,6 +251,12 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
+  deepwiki: {
+    icon: "/images/icons/deepwiki.webp",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
   integrations: {
     isImage: false,
     icon: ConnectIcon,

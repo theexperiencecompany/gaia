@@ -182,7 +182,8 @@ async def handoff(
         subagent_cfg = integration.subagent_config
         agent_name = subagent_cfg.agent_name
 
-        if user_id:
+        # Only check connection for non-MCP integrations (MCP doesn't need auth)
+        if integration.managed_by != "mcp" and user_id:
             error_message = await check_integration_connection(integration.id, user_id)
             if error_message:
                 return error_message

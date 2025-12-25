@@ -1875,6 +1875,7 @@ dependencies = [
     { name = "filelock" },
     { name = "gaia-shared" },
     { name = "httpx" },
+    { name = "langchain-mcp-adapters" },
     { name = "livekit-api" },
     { name = "orjson" },
     { name = "ormsgpack" },
@@ -1936,6 +1937,7 @@ backend = [
     { name = "langchain-core" },
     { name = "langchain-google-genai" },
     { name = "langchain-groq" },
+    { name = "langchain-mcp-adapters" },
     { name = "langchain-openai" },
     { name = "langcodes" },
     { name = "langgraph" },
@@ -2028,6 +2030,7 @@ requires-dist = [
     { name = "filelock", specifier = ">=3.20.1" },
     { name = "gaia-shared", editable = "libs" },
     { name = "httpx", specifier = "==0.28.1" },
+    { name = "langchain-mcp-adapters", specifier = ">=0.1.7" },
     { name = "livekit-api", specifier = ">=1.1.0" },
     { name = "orjson", specifier = ">=3.11.3" },
     { name = "ormsgpack", specifier = ">=1.12.0" },
@@ -2089,6 +2092,7 @@ backend = [
     { name = "langchain-core", specifier = ">=0.3.74" },
     { name = "langchain-google-genai", specifier = ">=2.1.2" },
     { name = "langchain-groq", specifier = ">=0.3.2" },
+    { name = "langchain-mcp-adapters", specifier = ">=0.1.0" },
     { name = "langchain-openai", specifier = ">=0.3.1" },
     { name = "langcodes", specifier = "==3.5.0" },
     { name = "langgraph", specifier = ">=0.6.5" },
@@ -3220,6 +3224,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/4a/ad/ef32ac66fe0f593496ab8913daf65b41e0471649214badeb984d7da2bf8f/langchain_groq-0.3.3.tar.gz", hash = "sha256:12dde7eddc0a83a441e93add64367222e99aaf9c65774b853740d04caa8477d4", size = 22562, upload-time = "2025-06-23T19:02:51.584Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e6/71/7f0e27465f9c884c316b99500f245aa34d0e72eec70905ee1800a97a98bc/langchain_groq-0.3.3-py3-none-any.whl", hash = "sha256:4ce8557eabf740e0c98000a625fafa3c62a147fc40fb59ab0b64df3c7fa33f0e", size = 15455, upload-time = "2025-06-23T19:02:50.538Z" },
+]
+
+[[package]]
+name = "langchain-mcp-adapters"
+version = "0.1.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "mcp" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/01/5f/f6d2b724f7100bd53e4413a72dd7b77a61e5284549c9de63ba043e63d163/langchain_mcp_adapters-0.1.7.tar.gz", hash = "sha256:b5d0ab520211d8c12cfc4df83fd6335f8197a3557ee7ca4f14e3380846610535", size = 20023, upload-time = "2025-06-05T20:18:39.425Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/01/05/b6cf2f4651c9429b374c8837117ecc0619bfb8b6e106ce8390f2c932a293/langchain_mcp_adapters-0.1.7-py3-none-any.whl", hash = "sha256:6b3ded5f51b311e67cefa87b500f776c454caf2269d2eae4b2338ecec19a9258", size = 13318, upload-time = "2025-06-05T20:18:38.477Z" },
 ]
 
 [[package]]

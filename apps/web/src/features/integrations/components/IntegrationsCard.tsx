@@ -23,7 +23,8 @@ const IntegrationItem: React.FC<{
   size?: "default" | "small";
 }> = ({ integration, onConnect, onClick, size }) => {
   const isConnected = integration.status === "connected";
-  const isAvailable = !!integration.loginEndpoint;
+  // Use backend's 'available' field - MCP integrations have available=true but loginEndpoint=null
+  const isAvailable = integration.available ?? !!integration.loginEndpoint;
 
   const handleClick = () => {
     onClick(integration.id);

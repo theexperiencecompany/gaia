@@ -159,3 +159,4 @@ class IntegrationConfigResponse(BaseModel):
     displayPriority: int
     includedIntegrations: List[str]
     isFeatured: bool
+    managedBy: Literal["self", "composio", "mcp"]
