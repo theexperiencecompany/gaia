@@ -1,8 +1,6 @@
 import { Redirect, Stack } from "expo-router";
 import { ActivityIndicator, View } from "react-native";
-import { HeroUINativeProvider } from "heroui-native";
 import { useAuth } from "@/features/auth";
-import { StyledGestureHandlerRootView } from "@/lib/uniwind";
 
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -20,18 +18,17 @@ export default function AppLayout() {
   }
 
   return (
-    <StyledGestureHandlerRootView className="flex-1 bg-background text-foreground">
-      <HeroUINativeProvider>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: "transparent" },
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(chat)/[id]" />
-        </Stack>
-      </HeroUINativeProvider>
-    </StyledGestureHandlerRootView>
+    <View className="flex-1 bg-background">
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: "transparent" },
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(chat)/[id]" />
+        <Stack.Screen name="test/index" />
+      </Stack>
+    </View>
   );
 }

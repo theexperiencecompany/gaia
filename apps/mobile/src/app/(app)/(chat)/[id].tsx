@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import {
   FlatList,
   Keyboard,
@@ -7,7 +7,6 @@ import {
   Platform,
   View,
 } from "react-native";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 import DrawerLayout, {
   DrawerPosition,
   DrawerType,
@@ -24,15 +23,10 @@ import {
   useSidebar,
 } from "@/features/chat";
 import { ChatInput } from "@/components/ui/chat-input";
-import {
-  ConnectDrawer,
-  type ConnectDrawerRef,
-} from "@/features/chat/components/chat/connect-drawer";
 
 export default function ChatPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { activeChatId, setActiveChatId, createNewChat } = useChatContext();
-  const connectDrawerRef = useRef<ConnectDrawerRef>(null);
 
   useEffect(() => {
     if (id) {
@@ -59,10 +53,6 @@ export default function ChatPage() {
     closeSidebar();
   };
 
-  const handleOpenConnectDrawer = () => {
-    connectDrawerRef.current?.open();
-  };
-
   const renderDrawerContent = () => (
     <SidebarContent onSelectChat={handleSelectChat} onNewChat={handleNewChat} />
   );
@@ -72,7 +62,7 @@ export default function ChatPage() {
   );
 
   return (
-    <GestureHandlerRootView className="flex-1">
+    <View className="flex-1">
       <DrawerLayout
         ref={drawerRef}
         drawerWidth={SIDEBAR_WIDTH}
@@ -127,16 +117,11 @@ export default function ChatPage() {
                   <View className="w-1.5 h-1.5 rounded-full bg-primary/60" />
                 </View>
               )}
-              <ChatInput
-                onSend={sendMessage}
-                onToolsPress={handleOpenConnectDrawer}
-              />
+              <ChatInput onSend={sendMessage} />
             </View>
           </SafeAreaView>
         </KeyboardAvoidingView>
-
-        <ConnectDrawer ref={connectDrawerRef} />
       </DrawerLayout>
-    </GestureHandlerRootView>
+    </View>
   );
 }

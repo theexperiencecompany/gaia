@@ -1,20 +1,9 @@
-import {
-  useMemo,
-  useRef,
-  forwardRef,
-  useImperativeHandle,
-  useState,
-} from "react";
+import { useState, useRef } from "react";
 import { View, TextInput, ScrollView, Pressable } from "react-native";
 import { Text } from "@/components/ui/text";
-import { Button, Chip } from "heroui-native";
-import BottomSheet from "@gorhom/bottom-sheet";
-import {
-  StyledBottomSheetView,
-  StyledBottomSheetFlatList,
-} from "@/lib/uniwind";
+import { Button, Chip, Popover, type PopoverTriggerRef } from "heroui-native";
 import { Image } from "expo-image";
-import { HugeiconsIcon, Cancel01Icon, Search01Icon } from "@/components/icons";
+import { HugeiconsIcon, Search01Icon, Wrench01Icon } from "@/components/icons";
 
 interface Integration {
   id: string;
@@ -134,23 +123,15 @@ const INTEGRATIONS: Integration[] = [
 
 const FILTER_OPTIONS = ["All", "Gmail", "GitHub", "Google", "Productivity"];
 
-export interface ConnectDrawerRef {
-  open: () => void;
-  close: () => void;
-}
-
-export const ConnectDrawer = forwardRef<ConnectDrawerRef>((_, ref) => {
-  const bottomSheetRef = useRef<BottomSheet>(null);
+export function ConnectDrawer() {
+  const popoverRef = useRef<PopoverTriggerRef>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("All");
   const [integrations, setIntegrations] = useState(INTEGRATIONS);
 
-  const snapPoints = useMemo(() => ["50%"], []);
-
-  useImperativeHandle(ref, () => ({
-    open: () => bottomSheetRef.current?.snapToIndex(0),
-    close: () => bottomSheetRef.current?.close(),
-  }));
+  const handleOpen = () => {
+    popoverRef.current?.open();
+  };
 
   const filteredIntegrations = integrations.filter((integration) => {
     const matchesSearch = integration.name
@@ -178,127 +159,121 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef>((_, ref) => {
   };
 
   return (
-    <BottomSheet
-      ref={bottomSheetRef}
-      index={-1}
-      snapPoints={snapPoints}
-      enablePanDownToClose
-      backgroundStyle={{ backgroundColor: "#1e1e1e" }}
-      handleIndicatorStyle={{ backgroundColor: "#666" }}
-    >
-      <StyledBottomSheetView className="flex-1">
-        {/* Search Header */}
-        <View className="flex-row items-center px-4 py-3 border-b border-border">
-          <View className="flex-1 flex-row items-center rounded-xl px-3 py-2 bg-muted/10">
-            <HugeiconsIcon icon={Search01Icon} size={18} color="#8e8e93" />
-            <TextInput
-              className="flex-1 ml-2 text-foreground text-base"
-              placeholder="Search tools..."
-              placeholderTextColor="#6b6b6b"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
-          <Button
-            variant="secondary"
-            onPress={() => bottomSheetRef.current?.close()}
-            className="ml-2"
-            size="sm"
-          >
-            <HugeiconsIcon icon={Cancel01Icon} size={16} color="#ffffff" />
-          </Button>
-        </View>
-
-        {/* Filter Chips */}
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator={false}
-          className="px-4 py-3 border-b border-border"
-          contentContainerStyle={{ gap: 8 }}
-          style={{ flexGrow: 0 }}
+    <Popover>
+      <Popover.Trigger ref={popoverRef} asChild={false}>
+        <Button
+          variant="tertiary"
+          isIconOnly
+          size="sm"
+          className="rounded-full"
+          onPress={handleOpen}
         >
-          {FILTER_OPTIONS.map((filter) => (
-            <Chip
-              key={filter}
-              variant={selectedFilter === filter ? "primary" : "secondary"}
-              color={selectedFilter === filter ? "accent" : "default"}
-              onPress={() => setSelectedFilter(filter)}
-            >
-              <Chip.Label>{filter}</Chip.Label>
-            </Chip>
-          ))}
-        </ScrollView>
+          <HugeiconsIcon icon={Wrench01Icon} size={18} color="#8e8e93" />
+        </Button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Overlay />
+        <Popover.Content presentation="bottom-sheet" snapPoints={["70%"]}>
+          {/* Header */}
+          <View className="flex-row items-center justify-between px-4 pb-4">
+            <Popover.Title>Connect Tools</Popover.Title>
+            <Popover.Close />
+          </View>
 
-        {/* Integrations Header */}
-        <View className="flex-row items-center justify-between px-4 py-3">
-          <Text className="text-foreground text-sm font-medium">
-            Available Integrations
-          </Text>
-          <Text className="text-foreground text-sm">
-            {filteredIntegrations.filter((i) => i.connected).length}/
-            {filteredIntegrations.length}
-          </Text>
-        </View>
+          {/* Search */}
+          <View className="flex-row items-center px-4 py-2">
+            <View className="flex-1 flex-row items-center rounded-xl px-3 py-2 bg-muted/10">
+              <HugeiconsIcon icon={Search01Icon} size={18} color="#8e8e93" />
+              <TextInput
+                className="flex-1 ml-2 text-foreground text-sm"
+                placeholder="Search tools..."
+                placeholderTextColor="#6b6b6b"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+          </View>
 
-        {/* Integrations List */}
-        <StyledBottomSheetFlatList
-          className="flex-1"
-          data={filteredIntegrations}
-          keyExtractor={(item: Integration) => item.id}
-          showsVerticalScrollIndicator={true}
-          contentContainerStyle={{ paddingBottom: 32 }}
-          ItemSeparatorComponent={() => (
-            <View className="h-px bg-white/10 ml-13" />
-          )}
-          renderItem={({ item: integration }: { item: Integration }) => (
-            <Pressable
-              onPress={() => handleConnect(integration.id)}
-              className="flex-row items-center px-4 py-3 active:bg-white/5"
-            >
-              <View className="w-9 h-9 rounded-lg items-center justify-center mr-3">
-                <Image
-                  source={{ uri: integration.logo }}
-                  style={{ width: 28, height: 28 }}
-                  contentFit="contain"
-                />
-              </View>
-
-              <View className="flex-1 mr-3">
-                <Text className="text-white font-medium text-sm">
-                  {integration.name}
-                </Text>
-                <Text className="text-white/50 text-xs" numberOfLines={1}>
-                  {integration.description}
-                </Text>
-              </View>
-
-              <Button
-                size="sm"
-                variant="tertiary"
-                onPress={() => handleConnect(integration.id)}
-                className={
-                  integration.connected
-                    ? "bg-success/15 px-3 min-w-[90px]"
-                    : "bg-white/10 px-3 min-w-[90px]"
-                }
+          {/* Filter Chips */}
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            className="px-4 py-2"
+            contentContainerStyle={{ gap: 8 }}
+            style={{ flexGrow: 0 }}
+          >
+            {FILTER_OPTIONS.map((filter) => (
+              <Chip
+                key={filter}
+                variant={selectedFilter === filter ? "primary" : "secondary"}
+                color={selectedFilter === filter ? "accent" : "default"}
+                onPress={() => setSelectedFilter(filter)}
               >
-                <Button.Label
+                <Chip.Label>{filter}</Chip.Label>
+              </Chip>
+            ))}
+          </ScrollView>
+
+          {/* Integrations Header */}
+          <View className="flex-row items-center justify-between px-4 py-2">
+            <Text className="text-sm font-medium">Available Integrations</Text>
+            <Text className="text-sm text-muted">
+              {filteredIntegrations.filter((i) => i.connected).length}/
+              {filteredIntegrations.length}
+            </Text>
+          </View>
+
+          {/* Integrations List */}
+          <ScrollView className="flex-1" showsVerticalScrollIndicator>
+            {filteredIntegrations.map((integration) => (
+              <Pressable
+                key={integration.id}
+                onPress={() => handleConnect(integration.id)}
+                className="flex-row items-center px-4 py-3 active:bg-muted/10"
+              >
+                <View className="w-9 h-9 rounded-lg items-center justify-center mr-3">
+                  <Image
+                    source={{ uri: integration.logo }}
+                    style={{ width: 28, height: 28 }}
+                    contentFit="contain"
+                  />
+                </View>
+
+                <View className="flex-1 mr-3">
+                  <Text className="font-medium text-sm">
+                    {integration.name}
+                  </Text>
+                  <Text className="text-muted text-xs" numberOfLines={1}>
+                    {integration.description}
+                  </Text>
+                </View>
+
+                <Button
+                  size="sm"
+                  variant="tertiary"
+                  onPress={() => handleConnect(integration.id)}
                   className={
                     integration.connected
-                      ? "text-success text-xs"
-                      : "text-white/80 text-xs"
+                      ? "bg-success/15 px-3 min-w-[90px]"
+                      : "bg-muted/10 px-3 min-w-[90px]"
                   }
                 >
-                  {integration.connected ? "Connected" : "Connect"}
-                </Button.Label>
-              </Button>
-            </Pressable>
-          )}
-        />
-      </StyledBottomSheetView>
-    </BottomSheet>
+                  <Button.Label
+                    className={
+                      integration.connected
+                        ? "text-success text-xs"
+                        : "text-muted text-xs"
+                    }
+                  >
+                    {integration.connected ? "Connected" : "Connect"}
+                  </Button.Label>
+                </Button>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover>
   );
-});
-
-ConnectDrawer.displayName = "ConnectDrawer";
+}

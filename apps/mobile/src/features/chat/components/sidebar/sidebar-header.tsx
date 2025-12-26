@@ -6,12 +6,14 @@ import {
   Search01Icon,
 } from "@/components/icons";
 import { Text } from "react-native";
+import { useRouter } from "expo-router";
 
 interface SidebarHeaderProps {
   onNewChat: () => void;
 }
 
 export function SidebarHeader({ onNewChat }: SidebarHeaderProps) {
+  const router = useRouter();
   return (
     <View className="px-4 py-4 pt-6">
       <View className="flex-row items-center gap-3 mb-6 px-1">
@@ -24,6 +26,13 @@ export function SidebarHeader({ onNewChat }: SidebarHeaderProps) {
           GAIA
         </Text>
       </View>
+      <Button
+        onPress={() => {
+          router.push("/test");
+        }}
+      >
+        <Button.Label>test</Button.Label>
+      </Button>
 
       <View className="flex-row items-center">
         <View className="flex-1 flex-row items-center bg-default rounded-xl px-3 py-2">

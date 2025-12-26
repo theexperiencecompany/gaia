@@ -1,42 +1,33 @@
-import { View, Keyboard, TouchableWithoutFeedback } from "react-native";
+import { View } from "react-native";
+import { Popover, Button } from "heroui-native";
 import { StyledSafeAreaView } from "@/lib/uniwind";
-import { ChatInput } from "@/components/ui/chat-input";
-import { MessageBubble, ChatMessage } from "@/components/ui/message-bubble";
 
 export default function Test() {
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <StyledSafeAreaView className="flex-1">
-        {/* Main content area with message examples */}
-        <View className="flex-1 gap-4 p-4">
-          {/* Single messages */}
-          <MessageBubble message="Hello! How are you?" variant="received" />
-          <MessageBubble message="I'm doing great, thanks!" variant="sent" />
-
-          {/* Grouped messages using ChatMessage */}
-          <ChatMessage
-            messages={[
-              "Hey there!",
-              "Just checking in",
-              "How's the project going?",
-            ]}
-            variant="received"
-            timestamp="10:30 AM"
-          />
-
-          <ChatMessage
-            messages={["All good!", "Almost done with the feature"]}
-            variant="sent"
-            timestamp="10:32 AM"
-          />
-        </View>
-
-        {/* Chat Input at bottom */}
-        <ChatInput
-          placeholder="Ask Anything"
-          onSend={(message) => console.log("Send:", message)}
-        />
-      </StyledSafeAreaView>
-    </TouchableWithoutFeedback>
+    <StyledSafeAreaView className="flex-1 p-4">
+      <Popover>
+        <Popover.Trigger asChild>
+          <Button>
+            <Button.Label>Open Bottom Sheet</Button.Label>
+          </Button>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Overlay />
+          <Popover.Content presentation="bottom-sheet" snapPoints={["90%"]}>
+            <Popover.Title>Test Bottom Sheet</Popover.Title>
+            <Popover.Description>
+              This is a test bottom sheet content.
+            </Popover.Description>
+            <View className="mt-4">
+              <Popover.Close asChild>
+                <Button>
+                  <Button.Label>Close</Button.Label>
+                </Button>
+              </Popover.Close>
+            </View>
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover>
+    </StyledSafeAreaView>
   );
 }

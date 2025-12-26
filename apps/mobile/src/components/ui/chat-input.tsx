@@ -1,25 +1,22 @@
 import { View, TextInput } from "react-native";
-import { Text } from "@/components/ui/text";
 import {
   HugeiconsIcon,
   PlusSignIcon,
-  Wrench01Icon,
   ArrowUp02Icon,
   UserIcon,
 } from "@/components/icons";
 import { useState } from "react";
-import { Button, TextField } from "heroui-native";
+import { Button } from "heroui-native";
 import { cn } from "@/lib/utils";
+import { ConnectDrawer } from "@/features/chat/components/chat/connect-drawer";
 
 interface ChatInputProps {
   onSend?: (message: string) => void;
-  onToolsPress?: () => void;
   placeholder?: string;
 }
 
 export function ChatInput({
   onSend,
-  onToolsPress,
   placeholder = "Ask anything",
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
@@ -55,15 +52,8 @@ export function ChatInput({
               <HugeiconsIcon icon={PlusSignIcon} size={18} color="#8e8e93" />
             </Button>
 
-            <Button
-              variant="tertiary"
-              isIconOnly
-              size="sm"
-              className="rounded-full"
-              onPress={onToolsPress}
-            >
-              <HugeiconsIcon icon={Wrench01Icon} size={18} color="#8e8e93" />
-            </Button>
+            <ConnectDrawer />
+
             <Button
               variant="tertiary"
               isIconOnly
