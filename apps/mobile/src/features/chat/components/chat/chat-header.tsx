@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Text, View } from "react-native";
 import { PressableFeedback } from "heroui-native";
 import {
@@ -8,9 +7,7 @@ import {
   Menu01Icon,
   Search01Icon,
 } from "@/components/icons";
-import { AI_MODELS, DEFAULT_MODEL } from "@/features/chat/data/models";
 import type { AIModel } from "@/features/chat/types";
-import { ModelSelector } from "./model-selector";
 
 interface ChatHeaderProps {
   onMenuPress: () => void;
@@ -24,15 +21,7 @@ export function ChatHeader({
   onMenuPress,
   onNewChatPress,
   onSearchPress,
-  selectedModel = DEFAULT_MODEL,
-  onModelChange,
 }: ChatHeaderProps) {
-  const [isModelSelectorVisible, setIsModelSelectorVisible] = useState(false);
-
-  const handleModelSelect = (model: AIModel) => {
-    onModelChange?.(model);
-  };
-
   return (
     <View className="flex-row items-center justify-between px-6 py-4 border-b border-border/10 bg-surface-1">
       <PressableFeedback onPress={onMenuPress}>
@@ -41,22 +30,12 @@ export function ChatHeader({
         </View>
       </PressableFeedback>
 
-      <PressableFeedback onPress={() => setIsModelSelectorVisible(true)}>
-        <View className="flex-row items-center gap-2 px-3 py-1.5">
-          <Text className="text-sm text-foreground font-bold tracking-tight">
-            {selectedModel.name}
-          </Text>
-          <HugeiconsIcon icon={ArrowDown01Icon} size={14} color="#666666" />
-        </View>
-      </PressableFeedback>
-
-      <ModelSelector
-        visible={isModelSelectorVisible}
-        selectedModel={selectedModel}
-        models={AI_MODELS}
-        onSelect={handleModelSelect}
-        onClose={() => setIsModelSelectorVisible(false)}
-      />
+      <View className="flex-row items-center gap-2 px-3 py-1.5">
+        <Text className="text-sm text-foreground font-bold tracking-tight">
+          {"GAIA Free"}
+        </Text>
+        <HugeiconsIcon icon={ArrowDown01Icon} size={14} color="#666666" />
+      </View>
 
       <View className="flex-row gap-1">
         {onSearchPress && (

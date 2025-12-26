@@ -8,7 +8,7 @@ import {
   UserIcon,
 } from "@/components/icons";
 import { useState } from "react";
-import { Button, Avatar } from "heroui-native";
+import { Button, TextField } from "heroui-native";
 import { cn } from "@/lib/utils";
 
 interface ChatInputProps {

@@ -1,11 +1,5 @@
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  ScrollView,
-  Text,
-  View,
-  Pressable,
-} from "react-native";
+import { ActivityIndicator, ScrollView, View, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { PressableFeedback } from "heroui-native";
 import {
@@ -13,12 +7,14 @@ import {
   FavouriteIcon,
   HugeiconsIcon,
 } from "@/components/icons";
+import { Text } from "@/components/ui/text";
 import { useChatContext } from "../../hooks/use-chat-context";
 import {
   useConversations,
   groupConversationsByDate,
   type Conversation,
 } from "../../hooks/use-conversations";
+import { cn } from "@/lib/utils";
 
 interface ChatHistoryProps {
   onSelectChat: (chatId: string) => void;
@@ -34,43 +30,21 @@ function ChatItem({ item, isActive, onPress }: ChatItemProps) {
   return (
     <PressableFeedback onPress={onPress}>
       <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: 24,
-          paddingVertical: 8,
-          gap: 12,
-          backgroundColor: isActive ? "#103543" : "transparent",
-          borderRadius: isActive ? 12 : 0,
-          position: "relative",
-        }}
+        className={`flex-row items-center px-6 py-2 gap-3 relative ${
+          isActive ? "bg-muted/10 rounded-xl" : ""
+        }`}
       >
-        {isActive && (
-          <View
-            style={{
-              position: "absolute",
-              left: 0,
-              top: 12,
-              bottom: 12,
-              width: 3,
-              backgroundColor: "#16c1ff",
-              borderTopRightRadius: 4,
-              borderBottomRightRadius: 4,
-            }}
-          />
-        )}
         <HugeiconsIcon
           icon={item.is_starred ? FavouriteIcon : BubbleChatIcon}
           size={16}
           color={isActive ? "#ffffff" : "#666666"}
         />
         <Text
-          style={{
-            flex: 1,
-            color: isActive ? "#ffffff" : "#cccccc",
-            fontSize: 14,
-          }}
           numberOfLines={1}
+          className={cn("text-sm", {
+            "text-foreground": isActive,
+            "text-muted": !isActive,
+          })}
         >
           {item.title}
         </Text>
@@ -99,32 +73,12 @@ function Section({
   if (items.length === 0) return null;
 
   return (
-    <View style={{ marginBottom: 8 }}>
+    <View className="mb-2">
       <Pressable
         onPress={onToggle}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: 24,
-          paddingVertical: 12,
-          opacity: 0.6,
-        }}
+        className="flex-row items-center px-6 py-3 opacity-60"
       >
-        <Text
-          style={{
-            flex: 1,
-            fontSize: 10,
-            fontWeight: "700",
-            color: "#888888",
-            textTransform: "uppercase",
-            letterSpacing: 2,
-          }}
-        >
-          {title}
-        </Text>
-        <Text style={{ color: "#888888", fontSize: 12 }}>
-          {isExpanded ? "▼" : "▶"}
-        </Text>
+        <Text className="text-xs text-muted">{title}</Text>
       </Pressable>
       {isExpanded &&
         items.map((item) => (
@@ -170,9 +124,9 @@ export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View className="flex-1 justify-center items-center">
         <ActivityIndicator size="small" color="#16c1ff" />
-        <Text style={{ color: "#888888", marginTop: 12, fontSize: 12 }}>
+        <Text className="text-muted-foreground mt-3 text-xs">
           Loading conversations...
         </Text>
       </View>
@@ -181,42 +135,19 @@ export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
 
   if (error) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          padding: 24,
-        }}
-      >
-        <Text style={{ color: "#ff6b6b", fontSize: 12, textAlign: "center" }}>
-          {error}
-        </Text>
+      <View className="flex-1 justify-center items-center p-6">
+        <Text className="text-destructive text-xs text-center">{error}</Text>
       </View>
     );
   }
 
   if (conversations.length === 0) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          padding: 24,
-        }}
-      >
-        <Text style={{ color: "#888888", fontSize: 14, textAlign: "center" }}>
+      <View className="flex-1 justify-center items-center p-6">
+        <Text className="text-muted-foreground text-sm text-center">
           No conversations yet
         </Text>
-        <Text
-          style={{
-            color: "#666666",
-            fontSize: 12,
-            textAlign: "center",
-            marginTop: 8,
-          }}
-        >
+        <Text className="text-muted-foreground text-xs text-center mt-2">
           Start a new chat to begin
         </Text>
       </View>
@@ -224,7 +155,7 @@ export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
   }
 
   return (
-    <ScrollView style={{ flex: 1 }}>
+    <ScrollView style={{ flex: 1 }} className="px-3">
       <Section
         title="Starred"
         items={groupedChats.starred}
