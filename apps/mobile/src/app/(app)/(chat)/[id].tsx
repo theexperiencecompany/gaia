@@ -1,13 +1,10 @@
 import { useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
-  Text,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -17,11 +14,8 @@ import DrawerLayout, {
 } from "react-native-gesture-handler/ReanimatedDrawerLayout";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
-  ChatEmptyState,
   ChatHeader,
-  ChatInput,
   ChatMessage,
-  DEFAULT_SUGGESTIONS,
   type Message,
   SIDEBAR_WIDTH,
   SidebarContent,
@@ -29,27 +23,20 @@ import {
   useChatContext,
   useSidebar,
 } from "@/features/chat";
+import { ChatInput } from "@/components/ui/chat-input";
 
 export default function ChatPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { activeChatId, setActiveChatId, createNewChat } = useChatContext();
 
-  // Set active chat ID when navigating to this page
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (id) {
       setActiveChatId(id);
     }
-  }, [id]); // Only depend on id, not activeChatId
+  }, [id]);
 
-  const {
-    messages,
-    isTyping,
-    isLoading,
-    flatListRef,
-    sendMessage,
-    scrollToBottom,
-  } = useChat(activeChatId);
+  const { messages, isTyping, flatListRef, sendMessage, scrollToBottom } =
+    useChat(activeChatId);
 
   const { drawerRef, closeSidebar, toggleSidebar } = useSidebar();
 
@@ -75,26 +62,6 @@ export default function ChatPage() {
     <ChatMessage message={item} />
   );
 
-  const renderEmpty = () => {
-    if (isLoading) {
-      return (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#16c1ff" />
-          <Text className="text-muted-foreground mt-4 text-sm">
-            Loading messages...
-          </Text>
-        </View>
-      );
-    }
-
-    return (
-      <ChatEmptyState
-        suggestions={DEFAULT_SUGGESTIONS}
-        onSuggestionPress={sendMessage}
-      />
-    );
-  };
-
   return (
     <GestureHandlerRootView className="flex-1">
       <DrawerLayout
@@ -106,51 +73,44 @@ export default function ChatPage() {
         renderNavigationView={renderDrawerContent}
       >
         <KeyboardAvoidingView
-          className="flex-1 bg-surface-1"
+          className="flex-1"
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
         >
-          <SafeAreaView
-            style={{ flex: 1, backgroundColor: "#141414" }}
-            edges={["top", "bottom"]}
-          >
-            {/* Header */}
+          <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
             <ChatHeader
               onMenuPress={toggleSidebar}
               onNewChatPress={handleNewChat}
               onSearchPress={() => console.log("Search pressed")}
             />
 
-            {/* Messages List */}
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-              <View className="flex-1">
-                <FlatList
-                  ref={flatListRef}
-                  data={messages}
-                  renderItem={renderMessage}
-                  keyExtractor={(item) => item.id}
-                  contentContainerStyle={{
-                    flexGrow: 1,
-                    paddingTop: 16,
-                    paddingBottom: 32,
-                  }}
-                  ListEmptyComponent={renderEmpty}
-                  showsVerticalScrollIndicator={true}
-                  keyboardShouldPersistTaps="handled"
-                  initialNumToRender={20}
-                  maxToRenderPerBatch={10}
-                  windowSize={10}
-                  onContentSizeChange={() => {
-                    if (messages.length > 0) {
-                      flatListRef.current?.scrollToEnd({ animated: false });
-                    }
-                  }}
-                />
-              </View>
-            </TouchableWithoutFeedback>
+            <View className="flex-1">
+              <FlatList
+                ref={flatListRef}
+                data={messages}
+                renderItem={renderMessage}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={{
+                  flexGrow: 1,
+                  paddingTop: 16,
+                  paddingBottom: 32,
+                }}
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+                initialNumToRender={20}
+                maxToRenderPerBatch={10}
+                windowSize={10}
+                keyboardDismissMode="on-drag"
+                onScrollBeginDrag={Keyboard.dismiss}
+                onContentSizeChange={() => {
+                  if (messages.length > 0) {
+                    flatListRef.current?.scrollToEnd({ animated: false });
+                  }
+                }}
+              />
+            </View>
 
-            {/* Bottom Input & Typing Indicator */}
-            <View className="w-full bg-surface-1/95 border-t border-border/10 px-6 pb-8 pt-4">
+            <View className="px-2 pb-2 bg-surface rounded-t-4xl">
               {isTyping && (
                 <View className="flex-row items-center px-2 py-3 gap-2 mb-2">
                   <View className="w-1.5 h-1.5 rounded-full bg-primary/60" />
@@ -158,7 +118,7 @@ export default function ChatPage() {
                   <View className="w-1.5 h-1.5 rounded-full bg-primary/60" />
                 </View>
               )}
-              <ChatInput placeholder="What can I do for you today?" />
+              <ChatInput onSend={sendMessage} />
             </View>
           </SafeAreaView>
         </KeyboardAvoidingView>

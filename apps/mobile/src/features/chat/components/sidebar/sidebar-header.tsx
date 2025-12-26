@@ -6,6 +6,7 @@ import {
   Search01Icon,
 } from "@/components/icons";
 import { Text } from "react-native";
+import { router } from "expo-router";
 
 interface SidebarHeaderProps {
   onNewChat: () => void;
@@ -43,6 +44,13 @@ export function SidebarHeader({ onNewChat }: SidebarHeaderProps) {
           <HugeiconsIcon icon={PencilEdit02Icon} size={18} color="#ffffff" />
         </Button>
       </View>
+      <Button
+        className="mt-10"
+        size="lg"
+        onPress={() => router.push("/(app)/test")}
+      >
+        <Button.Label>Test Route</Button.Label>
+      </Button>
     </View>
   );
 }
