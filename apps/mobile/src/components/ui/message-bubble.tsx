@@ -13,7 +13,6 @@ import {
   Copy01Icon,
 } from "@/components/icons";
 
-// Gaia logo for AI avatar
 const GaiaLogo = require("@/../assets/logo/gaia.png");
 
 const messageBubbleVariants = cva("px-4 py-2.5 max-w-[100%]", {
@@ -30,7 +29,6 @@ const messageBubbleVariants = cva("px-4 py-2.5 max-w-[100%]", {
     },
   },
   compoundVariants: [
-    // Sent message grouping
     {
       variant: "sent",
       grouped: "first",
@@ -46,7 +44,6 @@ const messageBubbleVariants = cva("px-4 py-2.5 max-w-[100%]", {
       grouped: "last",
       className: "rounded-tr-md",
     },
-    // Received message grouping
     {
       variant: "received",
       grouped: "first",

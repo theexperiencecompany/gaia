@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from "expo-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   FlatList,
   Keyboard,
@@ -24,10 +24,15 @@ import {
   useSidebar,
 } from "@/features/chat";
 import { ChatInput } from "@/components/ui/chat-input";
+import {
+  ConnectDrawer,
+  type ConnectDrawerRef,
+} from "@/features/chat/components/chat/connect-drawer";
 
 export default function ChatPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { activeChatId, setActiveChatId, createNewChat } = useChatContext();
+  const connectDrawerRef = useRef<ConnectDrawerRef>(null);
 
   useEffect(() => {
     if (id) {
@@ -52,6 +57,10 @@ export default function ChatPage() {
   const handleNewChat = () => {
     createNewChat();
     closeSidebar();
+  };
+
+  const handleOpenConnectDrawer = () => {
+    connectDrawerRef.current?.open();
   };
 
   const renderDrawerContent = () => (
@@ -118,10 +127,15 @@ export default function ChatPage() {
                   <View className="w-1.5 h-1.5 rounded-full bg-primary/60" />
                 </View>
               )}
-              <ChatInput onSend={sendMessage} />
+              <ChatInput
+                onSend={sendMessage}
+                onToolsPress={handleOpenConnectDrawer}
+              />
             </View>
           </SafeAreaView>
         </KeyboardAvoidingView>
+
+        <ConnectDrawer ref={connectDrawerRef} />
       </DrawerLayout>
     </GestureHandlerRootView>
   );

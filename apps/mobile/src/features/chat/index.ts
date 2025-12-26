@@ -1,5 +1,4 @@
 // Components
-export * from "@/features/chat/components/chat/chat-empty-state";
 export * from "@/features/chat/components/chat/chat-header";
 export * from "@/features/chat/components/chat/chat-input";
 export * from "@/features/chat/components/chat/chat-message";

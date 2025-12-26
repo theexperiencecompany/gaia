@@ -5,18 +5,21 @@ import {
   PlusSignIcon,
   Wrench01Icon,
   ArrowUp02Icon,
+  UserIcon,
 } from "@/components/icons";
 import { useState } from "react";
-import { Button } from "heroui-native";
+import { Button, Avatar } from "heroui-native";
 import { cn } from "@/lib/utils";
 
 interface ChatInputProps {
   onSend?: (message: string) => void;
+  onToolsPress?: () => void;
   placeholder?: string;
 }
 
 export function ChatInput({
   onSend,
+  onToolsPress,
   placeholder = "Ask anything",
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
@@ -57,29 +60,40 @@ export function ChatInput({
               isIconOnly
               size="sm"
               className="rounded-full"
+              onPress={onToolsPress}
             >
               <HugeiconsIcon icon={Wrench01Icon} size={18} color="#8e8e93" />
             </Button>
+            <Button
+              variant="tertiary"
+              isIconOnly
+              size="sm"
+              className="rounded-full"
+            >
+              <HugeiconsIcon icon={UserIcon} size={18} color="#8e8e93" />
+            </Button>
           </View>
 
-          <Button
-            variant="ghost"
-            isIconOnly
-            size="sm"
-            className={cn("rounded-full", {
-              "bg-accent": message.trim(),
-              "bg-default": !message.trim(),
-            })}
-            onPress={handleSend}
-            isDisabled={!message.trim()}
-          >
-            <HugeiconsIcon
-              icon={ArrowUp02Icon}
-              size={18}
-              strokeWidth={2.5}
-              color={message.trim() ? "#000000" : "#8e8e93"}
-            />
-          </Button>
+          <View className="flex-row items-center gap-2">
+            <Button
+              variant="ghost"
+              isIconOnly
+              size="sm"
+              className={cn("rounded-full", {
+                "bg-accent": message.trim(),
+                "bg-default": !message.trim(),
+              })}
+              onPress={handleSend}
+              isDisabled={!message.trim()}
+            >
+              <HugeiconsIcon
+                icon={ArrowUp02Icon}
+                size={16}
+                strokeWidth={2.5}
+                color={message.trim() ? "#000000" : "#8e8e93"}
+              />
+            </Button>
+          </View>
         </View>
       </View>
     </View>
