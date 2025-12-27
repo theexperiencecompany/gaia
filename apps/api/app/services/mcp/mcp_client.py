@@ -1,12 +1,20 @@
 """
-MCP Client wrapper for GAIA using mcp-use library.
+MCP Client wrapper for GAIA.
 
-Handles connection management, authentication, and LangChain tool conversion.
-Follows same patterns as ComposioService for parity.
+Implements MCP OAuth 2.1 authorization flow per specification:
+1. Connect to MCP server → receive 401 with WWW-Authenticate header
+2. Fetch Protected Resource Metadata (PRM) from resource_metadata URL
+3. Discover authorization server from PRM
+4. Fetch Authorization Server Metadata for OAuth endpoints
+5. Perform DCR if needed, then OAuth authorization code flow with PKCE
 """
 
+import base64
+import hashlib
+import re
+import secrets
 import urllib.parse
-from typing import Optional, TypedDict
+from typing import Optional
 
 import httpx
 from langchain_core.tools import BaseTool
@@ -20,20 +28,33 @@ from app.models.oauth_models import MCPConfig
 from app.services.mcp.mcp_token_store import MCPTokenStore
 
 
-class OAuthMetadata(TypedDict):
-    """OAuth server metadata from .well-known discovery."""
+def generate_pkce_pair() -> tuple[str, str]:
+    """
+    Generate PKCE code_verifier and code_challenge (S256).
 
-    authorization_endpoint: str
-    token_endpoint: str
-    registration_endpoint: str
+    Returns (code_verifier, code_challenge) tuple.
+    """
+    # Generate random 32-byte verifier, base64url encode (43-128 chars per spec)
+    code_verifier = secrets.token_urlsafe(32)
+
+    # SHA256 hash, then base64url encode (without padding)
+    digest = hashlib.sha256(code_verifier.encode()).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).decode().rstrip("=")
+
+    return code_verifier, code_challenge
 
 
 class GAIAMCPClient:
     """
-    GAIA's MCP client wrapper.
+    GAIA's MCP client wrapper implementing MCP OAuth 2.1 spec.
 
-    Provides connection management, authentication handling, and tool conversion.
-    Designed to be indistinguishable from Composio in API patterns.
+    OAuth flow per MCP specification:
+    1. Attempt connection → 401 Unauthorized with WWW-Authenticate header
+    2. Parse resource_metadata URL from WWW-Authenticate
+    3. Fetch Protected Resource Metadata (RFC 9728)
+    4. Discover authorization server and fetch its metadata (RFC 8414)
+    5. DCR with authorization server if no client_id (RFC 7591)
+    6. Standard OAuth 2.1 authorization code flow with PKCE
     """
 
     def __init__(self, user_id: str):
@@ -42,43 +63,189 @@ class GAIAMCPClient:
         self._clients: dict[str, MCPClient] = {}
         self._tools: dict[str, list[BaseTool]] = {}
 
-    async def connect(
+    async def _probe_for_auth_challenge(self, server_url: str) -> Optional[str]:
+        """
+        Probe MCP server to get WWW-Authenticate challenge.
+
+        Returns the resource_metadata URL if auth is required, None otherwise.
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(server_url, timeout=10)
+
+                if response.status_code == 401:
+                    www_auth = response.headers.get("WWW-Authenticate", "")
+                    match = re.search(r'resource_metadata="([^"]+)"', www_auth)
+                    if match:
+                        return match.group(1)
+                    logger.warning(
+                        f"401 but no resource_metadata in WWW-Authenticate: {www_auth}"
+                    )
+                return None
+        except Exception as e:
+            logger.warning(f"Auth probe failed for {server_url}: {e}")
+            return None
+
+    async def _fetch_protected_resource_metadata(self, prm_url: str) -> dict:
+        """
+        Fetch Protected Resource Metadata (RFC 9728).
+
+        Returns dict with 'authorization_servers', 'scopes_supported', etc.
+        """
+        async with httpx.AsyncClient() as client:
+            response = await client.get(prm_url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+
+    async def _fetch_auth_server_metadata(self, auth_server_url: str) -> dict:
+        """
+        Fetch Authorization Server Metadata (RFC 8414).
+
+        Per RFC 8414, for an issuer URL like https://auth.example.com/tenant1:
+        - Path-aware: https://auth.example.com/.well-known/oauth-authorization-server/tenant1
+        - Root: https://auth.example.com/.well-known/oauth-authorization-server
+
+        Tries multiple discovery patterns and both OAuth and OIDC endpoints.
+        """
+        from urllib.parse import urlparse
+
+        parsed = urlparse(auth_server_url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        path = parsed.path.rstrip("/")
+
+        # Build candidate URLs in order of preference
+        candidate_urls = []
+
+        # RFC 8414 path-aware discovery (path after .well-known)
+        if path:
+            candidate_urls.append(
+                f"{origin}/.well-known/oauth-authorization-server{path}"
+            )
+            candidate_urls.append(f"{origin}/.well-known/openid-configuration{path}")
+
+        # Root discovery (most common)
+        candidate_urls.append(f"{origin}/.well-known/oauth-authorization-server")
+        candidate_urls.append(f"{origin}/.well-known/openid-configuration")
+
+        last_error = None
+        async with httpx.AsyncClient() as client:
+            for url in candidate_urls:
+                try:
+                    response = await client.get(url, timeout=10)
+                    if response.status_code == 200:
+                        logger.debug(f"Found auth server metadata at {url}")
+                        return response.json()
+                except Exception as e:
+                    logger.debug(f"Auth metadata not found at {url}: {e}")
+                    last_error = e
+
+        error_msg = f"Failed to fetch auth server metadata for {auth_server_url}"
+        logger.error(error_msg)
+        raise Exception(error_msg) from last_error
+
+    async def _discover_oauth_config(
+        self, integration_id: str, mcp_config: MCPConfig
+    ) -> dict:
+        """
+        Full MCP OAuth discovery flow.
+
+        Returns dict with authorization_endpoint, token_endpoint, registration_endpoint, etc.
+        """
+        # Check if we have cached discovery data
+        cached = await self.token_store.get_oauth_discovery(integration_id)
+        if cached:
+            return cached
+
+        # If explicit metadata provided, use it
+        if mcp_config.oauth_metadata:
+            return mcp_config.oauth_metadata
+
+        server_url = mcp_config.server_url.rstrip("/")
+
+        # Step 1: Probe server for auth challenge
+        prm_url = await self._probe_for_auth_challenge(server_url)
+
+        if not prm_url:
+            # Try well-known location as fallback
+            prm_url = f"{server_url}/.well-known/oauth-protected-resource"
+
+        # Step 2: Fetch Protected Resource Metadata
+        try:
+            prm = await self._fetch_protected_resource_metadata(prm_url)
+        except Exception as e:
+            logger.error(f"Failed to fetch PRM from {prm_url}: {e}")
+            raise ValueError(
+                f"Could not discover OAuth config for {integration_id}: {e}"
+            )
+
+        # Step 3: Get authorization server
+        auth_servers = prm.get("authorization_servers", [])
+        if not auth_servers:
+            raise ValueError(f"No authorization_servers in PRM for {integration_id}")
+
+        auth_server_url = auth_servers[0]  # Use first one
+
+        # Step 4: Fetch Authorization Server Metadata
+        auth_metadata = await self._fetch_auth_server_metadata(auth_server_url)
+
+        # Combine into discovery result
+        discovery = {
+            "resource": prm.get("resource", server_url),
+            "scopes_supported": prm.get("scopes_supported", []),
+            "authorization_endpoint": auth_metadata.get("authorization_endpoint"),
+            "token_endpoint": auth_metadata.get("token_endpoint"),
+            "registration_endpoint": auth_metadata.get("registration_endpoint"),
+            "issuer": auth_metadata.get("issuer"),
+        }
+
+        # Cache for future use
+        await self.token_store.store_oauth_discovery(integration_id, discovery)
+
+        return discovery
+
+    async def _build_config(
         self,
         integration_id: str,
-        bearer_token: Optional[str] = None,
-    ) -> list[BaseTool]:
+        mcp_config: MCPConfig,
+    ) -> dict:
+        """Build mcp-use config dict."""
+        server_config: dict = {"url": mcp_config.server_url}
+
+        if mcp_config.transport:
+            server_config["transport"] = mcp_config.transport
+
+        # For OAuth integrations, try to use stored token
+        if mcp_config.requires_auth:
+            stored_token = await self.token_store.get_oauth_token(integration_id)
+            if stored_token:
+                server_config["auth"] = stored_token
+                server_config["headers"] = {"Authorization": f"Bearer {stored_token}"}
+
+        return {"mcpServers": {integration_id: server_config}}
+
+    async def connect(self, integration_id: str) -> list[BaseTool]:
         """
         Connect to an MCP server and return LangChain tools.
 
-        Args:
-            integration_id: The integration ID from oauth_config
-            bearer_token: Optional bearer token for bearer auth (new connections)
-
-        Returns:
-            List of LangChain BaseTool objects
+        For unauthenticated MCPs: Connects directly.
+        For OAuth MCPs: Uses stored credentials from completed OAuth flow.
         """
         integration = get_integration_by_id(integration_id)
         if not integration or not integration.mcp_config:
             raise ValueError(f"MCP integration {integration_id} not found")
 
         mcp_config = integration.mcp_config
-        config = await self._build_config(integration_id, mcp_config, bearer_token)
+        config = await self._build_config(integration_id, mcp_config)
 
         try:
             client = MCPClient(config)
             await client.create_session(integration_id)
 
-            # Use LangChainAdapter to convert MCP tools
             adapter = LangChainAdapter()
             tools = await adapter.create_tools(client)
 
             self._clients[integration_id] = client
             self._tools[integration_id] = tools
-
-            # Store connection based on auth type
-            if mcp_config.auth_type == "bearer" and bearer_token:
-                await self.token_store.store_bearer_token(integration_id, bearer_token)
-            # Note: auth_type="none" doesn't need storage - always connected
 
             logger.info(f"Connected to MCP {integration_id}: {len(tools)} tools")
             return tools
@@ -88,91 +255,15 @@ class GAIAMCPClient:
             await self.token_store.update_status(integration_id, "failed", str(e))
             raise
 
-    async def _build_config(
-        self,
-        integration_id: str,
-        mcp_config: MCPConfig,
-        bearer_token: Optional[str] = None,
-    ) -> dict:
-        """Build mcp-use config dict with proper authentication."""
-        server_config: dict = {"url": mcp_config.server_url}
-
-        if mcp_config.auth_type == "none":
-            pass  # No auth needed
-
-        elif mcp_config.auth_type == "bearer":
-            # Get token from param or stored credentials
-            token = bearer_token or await self.token_store.get_bearer_token(
-                integration_id
-            )
-            if token:
-                server_config["auth"] = token
-
-        elif mcp_config.auth_type == "oauth":
-            # Get stored OAuth token
-            stored_token = await self.token_store.get_oauth_token(integration_id)
-            logger.info(
-                f"OAuth token for {integration_id}: {'found' if stored_token else 'NOT FOUND'}"
-            )
-
-            if stored_token:
-                # We have a token - pass it as bearer auth
-                server_config["auth"] = stored_token
-                server_config["headers"] = {"Authorization": f"Bearer {stored_token}"}
-                logger.info(f"Set OAuth token as bearer auth for {integration_id}")
-            elif mcp_config.use_dcr:
-                # No token yet, but we have DCR - pass client credentials to mcp-use
-                dcr_data = await self.token_store.get_dcr_client(integration_id)
-                if dcr_data:
-                    # Pass DCR credentials so mcp-use can complete OAuth
-                    server_config["auth"] = {
-                        "client_id": dcr_data.get("client_id"),
-                        "client_secret": dcr_data.get("client_secret"),
-                    }
-                    logger.info(f"Set DCR credentials for {integration_id}")
-            # Note: If no stored token and no DCR, OAuth flow must be triggered
-            # via build_oauth_auth_url() and handle_oauth_callback()
-
-        return {"mcpServers": {integration_id: server_config}}
-
     def _resolve_secret(
         self, env_name: Optional[str], direct_value: Optional[str]
     ) -> Optional[str]:
         """Resolve secret from Infisical env var or direct value."""
         if env_name:
             value = getattr(settings, env_name, None)
-            if value:  # Only return if value is truthy
+            if value:
                 return value
         return direct_value
-
-    def _get_oauth_base_url(self, mcp_config: MCPConfig) -> str:
-        """
-        Get OAuth base URL from config.
-
-        Note: oauth_base_url is required when auth_type is 'oauth' (enforced by MCPConfig validator).
-        """
-        if not mcp_config.oauth_base_url:
-            raise ValueError(
-                "oauth_base_url is required for OAuth MCP integrations. "
-                "This should be enforced by MCPConfig validation."
-            )
-        return mcp_config.oauth_base_url.rstrip("/")
-
-    async def _discover_oauth_metadata(self, base_url: str) -> OAuthMetadata:
-        """Discover OAuth endpoints from .well-known endpoint."""
-        try:
-            discovery_url = f"{base_url}/.well-known/oauth-authorization-server"
-            async with httpx.AsyncClient() as client:
-                response = await client.get(discovery_url, timeout=10)
-                response.raise_for_status()
-                return response.json()
-        except Exception as e:
-            logger.warning(f"OAuth discovery failed for {base_url}: {e}")
-            return {
-                "authorization_endpoint": f"{base_url}/authorize",
-                "token_endpoint": f"{base_url}/token",
-                "registration_endpoint": f"{base_url}/register",
-            }
 
     async def build_oauth_auth_url(
         self,
@@ -181,9 +272,12 @@ class GAIAMCPClient:
         redirect_path: str = "/integrations",
     ) -> str:
         """
-        Build OAuth authorization URL for the MCP server.
+        Build OAuth authorization URL using MCP spec discovery.
 
-        Discovers OAuth metadata and handles DCR if needed.
+        1. Discovers auth server via Protected Resource Metadata
+        2. Fetches Authorization Server Metadata for endpoints
+        3. Uses DCR on auth server if no client_id configured
+        4. Returns authorization URL for browser redirect
         """
         integration = get_integration_by_id(integration_id)
         if not integration or not integration.mcp_config:
@@ -191,96 +285,95 @@ class GAIAMCPClient:
 
         mcp_config = integration.mcp_config
 
-        # Get OAuth base URL and discover metadata
-        base_url = self._get_oauth_base_url(mcp_config)
+        # Full MCP OAuth discovery
+        oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
 
-        # Use explicit endpoints if provided, otherwise discover
-        if mcp_config.oauth_authorize_endpoint and mcp_config.oauth_token_endpoint:
-            logger.info(f"Using explicit OAuth endpoints for {integration_id}")
-            oauth_metadata = {
-                "authorization_endpoint": mcp_config.oauth_authorize_endpoint,
-                "token_endpoint": mcp_config.oauth_token_endpoint,
-                # For DCR, derive registration endpoint from oauth_base_url
-                "registration_endpoint": f"{base_url}/register"
-                if mcp_config.use_dcr
-                else None,
-            }
-        else:
-            oauth_metadata = await self._discover_oauth_metadata(base_url)
+        # Get or register client credentials
+        client_id = self._resolve_secret(mcp_config.client_id_env, mcp_config.client_id)
 
-        async with httpx.AsyncClient() as http_client:
-            # Get client_id - either from config or DCR
-            logger.info(
-                f"Resolving client_id for {integration_id}: env={mcp_config.client_id_env}, direct={mcp_config.client_id}"
-            )
-            client_id = self._resolve_secret(
-                mcp_config.client_id_env, mcp_config.client_id
-            )
-            logger.info(
-                f"Resolved client_id for {integration_id}: {client_id is not None}"
+        if not client_id:
+            # Try stored DCR client
+            dcr_data = await self.token_store.get_dcr_client(integration_id)
+            if dcr_data:
+                client_id = dcr_data.get("client_id")
+            elif oauth_config.get("registration_endpoint"):
+                # Perform DCR on the AUTHORIZATION SERVER (not MCP server)
+                client_id = await self._register_client(
+                    integration_id,
+                    oauth_config["registration_endpoint"],
+                    redirect_uri,
+                )
+
+        if not client_id:
+            raise ValueError(
+                f"Could not obtain client_id for {integration_id}. "
+                "DCR may not be supported - check if pre-registration is required."
             )
 
-            # If use_dcr is True and no client_id, try Dynamic Client Registration
-            if not client_id and mcp_config.use_dcr:
-                # Check if we have a stored DCR registration
-                stored_client = await self.token_store.get_dcr_client(integration_id)
-                if stored_client:
-                    client_id = stored_client.get("client_id")
-                else:
-                    # Register dynamically
-                    registration_endpoint = oauth_metadata.get("registration_endpoint")
-                    if registration_endpoint:
-                        try:
-                            reg_response = await http_client.post(
-                                registration_endpoint,
-                                json={
-                                    "client_name": "GAIA AI Assistant",
-                                    "redirect_uris": [redirect_uri],
-                                    "grant_types": [
-                                        "authorization_code",
-                                        "refresh_token",
-                                    ],
-                                    "response_types": ["code"],
-                                    "token_endpoint_auth_method": "none",  # Public client
-                                },
-                                timeout=30,
-                            )
-                            reg_response.raise_for_status()
-                            dcr_data = reg_response.json()
-                            client_id = dcr_data.get("client_id")
+        # Generate PKCE pair (required for OAuth 2.1)
+        code_verifier, code_challenge = generate_pkce_pair()
 
-                            # Store DCR registration
-                            await self.token_store.store_dcr_client(
-                                integration_id, dcr_data
-                            )
-                            logger.info(f"DCR successful for {integration_id}")
-                        except Exception as e:
-                            logger.error(f"DCR failed for {integration_id}: {e}")
-                            raise ValueError(f"Dynamic Client Registration failed: {e}")
-
-            if not client_id:
-                raise ValueError(f"No client_id configured for {integration_id}")
-
-        # Create state with user context
-        state = await self.token_store.create_oauth_state(integration_id)
+        # Create OAuth state (stores code_verifier for token exchange)
+        state = await self.token_store.create_oauth_state(integration_id, code_verifier)
         state_data = f"{state}:{integration_id}:{redirect_path}"
 
         # Build authorization URL
-        auth_endpoint = oauth_metadata.get("authorization_endpoint")
-        scopes = " ".join(mcp_config.oauth_scopes) if mcp_config.oauth_scopes else ""
+        auth_endpoint = oauth_config.get("authorization_endpoint")
+        if not auth_endpoint:
+            raise ValueError(
+                f"No authorization_endpoint discovered for {integration_id}"
+            )
+
+        # Use discovered scopes or configured ones
+        scopes = mcp_config.oauth_scopes or oauth_config.get("scopes_supported", [])
+        scope_str = " ".join(scopes) if scopes else ""
 
         params = {
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
             "state": state_data,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
         }
-        if scopes:
-            params["scope"] = scopes
+        if scope_str:
+            params["scope"] = scope_str
 
         auth_url = f"{auth_endpoint}?{urllib.parse.urlencode(params)}"
-        logger.info(f"Built OAuth URL for {integration_id}")
+        logger.info(f"Built OAuth URL for {integration_id}: {auth_endpoint}")
         return auth_url
+
+    async def _register_client(
+        self, integration_id: str, registration_endpoint: str, redirect_uri: str
+    ) -> Optional[str]:
+        """
+        Perform Dynamic Client Registration (RFC 7591) on the authorization server.
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    registration_endpoint,
+                    json={
+                        "client_name": "GAIA AI Assistant",
+                        "redirect_uris": [redirect_uri],
+                        "grant_types": ["authorization_code", "refresh_token"],
+                        "response_types": ["code"],
+                        "token_endpoint_auth_method": "none",
+                    },
+                    timeout=30,
+                )
+                response.raise_for_status()
+                dcr_data = response.json()
+                await self.token_store.store_dcr_client(integration_id, dcr_data)
+                logger.info(
+                    f"DCR successful for {integration_id} at {registration_endpoint}"
+                )
+                return dcr_data.get("client_id")
+        except Exception as e:
+            logger.error(
+                f"DCR failed for {integration_id} at {registration_endpoint}: {e}"
+            )
+            raise ValueError(f"Dynamic Client Registration failed: {e}")
 
     async def handle_oauth_callback(
         self,
@@ -289,8 +382,11 @@ class GAIAMCPClient:
         state: str,
         redirect_uri: str,
     ) -> list[BaseTool]:
-        """Handle OAuth callback - exchange code for tokens and connect."""
-        if not await self.token_store.verify_oauth_state(integration_id, state):
+        """Exchange authorization code for tokens and connect."""
+        is_valid, code_verifier = await self.token_store.verify_oauth_state(
+            integration_id, state
+        )
+        if not is_valid:
             raise ValueError("Invalid OAuth state")
 
         integration = get_integration_by_id(integration_id)
@@ -299,88 +395,62 @@ class GAIAMCPClient:
 
         mcp_config = integration.mcp_config
 
-        # Get OAuth base URL and token endpoint
-        base_url = self._get_oauth_base_url(mcp_config)
+        # Get OAuth config (should be cached from build_oauth_auth_url)
+        oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
+        token_endpoint = oauth_config.get("token_endpoint")
 
-        # Use explicit token endpoint if provided, otherwise discover
-        if mcp_config.oauth_token_endpoint:
-            token_endpoint = mcp_config.oauth_token_endpoint
-            logger.info(
-                f"Using explicit token endpoint for {integration_id}: {token_endpoint}"
+        if not token_endpoint:
+            raise ValueError(f"No token_endpoint for {integration_id}")
+
+        # Get client credentials
+        client_id = None
+        client_secret = None
+
+        dcr_data = await self.token_store.get_dcr_client(integration_id)
+        if dcr_data:
+            client_id = dcr_data.get("client_id")
+            client_secret = dcr_data.get("client_secret")
+
+        if not client_id:
+            client_id = self._resolve_secret(
+                mcp_config.client_id_env, mcp_config.client_id
             )
-        else:
-            oauth_metadata = await self._discover_oauth_metadata(base_url)
-            token_endpoint = oauth_metadata.get("token_endpoint", f"{base_url}/token")
+        if not client_secret:
+            client_secret = self._resolve_secret(
+                mcp_config.client_secret_env, mcp_config.client_secret
+            )
 
+        # Exchange code for tokens
         async with httpx.AsyncClient() as client:
-            # Get client credentials - either from DCR storage, env vars, or config
-            client_id = None
-            client_secret = None
-
-            if mcp_config.use_dcr:
-                # Get DCR-stored credentials
-                dcr_data = await self.token_store.get_dcr_client(integration_id)
-                if dcr_data:
-                    client_id = dcr_data.get("client_id")
-                    client_secret = dcr_data.get("client_secret")
-                    logger.info(f"Using DCR credentials for {integration_id}")
-
-            # Fallback to env vars or config if no DCR
-            if not client_id:
-                client_id = self._resolve_secret(
-                    mcp_config.client_id_env, mcp_config.client_id
-                )
-            if not client_secret:
-                client_secret = self._resolve_secret(
-                    mcp_config.client_secret_env, mcp_config.client_secret
-                )
-
             token_data = {
                 "grant_type": "authorization_code",
                 "code": code,
                 "redirect_uri": redirect_uri,
             }
 
-            # Use Basic Auth if we have secret, otherwise send client_id in body
+            # Include PKCE code_verifier if we have it (required for OAuth 2.1)
+            if code_verifier:
+                token_data["code_verifier"] = code_verifier
+
             headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
             if client_secret:
-                # Use HTTP Basic Authentication
-                import base64
-
                 credentials = f"{client_id}:{client_secret}"
-                encoded_credentials = base64.b64encode(credentials.encode()).decode()
-                headers["Authorization"] = f"Basic {encoded_credentials}"
+                encoded = base64.b64encode(credentials.encode()).decode()
+                headers["Authorization"] = f"Basic {encoded}"
             else:
-                # Public client - send client_id in body
                 token_data["client_id"] = client_id
 
-            logger.info(f"Exchanging OAuth code for {integration_id}")
-
-            token_response = await client.post(
-                token_endpoint,
-                data=token_data,
-                headers=headers,
-                timeout=30,
+            response = await client.post(
+                token_endpoint, data=token_data, headers=headers, timeout=30
             )
 
-            if token_response.status_code != 200:
-                logger.error(f"Token exchange failed: {token_response.status_code}")
-                logger.error(f"Response: {token_response.text}")
+            if response.status_code != 200:
+                logger.error(f"Token exchange failed: {response.status_code}")
+                logger.error(f"Response: {response.text}")
 
-            token_response.raise_for_status()
-            tokens = token_response.json()
-
-            # Log the token response structure (without exposing secrets)
-            logger.info(
-                f"Token response keys for {integration_id}: {list(tokens.keys())}"
-            )
-            if "access_token" in tokens:
-                logger.info(
-                    f"Access token length: {len(tokens.get('access_token', ''))}"
-                )
-            if "token_type" in tokens:
-                logger.info(f"Token type: {tokens.get('token_type')}")
+            response.raise_for_status()
+            tokens = response.json()
 
         # Store tokens
         await self.token_store.store_oauth_tokens(
@@ -391,34 +461,27 @@ class GAIAMCPClient:
 
         logger.info(f"OAuth token exchange successful for {integration_id}")
 
-        # Try to connect to MCP server with the stored tokens
-        # If this fails, log the error but OAuth was still successful
         try:
             return await self.connect(integration_id)
         except Exception as e:
             logger.warning(
                 f"MCP connection after OAuth failed for {integration_id}: {e}"
             )
-            logger.info(
-                "OAuth tokens stored successfully, connection will retry on next use"
-            )
-            return []  # Return empty tools - will be populated on next connect attempt
+            return []
 
     async def disconnect(self, integration_id: str) -> None:
         """Disconnect from an MCP server."""
-        # Check if this is an unauthenticated MCP - they can't be disconnected
         integration = get_integration_by_id(integration_id)
         if (
             integration
             and integration.mcp_config
-            and integration.mcp_config.auth_type == "none"
+            and not integration.mcp_config.requires_auth
         ):
             logger.info(f"Skipping disconnect for unauthenticated MCP {integration_id}")
             return
 
         if integration_id in self._clients:
             try:
-                # Close all sessions for this client
                 await self._clients[integration_id].close_all_sessions()
             except Exception as e:
                 logger.warning(f"Error closing MCP session: {e}")
@@ -444,11 +507,5 @@ class GAIAMCPClient:
 
 
 def get_mcp_client(user_id: str) -> GAIAMCPClient:
-    """
-    Get MCP client for a user.
-
-    Creates a new instance per user since each user has separate credentials.
-    In-memory caching is intentionally not used here as the client holds
-    user-specific state that shouldn't persist between requests.
-    """
+    """Get MCP client for a user."""
     return GAIAMCPClient(user_id=user_id)

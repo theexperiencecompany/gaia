@@ -75,8 +75,8 @@ async def connect_mcp_oauth(
     """
     Initiate OAuth flow for an MCP integration via browser redirect.
 
-    This endpoint is ONLY for OAuth-based MCP integrations.
-    For unauthenticated or bearer token MCPs, use POST /connect/{integration_id}.
+    This endpoint is for MCP integrations that require authentication.
+    For unauthenticated MCPs, use POST /connect/{integration_id}.
     """
     user_id = user.get("user_id")
     if not user_id:
@@ -92,11 +92,11 @@ async def connect_mcp_oauth(
     if not mcp_config:
         raise HTTPException(status_code=400, detail="MCP config missing")
 
-    # Only OAuth integrations should use this endpoint
-    if mcp_config.auth_type != "oauth":
+    # Only auth-required integrations should use this endpoint
+    if not mcp_config.requires_auth:
         raise HTTPException(
             status_code=400,
-            detail=f"Use POST /api/v1/mcp/connect/{integration_id} for non-OAuth integrations",
+            detail=f"Use POST /api/v1/mcp/connect/{integration_id} for unauthenticated integrations",
         )
 
     client = get_mcp_client(user_id=str(user_id))
@@ -141,10 +141,8 @@ async def connect_mcp(
     """
     Connect to an MCP integration.
 
-    Handles both unauthenticated and bearer token connections:
-    - Unauthenticated: Just call this endpoint, no body needed
-    - Bearer token: Include bearer_token in request body
-    - OAuth: Use GET /connect/{integration_id} instead (browser redirect)
+    For unauthenticated MCPs - they're always available, no action needed.
+    For OAuth MCPs - use GET /connect/{integration_id} instead (browser redirect).
     """
     user_id = user.get("user_id")
     if not user_id:
@@ -160,46 +158,20 @@ async def connect_mcp(
     if not mcp_config:
         raise HTTPException(status_code=400, detail="MCP config missing")
 
-    # OAuth should use GET endpoint for browser redirect
-    if mcp_config.auth_type == "oauth":
+    # OAuth-required MCPs should use GET endpoint for browser redirect
+    if mcp_config.requires_auth:
         raise HTTPException(
             status_code=400,
             detail=f"OAuth integrations require browser redirect. Use GET /api/v1/mcp/connect/{integration_id}",
         )
 
-    # Unauthenticated MCPs don't need connection - they're always available
-    if mcp_config.auth_type == "none":
-        return MCPConnectResponse(
-            status="connected",
-            integration_id=integration_id,
-            tools_count=0,  # Tools discovered lazily
-            message=f"{integration.name} is always available - no connection needed",
-        )
-
-    # Bearer token is required for bearer auth type
-    if mcp_config.auth_type == "bearer" and not request.bearer_token:
-        raise HTTPException(
-            status_code=400, detail="Bearer token required for this integration"
-        )
-
-    client = get_mcp_client(user_id=str(user_id))
-
-    try:
-        tools = await client.connect(integration_id, bearer_token=request.bearer_token)
-
-        # Invalidate OAuth status cache
-        await _invalidate_status_cache(str(user_id))
-
-        return MCPConnectResponse(
-            status="connected",
-            integration_id=integration_id,
-            tools_count=len(tools),
-            message=f"Successfully connected to {integration.name}",
-        )
-
-    except Exception as e:
-        logger.error(f"MCP connection failed for {integration_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    # Unauthenticated MCPs are always available - no connection needed
+    return MCPConnectResponse(
+        status="connected",
+        integration_id=integration_id,
+        tools_count=0,  # Tools discovered lazily
+        message=f"{integration.name} is always available - no connection needed",
+    )
 
 
 @router.get("/oauth/callback")
@@ -270,7 +242,7 @@ async def disconnect_mcp_integration(
     if (
         integration
         and integration.mcp_config
-        and integration.mcp_config.auth_type == "none"
+        and not integration.mcp_config.requires_auth
     ):
         raise HTTPException(
             status_code=400,
@@ -336,7 +308,7 @@ async def get_mcp_status(
     statuses = []
     for integration in mcp_integrations:
         # Unauthenticated MCPs are always connected
-        if integration.mcp_config.auth_type == "none":
+        if not integration.mcp_config.requires_auth:
             is_connected = True
         else:
             is_connected = await token_store.is_connected(integration.id)

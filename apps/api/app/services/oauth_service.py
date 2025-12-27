@@ -155,7 +155,7 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
                 if (
                     integration
                     and integration.mcp_config
-                    and integration.mcp_config.auth_type == "none"
+                    and not integration.mcp_config.requires_auth
                 ):
                     result[integration_id] = True
                 else:

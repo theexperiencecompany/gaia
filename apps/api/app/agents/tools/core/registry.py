@@ -293,7 +293,7 @@ class ToolRegistry:
 
             # Skip MCP integrations requiring auth at startup - load on user connect
             mcp_config = integration.mcp_config
-            if mcp_config.auth_type != "none":
+            if mcp_config.requires_auth:
                 logger.info(f"Skipping auth-required MCP {integration.id} at startup")
                 return
 

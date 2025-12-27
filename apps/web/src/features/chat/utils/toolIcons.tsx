@@ -162,7 +162,7 @@ const iconConfigs: Record<string, IconConfig> = {
     isImage: true,
   },
   github: {
-    icon: "/images/icons/github.svg",
+    icon: "/images/icons/github.png",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
     isImage: true,
@@ -263,6 +263,18 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
+  browserbase: {
+    icon: "/images/icons/browserbase.png",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  context7: {
+    icon: "/images/icons/context7.png",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
   hackernews: {
     icon: "/images/icons/hackernews.png",
     bgColor: "bg-zinc-700",
@@ -310,16 +322,17 @@ const AutoInvertIcon: React.FC<{
   height?: number;
   className?: string;
 }> = ({ src, alt, size, width, height, className }) => {
-  const { shouldInvert } = useIconColorDetection(src);
+  // const { shouldInvert } = useIconColorDetection(src);
 
   return (
     <Image
       alt={alt}
       width={width || size || 20}
       height={height || size || 20}
-      className={`${className} aspect-square object-contain ${shouldInvert ? "invert" : ""}`}
+      className={`${className} aspect-square object-contain`}
       src={src}
     />
+    //  ${shouldInvert ? "invert" : ""} commented out temporarily
   );
 };
 

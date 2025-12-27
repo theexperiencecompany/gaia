@@ -19,9 +19,11 @@ from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.models.oauth_models import MCPCredential
 
-# Redis key prefix for OAuth state tokens
+# Redis key prefixes
 OAUTH_STATE_PREFIX = "mcp_oauth_state"
 OAUTH_STATE_TTL = 600  # 10 minutes
+OAUTH_DISCOVERY_PREFIX = "mcp_oauth_discovery"
+OAUTH_DISCOVERY_TTL = 86400  # 24 hours - discovery data doesn't change often
 
 
 class MCPTokenStore:
@@ -189,18 +191,19 @@ class MCPTokenStore:
             await session.commit()
             logger.info(f"Stored unauthenticated connection for {integration_id}")
 
-    async def create_oauth_state(self, integration_id: str) -> str:
+    async def create_oauth_state(self, integration_id: str, code_verifier: str) -> str:
         """
         Create OAuth state for CSRF protection.
 
-        Stores state in Redis with TTL instead of database column.
+        Stores state and PKCE code_verifier in Redis with TTL.
         Returns the state token to include in OAuth URL.
         """
         state = secrets.token_urlsafe(32)
 
-        # Store in Redis with TTL
+        # Store state and code_verifier together in Redis
         cache_key = f"{OAUTH_STATE_PREFIX}:{self.user_id}:{integration_id}"
-        await set_cache(cache_key, state, ttl=OAUTH_STATE_TTL)
+        state_data = json.dumps({"state": state, "code_verifier": code_verifier})
+        await set_cache(cache_key, state_data, ttl=OAUTH_STATE_TTL)
 
         # Also mark the credential as pending
         async with get_db_session() as session:
@@ -227,20 +230,35 @@ class MCPTokenStore:
 
         return state
 
-    async def verify_oauth_state(self, integration_id: str, state: str) -> bool:
+    async def verify_oauth_state(
+        self, integration_id: str, state: str
+    ) -> tuple[bool, Optional[str]]:
         """
         Verify OAuth state matches stored state.
 
         Retrieves from Redis and deletes after verification (one-time use).
+        Returns (is_valid, code_verifier) tuple.
         """
         cache_key = f"{OAUTH_STATE_PREFIX}:{self.user_id}:{integration_id}"
-        stored_state = await get_cache(cache_key)
+        stored_data = await get_cache(cache_key)
+
+        if not stored_data:
+            return False, None
+
+        try:
+            data = json.loads(stored_data)
+            stored_state = data.get("state")
+            code_verifier = data.get("code_verifier")
+        except (json.JSONDecodeError, TypeError):
+            # Legacy format - just state string (backwards compat)
+            stored_state = stored_data
+            code_verifier = None
 
         if stored_state and stored_state == state:
             # Delete after successful verification (one-time use)
             await delete_cache(cache_key)
-            return True
-        return False
+            return True, code_verifier
+        return False, None
 
     async def delete_credentials(self, integration_id: str) -> None:
         """Delete credentials for integration (disconnect)."""
@@ -318,3 +336,20 @@ class MCPTokenStore:
                 session.add(cred)
             await session.commit()
             logger.info(f"Stored DCR client for {integration_id}")
+
+    async def store_oauth_discovery(self, integration_id: str, discovery: dict) -> None:
+        """Cache OAuth discovery data in Redis."""
+        cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
+        await set_cache(cache_key, json.dumps(discovery), ttl=OAUTH_DISCOVERY_TTL)
+        logger.info(f"Cached OAuth discovery for {integration_id}")
+
+    async def get_oauth_discovery(self, integration_id: str) -> Optional[dict]:
+        """Get cached OAuth discovery data from Redis."""
+        cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
+        cached = await get_cache(cache_key)
+        if cached:
+            try:
+                return json.loads(cached)
+            except json.JSONDecodeError:
+                return None
+        return None

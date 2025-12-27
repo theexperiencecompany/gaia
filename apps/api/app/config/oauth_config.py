@@ -12,8 +12,10 @@ from typing import Dict, List, Optional
 from app.agents.prompts.subagent_prompts import (
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
+    BROWSERBASE_AGENT_SYSTEM_PROMPT,
     CALENDAR_AGENT_SYSTEM_PROMPT,
     CLICKUP_AGENT_SYSTEM_PROMPT,
+    CONTEXT7_AGENT_SYSTEM_PROMPT,
     DEEPWIKI_AGENT_SYSTEM_PROMPT,
     GITHUB_AGENT_SYSTEM_PROMPT,
     GMAIL_AGENT_SYSTEM_PROMPT,
@@ -145,15 +147,12 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         managed_by="mcp",
         mcp_config=MCPConfig(
             server_url="https://mcp.notion.com/sse",
-            transport="sse",
-            auth_type="oauth",
-            # Notion MCP has its own OAuth endpoints separate from api.notion.com
-            oauth_base_url="https://mcp.notion.com",
-            # Use DCR (Dynamic Client Registration) - no pre-registered client needed
-            use_dcr=True,
-            # MCP-specific OAuth endpoints (not the regular Notion API ones!)
-            oauth_authorize_endpoint="https://mcp.notion.com/authorize",
-            oauth_token_endpoint="https://mcp.notion.com/token",
+            requires_auth=True,
+            # Notion MCP uses explicit OAuth endpoints (not .well-known discovery)
+            oauth_metadata={
+                "authorization_endpoint": "https://mcp.notion.com/authorize",
+                "token_endpoint": "https://mcp.notion.com/token",
+            },
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -670,8 +669,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         managed_by="mcp",
         mcp_config=MCPConfig(
             server_url="https://mcp.deepwiki.com/sse",
-            transport="sse",
-            auth_type="none",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -699,8 +696,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         managed_by="mcp",
         mcp_config=MCPConfig(
             server_url="https://backend.composio.dev/v3/mcp/0f5b8d43-4e16-4919-8788-b462f1089b91/mcp",
-            transport="sse",
-            auth_type="none",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -727,8 +722,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         managed_by="mcp",
         mcp_config=MCPConfig(
             server_url="https://backend.composio.dev/v3/mcp/6bb2556a-57ef-4daa-81ad-bd1e3f9e443d/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3",
-            transport="sse",
-            auth_type="none",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -755,8 +748,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         managed_by="mcp",
         mcp_config=MCPConfig(
             server_url="https://backend.composio.dev/v3/mcp/8e1efded-6b08-4346-a657-92d0b94399e5/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3",
-            transport="sse",
-            auth_type="none",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -767,6 +758,62 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="searching local businesses, finding restaurants, reading reviews, getting business information",
             use_cases="finding restaurants, searching local services, reading reviews",
             system_prompt="You are a Yelp assistant. Help users find local businesses, restaurants, and services with reviews and ratings.",
+            use_direct_tools=True,
+        ),
+    ),
+    # Context7 MCP (Smithery-hosted, OAuth via MCP spec discovery)
+    OAuthIntegration(
+        id="context7",
+        name="Context7",
+        description="Fetch up-to-date, version-specific documentation and code examples for any library or framework.",
+        category="developer",
+        provider="context7",
+        scopes=[],
+        available=True,
+        is_featured=True,
+        short_name="context7",
+        managed_by="mcp",
+        mcp_config=MCPConfig(
+            server_url="https://server.smithery.ai/@upstash/context7-mcp",
+            requires_auth=True,
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="context7_agent",
+            tool_space="context7",
+            handoff_tool_name="call_context7_agent",
+            domain="library documentation and code examples",
+            capabilities="resolving library identifiers, fetching up-to-date documentation, providing version-specific code examples, eliminating hallucinated APIs",
+            use_cases="getting accurate documentation, finding code examples, checking API references, learning about libraries",
+            system_prompt=CONTEXT7_AGENT_SYSTEM_PROMPT,
+            use_direct_tools=True,
+        ),
+    ),
+    # Browserbase MCP (OAuth via MCP spec discovery)
+    OAuthIntegration(
+        id="browserbase",
+        name="Browserbase",
+        description="Cloud browser automation for web scraping, form filling, screenshots, and AI-powered web interactions.",
+        category="developer",
+        provider="browserbase",
+        scopes=[],
+        available=True,
+        is_featured=True,
+        short_name="browserbase",
+        managed_by="mcp",
+        mcp_config=MCPConfig(
+            server_url="https://mcp.browserbase.com",
+            requires_auth=True,
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="browserbase_agent",
+            tool_space="browserbase",
+            handoff_tool_name="call_browserbase_agent",
+            domain="cloud browser automation and web scraping",
+            capabilities="creating browser sessions, navigating websites, performing web actions, extracting data from pages, taking screenshots, filling forms",
+            use_cases="web scraping, form automation, screenshot capture, web search, data extraction from websites",
+            system_prompt=BROWSERBASE_AGENT_SYSTEM_PROMPT,
             use_direct_tools=True,
         ),
     ),

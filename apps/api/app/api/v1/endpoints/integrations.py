@@ -42,10 +42,10 @@ def _build_integrations_config():
         else:
             login_endpoint = f"integrations/login/{integration.id}"
 
-        # Determine authType for MCP integrations
+        # Determine authType for MCP integrations (for frontend display)
         auth_type = None
         if integration.mcp_config:
-            auth_type = integration.mcp_config.auth_type
+            auth_type = "oauth" if integration.mcp_config.requires_auth else "none"
 
         config = IntegrationConfigResponse(
             id=integration.id,
@@ -183,7 +183,7 @@ async def disconnect_integration(
 
     elif integration.managed_by == "mcp":
         # Check if this is an unauthenticated MCP - they can't be disconnected
-        if integration.mcp_config and integration.mcp_config.auth_type == "none":
+        if integration.mcp_config and not integration.mcp_config.requires_auth:
             raise HTTPException(
                 status_code=400,
                 detail=f"{integration.name} is always available and cannot be disconnected",

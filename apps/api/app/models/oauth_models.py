@@ -140,41 +140,34 @@ class ProviderMetadataConfig(BaseModel):
 
 
 class MCPConfig(BaseModel):
-    """Configuration for MCP (Model Context Protocol) integration."""
+    """Configuration for MCP (Model Context Protocol) integration.
+
+    Per the MCP specification, most configuration is auto-discoverable:
+    - OAuth endpoints via /.well-known/oauth-authorization-server
+    - Dynamic Client Registration (DCR) when no client_id is provided
+    - Transport type auto-negotiated (streamable_http with SSE fallback)
+
+    Only server_url is required. Everything else is optional overrides.
+    """
 
     server_url: str
-    transport: str = "sse"  # sse, http, streamable_http
-    # Authentication type: none, oauth, or bearer
-    auth_type: Literal["none", "oauth", "bearer"] = "none"
-    # OAuth base URL for .well-known discovery (REQUIRED when auth_type is oauth)
-    # e.g., "https://api.notion.com" for Notion, "https://vercel.com" for Vercel
-    oauth_base_url: Optional[str] = None
-    # OAuth configuration (for pre-registered clients)
+    # Whether this MCP requires authentication (triggers OAuth flow)
+    # If True: OAuth discovery + DCR flow is used
+    # If False: Direct connection without authentication
+    requires_auth: bool = False
+    # Optional: Override transport (auto-detected by default)
+    transport: Optional[str] = None
+    # Optional: Pre-registered OAuth client credentials
+    # If not provided and requires_auth=True, DCR is used automatically
     client_id: Optional[str] = None
     client_secret: Optional[str] = None
-    oauth_scopes: Optional[List[str]] = None
-    # Use Dynamic Client Registration if no client_id provided
-    use_dcr: bool = False
-    # Environment variable names for secrets (resolved at runtime from Infisical)
+    # Optional: Environment variable names for secrets (resolved at runtime)
     client_id_env: Optional[str] = None
     client_secret_env: Optional[str] = None
-    # Explicit OAuth endpoints (for providers that don't support .well-known discovery)
-    oauth_authorize_endpoint: Optional[str] = (
-        None  # e.g., "https://api.notion.com/v1/oauth/authorize"
-    )
-    oauth_token_endpoint: Optional[str] = (
-        None  # e.g., "https://api.notion.com/v1/oauth/token"
-    )
-
-    @model_validator(mode="after")
-    def validate_oauth_config(self) -> "MCPConfig":
-        """Validate that oauth_base_url is provided when auth_type is 'oauth'."""
-        if self.auth_type == "oauth" and not self.oauth_base_url:
-            raise ValueError(
-                "oauth_base_url is required when auth_type is 'oauth'. "
-                "This URL is used for OAuth .well-known discovery."
-            )
-        return self
+    # Optional: OAuth scopes to request
+    oauth_scopes: Optional[List[str]] = None
+    # Optional: Override OAuth endpoints (discovered via .well-known by default)
+    oauth_metadata: Optional[Dict[str, str]] = None
 
 
 class OAuthIntegration(BaseModel):
