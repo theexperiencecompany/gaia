@@ -149,7 +149,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
         </StandardCodeBlock>
       ) : (
         <code
-          className={`${className} bg-opacity-40 rounded-[10px] bg-black`}
+          className={`${className} rounded-md bg-zinc-900 px-2 py-1 text-sm text-zinc-400`}
           {...props}
         >
           {children}

@@ -12,6 +12,8 @@ export const defaultFont = inter;
 // The default text font (used for body text)
 export const defaultTextFont = inter;
 
+export const defaultMonoFont = anonymousPro;
+
 // Helper function to get font variables
 export function getAllFontVariables() {
   return `${inter.variable} ${ppEditorialNew.variable} ${anonymousPro.variable}`;
