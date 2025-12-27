@@ -41,5 +41,9 @@ export function convertToUSDCents(
 export function formatUSDFromCents(cents: number): string {
   if (cents === 0) return "Free";
   const dollars = cents / 100;
-  return `$${dollars.toFixed(0)}`;
+  // Show decimals if not a whole number, otherwise show whole number
+  if (dollars % 1 === 0) {
+    return `$${dollars.toFixed(0)}`;
+  }
+  return `$${dollars.toFixed(2)}`;
 }
