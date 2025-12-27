@@ -114,14 +114,23 @@ class GAIAMCPClient:
             logger.info(
                 f"OAuth token for {integration_id}: {'found' if stored_token else 'NOT FOUND'}"
             )
+
             if stored_token:
-                # Pass token as string - mcp-use will set Authorization header upfront
-                # This is handled the same way as bearer tokens internally
+                # We have a token - pass it as bearer auth
                 server_config["auth"] = stored_token
-                # Also add explicit headers to ensure token is sent in initial request
                 server_config["headers"] = {"Authorization": f"Bearer {stored_token}"}
                 logger.info(f"Set OAuth token as bearer auth for {integration_id}")
-            # Note: If no stored token, OAuth flow must be triggered separately
+            elif mcp_config.use_dcr:
+                # No token yet, but we have DCR - pass client credentials to mcp-use
+                dcr_data = await self.token_store.get_dcr_client(integration_id)
+                if dcr_data:
+                    # Pass DCR credentials so mcp-use can complete OAuth
+                    server_config["auth"] = {
+                        "client_id": dcr_data.get("client_id"),
+                        "client_secret": dcr_data.get("client_secret"),
+                    }
+                    logger.info(f"Set DCR credentials for {integration_id}")
+            # Note: If no stored token and no DCR, OAuth flow must be triggered
             # via build_oauth_auth_url() and handle_oauth_callback()
 
         return {"mcpServers": {integration_id: server_config}}
