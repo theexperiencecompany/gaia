@@ -36,6 +36,8 @@ export default function ChatBubbleBot(
     isLastMessage,
     disableActions = false,
     children,
+    onRetry,
+    isRetrying,
   } = props;
   const { isLoading } = useLoading();
 
@@ -84,7 +86,7 @@ export default function ChatBubbleBot(
         className="relative flex flex-col pb-9"
       >
         <div className="flex items-end gap-1">
-          <div className="relative bottom-0 min-w-[40px] shrink-0">
+          <div className="relative bottom-0 min-w-10 shrink-0">
             {shouldShowTextBubble(
               text,
               isConvoSystemGenerated,
@@ -142,6 +144,8 @@ export default function ChatBubbleBot(
                   pinned={pinned}
                   text={text}
                   messageRole="assistant"
+                  onRetry={onRetry}
+                  isRetrying={isRetrying}
                 />
               ))}
           </div>

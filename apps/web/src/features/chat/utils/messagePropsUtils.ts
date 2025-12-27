@@ -26,6 +26,8 @@ interface MessagePropsOptions {
   setImageData: React.Dispatch<React.SetStateAction<SetImageDataType>>;
   setOpenGeneratedImage: React.Dispatch<React.SetStateAction<boolean>>;
   setOpenMemoryModal: React.Dispatch<React.SetStateAction<boolean>>;
+  onRetry?: (messageId: string) => void;
+  isRetrying?: boolean;
 }
 
 // Function overloads for better type safety
@@ -49,6 +51,8 @@ export function getMessageProps(
     setImageData,
     setOpenGeneratedImage,
     setOpenMemoryModal,
+    onRetry,
+    isRetrying,
   } = options;
 
   // Extract all props from message, filtering out undefined values
@@ -66,6 +70,8 @@ export function getMessageProps(
     message_id:
       messageType === "user" ? message.message_id || "" : message.message_id, // User fallback to empty string
     isConvoSystemGenerated: conversation?.is_system_generated || false,
+    onRetry: onRetry ? () => onRetry(message.message_id || "") : undefined,
+    isRetrying,
   };
 
   // Add bot-specific props if message type is 'bot'

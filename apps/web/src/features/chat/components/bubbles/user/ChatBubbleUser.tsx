@@ -23,6 +23,8 @@ export default function ChatBubbleUser({
   selectedCalendarEvent,
   replyToMessage,
   disableActions = false,
+  onRetry,
+  isRetrying,
 }: ChatBubbleUserProps & { disableActions?: boolean }) {
   const hasContent =
     !!text ||
@@ -109,6 +111,8 @@ export default function ChatBubbleUser({
               text={text}
               message_id={message_id}
               messageRole="user"
+              onRetry={onRetry}
+              isRetrying={isRetrying}
             />
           )}
         </div>
