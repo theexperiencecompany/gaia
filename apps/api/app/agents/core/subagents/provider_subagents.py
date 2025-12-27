@@ -37,13 +37,29 @@ async def create_subagent(integration_id: str):
         raise ValueError(f"{integration_id} integration or subagent config not found")
 
     config = integration.subagent_config
+    tool_registry = await get_tool_registry()
 
-    toolkit_name = (
-        integration.composio_config.toolkit if integration.composio_config else None
-    )
+    # Handle MCP-managed integrations (like DeepWiki)
+    if integration.managed_by == "mcp" and integration.mcp_config:
+        from app.services.mcp.mcp_client import get_mcp_client
 
-    if toolkit_name:
-        tool_registry = await get_tool_registry()
+        category_name = integration.id
+        if category_name not in tool_registry._categories:
+            mcp_client = get_mcp_client(user_id="_system")
+            tools = await mcp_client.connect(integration.id)
+            if tools:
+                tool_registry._add_category(
+                    name=category_name,
+                    tools=tools,
+                    space=config.tool_space,
+                    integration_name=integration.id,
+                )
+                await tool_registry._index_category_tools(category_name)
+                logger.info(f"Registered {len(tools)} MCP tools for {integration_id}")
+
+    # Handle Composio-managed integrations
+    elif integration.composio_config:
+        toolkit_name = integration.composio_config.toolkit
         await tool_registry.register_provider_tools(
             toolkit_name=toolkit_name,
             space_name=config.tool_space,

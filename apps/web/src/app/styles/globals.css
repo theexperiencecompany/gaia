@@ -27,17 +27,9 @@ input {
   outline: 0 transparent;
 }
 
-code {
-  border-radius: 10px;
-  font-family: monospace;
-  padding: 4px;
-}
-
 code,
 .monospace {
-  font-family:
-    Menlo, Monaco, Consolas, "Andale Mono", "Ubuntu Mono", "Courier New",
-    monospace;
+  font-family: var(--font-mono);
 }
 
 li {
@@ -193,10 +185,6 @@ li {
   justify-content: flex-start;
   min-height: 70vh;
   padding: 2rem 0 2rem -0.5rem;
-}
-
-.editor code {
-  background-color: #00000080;
 }
 
 .navbar {

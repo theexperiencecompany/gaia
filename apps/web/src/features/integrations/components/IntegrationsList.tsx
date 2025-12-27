@@ -1,11 +1,19 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import type React from "react";
+import { useMemo } from "react";
+import { Separator } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useIntegrationsStore } from "@/stores/integrationsStore";
+import {
+  getCategoryLabel,
+  getUniqueCategories,
+  sortCategories,
+} from "../constants/categories";
 import { useIntegrationSearch } from "../hooks/useIntegrationSearch";
 import { useIntegrations } from "../hooks/useIntegrations";
 import type { Integration } from "../types";
-import { IntegrationsSearchInput } from "./IntegrationsSearchInput";
+import { CategoryFilter } from "./CategoryFilter";
 
 const IntegrationRow: React.FC<{
   integration: Integration;
@@ -13,7 +21,8 @@ const IntegrationRow: React.FC<{
   onClick: (id: string) => void;
 }> = ({ integration, onConnect, onClick }) => {
   const isConnected = integration.status === "connected";
-  const isAvailable = !!integration.loginEndpoint;
+  // Use backend's 'available' field
+  const isAvailable = integration.available ?? !!integration.loginEndpoint;
 
   const handleClick = () => {
     onClick(integration.id);
@@ -21,10 +30,10 @@ const IntegrationRow: React.FC<{
 
   return (
     <div
-      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/40 px-4 py-3 transition hover:bg-zinc-700 transition-all"
+      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-all duration-200"
       onClick={handleClick}
     >
-      <div className="flex-shrink-0">
+      <div className="shrink-0">
         {getToolCategoryIcon(integration.id, {
           size: 32,
           width: 32,
@@ -34,25 +43,38 @@ const IntegrationRow: React.FC<{
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="text-sm font-medium">{integration.name}</div>
-        <div className="truncate text-xs font-light text-zinc-400">
+        <div className="font-medium">{integration.name}</div>
+        <div className="truncate text-sm font-light text-zinc-400">
           {integration.description}
         </div>
       </div>
 
-      <div className="flex-shrink-0">
-        {isConnected && (
-          <Chip size="sm" variant="flat" color="success">
-            Connected
+      <div className="shrink-0">
+        {isConnected &&
+          !(
+            integration.managedBy === "mcp" && integration.authType === "none"
+          ) && (
+            <Chip size="sm" variant="flat" color="success">
+              Connected
+            </Chip>
+          )}
+        {!isAvailable && (
+          <Chip size="sm" variant="flat" color="default">
+            Coming Soon
+          </Chip>
+        )}
+        {/* Show "Always available" for unauthenticated MCPs */}
+        {integration.managedBy === "mcp" && integration.authType === "none" && (
+          <Chip size="sm" variant="flat" color="secondary">
+            Always available
           </Chip>
         )}
 
         {isAvailable && !isConnected && (
           <Button
-            size="sm"
             variant="flat"
             color="primary"
-            className="text-xs text-primary"
+            className="text-sm text-primary"
             onPress={() => {
               onConnect(integration.id);
             }}
@@ -71,13 +93,61 @@ const IntegrationRow: React.FC<{
   );
 };
 
+interface IntegrationSectionProps {
+  title: string;
+  integrations: Integration[];
+  chipColor?: "primary" | "default";
+  onConnect: (id: string) => void;
+  onIntegrationClick?: (id: string) => void;
+}
+
+const IntegrationSection: React.FC<IntegrationSectionProps> = ({
+  title,
+  integrations,
+  chipColor = "default",
+  onConnect,
+  onIntegrationClick,
+}) => {
+  if (integrations.length === 0) return null;
+
+  return (
+    <div className="mb-8">
+      <div className="mb-4 flex items-center gap-3 pl-4">
+        <h2 className="text-base font-semibold">{title}</h2>
+        <Chip size="sm" variant="flat" color={chipColor}>
+          {integrations.length}
+        </Chip>
+      </div>
+      <div className="flex flex-col gap-2">
+        {integrations.map((integration) => (
+          <IntegrationRow
+            key={integration.id}
+            integration={integration}
+            onConnect={onConnect}
+            onClick={(id) => onIntegrationClick?.(id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export const IntegrationsList: React.FC<{
   onIntegrationClick?: (integrationId: string) => void;
 }> = ({ onIntegrationClick }) => {
   const { integrations, connectIntegration } = useIntegrations();
 
-  const { searchQuery, setSearchQuery, clearSearch, filteredIntegrations } =
-    useIntegrationSearch(integrations);
+  // Get state from store
+  const searchQuery = useIntegrationsStore((state) => state.searchQuery);
+  const selectedCategory = useIntegrationsStore(
+    (state) => state.selectedCategory,
+  );
+  const setSelectedCategory = useIntegrationsStore(
+    (state) => state.setSelectedCategory,
+  );
+  const clearFilters = useIntegrationsStore((state) => state.clearFilters);
+
+  const { filteredIntegrations } = useIntegrationSearch(integrations);
 
   const handleConnect = async (integrationId: string) => {
     try {
@@ -87,50 +157,63 @@ export const IntegrationsList: React.FC<{
     }
   };
 
+  // Derive categories from backend integrations data
+  const availableCategories = useMemo(() => {
+    const uniqueCategories = getUniqueCategories(integrations);
+    return sortCategories(uniqueCategories);
+  }, [integrations]);
+
   // Separate featured integrations
-  const featuredIntegrations = filteredIntegrations.filter(
-    (i) => i.isFeatured && i.loginEndpoint,
-  );
+  const featuredIntegrations = useMemo(() => {
+    return filteredIntegrations.filter((i) => i.isFeatured && i.loginEndpoint);
+  }, [filteredIntegrations]);
 
-  // Regular integrations (non-featured)
-  const connectedIntegrations = filteredIntegrations.filter(
-    (i) => !i.isFeatured && i.status === "connected",
-  );
-  const availableIntegrations = filteredIntegrations.filter(
-    (i) => !i.isFeatured && i.status === "not_connected" && i.loginEndpoint,
-  );
-  const comingSoonIntegrations = filteredIntegrations.filter(
-    (i) => !i.loginEndpoint,
-  );
+  // Group ALL integrations by category (featured will appear in both Featured and their category)
+  const integrationsByCategory = useMemo(() => {
+    const grouped: Record<string, Integration[]> = {};
 
-  const hasResults =
-    featuredIntegrations.length > 0 ||
-    connectedIntegrations.length > 0 ||
-    availableIntegrations.length > 0 ||
-    comingSoonIntegrations.length > 0;
+    for (const category of availableCategories) {
+      grouped[category] = filteredIntegrations.filter(
+        (i) => i.category === category,
+      );
+    }
+
+    return grouped;
+  }, [filteredIntegrations, availableCategories]);
+
+  // For when a specific category is selected
+  const integrationsInSelectedCategory = useMemo(() => {
+    return filteredIntegrations.filter((i) => i.category === selectedCategory);
+  }, [filteredIntegrations, selectedCategory]);
+
+  const hasResults = filteredIntegrations.length > 0;
 
   return (
     <div>
-      <div className="mb-6 space-y-3 flex justify-end">
-        <IntegrationsSearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          onClear={clearSearch}
+      {/* Category Filter - categories derived from backend data */}
+      <div className="mb-6">
+        <CategoryFilter
+          categories={availableCategories}
+          selectedCategory={selectedCategory}
+          onCategoryChange={setSelectedCategory}
         />
       </div>
 
-      {!hasResults && searchQuery && (
+      {/* No Results State */}
+      {!hasResults && (searchQuery || selectedCategory !== "all") && (
         <div className="py-16 text-center space-y-2">
           <p className="text-sm text-zinc-400">
-            No integrations found for &ldquo;{searchQuery}&rdquo;
+            {searchQuery
+              ? `No integrations found for "${searchQuery}"`
+              : `No ${getCategoryLabel(selectedCategory).toLowerCase()} integrations found`}
           </p>
           <Button
-            onPress={clearSearch}
+            onPress={clearFilters}
             variant="light"
             color="primary"
             size="sm"
           >
-            Clear search
+            Clear filters
           </Button>
         </div>
       )}
@@ -144,73 +227,46 @@ export const IntegrationsList: React.FC<{
         </div>
       )}
 
-      {/* Featured Integrations Section */}
-      {featuredIntegrations.length > 0 && (
-        <div className="mb-8">
-          <div className="mb-4 flex items-center gap-2">
-            <h2 className="text-base font-semibold">Featured Integrations</h2>
-            <Chip size="sm" variant="flat" color="primary">
-              {featuredIntegrations.length}
-            </Chip>
-          </div>
-          <div className="flex flex-col gap-2">
-            {featuredIntegrations.map((integration) => (
-              <IntegrationRow
-                key={integration.id}
-                integration={integration}
-                onConnect={handleConnect}
-                onClick={(id) => onIntegrationClick?.(id)}
-              />
-            ))}
-          </div>
-        </div>
+      {/* Featured Section */}
+      {featuredIntegrations.length > 0 && !searchQuery && (
+        <>
+          <IntegrationSection
+            title="Featured"
+            integrations={featuredIntegrations}
+            chipColor="primary"
+            onConnect={handleConnect}
+            onIntegrationClick={onIntegrationClick}
+          />
+          <Separator className="border-zinc-800 border-t-1 mb-8" />
+        </>
       )}
 
-      {/* All Integrations Section */}
-      {(connectedIntegrations.length > 0 ||
-        availableIntegrations.length > 0 ||
-        comingSoonIntegrations.length > 0) && (
-        <div>
-          <div className="mb-4 flex items-center gap-2">
-            <h2 className="text-base font-semibold">All Integrations</h2>
-            <Chip size="sm" variant="flat" color="default">
-              {connectedIntegrations.length +
-                availableIntegrations.length +
-                comingSoonIntegrations.length}
-            </Chip>
-          </div>
-          <div className="flex flex-col gap-2">
-            {connectedIntegrations.length > 0 &&
-              connectedIntegrations.map((integration) => (
-                <IntegrationRow
-                  key={integration.id}
-                  integration={integration}
-                  onConnect={handleConnect}
-                  onClick={(id) => onIntegrationClick?.(id)}
-                />
-              ))}
+      {/* Category Sections */}
+      {selectedCategory === "all" ? (
+        // When "All" is selected, show integrations grouped by category
+        availableCategories.map((category) => {
+          const categoryIntegrations = integrationsByCategory[category];
+          if (!categoryIntegrations || categoryIntegrations.length === 0)
+            return null;
 
-            {availableIntegrations.length > 0 &&
-              availableIntegrations.map((integration) => (
-                <IntegrationRow
-                  key={integration.id}
-                  integration={integration}
-                  onConnect={handleConnect}
-                  onClick={(id) => onIntegrationClick?.(id)}
-                />
-              ))}
-
-            {comingSoonIntegrations.length > 0 &&
-              comingSoonIntegrations.map((integration) => (
-                <IntegrationRow
-                  key={integration.id}
-                  integration={integration}
-                  onConnect={handleConnect}
-                  onClick={(id) => onIntegrationClick?.(id)}
-                />
-              ))}
-          </div>
-        </div>
+          return (
+            <IntegrationSection
+              key={category}
+              title={getCategoryLabel(category)}
+              integrations={categoryIntegrations}
+              onConnect={handleConnect}
+              onIntegrationClick={onIntegrationClick}
+            />
+          );
+        })
+      ) : (
+        // When a specific category is selected, show all integrations in that category
+        <IntegrationSection
+          title={getCategoryLabel(selectedCategory)}
+          integrations={integrationsInSelectedCategory}
+          onConnect={handleConnect}
+          onIntegrationClick={onIntegrationClick}
+        />
       )}
     </div>
   );

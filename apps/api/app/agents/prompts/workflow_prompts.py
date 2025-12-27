@@ -97,11 +97,11 @@ A workflow is an automated sequence of 1-5 HIGHLY OPTIMIZED steps that accomplis
 
 CRITICAL REQUIREMENTS:
 1. Use ONLY the exact category names from the AVAILABLE TOOL CATEGORIES above
-2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "google_calendar", "productivity")
+2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "google_calendar", "todos", "reminders")
 3. Create 3-5 HIGHLY OPTIMIZED steps that accomplish the goal with maximum efficiency
 4. The execution agent will use `handoff` to delegate to subagents based on category
 5. Categories like gmail, notion, github, slack, google_calendar route to specialized subagents
-6. Categories like productivity, search, development use direct tool execution
+6. Categories like todos, reminders, search, development use direct tool execution
 7. ELIMINATE any step that doesn't directly contribute to the end goal
 
 ## ABSTRACT STEP DESIGN:
@@ -115,7 +115,7 @@ CRITICAL REQUIREMENTS:
 
 **Step Structure:**
 - `title`: Human-readable step name (what action to take)
-- `category`: Which system/subagent handles this step (gmail, notion, productivity, etc.)
+- `category`: Which system/subagent handles this step (gmail, notion, todos, reminders, etc.)
 - `description`: Detailed context about what this step should accomplish
 - `inputs`: Optional hints/parameters, but the executor makes final decisions
 
@@ -165,7 +165,7 @@ JSON OUTPUT REQUIREMENTS:
 - Use only valid JSON syntax with no explanatory comments
 - All string values must be properly quoted
 - No trailing commas or syntax errors
-- Use the exact category name for routing (e.g., "gmail", "notion", "productivity")
+- Use the exact category name for routing (e.g., "gmail", "notion", "todos", "reminders")
 
 BAD WORKFLOW EXAMPLES (DO NOT CREATE):
 ❌ "Analyze project requirements" → LLM does this inherently, no external tool needed
@@ -255,12 +255,12 @@ For specialized provider services, use the `handoff` tool to delegate to expert 
 **Execution Approach:**
 For each workflow step, use the `category` to determine routing:
 - category: gmail, notion, twitter, linkedin, github, slack, etc. → `handoff(subagent_id="<category>", task="[step title]: [step description]")`
-- category: productivity, search, development, creative, etc. → Execute directly with `retrieve_tools` and call tools
+- category: todos, reminders, search, development, creative, etc. → Execute directly with `retrieve_tools` and call tools
 
 **Execution Guidelines:**
 1. Process steps in the exact order shown
 2. Use sub-agent handoffs for provider-specific categories (gmail, notion, github, etc.)
-3. Execute directly for general categories (productivity, search, development, creative)
+3. Execute directly for general categories (todos, reminders, search, development, creative)
 4. Provide clear updates on progress and tool results
 5. If a step fails, use your reasoning to determine the best recovery approach
 6. Connect information between steps using your natural understanding

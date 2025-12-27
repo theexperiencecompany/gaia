@@ -1,7 +1,8 @@
 import Image from "next/image";
 import {
+  AlarmClockIcon,
   Brain02Icon,
-  CheckmarkCircle02Icon,
+  CheckListIcon,
   ConnectIcon,
   FileEmpty02Icon,
   Image02Icon,
@@ -56,10 +57,15 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zin`c-200",
     isImage: true,
   },
-  productivity: {
-    icon: CheckmarkCircle02Icon,
+  todos: {
+    icon: CheckListIcon,
     bgColor: "bg-emerald-500/20 backdrop-blur",
     iconColor: "text-emerald-400",
+  },
+  reminders: {
+    icon: AlarmClockIcon,
+    bgColor: "bg-blue-500/20 backdrop-blur",
+    iconColor: "text-blue-400",
   },
   documents: {
     icon: FileEmpty02Icon,
@@ -156,7 +162,7 @@ const iconConfigs: Record<string, IconConfig> = {
     isImage: true,
   },
   github: {
-    icon: "/images/icons/github.svg",
+    icon: "/images/icons/github.png",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
     isImage: true,
@@ -251,6 +257,54 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
+  deepwiki: {
+    icon: "/images/icons/deepwiki.webp",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  browserbase: {
+    icon: "/images/icons/browserbase.png",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  context7: {
+    icon: "/images/icons/context7.png",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  hackernews: {
+    icon: "/images/icons/hackernews.png",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  instacart: {
+    icon: "/images/icons/instacart.png",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  yelp: {
+    icon: "/images/icons/yelp.png",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  vercel: {
+    icon: "/images/icons/vercel.svg",
+    bgColor: "bg-zinc-800",
+    iconColor: "text-white",
+    isImage: true,
+  },
+  dodopayments: {
+    icon: InformationCircleIcon, // TODO: Add /images/icons/dodopayments.svg
+    bgColor: "bg-emerald-500/20 backdrop-blur",
+    iconColor: "text-emerald-400",
+    isImage: false,
+  },
   integrations: {
     isImage: false,
     icon: ConnectIcon,
@@ -268,16 +322,17 @@ const AutoInvertIcon: React.FC<{
   height?: number;
   className?: string;
 }> = ({ src, alt, size, width, height, className }) => {
-  const { shouldInvert } = useIconColorDetection(src);
+  // const { shouldInvert } = useIconColorDetection(src);
 
   return (
     <Image
       alt={alt}
       width={width || size || 20}
       height={height || size || 20}
-      className={`${className} aspect-square object-contain ${shouldInvert ? "invert" : ""}`}
+      className={`${className} aspect-square object-contain`}
       src={src}
     />
+    //  ${shouldInvert ? "invert" : ""} commented out temporarily
   );
 };
 

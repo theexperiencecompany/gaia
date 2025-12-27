@@ -17,6 +17,7 @@ async def get_available_tools() -> ToolsListResponse:
 
     tool_registry = await get_tool_registry()
     await tool_registry.load_all_provider_tools()
+    await tool_registry.load_all_mcp_tools()
 
     # Use category-based approach for better performance and integration info
     _categories = tool_registry.get_all_category_objects(
@@ -67,6 +68,7 @@ async def get_tool_categories() -> Dict[str, int]:
     category_counts: Dict[str, int] = {}
     tool_registry = await get_tool_registry()
     await tool_registry.load_all_provider_tools()
+    await tool_registry.load_all_mcp_tools()
 
     # Use the new category-based approach for better performance
     all_categories = tool_registry.get_all_category_objects()

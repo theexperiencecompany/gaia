@@ -64,10 +64,15 @@ export const integrationsApi = {
   },
 
   /**
-   * Initiate OAuth flow for an integration
-   * Normalizes integration ID to lowercase for case-insensitive matching
+   * Connect an integration
+   * - For unauthenticated MCP: POST to backend directly, no redirect
+   * - For bearer auth: pass bearerToken from modal, POST to backend directly
+   * - For OAuth: redirect to loginEndpoint, backend handles OAuth flow
    */
-  connectIntegration: async (integrationId: string): Promise<void> => {
+  connectIntegration: async (
+    integrationId: string,
+    bearerToken?: string,
+  ): Promise<{ status: string; toolsCount?: number }> => {
     // Normalize to lowercase (backend may return uppercase toolkit names)
     const normalizedId = integrationId.toLowerCase();
 
@@ -83,16 +88,37 @@ export const integrationsApi = {
       );
     }
 
-    if (typeof window === "undefined") return;
+    // Unauthenticated MCPs are always connected - no API call needed
+    if (integration.managedBy === "mcp" && integration.authType === "none") {
+      return { status: "connected", toolsCount: 0 };
+    }
+
+    // For MCP integrations with bearer auth, call API directly
+    if (integration.managedBy === "mcp" && integration.authType === "bearer") {
+      const response = await apiService.post(`/mcp/connect/${integration.id}`, {
+        bearer_token: bearerToken,
+      });
+      return response as { status: string; toolsCount?: number };
+    }
+
+    // If bearer token provided (from modal for non-MCP), POST to backend
+    if (bearerToken) {
+      const response = await apiService.post(`mcp/connect/${integration.id}`, {
+        bearer_token: bearerToken,
+      });
+      return response as { status: string; toolsCount?: number };
+    }
+
+    if (typeof window === "undefined") return { status: "error" };
 
     const frontendPath = window.location.pathname + window.location.search;
 
-    // Use the backend API base URL for proper OAuth flow
+    // Navigate to loginEndpoint for OAuth - backend handles redirects
     const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
     const fullUrl = `${backendUrl}${integration.loginEndpoint}?redirect_path=${encodeURIComponent(frontendPath)}`;
 
-    // Navigate to OAuth endpoint
     window.location.href = fullUrl;
+    return { status: "redirecting" };
   },
 
   /**
@@ -110,6 +136,49 @@ export const integrationsApi = {
     } catch (error) {
       console.error(`Failed to disconnect ${integrationId}:`, error);
       throw error;
+    }
+  },
+
+  /**
+   * Connect an MCP integration with bearer token
+   */
+  connectMCPWithToken: async (
+    integrationId: string,
+    bearerToken: string,
+  ): Promise<{ status: string; toolsCount: number }> => {
+    try {
+      const response = await apiService.post(`/mcp/connect/${integrationId}`, {
+        bearer_token: bearerToken,
+      });
+      return response as { status: string; toolsCount: number };
+    } catch (error) {
+      console.error(`Failed to connect MCP ${integrationId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get MCP integration status
+   */
+  getMCPStatus: async (): Promise<{
+    integrations: Array<{
+      integrationId: string;
+      connected: boolean;
+      status: string;
+    }>;
+  }> => {
+    try {
+      const response = await apiService.get("/mcp/status", { silent: true });
+      return response as {
+        integrations: Array<{
+          integrationId: string;
+          connected: boolean;
+          status: string;
+        }>;
+      };
+    } catch (error) {
+      console.error("Failed to get MCP status:", error);
+      return { integrations: [] };
     }
   },
 };
