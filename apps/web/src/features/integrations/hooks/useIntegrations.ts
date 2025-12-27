@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
+import { toast } from "sonner";
 
 import { integrationsApi } from "../api/integrationsApi";
 import type { Integration, IntegrationStatus } from "../types";
@@ -9,7 +10,10 @@ export interface UseIntegrationsReturn {
   integrationStatuses: IntegrationStatus[];
   isLoading: boolean;
   error: Error | null;
-  connectIntegration: (integrationId: string) => Promise<void>;
+  connectIntegration: (
+    integrationId: string,
+    bearerToken?: string,
+  ) => Promise<{ status: string; toolsCount?: number }>;
   disconnectIntegration: (integrationId: string) => Promise<void>;
   refreshStatus: () => void;
   getIntegrationStatus: (
@@ -86,9 +90,12 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     return integrationConfigs
       .map((integration) => {
         const status = getIntegrationStatus(integration.id);
+        // Unauthenticated MCPs are always connected
+        const isUnauthenticatedMcp =
+          integration.managedBy === "mcp" && integration.authType === "none";
         return {
           ...integration,
-          status: (status?.connected
+          status: (isUnauthenticatedMcp || status?.connected
             ? "connected"
             : "not_connected") as Integration["status"],
         };
@@ -104,17 +111,42 @@ export const useIntegrations = (): UseIntegrationsReturn => {
 
   // Connect an integration
   const connectIntegration = useCallback(
-    async (integrationId: string): Promise<void> => {
+    async (
+      integrationId: string,
+      bearerToken?: string,
+    ): Promise<{ status: string; toolsCount?: number }> => {
+      const integration = integrationConfigs.find(
+        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
+      );
+      const integrationName = integration?.name || integrationId;
+
+      const toastId = toast.loading(`Connecting to ${integrationName}...`);
+
       try {
-        await integrationsApi.connectIntegration(integrationId);
-        // Refresh status after connection attempt
-        queryClient.invalidateQueries({ queryKey: ["integrations", "status"] });
+        const result = await integrationsApi.connectIntegration(
+          integrationId,
+          bearerToken,
+        );
+
+        if (result.status === "connected") {
+          toast.success(`Connected to ${integrationName}`, { id: toastId });
+          queryClient.invalidateQueries({
+            queryKey: ["integrations", "status"],
+          });
+        } else if (result.status === "redirecting") {
+          toast.dismiss(toastId);
+        }
+
+        return result;
       } catch (error) {
-        console.error(`Failed to connect ${integrationId}:`, error);
+        toast.error(
+          `Failed to connect: ${error instanceof Error ? error.message : "Unknown error"}`,
+          { id: toastId },
+        );
         throw error;
       }
     },
-    [queryClient],
+    [queryClient, integrationConfigs],
   );
 
   // Disconnect an integration

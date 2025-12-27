@@ -11,11 +11,12 @@ import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithInte
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { Integration } from "@/features/integrations/types";
-import { InformationCircleIcon } from "@/icons";
 
 interface IntegrationSidebarProps {
   integration: Integration;
-  onConnect: (integrationId: string) => void;
+  onConnect: (
+    integrationId: string,
+  ) => Promise<{ status: string; toolsCount?: number }>;
   onDisconnect?: (integrationId: string) => void;
   category?: string;
 }
@@ -29,10 +30,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const isConnected = integration.status === "connected";
   // Use backend's 'available' field - MCP integrations have available=true but loginEndpoint=null
   const isAvailable = integration.available ?? !!integration.loginEndpoint;
-  const isMCP = integration.managedBy === "mcp";
   const { tools } = useToolsWithIntegrations();
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   // Get tools that belong to this integration or its included integrations
   const integrationTools = React.useMemo(() => {
@@ -48,9 +49,16 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     );
   }, [tools, integration.id, integration.includedIntegrations]);
 
-  const handleConnect = () => {
-    if (isAvailable && !isConnected) {
-      onConnect(integration.id);
+  const handleConnect = async () => {
+    if (!isAvailable || isConnected || isConnecting) return;
+
+    setIsConnecting(true);
+    try {
+      await onConnect(integration.id);
+    } catch {
+      // Error toast is handled in the hook
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -90,21 +98,27 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               {integration.name}
             </h1>
 
-            {/* MCP integrations don't show status chips */}
-            {!isMCP && (
-              <>
-                {isConnected && (
-                  <Chip size="sm" variant="flat" color="success">
-                    Connected
-                  </Chip>
-                )}
-                {!isAvailable && (
-                  <Chip size="sm" variant="flat" color="default">
-                    Coming Soon
-                  </Chip>
-                )}
-              </>
+            {isConnected &&
+              !(
+                integration.managedBy === "mcp" &&
+                integration.authType === "none"
+              ) && (
+                <Chip size="sm" variant="flat" color="success">
+                  Connected
+                </Chip>
+              )}
+            {!isAvailable && (
+              <Chip size="sm" variant="flat" color="default">
+                Coming Soon
+              </Chip>
             )}
+            {/* Show "Always available" for unauthenticated MCPs */}
+            {integration.managedBy === "mcp" &&
+              integration.authType === "none" && (
+                <Chip size="sm" variant="flat" color="secondary">
+                  Always available
+                </Chip>
+              )}
           </div>
 
           <p className="text-sm leading-relaxed font-light text-zinc-400">
@@ -112,45 +126,38 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           </p>
         </div>
 
-        {/* MCP integrations don't need connect/disconnect buttons */}
-        {!isMCP && (
-          <>
-            {!isConnected ? (
-              <RaisedButton
-                color="#00bbff"
-                className="font-medium text-black!"
-                onClick={handleConnect}
-                disabled={!isAvailable}
-              >
-                {isAvailable ? "Connect" : "Coming Soon"}
-              </RaisedButton>
-            ) : (
-              onDisconnect && (
-                <Button
-                  color="danger"
-                  variant="light"
-                  fullWidth
-                  onPress={handleDisconnect}
-                  isLoading={isDisconnecting}
-                  isDisabled={isDisconnecting}
-                >
-                  Disconnect
-                </Button>
-              )
-            )}
-          </>
-        )}
-
-        {/* MCP integrations show info message */}
-        {isMCP && (
-          <Chip
-            variant="flat"
-            color="success"
-            startContent={<InformationCircleIcon size={16} />}
-            className="w-full py-4 px-3"
+        {/* Hide connect/disconnect for unauthenticated MCPs */}
+        {integration.managedBy === "mcp" && integration.authType === "none" ? (
+          <div className="text-sm text-zinc-400">
+            This integration is always available - no connection needed.
+          </div>
+        ) : !isConnected ? (
+          <RaisedButton
+            color="#00bbff"
+            className="font-medium text-black!"
+            onClick={handleConnect}
+            disabled={!isAvailable || isConnecting}
+            isLoading={isConnecting}
           >
-            <span className="text-sm">Always connected — no setup needed!</span>
-          </Chip>
+            {isConnecting
+              ? "Connecting..."
+              : isAvailable
+                ? "Connect"
+                : "Coming Soon"}
+          </RaisedButton>
+        ) : (
+          onDisconnect && (
+            <Button
+              color="danger"
+              variant="light"
+              fullWidth
+              onPress={handleDisconnect}
+              isLoading={isDisconnecting}
+              isDisabled={isDisconnecting}
+            >
+              Disconnect
+            </Button>
+          )
         )}
         {integrationTools.length > 0 && (
           <>

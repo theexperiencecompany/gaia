@@ -263,6 +263,36 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
+  hackernews: {
+    icon: "/images/icons/hackernews.png",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  instacart: {
+    icon: "/images/icons/instacart.png",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  yelp: {
+    icon: "/images/icons/yelp.png",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    isImage: true,
+  },
+  vercel: {
+    icon: "/images/icons/vercel.svg",
+    bgColor: "bg-zinc-800",
+    iconColor: "text-white",
+    isImage: true,
+  },
+  dodopayments: {
+    icon: InformationCircleIcon, // TODO: Add /images/icons/dodopayments.svg
+    bgColor: "bg-emerald-500/20 backdrop-blur",
+    iconColor: "text-emerald-400",
+    isImage: false,
+  },
   integrations: {
     isImage: false,
     icon: ConnectIcon,

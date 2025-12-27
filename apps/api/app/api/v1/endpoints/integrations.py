@@ -21,6 +21,7 @@ from app.services.oauth_service import get_all_integrations_status
 from app.services.oauth_state_service import create_oauth_state
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
+from app.services.mcp.mcp_client import get_mcp_client
 
 router = APIRouter()
 
@@ -33,6 +34,19 @@ def _build_integrations_config():
     """
     integration_configs = []
     for integration in OAUTH_INTEGRATIONS:
+        # Determine loginEndpoint based on managed_by
+        if not integration.available:
+            login_endpoint = None
+        elif integration.managed_by == "mcp":
+            login_endpoint = f"mcp/connect/{integration.id}"
+        else:
+            login_endpoint = f"integrations/login/{integration.id}"
+
+        # Determine authType for MCP integrations
+        auth_type = None
+        if integration.mcp_config:
+            auth_type = integration.mcp_config.auth_type
+
         config = IntegrationConfigResponse(
             id=integration.id,
             name=integration.name,
@@ -40,16 +54,13 @@ def _build_integrations_config():
             category=integration.category,
             provider=integration.provider,
             available=integration.available,
-            loginEndpoint=(
-                f"integrations/login/{integration.id}"
-                if integration.available and integration.managed_by != "mcp"
-                else None
-            ),
+            loginEndpoint=login_endpoint,
             isSpecial=integration.is_special,
             displayPriority=integration.display_priority,
             includedIntegrations=integration.included_integrations,
             isFeatured=integration.is_featured,
             managedBy=integration.managed_by,
+            authType=auth_type,
         )
         integration_configs.append(config.model_dump())
 
@@ -168,6 +179,25 @@ async def disconnect_integration(
             )
             raise HTTPException(
                 status_code=500, detail="Failed to disconnect integration"
+            )
+
+    elif integration.managed_by == "mcp":
+        # Check if this is an unauthenticated MCP - they can't be disconnected
+        if integration.mcp_config and integration.mcp_config.auth_type == "none":
+            raise HTTPException(
+                status_code=400,
+                detail=f"{integration.name} is always available and cannot be disconnected",
+            )
+        # Handle MCP integration disconnection
+        try:
+            mcp_client = get_mcp_client(user_id=str(user_id))
+            await mcp_client.disconnect(integration_id)
+        except Exception as e:
+            logger.error(
+                f"Error disconnecting MCP integration {integration_id} for user {user_id}: {e}"
+            )
+            raise HTTPException(
+                status_code=500, detail="Failed to disconnect MCP integration"
             )
 
     else:

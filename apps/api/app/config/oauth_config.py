@@ -8,6 +8,7 @@ Defines integrations, scopes, display properties, and subagent configurations.
 from functools import cache
 from typing import Dict, List, Optional
 
+
 from app.agents.prompts.subagent_prompts import (
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
@@ -41,6 +42,7 @@ from app.models.oauth_models import (
     SubAgentConfig,
     TriggerConfig,
 )
+
 
 # Define all integrations dynamically
 OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
@@ -129,21 +131,29 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=GMAIL_AGENT_SYSTEM_PROMPT,
         ),
     ),
-    # Composio integrations
+    # Notion MCP (OAuth with pre-registered client)
     OAuthIntegration(
         id="notion",
         name="Notion",
-        description="Manage pages, databases, and workspace content",
+        description="Manage pages, databases, and workspace content with AI assistance.",
         category="productivity",
         provider="notion",
         scopes=[],
         available=True,
         is_featured=True,
         short_name="notion",
-        managed_by="composio",
-        composio_config=ComposioConfig(
-            auth_config_id="ac_DR3IWp9-Kezl",
-            toolkit="NOTION",
+        managed_by="mcp",
+        mcp_config=MCPConfig(
+            server_url="https://mcp.notion.com/sse",
+            transport="sse",
+            auth_type="oauth",
+            # Notion MCP has its own OAuth endpoints separate from api.notion.com
+            oauth_base_url="https://mcp.notion.com",
+            # Use DCR (Dynamic Client Registration) - no pre-registered client needed
+            use_dcr=True,
+            # MCP-specific OAuth endpoints (not the regular Notion API ones!)
+            oauth_authorize_endpoint="https://mcp.notion.com/authorize",
+            oauth_token_endpoint="https://mcp.notion.com/token",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -156,11 +166,38 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=NOTION_AGENT_SYSTEM_PROMPT,
         ),
     ),
+    # OLD Composio Notion (commented out - using MCP now)
+    # OAuthIntegration(
+    #     id="notion",
+    #     name="Notion",
+    #     description="Manage pages, databases, and workspace content",
+    #     category="productivity",
+    #     provider="notion",
+    #     scopes=[],
+    #     available=True,
+    #     is_featured=True,
+    #     short_name="notion",
+    #     managed_by="composio",
+    #     composio_config=ComposioConfig(
+    #         auth_config_id="ac_DR3IWp9-Kezl",
+    #         toolkit="NOTION",
+    #     ),
+    #     subagent_config=SubAgentConfig(
+    #         has_subagent=True,
+    #         agent_name="notion_agent",
+    #         tool_space="notion",
+    #         handoff_tool_name="call_notion_agent",
+    #         domain="workspace and knowledge management",
+    #         capabilities="creating pages, building databases, updating content, organizing workspaces, managing properties, searching content, and structuring knowledge bases",
+    #         use_cases="creating pages, managing databases, organizing knowledge, or any Notion workspace operation",
+    #         system_prompt=NOTION_AGENT_SYSTEM_PROMPT,
+    #     ),
+    # ),
     OAuthIntegration(
         id="twitter",
         name="Twitter",
         description="Post tweets, read timelines, and manage your account",
-        category="social",
+        category="social_media",
         provider="twitter",
         scopes=[],
         available=True,
@@ -214,7 +251,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         id="linkedin",
         name="LinkedIn",
         description="Share posts and engage with your professional network",
-        category="social",
+        category="social_media",
         provider="linkedin",
         scopes=[],
         available=True,
@@ -270,7 +307,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         id="reddit",
         name="Reddit",
         description="Post content, manage comments, and engage with communities on Reddit",
-        category="social",
+        category="social_media",
         provider="reddit",
         scopes=[],
         available=True,
@@ -574,7 +611,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         id="instagram",
         name="Instagram",
         description="Manage your Instagram account, post content, and engage with your audience",
-        category="social",
+        category="social_media",
         provider="instagram",
         scopes=[],
         available=True,
@@ -634,7 +671,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         mcp_config=MCPConfig(
             server_url="https://mcp.deepwiki.com/sse",
             transport="sse",
-            requires_auth=False,
+            auth_type="none",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -647,6 +684,90 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=DEEPWIKI_AGENT_SYSTEM_PROMPT,
             use_direct_tools=True,
             disable_retrieve_tools=True,
+        ),
+    ),
+    # HackerNews MCP (unauthenticated, Composio hosted)
+    OAuthIntegration(
+        id="hackernews",
+        name="Hacker News",
+        description="Browse and search Hacker News stories, comments, and discussions.",
+        category="news",
+        provider="hackernews",
+        scopes=[],
+        available=True,
+        short_name="hn",
+        managed_by="mcp",
+        mcp_config=MCPConfig(
+            server_url="https://backend.composio.dev/v3/mcp/0f5b8d43-4e16-4919-8788-b462f1089b91/mcp",
+            transport="sse",
+            auth_type="none",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="hackernews_agent",
+            tool_space="hackernews",
+            handoff_tool_name="call_hackernews_agent",
+            domain="tech news and discussions",
+            capabilities="browsing Hacker News, searching stories, reading comments and discussions",
+            use_cases="checking top stories, searching for tech news, reading discussions",
+            system_prompt="You are a Hacker News assistant. Help users browse and search tech news, stories, and discussions.",
+            use_direct_tools=True,
+        ),
+    ),
+    # Instacart MCP (unauthenticated, Composio hosted)
+    OAuthIntegration(
+        id="instacart",
+        name="Instacart",
+        description="Search and browse grocery products, recipes, and shopping options.",
+        category="lifestyle",
+        provider="instacart",
+        scopes=[],
+        available=True,
+        short_name="instacart",
+        managed_by="mcp",
+        mcp_config=MCPConfig(
+            server_url="https://backend.composio.dev/v3/mcp/6bb2556a-57ef-4daa-81ad-bd1e3f9e443d/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3",
+            transport="sse",
+            auth_type="none",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="instacart_agent",
+            tool_space="instacart",
+            handoff_tool_name="call_instacart_agent",
+            domain="grocery shopping and recipes",
+            capabilities="searching grocery products, finding recipes, browsing shopping options",
+            use_cases="finding groceries, searching recipes, planning meals",
+            system_prompt="You are an Instacart assistant. Help users search for groceries, find recipes, and plan their shopping.",
+            use_direct_tools=True,
+        ),
+    ),
+    # Yelp MCP (unauthenticated, Composio hosted)
+    OAuthIntegration(
+        id="yelp",
+        name="Yelp",
+        description="Search for local businesses, restaurants, and read reviews.",
+        category="lifestyle",
+        provider="yelp",
+        scopes=[],
+        available=True,
+        short_name="yelp",
+        managed_by="mcp",
+        mcp_config=MCPConfig(
+            server_url="https://backend.composio.dev/v3/mcp/8e1efded-6b08-4346-a657-92d0b94399e5/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3",
+            transport="sse",
+            auth_type="none",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="yelp_agent",
+            tool_space="yelp",
+            handoff_tool_name="call_yelp_agent",
+            domain="local business search and reviews",
+            capabilities="searching local businesses, finding restaurants, reading reviews, getting business information",
+            use_cases="finding restaurants, searching local services, reading reviews",
+            system_prompt="You are a Yelp assistant. Help users find local businesses, restaurants, and services with reviews and ratings.",
+            use_direct_tools=True,
         ),
     ),
 ]

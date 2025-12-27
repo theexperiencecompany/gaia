@@ -21,7 +21,7 @@ const IntegrationRow: React.FC<{
   onClick: (id: string) => void;
 }> = ({ integration, onConnect, onClick }) => {
   const isConnected = integration.status === "connected";
-  // Use backend's 'available' field - MCP integrations have available=true but loginEndpoint=null
+  // Use backend's 'available' field
   const isAvailable = integration.available ?? !!integration.loginEndpoint;
 
   const handleClick = () => {
@@ -50,39 +50,43 @@ const IntegrationRow: React.FC<{
       </div>
 
       <div className="shrink-0">
-        {/* MCP integrations don't show any status - they're always available without connection */}
-        {integration.managedBy !== "mcp" && (
-          <>
-            {isConnected && (
-              <Chip size="sm" variant="flat" color="success">
-                Connected
-              </Chip>
-            )}
+        {isConnected &&
+          !(
+            integration.managedBy === "mcp" && integration.authType === "none"
+          ) && (
+            <Chip size="sm" variant="flat" color="success">
+              Connected
+            </Chip>
+          )}
+        {!isAvailable && (
+          <Chip size="sm" variant="flat" color="default">
+            Coming Soon
+          </Chip>
+        )}
+        {/* Show "Always available" for unauthenticated MCPs */}
+        {integration.managedBy === "mcp" && integration.authType === "none" && (
+          <Chip size="sm" variant="flat" color="secondary">
+            Always available
+          </Chip>
+        )}
 
-            {isAvailable && !isConnected && (
-              <Button
-                variant="flat"
-                color="primary"
-                className="text-sm text-primary"
-                onPress={() => {
-                  onConnect(integration.id);
-                }}
-              >
-                Connect
-              </Button>
-            )}
+        {isAvailable && !isConnected && (
+          <Button
+            variant="flat"
+            color="primary"
+            className="text-sm text-primary"
+            onPress={() => {
+              onConnect(integration.id);
+            }}
+          >
+            Connect
+          </Button>
+        )}
 
-            {!isAvailable && (
-              <Chip
-                size="sm"
-                variant="flat"
-                color="default"
-                className="text-xs"
-              >
-                Soon
-              </Chip>
-            )}
-          </>
+        {!isAvailable && (
+          <Chip size="sm" variant="flat" color="default" className="text-xs">
+            Soon
+          </Chip>
         )}
       </div>
     </div>
@@ -224,7 +228,7 @@ export const IntegrationsList: React.FC<{
       )}
 
       {/* Featured Section */}
-      {featuredIntegrations.length > 0 && (
+      {featuredIntegrations.length > 0 && !searchQuery && (
         <>
           <IntegrationSection
             title="Featured"

@@ -41,17 +41,12 @@ async def create_subagent(integration_id: str):
 
     # Handle MCP-managed integrations (like DeepWiki)
     if integration.managed_by == "mcp" and integration.mcp_config:
-        from app.services.mcp.mcp_service import MCPServerConfig, get_mcp_service
+        from app.services.mcp.mcp_client import get_mcp_client
 
-        category_name = integration.id  # Use integration ID as category name
+        category_name = integration.id
         if category_name not in tool_registry._categories:
-            mcp_service = get_mcp_service()
-            tools = await mcp_service.connect(
-                MCPServerConfig(
-                    name=integration.id,
-                    url=integration.mcp_config.server_url,
-                )
-            )
+            mcp_client = get_mcp_client(user_id="_system")
+            tools = await mcp_client.connect(integration.id)
             if tools:
                 tool_registry._add_category(
                     name=category_name,

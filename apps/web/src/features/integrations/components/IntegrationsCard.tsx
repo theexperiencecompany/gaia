@@ -64,12 +64,9 @@ const IntegrationItem: React.FC<{
         )}
 
         <div className="shrink-0">
-          {/* MCP integrations show "Always connected" chip */}
-          {integration.managedBy === "mcp" ? (
-            <Chip size="sm" variant="flat" color="secondary">
-              Always available
-            </Chip>
-          ) : (
+          {!(
+            integration.managedBy === "mcp" && integration.authType === "none"
+          ) && (
             <>
               {isConnected && (
                 <Chip size="sm" variant="flat" color="success">
@@ -144,6 +141,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   const statusOrder = {
     connected: 0,
     not_connected: 1,
+    // al: 1,
     error: 2,
   };
 

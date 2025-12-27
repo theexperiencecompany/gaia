@@ -344,8 +344,10 @@ def create_agent(
                 if retrieve_tools is not None and call["name"] == retrieve_tools.name:
                     destinations.append(Send("select_tools", [call]))
                 else:
-                    tool_call = tool_node.inject_tool_args(call, state, store)  # type: ignore[arg-type]
-                    destinations.append(Send("tools", [tool_call]))
+                    # tool_call = tool_node._inject_tool_args(call, state, store)  # type: ignore[arg-type]
+                    # destinations.append(Send("tools", [tool_call]))
+                    # Tool args injection is now handled internally by ToolNode during execution
+                    destinations.append(Send("tools", [call]))
 
             return destinations
 

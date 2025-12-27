@@ -177,10 +177,11 @@ class ToolRegistry:
             return self._categories[server_name]
 
         try:
-            from app.services.mcp.mcp_service import get_mcp_service
+            from app.services.mcp.mcp_client import get_mcp_client
 
-            mcp_service = get_mcp_service()
-            tools = await mcp_service.connect_deepwiki()
+            # Use system user for unauthenticated MCP connections at startup
+            mcp_client = get_mcp_client(user_id="_system")
+            tools = await mcp_client.connect(server_name)
 
             if tools:
                 self._add_category(
@@ -290,18 +291,18 @@ class ToolRegistry:
             if category_name in self._categories:
                 return
 
-            try:
-                from app.services.mcp.mcp_service import (
-                    MCPServerConfig,
-                    get_mcp_service,
-                )
+            # Skip MCP integrations requiring auth at startup - load on user connect
+            mcp_config = integration.mcp_config
+            if mcp_config.auth_type != "none":
+                logger.info(f"Skipping auth-required MCP {integration.id} at startup")
+                return
 
-                mcp_service = get_mcp_service()
-                config = MCPServerConfig(
-                    name=integration.id,
-                    url=integration.mcp_config.server_url,
-                )
-                tools = await mcp_service.connect(config)
+            try:
+                from app.services.mcp.mcp_client import get_mcp_client
+
+                # Use system user for unauthenticated MCP connections at startup
+                mcp_client = get_mcp_client(user_id="_system")
+                tools = await mcp_client.connect(integration.id)
 
                 if tools:
                     space = (
@@ -320,7 +321,7 @@ class ToolRegistry:
                         f"Registered {len(tools)} MCP tools from {integration.id}"
                     )
             except Exception as e:
-                logger.error(f"Failed to load MCP tools for {integration.id}: {e}")
+                logger.info(f"MCP {integration.id} not loaded at startup: {e}")
 
         # Collect all MCP integrations
         mcp_integrations = [

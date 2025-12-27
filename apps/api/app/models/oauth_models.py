@@ -9,8 +9,8 @@ from datetime import datetime
 from typing import Dict, List, Literal, Optional
 
 from app.db.postgresql import Base
-from pydantic import BaseModel
-from sqlalchemy import DateTime, Integer, String, Text
+from pydantic import BaseModel, model_validator
+from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -44,6 +44,40 @@ class OAuthToken(Base):
     #     UniqueConstraint("access_token", name="uq_oauth_tokens_access_token"),
     #     {"sqlite_autoincrement": True},
     # )
+
+
+class MCPCredential(Base):
+    """User's MCP integration connection state and encrypted credentials."""
+
+    __tablename__ = "mcp_credentials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    integration_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    auth_type: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # none, oauth, bearer
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    access_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # Encrypted
+    refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # Encrypted
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    client_registration: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # DCR JSON
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "integration_id", name="uq_mcp_creds_user_integration"
+        ),
+    )
 
 
 class OAuthScope(BaseModel):
@@ -110,7 +144,37 @@ class MCPConfig(BaseModel):
 
     server_url: str
     transport: str = "sse"  # sse, http, streamable_http
-    requires_auth: bool = False
+    # Authentication type: none, oauth, or bearer
+    auth_type: Literal["none", "oauth", "bearer"] = "none"
+    # OAuth base URL for .well-known discovery (REQUIRED when auth_type is oauth)
+    # e.g., "https://api.notion.com" for Notion, "https://vercel.com" for Vercel
+    oauth_base_url: Optional[str] = None
+    # OAuth configuration (for pre-registered clients)
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
+    oauth_scopes: Optional[List[str]] = None
+    # Use Dynamic Client Registration if no client_id provided
+    use_dcr: bool = False
+    # Environment variable names for secrets (resolved at runtime from Infisical)
+    client_id_env: Optional[str] = None
+    client_secret_env: Optional[str] = None
+    # Explicit OAuth endpoints (for providers that don't support .well-known discovery)
+    oauth_authorize_endpoint: Optional[str] = (
+        None  # e.g., "https://api.notion.com/v1/oauth/authorize"
+    )
+    oauth_token_endpoint: Optional[str] = (
+        None  # e.g., "https://api.notion.com/v1/oauth/token"
+    )
+
+    @model_validator(mode="after")
+    def validate_oauth_config(self) -> "MCPConfig":
+        """Validate that oauth_base_url is provided when auth_type is 'oauth'."""
+        if self.auth_type == "oauth" and not self.oauth_base_url:
+            raise ValueError(
+                "oauth_base_url is required when auth_type is 'oauth'. "
+                "This URL is used for OAuth .well-known discovery."
+            )
+        return self
 
 
 class OAuthIntegration(BaseModel):
@@ -160,3 +224,4 @@ class IntegrationConfigResponse(BaseModel):
     includedIntegrations: List[str]
     isFeatured: bool
     managedBy: Literal["self", "composio", "mcp"]
+    authType: Optional[Literal["none", "oauth", "bearer"]] = None

@@ -23,6 +23,7 @@ export interface Integration {
   isFeatured?: boolean;
   managedBy?: "self" | "composio" | "mcp";
   available?: boolean;
+  authType?: "oauth" | "bearer" | "none";
 }
 
 export interface IntegrationStatus {

@@ -14,6 +14,7 @@ from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
 from app.services.composio.composio_service import get_composio_service
+from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
 )
@@ -113,6 +114,7 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
     result = {}
     composio_providers = []
     composio_id_to_provider = {}
+    mcp_integrations = []
 
     # Group integrations by type
     for integration in OAUTH_INTEGRATIONS:
@@ -120,9 +122,9 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
             result[integration.id] = False
             continue
 
-        # MCP integrations are always connected (no auth required)
+        # MCP integrations - check credentials table
         if integration.managed_by == "mcp":
-            result[integration.id] = True
+            mcp_integrations.append(integration.id)
         elif integration.managed_by == "composio":
             composio_providers.append(integration.provider)
             composio_id_to_provider[integration.id] = integration.provider
@@ -140,6 +142,30 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
             except Exception as e:
                 logger.debug(f"Token not found for {integration.provider}: {e}")
                 result[integration.id] = False
+
+    # Batch check all MCP integrations
+    if mcp_integrations:
+        try:
+            token_store = MCPTokenStore(user_id=user_id)
+            for integration_id in mcp_integrations:
+                integration = next(
+                    (i for i in OAUTH_INTEGRATIONS if i.id == integration_id), None
+                )
+                # Unauthenticated MCPs are always connected - no DB check needed
+                if (
+                    integration
+                    and integration.mcp_config
+                    and integration.mcp_config.auth_type == "none"
+                ):
+                    result[integration_id] = True
+                else:
+                    result[integration_id] = await token_store.is_connected(
+                        integration_id
+                    )
+        except Exception as e:
+            logger.error(f"Error checking MCP integrations: {e}")
+            for integration_id in mcp_integrations:
+                result[integration_id] = False
 
     # Batch check all Composio integrations
     if composio_providers:

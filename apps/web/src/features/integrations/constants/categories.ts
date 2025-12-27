@@ -22,7 +22,10 @@ export const CATEGORY_LABELS: Record<string, string> = {
  * Get display label for a category ID
  */
 export function getCategoryLabel(categoryId: string): string {
-  return CATEGORY_LABELS[categoryId] ?? categoryId;
+  return categoryId
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 /**
