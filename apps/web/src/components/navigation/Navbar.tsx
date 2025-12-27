@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import AnimatedNumber from "animated-number-react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -22,6 +20,7 @@ import {
 import { posthog } from "@/lib";
 
 import { Github } from "../shared";
+import { LogoWithContextMenu } from "../shared/LogoWithContextMenu";
 import { RaisedButton } from "../ui/raised-button";
 import { NavbarMenu } from "./NavbarMenu";
 
@@ -114,15 +113,7 @@ export default function Navbar() {
                 : "rounded-2xl border-transparent bg-transparent"
           }`}
         >
-          <Button as={Link} href={"/"} variant="light" className="px-2">
-            <Image
-              src="/images/logos/text_w_logo_white.webp"
-              alt="GAIA Logo"
-              width={100}
-              height={30}
-              className="object-contain"
-            />
-          </Button>
+          <LogoWithContextMenu className="px-2" />
 
           <div className="hidden items-center gap-1 sm:flex">
             {appConfig.links.main

@@ -14,6 +14,7 @@ import TestimonialsSection from "@/features/landing/components/sections/Testimon
 import TiredBoringAssistants from "@/features/landing/components/sections/TiredBoringAssistants";
 import ToolsShowcaseSection from "@/features/landing/components/sections/ToolsShowcaseSection";
 import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
+import ImageSelector from "@/features/landing/components/shared/ImageSelector";
 import { FAQAccordion } from "@/features/pricing/components/FAQAccordion";
 
 export default function LandingPageClient() {
@@ -25,17 +26,41 @@ export default function LandingPageClient() {
     };
   }, []);
 
+  const imageOptions = [
+    {
+      name: "Calendar",
+      src: "/images/screenshots/calendar.webp",
+    },
+    {
+      name: "Chats",
+      src: "/images/screenshots/chats.png",
+    },
+    {
+      name: "Todos",
+      src: "/images/screenshots/todos.webp",
+    },
+    {
+      name: "Goals",
+      src: "/images/screenshots/goals.png",
+    },
+    {
+      name: "Mail",
+      src: "/images/screenshots/mail.webp",
+    },
+  ];
   return (
     <div className="relative overflow-hidden">
-      <div className="absolute inset-0 h-screen w-full">
-        <HeroImage shouldHaveInitialFade />
-        <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[30vh] bg-linear-to-t from-background to-transparent" />
+      <div className="absolute inset-0 h-screen w-full opacity-80">
+        <HeroImage />
       </div>
 
       <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
         <HeroSection />
       </section>
+
+      <div className="mx-auto max-w-6xl relative -top-25 z-20">
+        <ImageSelector images={imageOptions} defaultIndex={2} />
+      </div>
 
       <div>
         <div className="relative">
@@ -53,27 +78,15 @@ export default function LandingPageClient() {
         </div>
 
         <ProductivityOS />
-
         <ToolsShowcaseSection />
-
         <WorkflowSection />
-
         <Productivity />
-
         <Personalised />
-
         <TestimonialsSection />
-
         <OpenSource />
-
-        <Suspense fallback={null}>
-          <FAQAccordion />
-        </Suspense>
-
+        <FAQAccordion />
         <LandingDownloadSection />
-
         <CommunitySection />
-
         <FinalSection showSocials={false} />
       </div>
     </div>

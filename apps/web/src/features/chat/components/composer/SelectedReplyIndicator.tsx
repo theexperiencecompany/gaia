@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import type React from "react";
 import { useEffect } from "react";
 import { Cancel01Icon, LinkBackwardIcon } from "@/icons";
+import { useComposerUI } from "@/stores/composerStore";
 import type { ReplyToMessageData } from "@/stores/replyToMessageStore";
 
 interface SelectedReplyIndicatorProps {
@@ -55,12 +56,15 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
   onNavigate,
   isDisplayOnly = false,
 }) => {
+  const { isSlashCommandDropdownOpen } = useComposerUI();
+
   // Handle Escape key to close the indicator
   useEffect(() => {
     if (!replyToMessage || !onRemove) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      // Only handle escape if slash command dropdown is NOT open
+      if (e.key === "Escape" && !isSlashCommandDropdownOpen) {
         e.preventDefault();
         onRemove();
       }
@@ -68,7 +72,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [replyToMessage, onRemove]);
+  }, [replyToMessage, onRemove, isSlashCommandDropdownOpen]);
 
   const handleClick = () => {
     if (replyToMessage && onNavigate) {

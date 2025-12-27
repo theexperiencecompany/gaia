@@ -1,9 +1,10 @@
 // Main font configuration file
-import { instrumentSerif } from "./instrument-serif";
+import { anonymousPro } from "./anonymous-pro";
 import { inter } from "./inter";
+import { ppEditorialNew } from "./pp-editorial-new";
 
 // Export fonts
-export { instrumentSerif, inter };
+export { anonymousPro, inter, ppEditorialNew };
 
 // Set Inter as the default font
 export const defaultFont = inter;
@@ -13,5 +14,5 @@ export const defaultTextFont = inter;
 
 // Helper function to get font variables
 export function getAllFontVariables() {
-  return `${inter.variable} ${instrumentSerif.variable}`;
+  return `${inter.variable} ${ppEditorialNew.variable} ${anonymousPro.variable}`;
 }

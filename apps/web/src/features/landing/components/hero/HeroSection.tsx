@@ -40,24 +40,35 @@ export default function HeroSection() {
             </div>
           </Link>
         </div>
-        <SplitTextBlur
-          text="Meet the personal assistant you’ve always wanted"
-          delay={0}
-          staggerDelay={0.15}
-          className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-8xl font-semibold"
-          gradient="linear-gradient(to bottom, oklch(55.2% 0.016 285.938), oklch(21% 0.006 285.885))"
-          disableIntersectionObserver
-          as="h1"
-          showGlowTextBg
-        />
+
+        <div className="flex items-center flex-col mt-6 gap-1">
+          <div className="tracking-[0.7em] text-xl font-extralight">
+            MEET GAIA
+          </div>
+          <SplitTextBlur
+            text="The personal assistant you've always wanted"
+            delay={0}
+            staggerDelay={0.15}
+            className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-8xl font-normal"
+            gradient="linear-gradient(to bottom, #ffffff70, #ffffff)"
+            disableIntersectionObserver
+            as="h1"
+            showGlowTextBg
+          />
+        </div>
 
         <div className="relative">
-          <div className="mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-white sm:px-0 sm:text-xl">
-            Tired of Siri, Google Assistant, and ChatGPT doing nothing useful?
+          <div className="mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-lg leading-7 text-zinc-300 font-light sm:px-0 sm:text-lg">
+            Your friendly proactive productivity assistant for tasks, email,
+            calendar, goals, and automated workflows to save time.
           </div>
+          {/*
           <div className="mb-6 absolute top-0 blur-sm max-w-(--breakpoint-sm) px-4 py-0 text-center text-lg leading-7 font-bold tracking-tighter text-black/60 z-[-1] sm:px-0 sm:text-xl">
-            Tired of Siri, Google Assistant, and ChatGPT doing nothing useful?
+             Tired of Siri, Google Assistant, and ChatGPT doing nothing useful? 
+            Your productivity stack, unified and automated by a single
+            assistant.
           </div>
+             */}
         </div>
         <div className="flex gap-4">
           <GetStartedButton />
