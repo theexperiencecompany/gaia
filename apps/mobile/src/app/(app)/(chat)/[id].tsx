@@ -26,16 +26,18 @@ import { ChatInput } from "@/components/ui/chat-input";
 
 export default function ChatPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { activeChatId, setActiveChatId, createNewChat } = useChatContext();
+  const { setActiveChatId, createNewChat } = useChatContext();
 
+  // Sync the active chat ID with context (for sidebar highlighting, etc.)
   useEffect(() => {
     if (id) {
       setActiveChatId(id);
     }
-  }, [id]);
+  }, [id, setActiveChatId]);
 
+  // Use the URL id directly - not activeChatId from context (which may be stale)
   const { messages, isTyping, flatListRef, sendMessage, scrollToBottom } =
-    useChat(activeChatId);
+    useChat(id || null);
 
   const { drawerRef, closeSidebar, toggleSidebar } = useSidebar();
 

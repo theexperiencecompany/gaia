@@ -112,6 +112,32 @@ function normalizeConversationDetail(
 // =============================================================================
 
 /**
+ * Create a new conversation
+ */
+export async function createConversation(
+  description: string = "New Chat"
+): Promise<{ conversation_id: string } | null> {
+  try {
+    // Generate a unique conversation ID
+    const conversationId = `conv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    
+    const response = await apiService.post<{ conversation_id: string }>(
+      "/conversations",
+      {
+        conversation_id: conversationId,
+        description,
+        is_system_generated: false,
+        is_unread: false,
+      }
+    );
+    return response;
+  } catch (error) {
+    console.error("Error creating conversation:", error);
+    return null;
+  }
+}
+
+/**
  * Fetch a single conversation with all its messages
  */
 export async function fetchConversation(
@@ -219,3 +245,6 @@ export const chatApi = {
   renameConversation,
   toggleStarConversation,
 };
+
+// Re-export streaming API
+export * from "./chat-stream";
