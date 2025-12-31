@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Annotated
 
 from app.agents.core.graph_manager import GraphManager
+from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import llm_logger as logger
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.message_helpers import create_system_message
@@ -32,6 +33,19 @@ async def call_executor(
         configurable = config.get("configurable", {})
         thread_id = configurable.get("thread_id", "")
         executor_thread_id = f"executor_{thread_id}"
+        user_id = configurable.get("user_id")
+
+        # Load user's MCP tools if they have any connected
+        if user_id:
+            try:
+                tool_registry = await get_tool_registry()
+                loaded = await tool_registry.load_user_mcp_tools(user_id)
+                if loaded:
+                    logger.info(
+                        f"Loaded MCP tools for user {user_id}: {list(loaded.keys())}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to load user MCP tools: {e}")
 
         executor_graph = await GraphManager.get_graph("executor_agent")
         if not executor_graph:

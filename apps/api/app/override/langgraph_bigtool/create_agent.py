@@ -48,6 +48,37 @@ from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 from app.constants.general import NEW_MESSAGE_BREAKER
 
 
+class DynamicToolNode(ToolNode):
+    """
+    A ToolNode that supports dynamically added tools.
+
+    Wraps a tool_registry (DynamicToolDict) and looks up tools at execution time,
+    allowing tools added after graph compilation to be executed.
+    """
+
+    def __init__(self, tool_registry: Mapping[str, BaseTool | Callable], **kwargs):
+        # Initialize with current tools
+        super().__init__(list(tool_registry.values()), **kwargs)
+        self._tool_registry = tool_registry
+
+    def _get_tool(self, name: str) -> BaseTool | Callable | None:
+        """Look up tool dynamically from registry."""
+        # First try the registry (includes dynamically added tools)
+        if name in self._tool_registry:
+            return self._tool_registry[name]
+        # Fall back to parent's tools_by_name
+        return self.tools_by_name.get(name)
+
+    async def _afunc(self, input, config, **kwargs):
+        """Override to inject dynamically added tools before execution."""
+        # Sync tools_by_name with current registry state before execution
+        for name in self._tool_registry:
+            if name not in self.tools_by_name:
+                self.tools_by_name[name] = self._tool_registry[name]
+
+        return await super()._afunc(input, config, **kwargs)
+
+
 class RetrieveToolsResult(TypedDict):
     """Result from retrieve_tools function."""
 
@@ -267,7 +298,8 @@ def create_agent(
         response.additional_kwargs = {"visible_to": {agent_name}}
         return {"messages": [response]}  # type: ignore[return-value]
 
-    tool_node = ToolNode(tool for tool in tool_registry.values())  # type: ignore[arg-type]
+    # Use DynamicToolNode to support tools added after graph compilation
+    tool_node = DynamicToolNode(tool_registry)  # type: ignore[arg-type]
 
     def select_tools(
         tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore
@@ -284,9 +316,14 @@ def create_agent(
                 kwargs[store_arg] = store
             result = retrieve_tools.invoke(kwargs)
 
-            # Handle RetrieveToolsResult dict structure
-            tools_to_bind = result.get("tools_to_bind", [])
-            response = result.get("response", [])
+            # Handle both RetrieveToolsResult dict and plain list (from default langgraph_bigtool)
+            if isinstance(result, dict):
+                tools_to_bind = result.get("tools_to_bind", [])
+                response = result.get("response", [])
+            else:
+                # Default langgraph_bigtool returns list[str]
+                tools_to_bind = result if isinstance(result, list) else []
+                response = tools_to_bind
 
             # Filter out subagent: prefixed tools from binding
             filtered_bind = [
@@ -316,9 +353,14 @@ def create_agent(
                 kwargs[store_arg] = store
             result = await retrieve_tools.ainvoke(kwargs)
 
-            # Handle RetrieveToolsResult dict structure
-            tools_to_bind = result.get("tools_to_bind", [])
-            response = result.get("response", [])
+            # Handle both RetrieveToolsResult dict and plain list (from default langgraph_bigtool)
+            if isinstance(result, dict):
+                tools_to_bind = result.get("tools_to_bind", [])
+                response = result.get("response", [])
+            else:
+                # Default langgraph_bigtool returns list[str]
+                tools_to_bind = result if isinstance(result, list) else []
+                response = tools_to_bind
 
             # Filter out subagent: prefixed tools from binding
             filtered_bind = [

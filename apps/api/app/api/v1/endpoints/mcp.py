@@ -210,6 +210,23 @@ async def mcp_oauth_callback(
             redirect_uri=f"{_get_base_url()}/api/v1/mcp/oauth/callback",
         )
 
+        # Fetch and cache tools immediately after successful OAuth
+        # This ensures tools are available without needing to reconnect later
+        try:
+            tools = await client.connect(integration_id)
+            if tools:
+                token_store = MCPTokenStore(user_id=str(user_id))
+                tool_metadata = [
+                    {"name": t.name, "description": t.description or ""} for t in tools
+                ]
+                await token_store.store_cached_tools(integration_id, tool_metadata)
+                logger.info(
+                    f"Cached {len(tools)} tools for {integration_id} after OAuth"
+                )
+        except Exception as tool_err:
+            # Don't fail the OAuth flow if tool caching fails
+            logger.warning(f"Failed to cache tools for {integration_id}: {tool_err}")
+
         # Invalidate status cache for parity
         await _invalidate_status_cache(str(user_id))
 
@@ -265,7 +282,12 @@ async def get_mcp_tools(
     integration_id: str,
     user: dict = Depends(get_current_user),
 ) -> MCPToolsResponse:
-    """Get discovered tools for an MCP integration."""
+    """
+    Get discovered tools for an MCP integration.
+
+    For auth-required MCPs, returns cached tools from when user first connected.
+    For unauthenticated MCPs, connects on-demand to fetch tools.
+    """
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
@@ -274,9 +296,49 @@ async def get_mcp_tools(
     if not integration or not integration.mcp_config:
         raise HTTPException(status_code=404, detail="Integration not found")
 
-    client = get_mcp_client(user_id=str(user_id))
+    token_store = MCPTokenStore(user_id=str(user_id))
 
-    # Try to connect using stored credentials if not connected
+    # For auth-required MCPs, try cached tools first
+    if integration.mcp_config.requires_auth:
+        # Check if connected
+        is_connected = await token_store.is_connected(integration_id)
+        if not is_connected:
+            return MCPToolsResponse(tools=[], connected=False)
+
+        # Return cached tools if available
+        cached = await token_store.get_cached_tools(integration_id)
+        if cached:
+            return MCPToolsResponse(
+                tools=[
+                    MCPToolInfo(name=t["name"], description=t.get("description", ""))
+                    for t in cached
+                ],
+                connected=True,
+            )
+
+        # Fallback: try to connect and cache tools
+        client = get_mcp_client(user_id=str(user_id))
+        try:
+            tools = await client.connect(integration_id)
+            if tools:
+                tool_metadata = [
+                    {"name": t.name, "description": t.description or ""} for t in tools
+                ]
+                await token_store.store_cached_tools(integration_id, tool_metadata)
+                return MCPToolsResponse(
+                    tools=[
+                        MCPToolInfo(name=t.name, description=t.description)
+                        for t in tools
+                    ],
+                    connected=True,
+                )
+        except Exception as e:
+            logger.warning(f"Failed to fetch tools for {integration_id}: {e}")
+
+        return MCPToolsResponse(tools=[], connected=True)
+
+    # For unauthenticated MCPs, connect on-demand
+    client = get_mcp_client(user_id=str(user_id))
     if not client.is_connected(integration_id):
         try:
             await client.connect(integration_id)
@@ -321,6 +383,33 @@ async def get_mcp_status(
         )
 
     return MCPStatusResponse(integrations=statuses)
+
+
+@router.post("/load-tools")
+async def load_user_mcp_tools(
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """
+    Load all connected MCP tools for the current user into the tool registry.
+
+    This ensures MCP tools are available for agent use in subsequent requests.
+    Call this after connecting to MCP servers or before starting a chat session.
+    """
+    from app.agents.tools.core.registry import get_tool_registry
+
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+
+    tool_registry = await get_tool_registry()
+    loaded = await tool_registry.load_user_mcp_tools(str(user_id))
+
+    return {
+        "loaded": {
+            integration_id: len(tools) for integration_id, tools in loaded.items()
+        },
+        "total_tools": sum(len(tools) for tools in loaded.values()),
+    }
 
 
 async def _invalidate_status_cache(user_id: str) -> None:

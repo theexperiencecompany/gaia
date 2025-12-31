@@ -93,7 +93,7 @@ export const useIconColorDetection = (src: string) => {
         const averageBrightness = totalBrightness / opaquePixels;
 
         // If average brightness is below 50 (out of 255), consider it dark
-        const invert = averageBrightness < 30;
+        const invert = averageBrightness < 50;
 
         // Cache the result
         colorDetectionCache.set(src, invert);

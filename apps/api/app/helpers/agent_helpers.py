@@ -61,18 +61,24 @@ def build_agent_config(
         parameters, metadata, and recursion limits
     """
 
-    callbacks: list[BaseCallbackHandler] = [
-        OpikTracer(
-            tags=["langchain", settings.ENV],
-            thread_id=conversation_id,
-            metadata={
-                "user_id": user.get("user_id"),
-                "conversation_id": conversation_id,
-                "agent_name": agent_name,
-            },
-            project_name="GAIA",
+    callbacks: list[BaseCallbackHandler] = []
+
+    # Add OpikTracer in production, or in development only if configured
+    # This prevents cluttered error logs when Opik isn't set up locally
+    is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
+    if settings.ENV == "production" or is_opik_configured:
+        callbacks.append(
+            OpikTracer(
+                tags=["langchain", settings.ENV],
+                thread_id=conversation_id,
+                metadata={
+                    "user_id": user.get("user_id"),
+                    "conversation_id": conversation_id,
+                    "agent_name": agent_name,
+                },
+                project_name="GAIA",
+            )
         )
-    ]
     posthog_client = providers.get("posthog")
 
     if posthog_client is not None:

@@ -301,6 +301,17 @@ class MCPTokenStore:
         cred = await self.get_credential(integration_id)
         return cred is not None and cred.status == "connected"
 
+    async def get_connected_integrations(self) -> list[str]:
+        """Get all connected MCP integration IDs for this user."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(MCPCredential.integration_id).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.status == "connected",
+                )
+            )
+            return [row[0] for row in result.fetchall()]
+
     async def get_dcr_client(self, integration_id: str) -> Optional[dict]:
         """Get stored DCR client registration."""
         cred = await self.get_credential(integration_id)
@@ -353,3 +364,53 @@ class MCPTokenStore:
             except json.JSONDecodeError:
                 return None
         return None
+
+    async def store_cached_tools(self, integration_id: str, tools: list[dict]) -> None:
+        """
+        Store cached tool metadata for an integration.
+
+        Tool metadata includes name and description for each tool.
+        This allows tool discovery without reconnecting to the MCP server.
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(MCPCredential).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.integration_id == integration_id,
+                )
+            )
+            cred = result.scalar_one_or_none()
+
+            if cred:
+                cred.cached_tools = json.dumps(tools)
+                session.add(cred)
+                await session.commit()
+                logger.info(f"Cached {len(tools)} tools for {integration_id}")
+
+    async def get_cached_tools(self, integration_id: str) -> Optional[list[dict]]:
+        """
+        Get cached tool metadata for an integration.
+
+        Returns list of tool dicts with 'name' and 'description' keys,
+        or None if no cached tools.
+        """
+        try:
+            cred = await self.get_credential(integration_id)
+            if cred and cred.cached_tools:
+                try:
+                    return json.loads(cred.cached_tools)
+                except json.JSONDecodeError:
+                    return None
+            return None
+        except AttributeError as e:
+            # Column might not exist in database yet
+            logger.warning(f"cached_tools column may not exist: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error getting cached tools for {integration_id}: {e}")
+            return None
+
+    async def has_cached_tools(self, integration_id: str) -> bool:
+        """Check if there are cached tools for this integration."""
+        cred = await self.get_credential(integration_id)
+        return cred is not None and cred.cached_tools is not None

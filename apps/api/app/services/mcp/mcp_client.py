@@ -14,7 +14,7 @@ import hashlib
 import re
 import secrets
 import urllib.parse
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 from langchain_core.tools import BaseTool
@@ -26,6 +26,8 @@ from app.config.oauth_config import get_integration_by_id
 from app.config.settings import settings
 from app.models.oauth_models import MCPConfig
 from app.services.mcp.mcp_token_store import MCPTokenStore
+from langchain_core.tools import StructuredTool
+from pydantic import Field, create_model
 
 
 def generate_pkce_pair() -> tuple[str, str]:
@@ -42,6 +44,27 @@ def generate_pkce_pair() -> tuple[str, str]:
     code_challenge = base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
     return code_verifier, code_challenge
+
+
+def _serialize_args_schema(tool: BaseTool) -> dict | None:
+    """Serialize tool's args schema to JSON-compatible dict."""
+    if not hasattr(tool, "args_schema") or not tool.args_schema:
+        logger.debug(f"Tool {tool.name} has no args_schema")
+        return None
+
+    try:
+        schema = tool.args_schema.model_json_schema()
+        result = {
+            "properties": schema.get("properties", {}),
+            "required": schema.get("required", []),
+        }
+        logger.debug(
+            f"Serialized schema for {tool.name}: {len(result.get('properties', {}))} properties"
+        )
+        return result
+    except Exception as e:
+        logger.warning(f"Failed to serialize schema for {tool.name}: {e}")
+        return None
 
 
 class GAIAMCPClient:
@@ -218,8 +241,15 @@ class GAIAMCPClient:
         if mcp_config.requires_auth:
             stored_token = await self.token_store.get_oauth_token(integration_id)
             if stored_token:
+                # mcp-use accepts auth as string for bearer token
                 server_config["auth"] = stored_token
-                server_config["headers"] = {"Authorization": f"Bearer {stored_token}"}
+                logger.info(
+                    f"Using stored OAuth token for {integration_id} (token: {stored_token[:10]}...)"
+                )
+            else:
+                logger.warning(
+                    f"No stored OAuth token found for {integration_id} - connection may fail"
+                )
 
         return {"mcpServers": {integration_id: server_config}}
 
@@ -244,8 +274,54 @@ class GAIAMCPClient:
             adapter = LangChainAdapter()
             tools = await adapter.create_tools(client)
 
+            # Debug: log each tool's schema to see what LLM will see
+            logger.info(f"=== MCP Tools Schema Debug for {integration_id} ===")
+            for t in tools:
+                # Check tool.args as suggested by mcp-use docs
+                tool_args = getattr(t, "args", None)
+                logger.info(f"MCP tool '{t.name}': args={tool_args}")
+
+                if hasattr(t, "args_schema") and t.args_schema:
+                    try:
+                        schema = t.args_schema.model_json_schema()
+                        props = schema.get("properties", {})
+                        required = schema.get("required", [])
+                        logger.info(
+                            f"  -> {len(props)} properties, required={required}"
+                        )
+                        # Log property details for the first tool as sample
+                        if t.name == "browserbase_session_create":
+                            for prop_name, prop_info in props.items():
+                                logger.info(f"  -> prop '{prop_name}': {prop_info}")
+                    except Exception as e:
+                        logger.warning(f"MCP tool {t.name}: couldn't get schema: {e}")
+                else:
+                    logger.warning(f"MCP tool {t.name}: NO args_schema!")
+
             self._clients[integration_id] = client
             self._tools[integration_id] = tools
+
+            # Build tool metadata with schema for caching
+            tool_metadata = [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "args_schema": _serialize_args_schema(t),
+                }
+                for t in tools
+            ]
+
+            # Store in per-user cache (used by stub tools for this user)
+            await self.token_store.store_cached_tools(integration_id, tool_metadata)
+            logger.info(f"Cached {len(tools)} tools with schema for user")
+
+            # Store tools globally for frontend visibility (first connection stores for all users)
+            from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+
+            global_store = get_mcp_tools_store()
+            if not await global_store.has_tools(integration_id):
+                await global_store.store_tools(integration_id, tool_metadata)
+                logger.info(f"Stored {len(tools)} tools globally for {integration_id}")
 
             logger.info(f"Connected to MCP {integration_id}: {len(tools)} tools")
             return tools
@@ -504,6 +580,171 @@ class GAIAMCPClient:
     async def is_connected_db(self, integration_id: str) -> bool:
         """Check if an integration is connected (in database)."""
         return await self.token_store.is_connected(integration_id)
+
+    async def get_all_connected_tools(self) -> dict[str, list[BaseTool]]:
+        """
+        Get tools from all connected MCP integrations for this user.
+
+        For auth-required MCPs: Uses cached tool metadata to create stub tools
+        (avoids reconnecting to MCP server just to list tools).
+        For unauthenticated MCPs: Connects on-demand.
+
+        Returns dict mapping integration_id -> list of tools.
+        """
+        from app.config.oauth_config import get_integration_by_id
+
+        connected_ids = await self.token_store.get_connected_integrations()
+        all_tools: dict[str, list[BaseTool]] = {}
+
+        for integration_id in connected_ids:
+            try:
+                # Check if already connected in memory
+                if integration_id in self._tools:
+                    all_tools[integration_id] = self._tools[integration_id]
+                    continue
+
+                integration = get_integration_by_id(integration_id)
+
+                # For auth-required MCPs, try cached tools first
+                if (
+                    integration
+                    and integration.mcp_config
+                    and integration.mcp_config.requires_auth
+                ):
+                    cached = await self.token_store.get_cached_tools(integration_id)
+                    if cached:
+                        # Create stub tools from cached metadata
+                        stub_tools = self._create_stub_tools_from_cache(
+                            integration_id, cached
+                        )
+                        all_tools[integration_id] = stub_tools
+                        logger.info(
+                            f"Using {len(stub_tools)} cached tools for {integration_id}"
+                        )
+                        continue
+
+                # Connect to get real tools
+                tools = await self.connect(integration_id)
+                if tools:
+                    all_tools[integration_id] = tools
+                    logger.info(
+                        f"Connected to MCP {integration_id}: {len(tools)} tools"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to get tools for MCP {integration_id}: {e}")
+                # Don't mark as failed - might just be a temporary connection issue
+                # await self.token_store.update_status(integration_id, "failed", str(e))
+
+        return all_tools
+
+    def _create_stub_tools_from_cache(
+        self, integration_id: str, cached_tools: list[dict]
+    ) -> list[BaseTool]:
+        """
+        Create stub BaseTool objects from cached tool metadata.
+
+        These stub tools have the correct name/description for indexing
+        but will connect to the MCP server on-demand when actually executed.
+        """
+
+        def make_stub_executor(client: "GAIAMCPClient", int_id: str, tool_name: str):
+            """Factory to create stub executor with proper closure."""
+
+            async def _stub_execute(**kwargs):
+                # Connect on-demand and execute the real tool
+                tools = await client.ensure_connected(int_id)
+                real_tool = next((t for t in tools if t.name == tool_name), None)
+                if real_tool:
+                    return await real_tool.ainvoke(kwargs)
+                raise ValueError(f"Tool {tool_name} not found after connecting")
+
+            return _stub_execute
+
+        stub_tools = []
+        for tool_meta in cached_tools:
+            name = tool_meta.get("name", "unknown")
+            description = tool_meta.get("description", "")
+
+            # Create dynamic model that accepts any kwargs and passes them through
+            # The real tool will validate the args after connection
+            args_schema = tool_meta.get("args_schema")
+            logger.debug(
+                f"Stub {name}: args_schema from cache = {args_schema is not None}"
+            )
+            if (
+                args_schema
+                and isinstance(args_schema, dict)
+                and "properties" in args_schema
+            ):
+                logger.debug(
+                    f"Stub {name}: {len(args_schema.get('properties', {}))} properties, required={args_schema.get('required', [])}"
+                )
+                # Reconstruct schema from cached JSON schema format
+                properties = args_schema.get("properties", {})
+                required_fields = args_schema.get("required", [])
+                fields = {}
+                for field_name, field_info in properties.items():
+                    # Map JSON schema types to Python types
+                    json_type = field_info.get("type", "string")
+                    if json_type == "string":
+                        field_type = str
+                    elif json_type == "integer":
+                        field_type = int
+                    elif json_type == "number":
+                        field_type = float
+                    elif json_type == "boolean":
+                        field_type = bool
+                    elif json_type == "array":
+                        field_type = list
+                    elif json_type == "object":
+                        field_type = dict
+                    else:
+                        field_type = Any
+
+                    is_required = field_name in required_fields
+                    default = ... if is_required else None
+                    fields[field_name] = (
+                        field_type,
+                        Field(
+                            default=default,
+                            description=field_info.get("description", ""),
+                        ),
+                    )
+                DynamicSchema = create_model(f"{name}Schema", **fields)
+            else:
+                # Fallback: no schema from cache, let function signature define it
+                # This happens if cache was created before schema storage was implemented
+                DynamicSchema = None
+
+            stub_tool = StructuredTool.from_function(
+                func=lambda **kwargs: None,  # Sync placeholder
+                coroutine=make_stub_executor(self, integration_id, name),
+                name=name,
+                description=description,
+                args_schema=DynamicSchema if DynamicSchema else None,
+            )
+            stub_tools.append(stub_tool)
+
+        return stub_tools
+
+    async def ensure_connected(self, integration_id: str) -> list[BaseTool]:
+        """
+        Ensure connection to an MCP server, reconnecting if needed.
+
+        Uses stored tokens to reconnect if not already connected in memory.
+        """
+        # Already connected in memory
+        if integration_id in self._tools:
+            return self._tools[integration_id]
+
+        # Check if we have stored credentials
+        if await self.token_store.is_connected(integration_id):
+            return await self.connect(integration_id)
+
+        # Not connected at all
+        raise ValueError(
+            f"MCP {integration_id} not connected. User needs to complete OAuth flow."
+        )
 
 
 def get_mcp_client(user_id: str) -> GAIAMCPClient:

@@ -64,6 +64,9 @@ class MCPCredential(Base):
     client_registration: Mapped[str | None] = mapped_column(
         Text, nullable=True
     )  # DCR JSON
+    cached_tools: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # JSON array of tool metadata (name, description)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     connected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -76,6 +79,31 @@ class MCPCredential(Base):
     __table_args__ = (
         UniqueConstraint(
             "user_id", "integration_id", name="uq_mcp_creds_user_integration"
+        ),
+    )
+
+
+class MCPIntegrationTool(Base):
+    """Global MCP tool metadata storage.
+
+    Stores tool name and description for each MCP integration.
+    This is global (not per-user) - tools are stored once when first user connects
+    and shared across all users for frontend visibility.
+    """
+
+    __tablename__ = "mcp_integration_tools"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    integration_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    tool_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    tool_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "integration_id", "tool_name", name="uq_mcp_tools_integration_name"
         ),
     )
 
