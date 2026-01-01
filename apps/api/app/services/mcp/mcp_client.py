@@ -1,5 +1,5 @@
 """
-MCP Client wrapper for GAIA.
+MCP Client wrapper.
 
 Implements complete MCP OAuth 2.1 authorization flow per specification:
 
@@ -32,17 +32,14 @@ See: https://modelcontextprotocol.io/specification/2025-11-25/basic/authorizatio
 """
 
 import base64
-import hashlib
 import re
-import secrets
 import urllib.parse
-from functools import wraps
-from typing import Any, Optional
+from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
 from langchain_core.tools import BaseTool, StructuredTool
-from mcp_use import MCPClient
+from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.adapters.langchain_adapter import LangChainAdapter
 from pydantic import Field, create_model
 
@@ -52,125 +49,15 @@ from app.config.settings import settings
 from app.models.oauth_models import MCPConfig
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.utils.mcp_utils import (
+    extract_type_from_field,
+    generate_pkce_pair,
+    serialize_args_schema,
+    wrap_tools_with_null_filter,
+)
 
 
-def _wrap_tool_with_null_filter(tool: BaseTool) -> BaseTool:
-    """
-    Wrap a LangChain tool to filter out None values before MCP invocation.
-
-    MCP servers expect optional parameters to be OMITTED, not sent as null.
-    However, Pydantic models populate all fields with their defaults (including None),
-    which causes MCP validation errors like:
-        "Expected string, received null"
-
-    This wrapper intercepts the _arun call and filters out None values.
-    """
-    original_arun = tool._arun
-
-    @wraps(original_arun)
-    async def filtered_arun(**kwargs: Any) -> Any:
-        # Filter out None values - MCP servers don't accept nulls
-        filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
-        logger.debug(
-            f"MCP tool '{tool.name}': original args={kwargs}, filtered={filtered_kwargs}"
-        )
-        return await original_arun(**filtered_kwargs)
-
-    # Replace the _arun method
-    tool._arun = filtered_arun  # type: ignore[method-assign]
-    return tool
-
-
-def _wrap_tools_with_null_filter(tools: list[BaseTool]) -> list[BaseTool]:
-    """Wrap all tools with null value filtering."""
-    return [_wrap_tool_with_null_filter(t) for t in tools]
-
-
-def generate_pkce_pair() -> tuple[str, str]:
-    """
-    Generate PKCE code_verifier and code_challenge (S256).
-
-    Returns (code_verifier, code_challenge) tuple.
-    """
-    # Generate random 32-byte verifier, base64url encode (43-128 chars per spec)
-    code_verifier = secrets.token_urlsafe(32)
-
-    # SHA256 hash, then base64url encode (without padding)
-    digest = hashlib.sha256(code_verifier.encode()).digest()
-    code_challenge = base64.urlsafe_b64encode(digest).decode().rstrip("=")
-
-    return code_verifier, code_challenge
-
-
-def _extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
-    """
-
-    MCP tools use JSON Schema with nullable types via anyOf:
-    {"anyOf": [{"type": "number"}, {"type": "null"}], "default": 50}
-
-    Returns: (python_type, default_value, is_optional)
-    """
-    default_val = field_info.get("default")
-    is_optional = False
-
-    # Handle anyOf (nullable types) - find the non-null type
-    any_of = field_info.get("anyOf", [])
-    if any_of:
-        is_optional = True  # anyOf with null means optional
-        json_type = "string"  # fallback
-        for option in any_of:
-            if isinstance(option, dict) and option.get("type") != "null":
-                json_type = option.get("type", "string")
-                break
-    else:
-        # Direct type field
-        json_type = field_info.get("type", "string")
-        # Handle type arrays like ["string", "null"]
-        if isinstance(json_type, list):
-            is_optional = "null" in json_type
-            json_type = next((t for t in json_type if t != "null"), "string")
-
-    # Map JSON Schema types to Python types
-    type_map = {
-        "string": str,
-        "integer": int,
-        "number": float,
-        "boolean": bool,
-        "array": list,
-        "object": dict,
-    }
-    python_type = type_map.get(json_type, Any)
-
-    # If optional and we have a default, keep the type as-is
-    # If optional without default, use Optional[type]
-    if is_optional and default_val is None:
-        python_type = Optional[python_type]
-
-    return python_type, default_val, is_optional
-
-
-def _serialize_args_schema(tool: BaseTool) -> dict | None:
-    """Serialize tool's args schema to JSON-compatible dict."""
-    if not hasattr(tool, "args_schema") or not tool.args_schema:
-        logger.debug(f"Tool {tool.name} has no args_schema")
-        return None
-
-    try:
-        schema = tool.args_schema.model_json_schema()
-        result = {
-            "properties": schema.get("properties", {}),
-            "required": schema.get("required", []),
-        }
-        logger.debug(
-            f"Serialized schema for {tool.name}: {len(result.get('properties', {}))} properties"
-        )
-        return result
-    except Exception as e:
-        logger.warning(f"Failed to serialize schema for {tool.name}: {e}")
-        return None
-
-
-class GAIAMCPClient:
+class MCPClient:
     """
     GAIA's MCP client wrapper implementing MCP OAuth 2.1 spec.
 
@@ -186,7 +73,7 @@ class GAIAMCPClient:
     def __init__(self, user_id: str):
         self.user_id = user_id
         self.token_store = MCPTokenStore(user_id)
-        self._clients: dict[str, MCPClient] = {}
+        self._clients: dict[str, BaseMCPClient] = {}
         self._tools: dict[str, list[BaseTool]] = {}
 
     async def _extract_auth_challenge(self, server_url: str) -> dict:
@@ -493,7 +380,7 @@ class GAIAMCPClient:
         config = await self._build_config(integration_id, mcp_config)
 
         try:
-            client = MCPClient(config)
+            client = BaseMCPClient(config)
             await client.create_session(integration_id)
 
             adapter = LangChainAdapter()
@@ -502,7 +389,7 @@ class GAIAMCPClient:
             # CRITICAL: Wrap tools to filter None values before MCP invocation.
             # MCP servers expect optional params to be OMITTED, not sent as null.
             # Without this, Pydantic defaults (None) cause MCP validation errors.
-            tools = _wrap_tools_with_null_filter(raw_tools)
+            tools = wrap_tools_with_null_filter(raw_tools)
 
             # Debug: log each tool's schema to see what LLM will see
             logger.info(f"=== MCP Tools Schema Debug for {integration_id} ===")
@@ -533,7 +420,7 @@ class GAIAMCPClient:
                 {
                     "name": t.name,
                     "description": t.description,
-                    "args_schema": _serialize_args_schema(t),
+                    "args_schema": serialize_args_schema(t),
                 }
                 for t in tools
             ]
@@ -891,7 +778,7 @@ class GAIAMCPClient:
         but will connect to the MCP server on-demand when actually executed.
         """
 
-        def make_stub_executor(client: "GAIAMCPClient", int_id: str, tool_name: str):
+        def make_stub_executor(client: "MCPClient", int_id: str, tool_name: str):
             """Factory to create stub executor with proper closure."""
 
             async def _stub_execute(**kwargs):
@@ -936,7 +823,7 @@ class GAIAMCPClient:
                 fields = {}
                 for field_name, field_info in properties.items():
                     # Extract type from JSON Schema, handling anyOf for nullable types
-                    field_type, default_val, is_optional = _extract_type_from_field(
+                    field_type, default_val, is_optional = extract_type_from_field(
                         field_info
                     )
 
@@ -1002,6 +889,6 @@ class GAIAMCPClient:
         )
 
 
-def get_mcp_client(user_id: str) -> GAIAMCPClient:
+def get_mcp_client(user_id: str) -> MCPClient:
     """Get MCP client for a user."""
-    return GAIAMCPClient(user_id=user_id)
+    return MCPClient(user_id=user_id)
