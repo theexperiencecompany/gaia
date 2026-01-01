@@ -54,6 +54,7 @@ class SamplingDecision(Enum):
     ALWAYS_KEEP_VIP = "vip_user"
     ALWAYS_KEEP_FEATURE_FLAG = "feature_flag"
     ALWAYS_KEEP_DEBUG = "debug_mode"
+    FORCED = "forced"  # Explicitly forced by caller
     RANDOM_SAMPLE = "random_sample"
     DROPPED = "dropped"
 
@@ -237,14 +238,21 @@ class WideEvent:
     ) -> "WideEvent":
         """Set user context from user dict or individual fields."""
         if user:
-            self.user_id = user.get("user_id") or user.get("_id")
-            if isinstance(self.user_id, dict):
-                self.user_id = str(self.user_id)
+            raw_user_id = user.get("user_id") or user.get("_id")
+            # Handle ObjectId or other complex types by extracting string representation
+            if raw_user_id is not None:
+                if isinstance(raw_user_id, dict) and "$oid" in raw_user_id:
+                    self.user_id = raw_user_id["$oid"]
+                else:
+                    self.user_id = str(raw_user_id) if raw_user_id else None
             self.subscription_tier = user.get("subscription_tier") or user.get(
                 "plan_type", "free"
             )
             created_at = user.get("created_at")
             if created_at and isinstance(created_at, datetime):
+                # Handle both timezone-aware and naive datetime objects
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
                 self.account_age_days = (datetime.now(timezone.utc) - created_at).days
         if user_id:
             self.user_id = user_id
@@ -316,7 +324,14 @@ class WideEvent:
         conversation_id: Optional[str] = None,
         message_count: int = 0,
     ) -> "WideEvent":
-        """Set LLM/AI operation context."""
+        """
+        Set LLM/AI operation context.
+
+        Note: Token counts and latency are accumulated when called multiple times
+        within a single request. This is intentional to support scenarios where
+        multiple LLM calls are made (e.g., agent with multiple tool calls).
+        The model_name will be overwritten with the most recent value.
+        """
         if model_name:
             self.model_name = model_name
         self.input_tokens += input_tokens
@@ -474,7 +489,7 @@ class WideEventLogger:
             True if event was emitted, False if dropped by sampling
         """
         # Determine sampling decision
-        decision = SamplingDecision.ALWAYS_KEEP_DEBUG if force else should_sample(event)
+        decision = SamplingDecision.FORCED if force else should_sample(event)
         event.sampling_decision = decision.value
 
         # Drop if not sampled

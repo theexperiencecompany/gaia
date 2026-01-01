@@ -109,15 +109,17 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         "/api/v1/",
         "/api/v1/ping",
         "/favicon.ico",
-        "/static",
     })
+
+    # Path prefixes to skip
+    SKIP_PATH_PREFIXES = ("/static/",)
 
     async def dispatch(self, request: Request, call_next):
         start = time.time()
 
         # Skip wide events for health checks and static files
         path = request.url.path
-        if path in self.SKIP_PATHS or path.startswith("/static"):
+        if path in self.SKIP_PATHS or path.startswith(self.SKIP_PATH_PREFIXES):
             response = await call_next(request)
             return response
 

@@ -20,6 +20,7 @@ Pattern deletion:
 """
 
 import json
+import time
 from datetime import datetime
 from typing import Any, Optional
 
@@ -153,7 +154,6 @@ class RedisCache:
             return None
 
         try:
-            import time
             start = time.time()
             value = await self.redis.get(name=key)
             duration_ms = (time.time() - start) * 1000
@@ -204,7 +204,6 @@ class RedisCache:
             return
 
         try:
-            import time
             start = time.time()
             ttl = ttl or self.default_ttl
             # Use TypeAdapter to handle any data structure with Pydantic models
@@ -235,7 +234,6 @@ class RedisCache:
             return
 
         try:
-            import time
             start = time.time()
             await self.redis.delete(key)
             duration_ms = (time.time() - start) * 1000
