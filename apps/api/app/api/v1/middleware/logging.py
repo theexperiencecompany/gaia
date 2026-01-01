@@ -203,7 +203,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             if hasattr(request.state, "user") and request.state.user:
                 user = request.state.user
                 event.set_user_context(user=user)
-                req_ctx.user_id = str(user.get("user_id") or user.get("_id") or "")
+                raw_id = user.get("user_id") or user.get("_id")
+                req_ctx.user_id = str(raw_id) if raw_id else None
                 req_ctx.subscription_tier = user.get("subscription_tier") or user.get("plan_type", "free")
 
             # Calculate final duration

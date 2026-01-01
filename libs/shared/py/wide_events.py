@@ -39,6 +39,10 @@ from loguru import logger
 # Request Context - Auto-captured by middleware
 # =============================================================================
 
+# VIP subscription tiers (used for sampling decisions)
+VIP_TIERS = ("pro", "premium", "enterprise", "team")
+
+
 @dataclass
 class RequestContext:
     """Request context auto-captured by middleware. Access via get_request_context()."""
@@ -67,8 +71,7 @@ class RequestContext:
     @property
     def is_vip(self) -> bool:
         """Check if user is VIP tier."""
-        vip_tiers = ("pro", "premium", "enterprise", "team")
-        return self.subscription_tier and self.subscription_tier.lower() in vip_tiers
+        return self.subscription_tier and self.subscription_tier.lower() in VIP_TIERS
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for logging, excluding None values and internals."""
@@ -275,8 +278,7 @@ class WideEvent:
 
     @property
     def is_vip(self) -> bool:
-        vip_tiers = ("pro", "premium", "enterprise", "team")
-        return self.subscription_tier and self.subscription_tier.lower() in vip_tiers
+        return self.subscription_tier and self.subscription_tier.lower() in VIP_TIERS
 
     def set_request_context(self, **kwargs: Any) -> "WideEvent":
         """Set request context fields."""
@@ -295,7 +297,8 @@ class WideEvent:
     def set_user_context(self, user: Optional[dict] = None, **kwargs: Any) -> "WideEvent":
         """Set user context from user dict or kwargs."""
         if user:
-            self.user_id = str(user.get("user_id") or user.get("_id") or "")
+            raw_id = user.get("user_id") or user.get("_id")
+            self.user_id = str(raw_id) if raw_id else None
             self.subscription_tier = user.get("subscription_tier") or user.get("plan_type", "free")
         for key in ("user_id", "subscription_tier"):
             if key in kwargs and kwargs[key] is not None:
@@ -443,9 +446,24 @@ def create_wide_event(service: str = "gaia-api", operation: Optional[str] = None
 
 
 # Legacy exports for backward compatibility
-SamplingDecision = type("SamplingDecision", (), {})  # Dummy for compatibility
-get_sampling_config = lambda: _sampling_config
-configure_sampling = lambda cfg: None
+class SamplingDecision:
+    """Deprecated. Use should_sample() which returns a boolean."""
+    ALWAYS_KEEP_ERROR = "error"
+    ALWAYS_KEEP_SLOW = "slow_request"
+    ALWAYS_KEEP_VIP = "vip_user"
+    RANDOM_SAMPLE = "random_sample"
+    DROPPED = "dropped"
+
+
+def get_sampling_config() -> SamplingConfig:
+    """Get sampling configuration."""
+    return _sampling_config
+
+
+def configure_sampling(config: SamplingConfig) -> None:
+    """Configure sampling (deprecated - use environment variables instead)."""
+    global _sampling_config
+    _sampling_config = config
 
 
 __all__ = [
@@ -457,6 +475,7 @@ __all__ = [
     "RequestContext",
     "StructuredLogger",
     "should_sample",
+    "VIP_TIERS",
     # Legacy WideEvent support
     "WideEvent",
     "WideEventLogger",
