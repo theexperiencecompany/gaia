@@ -2,70 +2,33 @@
 MCP Integration API Routes.
 
 Handles MCP connection, OAuth callbacks, disconnection, and tool discovery.
-Routes follow same patterns as integrations.py for Composio parity.
 """
-
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, RedirectResponse
-from pydantic import BaseModel
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
-from app.config.settings import settings
-from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
+from app.helpers.mcp_helpers import (
+    get_api_base_url,
+    get_frontend_url,
+    invalidate_mcp_status_cache,
+)
+from app.models.mcp_models import (
+    MCPConnectRequest,
+    MCPConnectResponse,
+    MCPIntegrationStatus,
+    MCPStatusResponse,
+    MCPToolInfo,
+    MCPToolsResponse,
+)
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_token_store import MCPTokenStore
 
 router = APIRouter()
-
-
-class MCPConnectRequest(BaseModel):
-    """Request body for MCP connection."""
-
-    bearer_token: Optional[str] = None
-
-
-class MCPConnectResponse(BaseModel):
-    """Response for MCP connection."""
-
-    status: str
-    integration_id: str
-    tools_count: int
-    redirect_url: Optional[str] = None
-    message: Optional[str] = None
-
-
-class MCPToolInfo(BaseModel):
-    """Individual tool information."""
-
-    name: str
-    description: Optional[str] = None
-
-
-class MCPToolsResponse(BaseModel):
-    """Response for tools endpoint."""
-
-    tools: list[MCPToolInfo]
-    connected: bool
-
-
-class MCPIntegrationStatus(BaseModel):
-    """Status of a single MCP integration."""
-
-    integrationId: str
-    connected: bool
-    status: str
-
-
-class MCPStatusResponse(BaseModel):
-    """Response for status endpoint."""
-
-    integrations: list[MCPIntegrationStatus]
 
 
 @router.get("/connect/{integration_id}")
@@ -104,30 +67,19 @@ async def connect_mcp_oauth(
     client = get_mcp_client(user_id=str(user_id))
 
     try:
-        # Build OAuth authorization URL and redirect
         auth_url = await client.build_oauth_auth_url(
             integration_id=integration_id,
-            redirect_uri=f"{_get_base_url()}/api/v1/mcp/oauth/callback",
+            redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
             redirect_path=redirect_path,
         )
         return RedirectResponse(url=auth_url)
 
     except Exception as e:
         logger.error(f"OAuth initiation failed for {integration_id}: {e}")
-        frontend_url = _get_frontend_url()
+        frontend_url = get_frontend_url()
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error={str(e)}"
         )
-
-
-def _get_base_url() -> str:
-    """Get the backend API base URL for callbacks."""
-    return getattr(settings, "API_BASE_URL", "http://localhost:8000")
-
-
-def _get_frontend_url() -> str:
-    """Get the frontend base URL for redirects."""
-    return getattr(settings, "FRONTEND_URL", "http://localhost:3000")
 
 
 @router.post("/connect/{integration_id}", response_model=MCPConnectResponse)
@@ -193,7 +145,7 @@ async def mcp_oauth_callback(
         redirect_path = parts[2] if len(parts) > 2 else "/integrations"
     except Exception as e:
         logger.error(f"Failed to parse OAuth state: {e}")
-        frontend_url = _get_frontend_url()
+        frontend_url = get_frontend_url()
         return RedirectResponse(
             url=f"{frontend_url}/integrations?status=failed&error=invalid_state"
         )
@@ -205,11 +157,9 @@ async def mcp_oauth_callback(
             integration_id=integration_id,
             code=code,
             state=state_token,
-            redirect_uri=f"{_get_base_url()}/api/v1/mcp/oauth/callback",
+            redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
         )
 
-        # Fetch and cache tools immediately after successful OAuth
-        # client.connect() handles caching with full args_schema
         try:
             tools = await client.connect(integration_id)
             if tools:
@@ -217,33 +167,28 @@ async def mcp_oauth_callback(
                     f"Connected and cached {len(tools)} tools for {integration_id} after OAuth"
                 )
 
-                # Index tools to ChromaDB for semantic search
                 tool_registry = await get_tool_registry()
                 await tool_registry.load_user_mcp_tools(str(user_id))
                 logger.info(f"Indexed MCP tools from {integration_id} to ChromaDB")
 
-                # Invalidate tools list cache so frontend sees new tools immediately
                 try:
                     await delete_cache("get_available_tools:*")
                     logger.info("Invalidated tools list cache after MCP connection")
                 except Exception as cache_err:
                     logger.warning(f"Failed to invalidate tools cache: {cache_err}")
         except Exception as tool_err:
-            # Don't fail the OAuth flow if tool caching fails
             logger.warning(f"Failed to cache tools for {integration_id}: {tool_err}")
 
-        # Invalidate status cache for parity
-        await _invalidate_status_cache(str(user_id))
+        await invalidate_mcp_status_cache(str(user_id))
 
-        # Redirect to integrations page with success
-        frontend_url = _get_frontend_url()
+        frontend_url = get_frontend_url()
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=connected"
         )
 
     except Exception as e:
         logger.error(f"OAuth callback failed for {integration_id}: {e}")
-        frontend_url = _get_frontend_url()
+        frontend_url = get_frontend_url()
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error={str(e)}"
         )
@@ -274,8 +219,7 @@ async def disconnect_mcp_integration(
     client = get_mcp_client(user_id=str(user_id))
     await client.disconnect(integration_id)
 
-    # Invalidate status cache for parity
-    await _invalidate_status_cache(str(user_id))
+    await invalidate_mcp_status_cache(str(user_id))
 
     return JSONResponse(
         content={"status": "success", "message": f"Disconnected {integration_id}"}
@@ -385,13 +329,3 @@ async def get_mcp_status(
         )
 
     return MCPStatusResponse(integrations=statuses)
-
-
-async def _invalidate_status_cache(user_id: str) -> None:
-    """Invalidate OAuth status cache for parity with Composio."""
-    try:
-        cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
-        await delete_cache(cache_key)
-        logger.info(f"Invalidated MCP status cache for user {user_id}")
-    except Exception as e:
-        logger.warning(f"Failed to invalidate status cache: {e}")

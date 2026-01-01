@@ -8,6 +8,7 @@ from app.models.calendar_models import (
     BatchEventCreateRequest,
     BatchEventDeleteRequest,
     BatchEventUpdateRequest,
+    CalendarEventsQueryRequest,
     CalendarPreferencesUpdateRequest,
     EventCreateRequest,
     EventDeleteRequest,
@@ -19,31 +20,8 @@ from app.services.calendar_service import (
     update_calendar_event,
 )
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
 
 router = APIRouter()
-
-
-class CalendarEventsQueryRequest(BaseModel):
-    """Request model for querying calendar events via POST to avoid URL length limits."""
-
-    selected_calendars: List[str] = Field(
-        ..., description="List of calendar IDs to fetch events from"
-    )
-    start_date: Optional[str] = Field(
-        None, description="Start date in YYYY-MM-DD format"
-    )
-    end_date: Optional[str] = Field(None, description="End date in YYYY-MM-DD format")
-    fetch_all: bool = Field(
-        True,
-        description="Fetch ALL events in range (true) or limit per calendar (false)",
-    )
-    max_results: Optional[int] = Field(
-        None,
-        ge=1,
-        le=250,
-        description="Max events per calendar (only used if fetch_all=false)",
-    )
 
 
 @router.get("/calendar/list", summary="Get Calendar List")

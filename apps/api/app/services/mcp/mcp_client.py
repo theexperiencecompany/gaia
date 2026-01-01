@@ -1,46 +1,18 @@
 """
 MCP Client wrapper.
 
-Implements complete MCP OAuth 2.1 authorization flow per specification:
-
-Phase 1: Initial Connection Attempt
-    - Connect to MCP server → receive 401 with WWW-Authenticate header
-    - Parse resource_metadata URL and scope from header
-
-Phase 2: Resource Server Discovery (RFC 9728)
-    - Option A: Fetch PRM from resource_metadata URL in header
-    - Option B: Try .well-known/oauth-protected-resource URIs
-    - Fallback: Direct OAuth discovery on MCP server (RFC 8414)
-
-Phase 3: Authorization Server Discovery (RFC 8414)
-    - Fetch .well-known/oauth-authorization-server or openid-configuration
-
-Phase 4: Client Registration
-    - Use pre-registered credentials, or
-    - Dynamic Client Registration (RFC 7591)
-
-Phase 5: Authorization Flow (OAuth 2.1)
-    - PKCE code challenge/verifier (S256)
-    - Resource parameter for token binding (RFC 8707)
-    - Scope from WWW-Authenticate takes priority
-
-Phase 6: Token Exchange
-    - Exchange authorization code for tokens
-    - Include resource parameter for token binding
-
+Implements complete MCP OAuth 2.1 authorization flow per specification.
 See: https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization
 """
 
 import base64
-import re
 import urllib.parse
 from typing import Optional
-from urllib.parse import urlparse
 
 import httpx
 from langchain_core.tools import BaseTool, StructuredTool
 from mcp_use import MCPClient as BaseMCPClient
-from mcp_use.adapters.langchain_adapter import LangChainAdapter
+from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 from pydantic import Field, create_model
 
 from app.config.loggers import langchain_logger as logger
@@ -49,6 +21,12 @@ from app.config.settings import settings
 from app.models.oauth_models import MCPConfig
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.utils.mcp_oauth_utils import (
+    extract_auth_challenge,
+    fetch_auth_server_metadata,
+    fetch_protected_resource_metadata,
+    find_protected_resource_metadata,
+)
 from app.utils.mcp_utils import (
     extract_type_from_field,
     generate_pkce_pair,
@@ -59,7 +37,7 @@ from app.utils.mcp_utils import (
 
 class MCPClient:
     """
-    GAIA's MCP client wrapper implementing MCP OAuth 2.1 spec.
+    MCP client wrapper implementing MCP OAuth 2.1 spec.
 
     OAuth flow per MCP specification:
     1. Attempt connection → 401 Unauthorized with WWW-Authenticate header
@@ -76,219 +54,56 @@ class MCPClient:
         self._clients: dict[str, BaseMCPClient] = {}
         self._tools: dict[str, list[BaseTool]] = {}
 
-    async def _extract_auth_challenge(self, server_url: str) -> dict:
-        """
-        Probe MCP server and parse full WWW-Authenticate challenge per MCP spec.
-
-        Per MCP Authorization spec Phase 1:
-        - Server returns 401 with WWW-Authenticate header
-        - Header may contain: resource_metadata, scope, error, error_description
-
-        Returns dict with extracted fields (empty dict if no 401 or parse fails).
-        """
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(server_url, timeout=10)
-
-                if response.status_code == 401:
-                    www_auth = response.headers.get("WWW-Authenticate", "")
-                    result = {"raw": www_auth}
-
-                    # Extract resource_metadata URL (preferred discovery method)
-                    rm_match = re.search(r'resource_metadata="([^"]+)"', www_auth)
-                    if rm_match:
-                        result["resource_metadata"] = rm_match.group(1)
-
-                    # Extract scope (from initial 401 - takes priority per spec)
-                    scope_match = re.search(r'scope="([^"]+)"', www_auth)
-                    if scope_match:
-                        result["scope"] = scope_match.group(1)
-
-                    # Extract error info (for debugging)
-                    error_match = re.search(r'error="([^"]+)"', www_auth)
-                    if error_match:
-                        result["error"] = error_match.group(1)
-
-                    error_desc_match = re.search(
-                        r'error_description="([^"]+)"', www_auth
-                    )
-                    if error_desc_match:
-                        result["error_description"] = error_desc_match.group(1)
-
-                    logger.debug(f"Parsed WWW-Authenticate for {server_url}: {result}")
-                    return result
-
-                # Not a 401 - server may not require auth
-                return {}
-
-        except Exception as e:
-            logger.debug(f"Auth challenge probe failed for {server_url}: {e}")
-            return {}
-
-    async def _find_protected_resource_metadata(self, server_url: str) -> Optional[str]:
-        """
-        Find Protected Resource Metadata via well-known URIs per RFC 9728 Section 5.2.
-
-        Per MCP spec Phase 2b, when no resource_metadata in WWW-Authenticate header,
-        try well-known URIs in order:
-        1. Path-aware: {origin}/.well-known/oauth-protected-resource{path}
-        2. Root: {origin}/.well-known/oauth-protected-resource
-
-        Returns the URL that responds with valid JSON, or None.
-        """
-        parsed = urlparse(server_url)
-        origin = f"{parsed.scheme}://{parsed.netloc}"
-        path = parsed.path.rstrip("/")
-
-        # Build candidates per RFC 9728
-        candidates = []
-        if path:
-            # Path-aware (e.g., /sse → /.well-known/oauth-protected-resource/sse)
-            candidates.append(f"{origin}/.well-known/oauth-protected-resource{path}")
-        # Root fallback
-        candidates.append(f"{origin}/.well-known/oauth-protected-resource")
-
-        async with httpx.AsyncClient() as client:
-            for url in candidates:
-                try:
-                    response = await client.get(url, timeout=10)
-                    if response.status_code == 200:
-                        # Verify it's valid JSON with expected fields
-                        data = response.json()
-                        if "authorization_servers" in data or "resource" in data:
-                            logger.info(f"Found Protected Resource Metadata at {url}")
-                            return url
-                except Exception as e:
-                    logger.debug(f"PRM not found at {url}: {e}")
-
-        return None
-
-    async def _fetch_protected_resource_metadata(self, prm_url: str) -> dict:
-        """
-        Fetch Protected Resource Metadata (RFC 9728).
-
-        Returns dict with 'authorization_servers', 'scopes_supported', etc.
-        """
-        async with httpx.AsyncClient() as client:
-            response = await client.get(prm_url, timeout=10)
-            response.raise_for_status()
-            return response.json()
-
-    async def _fetch_auth_server_metadata(self, auth_server_url: str) -> dict:
-        """
-        Fetch Authorization Server Metadata (RFC 8414).
-
-        Per RFC 8414, for an issuer URL like https://auth.example.com/tenant1:
-        - Path-aware: https://auth.example.com/.well-known/oauth-authorization-server/tenant1
-        - Root: https://auth.example.com/.well-known/oauth-authorization-server
-
-        Tries multiple discovery patterns and both OAuth and OIDC endpoints.
-        """
-        parsed = urlparse(auth_server_url)
-        origin = f"{parsed.scheme}://{parsed.netloc}"
-        path = parsed.path.rstrip("/")
-
-        # Build candidate URLs in order of preference
-        candidate_urls = []
-
-        # RFC 8414 path-aware discovery (path after .well-known)
-        if path:
-            candidate_urls.append(
-                f"{origin}/.well-known/oauth-authorization-server{path}"
-            )
-            candidate_urls.append(f"{origin}/.well-known/openid-configuration{path}")
-
-        # Root discovery (most common)
-        candidate_urls.append(f"{origin}/.well-known/oauth-authorization-server")
-        candidate_urls.append(f"{origin}/.well-known/openid-configuration")
-
-        last_error = None
-        async with httpx.AsyncClient() as client:
-            for url in candidate_urls:
-                try:
-                    response = await client.get(url, timeout=10)
-                    if response.status_code == 200:
-                        logger.debug(f"Found auth server metadata at {url}")
-                        return response.json()
-                except Exception as e:
-                    logger.debug(f"Auth metadata not found at {url}: {e}")
-                    last_error = e
-
-        error_msg = f"Failed to fetch auth server metadata for {auth_server_url}"
-        logger.error(error_msg)
-        raise Exception(error_msg) from last_error
-
     async def _discover_oauth_config(
         self, integration_id: str, mcp_config: MCPConfig
     ) -> dict:
         """
         Full MCP OAuth discovery flow per specification.
 
-        Implements the complete discovery flow per MCP Authorization spec:
-        1. Probe server for WWW-Authenticate challenge (extract resource_metadata, scope)
-        2. Try RFC 9728 Protected Resource Metadata discovery
-        3. Fallback: Direct OAuth discovery on MCP server (RFC 8414)
-
-        The spec states:
-        - MCP servers MUST implement RFC 9728 Protected Resource Metadata
-        - MCP clients MUST support both RFC 8414 and OpenID Connect discovery
-
         Returns dict with all OAuth endpoints and metadata.
         """
-        # Check if we have cached discovery data
         cached = await self.token_store.get_oauth_discovery(integration_id)
         if cached:
             logger.debug(f"Using cached OAuth discovery for {integration_id}")
             return cached
 
-        # If explicit metadata provided, use it
         if mcp_config.oauth_metadata:
             logger.debug(f"Using explicit OAuth metadata for {integration_id}")
             return mcp_config.oauth_metadata
 
         server_url = mcp_config.server_url.rstrip("/")
 
-        # ═══════════════════════════════════════════════════════════════════
-        # PHASE 1: Probe server for WWW-Authenticate challenge
-        # ═══════════════════════════════════════════════════════════════════
-        challenge = await self._extract_auth_challenge(server_url)
-        initial_scope = challenge.get(
-            "scope"
-        )  # Save for auth URL (takes priority per spec)
+        # Phase 1: Probe server for WWW-Authenticate challenge
+        challenge = await extract_auth_challenge(server_url)
+        initial_scope = challenge.get("scope")
 
-        # ═══════════════════════════════════════════════════════════════════
-        # PHASE 2: Try RFC 9728 Protected Resource Metadata discovery
-        # ═══════════════════════════════════════════════════════════════════
+        # Phase 2: Try RFC 9728 Protected Resource Metadata discovery
         prm = None
         prm_error = None
 
         try:
-            # Option A: resource_metadata from WWW-Authenticate header (preferred)
             prm_url = challenge.get("resource_metadata")
-
-            # Option B: Well-known URI fallback (RFC 9728 Section 5.2)
             if not prm_url:
-                prm_url = await self._find_protected_resource_metadata(server_url)
+                prm_url = await find_protected_resource_metadata(server_url)
 
             if prm_url:
-                prm = await self._fetch_protected_resource_metadata(prm_url)
+                prm = await fetch_protected_resource_metadata(prm_url)
                 logger.info(f"Fetched PRM for {integration_id} from {prm_url}")
 
         except Exception as e:
             prm_error = str(e)
             logger.info(f"RFC 9728 PRM discovery failed for {integration_id}: {e}")
 
-        # If we got valid PRM with authorization_servers, use it
         if prm and prm.get("authorization_servers"):
             auth_server_url = prm["authorization_servers"][0]
             logger.info(f"Using auth server from PRM: {auth_server_url}")
 
-            auth_metadata = await self._fetch_auth_server_metadata(auth_server_url)
+            auth_metadata = await fetch_auth_server_metadata(auth_server_url)
 
             discovery = {
                 "resource": prm.get("resource", server_url),
                 "scopes_supported": prm.get("scopes_supported", []),
-                "initial_scope": initial_scope,  # From WWW-Authenticate (priority per spec)
+                "initial_scope": initial_scope,
                 "authorization_endpoint": auth_metadata.get("authorization_endpoint"),
                 "token_endpoint": auth_metadata.get("token_endpoint"),
                 "registration_endpoint": auth_metadata.get("registration_endpoint"),
@@ -299,18 +114,14 @@ class MCPClient:
             await self.token_store.store_oauth_discovery(integration_id, discovery)
             return discovery
 
-        # ═══════════════════════════════════════════════════════════════════
-        # PHASE 3: Fallback - Direct OAuth Discovery on MCP server (RFC 8414)
-        # ═══════════════════════════════════════════════════════════════════
-        # Per MCP spec: "MCP clients MUST support both discovery mechanisms"
-        # Some servers (like Linear) expose OAuth metadata directly on the MCP server
+        # Phase 3: Fallback - Direct OAuth Discovery on MCP server (RFC 8414)
         logger.info(
             f"Trying direct OAuth discovery for {integration_id} "
             f"(PRM failed: {prm_error or 'no authorization_servers'})"
         )
 
         try:
-            auth_metadata = await self._fetch_auth_server_metadata(server_url)
+            auth_metadata = await fetch_auth_server_metadata(server_url)
 
             discovery = {
                 "resource": server_url,
