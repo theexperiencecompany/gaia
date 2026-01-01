@@ -21,6 +21,7 @@ interface IconProps {
   strokeWidth?: number;
   className?: string;
   showBackground?: boolean;
+  iconOnly?: boolean; // When true, renders just the icon without background wrapper
 }
 
 interface IconConfig {
@@ -263,12 +264,7 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-zinc-200",
     isImage: true,
   },
-  browserbase: {
-    icon: "/images/icons/browserbase.png",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
+
   context7: {
     icon: "/images/icons/context7.png",
     bgColor: "bg-zinc-700",
@@ -340,7 +336,7 @@ export const getToolCategoryIcon = (
   category: string,
   iconProps: IconProps = {},
 ) => {
-  const { showBackground = true, ...restProps } = iconProps;
+  const { showBackground = true, iconOnly = false, ...restProps } = iconProps;
 
   const defaultProps = {
     size: restProps.size || 16,
@@ -399,8 +395,10 @@ export const getToolCategoryIcon = (
     })()
   );
 
-  // Return with or without background based on showBackground prop
-  return showBackground ? (
+  // Return with or without background based on showBackground and iconOnly props
+  // iconOnly: when true, image icons skip background for minimal display (e.g., loading messages)
+  const shouldShowBackground = showBackground && !(iconOnly && config.isImage);
+  return shouldShowBackground ? (
     <div className={`rounded-lg p-1 ${config.bgColor}`}>{iconElement}</div>
   ) : (
     iconElement

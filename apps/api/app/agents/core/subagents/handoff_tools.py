@@ -269,6 +269,17 @@ async def handoff(
         complete_message = ""
         writer = get_stream_writer()
 
+        # Emit structured progress with integration ID for frontend icon display
+        writer(
+            {
+                "progress": {
+                    "message": f"Handing off to {agent_name}...",
+                    "tool_name": "handoff",
+                    "tool_category": integration.id,
+                }
+            }
+        )
+
         async for event in subagent_graph.astream(
             initial_state,
             stream_mode=["messages", "custom"],

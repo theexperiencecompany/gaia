@@ -169,6 +169,7 @@ export default function ChatRenderer({
               size: 18,
               width: 18,
               height: 18,
+              iconOnly: true,
             })}
           <span>{loadingText || "GAIA is thinking..."}</span>
           <Spinner variant="dots" color="primary" />

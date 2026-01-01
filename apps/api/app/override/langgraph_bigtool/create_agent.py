@@ -54,12 +54,17 @@ class DynamicToolNode(ToolNode):
 
     Wraps a tool_registry (DynamicToolDict) and looks up tools at execution time,
     allowing tools added after graph compilation to be executed.
+
+    Also auto-emits structured progress messages with tool category for frontend
+    icon display.
     """
 
     def __init__(self, tool_registry: Mapping[str, BaseTool | Callable], **kwargs):
         # Initialize with current tools
         super().__init__(list(tool_registry.values()), **kwargs)
         self._tool_registry = tool_registry
+        # Cache for category lookups (avoid repeated async calls)
+        self._category_cache: dict[str, str] = {}
 
     def _get_tool(self, name: str) -> BaseTool | Callable | None:
         """Look up tool dynamically from registry."""
@@ -76,7 +81,57 @@ class DynamicToolNode(ToolNode):
             if name not in self.tools_by_name:
                 self.tools_by_name[name] = self._tool_registry[name]
 
+        # Auto-emit progress with category for each tool call
+        await self._emit_tool_progress(input)
+
         return await super()._afunc(input, config, **kwargs)
+
+    async def _emit_tool_progress(self, input) -> None:
+        """Emit structured progress message with tool category before execution.
+
+        Automatically looks up the tool category from the registry and emits
+        a progress message that the frontend can display with the appropriate icon.
+        """
+        from langgraph.config import get_stream_writer
+
+        from app.agents.tools.core.registry import get_tool_registry
+
+        try:
+            writer = get_stream_writer()
+            tool_registry = await get_tool_registry()
+
+            # Input is list of tool calls
+            for tool_call in input:
+                tool_name = tool_call.get("name", "")
+                if not tool_name:
+                    continue
+
+                # Skip retrieve_tools - it's an internal tool
+                if tool_name == "retrieve_tools":
+                    continue
+
+                # Get icon category from registry (uses integration_name for MCP/Composio)
+                if tool_name not in self._category_cache:
+                    self._category_cache[tool_name] = (
+                        tool_registry.get_icon_category_of_tool(tool_name)
+                    )
+                category = self._category_cache[tool_name]
+
+                # Emit structured progress with category for frontend icon display
+                display_name = tool_name.replace("_", " ").title()
+                writer(
+                    {
+                        "progress": {
+                            "message": f"Running {display_name}...",
+                            "tool_name": tool_name,
+                            "tool_category": category
+                            if category != "unknown"
+                            else None,
+                        }
+                    }
+                )
+        except Exception:
+            pass  # Don't break tool execution if progress emission fails
 
 
 class RetrieveToolsResult(TypedDict):

@@ -508,6 +508,25 @@ class ToolRegistry:
                     return category.name
         return "unknown"
 
+    def get_icon_category_of_tool(self, tool_name: str) -> str:
+        """Get the best category identifier for icon display.
+
+        For MCP and Composio tools, returns the integration_name (e.g., 'notion')
+        which matches frontend icon configs. For other tools, returns the category name.
+
+        Args:
+            tool_name: Name of the tool to look up
+
+        Returns:
+            Integration name or category name for icon lookup, or 'unknown' if not found
+        """
+        for category in self._categories.values():
+            for tool in category.tools:
+                if tool.name == tool_name:
+                    # Prefer integration_name for icon lookup (matches toolIcons.tsx)
+                    return category.integration_name or category.name
+        return "unknown"
+
     def get_all_tools_for_search(self, include_delegated: bool = True) -> List[Tool]:
         """
         Get all tool objects for semantic search (includes delegated tools).
