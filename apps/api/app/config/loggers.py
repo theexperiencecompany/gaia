@@ -9,10 +9,34 @@ Usage:
 
     auth_logger.info("User authenticated successfully")
     mongo_logger.error("Database connection failed")
+
+Wide Event Usage:
+    from app.config.loggers import WideEvent, wide_logger
+
+    event = WideEvent(service="api")
+    event.set_user_context(user_id="123")
+    wide_logger.emit(event)
 """
 
 # Re-export from shared library
-from shared.py.logging import get_contextual_logger, configure_loguru, logger
+from shared.py.logging import (
+    get_contextual_logger,
+    configure_loguru,
+    logger,
+    # Wide event exports
+    WideEvent,
+    WideEventLogger,
+    wide_logger,
+    SamplingConfig,
+    SamplingDecision,
+    should_sample,
+    get_sampling_config,
+    configure_sampling,
+    get_current_event,
+    set_current_event,
+    clear_current_event,
+    create_wide_event,
+)
 
 # Pre-configured contextual loggers for different application domains
 app_logger = get_contextual_logger("main")
@@ -78,4 +102,17 @@ __all__ = [
     "reminders_logger",
     "usage_logger",
     "token_repository_logger",
+    # Wide event exports
+    "WideEvent",
+    "WideEventLogger",
+    "wide_logger",
+    "SamplingConfig",
+    "SamplingDecision",
+    "should_sample",
+    "get_sampling_config",
+    "configure_sampling",
+    "get_current_event",
+    "set_current_event",
+    "clear_current_event",
+    "create_wide_event",
 ]

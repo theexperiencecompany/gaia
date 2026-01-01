@@ -117,11 +117,18 @@ class RedisCache:
         if self.redis_url:
             try:
                 self.redis = redis.from_url(self.redis_url, decode_responses=True)
-                logger.info("Redis connection initialized.")
+                logger.info(
+                    "redis_connection_initialized",
+                    default_ttl=default_ttl,
+                )
             except Exception as e:
-                logger.error(f"Failed to connect to Redis: {e}")
+                logger.error(
+                    "redis_connection_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
         else:
-            logger.warning("REDIS_URL is not set. Caching will be disabled.")
+            logger.warning("redis_url_not_set")
 
     async def get(self, key: str, model: Optional[type] = None):
         """
@@ -143,17 +150,35 @@ class RedisCache:
             user = await cache.get("user:123", model=User)
         """
         if not self.redis:
-            logger.warning("Redis is not initialized. Skipping get operation.")
             return None
 
         try:
+            import time
+            start = time.time()
             value = await self.redis.get(name=key)
+            duration_ms = (time.time() - start) * 1000
+
             if value:
-                # Use TypeAdapter to deserialize any data structure
+                logger.debug(
+                    "cache_hit",
+                    key=key,
+                    duration_ms=duration_ms,
+                )
                 return deserialize_any(value, model)
+
+            logger.debug(
+                "cache_miss",
+                key=key,
+                duration_ms=duration_ms,
+            )
             return None
         except Exception as e:
-            logger.error(f"Error accessing Redis for key {key}: {e}")
+            logger.error(
+                "cache_get_failed",
+                key=key,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return None
 
     async def set(
@@ -176,30 +201,57 @@ class RedisCache:
             await cache.set("user:123", user_obj, model=User, ttl=3600)
         """
         if not self.redis:
-            logger.warning("Redis is not initialized. Skipping set operation.")
             return
 
         try:
+            import time
+            start = time.time()
             ttl = ttl or self.default_ttl
             # Use TypeAdapter to handle any data structure with Pydantic models
             json_str = serialize_any(value, model)
             await self.redis.setex(key, ttl, json_str)
+            duration_ms = (time.time() - start) * 1000
+
+            logger.debug(
+                "cache_set",
+                key=key,
+                ttl=ttl,
+                size_bytes=len(json_str),
+                duration_ms=duration_ms,
+            )
         except Exception as e:
-            logger.error(f"Error setting Redis key {key}: {e}")
+            logger.error(
+                "cache_set_failed",
+                key=key,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     async def delete(self, key: str):
         """
         Delete a cached key.
         """
         if not self.redis:
-            logger.warning("Redis is not initialized. Skipping delete operation.")
             return
 
         try:
+            import time
+            start = time.time()
             await self.redis.delete(key)
-            logger.info(f"Cache deleted for key: {key}")
+            duration_ms = (time.time() - start) * 1000
+
+            logger.debug(
+                "cache_deleted",
+                key=key,
+                duration_ms=duration_ms,
+            )
         except Exception as e:
-            logger.error(f"Error deleting Redis key {key}: {e}")
+            logger.error(
+                "cache_delete_failed",
+                key=key,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     @property
     def client(self):
@@ -208,7 +260,7 @@ class RedisCache:
         """
         if not self.redis:
             self.redis = redis.from_url(self.redis_url, decode_responses=True)
-            logger.info("Re-initialized Redis connection.")
+            logger.info("redis_connection_reinitialized")
 
         return self.redis
 

@@ -1,11 +1,12 @@
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
 from uuid import uuid4
 
 from app.agents.core.agent import call_agent
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
-from app.config.loggers import chat_logger as logger
+from app.config.loggers import chat_logger as logger, get_current_event, WideEvent, wide_logger
 from app.config.model_pricing import calculate_token_cost
 from app.models.chat_models import (
     MessageModel,
@@ -36,7 +37,12 @@ async def chat_stream(
     Returns:
         StreamingResponse: A streaming response containing the LLM's generated content
     """
+    stream_start = time.time()
     complete_message = ""
+    tools_used: list[str] = []
+    total_input_tokens = 0
+    total_output_tokens = 0
+
     (
         conversation_id,
         init_chunk,
@@ -51,17 +57,33 @@ async def chat_stream(
     if init_chunk:  # Return the conversation id and metadata if new convo
         yield init_chunk
 
+    user_id = user.get("user_id")
+
+    # Log chat stream start with rich context
     logger.info(
-        f"User {user.get('user_id')} started a conversation with ID {conversation_id}"
+        "chat_stream_started",
+        user_id=user_id,
+        conversation_id=conversation_id,
+        is_new_conversation=is_new_conversation,
+        message_count=len(body.messages) if body.messages else 0,
+        selected_tool=body.selectedTool,
+        selected_workflow=body.selectedWorkflow,
+        has_files=bool(body.fileIds),
+        file_count=len(body.fileIds) if body.fileIds else 0,
     )
 
-    user_id = user.get("user_id")
     user_model_config = None
+    model_name = None
     if user_id:
         try:
             user_model_config = await get_user_selected_model(user_id)
+            model_name = user_model_config.get("model_name") if user_model_config else None
         except Exception as e:
-            logger.warning(f"Could not get user's selected model, using default: {e}")
+            logger.warning(
+                "model_config_fetch_failed",
+                user_id=user_id,
+                error=str(e),
+            )
 
     usage_metadata_callback = UsageMetadataCallbackHandler()
 
@@ -96,6 +118,10 @@ async def chat_stream(
                         # new_data["tool_data"] is already a list of ToolDataEntry objects
                         for tool_entry in new_data["tool_data"]:
                             tool_data["tool_data"].append(tool_entry)
+                            # Track tool usage for logging
+                            tool_name = tool_entry.get("tool_name") if isinstance(tool_entry, dict) else None
+                            if tool_name and tool_name not in tools_used:
+                                tools_used.append(tool_name)
                             current_tool_data = {"tool_data": tool_entry}
                             yield f"data: {json.dumps(current_tool_data)}\n\n"
                     else:
@@ -111,6 +137,8 @@ async def chat_stream(
                                 "timestamp": current_time,
                             }
                             tool_data["tool_data"].append(tool_data_entry)
+                            if key not in tools_used:
+                                tools_used.append(key)
 
                             current_tool_data = {"tool_data": tool_data_entry}
                             yield f"data: {json.dumps(current_tool_data)}\n\n"
@@ -118,7 +146,12 @@ async def chat_stream(
                     yield chunk
 
             except Exception as e:
-                logger.error(f"Error extracting tool data: {e}")
+                logger.error(
+                    "tool_data_extraction_failed",
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    error=str(e),
+                )
 
         # Pass through other chunks
         else:
@@ -142,10 +175,65 @@ async def chat_stream(
             # Stream the updated description
             yield f"""data: {json.dumps({"conversation_description": description})}\n\n"""
         except Exception as e:
-            logger.error(f"Failed to generate conversation description: {e}")
+            logger.error(
+                "description_generation_failed",
+                user_id=user_id,
+                conversation_id=conversation_id,
+                error=str(e),
+            )
 
     # Now send [DONE] marker
     yield "data: [DONE]\n\n"
+
+    # Calculate token totals from metadata
+    metadata = usage_metadata_callback.usage_metadata
+    for model_usage in metadata.values():
+        if isinstance(model_usage, dict):
+            total_input_tokens += model_usage.get("input_tokens", 0)
+            total_output_tokens += model_usage.get("output_tokens", 0)
+
+    stream_duration_ms = (time.time() - stream_start) * 1000
+
+    # Enrich wide event with chat-specific context
+    wide_event = get_current_event()
+    if wide_event:
+        wide_event.set_operation(
+            operation="chat_stream",
+            resource_type="conversation",
+            resource_id=conversation_id,
+        )
+        wide_event.set_llm_context(
+            model_name=model_name,
+            input_tokens=total_input_tokens,
+            output_tokens=total_output_tokens,
+            latency_ms=stream_duration_ms,
+            conversation_id=conversation_id,
+            message_count=len(body.messages) if body.messages else 1,
+        )
+        wide_event.set_business_context(
+            is_new_conversation=is_new_conversation,
+            tools_used=tools_used,
+            tool_count=len(tools_used),
+            selected_tool=body.selectedTool,
+            selected_workflow=body.selectedWorkflow,
+            response_length=len(complete_message),
+        )
+
+    # Log chat stream completion with comprehensive context
+    logger.info(
+        "chat_stream_completed",
+        user_id=user_id,
+        conversation_id=conversation_id,
+        duration_ms=stream_duration_ms,
+        is_new_conversation=is_new_conversation,
+        model_name=model_name,
+        input_tokens=total_input_tokens,
+        output_tokens=total_output_tokens,
+        total_tokens=total_input_tokens + total_output_tokens,
+        tools_used=tools_used,
+        tool_count=len(tools_used),
+        response_length=len(complete_message),
+    )
 
     # Save the conversation once streaming is complete
     update_conversation_messages(
@@ -155,7 +243,7 @@ async def chat_stream(
         conversation_id,
         complete_message,
         tool_data,
-        metadata=usage_metadata_callback.usage_metadata,
+        metadata=metadata,
         user_message_id=user_message_id,
         bot_message_id=bot_message_id,
     )
@@ -369,12 +457,16 @@ async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) 
     This is the main flow: get model + tokens from metadata → calculate total cost → store in DB
     We now track credits (costs) rather than raw token counts for billing purposes.
     """
+    start_time = time.time()
     try:
         # Get user subscription
         subscription = await payment_service.get_user_subscription_status(user_id)
         user_plan = subscription.plan_type or PlanType.FREE
 
         total_credits = 0.0
+        total_input_tokens = 0
+        total_output_tokens = 0
+        models_used: list[str] = []
 
         # Calculate costs for each model and collect totals
         for model_name, usage_data in metadata.items():
@@ -383,6 +475,10 @@ async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) 
                 output_tokens = usage_data.get("output_tokens", 0)
 
                 if input_tokens > 0 or output_tokens > 0:
+                    models_used.append(model_name)
+                    total_input_tokens += input_tokens
+                    total_output_tokens += output_tokens
+
                     # Calculate cost for this specific model
                     # Note: get_model_pricing handles model name variants
                     cost_info = await calculate_token_cost(
@@ -401,5 +497,23 @@ async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) 
                 credits_used=total_credits,
             )
 
+        duration_ms = (time.time() - start_time) * 1000
+        logger.info(
+            "token_usage_processed",
+            user_id=user_id,
+            user_plan=user_plan.value if hasattr(user_plan, "value") else str(user_plan),
+            total_credits=total_credits,
+            total_input_tokens=total_input_tokens,
+            total_output_tokens=total_output_tokens,
+            total_tokens=total_input_tokens + total_output_tokens,
+            models_used=models_used,
+            processing_duration_ms=duration_ms,
+        )
+
     except Exception as e:
-        logger.debug(f"Background task failed during deduction: {e}")
+        logger.error(
+            "token_usage_processing_failed",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
