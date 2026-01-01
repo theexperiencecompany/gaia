@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from app.agents.core.agent import call_agent
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
-from app.config.loggers import chat_logger as logger, get_current_event, WideEvent, wide_logger
+from app.config.loggers import log, get_current_event
 from app.config.model_pricing import calculate_token_cost
 from app.models.chat_models import (
     MessageModel,
@@ -59,16 +59,14 @@ async def chat_stream(
 
     user_id = user.get("user_id")
 
-    # Log chat stream start with rich context
-    logger.info(
+    # Log chat stream start (request context auto-captured by middleware)
+    log.info(
         "chat_stream_started",
-        user_id=user_id,
         conversation_id=conversation_id,
         is_new_conversation=is_new_conversation,
         message_count=len(body.messages) if body.messages else 0,
         selected_tool=body.selectedTool,
         selected_workflow=body.selectedWorkflow,
-        has_files=bool(body.fileIds),
         file_count=len(body.fileIds) if body.fileIds else 0,
     )
 
@@ -79,9 +77,8 @@ async def chat_stream(
             user_model_config = await get_user_selected_model(user_id)
             model_name = user_model_config.get("model_name") if user_model_config else None
         except Exception as e:
-            logger.warning(
+            log.warning(
                 "model_config_fetch_failed",
-                user_id=user_id,
                 error=str(e),
             )
 
@@ -146,9 +143,8 @@ async def chat_stream(
                     yield chunk
 
             except Exception as e:
-                logger.error(
+                log.error(
                     "tool_data_extraction_failed",
-                    user_id=user_id,
                     conversation_id=conversation_id,
                     error=str(e),
                 )
@@ -175,9 +171,8 @@ async def chat_stream(
             # Stream the updated description
             yield f"""data: {json.dumps({"conversation_description": description})}\n\n"""
         except Exception as e:
-            logger.error(
+            log.error(
                 "description_generation_failed",
-                user_id=user_id,
                 conversation_id=conversation_id,
                 error=str(e),
             )
@@ -194,7 +189,7 @@ async def chat_stream(
 
     stream_duration_ms = (time.time() - stream_start) * 1000
 
-    # Enrich wide event with chat-specific context
+    # Enrich wide event with chat-specific context (for comprehensive request logging)
     wide_event = get_current_event()
     if wide_event:
         wide_event.set_operation(
@@ -207,22 +202,16 @@ async def chat_stream(
             input_tokens=total_input_tokens,
             output_tokens=total_output_tokens,
             latency_ms=stream_duration_ms,
-            conversation_id=conversation_id,
-            message_count=len(body.messages) if body.messages else 1,
         )
         wide_event.set_business_context(
             is_new_conversation=is_new_conversation,
             tools_used=tools_used,
             tool_count=len(tools_used),
-            selected_tool=body.selectedTool,
-            selected_workflow=body.selectedWorkflow,
-            response_length=len(complete_message),
         )
 
-    # Log chat stream completion with comprehensive context
-    logger.info(
+    # Log chat stream completion (request context auto-captured)
+    log.info(
         "chat_stream_completed",
-        user_id=user_id,
         conversation_id=conversation_id,
         duration_ms=stream_duration_ms,
         is_new_conversation=is_new_conversation,
@@ -498,9 +487,8 @@ async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) 
             )
 
         duration_ms = (time.time() - start_time) * 1000
-        logger.info(
+        log.info(
             "token_usage_processed",
-            user_id=user_id,
             user_plan=user_plan.value if hasattr(user_plan, "value") else str(user_plan),
             total_credits=total_credits,
             total_input_tokens=total_input_tokens,
@@ -511,9 +499,8 @@ async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) 
         )
 
     except Exception as e:
-        logger.error(
+        log.error(
             "token_usage_processing_failed",
-            user_id=user_id,
             error=str(e),
             error_type=type(e).__name__,
         )

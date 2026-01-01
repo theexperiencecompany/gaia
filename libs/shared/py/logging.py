@@ -6,18 +6,16 @@ This module provides a comprehensive, production-ready logging system featuring:
 - Thread-safe logging with message queuing
 - Standard library logging interception for unified output
 - Contextual logging with rich metadata support
-- Wide event logging for comprehensive request tracing
+- Structured logging with auto request context capture
 
-Usage:
+Simple Usage:
+    from shared.py.logging import log
+    log.info("user_action", action="login", user_id="123")
+
+Contextual Logger:
     from shared.py.logging import get_contextual_logger
     logger = get_contextual_logger("myapp")
     logger.info("Hello world")
-
-Wide Event Usage:
-    from shared.py.logging import WideEvent, wide_logger
-    event = WideEvent(service="myapp")
-    event.set_user_context(user_id="123")
-    wide_logger.emit(event)
 """
 
 import os
@@ -26,6 +24,14 @@ import logging
 from loguru import logger
 
 from shared.py.wide_events import (
+    # New simple API
+    log,
+    get_request_context,
+    set_request_context,
+    clear_request_context,
+    RequestContext,
+    StructuredLogger,
+    # Legacy WideEvent support
     WideEvent,
     WideEventLogger,
     wide_logger,
@@ -178,7 +184,14 @@ __all__ = [
     "logger",
     "configure_loguru",
     "get_contextual_logger",
-    # Wide event exports
+    # New simple API
+    "log",
+    "get_request_context",
+    "set_request_context",
+    "clear_request_context",
+    "RequestContext",
+    "StructuredLogger",
+    # Legacy wide event exports
     "WideEvent",
     "WideEventLogger",
     "wide_logger",

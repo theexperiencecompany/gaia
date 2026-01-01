@@ -4,18 +4,17 @@ Centralized application logger definitions for the GAIA backend system.
 This module re-exports loggers from gaia_shared and provides additional
 domain-specific loggers for the API application.
 
-Usage:
+Simple Usage (request context auto-captured by middleware):
+    from app.config.loggers import log
+
+    log.info("user_action", action="login", user_id="123")
+    log.error("payment_failed", error="card_declined")
+
+Contextual Logger:
     from app.config.loggers import auth_logger, mongo_logger
 
     auth_logger.info("User authenticated successfully")
     mongo_logger.error("Database connection failed")
-
-Wide Event Usage:
-    from app.config.loggers import WideEvent, wide_logger
-
-    event = WideEvent(service="api")
-    event.set_user_context(user_id="123")
-    wide_logger.emit(event)
 """
 
 # Re-export from shared library
@@ -23,7 +22,14 @@ from shared.py.logging import (
     get_contextual_logger,
     configure_loguru,
     logger,
-    # Wide event exports
+    # New simple API
+    log,
+    get_request_context,
+    set_request_context,
+    clear_request_context,
+    RequestContext,
+    StructuredLogger,
+    # Legacy wide event exports
     WideEvent,
     WideEventLogger,
     wide_logger,
@@ -73,6 +79,14 @@ __all__ = [
     "logger",
     "configure_loguru",
     "get_contextual_logger",
+    # New simple API
+    "log",
+    "get_request_context",
+    "set_request_context",
+    "clear_request_context",
+    "RequestContext",
+    "StructuredLogger",
+    # Domain loggers
     "app_logger",
     "worker_logger",
     "arq_worker_logger",
@@ -102,7 +116,7 @@ __all__ = [
     "reminders_logger",
     "usage_logger",
     "token_repository_logger",
-    # Wide event exports
+    # Legacy wide event exports
     "WideEvent",
     "WideEventLogger",
     "wide_logger",

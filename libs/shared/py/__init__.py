@@ -2,7 +2,7 @@
 
 Provides common utilities for GAIA applications including:
 - Logging configuration (Loguru-based)
-- Wide event logging for comprehensive request tracing
+- Structured logging with auto request context capture
 - Secrets management (Infisical)
 - Base settings classes (Pydantic)
 """
@@ -24,10 +24,27 @@ from shared.py.logging import (
     create_wide_event,
 )
 
+# New simplified logging API
+from shared.py.wide_events import (
+    log,
+    get_request_context,
+    set_request_context,
+    clear_request_context,
+    RequestContext,
+    StructuredLogger,
+)
+
 __all__ = [
     "configure_loguru",
     "get_contextual_logger",
-    # Wide event exports
+    # New simple API
+    "log",
+    "get_request_context",
+    "set_request_context",
+    "clear_request_context",
+    "RequestContext",
+    "StructuredLogger",
+    # Legacy wide event exports
     "WideEvent",
     "WideEventLogger",
     "wide_logger",
