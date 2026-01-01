@@ -25,7 +25,7 @@ class MCPToolsStore:
         will see these tools in the frontend without connecting.
 
         Args:
-            integration_id: MCP integration ID (e.g., "browserbase")
+            integration_id: MCP integration ID (e.g., "linear")
             tools: List of dicts with 'name' and 'description' keys
         """
         if not tools:

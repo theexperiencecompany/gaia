@@ -1,12 +1,34 @@
 """
 MCP Client wrapper for GAIA.
 
-Implements MCP OAuth 2.1 authorization flow per specification:
-1. Connect to MCP server → receive 401 with WWW-Authenticate header
-2. Fetch Protected Resource Metadata (PRM) from resource_metadata URL
-3. Discover authorization server from PRM
-4. Fetch Authorization Server Metadata for OAuth endpoints
-5. Perform DCR if needed, then OAuth authorization code flow with PKCE
+Implements complete MCP OAuth 2.1 authorization flow per specification:
+
+Phase 1: Initial Connection Attempt
+    - Connect to MCP server → receive 401 with WWW-Authenticate header
+    - Parse resource_metadata URL and scope from header
+
+Phase 2: Resource Server Discovery (RFC 9728)
+    - Option A: Fetch PRM from resource_metadata URL in header
+    - Option B: Try .well-known/oauth-protected-resource URIs
+    - Fallback: Direct OAuth discovery on MCP server (RFC 8414)
+
+Phase 3: Authorization Server Discovery (RFC 8414)
+    - Fetch .well-known/oauth-authorization-server or openid-configuration
+
+Phase 4: Client Registration
+    - Use pre-registered credentials, or
+    - Dynamic Client Registration (RFC 7591)
+
+Phase 5: Authorization Flow (OAuth 2.1)
+    - PKCE code challenge/verifier (S256)
+    - Resource parameter for token binding (RFC 8707)
+    - Scope from WWW-Authenticate takes priority
+
+Phase 6: Token Exchange
+    - Exchange authorization code for tokens
+    - Include resource parameter for token binding
+
+See: https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization
 """
 
 import base64
@@ -14,20 +36,54 @@ import hashlib
 import re
 import secrets
 import urllib.parse
+from functools import wraps
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import httpx
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, StructuredTool
 from mcp_use import MCPClient
 from mcp_use.adapters.langchain_adapter import LangChainAdapter
+from pydantic import Field, create_model
 
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import get_integration_by_id
 from app.config.settings import settings
 from app.models.oauth_models import MCPConfig
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from langchain_core.tools import StructuredTool
-from pydantic import Field, create_model
+from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+
+
+def _wrap_tool_with_null_filter(tool: BaseTool) -> BaseTool:
+    """
+    Wrap a LangChain tool to filter out None values before MCP invocation.
+
+    MCP servers expect optional parameters to be OMITTED, not sent as null.
+    However, Pydantic models populate all fields with their defaults (including None),
+    which causes MCP validation errors like:
+        "Expected string, received null"
+
+    This wrapper intercepts the _arun call and filters out None values.
+    """
+    original_arun = tool._arun
+
+    @wraps(original_arun)
+    async def filtered_arun(**kwargs: Any) -> Any:
+        # Filter out None values - MCP servers don't accept nulls
+        filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        logger.debug(
+            f"MCP tool '{tool.name}': original args={kwargs}, filtered={filtered_kwargs}"
+        )
+        return await original_arun(**filtered_kwargs)
+
+    # Replace the _arun method
+    tool._arun = filtered_arun  # type: ignore[method-assign]
+    return tool
+
+
+def _wrap_tools_with_null_filter(tools: list[BaseTool]) -> list[BaseTool]:
+    """Wrap all tools with null value filtering."""
+    return [_wrap_tool_with_null_filter(t) for t in tools]
 
 
 def generate_pkce_pair() -> tuple[str, str]:
@@ -44,6 +100,53 @@ def generate_pkce_pair() -> tuple[str, str]:
     code_challenge = base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
     return code_verifier, code_challenge
+
+
+def _extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
+    """
+
+    MCP tools use JSON Schema with nullable types via anyOf:
+    {"anyOf": [{"type": "number"}, {"type": "null"}], "default": 50}
+
+    Returns: (python_type, default_value, is_optional)
+    """
+    default_val = field_info.get("default")
+    is_optional = False
+
+    # Handle anyOf (nullable types) - find the non-null type
+    any_of = field_info.get("anyOf", [])
+    if any_of:
+        is_optional = True  # anyOf with null means optional
+        json_type = "string"  # fallback
+        for option in any_of:
+            if isinstance(option, dict) and option.get("type") != "null":
+                json_type = option.get("type", "string")
+                break
+    else:
+        # Direct type field
+        json_type = field_info.get("type", "string")
+        # Handle type arrays like ["string", "null"]
+        if isinstance(json_type, list):
+            is_optional = "null" in json_type
+            json_type = next((t for t in json_type if t != "null"), "string")
+
+    # Map JSON Schema types to Python types
+    type_map = {
+        "string": str,
+        "integer": int,
+        "number": float,
+        "boolean": bool,
+        "array": list,
+        "object": dict,
+    }
+    python_type = type_map.get(json_type, Any)
+
+    # If optional and we have a default, keep the type as-is
+    # If optional without default, use Optional[type]
+    if is_optional and default_val is None:
+        python_type = Optional[python_type]
+
+    return python_type, default_val, is_optional
 
 
 def _serialize_args_schema(tool: BaseTool) -> dict | None:
@@ -86,11 +189,15 @@ class GAIAMCPClient:
         self._clients: dict[str, MCPClient] = {}
         self._tools: dict[str, list[BaseTool]] = {}
 
-    async def _probe_for_auth_challenge(self, server_url: str) -> Optional[str]:
+    async def _extract_auth_challenge(self, server_url: str) -> dict:
         """
-        Probe MCP server to get WWW-Authenticate challenge.
+        Probe MCP server and parse full WWW-Authenticate challenge per MCP spec.
 
-        Returns the resource_metadata URL if auth is required, None otherwise.
+        Per MCP Authorization spec Phase 1:
+        - Server returns 401 with WWW-Authenticate header
+        - Header may contain: resource_metadata, scope, error, error_description
+
+        Returns dict with extracted fields (empty dict if no 401 or parse fails).
         """
         try:
             async with httpx.AsyncClient() as client:
@@ -98,16 +205,76 @@ class GAIAMCPClient:
 
                 if response.status_code == 401:
                     www_auth = response.headers.get("WWW-Authenticate", "")
-                    match = re.search(r'resource_metadata="([^"]+)"', www_auth)
-                    if match:
-                        return match.group(1)
-                    logger.warning(
-                        f"401 but no resource_metadata in WWW-Authenticate: {www_auth}"
+                    result = {"raw": www_auth}
+
+                    # Extract resource_metadata URL (preferred discovery method)
+                    rm_match = re.search(r'resource_metadata="([^"]+)"', www_auth)
+                    if rm_match:
+                        result["resource_metadata"] = rm_match.group(1)
+
+                    # Extract scope (from initial 401 - takes priority per spec)
+                    scope_match = re.search(r'scope="([^"]+)"', www_auth)
+                    if scope_match:
+                        result["scope"] = scope_match.group(1)
+
+                    # Extract error info (for debugging)
+                    error_match = re.search(r'error="([^"]+)"', www_auth)
+                    if error_match:
+                        result["error"] = error_match.group(1)
+
+                    error_desc_match = re.search(
+                        r'error_description="([^"]+)"', www_auth
                     )
-                return None
+                    if error_desc_match:
+                        result["error_description"] = error_desc_match.group(1)
+
+                    logger.debug(f"Parsed WWW-Authenticate for {server_url}: {result}")
+                    return result
+
+                # Not a 401 - server may not require auth
+                return {}
+
         except Exception as e:
-            logger.warning(f"Auth probe failed for {server_url}: {e}")
-            return None
+            logger.debug(f"Auth challenge probe failed for {server_url}: {e}")
+            return {}
+
+    async def _find_protected_resource_metadata(self, server_url: str) -> Optional[str]:
+        """
+        Find Protected Resource Metadata via well-known URIs per RFC 9728 Section 5.2.
+
+        Per MCP spec Phase 2b, when no resource_metadata in WWW-Authenticate header,
+        try well-known URIs in order:
+        1. Path-aware: {origin}/.well-known/oauth-protected-resource{path}
+        2. Root: {origin}/.well-known/oauth-protected-resource
+
+        Returns the URL that responds with valid JSON, or None.
+        """
+        parsed = urlparse(server_url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        path = parsed.path.rstrip("/")
+
+        # Build candidates per RFC 9728
+        candidates = []
+        if path:
+            # Path-aware (e.g., /sse → /.well-known/oauth-protected-resource/sse)
+            candidates.append(f"{origin}/.well-known/oauth-protected-resource{path}")
+        # Root fallback
+        candidates.append(f"{origin}/.well-known/oauth-protected-resource")
+
+        async with httpx.AsyncClient() as client:
+            for url in candidates:
+                try:
+                    response = await client.get(url, timeout=10)
+                    if response.status_code == 200:
+                        # Verify it's valid JSON with expected fields
+                        data = response.json()
+                        if "authorization_servers" in data or "resource" in data:
+                            logger.info(f"Found Protected Resource Metadata at {url}")
+                            return url
+                except Exception as e:
+                    logger.debug(f"PRM not found at {url}: {e}")
+
+        return None
 
     async def _fetch_protected_resource_metadata(self, prm_url: str) -> dict:
         """
@@ -130,8 +297,6 @@ class GAIAMCPClient:
 
         Tries multiple discovery patterns and both OAuth and OIDC endpoints.
         """
-        from urllib.parse import urlparse
-
         parsed = urlparse(auth_server_url)
         origin = f"{parsed.scheme}://{parsed.netloc}"
         path = parsed.path.rstrip("/")
@@ -170,61 +335,117 @@ class GAIAMCPClient:
         self, integration_id: str, mcp_config: MCPConfig
     ) -> dict:
         """
-        Full MCP OAuth discovery flow.
+        Full MCP OAuth discovery flow per specification.
 
-        Returns dict with authorization_endpoint, token_endpoint, registration_endpoint, etc.
+        Implements the complete discovery flow per MCP Authorization spec:
+        1. Probe server for WWW-Authenticate challenge (extract resource_metadata, scope)
+        2. Try RFC 9728 Protected Resource Metadata discovery
+        3. Fallback: Direct OAuth discovery on MCP server (RFC 8414)
+
+        The spec states:
+        - MCP servers MUST implement RFC 9728 Protected Resource Metadata
+        - MCP clients MUST support both RFC 8414 and OpenID Connect discovery
+
+        Returns dict with all OAuth endpoints and metadata.
         """
         # Check if we have cached discovery data
         cached = await self.token_store.get_oauth_discovery(integration_id)
         if cached:
+            logger.debug(f"Using cached OAuth discovery for {integration_id}")
             return cached
 
         # If explicit metadata provided, use it
         if mcp_config.oauth_metadata:
+            logger.debug(f"Using explicit OAuth metadata for {integration_id}")
             return mcp_config.oauth_metadata
 
         server_url = mcp_config.server_url.rstrip("/")
 
-        # Step 1: Probe server for auth challenge
-        prm_url = await self._probe_for_auth_challenge(server_url)
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 1: Probe server for WWW-Authenticate challenge
+        # ═══════════════════════════════════════════════════════════════════
+        challenge = await self._extract_auth_challenge(server_url)
+        initial_scope = challenge.get(
+            "scope"
+        )  # Save for auth URL (takes priority per spec)
 
-        if not prm_url:
-            # Try well-known location as fallback
-            prm_url = f"{server_url}/.well-known/oauth-protected-resource"
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 2: Try RFC 9728 Protected Resource Metadata discovery
+        # ═══════════════════════════════════════════════════════════════════
+        prm = None
+        prm_error = None
 
-        # Step 2: Fetch Protected Resource Metadata
         try:
-            prm = await self._fetch_protected_resource_metadata(prm_url)
+            # Option A: resource_metadata from WWW-Authenticate header (preferred)
+            prm_url = challenge.get("resource_metadata")
+
+            # Option B: Well-known URI fallback (RFC 9728 Section 5.2)
+            if not prm_url:
+                prm_url = await self._find_protected_resource_metadata(server_url)
+
+            if prm_url:
+                prm = await self._fetch_protected_resource_metadata(prm_url)
+                logger.info(f"Fetched PRM for {integration_id} from {prm_url}")
+
         except Exception as e:
-            logger.error(f"Failed to fetch PRM from {prm_url}: {e}")
+            prm_error = str(e)
+            logger.info(f"RFC 9728 PRM discovery failed for {integration_id}: {e}")
+
+        # If we got valid PRM with authorization_servers, use it
+        if prm and prm.get("authorization_servers"):
+            auth_server_url = prm["authorization_servers"][0]
+            logger.info(f"Using auth server from PRM: {auth_server_url}")
+
+            auth_metadata = await self._fetch_auth_server_metadata(auth_server_url)
+
+            discovery = {
+                "resource": prm.get("resource", server_url),
+                "scopes_supported": prm.get("scopes_supported", []),
+                "initial_scope": initial_scope,  # From WWW-Authenticate (priority per spec)
+                "authorization_endpoint": auth_metadata.get("authorization_endpoint"),
+                "token_endpoint": auth_metadata.get("token_endpoint"),
+                "registration_endpoint": auth_metadata.get("registration_endpoint"),
+                "issuer": auth_metadata.get("issuer"),
+                "discovery_method": "rfc9728_prm",
+            }
+
+            await self.token_store.store_oauth_discovery(integration_id, discovery)
+            return discovery
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PHASE 3: Fallback - Direct OAuth Discovery on MCP server (RFC 8414)
+        # ═══════════════════════════════════════════════════════════════════
+        # Per MCP spec: "MCP clients MUST support both discovery mechanisms"
+        # Some servers (like Linear) expose OAuth metadata directly on the MCP server
+        logger.info(
+            f"Trying direct OAuth discovery for {integration_id} "
+            f"(PRM failed: {prm_error or 'no authorization_servers'})"
+        )
+
+        try:
+            auth_metadata = await self._fetch_auth_server_metadata(server_url)
+
+            discovery = {
+                "resource": server_url,
+                "scopes_supported": auth_metadata.get("scopes_supported", []),
+                "initial_scope": initial_scope,
+                "authorization_endpoint": auth_metadata.get("authorization_endpoint"),
+                "token_endpoint": auth_metadata.get("token_endpoint"),
+                "registration_endpoint": auth_metadata.get("registration_endpoint"),
+                "issuer": auth_metadata.get("issuer"),
+                "discovery_method": "direct_oauth",
+            }
+
+            await self.token_store.store_oauth_discovery(integration_id, discovery)
+            logger.info(f"Direct OAuth discovery succeeded for {integration_id}")
+            return discovery
+
+        except Exception as direct_error:
             raise ValueError(
-                f"Could not discover OAuth config for {integration_id}: {e}"
+                f"OAuth discovery failed for {integration_id}. "
+                f"RFC 9728 PRM: {prm_error or 'no authorization_servers'}. "
+                f"Direct OAuth (RFC 8414): {direct_error}"
             )
-
-        # Step 3: Get authorization server
-        auth_servers = prm.get("authorization_servers", [])
-        if not auth_servers:
-            raise ValueError(f"No authorization_servers in PRM for {integration_id}")
-
-        auth_server_url = auth_servers[0]  # Use first one
-
-        # Step 4: Fetch Authorization Server Metadata
-        auth_metadata = await self._fetch_auth_server_metadata(auth_server_url)
-
-        # Combine into discovery result
-        discovery = {
-            "resource": prm.get("resource", server_url),
-            "scopes_supported": prm.get("scopes_supported", []),
-            "authorization_endpoint": auth_metadata.get("authorization_endpoint"),
-            "token_endpoint": auth_metadata.get("token_endpoint"),
-            "registration_endpoint": auth_metadata.get("registration_endpoint"),
-            "issuer": auth_metadata.get("issuer"),
-        }
-
-        # Cache for future use
-        await self.token_store.store_oauth_discovery(integration_id, discovery)
-
-        return discovery
 
     async def _build_config(
         self,
@@ -241,11 +462,15 @@ class GAIAMCPClient:
         if mcp_config.requires_auth:
             stored_token = await self.token_store.get_oauth_token(integration_id)
             if stored_token:
+                # Debug: log token details (safely)
+                logger.info(
+                    f"OAuth token for {integration_id}: "
+                    f"length={len(stored_token)}, "
+                    f"starts_with_bearer={stored_token.lower().startswith('bearer ')}, "
+                    f"preview={stored_token[:20]}..."
+                )
                 # mcp-use accepts auth as string for bearer token
                 server_config["auth"] = stored_token
-                logger.info(
-                    f"Using stored OAuth token for {integration_id} (token: {stored_token[:10]}...)"
-                )
             else:
                 logger.warning(
                     f"No stored OAuth token found for {integration_id} - connection may fail"
@@ -272,7 +497,12 @@ class GAIAMCPClient:
             await client.create_session(integration_id)
 
             adapter = LangChainAdapter()
-            tools = await adapter.create_tools(client)
+            raw_tools = await adapter.create_tools(client)
+
+            # CRITICAL: Wrap tools to filter None values before MCP invocation.
+            # MCP servers expect optional params to be OMITTED, not sent as null.
+            # Without this, Pydantic defaults (None) cause MCP validation errors.
+            tools = _wrap_tools_with_null_filter(raw_tools)
 
             # Debug: log each tool's schema to see what LLM will see
             logger.info(f"=== MCP Tools Schema Debug for {integration_id} ===")
@@ -289,10 +519,7 @@ class GAIAMCPClient:
                         logger.info(
                             f"  -> {len(props)} properties, required={required}"
                         )
-                        # Log property details for the first tool as sample
-                        if t.name == "browserbase_session_create":
-                            for prop_name, prop_info in props.items():
-                                logger.info(f"  -> prop '{prop_name}': {prop_info}")
+
                     except Exception as e:
                         logger.warning(f"MCP tool {t.name}: couldn't get schema: {e}")
                 else:
@@ -316,8 +543,6 @@ class GAIAMCPClient:
             logger.info(f"Cached {len(tools)} tools with schema for user")
 
             # Store tools globally for frontend visibility (first connection stores for all users)
-            from app.services.mcp.mcp_tools_store import get_mcp_tools_store
-
             global_store = get_mcp_tools_store()
             if not await global_store.has_tools(integration_id):
                 await global_store.store_tools(integration_id, tool_metadata)
@@ -400,9 +625,22 @@ class GAIAMCPClient:
                 f"No authorization_endpoint discovered for {integration_id}"
             )
 
-        # Use discovered scopes or configured ones
-        scopes = mcp_config.oauth_scopes or oauth_config.get("scopes_supported", [])
-        scope_str = " ".join(scopes) if scopes else ""
+        # Scope selection per MCP spec:
+        # 1. Use scope from WWW-Authenticate header (initial_scope) - takes priority
+        # 2. Fall back to configured scopes
+        # 3. Fall back to scopes_supported from discovery
+        scope_str = ""
+        if oauth_config.get("initial_scope"):
+            # Scope from 401 WWW-Authenticate (priority per spec)
+            scope_str = oauth_config["initial_scope"]
+        elif mcp_config.oauth_scopes:
+            scope_str = " ".join(mcp_config.oauth_scopes)
+        elif oauth_config.get("scopes_supported"):
+            scope_str = " ".join(oauth_config["scopes_supported"])
+
+        # Get resource URL for token binding (RFC 8707)
+        # This ensures the token is bound to the specific MCP server
+        resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))
 
         params = {
             "client_id": client_id,
@@ -411,12 +649,16 @@ class GAIAMCPClient:
             "state": state_data,
             "code_challenge": code_challenge,
             "code_challenge_method": "S256",
+            "resource": resource,  # CRITICAL: Binds token to MCP server (RFC 8707)
         }
         if scope_str:
             params["scope"] = scope_str
 
         auth_url = f"{auth_endpoint}?{urllib.parse.urlencode(params)}"
-        logger.info(f"Built OAuth URL for {integration_id}: {auth_endpoint}")
+        logger.info(
+            f"Built OAuth URL for {integration_id}: "
+            f"endpoint={auth_endpoint}, resource={resource}, scope={scope_str or '(none)'}"
+        )
         return auth_url
 
     async def _register_client(
@@ -496,12 +738,16 @@ class GAIAMCPClient:
                 mcp_config.client_secret_env, mcp_config.client_secret
             )
 
+        # Get resource for token binding (RFC 8707)
+        resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))
+
         # Exchange code for tokens
         async with httpx.AsyncClient() as client:
             token_data = {
                 "grant_type": "authorization_code",
                 "code": code,
                 "redirect_uri": redirect_uri,
+                "resource": resource,  # CRITICAL: Bind token to MCP server (RFC 8707)
             }
 
             # Include PKCE code_verifier if we have it (required for OAuth 2.1)
@@ -591,8 +837,6 @@ class GAIAMCPClient:
 
         Returns dict mapping integration_id -> list of tools.
         """
-        from app.config.oauth_config import get_integration_by_id
-
         connected_ids = await self.token_store.get_connected_integrations()
         all_tools: dict[str, list[BaseTool]] = {}
 
@@ -651,11 +895,18 @@ class GAIAMCPClient:
             """Factory to create stub executor with proper closure."""
 
             async def _stub_execute(**kwargs):
+                # Filter out null values - MCP servers don't accept nulls,
+                # they expect parameters to be omitted if not provided
+                filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
+                logger.debug(
+                    f"Stub {tool_name}: raw args={kwargs}, filtered={filtered_kwargs}"
+                )
+
                 # Connect on-demand and execute the real tool
                 tools = await client.ensure_connected(int_id)
                 real_tool = next((t for t in tools if t.name == tool_name), None)
                 if real_tool:
-                    return await real_tool.ainvoke(kwargs)
+                    return await real_tool.ainvoke(filtered_kwargs)
                 raise ValueError(f"Tool {tool_name} not found after connecting")
 
             return _stub_execute
@@ -684,31 +935,35 @@ class GAIAMCPClient:
                 required_fields = args_schema.get("required", [])
                 fields = {}
                 for field_name, field_info in properties.items():
-                    # Map JSON schema types to Python types
-                    json_type = field_info.get("type", "string")
-                    if json_type == "string":
-                        field_type = str
-                    elif json_type == "integer":
-                        field_type = int
-                    elif json_type == "number":
-                        field_type = float
-                    elif json_type == "boolean":
-                        field_type = bool
-                    elif json_type == "array":
-                        field_type = list
-                    elif json_type == "object":
-                        field_type = dict
-                    else:
-                        field_type = Any
+                    # Extract type from JSON Schema, handling anyOf for nullable types
+                    field_type, default_val, is_optional = _extract_type_from_field(
+                        field_info
+                    )
 
                     is_required = field_name in required_fields
-                    default = ... if is_required else None
+
+                    # Determine the default value for Pydantic Field:
+                    # - Required fields: use ... (no default)
+                    # - Optional with schema default: use the schema default
+                    # - Optional without default: use None
+                    if is_required:
+                        field_default = ...
+                    elif default_val is not None:
+                        field_default = default_val
+                    else:
+                        field_default = None
+
                     fields[field_name] = (
                         field_type,
                         Field(
-                            default=default,
+                            default=field_default,
                             description=field_info.get("description", ""),
                         ),
+                    )
+
+                    logger.debug(
+                        f"Stub {name}.{field_name}: type={field_type.__name__ if hasattr(field_type, '__name__') else field_type}, "
+                        f"default={field_default}, required={is_required}"
                     )
                 DynamicSchema = create_model(f"{name}Schema", **fields)
             else:

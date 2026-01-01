@@ -130,8 +130,12 @@ export const useIntegrations = (): UseIntegrationsReturn => {
 
         if (result.status === "connected") {
           toast.success(`Connected to ${integrationName}`, { id: toastId });
+          // Invalidate both status and tools caches to show new MCP tools
           queryClient.invalidateQueries({
             queryKey: ["integrations", "status"],
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["tools", "available"],
           });
         } else if (result.status === "redirecting") {
           toast.dismiss(toastId);

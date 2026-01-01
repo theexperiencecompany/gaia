@@ -12,7 +12,6 @@ from typing import Dict, List, Optional
 from app.agents.prompts.subagent_prompts import (
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
-    BROWSERBASE_AGENT_SYSTEM_PROMPT,
     CALENDAR_AGENT_SYSTEM_PROMPT,
     CLICKUP_AGENT_SYSTEM_PROMPT,
     CONTEXT7_AGENT_SYSTEM_PROMPT,
@@ -352,6 +351,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=AIRTABLE_AGENT_SYSTEM_PROMPT,
         ),
     ),
+    # Linear MCP (OAuth via MCP spec discovery)
     OAuthIntegration(
         id="linear",
         name="Linear",
@@ -361,10 +361,10 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         scopes=[],
         available=True,
         short_name="linear",
-        managed_by="composio",
-        composio_config=ComposioConfig(
-            auth_config_id="ac_mnrcEhhTXPVS",
-            toolkit="LINEAR",
+        managed_by="mcp",
+        mcp_config=MCPConfig(
+            server_url="https://mcp.linear.app/sse",
+            requires_auth=True,
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -375,8 +375,35 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating issues, managing projects, tracking progress, assigning tasks, organizing sprints, and automating development workflows",
             use_cases="issue management, project tracking, sprint planning, or any Linear development workflow task",
             system_prompt=LINEAR_AGENT_SYSTEM_PROMPT,
+            use_direct_tools=True,
         ),
     ),
+    # OLD Composio Linear (commented out - using MCP now)
+    # OAuthIntegration(
+    #     id="linear",
+    #     name="Linear",
+    #     description="Manage issues, projects, and track development progress with AI assistance",
+    #     category="developer",
+    #     provider="linear",
+    #     scopes=[],
+    #     available=True,
+    #     short_name="linear",
+    #     managed_by="composio",
+    #     composio_config=ComposioConfig(
+    #         auth_config_id="ac_mnrcEhhTXPVS",
+    #         toolkit="LINEAR",
+    #     ),
+    #     subagent_config=SubAgentConfig(
+    #         has_subagent=True,
+    #         agent_name="linear_agent",
+    #         tool_space="linear",
+    #         handoff_tool_name="call_linear_agent",
+    #         domain="issue tracking and project management",
+    #         capabilities="creating issues, managing projects, tracking progress, assigning tasks, organizing sprints, and automating development workflows",
+    #         use_cases="issue management, project tracking, sprint planning, or any Linear development workflow task",
+    #         system_prompt=LINEAR_AGENT_SYSTEM_PROMPT,
+    #     ),
+    # ),
     OAuthIntegration(
         id="slack",
         name="Slack",
@@ -786,35 +813,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="resolving library identifiers, fetching up-to-date documentation, providing version-specific code examples, eliminating hallucinated APIs",
             use_cases="getting accurate documentation, finding code examples, checking API references, learning about libraries",
             system_prompt=CONTEXT7_AGENT_SYSTEM_PROMPT,
-            use_direct_tools=True,
-        ),
-    ),
-    # Browserbase MCP (OAuth via MCP spec discovery)
-    OAuthIntegration(
-        id="browserbase",
-        name="Browserbase",
-        description="Cloud browser automation for web scraping, form filling, screenshots, and AI-powered web interactions.",
-        category="developer",
-        provider="browserbase",
-        scopes=[],
-        available=True,
-        is_featured=False,
-        short_name="browserbase",
-        managed_by="mcp",
-        mcp_config=MCPConfig(
-            server_url="https://mcp.browserbase.com",
-            requires_auth=True,
-        ),
-        subagent_config=SubAgentConfig(
-            has_subagent=True,
-            agent_name="browserbase_agent",
-            tool_space="browserbase",
-            handoff_tool_name="call_browserbase_agent",
-            domain="cloud browser automation and web scraping",
-            capabilities="creating browser sessions, navigating websites, performing web actions, extracting data from pages, taking screenshots, filling forms",
-            use_cases="web scraping, form automation, screenshot capture, web search, data extraction from websites",
-            system_prompt=BROWSERBASE_AGENT_SYSTEM_PROMPT,
-            use_direct_tools=True,
         ),
     ),
 ]

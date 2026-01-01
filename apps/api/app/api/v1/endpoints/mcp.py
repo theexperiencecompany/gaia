@@ -11,9 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
+from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.config.settings import settings
 from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
 from app.services.mcp.mcp_client import get_mcp_client
@@ -120,15 +122,11 @@ async def connect_mcp_oauth(
 
 def _get_base_url() -> str:
     """Get the backend API base URL for callbacks."""
-    from app.config.settings import settings
-
     return getattr(settings, "API_BASE_URL", "http://localhost:8000")
 
 
 def _get_frontend_url() -> str:
     """Get the frontend base URL for redirects."""
-    from app.config.settings import settings
-
     return getattr(settings, "FRONTEND_URL", "http://localhost:3000")
 
 
@@ -211,18 +209,25 @@ async def mcp_oauth_callback(
         )
 
         # Fetch and cache tools immediately after successful OAuth
-        # This ensures tools are available without needing to reconnect later
+        # client.connect() handles caching with full args_schema
         try:
             tools = await client.connect(integration_id)
             if tools:
-                token_store = MCPTokenStore(user_id=str(user_id))
-                tool_metadata = [
-                    {"name": t.name, "description": t.description or ""} for t in tools
-                ]
-                await token_store.store_cached_tools(integration_id, tool_metadata)
                 logger.info(
-                    f"Cached {len(tools)} tools for {integration_id} after OAuth"
+                    f"Connected and cached {len(tools)} tools for {integration_id} after OAuth"
                 )
+
+                # Index tools to ChromaDB for semantic search
+                tool_registry = await get_tool_registry()
+                await tool_registry.load_user_mcp_tools(str(user_id))
+                logger.info(f"Indexed MCP tools from {integration_id} to ChromaDB")
+
+                # Invalidate tools list cache so frontend sees new tools immediately
+                try:
+                    await delete_cache("get_available_tools:*")
+                    logger.info("Invalidated tools list cache after MCP connection")
+                except Exception as cache_err:
+                    logger.warning(f"Failed to invalidate tools cache: {cache_err}")
         except Exception as tool_err:
             # Don't fail the OAuth flow if tool caching fails
             logger.warning(f"Failed to cache tools for {integration_id}: {tool_err}")
@@ -317,14 +322,11 @@ async def get_mcp_tools(
             )
 
         # Fallback: try to connect and cache tools
+        # client.connect() handles caching with full args_schema
         client = get_mcp_client(user_id=str(user_id))
         try:
             tools = await client.connect(integration_id)
             if tools:
-                tool_metadata = [
-                    {"name": t.name, "description": t.description or ""} for t in tools
-                ]
-                await token_store.store_cached_tools(integration_id, tool_metadata)
                 return MCPToolsResponse(
                     tools=[
                         MCPToolInfo(name=t.name, description=t.description)
@@ -383,33 +385,6 @@ async def get_mcp_status(
         )
 
     return MCPStatusResponse(integrations=statuses)
-
-
-@router.post("/load-tools")
-async def load_user_mcp_tools(
-    user: dict = Depends(get_current_user),
-) -> dict:
-    """
-    Load all connected MCP tools for the current user into the tool registry.
-
-    This ensures MCP tools are available for agent use in subsequent requests.
-    Call this after connecting to MCP servers or before starting a chat session.
-    """
-    from app.agents.tools.core.registry import get_tool_registry
-
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
-
-    tool_registry = await get_tool_registry()
-    loaded = await tool_registry.load_user_mcp_tools(str(user_id))
-
-    return {
-        "loaded": {
-            integration_id: len(tools) for integration_id, tools in loaded.items()
-        },
-        "total_tools": sum(len(tools) for tools in loaded.values()),
-    }
 
 
 async def _invalidate_status_cache(user_id: str) -> None:
