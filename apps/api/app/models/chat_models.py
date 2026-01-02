@@ -42,6 +42,15 @@ class ToolDataEntry(TypedDict):
     timestamp: Optional[str]
 
 
+class ToolProgressData(BaseModel):
+    """Progress data for tool execution updates sent to frontend."""
+
+    message: str = Field(..., description="Display message for the tool execution")
+    tool_name: str = Field(..., description="Raw tool name identifier")
+    tool_category: Optional[str] = Field(None, description="Category for icon display")
+    show_category: bool = Field(True, description="Whether to show category text in UI")
+
+
 tool_fields = [
     "calendar_options",
     "calendar_delete_options",

@@ -18,6 +18,7 @@ import React, { useId } from "react";
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
   GROUPED_TOOLS,
+  type ToolCallEntry,
   type ToolDataEntry,
   type ToolDataMap,
   type ToolName,
@@ -29,6 +30,7 @@ import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadC
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
+import ToolCallsSection from "@/features/chat/components/bubbles/bot/ToolCallsSection";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
@@ -281,6 +283,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 
   integration_list_data: (_data, index) => {
     return <IntegrationListSection key={`tool-integration-list-${index}`} />;
+  },
+
+  tool_calls_data: (data, index) => {
+    const calls = (Array.isArray(data) ? data : [data]) as ToolCallEntry[];
+    return (
+      <ToolCallsSection key={`tool-calls-${index}`} tool_calls_data={calls} />
+    );
   },
 
   reddit_data: (data) => {

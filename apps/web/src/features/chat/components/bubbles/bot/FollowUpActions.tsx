@@ -36,7 +36,7 @@ export default function FollowUpActions({
           },
         },
       }}
-      className="flex max-w-xl flex-wrap gap-2 pt-2 pb-1"
+      className="flex max-w-xl flex-wrap gap-2 pt-3 pb-1"
     >
       {actions.map((action) => (
         <motion.div

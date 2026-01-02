@@ -1,5 +1,19 @@
 // Tool data types for various AI-powered features
 
+/**
+ * Progress data for tool execution updates from backend.
+ */
+export interface ToolProgressData {
+  /** Display message for the tool execution */
+  message: string;
+  /** Raw tool name identifier */
+  tool_name: string;
+  /** Category for icon display */
+  tool_category?: string;
+  /** Whether to show category text in UI (default: true) */
+  show_category?: boolean;
+}
+
 // Define image data structure for image generation
 export type ImageData = {
   url: string;

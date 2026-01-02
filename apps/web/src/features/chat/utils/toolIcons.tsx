@@ -3,16 +3,18 @@ import {
   AlarmClockIcon,
   Brain02Icon,
   CheckListIcon,
+  ComputerTerminal01Icon,
   ConnectIcon,
   FileEmpty02Icon,
   Image02Icon,
   InformationCircleIcon,
   NotificationIcon,
+  PackageOpenIcon,
   SourceCodeCircleIcon,
+  SquareArrowUpRight02Icon,
   Target02Icon,
+  ToolsIcon,
 } from "@/icons";
-
-import { useIconColorDetection } from "../hooks/useIconColorDetection";
 
 interface IconProps {
   size?: number;
@@ -151,7 +153,7 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-blue-400",
   },
   general: {
-    icon: InformationCircleIcon,
+    icon: ToolsIcon,
     bgColor: "bg-gray-500/20 backdrop-blur",
     iconColor: "text-gray-400",
   },
@@ -295,7 +297,7 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-white",
     isImage: true,
   },
-   perplexity: {
+  perplexity: {
     icon: "/images/icons/perplexity.png",
     bgColor: "bg-zinc-800",
     iconColor: "text-white",
@@ -306,6 +308,27 @@ const iconConfigs: Record<string, IconConfig> = {
     icon: ConnectIcon,
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
+  },
+  // Special categories for agent tool calls
+  handoff: {
+    icon: SquareArrowUpRight02Icon,
+    bgColor: "bg-sky-500/20 backdrop-blur",
+    iconColor: "text-sky-400",
+  },
+  retrieve_tools: {
+    icon: PackageOpenIcon,
+    bgColor: "bg-indigo-500/20 backdrop-blur",
+    iconColor: "text-indigo-400",
+  },
+  executor: {
+    icon: ComputerTerminal01Icon,
+    bgColor: "bg-teal-500/20 backdrop-blur",
+    iconColor: "text-teal-400",
+  },
+  unknown: {
+    icon: ToolsIcon,
+    bgColor: "bg-zinc-500/20 backdrop-blur",
+    iconColor: "text-zinc-400",
   },
 };
 

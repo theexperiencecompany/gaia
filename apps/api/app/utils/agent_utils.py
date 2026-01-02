@@ -13,6 +13,7 @@ from app.models.chat_models import (
     tool_fields,
 )
 from app.services.conversation_service import update_messages
+from app.agents.tools.core.registry import get_tool_registry
 
 
 async def format_tool_progress(tool_call: ToolCall) -> Optional[dict]:
@@ -27,23 +28,45 @@ async def format_tool_progress(tool_call: ToolCall) -> Optional[dict]:
 
     Returns:
         Dictionary with progress information including formatted message,
-        tool name, and category, or None if tool name is missing
+        tool name, category, and show_category flag, or None if tool name is missing
     """
-    from app.agents.tools.core.registry import get_tool_registry
 
     tool_registry = await get_tool_registry()
     tool_name_raw = tool_call.get("name")
     if not tool_name_raw:
         return None
 
-    tool_name = tool_name_raw.replace("_", " ").title()
-    tool_category = tool_registry.get_category_of_tool(tool_name_raw)
+    # Tools that emit their own progress messages - skip generic emission
+    if tool_name_raw == "handoff":
+        return None
+
+    # Special tools with custom display names and hidden categories
+    # Format: (category, display_name) - these tools don't show category text
+    special_tools = {
+        "retrieve_tools": ("retrieve_tools", "Retrieving tools"),
+        "call_executor": ("executor", "Delegating to executor"),
+    }
+
+    if tool_name_raw in special_tools:
+        tool_category, tool_display_name = special_tools[tool_name_raw]
+        show_category = False
+    else:
+        tool_category = tool_registry.get_category_of_tool(tool_name_raw)
+        tool_display_name = tool_name_raw.replace("_", " ").title()
+        show_category = True
+
+        # Extract integration name from MCP categories (e.g., "mcp_perplexity_6947dd82..." -> "perplexity")
+        if tool_category and tool_category.startswith("mcp_"):
+            parts = tool_category.split("_")
+            if len(parts) >= 2:
+                tool_category = parts[1]
 
     return {
         "progress": {
-            "message": f"Executing {tool_name}...",
+            "message": tool_display_name,
             "tool_name": tool_name_raw,
             "tool_category": tool_category,
+            "show_category": show_category,
         }
     }
 

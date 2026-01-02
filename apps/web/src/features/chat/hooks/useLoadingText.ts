@@ -4,6 +4,7 @@ import { useLoadingStore } from "@/stores/loadingStore";
 interface ToolInfo {
   toolName?: string;
   toolCategory?: string;
+  showCategory?: boolean;
 }
 
 export const useLoadingText = () => {

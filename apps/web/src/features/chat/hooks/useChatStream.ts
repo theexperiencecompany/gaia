@@ -1,7 +1,7 @@
 import type { EventSourceMessage } from "@microsoft/fetch-event-source";
 import { useRouter } from "next/navigation";
 import { useRef } from "react";
-
+import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -12,6 +12,7 @@ import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionS
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
 import type { MessageType } from "@/types/features/convoTypes";
+import type { ToolProgressData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared";
 import fetchDate from "@/utils/date/dateUtils";
@@ -169,17 +170,32 @@ export const useChatStream = () => {
     };
   };
 
-  const handleProgressUpdate = (
-    progressData:
-      | string
-      | { message: string; tool_name?: string; tool_category?: string },
-  ) => {
+  const handleProgressUpdate = (progressData: string | ToolProgressData) => {
     if (typeof progressData === "string") {
       setLoadingText(progressData);
     } else if (typeof progressData === "object" && progressData.message) {
+      // Update loading indicator
       setLoadingText(progressData.message, {
         toolName: progressData.tool_name,
         toolCategory: progressData.tool_category,
+        showCategory: progressData.show_category ?? true,
+      });
+
+      // Accumulate into tool_data for ToolCallsSection
+      const existingToolData = refs.current.botMessage?.tool_data ?? [];
+      const toolEntry: ToolDataEntry = {
+        tool_name: "tool_calls_data",
+        tool_category: progressData.tool_category ?? "",
+        data: {
+          tool_name: progressData.tool_name,
+          tool_category: progressData.tool_category ?? "",
+          message: progressData.message,
+          show_category: progressData.show_category,
+        } as ToolDataEntry["data"],
+        timestamp: new Date().toISOString(),
+      };
+      updateBotMessage({
+        tool_data: [...existingToolData, toolEntry],
       });
     }
   };

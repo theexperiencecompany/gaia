@@ -30,6 +30,8 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore
+from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.agents.core.subagents.provider_subagents import create_subagent_for_user
 
 SUBAGENTS_NAMESPACE = ("subagents",)
 
@@ -197,8 +199,6 @@ async def handoff(
                 return f"Error: {agent_name} requires authentication. Please sign in first."
 
             # Check if user has connected this MCP integration
-            from app.services.mcp.mcp_token_store import MCPTokenStore
-
             token_store = MCPTokenStore(user_id=user_id)
             is_connected = await token_store.is_connected(integration.id)
             if not is_connected:
@@ -208,10 +208,6 @@ async def handoff(
                 )
 
             # Create subagent on-the-fly with user's tokens
-            from app.agents.core.subagents.provider_subagents import (
-                create_subagent_for_user,
-            )
-
             subagent_graph = await create_subagent_for_user(integration.id, user_id)
             if not subagent_graph:
                 return f"Error: Failed to create {agent_name} subagent"
@@ -273,9 +269,10 @@ async def handoff(
         writer(
             {
                 "progress": {
-                    "message": f"Handing off to {agent_name}...",
+                    "message": f"Handing off to {agent_name}",
                     "tool_name": "handoff",
-                    "tool_category": integration.id,
+                    "tool_category": "handoff",
+                    "show_category": False,
                 }
             }
         )
