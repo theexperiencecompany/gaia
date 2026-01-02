@@ -65,3 +65,21 @@ Example usage:
 Note: This creates a text-based TOC. Unlike the native Google Docs TOC, it won't
 auto-update when headings change. Re-run this tool to regenerate the TOC.
 """
+
+CUSTOM_DELETE_DOC = """
+Delete a Google Doc permanently.
+
+Use this tool when the user wants to:
+- Delete a document they created
+- Remove an old or unnecessary file
+- Clean up temporary files
+
+Parameters:
+- document_id (str): The unique identifier of the document to delete
+
+Returns:
+- success: Whether the deletion was successful
+- document_id: The ID of the deleted document
+
+Note: This action is permanent and often cannot be undone immediately via API (moves to trash).
+"""

@@ -300,9 +300,8 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                 raise ValueError(
                     f"Invalid identifier format: {request.issue_identifier}"
                 )
-            team_key = parts[0]
             try:
-                number = float(parts[1])
+                float(parts[1])
             except ValueError as e:
                 raise ValueError(
                     f"Invalid issue number in: {request.issue_identifier}"
@@ -310,12 +309,10 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
 
             data = graphql_request(
                 QUERY_ISSUE_BY_IDENTIFIER,
-                {"teamKey": team_key, "number": number},
+                {"identifier": request.issue_identifier},
                 auth_credentials,
             )
-            teams = data.get("teams", {}).get("nodes", [])
-            if teams and teams[0].get("issue"):
-                issue = teams[0]["issue"]
+            issue = data.get("issue")
 
         if not issue:
             raise ValueError(
@@ -331,17 +328,11 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             "state": issue.get("state", {}).get("name"),
             "dueDate": issue.get("dueDate"),
             "estimate": issue.get("estimate"),
-            "team": issue.get("team", {}).get("name"),
-            "project": issue.get("project", {}).get("name")
-            if issue.get("project")
-            else None,
-            "cycle": issue.get("cycle", {}).get("name") if issue.get("cycle") else None,
-            "assignee": issue.get("assignee", {}).get("name")
-            if issue.get("assignee")
-            else None,
-            "creator": issue.get("creator", {}).get("name")
-            if issue.get("creator")
-            else None,
+            "team": (issue.get("team") or {}).get("name"),
+            "project": (issue.get("project") or {}).get("name"),
+            "cycle": (issue.get("cycle") or {}).get("name"),
+            "assignee": (issue.get("assignee") or {}).get("name"),
+            "creator": (issue.get("creator") or {}).get("name"),
         }
 
         if issue.get("parent"):
@@ -350,7 +341,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                 "title": issue["parent"].get("title"),
             }
 
-        children = issue.get("children", {}).get("nodes", [])
+        children = (issue.get("children") or {}).get("nodes", [])
         if children:
             result["sub_issues"] = [
                 {
@@ -361,7 +352,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                 for c in children
             ]
 
-        relations = issue.get("relations", {}).get("nodes", [])
+        relations = (issue.get("relations") or {}).get("nodes", [])
         if relations:
             result["relations"] = [
                 {
@@ -374,39 +365,39 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                 for r in relations
             ]
 
-        comments = issue.get("comments", {}).get("nodes", [])
+        comments = (issue.get("comments") or {}).get("nodes", [])
         if comments:
             result["comments"] = [
                 {
-                    "author": c.get("user", {}).get("name"),
+                    "author": (c.get("user") or {}).get("name"),
                     "body": c.get("body"),
                     "createdAt": c.get("createdAt"),
                 }
                 for c in comments
             ]
 
-        history = issue.get("history", {}).get("nodes", [])
+        history = (issue.get("history") or {}).get("nodes", [])
         if history:
             result["activity"] = []
             for h in history:
                 entry = {
                     "timestamp": h.get("createdAt"),
-                    "actor": h.get("actor", {}).get("name") if h.get("actor") else None,
+                    "actor": (h.get("actor") or {}).get("name"),
                 }
                 if h.get("fromState") or h.get("toState"):
                     entry["change"] = "state"
-                    entry["from"] = h.get("fromState", {}).get("name")
-                    entry["to"] = h.get("toState", {}).get("name")
+                    entry["from"] = (h.get("fromState") or {}).get("name")
+                    entry["to"] = (h.get("toState") or {}).get("name")
                 elif h.get("fromAssignee") or h.get("toAssignee"):
                     entry["change"] = "assignee"
-                    entry["from"] = h.get("fromAssignee", {}).get("name")
-                    entry["to"] = h.get("toAssignee", {}).get("name")
-                elif h.get("addedLabels", {}).get("nodes"):
+                    entry["from"] = (h.get("fromAssignee") or {}).get("name")
+                    entry["to"] = (h.get("toAssignee") or {}).get("name")
+                elif (h.get("addedLabels") or {}).get("nodes"):
                     entry["change"] = "labels_added"
                     entry["labels"] = [
                         label.get("name") for label in h["addedLabels"]["nodes"]
                     ]
-                elif h.get("removedLabels", {}).get("nodes"):
+                elif (h.get("removedLabels") or {}).get("nodes"):
                     entry["change"] = "labels_removed"
                     entry["labels"] = [
                         label.get("name") for label in h["removedLabels"]["nodes"]
@@ -415,7 +406,7 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
                     continue
                 result["activity"].append(entry)
 
-        attachments = issue.get("attachments", {}).get("nodes", [])
+        attachments = (issue.get("attachments") or {}).get("nodes", [])
         if attachments:
             result["attachments"] = [
                 {"title": a.get("title"), "url": a.get("url")} for a in attachments
@@ -655,17 +646,16 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         if not issue_id and request.issue_identifier:
             parts = request.issue_identifier.split("-")
             if len(parts) == 2:
-                team_key = parts[0]
                 try:
-                    number = float(parts[1])
+                    float(parts[1])
                     data = graphql_request(
                         QUERY_ISSUE_BY_IDENTIFIER,
-                        {"teamKey": team_key, "number": number},
+                        {"identifier": request.issue_identifier},
                         auth_credentials,
                     )
-                    teams = data.get("teams", {}).get("nodes", [])
-                    if teams and teams[0].get("issue"):
-                        issue_id = teams[0]["issue"]["id"]
+                    issue = data.get("issue")
+                    if issue:
+                        issue_id = issue["id"]
                 except ValueError:
                     pass
 
@@ -677,38 +667,42 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             {"issueId": issue_id, "first": request.limit},
             auth_credentials,
         )
-        history = data.get("issue", {}).get("history", {}).get("nodes", [])
+        history = (data.get("issue") or {}).get("history", {}).get("nodes", [])
 
         activities = []
         for h in history:
             entry = {
                 "timestamp": h.get("createdAt"),
-                "actor": h.get("actor", {}).get("name") if h.get("actor") else "System",
+                "actor": (h.get("actor") or {}).get("name")
+                if h.get("actor")
+                else "System",
             }
             if h.get("fromState") or h.get("toState"):
                 entry["change_type"] = "state"
-                entry["from"] = h.get("fromState", {}).get("name")
-                entry["to"] = h.get("toState", {}).get("name")
+                entry["from"] = (h.get("fromState") or {}).get("name")
+                entry["to"] = (h.get("toState") or {}).get("name")
             elif h.get("fromAssignee") or h.get("toAssignee"):
                 entry["change_type"] = "assignee"
                 entry["from"] = (
-                    h.get("fromAssignee", {}).get("name")
+                    (h.get("fromAssignee") or {}).get("name")
                     if h.get("fromAssignee")
                     else None
                 )
                 entry["to"] = (
-                    h.get("toAssignee", {}).get("name") if h.get("toAssignee") else None
+                    (h.get("toAssignee") or {}).get("name")
+                    if h.get("toAssignee")
+                    else None
                 )
             elif h.get("fromPriority") is not None or h.get("toPriority") is not None:
                 entry["change_type"] = "priority"
                 entry["from"] = priority_to_str(h.get("fromPriority", 0))
                 entry["to"] = priority_to_str(h.get("toPriority", 0))
-            elif h.get("addedLabels", {}).get("nodes"):
+            elif (h.get("addedLabels") or {}).get("nodes"):
                 entry["change_type"] = "labels_added"
                 entry["labels"] = [
                     label.get("name") for label in h["addedLabels"]["nodes"]
                 ]
-            elif h.get("removedLabels", {}).get("nodes"):
+            elif (h.get("removedLabels") or {}).get("nodes"):
                 entry["change_type"] = "labels_removed"
                 entry["labels"] = [
                     label.get("name") for label in h["removedLabels"]["nodes"]
@@ -840,19 +834,25 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         """Get the current user's notifications."""
         data = graphql_request(
             QUERY_NOTIFICATIONS,
-            {"includeRead": not request.include_read, "first": request.limit},
+            {"first": request.limit},
             auth_credentials,
         )
         notifications = data.get("notifications", {}).get("nodes", [])
 
         formatted = []
         for n in notifications:
+            is_read = n.get("readAt") is not None
+
+            # Filter by read status if not including read
+            if not request.include_read and is_read:
+                continue
+
             formatted.append(
                 {
                     "id": n.get("id"),
                     "type": n.get("type"),
                     "created_at": n.get("createdAt"),
-                    "read": n.get("readAt") is not None,
+                    "read": is_read,
                     "issue": {
                         "identifier": n.get("issue", {}).get("identifier"),
                         "title": n.get("issue", {}).get("title"),

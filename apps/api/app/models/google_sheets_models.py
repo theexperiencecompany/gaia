@@ -1,6 +1,6 @@
 """Pydantic models for Google Sheets custom tools."""
 
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -33,8 +33,8 @@ class PivotValue(BaseModel):
     """Configuration for a value field in a pivot table."""
 
     column: str = Field(..., description="Column header name to aggregate")
-    aggregation: Literal["SUM", "COUNT", "AVERAGE", "MAX", "MIN", "COUNTA"] = Field(
-        "SUM", description="Aggregation function to apply"
+    aggregation: Optional[str] = Field(
+        "SUM", description="Aggregation function (SUM, AVERAGE, COUNT, MAX, MIN)"
     )
     name: Optional[str] = Field(
         None, description="Custom display name for this value (optional)"
@@ -96,10 +96,10 @@ class DataValidationInput(BaseModel):
     )
 
     # For number/date validation
-    min_value: Optional[Union[int, float, str]] = Field(
+    min_value: Optional[str] = Field(
         None, description="Minimum allowed value for number/date validation"
     )
-    max_value: Optional[Union[int, float, str]] = Field(
+    max_value: Optional[str] = Field(
         None, description="Maximum allowed value for number/date validation"
     )
 

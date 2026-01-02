@@ -10,9 +10,11 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 
 from typing import Any, Dict, List
 
+import httpx
 from app.config.loggers import chat_logger as logger
 from app.decorators import with_doc
 from app.models.notion_models import (
+    CreateTestPageInput,
     FetchPageAsMarkdownInput,
     InsertMarkdownInput,
     MovePageInput,
@@ -67,17 +69,21 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         try:
             title_response = composio.tools.execute(
                 slug="NOTION_GET_PAGE_PROPERTY_ACTION",
-                params={
+                arguments={
                     "page_id": request.page_id,
                     "property_id": "title",
                 },
-                auth_credentials=auth_credentials,
+                version=auth_credentials.get("version"),
+                dangerously_skip_version_check=True,
+                user_id=auth_credentials.get("user_id"),
             )
             title_data = (
                 title_response.data
                 if hasattr(title_response, "data")
                 else title_response
             )
+            if isinstance(title_data, dict) and "data" in title_data:
+                title_data = title_data["data"]
             # Extract title from results array
             results = title_data.get("results", [])
             for item in results:
@@ -90,12 +96,14 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         # Call NOTION_FETCH_ALL_BLOCK_CONTENTS via composio
         blocks_response = composio.tools.execute(
             slug="NOTION_FETCH_ALL_BLOCK_CONTENTS",
-            params={
+            arguments={
                 "block_id": request.page_id,
                 "recursive": request.recursive,
                 "page_size": 100,
             },
-            auth_credentials=auth_credentials,
+            version=auth_credentials.get("version"),
+            dangerously_skip_version_check=True,
+            user_id=auth_credentials.get("user_id"),
         )
 
         # Extract blocks from response
@@ -104,6 +112,10 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
             if hasattr(blocks_response, "data")
             else blocks_response
         )
+        if isinstance(blocks_data, dict) and "data" in blocks_data:
+            if "successful" in blocks_data and not blocks_data["successful"]:
+                raise ValueError(f"Failed to fetch blocks: {blocks_data.get('error')}")
+            blocks_data = blocks_data["data"]
         blocks = blocks_data.get("results", blocks_data.get("blocks", []))
 
         # Convert to markdown (with block IDs for insertion positioning)
@@ -150,11 +162,17 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         # Call NOTION_ADD_MULTIPLE_PAGE_CONTENT
         response = composio.tools.execute(
             slug="NOTION_ADD_MULTIPLE_PAGE_CONTENT",
-            params=params,
-            auth_credentials=auth_credentials,
+            arguments=params,
+            version=auth_credentials.get("version"),
+            dangerously_skip_version_check=True,
+            user_id=auth_credentials.get("user_id"),
         )
 
         data = response.data if hasattr(response, "data") else response
+        if isinstance(data, dict) and "data" in data:
+            if "successful" in data and not data["successful"]:
+                raise ValueError(f"Failed to insert markdown: {data.get('error')}")
+            data = data["data"]
 
         return {
             "parent_block_id": request.parent_block_id,
@@ -163,8 +181,71 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
             "response": data,
         }
 
+    @composio.tools.custom_tool(toolkit="NOTION")
+    @with_doc("Create a simple test page for integration testing.")
+    def CUSTOM_CREATE_TEST_PAGE(
+        request: CreateTestPageInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Create a new page in Notion."""
+        # This is a wrapper around NOTION_CREATE_PAGE but simplified
+
+        # We need to construct the payload as expected by Notion API
+        # Parent can be page or database, for test page usually it's a page or workspace (if no parent?)
+        # Actually Notion API requires a parent.
+        # If parent_page_id is not provided, we might fail or try to find a root page?
+        # For testing, we assume parent is provided or we might default to search?
+
+        headers = {
+            "Authorization": f"Bearer {auth_credentials.get('access_token')}",
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json",
+        }
+
+        if not request.parent_page_id:
+            # Search for any page to use as parent
+            try:
+                search_resp = httpx.post(
+                    "https://api.notion.com/v1/search",
+                    headers=headers,
+                    json={
+                        "filter": {"property": "object", "value": "page"},
+                        "page_size": 1,
+                    },
+                    timeout=30,
+                )
+                search_resp.raise_for_status()
+                results = search_resp.json().get("results", [])
+                if results:
+                    request.parent_page_id = results[0]["id"]
+                else:
+                    raise ValueError(
+                        "No parent page provided and no pages found in workspace."
+                    )
+            except Exception as e:
+                raise ValueError(f"Failed to search for parent page: {e}")
+
+        properties = {"title": [{"type": "text", "text": {"content": request.title}}]}
+
+        parent = {"page_id": request.parent_page_id}
+
+        try:
+            resp = httpx.post(
+                "https://api.notion.com/v1/pages",
+                headers=headers,
+                json={"parent": parent, "properties": properties},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {"page_id": data.get("id"), "url": data.get("url")}
+        except Exception as e:
+            raise RuntimeError(f"Failed to create page: {e}")
+
     return [
         "NOTION_MOVE_PAGE",
         "NOTION_FETCH_PAGE_AS_MARKDOWN",
         "NOTION_INSERT_MARKDOWN",
+        "NOTION_CUSTOM_CREATE_TEST_PAGE",
     ]

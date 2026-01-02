@@ -1,25 +1,30 @@
 """
 Twitter custom tool tests using pytest.
 
-Tests 5 Twitter tools:
-- CUSTOM_SEARCH_USERS (read-only)
-- CUSTOM_SCHEDULE_TWEET (creates draft only)
-- CUSTOM_BATCH_FOLLOW (affects account)
-- CUSTOM_BATCH_UNFOLLOW (cleanup)
-- CUSTOM_CREATE_THREAD (IRREVERSIBLE - tweets can't be deleted via API)
+Tests Twitter tools including destructive actions (Follow/Unfollow, Thread creation).
+Requires manual confirmation for destructive tests.
+Unfollow targets are read from config/env (TWITTER_UNFOLLOW_USERS).
 
 Usage:
-    pytest tests/composio_tools/test_twitter_pytest.py -v --user-id USER_ID
-
-WARNING: Creating tweets affects your real Twitter account.
+    pytest -s tests/composio_tools/test_twitter.py -v --user-id USER_ID
 """
 
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pytest_check import check
 
+from tests.composio_tools.config_utils import get_integration_config
 from tests.composio_tools.conftest import execute_tool
+
+
+# Mock get_stream_writer for tools that use LangGraph context
+@pytest.fixture(autouse=True)
+def mock_stream_writer():
+    with patch("app.agents.tools.twitter_tool.get_stream_writer") as mock:
+        mock.return_value = MagicMock()
+        yield mock
 
 
 class TestTwitterReadOperations:
@@ -68,48 +73,91 @@ class TestTwitterDraftOperations:
 
 
 class TestTwitterDestructiveOperations:
-    """Tests that affect real Twitter account - run manually."""
+    """Tests that affect real Twitter account - requires confirmation."""
 
-    @pytest.mark.skip(reason="Affects real account. Run manually.")
-    def test_batch_follow(self, composio_client, user_id):
-        """Test CUSTOM_BATCH_FOLLOW follows users.
+    def test_batch_follow(self, composio_client, user_id, confirm_action):
+        """Test CUSTOM_BATCH_FOLLOW follows users."""
+        target = "testuser"  # Placeholder
+        confirm_action(f"About to FOLLOW user '{target}' on Twitter.")
 
-        NOTE: This will actually follow users on your account.
-        """
-        # Test follows a specific user
         result = execute_tool(
             composio_client,
             "TWITTER_CUSTOM_BATCH_FOLLOW",
-            {"usernames": ["testuser"]},  # Replace with real username
+            {"usernames": [target]},
             user_id,
         )
 
         assert result.get("successful"), f"API call failed: {result.get('error')}"
 
-    @pytest.mark.skip(reason="Depends on BATCH_FOLLOW. Run manually.")
-    def test_batch_unfollow(self, composio_client, user_id):
-        """Test CUSTOM_BATCH_UNFOLLOW unfollows users."""
-        pytest.skip("Requires users to be followed first")
+        # Cleanup best effort
+        try:
+            execute_tool(
+                composio_client,
+                "TWITTER_CUSTOM_BATCH_UNFOLLOW",
+                {"usernames": [target]},
+                user_id,
+            )
+        except Exception:
+            pass
 
-    @pytest.mark.skip(reason="IRREVERSIBLE: Tweets cannot be deleted via API.")
-    def test_create_thread(self, composio_client, user_id):
-        """Test CUSTOM_CREATE_THREAD creates a tweet thread.
-
-        WARNING: Tweets CANNOT be deleted via this API.
-        Must be manually deleted from Twitter website.
+    def test_batch_unfollow(self, composio_client, user_id, confirm_action):
         """
+        Test CUSTOM_BATCH_UNFOLLOW unfollows users defined in config.
+        Reads keys from TWITTER_UNFOLLOW_USERS env var.
+        """
+        # Load targets from config
+        config = get_integration_config("twitter")
+        users_raw = config.get("unfollow_users")
+
+        targets = []
+        if isinstance(users_raw, list):
+            targets = users_raw
+        elif isinstance(users_raw, str) and users_raw:
+            # Handle comma-separated string from env var
+            targets = [u.strip() for u in users_raw.split(",") if u.strip()]
+
+        if not targets:
+            pytest.skip(
+                "No users configured for unfollow test (set TWITTER_UNFOLLOW_USERS)"
+            )
+
+        confirm_action(f"About to UNFOLLOW these users on Twitter: {targets}")
+
+        result = execute_tool(
+            composio_client,
+            "TWITTER_CUSTOM_BATCH_UNFOLLOW",
+            {"usernames": targets},
+            user_id,
+        )
+
+        assert result.get("successful"), f"API call failed: {result.get('error')}"
+        print(f"\nUnfollowed: {targets}")
+
+    def test_create_thread(self, composio_client, user_id, confirm_action):
+        """Test CUSTOM_CREATE_THREAD creates a tweet thread."""
+
+        confirm_action(
+            "About to CREATE A LIVE THREAD on Twitter.\nNote: You MUST delete this manually."
+        )
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        tweets = [
+            f"🧪 Test thread created by @trygaia (1/2)\n\nAutomated QA test {timestamp}.",
+            f"Second tweet in test thread (2/2)\n\nEnd of test {timestamp}.",
+        ]
+
         result = execute_tool(
             composio_client,
             "TWITTER_CUSTOM_CREATE_THREAD",
-            {
-                "tweets": [
-                    "🧪 Test thread from pytest (1/2)",
-                    "Second tweet in test thread (2/2)",
-                ],
-            },
+            {"tweets": tweets},
             user_id,
         )
 
         assert result.get("successful"), f"API call failed: {result.get('error')}"
         data = result.get("data", {})
-        assert data.get("thread_url"), "Should return thread_url"
+        thread_url = data.get("thread_url") or data.get("url")
+
+        assert thread_url, "Should return thread_url"
+
+        print("\n\n🛑 TEST COMPLETE. PLEASE MANUALLY DELETE THE THREAD:")
+        print(f"🔗 {thread_url}\n")

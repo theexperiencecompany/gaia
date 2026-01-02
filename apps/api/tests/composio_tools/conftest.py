@@ -12,12 +12,17 @@ Usage:
 """
 
 import asyncio
-from datetime import datetime, timedelta
-from typing import Any, Dict, Generator
+import json
+from typing import Any, Dict
 
+import app.patches  # noqa: F401, E402
 import nest_asyncio
 import pytest
+from app.core.lazy_loader import providers
+from app.services.composio.composio_service import get_composio_service
 from pytest_check import check  # noqa: F401 - for soft assertions
+
+from tests.composio_tools.config_utils import get_user_id
 
 # Apply nest_asyncio for nested event loops
 nest_asyncio.apply()
@@ -28,7 +33,7 @@ def pytest_addoption(parser):
     parser.addoption(
         "--user-id",
         action="store",
-        required=True,
+        default=None,  # No longer required - uses config/env as fallback
         help="User ID for Composio authentication",
     )
     parser.addoption(
@@ -37,12 +42,29 @@ def pytest_addoption(parser):
         default=False,
         help="Skip tests that create/modify/delete events",
     )
+    parser.addoption(
+        "--yes",
+        action="store_true",
+        default=False,
+        help="Automatically confirm all interactive prompts",
+    )
 
 
 @pytest.fixture(scope="session")
 def user_id(request) -> str:
-    """Get user ID from CLI argument."""
-    return request.config.getoption("--user-id")
+    """Get user ID from CLI argument or config/env."""
+    cli_user_id = request.config.getoption("--user-id")
+    if cli_user_id:
+        return cli_user_id
+
+    # Fall back to config/env
+
+    config_user_id = get_user_id()
+
+    if not config_user_id:
+        pytest.fail("No user ID provided. Set EVAL_USER_ID or use --user-id flag.")
+
+    return config_user_id
 
 
 @pytest.fixture(scope="session")
@@ -65,8 +87,8 @@ def composio_client(user_id: str):
 
     This is a session-scoped fixture that initializes once for all tests.
     """
+    # Import here to avoid triggering settings/Infisical at module load time
     from app.agents.evals.initialization import init_eval_providers
-    from app.core.lazy_loader import providers
 
     # Run async initialization
     loop = asyncio.get_event_loop()
@@ -82,110 +104,82 @@ def composio_client(user_id: str):
 
 
 def execute_tool(
-    composio_client, tool_name: str, params: Dict[str, Any], user_id: str
+    composio_client, tool_name: str, payload: Dict[str, Any], user_id: str
 ) -> Dict[str, Any]:
-    """Execute a Composio tool and return the result.
+    """
+    Execute a tool using ComposioService and LangChain adapter.
 
     Args:
-        composio_client: The Composio client
+        composio_client: Ignored (kept for compatibility), uses provider service
         tool_name: Name of the tool to execute
-        params: Parameters for the tool
-        user_id: User ID for execution context
+        payload: Tool arguments
+        user_id: User ID to execute as
 
     Returns:
-        The tool execution result
+        Dict containing 'successful', 'data', etc.
     """
-    result = composio_client.tools.execute(
-        slug=tool_name,
-        arguments=params,
-        user_id=user_id,
-    )
-    return result.data if hasattr(result, "data") else result
+    # Get the service which provides LangChain-compatible tools
+    composio_service = get_composio_service()
+
+    # Get the specific tool with all hooks applied
+    tool = composio_service.get_tool(tool_name, user_id=user_id)
+    if not tool:
+        raise ValueError(f"Tool {tool_name} not found")
+
+    # Invoke the tool using the LangChain interface
+    try:
+        # Note: tool.invoke() calls _run() which calls client.tools.execute()
+        # and returns the full response dict (successful, data, etc.)
+        result = tool.invoke(payload)
+
+        # If result is a string (common for custom tools), try to parse it
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except json.JSONDecodeError:
+                # If not JSON, wrap it as data
+                # Assuming success if it returned without error
+                result = {"successful": True, "data": result}
+
+        # Also check if 'data' field is a JSON string (Composio sometimes returns stringified data)
+        if isinstance(result, dict) and isinstance(result.get("data"), str):
+            try:
+                result["data"] = json.loads(result["data"])
+            except (json.JSONDecodeError, TypeError):
+                pass  # Keep as string if not valid JSON
+
+        return result
+    except Exception as e:
+        # Fallback for errors during invocation that behave like tool failures
+        error_msg = str(e)
+        if hasattr(e, "response") and hasattr(e.response, "text"):
+            error_msg += f" | Response: {e.response.text}"
+
+        return {"successful": False, "error": error_msg, "data": None}
 
 
-@pytest.fixture(scope="session")
-def calendar_id(composio_client, user_id: str) -> str:
-    """Get the primary calendar ID for the user."""
-    result = execute_tool(
-        composio_client,
-        "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS",
-        {"short": True},
-        user_id,
-    )
-
-    if not result.get("successful"):
-        pytest.fail(f"Failed to list calendars: {result.get('error')}")
-
-    calendars = result.get("data", {}).get("calendars", [])
-    if not calendars:
-        pytest.fail("No calendars found for user")
-
-    # Prefer primary calendar, otherwise use first available
-    for cal in calendars:
-        if cal.get("primary"):
-            return cal["id"]
-    return calendars[0]["id"]
-
-
-@pytest.fixture(scope="session")
-def test_event(
-    composio_client, user_id: str, calendar_id: str
-) -> Generator[Dict[str, Any], None, None]:
-    """Create a test event for the session and clean up after.
-
-    Yields:
-        Dict with event_id and calendar_id
+@pytest.fixture(scope="function")
+def confirm_action(request):
     """
-    # Create event for 2 hours from now
-    now = datetime.now()
-    start_time = (now + timedelta(hours=2)).replace(second=0, microsecond=0)
+    Fixture to request user confirmation for destructive actions.
+    Requires running pytest with '-s' (no capture) to work interactively.
+    """
 
-    result = execute_tool(
-        composio_client,
-        "GOOGLECALENDAR_CUSTOM_CREATE_EVENT",
-        {
-            "events": [
-                {
-                    "summary": "[PYTEST] Session Test Event",
-                    "description": "Auto-created by pytest suite. Will be auto-deleted.",
-                    "calendar_id": calendar_id,
-                    "start_datetime": start_time.isoformat(),
-                    "duration_hours": 1,
-                    "duration_minutes": 0,
-                    "is_all_day": False,
-                }
-            ],
-            "confirm_immediately": True,
-        },
-        user_id,
-    )
+    def _confirm(message: str) -> None:
+        # Check for non-interactive mode flag (optional override)
+        if request.config.getoption("--yes", default=False):
+            return
 
-    if not result.get("successful"):
-        pytest.fail(f"Failed to create test event: {result.get('error')}")
+        full_msg = f"\n[CONFIRMATION REQUIRED] {message}\nProceed? (y/N): "
 
-    created = result.get("data", {}).get("created_events", [])
-    if not created:
-        pytest.fail("No event created in response")
+        try:
+            response = input(full_msg)
+        except OSError:
+            pytest.fail(
+                "Cannot read input. Run pytest with '-s' to enable interactive confirmation."
+            )
 
-    event_info = {
-        "event_id": created[0].get("event_id"),
-        "calendar_id": created[0].get("calendar_id") or calendar_id,
-    }
+        if response.lower() not in ["y", "yes"]:
+            pytest.skip("Skipped by user")
 
-    yield event_info
-
-    # Cleanup: delete the test event
-    execute_tool(
-        composio_client,
-        "GOOGLECALENDAR_CUSTOM_DELETE_EVENT",
-        {
-            "events": [
-                {
-                    "event_id": event_info["event_id"],
-                    "calendar_id": event_info["calendar_id"],
-                }
-            ],
-            "send_updates": "none",
-        },
-        user_id,
-    )
+    return _confirm

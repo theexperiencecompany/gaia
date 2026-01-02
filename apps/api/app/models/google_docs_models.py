@@ -44,3 +44,9 @@ class CreateTOCInput(BaseModel):
         default="Table of Contents",
         description="Title for the TOC section",
     )
+
+
+class DeleteDocInput(BaseModel):
+    """Input for deleting a Google Doc."""
+
+    document_id: str = Field(..., description="ID of the document to delete")

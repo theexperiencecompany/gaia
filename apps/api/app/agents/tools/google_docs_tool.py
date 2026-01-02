@@ -12,9 +12,12 @@ from typing import Any, Dict, List
 import httpx
 from app.config.loggers import chat_logger as logger
 from app.decorators import with_doc
-from app.models.google_docs_models import CreateTOCInput, ShareDocInput
+from app.models.google_docs_models import CreateTOCInput, DeleteDocInput, ShareDocInput
 from app.templates.docstrings.google_docs_tool_docs import (
     CUSTOM_CREATE_TOC as CUSTOM_CREATE_TOC_DOC,
+)
+from app.templates.docstrings.google_docs_tool_docs import (
+    CUSTOM_DELETE_DOC as CUSTOM_DELETE_DOC_DOC,
 )
 from app.templates.docstrings.google_docs_tool_docs import (
     CUSTOM_SHARE_DOC as CUSTOM_SHARE_DOC_DOC,
@@ -117,17 +120,38 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Create a Table of Contents by parsing document headings."""
-        # Step 1: Get document content using composio.tools.execute
-        get_doc_result = composio.tools.execute(
-            slug="GOOGLEDOCS_GET_DOCUMENT_BY_ID",
-            params={"id": request.document_id},
-            auth_credentials=auth_credentials,
-        )
+        try:
+            get_doc_result = composio.tools.execute(
+                slug="GOOGLEDOCS_GET_DOCUMENT_BY_ID",
+                arguments={"id": request.document_id},
+                version=auth_credentials.get("version"),
+                dangerously_skip_version_check=True,
+                user_id=auth_credentials.get("user_id"),
+            )
+        except TypeError as e:
+            print(f"DEBUG: TypeError in execute: {e}")
+            raise
 
-        doc_data = (
+        # Unwrap response if it's a dict with data/successful keys
+        response_data = (
             get_doc_result.data if hasattr(get_doc_result, "data") else get_doc_result
         )
+        if isinstance(response_data, dict) and "data" in response_data:
+            if "successful" in response_data and not response_data["successful"]:
+                raise ValueError(
+                    f"Failed to get document: {response_data.get('error')}"
+                )
+            doc_data = response_data["data"]
+            # Handle double wrapping if data is stringified JSON
+            if isinstance(doc_data, str):
+                import json
+
+                try:
+                    doc_data = json.loads(doc_data)
+                except Exception:
+                    pass  # nosec
+        else:
+            doc_data = response_data
 
         if not doc_data or "body" not in doc_data:
             raise ValueError("Failed to get document or document has no body content")
@@ -143,17 +167,26 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         # Step 4: Insert TOC at specified position using composio.tools.execute
         insert_result = composio.tools.execute(
             slug="GOOGLEDOCS_INSERT_TEXT_ACTION",
-            params={
+            arguments={
                 "document_id": request.document_id,
                 "text": toc_text,
                 "insertion_index": request.insertion_index,
             },
-            auth_credentials=auth_credentials,
+            version=auth_credentials.get("version"),
+            dangerously_skip_version_check=True,
+            user_id=auth_credentials.get("user_id"),
         )
 
-        insert_data = (
+        # Unwrap response if it's a dict with data/successful keys
+        response_data = (
             insert_result.data if hasattr(insert_result, "data") else insert_result
         )
+        if isinstance(response_data, dict) and "data" in response_data:
+            if "successful" in response_data and not response_data["successful"]:
+                raise ValueError(f"Failed to insert text: {response_data.get('error')}")
+            insert_data = response_data["data"]
+        else:
+            insert_data = response_data
 
         doc_url = f"https://docs.google.com/document/d/{request.document_id}/edit"
 
@@ -166,7 +199,35 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
             "insert_response": insert_data,
         }
 
+    @composio.tools.custom_tool(toolkit="GOOGLEDOCS")
+    @with_doc(CUSTOM_DELETE_DOC_DOC)
+    def CUSTOM_DELETE_DOC(
+        request: DeleteDocInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Delete a file permanently using Drive API."""
+        access_token = _get_access_token(auth_credentials)
+        headers = _auth_headers(access_token)
+
+        url = f"{DRIVE_API_BASE}/files/{request.document_id}"
+
+        try:
+            resp = _http_client.delete(url, headers=headers)
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Error deleting doc {request.document_id}: {e}")
+            raise RuntimeError(
+                f"Failed to delete document: {e.response.status_code} - {e.response.text}"
+            )
+
+        return {
+            "successful": True,
+            "document_id": request.document_id,
+        }
+
     return [
         "GOOGLEDOCS_CUSTOM_SHARE_DOC",
         "GOOGLEDOCS_CUSTOM_CREATE_TOC",
+        "GOOGLEDOCS_CUSTOM_DELETE_DOC",
     ]

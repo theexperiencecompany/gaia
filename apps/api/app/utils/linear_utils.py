@@ -69,6 +69,9 @@ def graphql_request(
 
     if "errors" in result:
         error_messages = [e.get("message", str(e)) for e in result["errors"]]
+        print(
+            f"DEBUG: GraphQL Errors: {error_messages} Query: {query} Variables: {variables}"
+        )
         raise Exception(f"GraphQL errors: {'; '.join(error_messages)}")
 
     return result.get("data", {})
@@ -277,7 +280,6 @@ query MyIssues($assigneeId: ID!, $includeCompleted: Boolean!, $first: Int!) {
             completedAt: { null: $includeCompleted }
         }
         first: $first
-        orderBy: priority
     ) {
         nodes {
             id
@@ -290,7 +292,6 @@ query MyIssues($assigneeId: ID!, $includeCompleted: Boolean!, $first: Int!) {
             cycle { id name }
             parent { id identifier title }
             assignee { id name }
-            slaBreachesAt
         }
     }
 }
@@ -298,7 +299,7 @@ query MyIssues($assigneeId: ID!, $includeCompleted: Boolean!, $first: Int!) {
 
 QUERY_SEARCH_ISSUES = """
 query SearchIssues($query: String!, $first: Int!) {
-    searchIssues(query: $query, first: $first) {
+    searchIssues(term: $query, first: $first) {
         nodes {
             id
             identifier
@@ -344,8 +345,8 @@ query IssueById($id: String!) {
                 toState { id name }
                 fromAssignee { id name }
                 toAssignee { id name }
-                addedLabels { nodes { id name } }
-                removedLabels { nodes { id name } }
+                addedLabels { id name }
+                removedLabels { id name }
             }
         }
         attachments { nodes { id title url } }
@@ -354,46 +355,39 @@ query IssueById($id: String!) {
 """
 
 QUERY_ISSUE_BY_IDENTIFIER = """
-query IssueByIdentifier($teamKey: String!, $number: Float!) {
-    issueVcsBranchSearch(branchName: "") {
-        nodes { id }
-    }
-    teams(filter: { key: { eq: $teamKey } }) {
-        nodes {
-            issue(number: $number) {
+query IssueByIdentifier($identifier: String!) {
+    issue(id: $identifier) {
+        id
+        identifier
+        title
+        description
+        priority
+        state { id name type }
+        dueDate
+        estimate
+        team { id key name }
+        cycle { id name }
+        project { id name }
+        assignee { id name email }
+        creator { id name }
+        parent { id identifier title }
+        children { nodes { id identifier title state { name } } }
+        relations { nodes { id type relatedIssue { id identifier title } } }
+        comments { nodes { id body createdAt user { id name } } }
+        history(first: 10) {
+            nodes {
                 id
-                identifier
-                title
-                description
-                priority
-                state { id name type }
-                dueDate
-                estimate
-                team { id key name }
-                cycle { id name }
-                project { id name }
-                assignee { id name email }
-                creator { id name }
-                parent { id identifier title }
-                children { nodes { id identifier title state { name } } }
-                relations { nodes { id type relatedIssue { id identifier title } } }
-                comments { nodes { id body createdAt user { id name } } }
-                history(first: 10) {
-                    nodes {
-                        id
-                        createdAt
-                        actor { id name }
-                        fromState { id name }
-                        toState { id name }
-                        fromAssignee { id name }
-                        toAssignee { id name }
-                        addedLabels { nodes { id name } }
-                        removedLabels { nodes { id name } }
-                    }
-                }
-                attachments { nodes { id title url } }
+                createdAt
+                actor { id name }
+                fromState { id name }
+                toState { id name }
+                fromAssignee { id name }
+                toAssignee { id name }
+                addedLabels { id name }
+                removedLabels { id name }
             }
         }
+        attachments { nodes { id title url } }
     }
 }
 """
@@ -412,8 +406,8 @@ query IssueHistory($issueId: String!, $first: Int!) {
                 toAssignee { id name }
                 fromPriority
                 toPriority
-                addedLabels { nodes { id name } }
-                removedLabels { nodes { id name } }
+                addedLabels { id name }
+                removedLabels { id name }
             }
         }
     }
@@ -447,9 +441,8 @@ query ActiveCycles {
 """
 
 QUERY_NOTIFICATIONS = """
-query Notifications($includeRead: Boolean!, $first: Int!) {
+query Notifications($first: Int!) {
     notifications(
-        filter: { readAt: { null: $includeRead } }
         first: $first
         orderBy: createdAt
     ) {
@@ -458,10 +451,12 @@ query Notifications($includeRead: Boolean!, $first: Int!) {
             type
             createdAt
             readAt
-            issue {
-                id
-                identifier
-                title
+            ... on IssueNotification {
+                issue {
+                    id
+                    identifier
+                    title
+                }
             }
             actor { id name }
         }
@@ -483,7 +478,7 @@ mutation CreateIssue($input: IssueCreateInput!) {
 """
 
 MUTATION_CREATE_RELATION = """
-mutation CreateRelation($issueId: String!, $relatedIssueId: String!, $type: String!) {
+mutation CreateRelation($issueId: String!, $relatedIssueId: String!, $type: IssueRelationType!) {
     issueRelationCreate(input: {
         issueId: $issueId
         relatedIssueId: $relatedIssueId

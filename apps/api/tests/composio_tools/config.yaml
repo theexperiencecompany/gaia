@@ -1,0 +1,42 @@
+# Composio Tool Test Configuration
+#
+# Environment variables can be referenced using ${VAR_NAME} syntax.
+# Missing env vars will use empty string as default.
+#
+# Required env vars:
+#   EVAL_USER_ID - user ID
+
+# Common settings used by all integrations
+common:
+  user_id: ${EVAL_USER_ID}
+
+# Integration-specific settings
+# Tests create their own temporary resources and cleanup after.
+
+google_calendar:
+  # Creates events via CUSTOM_CREATE_EVENT, deletes after test
+
+gmail:
+  # Creates drafts for testing (no emails sent)
+
+google_docs:
+  # Creates temp doc via GOOGLEDOCS_CREATE_DOCUMENT, deletes via Google Drive
+  share_email: ${TEST_SHARE_EMAIL}  # Email to share docs/sheets with for testing
+
+
+google_sheets:
+  # Creates temp spreadsheet via GOOGLESHEETS_CREATE_FILE_FROM_TEXT, deletes after
+  share_email: ${TEST_SHARE_EMAIL}  # Email to share docs/sheets with for testing
+
+notion:
+  # Creates temp page via NOTION_CREATE_A_PAGE, archives after (no true delete)
+
+linear:
+  # Read-only tests - requires connected account
+
+linkedin:
+  # All destructive, skipped by default
+
+twitter:
+  # Some tools require LangGraph agent context
+  unfollow_users: ${TWITTER_UNFOLLOW_USERS}

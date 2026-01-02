@@ -3,8 +3,6 @@
 All HTTP calls are synchronous using httpx.Client to avoid event loop issues.
 """
 
-import base64
-from email.mime.text import MIMEText
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -156,7 +154,7 @@ def register_gmail_custom_tools(composio: Composio):
             url, json=payload, headers=_auth_headers(auth_credentials)
         )
         resp.raise_for_status()
-        return {"success": True, "data": resp.json()}
+        return {}
 
     @composio.tools.custom_tool(toolkit="gmail")
     def MARK_AS_UNREAD(
@@ -181,7 +179,7 @@ def register_gmail_custom_tools(composio: Composio):
             url, json=payload, headers=_auth_headers(auth_credentials)
         )
         resp.raise_for_status()
-        return {"success": True, "data": resp.json()}
+        return {}
 
     @composio.tools.custom_tool(toolkit="gmail")
     def ARCHIVE_EMAIL(
@@ -207,7 +205,7 @@ def register_gmail_custom_tools(composio: Composio):
             url, json=payload, headers=_auth_headers(auth_credentials)
         )
         resp.raise_for_status()
-        return {"success": True, "data": resp.json()}
+        return {}
 
     @composio.tools.custom_tool(toolkit="gmail")
     def STAR_EMAIL(
@@ -238,7 +236,7 @@ def register_gmail_custom_tools(composio: Composio):
             url, json=payload, headers=_auth_headers(auth_credentials)
         )
         resp.raise_for_status()
-        return {"success": True, "action": action, "data": resp.json()}
+        return {"action": action}
 
     @composio.tools.custom_tool(toolkit="gmail")
     def GET_UNREAD_COUNT(
@@ -265,60 +263,8 @@ def register_gmail_custom_tools(composio: Composio):
         resp.raise_for_status()
         data = resp.json()
         return {
-            "success": True,
             "unreadCount": data.get("messagesUnread"),
             "label_id": request.label_id,
-            "label_name": data.get("name", request.label_id),
-        }
-
-    @composio.tools.custom_tool(toolkit="gmail")
-    def SCHEDULE_SEND(
-        request: ScheduleSendInput,
-        execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Schedule an email to be sent later.
-
-        Creates a draft with scheduling metadata. The draft is stored
-        in Gmail with an X-Scheduled-Send-At header containing the
-        requested send time. An external scheduler should process
-        and send the email at the specified time.
-
-        Args:
-            request.recipient_email: Email address of the recipient
-            request.subject: Subject line of the email
-            request.body: Body content of the email
-            request.send_at: ISO 8601 timestamp for when to send
-            request.cc: Optional CC email addresses (comma-separated)
-            request.bcc: Optional BCC email addresses (comma-separated)
-
-        Returns:
-            Dict with success status, draft_id, and scheduled_for timestamp
-        """
-
-        msg = MIMEText(request.body)
-        msg["to"] = request.recipient_email
-        msg["subject"] = request.subject
-        if request.cc:
-            msg["cc"] = request.cc
-        if request.bcc:
-            msg["bcc"] = request.bcc
-        msg["X-Scheduled-Send-At"] = request.send_at
-        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
-
-        url = "https://gmail.googleapis.com/gmail/v1/users/me/drafts"
-        payload = {"message": {"raw": raw}}
-        resp = _http_client.post(
-            url, json=payload, headers=_auth_headers(auth_credentials)
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        draft_id = data.get("id", "unknown")
-        return {
-            "success": True,
-            "message": f"Email scheduled for {request.send_at}",
-            "draft_id": draft_id,
-            "scheduled_for": request.send_at,
         }
 
     @composio.tools.custom_tool(toolkit="gmail")
@@ -387,12 +333,8 @@ def register_gmail_custom_tools(composio: Composio):
         modify_resp.raise_for_status()
 
         return {
-            "success": True,
-            "message": f"Snoozed {len(request.message_ids)} email(s) until {request.snooze_until}",
-            "snoozed_count": len(request.message_ids),
             "snooze_until": request.snooze_until,
             "snoozed_label_id": snoozed_label_id,
-            "note": "An external scheduler should unsnooze these messages at the specified time",
         }
 
     return [
@@ -401,6 +343,5 @@ def register_gmail_custom_tools(composio: Composio):
         "GMAIL_ARCHIVE_EMAIL",
         "GMAIL_STAR_EMAIL",
         "GMAIL_GET_UNREAD_COUNT",
-        "GMAIL_SCHEDULE_SEND",
         "GMAIL_SNOOZE_EMAIL",
     ]

@@ -123,9 +123,6 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
             "total_failed": len(errors),
         }
 
-    # ========================================================================
-    # CUSTOM_CREATE_PIVOT_TABLE
-    # ========================================================================
     @composio.tools.custom_tool(toolkit="GOOGLESHEETS")
     @with_doc(CREATE_PIVOT_DOC)
     def CUSTOM_CREATE_PIVOT_TABLE(
@@ -241,6 +238,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
             ]
         }
 
+        print(f"DEBUG: Pivot Table Batch Request: {batch_request}")
         resp = _http_client.post(
             f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
             headers=headers,
@@ -366,12 +364,18 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
             ]
         }
 
-        resp = _http_client.post(
-            f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
-            headers=headers,
-            json=batch_request,
-        )
-        resp.raise_for_status()
+        try:
+            resp = _http_client.post(
+                f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
+                headers=headers,
+                json=batch_request,
+            )
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Error setting data validation: {e.response.text}")
+            raise RuntimeError(
+                f"Failed to set data validation: {e.response.text}"
+            ) from e
 
         url = f"https://docs.google.com/spreadsheets/d/{request.spreadsheet_id}/edit"
 
@@ -542,8 +546,39 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
             raise ValueError(f"Destination sheet '{dest_sheet_name}' not found")
 
         # Parse data range
-        data_range = parse_a1_range(request.data_range)
-        data_range["sheetId"] = source_sheet_id
+        range_spec = parse_a1_range(request.data_range)
+
+        # Calculate width to decide how to split domain/series
+        start_col = range_spec.get("startColumnIndex", 0)
+        # Assuming endColumnIndex is present if start is. If not, it's a full row/sheet which is complex.
+        # But parse_a1_range usually returns it for standard A1:B10 ranges.
+        # If undefined, we can't easily split without knowing sheet size.
+        # We'll assume it's defined or strict single column if not.
+        end_col = range_spec.get("endColumnIndex", start_col + 1)
+        width = end_col - start_col
+
+        if width > 1:
+            # First column is domain (X-axis/Labels)
+            domain_range = dict(range_spec)
+            domain_range["endColumnIndex"] = start_col + 1
+            domain_range["sheetId"] = source_sheet_id
+
+            # Remaining columns are series (Y-axis/Values)
+            series_ranges = []
+            for i in range(start_col + 1, end_col):
+                s_range = dict(range_spec)
+                s_range["startColumnIndex"] = i
+                s_range["endColumnIndex"] = i + 1
+                s_range["sheetId"] = source_sheet_id
+                series_ranges.append(s_range)
+        else:
+            # Single column - use for both? Or just series?
+            # Usually users specify separate domain if needed.
+            # For now, treat as series, domain might be row nums.
+            r_spec = dict(range_spec)
+            r_spec["sheetId"] = source_sheet_id
+            domain_range = r_spec
+            series_ranges = [r_spec]
 
         # Parse anchor cell
         anchor = parse_a1_range(request.anchor_cell)
@@ -563,20 +598,31 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
 
         # Build chart spec
         if request.chart_type == "PIE":
-            # Pie charts use different structure
+            # Pie charts use different structure (single series usually)
             chart_spec: Dict[str, Any] = {
                 "pieChart": {
                     "legendPosition": request.legend_position,
                     "domain": {
-                        "sourceRange": {"sources": [data_range]},
+                        "sourceRange": {"sources": [domain_range]},
                     },
                     "series": {
-                        "sourceRange": {"sources": [data_range]},
+                        "sourceRange": {"sources": [series_ranges[0]]},
                     },
                 }
             }
         else:
             # Basic chart structure for bar, line, column, etc.
+            series_list = []
+            for s_range in series_ranges:
+                series_list.append(
+                    {
+                        "series": {
+                            "sourceRange": {"sources": [s_range]},
+                        },
+                        "targetAxis": "LEFT_AXIS",
+                    }
+                )
+
             chart_spec = {
                 "basicChart": {
                     "chartType": api_chart_type,
@@ -584,18 +630,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
                     "domains": [
                         {
                             "domain": {
-                                "sourceRange": {"sources": [data_range]},
+                                "sourceRange": {"sources": [domain_range]},
                             }
                         }
                     ],
-                    "series": [
-                        {
-                            "series": {
-                                "sourceRange": {"sources": [data_range]},
-                            },
-                            "targetAxis": "LEFT_AXIS",
-                        }
-                    ],
+                    "series": series_list,
                     "headerCount": 1,
                 }
             }
@@ -642,12 +681,16 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
 
         batch_request = {"requests": [{"addChart": chart_request}]}
 
-        resp = _http_client.post(
-            f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
-            headers=headers,
-            json=batch_request,
-        )
-        resp.raise_for_status()
+        try:
+            resp = _http_client.post(
+                f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
+                headers=headers,
+                json=batch_request,
+            )
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Error creating chart: {e.response.text}")
+            raise RuntimeError(f"Failed to create chart: {e.response.text}") from e
 
         result = resp.json()
         chart_id = None

@@ -29,28 +29,36 @@ def extract_headings_from_document(
         paragraph = element["paragraph"]
         paragraph_style = paragraph.get("paragraphStyle", {})
         named_style = paragraph_style.get("namedStyleType", "")
+        # Extract text content first
+        text_parts = []
+        for text_element in paragraph.get("elements", []):
+            if "textRun" in text_element:
+                text_parts.append(text_element["textRun"]["content"])
+        full_text = "".join(text_parts).strip()
 
-        # Check if it's a heading
+        # Check if it's a heading (Native Style OR Markdown)
+        level = None
+
         if named_style in HEADING_STYLE_MAP:
             level = HEADING_STYLE_MAP[named_style]
-            if level not in include_levels:
-                continue
+        elif full_text.startswith("#"):
+            # Check for markdown style headings (e.g. "# Heading")
+            import re
 
-            # Extract text from paragraph elements
-            text_parts = []
-            for text_element in paragraph.get("elements", []):
-                if "textRun" in text_element:
-                    text_parts.append(text_element["textRun"]["content"])
+            match = re.match(r"^(#+)\s+(.+)$", full_text)
+            if match:
+                level = len(match.group(1))
+                # Update text to use content without hash marks
+                full_text = match.group(2)
 
-            heading_text = "".join(text_parts).strip()
-            if heading_text:
-                headings.append(
-                    {
-                        "level": level,
-                        "text": heading_text,
-                        "start_index": element.get("startIndex", 0),
-                    }
-                )
+        if level and level in include_levels and full_text:
+            headings.append(
+                {
+                    "level": level,
+                    "text": full_text,
+                    "start_index": element.get("startIndex", 0),
+                }
+            )
 
     return headings
 

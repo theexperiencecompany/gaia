@@ -1984,6 +1984,7 @@ dev = [
     { name = "mypy" },
     { name = "pandas-stubs" },
     { name = "pre-commit" },
+    { name = "python-dotenv" },
     { name = "ruff" },
     { name = "types-beautifulsoup4" },
     { name = "types-cachetools" },
@@ -2003,6 +2004,7 @@ dev = [
     { name = "types-pyopenssl" },
     { name = "types-python-dateutil" },
     { name = "types-pytz" },
+    { name = "types-pyyaml" },
     { name = "types-redis" },
     { name = "types-regex" },
     { name = "types-requests" },
@@ -2145,6 +2147,7 @@ dev = [
     { name = "mypy", specifier = ">=1.16.1" },
     { name = "pandas-stubs", specifier = ">=2.3.0.250703" },
     { name = "pre-commit", specifier = ">=4.2.0" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "ruff", specifier = ">=0.4.4" },
     { name = "types-beautifulsoup4", specifier = ">=4.12.0.20250516" },
     { name = "types-cachetools", specifier = ">=6.0.0.20250525" },
@@ -2164,6 +2167,7 @@ dev = [
     { name = "types-pyopenssl", specifier = ">=24.1.0.20240722" },
     { name = "types-python-dateutil", specifier = ">=2.9.0.20250708" },
     { name = "types-pytz", specifier = ">=2025.2.0.20250516" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
     { name = "types-redis" },
     { name = "types-regex", specifier = ">=2024.11.6.20250403" },
     { name = "types-requests", specifier = ">=2.32.4.20250611" },
@@ -7987,6 +7991,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/40/ff/c047ddc68c803b46470a357454ef76f4acd8c1088f5cc4891cdd909bfcf6/types_pytz-2025.2.0.20251108.tar.gz", hash = "sha256:fca87917836ae843f07129567b74c1929f1870610681b4c92cb86a3df5817bdb", size = 10961, upload-time = "2025-11-08T02:55:57.001Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e7/c1/56ef16bf5dcd255155cc736d276efa6ae0a5c26fd685e28f0412a4013c01/types_pytz-2025.2.0.20251108-py3-none-any.whl", hash = "sha256:0f1c9792cab4eb0e46c52f8845c8f77cf1e313cb3d68bf826aa867fe4717d91c", size = 10116, upload-time = "2025-11-08T02:55:56.194Z" },
+]
+
+[[package]]
+name = "types-pyyaml"
+version = "6.0.12.20250915"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/69/3c51b36d04da19b92f9e815be12753125bd8bc247ba0470a982e6979e71c/types_pyyaml-6.0.12.20250915.tar.gz", hash = "sha256:0f8b54a528c303f0e6f7165687dd33fafa81c807fcac23f632b63aa624ced1d3", size = 17522, upload-time = "2025-09-15T03:01:00.728Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bd/e0/1eed384f02555dde685fff1a1ac805c1c7dcb6dd019c916fe659b1c1f9ec/types_pyyaml-6.0.12.20250915-py3-none-any.whl", hash = "sha256:e7d4d9e064e89a3b3cae120b4990cd370874d2bf12fa5f46c97018dd5d3c9ab6", size = 20338, upload-time = "2025-09-15T03:00:59.218Z" },
 ]
 
 [[package]]

@@ -43,7 +43,7 @@ schema = "uvx schemathesis run http://localhost:8000/openapi.json"
 "schema.write" = "uvx schemathesis run http://localhost:8000/openapi.json --report-junit-path report.xml"
 bandit = "uvx bandit -r app"
 pip_audit = "uvx pip-audit"
-detect_secrets = "uvx detect-secrets scan --all-files"
+detect_secrets = "uvx detect-secrets scan --all-files"  # pragma: allowlist secret
 
 [dependency-groups]
 dev = [
@@ -78,6 +78,8 @@ dev = [
   "types-tensorflow>=2.18.0.20250516",
   "types-tqdm>=4.67.0.20250516",
   "types-ujson>=5.10.0.20250326",
+  "python-dotenv>=1.0.0",
+  "types-pyyaml>=6.0.12.20250915",
 ]
 
 backend = [
