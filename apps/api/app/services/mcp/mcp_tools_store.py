@@ -79,20 +79,6 @@ class MCPToolsStore:
             logger.error(f"Error getting tools for {integration_id}: {e}")
             return None
 
-    async def has_tools(self, integration_id: str) -> bool:
-        """Check if tools exist for this integration."""
-        try:
-            async with get_db_session() as session:
-                result = await session.execute(
-                    select(MCPIntegrationTool.id)
-                    .where(MCPIntegrationTool.integration_id == integration_id)
-                    .limit(1)
-                )
-                return result.scalar_one_or_none() is not None
-        except Exception as e:
-            logger.error(f"Error checking tools for {integration_id}: {e}")
-            return False
-
     async def get_all_mcp_tools(self) -> dict[str, list[dict]]:
         """Get all stored MCP tools keyed by integration_id.
 

@@ -10,14 +10,13 @@ import urllib.parse
 from typing import Optional
 
 import httpx
-from langchain_core.tools import BaseTool, StructuredTool
+from langchain_core.tools import BaseTool
 from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
-from pydantic import Field, create_model
 
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import get_integration_by_id
-from app.config.settings import settings
+from app.helpers.mcp_helpers import create_stub_tools_from_cache
 from app.models.oauth_models import MCPConfig
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
@@ -28,7 +27,6 @@ from app.utils.mcp_oauth_utils import (
     find_protected_resource_metadata,
 )
 from app.utils.mcp_utils import (
-    extract_type_from_field,
     generate_pkce_pair,
     serialize_args_schema,
     wrap_tools_with_null_filter,
@@ -240,11 +238,11 @@ class MCPClient:
             await self.token_store.store_cached_tools(integration_id, tool_metadata)
             logger.info(f"Cached {len(tools)} tools with schema for user")
 
-            # Store tools globally for frontend visibility (first connection stores for all users)
+            # Store tools globally for frontend visibility
+            # Always update to ensure latest tools are available (handles tool updates)
             global_store = get_mcp_tools_store()
-            if not await global_store.has_tools(integration_id):
-                await global_store.store_tools(integration_id, tool_metadata)
-                logger.info(f"Stored {len(tools)} tools globally for {integration_id}")
+            await global_store.store_tools(integration_id, tool_metadata)
+            logger.info(f"Stored {len(tools)} tools globally for {integration_id}")
 
             logger.info(f"Connected to MCP {integration_id}: {len(tools)} tools")
             return tools
@@ -253,16 +251,6 @@ class MCPClient:
             logger.error(f"Failed to connect to MCP {integration_id}: {e}")
             await self.token_store.update_status(integration_id, "failed", str(e))
             raise
-
-    def _resolve_secret(
-        self, env_name: Optional[str], direct_value: Optional[str]
-    ) -> Optional[str]:
-        """Resolve secret from Infisical env var or direct value."""
-        if env_name:
-            value = getattr(settings, env_name, None)
-            if value:
-                return value
-        return direct_value
 
     async def build_oauth_auth_url(
         self,
@@ -288,7 +276,7 @@ class MCPClient:
         oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
 
         # Get or register client credentials
-        client_id = self._resolve_secret(mcp_config.client_id_env, mcp_config.client_id)
+        client_id = mcp_config.client_id
 
         if not client_id:
             # Try stored DCR client
@@ -428,13 +416,9 @@ class MCPClient:
             client_secret = dcr_data.get("client_secret")
 
         if not client_id:
-            client_id = self._resolve_secret(
-                mcp_config.client_id_env, mcp_config.client_id
-            )
+            client_id = mcp_config.client_id
         if not client_secret:
-            client_secret = self._resolve_secret(
-                mcp_config.client_secret_env, mcp_config.client_secret
-            )
+            client_secret = mcp_config.client_secret
 
         # Get resource for token binding (RFC 8707)
         resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))
@@ -555,9 +539,8 @@ class MCPClient:
                 ):
                     cached = await self.token_store.get_cached_tools(integration_id)
                     if cached:
-                        # Create stub tools from cached metadata
-                        stub_tools = self._create_stub_tools_from_cache(
-                            integration_id, cached
+                        stub_tools = create_stub_tools_from_cache(
+                            self, integration_id, cached
                         )
                         all_tools[integration_id] = stub_tools
                         logger.info(
@@ -578,107 +561,6 @@ class MCPClient:
                 # await self.token_store.update_status(integration_id, "failed", str(e))
 
         return all_tools
-
-    def _create_stub_tools_from_cache(
-        self, integration_id: str, cached_tools: list[dict]
-    ) -> list[BaseTool]:
-        """
-        Create stub BaseTool objects from cached tool metadata.
-
-        These stub tools have the correct name/description for indexing
-        but will connect to the MCP server on-demand when actually executed.
-        """
-
-        def make_stub_executor(client: "MCPClient", int_id: str, tool_name: str):
-            """Factory to create stub executor with proper closure."""
-
-            async def _stub_execute(**kwargs):
-                # Filter out null values - MCP servers don't accept nulls,
-                # they expect parameters to be omitted if not provided
-                filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
-                logger.debug(
-                    f"Stub {tool_name}: raw args={kwargs}, filtered={filtered_kwargs}"
-                )
-
-                # Connect on-demand and execute the real tool
-                tools = await client.ensure_connected(int_id)
-                real_tool = next((t for t in tools if t.name == tool_name), None)
-                if real_tool:
-                    return await real_tool.ainvoke(filtered_kwargs)
-                raise ValueError(f"Tool {tool_name} not found after connecting")
-
-            return _stub_execute
-
-        stub_tools = []
-        for tool_meta in cached_tools:
-            name = tool_meta.get("name", "unknown")
-            description = tool_meta.get("description", "")
-
-            # Create dynamic model that accepts any kwargs and passes them through
-            # The real tool will validate the args after connection
-            args_schema = tool_meta.get("args_schema")
-            logger.debug(
-                f"Stub {name}: args_schema from cache = {args_schema is not None}"
-            )
-            if (
-                args_schema
-                and isinstance(args_schema, dict)
-                and "properties" in args_schema
-            ):
-                logger.debug(
-                    f"Stub {name}: {len(args_schema.get('properties', {}))} properties, required={args_schema.get('required', [])}"
-                )
-                # Reconstruct schema from cached JSON schema format
-                properties = args_schema.get("properties", {})
-                required_fields = args_schema.get("required", [])
-                fields = {}
-                for field_name, field_info in properties.items():
-                    # Extract type from JSON Schema, handling anyOf for nullable types
-                    field_type, default_val, is_optional = extract_type_from_field(
-                        field_info
-                    )
-
-                    is_required = field_name in required_fields
-
-                    # Determine the default value for Pydantic Field:
-                    # - Required fields: use ... (no default)
-                    # - Optional with schema default: use the schema default
-                    # - Optional without default: use None
-                    if is_required:
-                        field_default = ...
-                    elif default_val is not None:
-                        field_default = default_val
-                    else:
-                        field_default = None
-
-                    fields[field_name] = (
-                        field_type,
-                        Field(
-                            default=field_default,
-                            description=field_info.get("description", ""),
-                        ),
-                    )
-
-                    logger.debug(
-                        f"Stub {name}.{field_name}: type={field_type.__name__ if hasattr(field_type, '__name__') else field_type}, "
-                        f"default={field_default}, required={is_required}"
-                    )
-                DynamicSchema = create_model(f"{name}Schema", **fields)
-            else:
-                # Fallback: no schema from cache, let function signature define it
-                # This happens if cache was created before schema storage was implemented
-                DynamicSchema = None
-
-            stub_tool = StructuredTool.from_function(
-                func=lambda **kwargs: None,  # Sync placeholder
-                coroutine=make_stub_executor(self, integration_id, name),
-                name=name,
-                description=description,
-                args_schema=DynamicSchema if DynamicSchema else None,
-            )
-            stub_tools.append(stub_tool)
-
-        return stub_tools
 
     async def ensure_connected(self, integration_id: str) -> list[BaseTool]:
         """

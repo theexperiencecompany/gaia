@@ -5,6 +5,7 @@ Service for managing and retrieving tool information.
 from typing import Dict
 
 from app.agents.tools.core.registry import get_tool_registry
+from app.config.loggers import langchain_logger as logger
 from app.decorators.caching import Cacheable
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 
@@ -47,9 +48,12 @@ async def get_available_tools() -> ToolsListResponse:
         mcp_store = get_mcp_tools_store()
         global_mcp_tools = await mcp_store.get_all_mcp_tools()
 
+        logger.info(f"MCP global tools from DB: {list(global_mcp_tools.keys())}")
+
         for integration_id, tools in global_mcp_tools.items():
             # Skip if we already have tools for this integration from registry
             if integration_id in seen_integrations:
+                logger.debug(f"Skipping {integration_id} - already in registry")
                 continue
 
             for tool in tools:
@@ -60,9 +64,10 @@ async def get_available_tools() -> ToolsListResponse:
                 )
                 tool_infos.append(tool_info)
                 categories.add(integration_id)
-    except Exception:
-        # Don't fail if global MCP tools store is unavailable
-        pass
+
+            logger.info(f"Added {len(tools)} tools from MCP {integration_id}")
+    except Exception as e:
+        logger.warning(f"Failed to fetch global MCP tools: {e}")
 
     return ToolsListResponse(
         tools=tool_infos,

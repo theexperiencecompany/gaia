@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -21,6 +22,7 @@ import { useIntegrationsStore } from "@/stores/integrationsStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function IntegrationsPage() {
+  const queryClient = useQueryClient();
   const {
     integrations,
     connectIntegration,
@@ -67,7 +69,10 @@ export default function IntegrationsPage() {
       if (status === "connected") {
         const integration = integrations.find((i) => i.id === integrationId);
         toast.success(`Connected to ${integration?.name || integrationId}`);
+        // Refresh both integration status AND tools cache to show new MCP tools
         refreshStatus();
+        // Force refetch tools - don't just invalidate, actually refetch
+        queryClient.refetchQueries({ queryKey: ["tools", "available"] });
       } else if (status === "bearer_required") {
         const integration = integrations.find((i) => i.id === integrationId);
         setBearerIntegrationId(integrationId);
@@ -78,7 +83,7 @@ export default function IntegrationsPage() {
         toast.error(`Connection failed: ${error || "Unknown error"}`);
       }
     }
-  }, [searchParams, integrations, router, refreshStatus]);
+  }, [searchParams, integrations, router, refreshStatus, queryClient]);
 
   const handleBearerSubmit = async (id: string, token: string) => {
     await connectIntegration(id, token);

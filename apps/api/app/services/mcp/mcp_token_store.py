@@ -15,15 +15,15 @@ from sqlalchemy import select
 
 from app.config.loggers import langchain_logger as logger
 from app.config.settings import settings
+from app.constants.mcp import (
+    OAUTH_DISCOVERY_PREFIX,
+    OAUTH_DISCOVERY_TTL,
+    OAUTH_STATE_PREFIX,
+    OAUTH_STATE_TTL,
+)
 from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.models.oauth_models import MCPCredential
-
-# Redis key prefixes
-OAUTH_STATE_PREFIX = "mcp_oauth_state"
-OAUTH_STATE_TTL = 600  # 10 minutes
-OAUTH_DISCOVERY_PREFIX = "mcp_oauth_discovery"
-OAUTH_DISCOVERY_TTL = 86400  # 24 hours - discovery data doesn't change often
 
 
 class MCPTokenStore:

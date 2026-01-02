@@ -26,13 +26,17 @@ from typing import Any, Optional
 import redis.asyncio as redis
 from app.config.loggers import redis_logger as logger
 from app.config.settings import settings
+from app.constants.cache import (
+    DEFAULT_CACHE_TTL,
+    ONE_HOUR_TTL,
+    ONE_YEAR_TTL,
+    STATS_CACHE_TTL,
+)
 from pydantic import TypeAdapter
 from pydantic.type_adapter import TypeAdapter as TypeAdapterType
 
-ONE_YEAR_TTL = 31_536_000
-ONE_HOUR_TTL = 3600
-CACHE_TTL = ONE_HOUR_TTL  # Default cache TTL for todos
-STATS_CACHE_TTL = 30 * 60  # 30 minutes for stats (increased from 5)
+# Re-export for backwards compatibility
+CACHE_TTL = DEFAULT_CACHE_TTL
 
 
 def serialize_any(data: Any, model: Optional[type] = None) -> str:

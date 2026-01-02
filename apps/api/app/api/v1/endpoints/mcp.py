@@ -172,7 +172,8 @@ async def mcp_oauth_callback(
                 logger.info(f"Indexed MCP tools from {integration_id} to ChromaDB")
 
                 try:
-                    await delete_cache("get_available_tools:*")
+                    # Cache key is api:get_available_tools:<hash> (namespace="api")
+                    await delete_cache("api:get_available_tools:*")
                     logger.info("Invalidated tools list cache after MCP connection")
                 except Exception as cache_err:
                     logger.warning(f"Failed to invalidate tools cache: {cache_err}")
