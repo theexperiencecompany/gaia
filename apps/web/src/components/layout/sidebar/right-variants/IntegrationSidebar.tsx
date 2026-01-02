@@ -5,7 +5,7 @@ import { Chip } from "@heroui/chip";
 import React, { useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { RaisedButton, Separator, SidebarHeader } from "@/components/ui";
+import { RaisedButton, SidebarHeader } from "@/components/ui";
 import { SidebarContent } from "@/components/ui/sidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -92,7 +92,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           })}
         </div>
 
-        <div className="mb-0 flex flex-col items-start gap-1">
+        <div className="mb-0 mt-2 flex flex-col items-start gap-1">
           <div className="flex w-full items-center justify-between">
             <h1 className="text-2xl font-semibold text-zinc-100">
               {integration.name}
@@ -160,12 +160,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           )
         )}
         {integrationTools.length > 0 && (
-          <>
-            <Separator className="my-3 bg-zinc-800" />
-            <h2 className="mb-2 text-sm font-medium text-zinc-300">
-              Available Tools ({integrationTools.length})
-            </h2>
-          </>
+          <h2 className="mb-1 mt-3 text-xs font-medium text-zinc-400 -ml-1">
+            Available Tools ({integrationTools.length})
+          </h2>
         )}
       </SidebarHeader>
       <SidebarContent className="flex-1 overflow-y-auto">
