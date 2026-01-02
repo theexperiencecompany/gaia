@@ -295,11 +295,11 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-white",
     isImage: true,
   },
-  dodopayments: {
-    icon: InformationCircleIcon, // TODO: Add /images/icons/dodopayments.svg
-    bgColor: "bg-emerald-500/20 backdrop-blur",
-    iconColor: "text-emerald-400",
-    isImage: false,
+   perplexity: {
+    icon: "/images/icons/perplexity.png",
+    bgColor: "bg-zinc-800",
+    iconColor: "text-white",
+    isImage: true,
   },
   integrations: {
     isImage: false,
