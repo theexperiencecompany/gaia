@@ -20,7 +20,6 @@ import nest_asyncio
 import pytest
 from app.core.lazy_loader import providers
 from app.services.composio.composio_service import get_composio_service
-from pytest_check import check  # noqa: F401 - for soft assertions
 
 from tests.composio_tools.config_utils import get_user_id
 

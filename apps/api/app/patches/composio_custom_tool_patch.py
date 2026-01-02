@@ -18,8 +18,25 @@ def _patched_call(self, **kwargs):
     the ``user_id`` key to the credentials dict before invoking the wrapped tool
     function.
     """
+    from pydantic import BaseModel
+
+    def _to_dict_recursive(obj):
+        """Convert Pydantic objects to dicts recursively to handle class mismatches."""
+        if isinstance(obj, BaseModel):
+            return obj.model_dump()
+        elif isinstance(obj, dict):
+            return {k: _to_dict_recursive(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_to_dict_recursive(item) for item in obj]
+        return obj
+
     # Extract ``user_id`` (default to ``"default"`` if not supplied).
     user_id = kwargs.pop("user_id", None) or "default"
+
+    # Convert any Pydantic objects in kwargs to dicts to avoid class mismatch
+    # between dynamically generated models (from json_schema_to_model) and
+    # the original model classes (e.g., ShareRecipient from different modules)
+    kwargs = _to_dict_recursive(kwargs)
 
     # Validate the request model.
     request = self.request_model.model_validate(kwargs)
