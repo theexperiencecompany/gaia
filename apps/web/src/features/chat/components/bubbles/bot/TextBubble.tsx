@@ -14,7 +14,6 @@ function getTypedData<K extends ToolName>(
 
 import { Chip } from "@heroui/chip";
 import React, { useId } from "react";
-
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
   GROUPED_TOOLS,
@@ -31,6 +30,7 @@ import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import ToolCallsSection from "@/features/chat/components/bubbles/bot/ToolCallsSection";
+import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
@@ -449,9 +449,13 @@ export default function TextBubble({
                 const isLast = index === textParts.length - 1;
                 const isSingle = textParts.length === 1;
 
+                // Emoji detection for this specific part
+                const isEmojiOnly = isOnlyEmojis(part);
+                const emojiCount = isEmojiOnly ? getEmojiCount(part) : 0;
+
                 // Single message should show tail (use last styling)
                 // Otherwise: first = no tail, middle = no tail, last = show tail
-                const groupedClasses = isSingle
+                let groupedClasses = isSingle
                   ? "imessage-grouped-last"
                   : isFirst
                     ? "imessage-grouped-first mb-1.5"
@@ -459,13 +463,51 @@ export default function TextBubble({
                       ? "imessage-grouped-last"
                       : "imessage-grouped-middle mb-1.5";
 
+                let bubbleClassName = "imessage-bubble imessage-from-them";
+
+                if (isEmojiOnly) {
+                  if (emojiCount === 1) {
+                    bubbleClassName = "select-none"; // No background, no padding
+                    groupedClasses = ""; // Remove grouping/tail classes
+                    // We need to ensure font size is applied. renderBubbleContent uses MarkdownRenderer.
+                    // MarkdownRenderer might wrap in <p>. We can pass a class or wrap it.
+                    // Actually, if it's 1 emoji, we might just render it directly to avoid markdown overhead/styling or styling issues?
+                    // But MarkdownRenderer handles streaming.
+                    // If streaming is done, we can just render text.
+                    // If loading, markdown might be better.
+                    // Let's assume for 1 emoji we can just style the container and MarkdownRenderer handles text size via inheritance or utility class on container?
+                    // MarkdownRenderer usually resets typography.
+                    // Let's try applying text size to container.
+                    // But `imessage-bubble` has padding.
+                  } else if (emojiCount === 2) {
+                    // Medium large
+                  }
+                }
+
+                // Construct styles
+                let textClass = "";
+
+                if (isEmojiOnly) {
+                  if (emojiCount === 1) {
+                    bubbleClassName = "select-none";
+                    groupedClasses = "";
+                    textClass = "text-[4rem] leading-none";
+                  } else if (emojiCount === 2) {
+                    textClass = "text-5xl";
+                  } else if (emojiCount === 3) {
+                    textClass = "text-4xl";
+                  }
+                }
+
                 return (
                   <div
                     // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
                     key={`${baseId}-text-part-${index}`}
-                    className={`imessage-bubble imessage-from-them ${groupedClasses}`}
+                    className={`${bubbleClassName} ${groupedClasses}`}
                   >
-                    {renderBubbleContent(part, isLast)}
+                    <div className={textClass}>
+                      {renderBubbleContent(part, isLast)}
+                    </div>
                   </div>
                 );
               })}
