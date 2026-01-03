@@ -1,0 +1,114 @@
+{
+  "name": "Google Tasks Capabilities",
+  "description": "Evaluation dataset for Google Tasks subagent capabilities including task lists, task management, and organization. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "google_tasks_agent",
+  "integration_id": "googletasks",
+  "items": [
+    {
+      "input": "create task 'Buy groceries' in my list",
+      "expected_output": "1. Get task lists. 2. Find or use default list. 3. Insert task.",
+      "context": "User wants to create task",
+      "tags": ["task", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "show my task lists",
+      "expected_output": "List all task lists.",
+      "context": "User wants to see lists",
+      "tags": ["tasklist", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create task list called 'Work'",
+      "expected_output": "Create task list with title 'Work'.",
+      "context": "User wants new list",
+      "tags": ["tasklist", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get tasks from Personal list",
+      "expected_output": "1. Find Personal task list. 2. List tasks in list.",
+      "context": "User wants list tasks",
+      "tags": ["task", "list", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "complete the groceries task",
+      "expected_output": "1. Find groceries task. 2. Update task status to completed.",
+      "context": "User wants to complete task",
+      "tags": ["task", "complete", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "set due date for meeting task to tomorrow",
+      "expected_output": "1. Find meeting task. 2. Update task with due date.",
+      "context": "User wants deadline",
+      "tags": ["task", "update", "due", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "delete my Work task list",
+      "expected_output": "1. Find Work task list. 2. Request confirmation. 3. Delete task list.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["tasklist", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "clear completed tasks from list",
+      "expected_output": "1. Find task list. 2. Clear completed tasks.",
+      "context": "User wants to clean up",
+      "tags": ["task", "clear", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add subtask 'prepare slides' under presentation task",
+      "expected_output": "1. Find presentation task. 2. Insert task with parent.",
+      "context": "User wants subtask",
+      "tags": ["task", "create", "subtask", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get gogle tasks",
+      "expected_output": "1. Recognize 'gogle' as typo for 'google'. 2. Get task lists or tasks.",
+      "context": "User made typo",
+      "tags": ["task", "list", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "move task to Shopping list",
+      "expected_output": "1. Find task. 2. Find Shopping list. 3. Move task to new list.",
+      "context": "User wants to move task",
+      "tags": ["task", "move", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "update task title to 'Review documents'",
+      "expected_output": "1. Find task. 2. Update task title.",
+      "context": "User wants to rename task",
+      "tags": ["task", "update", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get details for task list Work",
+      "expected_output": "1. Find Work list. 2. Get task list details.",
+      "context": "User wants list info",
+      "tags": ["tasklist", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "delete the old task",
+      "expected_output": "1. Find old task. 2. Request confirmation. 3. Delete task.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["task", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add notes to the meeting task",
+      "expected_output": "1. Find meeting task. 2. Update task with notes.",
+      "context": "User wants to add notes",
+      "tags": ["task", "update", "notes", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    }
+  ]
+}

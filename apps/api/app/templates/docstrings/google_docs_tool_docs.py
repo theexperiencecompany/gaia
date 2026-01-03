@@ -1,188 +1,85 @@
-"""Docstrings for Google Docs LangChain tools."""
+"""Docstrings for Google Docs custom tools."""
 
-CREATE_GOOGLE_DOC = """
-Creates online Google Docs that can be shared and edited collaboratively in the browser.
-
-TOOL SELECTION: Use this when user says "doc". Use generate_document when user says "file".
-
-Create a new Google Doc with the specified title and optional initial content.
+CUSTOM_SHARE_DOC = """
+Share a Google Doc with one or more recipients in a single operation.
 
 Use this tool when the user wants to:
-- Create a new document for writing, note-taking, or collaboration
-- Start a new project document, report, or memo
-- Create a document with specific initial content
-
-Parameters:
-- title (str): The title for the new document
-- content (str, optional): Initial content to add to the document
-
-Returns:
-- document_id: Unique identifier for the created document
-- title: Title of the document
-- url: Direct link to edit the document in Google Docs
-- content: The initial content added to the document
-
-Example usage:
-- "Create a new document called 'Meeting Notes'"
-- "Create a document titled 'Project Plan' with initial content about the project overview"
-- "Make a new Google Doc for my weekly report"
-"""
-
-LIST_GOOGLE_DOCS = """
-List the user's Google Docs with optional filtering and search capabilities.
-
-Use this tool when the user wants to:
-- See all their Google Docs
-- Find documents created recently
-- Search for documents by title
-- Get an overview of their document collection
-
-Parameters:
-- limit (int, optional): Maximum number of documents to return (default: 10)
-- query (str, optional): Search query to filter documents by title
-
-Returns:
-- List of documents with metadata including:
-  - document_id: Unique identifier
-  - title: Document title
-  - created_time: When the document was created
-  - modified_time: When the document was last modified
-  - url: Direct link to view/edit the document
-
-Example usage:
-- "Show me my recent Google Docs"
-- "List all documents with 'meeting' in the title"
-- "What Google Docs do I have?"
-"""
-
-GET_GOOGLE_DOC = """
-Retrieve the content and metadata of a specific Google Doc.
-
-Use this tool when the user wants to:
-- Read the content of a specific document
-- Get the full text of a document for analysis or reference
-- Check the current content before making updates
-
-Parameters:
-- document_id (str): The unique identifier of the document to retrieve
-
-Returns:
-- document_id: Unique identifier of the document
-- title: Title of the document
-- content: Full text content of the document
-- url: Direct link to edit the document
-- revision_id: Current revision identifier
-
-Example usage:
-- "Show me the content of document [document_id]"
-- "What's in my project plan document?"
-- "Read the content of the meeting notes document"
-"""
-
-UPDATE_GOOGLE_DOC = """
-Update the content of an existing Google Doc by adding new content or replacing existing content.
-
-Use this tool when the user wants to:
-- Add new content to an existing document
-- Update or replace sections of a document
-- Append notes or information to a document
-
-Parameters:
-- document_id (str): The unique identifier of the document to update
-- content (str): The new content to add or replace
-- insert_at_end (bool, optional): Whether to append content at the end (True) or replace all content (False)
-
-Returns:
-- document_id: Unique identifier of the updated document
-- url: Direct link to edit the document
-- updates_applied: Number of update operations performed
-
-Example usage:
-- "Add this text to the end of my meeting notes document"
-- "Replace all content in document [document_id] with this new content"
-- "Update my project plan with the latest information"
-"""
-
-FORMAT_GOOGLE_DOC = """
-Apply formatting to a specific range of text in a Google Doc.
-
-Use this tool when the user wants to:
-- Make text bold, italic, or underlined
-- Change font size or color
-- Apply professional formatting to documents
-
-Parameters:
-- document_id (str): The unique identifier of the document
-- start_index (int): Starting position of text to format (character index)
-- end_index (int): Ending position of text to format (character index)
-- bold (bool, optional): Apply bold formatting
-- italic (bool, optional): Apply italic formatting
-- underline (bool, optional): Apply underline formatting
-- font_size (int, optional): Font size in points
-- foreground_color (dict, optional): Text color as RGB values (0-1 range)
-
-Returns:
-- document_id: Unique identifier of the document
-- url: Direct link to edit the document
-- formatting_applied: Number of formatting operations applied
-
-Example usage:
-- "Make the title bold in my document"
-- "Format the first paragraph as italic"
-- "Change the font size of the heading to 18 points"
-
-Note: To find the correct start_index and end_index, you may need to first retrieve the document content using get_google_doc.
-"""
-
-SHARE_GOOGLE_DOC = """
-Share a Google Doc with another user by granting them specific permissions.
-
-Use this tool when the user wants to:
+- Share a document with multiple people at once
 - Collaborate on a document with colleagues
-- Share a document for review or feedback
-- Grant access to a document for specific users
+- Grant different access levels to different users
+- Share with a team or group of people
 
 Parameters:
 - document_id (str): The unique identifier of the document to share
-- email (str): Email address of the person to share with
-- role (str, optional): Permission level - "reader", "writer", or "owner" (default: "writer")
-- send_notification (bool, optional): Whether to send an email notification (default: True)
+- recipients (list): List of recipients, each containing:
+  - email (str): Email address of the person to share with
+  - role (str, optional): Permission level - "reader", "writer", or "owner" (default: "writer")
+  - send_notification (bool, optional): Whether to send an email notification (default: True)
 
 Returns:
+- success: Whether all shares were successful
 - document_id: Unique identifier of the shared document
-- shared_with: Email address of the person granted access
-- role: Permission level granted
-- permission_id: Unique identifier for the permission
 - url: Direct link to the document
+- shared: List of successfully shared recipients with permission IDs
+- errors: List of any failed shares with error details
+- total_shared: Count of successful shares
+- total_failed: Count of failed shares
 
 Example usage:
-- "Share my project document with john@example.com as a writer"
-- "Give read access to this document to my team lead"
-- "Share the meeting notes with the team"
+- "Share my project document with john@example.com and jane@example.com as writers"
+- "Give read access to this document to the marketing team"
+- "Share the meeting notes with alice@company.com as reader and bob@company.com as writer"
+
+Note: This tool supports bulk operations - share with multiple people in a single call for efficiency.
 """
 
-SEARCH_GOOGLE_DOCS = """
-Search through the user's Google Docs by title and content.
+CUSTOM_CREATE_TOC = """
+Create a Table of Contents in a Google Doc by analyzing document headings.
+
+This tool scans the document for headings (H1, H2, H3, etc.) and generates
+a formatted text-based table of contents which is then inserted at the specified position.
 
 Use this tool when the user wants to:
-- Find documents containing specific keywords
-- Locate documents by partial title or content
-- Search through their document collection
+- Add a table of contents to their document
+- Create a document outline/index
+- Generate a TOC from existing section headings
 
 Parameters:
-- query (str): Search terms to look for in document titles and content
-- limit (int, optional): Maximum number of results to return (default: 10)
+- document_id (str): The unique identifier of the document
+- insertion_index (int, optional): Position to insert TOC (default: 1 = beginning)
+- include_heading_levels (list, optional): Which heading levels to include [1,2,3] = H1, H2, H3
+- title (str, optional): Title for the TOC section (default: "Table of Contents")
 
 Returns:
-- List of matching documents with metadata including:
-  - document_id: Unique identifier
-  - title: Document title
-  - created_time: When the document was created
-  - modified_time: When the document was last modified
-  - url: Direct link to view/edit the document
+- success: Whether the TOC was created successfully
+- document_id: Document identifier
+- url: Direct link to the document
+- headings_found: Number of headings discovered
+- toc_content: The generated TOC text
 
 Example usage:
-- "Search for documents containing 'budget'"
-- "Find all documents with 'quarterly report' in them"
-- "Search for documents about the marketing project"
+- "Add a table of contents to my project document"
+- "Create a TOC at the beginning of my report"
+- "Generate an outline for my document showing only H1 and H2"
+
+Note: This creates a text-based TOC. Unlike the native Google Docs TOC, it won't
+auto-update when headings change. Re-run this tool to regenerate the TOC.
+"""
+
+CUSTOM_DELETE_DOC = """
+Delete a Google Doc permanently.
+
+Use this tool when the user wants to:
+- Delete a document they created
+- Remove an old or unnecessary file
+- Clean up temporary files
+
+Parameters:
+- document_id (str): The unique identifier of the document to delete
+
+Returns:
+- success: Whether the deletion was successful
+- document_id: The ID of the deleted document
+
+Note: This action is permanent and often cannot be undone immediately via API (moves to trash).
 """

@@ -1,0 +1,149 @@
+{
+  "name": "Notion Capabilities",
+  "description": "Evaluation dataset for Notion subagent capabilities including page management, database operations, block content, and search. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "notion_agent",
+  "integration_id": "notion",
+  "items": [
+    {
+      "input": "search for page about project roadmap",
+      "expected_output": "Search Notion for pages/databases matching 'project roadmap'.",
+      "context": "User wants to find page",
+      "tags": ["page", "search"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create page called 'Meeting Notes' in workspace",
+      "expected_output": "Create new Notion page with title 'Meeting Notes'.",
+      "context": "User wants new page",
+      "tags": ["page", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add paragraph to page about sprint planning",
+      "expected_output": "1. Search for sprint planning page. 2. Add paragraph block to page.",
+      "context": "User wants to add content",
+      "tags": ["block", "add", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get page content for Q4 Goals",
+      "expected_output": "1. Search for Q4 Goals page. 2. Fetch block contents.",
+      "context": "User wants to read page",
+      "tags": ["page", "content", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list all databases",
+      "expected_output": "Fetch Notion data filtered for databases only.",
+      "context": "User wants to see databases",
+      "tags": ["database", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "query database Tasks for items with Status = 'In Progress'",
+      "expected_output": "1. Find Tasks database. 2. Query database with filter for Status property.",
+      "context": "User wants filtered db results",
+      "tags": ["database", "query", "filter", "detailed"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "add row to Projects database with name 'New Feature'",
+      "expected_output": "1. Find Projects database. 2. Create database row with Name property.",
+      "context": "User wants to add db entry",
+      "tags": ["database", "row", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "update page title to 'Updated Meeting Notes'",
+      "expected_output": "1. Find Meeting Notes page. 2. Update page properties with new title.",
+      "context": "User wants to rename page",
+      "tags": ["page", "update", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add heading 'Introduction' to my document",
+      "expected_output": "1. Find document page. 2. Add heading_1 block with text 'Introduction'.",
+      "context": "User wants to add heading",
+      "tags": ["block", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get database schema for CRM",
+      "expected_output": "1. Find CRM database. 2. Fetch database to get properties/schema.",
+      "context": "User wants db structure",
+      "tags": ["database", "schema", "get"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add todo list to page",
+      "expected_output": "1. Find or identify page. 2. Add to_do blocks to page.",
+      "context": "User wants to add checklist",
+      "tags": ["block", "add", "todo", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get comments on the planning page",
+      "expected_output": "1. Find planning page. 2. Fetch comments for page.",
+      "context": "User wants page comments",
+      "tags": ["comment", "get", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create database called 'Bug Tracker'",
+      "expected_output": "Create new database with title 'Bug Tracker' and default properties.",
+      "context": "User wants new database",
+      "tags": ["database", "create"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add code block with Python snippet",
+      "expected_output": "Add code block to page with language set to Python.",
+      "context": "User wants code block",
+      "tags": ["block", "add", "code"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "search notin for budget",
+      "expected_output": "1. Recognize 'notin' as typo for 'notion'. 2. Search for 'budget' in Notion.",
+      "context": "User made typo",
+      "tags": ["search", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get about me info",
+      "expected_output": "Get current user/bot information.",
+      "context": "User wants their info",
+      "tags": ["user", "get"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add bullet list with three items",
+      "expected_output": "Add multiple bulleted_list_item blocks to page.",
+      "context": "User wants bullet list",
+      "tags": ["block", "add", "list", "bulk"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "fetch row from database where Name is 'Project Alpha'",
+      "expected_output": "1. Find database. 2. Query with filter for Name. 3. Fetch row details.",
+      "context": "User wants specific db row",
+      "tags": ["database", "row", "get", "filter"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "archive the old notes page",
+      "expected_output": "1. Find old notes page. 2. Request confirmation. 3. Archive/delete page.",
+      "context": "User wants to archive - needs consent",
+      "tags": ["page", "archive", "search", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add callout block with important note",
+      "expected_output": "Add callout block to page with specified content.",
+      "context": "User wants callout",
+      "tags": ["block", "add", "callout"],
+      "metadata": { "difficulty": "easy" }
+    }
+  ]
+}
