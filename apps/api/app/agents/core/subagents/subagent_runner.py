@@ -145,10 +145,7 @@ async def prepare_subagent_execution(
         "messages": [
             system_message,
             context_message,
-            HumanMessage(
-                content=task,
-                additional_kwargs={"visible_to": {agent_name}},
-            ),
+            HumanMessage(content=task),
         ]
     }
 

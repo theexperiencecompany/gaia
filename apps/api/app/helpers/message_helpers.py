@@ -43,15 +43,7 @@ def create_system_message(
         "executor": EXECUTOR_PROMPT_TEMPLATE,
     }.get(agent_type, COMMS_PROMPT_TEMPLATE)
 
-    visible_to = {
-        "comms": "comms_agent",
-        "executor": "executor_agent",
-    }.get(agent_type, "comms_agent")
-
-    return SystemMessage(
-        content=template.format(user_name=user_name or "there"),
-        additional_kwargs={"visible_to": {visible_to}},
-    )
+    return SystemMessage(content=template.format(user_name=user_name or "there"))
 
 
 async def get_memory_message(
@@ -126,11 +118,7 @@ async def get_memory_message(
 
         # Combine all sections
         content = "\n".join(context_parts) + memories_section
-        return SystemMessage(
-            content=content,
-            memory_message=True,
-            additional_kwargs={"visible_to": {"main_agent"}},
-        )
+        return SystemMessage(content=content, memory_message=True)
 
     except Exception as e:
         logger.error(f"Error creating memory message: {e}")
@@ -139,9 +127,7 @@ async def get_memory_message(
             "%A, %B %d, %Y, %H:%M:%S UTC"
         )
         return SystemMessage(
-            content=f"Current UTC Time: {utc_time_str}",
-            memory_message=True,
-            additional_kwargs={"visible_to": {"main_agent"}},
+            content=f"Current UTC Time: {utc_time_str}", memory_message=True
         )
 
 
