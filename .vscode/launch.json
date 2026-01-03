@@ -15,6 +15,9 @@
                 "app.main:app",
                 "--reload"
             ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/libs:${env:PYTHONPATH}"
+            },
             "jinja": true
         }
     ]

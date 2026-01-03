@@ -6,8 +6,8 @@ from app.agents.core.graph_builder.checkpointer_manager import (
     get_checkpointer_manager,
 )
 from app.agents.core.nodes import (
-    create_delete_system_messages_node,
     follow_up_actions_node,
+    manage_system_prompts_node,
     trim_messages_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
@@ -50,10 +50,8 @@ async def build_executor_graph(
         initial_tool_ids=["handoff"],
         pre_model_hooks=[
             filter_messages_node,
+            manage_system_prompts_node,
             trim_messages_node,
-        ],
-        end_graph_hooks=[
-            create_delete_system_messages_node(),
         ],
     )
 
@@ -108,11 +106,11 @@ async def build_comms_graph(
         initial_tool_ids=["call_executor"],
         pre_model_hooks=[
             filter_messages_node,
+            manage_system_prompts_node,
             trim_messages_node,
         ],
         end_graph_hooks=[
             follow_up_actions_node,
-            create_delete_system_messages_node(),
         ],
     )
 
