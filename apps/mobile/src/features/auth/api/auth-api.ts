@@ -1,11 +1,5 @@
 import * as WebBrowser from "expo-web-browser";
-import { Platform } from "react-native";
-
-const OAUTH_BASE_URL = __DEV__
-  ? Platform.OS === "android"
-    ? "http://10.0.2.2:8000"
-    : "http://192.168.1.126:8000"
-  : "https://api.heygaia.io";
+import { API_ORIGIN as OAUTH_BASE_URL } from "../../../lib/constants";
 
 WebBrowser.maybeCompleteAuthSession();
 
