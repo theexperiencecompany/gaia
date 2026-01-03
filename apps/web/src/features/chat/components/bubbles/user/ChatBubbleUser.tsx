@@ -6,6 +6,7 @@ import SelectedCalendarEventIndicator from "@/features/chat/components/composer/
 import SelectedReplyIndicator from "@/features/chat/components/composer/SelectedReplyIndicator";
 import SelectedToolIndicator from "@/features/chat/components/composer/SelectedToolIndicator";
 import SelectedWorkflowIndicator from "@/features/chat/components/composer/SelectedWorkflowIndicator";
+import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
@@ -34,6 +35,23 @@ export default function ChatBubbleUser({
   const user = useUser();
 
   if (!hasContent) return null;
+
+  // Calculate emoji state
+  const isEmojiOnly = isOnlyEmojis(text);
+  const emojiCount = isEmojiOnly ? getEmojiCount(text) : 0;
+
+  // Determine styles based on emoji count
+  let bubbleClassName = "imessage-bubble imessage-from-me";
+  let textClassName =
+    "flex max-w-[30vw] text-wrap whitespace-pre-wrap select-text";
+
+  if (isEmojiOnly) {
+    if (emojiCount === 1) {
+      bubbleClassName = "select-none"; // No bubble background
+      textClassName += " text-5xl leading-none";
+    } else if (emojiCount === 2) textClassName += " text-4xl";
+    else if (emojiCount === 3) textClassName += " text-3xl";
+  }
 
   return (
     <div className="flex w-full items-end justify-end gap-3">
@@ -85,12 +103,8 @@ export default function ChatBubbleUser({
         )}
 
         {text?.trim() && (
-          <div className="imessage-bubble imessage-from-me">
-            {!!text && (
-              <div className="flex max-w-[30vw] text-wrap whitespace-pre-wrap select-text">
-                {text}
-              </div>
-            )}
+          <div className={bubbleClassName}>
+            {!!text && <div className={textClassName}>{text}</div>}
           </div>
         )}
 

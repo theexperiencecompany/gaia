@@ -503,3 +503,31 @@ SEMANTIC_SEARCH_TODOS = """
     - "urgent work items" finds high-priority work tasks
     - "shopping and errands" finds personal task categories
     """
+
+GET_TODOS_SUMMARY = """
+    Get a comprehensive summary of the user's todos in a single call.
+
+    This tool provides a complete productivity snapshot including today's tasks,
+    upcoming deadlines, overdue items, priority breakdown, project status, and
+    recent completions. Perfect for daily briefings and quick status checks.
+
+    When to use:
+    - When user asks "What's my day look like?" or "Give me a summary"
+    - For morning briefings or daily standups
+    - When user wants a quick productivity overview
+    - When checking overall task status at a glance
+    - For "How am I doing?" type questions
+
+    Output:
+    A comprehensive summary dictionary containing:
+    - today: List of todos due today with priorities
+    - overdue: List of overdue todos needing attention
+    - upcoming_week: Todos due in the next 7 days
+    - high_priority: All high priority incomplete todos
+    - stats: Quick stats (total, completed today, completion rate)
+    - by_project: Task counts grouped by project
+    - recently_completed: Tasks completed in last 24 hours
+    - next_deadline: The nearest upcoming deadline
+
+    Note: This is the go-to tool for any "summary", "overview", or "briefing" request.
+    """

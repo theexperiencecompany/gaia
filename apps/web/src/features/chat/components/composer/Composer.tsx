@@ -449,13 +449,13 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   return (
     <div className="searchbar_container relative flex w-full flex-col justify-center pb-1">
-      <IntegrationsBanner
-        integrations={integrations}
-        isLoading={integrationsLoading}
-        hasMessages={hasMessages}
-        onToggleSlashCommand={handleToggleSlashCommandDropdown}
-      />
       <div className="searchbar relative transition-all z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
+        <IntegrationsBanner
+          integrations={integrations}
+          isLoading={integrationsLoading}
+          hasMessages={hasMessages}
+          onToggleSlashCommand={handleToggleSlashCommandDropdown}
+        />
         <FilePreview files={uploadedFiles} onRemove={removeUploadedFile} />
         <SelectedToolIndicator
           toolName={selectedTool}

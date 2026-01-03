@@ -9,9 +9,9 @@ export interface Integration {
   category:
     | "productivity"
     | "communication"
-    | "storage"
-    | "development"
-    | "creative";
+    | "developer"
+    | "social"
+    | "business";
   status: "connected" | "not_connected" | "error";
   loginEndpoint?: string;
   disconnectEndpoint?: string;
@@ -21,6 +21,9 @@ export interface Integration {
   displayPriority?: number;
   includedIntegrations?: string[];
   isFeatured?: boolean;
+  managedBy?: "self" | "composio" | "mcp";
+  available?: boolean;
+  authType?: "oauth" | "bearer" | "none";
 }
 
 export interface IntegrationStatus {

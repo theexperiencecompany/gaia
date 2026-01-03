@@ -5,15 +5,13 @@ Team service with Redis caching and proper error handling.
 from typing import List
 
 from app.config.loggers import common_logger as logger
+from app.constants.cache import DEFAULT_CACHE_TTL, TEAM_CACHE_PREFIX
 from app.db.mongodb.collections import team_collection
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.models.team_models import TeamMember, TeamMemberCreate, TeamMemberUpdate
 from bson import ObjectId
 from fastapi import HTTPException, status
 
-# Cache configuration
-CACHE_TTL = 3600  # 1 hour
-TEAM_CACHE_PREFIX = "team"
 TEAM_LIST_CACHE_KEY = f"{TEAM_CACHE_PREFIX}:list"
 
 
@@ -40,7 +38,7 @@ class TeamService:
 
             # Cache the result
             cache_data = [member.model_dump() for member in members]
-            await set_cache(TEAM_LIST_CACHE_KEY, cache_data, CACHE_TTL)
+            await set_cache(TEAM_LIST_CACHE_KEY, cache_data, DEFAULT_CACHE_TTL)
             logger.debug(f"Cached {len(members)} team members")
 
             return members
@@ -82,7 +80,7 @@ class TeamService:
             member = TeamMember.from_mongo(member_data)
 
             # Cache the result
-            await set_cache(cache_key, member.model_dump(), CACHE_TTL)
+            await set_cache(cache_key, member.model_dump(), DEFAULT_CACHE_TTL)
             logger.debug(f"Cached team member {member_id}")
 
             return member

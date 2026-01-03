@@ -52,6 +52,7 @@ from app.templates.docstrings.todo_tool_docs import (
     GET_TODAY_TODOS,
     GET_TODO_STATS,
     GET_TODOS_BY_LABEL,
+    GET_TODOS_SUMMARY,
     GET_UPCOMING_TODOS,
     LIST_PROJECTS,
     LIST_TODOS,
@@ -995,6 +996,143 @@ async def delete_subtask(
         return {"error": error_msg, "todo": None}
 
 
+@tool
+@with_doc(GET_TODOS_SUMMARY)
+async def get_todos_summary(config: RunnableConfig) -> Dict[str, Any]:
+    """Get a comprehensive summary of the user's todos in a single call."""
+    import asyncio
+
+    try:
+        logger.info("Todo Tool: Getting comprehensive todos summary")
+        user_id = get_user_id_from_config(config)
+
+        if not user_id:
+            return {"error": "User authentication required", "summary": None}
+
+        # --- Helper functions ---
+        def get_date_ranges():
+            """Calculate all needed date ranges."""
+            now = datetime.now(timezone.utc)
+            today_start = datetime.combine(datetime.today(), time.min)
+            today_end = datetime.combine(datetime.today(), time.max)
+            week_end = now + timedelta(days=7)
+            yesterday = now - timedelta(days=1)
+            return now, today_start, today_end, week_end, yesterday
+
+        def filter_todos(all_todos, now, yesterday):
+            """Filter todos into categories."""
+            overdue = [
+                t
+                for t in all_todos
+                if t.due_date and not t.completed and t.due_date < now
+            ]
+            high_priority = [
+                t for t in all_todos if t.priority == Priority.HIGH and not t.completed
+            ]
+            recently_completed = [
+                t
+                for t in all_todos
+                if t.completed and t.completed_at and t.completed_at > yesterday
+            ]
+
+            future_deadlines = [
+                t
+                for t in all_todos
+                if t.due_date and not t.completed and t.due_date > now
+            ]
+            future_deadlines.sort(key=lambda x: x.due_date)
+            next_deadline = future_deadlines[0] if future_deadlines else None
+
+            return overdue, high_priority, recently_completed, next_deadline
+
+        def calculate_stats(all_todos, recently_completed, overdue):
+            """Calculate productivity statistics."""
+            total = len(all_todos)
+            completed = len([t for t in all_todos if t.completed])
+            rate = round((completed / total * 100), 1) if total > 0 else 0
+            return {
+                "total": total,
+                "completed": completed,
+                "pending": total - completed,
+                "completed_today": len(recently_completed),
+                "overdue": len(overdue),
+                "completion_rate": rate,
+            }
+
+        def build_project_breakdown(all_todos, projects):
+            """Build per-project task counts."""
+            breakdown = {}
+            for project in projects:
+                project_todos = [t for t in all_todos if t.project_id == project.id]
+                breakdown[project.name] = {
+                    "total": len(project_todos),
+                    "completed": len([t for t in project_todos if t.completed]),
+                    "pending": len([t for t in project_todos if not t.completed]),
+                }
+            return breakdown
+
+        def serialize_todos(todos, limit=5):
+            """Serialize todos with optional limit."""
+            return {
+                "count": len(todos),
+                "todos": [t.model_dump(mode="json") for t in todos[:limit]],
+                "has_more": len(todos) > limit,
+            }
+
+        # --- Parallel data fetching ---
+        now, today_start, today_end, week_end, yesterday = get_date_ranges()
+
+        today_todos, upcoming_todos, all_todos, all_projects = await asyncio.gather(
+            get_todos_by_date_range(user_id, today_start, today_end),
+            get_todos_by_date_range(user_id, now, week_end),
+            get_all_todos_service(user_id, limit=100),
+            get_all_projects_service(user_id),
+        )
+
+        # --- Process data ---
+        overdue, high_priority, recently_completed, next_deadline = filter_todos(
+            all_todos, now, yesterday
+        )
+        stats = calculate_stats(all_todos, recently_completed, overdue)
+        project_breakdown = build_project_breakdown(all_todos, all_projects)
+
+        # --- Build summary ---
+        summary = {
+            "today": serialize_todos(today_todos),
+            "overdue": serialize_todos(overdue),
+            "upcoming_week": serialize_todos(upcoming_todos),
+            "high_priority": serialize_todos(high_priority),
+            "recently_completed": {
+                "count": len(recently_completed),
+                "todos": [t.model_dump(mode="json") for t in recently_completed[:3]],
+            },
+            "next_deadline": next_deadline.model_dump(mode="json")
+            if next_deadline
+            else None,
+            "stats": stats,
+            "by_project": project_breakdown,
+        }
+
+        # Stream to frontend
+        writer = get_stream_writer()
+        writer(
+            {
+                "todo_data": {
+                    "summary": summary,
+                    "action": "summary",
+                    "message": f"Here's your productivity snapshot: {len(today_todos)} tasks today, {len(overdue)} overdue, {stats['completion_rate']}% completion rate",
+                }
+            }
+        )
+
+        return {"summary": summary, "error": None}
+
+    except Exception as e:
+        error_msg = f"Error getting todos summary: {str(e)}"
+        logger.error(error_msg)
+        return {"error": error_msg, "summary": None}
+
+
 # Export all todo tools as a list for easy registration
 tools = [
     create_todo,
@@ -1018,4 +1156,5 @@ tools = [
     add_subtask,
     update_subtask,
     delete_subtask,
+    get_todos_summary,
 ]

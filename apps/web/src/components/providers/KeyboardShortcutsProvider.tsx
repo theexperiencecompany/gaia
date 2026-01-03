@@ -61,6 +61,7 @@ export default function KeyboardShortcutsProvider({
     { prefix: "/calendar", navigate: "/calendar?create=true" },
     { prefix: "/workflows", selector: "create-workflow" },
     { prefix: "/goals", selector: "create-goal" },
+    { prefix: "/integrations", selector: "create-integration" },
   ] as const;
 
   const triggerCreateAction = useCallback(() => {
@@ -94,6 +95,11 @@ export default function KeyboardShortcutsProvider({
   useHotkeys(
     "c",
     (e) => {
+      // Ignore if any modifier key is pressed (e.g., Ctrl+C for copy)
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        console.log("Modifier key pressed, ignoring 'c' shortcut");
+        return;
+      }
       const target = e.target as HTMLElement;
       if (
         target.tagName === "INPUT" ||
@@ -104,7 +110,7 @@ export default function KeyboardShortcutsProvider({
       }
       createActionRef.current?.();
     },
-    { enableOnFormTags: false, keyup: true, keydown: false },
+    // { enableOnFormTags: false, keyup: true, keydown: false },
   );
 
   // ===========================================

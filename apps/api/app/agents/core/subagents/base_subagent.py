@@ -73,7 +73,9 @@ class SubAgentFactory:
 
         if use_direct_tools:
             initial_tool_ids: list[str] = []
-            category = tool_registry.get_category(tool_space)
+            # Use get_category_by_space to find category by space attribute
+            # This handles mcp_{integration}_{user_id} category naming pattern
+            category = tool_registry.get_category_by_space(tool_space)
             if category is not None:
                 initial_tool_ids.extend([t.name for t in category.tools])
 

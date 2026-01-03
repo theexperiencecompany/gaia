@@ -9,6 +9,7 @@ import {
 interface ToolInfo {
   toolName?: string;
   toolCategory?: string;
+  showCategory?: boolean;
 }
 
 interface LoadingState {

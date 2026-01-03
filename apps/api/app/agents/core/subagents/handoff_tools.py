@@ -30,6 +30,9 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore
+from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.agents.core.subagents.provider_subagents import create_subagent_for_user
+from app.utils.agent_utils import format_tool_progress
 
 SUBAGENTS_NAMESPACE = ("subagents",)
 
@@ -163,7 +166,12 @@ async def handoff(
         task: Complete task description with all necessary context
     """
     try:
-        configurable = config.get("configurable", {})
+        # Defensive check - config may be passed as list in edge cases
+        if isinstance(config, dict):
+            configurable = config.get("configurable", {})
+        else:
+            configurable = {}
+            logger.warning(f"handoff received non-dict config: {type(config).__name__}")
         user_id = configurable.get("user_id")
 
         # Strip 'subagent:' prefix if present
@@ -182,14 +190,40 @@ async def handoff(
         subagent_cfg = integration.subagent_config
         agent_name = subagent_cfg.agent_name
 
-        if user_id:
-            error_message = await check_integration_connection(integration.id, user_id)
-            if error_message:
-                return error_message
+        # Handle auth-required MCP integrations specially
+        if (
+            integration.managed_by == "mcp"
+            and integration.mcp_config
+            and integration.mcp_config.requires_auth
+        ):
+            if not user_id:
+                return f"Error: {agent_name} requires authentication. Please sign in first."
 
-        subagent_graph = await providers.aget(agent_name)
-        if not subagent_graph:
-            return f"Error: {agent_name} not available"
+            # Check if user has connected this MCP integration
+            token_store = MCPTokenStore(user_id=user_id)
+            is_connected = await token_store.is_connected(integration.id)
+            if not is_connected:
+                return (
+                    f"Error: {agent_name} requires OAuth connection. "
+                    f"Please connect {integration.name} first via settings."
+                )
+
+            # Create subagent on-the-fly with user's tokens
+            subagent_graph = await create_subagent_for_user(integration.id, user_id)
+            if not subagent_graph:
+                return f"Error: Failed to create {agent_name} subagent"
+        else:
+            # Non-MCP or non-auth-required MCP integrations
+            if integration.managed_by != "mcp" and user_id:
+                error_message = await check_integration_connection(
+                    integration.id, user_id
+                )
+                if error_message:
+                    return error_message
+
+            subagent_graph = await providers.aget(agent_name)
+            if not subagent_graph:
+                return f"Error: {agent_name} not available"
 
         thread_id = configurable.get("thread_id", "")
         subagent_thread_id = f"{integration.id}_{thread_id}"
@@ -232,6 +266,18 @@ async def handoff(
         complete_message = ""
         writer = get_stream_writer()
 
+        # Emit structured progress with integration ID for frontend icon display
+        writer(
+            {
+                "progress": {
+                    "message": f"Handing off to {agent_name.replace('_', ' ').title()}",
+                    "tool_name": "handoff",
+                    "tool_category": "handoff",
+                    "show_category": False,
+                }
+            }
+        )
+
         async for event in subagent_graph.astream(
             initial_state,
             stream_mode=["messages", "custom"],
@@ -248,6 +294,13 @@ async def handoff(
                     continue
 
                 if chunk and isinstance(chunk, AIMessageChunk):
+                    # Emit tool progress with inputs (same as main agent)
+                    if chunk.tool_calls:
+                        for tool_call in chunk.tool_calls:
+                            progress_data = await format_tool_progress(tool_call)
+                            if progress_data:
+                                writer(progress_data)
+
                     content = str(chunk.content)
                     if content:
                         complete_message += content

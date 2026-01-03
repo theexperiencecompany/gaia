@@ -5,7 +5,7 @@ import { Chip } from "@heroui/chip";
 import React, { useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { Separator, SidebarHeader } from "@/components/ui";
+import { RaisedButton, SidebarHeader } from "@/components/ui";
 import { SidebarContent } from "@/components/ui/sidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -14,7 +14,9 @@ import type { Integration } from "@/features/integrations/types";
 
 interface IntegrationSidebarProps {
   integration: Integration;
-  onConnect: (integrationId: string) => void;
+  onConnect: (
+    integrationId: string,
+  ) => Promise<{ status: string; toolsCount?: number }>;
   onDisconnect?: (integrationId: string) => void;
   category?: string;
 }
@@ -26,10 +28,12 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   category,
 }) => {
   const isConnected = integration.status === "connected";
-  const isAvailable = !!integration.loginEndpoint;
+  // Use backend's 'available' field - MCP integrations have available=true but loginEndpoint=null
+  const isAvailable = integration.available ?? !!integration.loginEndpoint;
   const { tools } = useToolsWithIntegrations();
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   // Get tools that belong to this integration or its included integrations
   const integrationTools = React.useMemo(() => {
@@ -45,9 +49,16 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     );
   }, [tools, integration.id, integration.includedIntegrations]);
 
-  const handleConnect = () => {
-    if (isAvailable && !isConnected) {
-      onConnect(integration.id);
+  const handleConnect = async () => {
+    if (!isAvailable || isConnected || isConnecting) return;
+
+    setIsConnecting(true);
+    try {
+      await onConnect(integration.id);
+    } catch {
+      // Error toast is handled in the hook
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -81,22 +92,33 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           })}
         </div>
 
-        <div className="mb-0 flex flex-col items-start gap-1">
+        <div className="mb-0 mt-2 flex flex-col items-start gap-1">
           <div className="flex w-full items-center justify-between">
             <h1 className="text-2xl font-semibold text-zinc-100">
               {integration.name}
             </h1>
 
-            {isConnected && (
-              <Chip size="sm" variant="flat" color="success">
-                Connected
-              </Chip>
-            )}
+            {isConnected &&
+              !(
+                integration.managedBy === "mcp" &&
+                integration.authType === "none"
+              ) && (
+                <Chip size="sm" variant="flat" color="success">
+                  Connected
+                </Chip>
+              )}
             {!isAvailable && (
               <Chip size="sm" variant="flat" color="default">
                 Coming Soon
               </Chip>
             )}
+            {/* Show "Always available" for unauthenticated MCPs */}
+            {integration.managedBy === "mcp" &&
+              integration.authType === "none" && (
+                <Chip size="sm" variant="flat" color="secondary">
+                  Always available
+                </Chip>
+              )}
           </div>
 
           <p className="text-sm leading-relaxed font-light text-zinc-400">
@@ -104,15 +126,25 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           </p>
         </div>
 
-        {!isConnected ? (
-          <Button
-            color="primary"
-            fullWidth
-            onPress={handleConnect}
-            isDisabled={!isAvailable}
+        {/* Hide connect/disconnect for unauthenticated MCPs */}
+        {integration.managedBy === "mcp" && integration.authType === "none" ? (
+          <div className="text-sm text-zinc-400">
+            This integration is always available - no connection needed.
+          </div>
+        ) : !isConnected ? (
+          <RaisedButton
+            color="#00bbff"
+            className="font-medium text-black!"
+            onClick={handleConnect}
+            disabled={!isAvailable || isConnecting}
+            isLoading={isConnecting}
           >
-            {isAvailable ? "Connect" : "Coming Soon"}
-          </Button>
+            {isConnecting
+              ? "Connecting..."
+              : isAvailable
+                ? "Connect"
+                : "Coming Soon"}
+          </RaisedButton>
         ) : (
           onDisconnect && (
             <Button
@@ -128,12 +160,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           )
         )}
         {integrationTools.length > 0 && (
-          <>
-            <Separator className="my-3 bg-zinc-800" />
-            <h2 className="mb-2 text-sm font-medium text-zinc-300">
-              Available Tools ({integrationTools.length})
-            </h2>
-          </>
+          <h2 className="mb-1 mt-3 text-xs font-medium text-zinc-400 -ml-1">
+            Available Tools ({integrationTools.length})
+          </h2>
         )}
       </SidebarHeader>
       <SidebarContent className="flex-1 overflow-y-auto">
@@ -143,19 +172,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               {integrationTools.map((tool) => (
                 <Chip
                   key={tool.name}
-                  variant="flat"
+                  variant="bordered"
                   color="default"
-                  radius="sm"
-                  className="pl-1"
-                  startContent={
-                    tool.integration?.requiredIntegration &&
-                    getToolCategoryIcon(tool.integration.requiredIntegration, {
-                      size: 18,
-                      width: 18,
-                      height: 18,
-                      showBackground: false,
-                    })
-                  }
+                  radius="full"
+                  className="font-light border-1 text-zinc-300"
                 >
                   {category
                     ? formatToolName(tool.name)

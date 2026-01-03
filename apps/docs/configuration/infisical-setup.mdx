@@ -95,7 +95,7 @@ For local development, you can choose between:
 **Option A: Use Infisical** (Recommended for teams)
 
 ```bash
-# backend/.env
+# apps/api/.env
 ENV=development
 INFISICAL_PROJECT_ID=your-dev-project-id
 INFISICAL_MACHINE_IDENTITY_CLIENT_ID=your-client-id
@@ -105,7 +105,7 @@ INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=your-client-secret
 **Option B: Use Local Environment Variables**
 
 ```bash
-# backend/.env
+# apps/api/.env
 ENV=development
 # Add all your environment variables here
 OPENAI_API_KEY=your-local-dev-key
@@ -117,7 +117,7 @@ OPENAI_API_KEY=your-local-dev-key
 For production, **always use Infisical**:
 
 ```bash
-# backend/.env (production)
+# apps/api/.env (production)
 ENV=production
 INFISICAL_PROJECT_ID=your-prod-project-id
 INFISICAL_MACHINE_IDENTITY_CLIENT_ID=your-prod-client-id

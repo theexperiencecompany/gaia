@@ -104,6 +104,13 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     category: "create",
     icon: <Calendar03Icon width={16} height={16} />,
   },
+  {
+    id: "create_integration",
+    keys: "c",
+    description: "New Integration (on Integrations page)",
+    category: "create",
+    icon: <ConnectIcon width={16} height={16} />,
+  },
 
   // Navigation shortcuts (G -> X sequences)
   {

@@ -14,6 +14,7 @@ from app.api.v1.endpoints import (
     image,
     integrations,
     mail,
+    mcp,
     memory,
     models,
     notes,
@@ -51,6 +52,7 @@ router.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
 router.include_router(
     integrations.router, prefix="/integrations", tags=["Integrations"]
 )
+router.include_router(mcp.router, prefix="/mcp", tags=["MCP"])
 router.include_router(onboarding.router, prefix="/onboarding", tags=["Onboarding"])
 router.include_router(user.router, prefix="/user", tags=["User"])
 router.include_router(mail.router, tags=["Mail"])

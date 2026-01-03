@@ -31,7 +31,8 @@ function IntegrationListSection() {
 
   const renderIntegration = (integration: (typeof integrations)[0]) => {
     const isConnected = integration.status === "connected";
-    const isAvailable = !!integration.loginEndpoint;
+    // Use backend's 'available' field - MCP integrations have available=true but loginEndpoint=null
+    const isAvailable = integration.available ?? !!integration.loginEndpoint;
 
     return (
       <div
@@ -63,16 +64,21 @@ function IntegrationListSection() {
           </p>
         </div>
 
-        {!isConnected && isAvailable && (
-          <Button
-            size="sm"
-            variant="flat"
-            color="primary"
-            className="flex-shrink-0 text-xs"
-            onPress={() => handleConnect(integration.id)}
-          >
-            Connect
-          </Button>
+        {/* MCP integrations don't show any status - they're always available without connection */}
+        {integration.managedBy !== "mcp" && (
+          <>
+            {!isConnected && isAvailable && (
+              <Button
+                size="sm"
+                variant="flat"
+                color="primary"
+                className="flex-shrink-0 text-xs"
+                onPress={() => handleConnect(integration.id)}
+              >
+                Connect
+              </Button>
+            )}
+          </>
         )}
       </div>
     );
