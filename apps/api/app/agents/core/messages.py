@@ -4,6 +4,7 @@ from app.helpers.message_helpers import (
     create_system_message,
     format_calendar_event_context,
     format_files_list,
+    format_reply_context,
     format_tool_selection_message,
     format_workflow_execution_message,
     get_memory_message,
@@ -11,6 +12,7 @@ from app.helpers.message_helpers import (
 from app.models.message_models import (
     FileData,
     MessageDict,
+    ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
@@ -28,6 +30,7 @@ async def construct_langchain_messages(
     selected_tool: Optional[str] = None,
     selected_workflow: Optional[SelectedWorkflowData] = None,
     selected_calendar_event: Optional[SelectedCalendarEventData] = None,
+    reply_to_message: Optional[ReplyToMessageData] = None,
     trigger_context: Optional[dict] = None,
     agent_type: Literal["comms", "executor"] = "comms",
 ) -> List[AnyMessage]:
@@ -48,6 +51,7 @@ async def construct_langchain_messages(
         selected_tool: Tool chosen via slash command (overrides normal flow)
         selected_workflow: Workflow to execute (overrides everything else)
         selected_calendar_event: Calendar event selected for context
+        reply_to_message: Message being replied to (adds conversation thread context)
         trigger_context: Email/automation context for workflows
         agent_type: Type of agent - "comms", "executor", or "main" (legacy)
 
@@ -98,6 +102,10 @@ async def construct_langchain_messages(
 
     if not content:
         raise ValueError("No human message or selected tool")
+
+    # Add reply-to-message context if present
+    if reply_to_message:
+        content = format_reply_context(reply_to_message, content)
 
     # Append file context if files are uploaded
     if currently_uploaded_file_ids and (

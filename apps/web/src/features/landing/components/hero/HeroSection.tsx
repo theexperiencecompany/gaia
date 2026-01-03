@@ -23,7 +23,7 @@ export default function HeroSection() {
       >
         <div className="mx-auto flex w-full justify-center gap-2">
           <Link href="https://github.com/theexperiencecompany/gaia/blob/master/CHANGELOG.md">
-            <div className="relative z-10 flex w-fit cursor-pointer items-center gap-2 rounded-full bg-white/40 text-zinc-700 p-1 px-4 pl-1 text-sm font-light outline-1 outline-white/50  hover:outline-zinc-200 hover:shadow-sm shadow-zinc-400 hover:-translate-y-1 transition">
+            <div className="relative z-10 flex w-fit cursor-pointer items-center gap-2 rounded-full bg-white/40 text-zinc-700 p-1 px-4 pl-1 text-sm font-light outline-1 outline-white/50">
               <Github width={20} height={20} />
               <ShinyText
                 heading="New: "
@@ -34,7 +34,7 @@ export default function HeroSection() {
           </Link>
 
           <Link href="/blog/public-beta">
-            <div className="relative z-10 flex w-fit cursor-pointer items-center gap-1 rounded-full bg-white/40 text-zinc-700 p-1 px-2 text-sm font-light outline-1 outline-white/50  hover:outline-zinc-200 hover:shadow-sm shadow-zinc-400 hover:-translate-y-1 transition">
+            <div className="relative z-10 flex w-fit cursor-pointer items-center gap-1 rounded-full bg-white/40 text-zinc-700 p-1 px-2 text-sm font-light outline-1 outline-white/50">
               <ShinyText heading="Status: " text={`Public Beta`} speed={10} />
               <ChevronRight width={15} height={15} />
             </div>

@@ -3,6 +3,7 @@ import Image from "next/image";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui";
 import { useUser } from "@/features/auth/hooks/useUser";
 import SelectedCalendarEventIndicator from "@/features/chat/components/composer/SelectedCalendarEventIndicator";
+import SelectedReplyIndicator from "@/features/chat/components/composer/SelectedReplyIndicator";
 import SelectedToolIndicator from "@/features/chat/components/composer/SelectedToolIndicator";
 import SelectedWorkflowIndicator from "@/features/chat/components/composer/SelectedWorkflowIndicator";
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
@@ -20,6 +21,7 @@ export default function ChatBubbleUser({
   toolCategory,
   selectedWorkflow,
   selectedCalendarEvent,
+  replyToMessage,
   disableActions = false,
 }: ChatBubbleUserProps & { disableActions?: boolean }) {
   const hasContent =
@@ -59,6 +61,29 @@ export default function ChatBubbleUser({
           </div>
         )}
 
+        {replyToMessage && (
+          <div className="flex justify-end">
+            <SelectedReplyIndicator
+              replyToMessage={replyToMessage}
+              isDisplayOnly={true}
+              onNavigate={(messageId) => {
+                const messageElement = document.getElementById(messageId);
+                if (messageElement) {
+                  messageElement.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                  });
+                  messageElement.style.transition = "all 0.3s ease";
+                  messageElement.style.scale = "1.02";
+                  setTimeout(() => {
+                    messageElement.style.scale = "1";
+                  }, 300);
+                }
+              }}
+            />
+          </div>
+        )}
+
         {text?.trim() && (
           <div className="imessage-bubble imessage-from-me">
             {!!text && (
@@ -83,11 +108,12 @@ export default function ChatBubbleUser({
               loading={false}
               text={text}
               message_id={message_id}
+              messageRole="user"
             />
           )}
         </div>
       </div>
-      <div className="min-w-[40px]">
+      <div className="min-w-10">
         <Avatar
           className={`relative rounded-full bg-black ${disableActions ? "bottom-0" : "bottom-18"}`}
         >

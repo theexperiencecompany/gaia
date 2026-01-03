@@ -14,7 +14,7 @@ jobs:
   docker-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -22,6 +22,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Configure Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Set Nx SHAs
         uses: nrwl/nx-set-shas@v4
@@ -51,7 +56,7 @@ jobs:
         id: affected
         run: |
           AFFECTED=$(npx nx show projects --affected --type=app 2>/dev/null || echo "")
-          if echo "$AFFECTED" | grep -q "api"; then
+          if echo "$AFFECTED" | grep -qE "(api|voice-agent)"; then
             echo "api=true" >> $GITHUB_OUTPUT
           else
             echo "api=false" >> $GITHUB_OUTPUT
@@ -82,7 +87,7 @@ jobs:
 
       - name: Release Docker images
         if: steps.affected.outputs.api == 'true'
-        run: npx nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes
+        run: npx nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
         env:
           NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 

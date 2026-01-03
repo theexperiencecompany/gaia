@@ -108,6 +108,12 @@ class CommonSettings(BaseAppSettings):
 
     @computed_field  # type: ignore
     @property
+    def WORKOS_MOBILE_REDIRECT_URI(self) -> str:
+        """WorkOS OAuth callback URL for mobile app."""
+        return f"{self.HOST}/api/v1/oauth/workos/mobile/callback"
+
+    @computed_field  # type: ignore
+    @property
     def COMPOSIO_REDIRECT_URI(self) -> str:
         """Composio OAuth callback URL."""
         return f"{self.HOST}/api/v1/oauth/composio/callback"
@@ -231,7 +237,7 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     # Debug Config
     # ----------------------------------------------
-    DEBUG_EMAIL_PROCESSING: bool = True
+    DEBUG_EMAIL_PROCESSING: bool = False
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",

@@ -1,37 +1,14 @@
-/**
- * Auth Card Component
- * Reusable card container for auth screens
- */
-
 import type { ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
-import { ChatTheme } from "@/shared/constants/chat-theme";
+import { View } from "react-native";
 
 interface AuthCardProps {
   children: ReactNode;
 }
 
 export function AuthCard({ children }: AuthCardProps) {
-  return <View style={styles.card}>{children}</View>;
+  return (
+    <View className="w-full max-w-[450px] bg-[#1a1a1a]/95 rounded-[20px] px-8 py-10 border border-white/10 shadow-2xl elevation-20">
+      {children}
+    </View>
+  );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    width: "100%",
-    maxWidth: 450,
-    backgroundColor: "rgba(26, 26, 26, 0.95)",
-    borderRadius: ChatTheme.borderRadius.lg + 4,
-    paddingHorizontal: ChatTheme.spacing.xl,
-    paddingVertical: ChatTheme.spacing.xl + 8,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 20,
-  },
-});

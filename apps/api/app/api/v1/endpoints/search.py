@@ -8,12 +8,13 @@ import asyncio
 import re
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.middleware.rate_limiter import limiter
 from app.decorators import tiered_rate_limit
-from app.models.search_models import URLRequest, MultiURLResponse, URLResponse
+from app.models.search_models import MultiURLResponse, URLRequest, URLResponse
 from app.services.search_service import search_messages
 from app.utils.internet_utils import fetch_url_metadata
 from app.utils.search_utils import perform_search
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 router = APIRouter()
 
@@ -92,12 +93,14 @@ async def search_email_endpoint(query: str):
     response_model=MultiURLResponse,
     status_code=status.HTTP_200_OK,
 )
-@tiered_rate_limit("web_search")
-async def fetch_url_metadata_endpoint(data: URLRequest):
+@limiter.limit("100/minute")
+@limiter.limit("500/hour")
+async def fetch_url_metadata_endpoint(request: Request, data: URLRequest):
     """
     Fetch metadata for multiple URLs in parallel.
 
     Args:
+        request (Request): The FastAPI request object (required for rate limiting).
         data (URLRequest): The URL request containing an array of URLs.
 
     Returns:

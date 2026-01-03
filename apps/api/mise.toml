@@ -17,15 +17,15 @@ python.uv_venv_auto = true
 
 [tasks.dev]
 description = "Run development server with hot reload"
-run = "uv run --group backend --group voice_agent uvicorn app.main:app --port 8000 --reload --reload-dir app --log-level info"
+run = "uv run --group backend uvicorn app.main:app --port 8000 --reload --reload-dir app --log-level info"
 
 [tasks.start]
 description = "Run production server"
-run = "uv run --group backend --group voice_agent fastapi run"
+run = "uv run --group backend fastapi run"
 
 [tasks.worker]
 description = "Start ARQ worker"
-run = "uv run --group backend --group voice_agent arq app.worker.WorkerSettings"
+run = "uv run --group backend arq app.worker.WorkerSettings"
 alias = "arq"
 
 [tasks.lint]
@@ -121,16 +121,12 @@ description = "Detect secrets in codebase (prek hook)"
 run = "prek run detect-secrets"
 
 [tasks.deps]
-description = "Install all dependencies (backend + voice + dev)"
+description = "Install all dependencies (backend + dev)"
 run = "uv sync --group backend --group dev"
 
 [tasks."deps:backend"]
-description = "Install backend + dev dependencies only (no voice)"
+description = "Install backend + dev dependencies only"
 run = "uv sync --group backend --group dev"
-
-[tasks."deps:voice"]
-description = "Install voice agent + dev dependencies only (no backend)"
-run = "uv sync --group voice_agent --group dev"
 
 [tasks."seed:models"]
 description = "Seed AI models"
@@ -143,15 +139,4 @@ run = "uv run --group backend python scripts/seed_workflows.py"
 [tasks.clean]
 description = "Clean up __pycache__ and build artifacts"
 run = "find . -type d -name '__pycache__' -exec rm -rf {} + && find . -type f -name '*.pyc' -delete"
-
-# ─────────────────────────────────────────────────────────────
-# Voice Agent Tasks
-# ─────────────────────────────────────────────────────────────
-[tasks.voice]
-description = "Run voice agent worker"
-run = "uv run --group backend --group voice_agent python -m app.workers.voice_agent start"
-
-[tasks."voice:download"]
-description = "Download voice agent models (VAD, etc.)"
-run = "uv run --group backend --group voice_agent python -m app.workers.voice_agent download-files"
 

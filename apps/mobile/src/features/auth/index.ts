@@ -1,17 +1,29 @@
-/**
- * Auth Module Exports
- */
+// ============================================================================
+// Auth Feature - Public API
+// ============================================================================
 
-/**
- * Auth Feature Exports
- * Centralized exports for all auth-related components and utilities
- */
-
+// API
+export * from "@/features/auth/api";
 // Components
-export { AuthBackground } from "./components/auth-background";
-export { AuthCard } from "./components/auth-card";
-export { AuthFooter } from "./components/auth-footer";
-export { AuthHeader } from "./components/auth-header";
+export * from "@/features/auth/components/auth-background";
+export * from "@/features/auth/components/auth-card";
+export * from "@/features/auth/components/auth-footer";
+export * from "@/features/auth/components/auth-header";
 
 // Hooks
-export { AuthProvider, useAuth } from "./hooks/use-auth";
+export * from "@/features/auth/hooks/use-auth";
+
+// Types
+export * from "@/features/auth/types";
+
+// Utils (storage functions)
+export {
+  clearAuthData,
+  getAuthToken,
+  getUserInfo,
+  isAuthenticated,
+  removeAuthToken,
+  removeUserInfo,
+  storeAuthToken,
+  storeUserInfo,
+} from "@/features/auth/utils/auth-storage";

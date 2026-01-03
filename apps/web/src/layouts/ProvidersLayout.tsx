@@ -3,6 +3,7 @@
 import { type ReactNode, Suspense } from "react";
 
 import { ElectronRouteGuard } from "@/components/electron";
+import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { Toaster } from "@/components/ui/sonner";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
@@ -30,15 +31,18 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
   return (
     <HeroUIProvider>
       <QueryProvider>
-        <Suspense fallback={<SuspenseLoader />}>
+        {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
+        <Suspense fallback={<></>}>
           <GlobalAuth />
         </Suspense>
         <GlobalInterceptor />
         {/* <HydrationManager /> */}
         <Toaster closeButton richColors position="top-right" theme="dark" />
         <ElectronRouteGuard>
-          {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
-          <Suspense fallback={<></>}>{children}</Suspense>
+          <KeyboardShortcutsProvider>
+            {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
+            <Suspense fallback={<></>}>{children}</Suspense>
+          </KeyboardShortcutsProvider>
         </ElectronRouteGuard>
       </QueryProvider>
     </HeroUIProvider>

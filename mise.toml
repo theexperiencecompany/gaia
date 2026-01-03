@@ -10,16 +10,16 @@
 python = "3.12"
 node = "22"
 "npm:mintlify" = "latest"
-prek = "latest"
+prek = "0.2.23"
 uv = "latest"
 "npm:nx" = "latest"
 
 [env]
-_.python.venv = { path = "apps/api/.venv", create = true }
+_.python.venv = { path = ".venv", create = true }
 MISE_NODE_COREPACK = "1"
 
-[hooks]
-postinstall = "pnpm install && nx sync api"
+# [hooks]
+# postinstall = "pnpm install && nx sync api"
 
 [settings]
 # npm.package_manager = "pnpm" # Use pnpm as the package manager
@@ -48,13 +48,12 @@ description = "Run ONLY mobile app"
 run = "nx dev mobile"
 
 [tasks."dev:full"]
-description = "Run API + web + arq in parallel (starts Docker automatically)"
-run = "nx run docker:docker:up && nx run-many -t dev --projects=api,web --parallel=2 && mise dev:arq && mise dev:voice"
+description = "Run API + web + arq worker + voice agent in parallel (starts Docker automatically)"
+run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web,voice-agent --parallel=4"
 
 [tasks."dev:voice"]
-description = "Run ONLY voice agent worker (without docker dependencies)"
-dir = "apps/api"
-run = "mise voice"
+description = "Run ONLY voice agent worker"
+run = "nx dev voice-agent"
 
 [tasks.dev]
 description = "Run API + web in parallel (starts Docker automatically)"
@@ -165,8 +164,8 @@ fi
 
 [tasks."setup:voice"]
 description = "Download voice agent models (VAD, etc.)"
-dir = "apps/api"
-run = "mise voice:download"
+dir = "apps/voice-agent"
+run = "uv run python -m src download-files"
 
 [tasks.setup]
 description = "Complete project setup (run after mise install)"

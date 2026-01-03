@@ -1,7 +1,8 @@
+"use client";
+
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
 
-import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 interface WorkflowStepProps {
@@ -9,8 +10,7 @@ interface WorkflowStepProps {
     id: string;
     title: string;
     description: string;
-    tool_name: string;
-    tool_category: string;
+    category: string;
   };
   index: number;
   size?: "small" | "large";
@@ -35,20 +35,24 @@ export default function WorkflowStep({
 
   return (
     <div className="relative flex items-start gap-5">
-      {/* Timeline dot with number */}
       <div
-        className={`relative z-10 flex ${dotSize} flex-shrink-0 items-center justify-center rounded-full border-1 border-primary bg-primary/10 backdrop-blur-3xl`}
+        className={`relative z-10 flex ${dotSize} shrink-0 items-center justify-center rounded-full border-1 border-primary bg-primary/10 backdrop-blur-3xl`}
       >
         <span className={`${dotTextSize} font-semibold text-primary`}>
           {index + 1}
         </span>
       </div>
 
-      {/* Step content */}
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-2">
           <Tooltip
-            content="Tool Name"
+            content={step.category
+              .replaceAll("_", " ")
+              .replace(
+                /^([a-zA-Z])([\s\S]*)$/,
+                (_: string, first: string, rest: string) =>
+                  first.toUpperCase() + rest.toLowerCase(),
+              )}
             size={chipSize}
             color="foreground"
             showArrow
@@ -59,7 +63,7 @@ export default function WorkflowStep({
               className={`${chipPadding} pl-2 space-x-1 truncate ${chipTextSize}`}
               startContent={
                 <div className="min-w-fit">
-                  {getToolCategoryIcon(step.tool_category, {
+                  {getToolCategoryIcon(step.category, {
                     size: iconSize,
                     width: iconSize,
                     height: iconSize,
@@ -67,27 +71,9 @@ export default function WorkflowStep({
                 </div>
               }
             >
-              {formatToolName(step.tool_name)}
-            </Chip>
-          </Tooltip>
-          <Tooltip
-            content="Tool Category"
-            size={chipSize}
-            color="foreground"
-            showArrow
-          >
-            <Chip
-              size={chipSize}
-              variant="flat"
-              color="primary"
-              className="text-primary capitalize"
-            >
-              {step.tool_category
+              {step.category
                 .replaceAll("_", " ")
-                .replace(
-                  /^([a-zA-Z])([\s\S]*)$/,
-                  (_, first, rest) => first.toUpperCase() + rest.toLowerCase(),
-                )}
+                .replace(/\b\w/g, (c) => c.toUpperCase())}
             </Chip>
           </Tooltip>
         </div>

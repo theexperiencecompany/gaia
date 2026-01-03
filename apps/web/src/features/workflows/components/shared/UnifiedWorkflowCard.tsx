@@ -148,10 +148,7 @@ export default function UnifiedWorkflowCard({
         id: step.id || `step_${index}`,
         title: step.title,
         description: step.description,
-        tool_name: step.tool_name || step.tool_category,
-        tool_category: step.tool_category,
-        tool_inputs: step.tool_inputs || {},
-        order: step.order ?? index,
+        category: step.category,
       }));
 
       const workflowRequest = {
@@ -246,11 +243,7 @@ export default function UnifiedWorkflowCard({
 
   // Render tool icons
   const renderToolIcons = () => {
-    const categories = [
-      ...new Set(
-        steps.map((step) => step.tool_category).filter((cat) => cat != null),
-      ),
-    ];
+    const categories = [...new Set(steps.map((step) => step.category))];
     const displayIcons = categories.slice(0, 3);
 
     return (
@@ -279,7 +272,7 @@ export default function UnifiedWorkflowCard({
           ) : null;
         })}
         {categories.length > 3 && (
-          <div className="z-[0] flex size-[34px] min-h-[34px] min-w-[34px] items-center justify-center rounded-lg bg-zinc-700/60 text-sm text-foreground-500">
+          <div className="z-0 flex size-[34px] min-h-[34px] min-w-[34px] items-center justify-center rounded-lg bg-zinc-700/60 text-sm text-foreground-500">
             +{categories.length - 3}
           </div>
         )}
@@ -291,7 +284,7 @@ export default function UnifiedWorkflowCard({
 
   const cardContent = (
     <div
-      className={`group relative z-[1] flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${
+      className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${
         useBlurEffect
           ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg"
           : "bg-zinc-800 outline-zinc-800/70"

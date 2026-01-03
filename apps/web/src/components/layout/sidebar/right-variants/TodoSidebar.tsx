@@ -5,11 +5,10 @@ import { Checkbox } from "@heroui/checkbox";
 import { Input, Textarea } from "@heroui/input";
 import { formatDistanceToNow } from "date-fns";
 import type React from "react";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
+
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useUser } from "@/features/auth/hooks/useUser";
-import { todoApi } from "@/features/todo/api/todoApi";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
 import WorkflowSection from "@/features/todo/components/WorkflowSection";
@@ -21,7 +20,6 @@ import type {
   Todo,
   TodoUpdate,
 } from "@/types/features/todoTypes";
-import type { Workflow } from "@/types/features/workflowTypes";
 
 interface TodoSidebarProps {
   todo: Todo | null;
@@ -39,25 +37,12 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
   const user = useUser();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
-  const [isGeneratingWorkflow, setIsGeneratingWorkflow] = useState(false);
-  const [newGeneratedWorkflow, setNewGeneratedWorkflow] = useState<
-    Workflow | undefined
-  >();
 
   const userTimezone = user?.timezone;
 
-  // Reset generated workflow when todo changes
-  useEffect(() => {
-    setNewGeneratedWorkflow(undefined);
-  }, [todo?.id]);
-
   const handleToggleComplete = () => {
     if (!todo) return;
-    try {
-      onUpdate(todo.id, { completed: !todo.completed });
-    } catch (error) {
-      console.error("Failed to update todo:", error);
-    }
+    onUpdate(todo.id, { completed: !todo.completed });
   };
 
   const handleDelete = () => {
@@ -94,35 +79,17 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
     onUpdate(todo.id, { [field]: value } as TodoUpdate);
   };
 
-  const handleGenerateWorkflow = async () => {
+  // Called when WorkflowSection generates/links a workflow
+  const handleWorkflowLinked = (workflowId: string) => {
     if (!todo) return;
-    setIsGeneratingWorkflow(true);
-    try {
-      const result = await todoApi.generateWorkflow(todo.id);
-      if (result.workflow) {
-        onUpdate(todo.id, { workflow_id: result.workflow.id });
-        setNewGeneratedWorkflow(result.workflow);
-        toast.success("Workflow generated successfully!");
-      }
-    } catch (error) {
-      console.error("Failed to generate workflow:", error);
-      toast.error("Failed to generate workflow");
-    } finally {
-      setIsGeneratingWorkflow(false);
-    }
-  };
-
-  const handleWorkflowGenerated = () => {
-    if (!todo) return;
-    setNewGeneratedWorkflow(undefined);
-    toast.success("Workflow updated successfully!");
+    onUpdate(todo.id, { workflow_id: workflowId });
   };
 
   if (!todo) return null;
 
   return (
     <div className="flex h-full flex-col">
-      <SidebarContent className="flex-1 overflow-y-auto px-6 outline-0">
+      <SidebarContent className="flex-1 overflow-y-auto pl-6 pr-3 outline-0">
         <div className="space-y-4 pt-4">
           {/* Title and Description Section */}
           <div className="flex items-start gap-1">
@@ -232,7 +199,6 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             />
           </div>
 
-          {/* Subtasks Section */}
           <div
             className={`py-4 border-y-1 border-zinc-800 ${todo?.subtasks?.length > 0 ? "pt-6r" : ""}`}
           >
@@ -242,20 +208,15 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             />
           </div>
 
-          {/* Workflow Section */}
-          <div className="py-2">
-            <WorkflowSection
-              isGenerating={isGeneratingWorkflow}
-              todoId={todo.id}
-              onGenerateWorkflow={handleGenerateWorkflow}
-              onWorkflowGenerated={handleWorkflowGenerated}
-              newWorkflow={newGeneratedWorkflow}
-            />
-          </div>
+          <WorkflowSection
+            hideBg={true}
+            todoId={todo.id}
+            onWorkflowLinked={handleWorkflowLinked}
+          />
         </div>
       </SidebarContent>
 
-      <SidebarFooter className="px-6 py-6">
+      <SidebarFooter className="p-3">
         <div className="flex items-center justify-between">
           <div className="py-2">
             <span className="text-xs text-zinc-600">
@@ -270,6 +231,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             type="button"
             isIconOnly
             color="danger"
+            size="sm"
             variant="flat"
             onPress={handleDelete}
             aria-label="Delete todo"

@@ -326,6 +326,7 @@ def update_conversation_messages(
         selectedTool=body.selectedTool,
         toolCategory=body.toolCategory,
         selectedWorkflow=body.selectedWorkflow,
+        replyToMessage=body.replyToMessage,
     )
 
     # Set message_id if provided from init_chunk

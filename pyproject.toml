@@ -1,0 +1,9 @@
+# Root workspace configuration for uv
+# This file defines the Python workspace members for the monorepo
+
+[tool.uv.workspace]
+members = [
+  "libs",
+  "apps/api",
+  "apps/voice-agent",
+]

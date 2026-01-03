@@ -1,32 +1,54 @@
 {
   "separate-pull-requests": false,
-  "include-component-in-tag": false,
-  "plugins": [
-    {
-      "type": "linked-versions",
-      "groupName": "gaia",
-      "components": ["api", "web", "desktop"],
-      "merge": true
-    }
-  ],
+  "include-component-in-tag": true,
   "packages": {
     "apps/api": {
       "release-type": "python",
       "component": "api",
       "changelog-path": "CHANGELOG.md",
-      "changelog-type": "github"
+      "exclude-paths": [
+        "apps/web",
+        "apps/desktop",
+        "apps/mobile",
+        "apps/docs",
+        "apps/voice-agent"
+      ]
     },
     "apps/web": {
       "release-type": "node",
       "component": "web",
       "changelog-path": "CHANGELOG.md",
-      "changelog-type": "github"
+      "exclude-paths": [
+        "apps/api",
+        "apps/desktop",
+        "apps/mobile",
+        "apps/docs",
+        "apps/voice-agent"
+      ]
     },
     "apps/desktop": {
       "release-type": "node",
       "component": "desktop",
       "changelog-path": "CHANGELOG.md",
-      "changelog-type": "github"
+      "exclude-paths": [
+        "apps/api",
+        "apps/web",
+        "apps/mobile",
+        "apps/docs",
+        "apps/voice-agent"
+      ]
+    },
+    "apps/mobile": {
+      "release-type": "node",
+      "component": "mobile",
+      "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "apps/api",
+        "apps/web",
+        "apps/desktop",
+        "apps/docs",
+        "apps/voice-agent"
+      ]
     }
   }
 }

@@ -3,17 +3,32 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "root": "apps/api",
   "sourceRoot": "apps/api/app",
-  "implicitDependencies": ["docker"],
+  "implicitDependencies": ["docker", "shared-python"],
   "release": {
     "docker": {
-      "repositoryName": "heygaia/gaia"
+      "repositoryName": "theexperiencecompany/gaia"
     }
   },
   "targets": {
+    "build": {
+      "executor": "nx:noop",
+      "cache": true,
+      "inputs": ["production"],
+      "outputs": []
+    },
+    "docker:build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker build -f apps/api/Dockerfile -t apps-api -t ghcr.io/theexperiencecompany/gaia:latest . && docker push ghcr.io/theexperiencecompany/gaia:latest",
+        "cwd": "."
+      },
+      "cache": true,
+      "inputs": ["production", "^production"]
+    },
     "sync": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv sync --frozen --group backend --group dev --group voice_agent",
+        "command": "uv sync --frozen --group backend --group dev",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -23,7 +38,7 @@
     "dev": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group voice_agent uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --log-level info",
+        "command": "uv run --group backend uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --log-level info",
         "cwd": "{projectRoot}"
       }
     },
@@ -87,7 +102,7 @@
     "worker": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group voice_agent arq app.worker.WorkerSettings",
+        "command": "uv run --group backend arq app.worker.WorkerSettings",
         "cwd": "{projectRoot}"
       }
     },

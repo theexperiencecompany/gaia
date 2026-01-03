@@ -1,6 +1,6 @@
 {
   "name": "@gaia/desktop",
-  "version": "0.1.0",
+  "version": "0.11.0",
   "description": "GAIA Desktop - Your Personal AI Assistant",
   "main": "./out/main/index.mjs",
   "author": "The Experience Company",

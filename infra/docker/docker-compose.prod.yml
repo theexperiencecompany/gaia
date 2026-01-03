@@ -6,9 +6,13 @@ services:
     container_name: gaia-backend
     profiles: ["", "backend-only"]
     image: ghcr.io/theexperiencecompany/gaia:latest
-    working_dir: /app
+    working_dir: /app/apps/api
     command:
       [
+        "uv",
+        "run",
+        "--group",
+        "backend",
         "python",
         "-m",
         "uvicorn",
@@ -30,10 +34,11 @@ services:
       FORCE_COLOR: 1
       WORKER_TYPE: main_app
       PYTHONDONTWRITEBYTECODE: 1
+      PYTHONPATH: /app/apps/api
       # Disable output buffering for streaming
       PYTHONIOENCODING: utf-8
     env_file:
-      - ./api/.env
+      - ../../apps/api/.env
     ports:
       - "8000:80"
     restart: on-failure
@@ -43,6 +48,10 @@ services:
       chromadb:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - gaia_network
@@ -137,22 +146,23 @@ services:
     container_name: arq_worker
     image: ghcr.io/theexperiencecompany/gaia:latest
     profiles: ["", "backend-only"]
-    working_dir: /app
+    working_dir: /app/apps/api
     env_file:
-      - ./api/.env
+      - ../../apps/api/.env
     environment:
       - WORKER_TYPE=arq_worker
-    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
+      - PYTHONPATH=/app/apps/api
+    command: ["uv", "run", "--group", "backend", "python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     networks:
       - gaia_network
 
-  # Voice Agent Worker
+  # Voice Agent Worker (optional - enable with --profile voice-agent)
   voice-agent-worker:
     container_name: voice-agent-worker
-    image: ghcr.io/heygaia/gaia-voice-agent:latest
-    profiles: ["", "backend-only"]
-    working_dir: /app
+    image: ghcr.io/theexperiencecompany/gaia-voice-agent:latest
+    profiles: ["voice-agent"]
+    working_dir: /app/apps/voice-agent
     environment:
       PYTHONUNBUFFERED: 1
       FORCE_COLOR: 1
@@ -162,7 +172,7 @@ services:
       HF_HUB_ENABLE_HF_TRANSFER: "1"
       HF_HUB_DISABLE_SYMLINKS_WARNING: "1"
     env_file:
-      - ./backend/.env
+      - ../../apps/api/.env
     volumes:
       - voice_agent_models:/root/.cache/huggingface
     restart: always

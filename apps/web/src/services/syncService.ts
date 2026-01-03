@@ -79,6 +79,8 @@ const mapApiMessagesToStored = (
       tool_data: message.tool_data,
       selectedCalendarEvent: message.selectedCalendarEvent,
       selectedWorkflow: message.selectedWorkflow,
+      replyToMessageId: message.replyToMessage?.id ?? null,
+      replyToMessageData: message.replyToMessage ?? null,
     } satisfies IMessage;
   });
 
@@ -189,6 +191,7 @@ export const batchSyncConversations = async (): Promise<void> => {
           starred: conversation.starred ?? false,
           isSystemGenerated: conversation.is_system_generated ?? false,
           systemPurpose: conversation.system_purpose ?? null,
+          isUnread: conversation.is_unread ?? false,
           createdAt: new Date(conversation.createdAt),
           updatedAt: conversation.updatedAt
             ? new Date(conversation.updatedAt)

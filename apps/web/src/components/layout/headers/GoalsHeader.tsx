@@ -37,6 +37,7 @@ export default function GoalsHeader() {
             aria-label="Create new goal"
             tooltip="Create new goal"
             onClick={() => setOpenDialog(true)}
+            data-keyboard-shortcut="create-goal"
           >
             <Target02Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
           </SidebarHeaderButton>

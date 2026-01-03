@@ -1,10 +1,5 @@
-/**
- * Login Screen - app/login/index.tsx
- * Handles user authentication with WorkOS SSO
- * Following Expo Router conventions - separate route for login
- */
-
 import { useRouter } from "expo-router";
+import { Button, PressableFeedback } from "heroui-native";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -12,16 +7,19 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useAuth } from "@/features/auth";
-import { ChatTheme } from "@/shared/constants/chat-theme";
-import { fetchUserInfo, startOAuthFlow } from "@/shared/services/auth-service";
-import { storeAuthToken, storeUserInfo } from "@/shared/utils/auth-storage";
+import { Text } from "@/components/ui/text";
+import { useAuth } from "@/features/auth/hooks/use-auth";
+import {
+  fetchUserInfo,
+  startOAuthFlow,
+} from "@/features/auth/utils/auth-service";
+import {
+  storeAuthToken,
+  storeUserInfo,
+} from "@/features/auth/utils/auth-storage";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -32,21 +30,12 @@ export default function LoginScreen() {
     setIsLoading(true);
 
     try {
-      // Start OAuth flow and get token
       const token = await startOAuthFlow();
-
-      // Store the authentication token
       await storeAuthToken(token);
-
-      // Fetch and store user information
       const userInfo = await fetchUserInfo(token);
       await storeUserInfo(userInfo);
-
-      // Refresh auth state to trigger navigation
       await refreshAuth();
-
-      // Navigate to main app
-      router.replace("/(tabs)");
+      router.replace("/");
     } catch (error) {
       console.error("Login error:", error);
       Alert.alert(
@@ -66,79 +55,84 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View className="flex-1 bg-background">
       {/* Full Background Image */}
       <Image
         source={require("@/assets/background/login.webp")}
-        style={styles.backgroundImage}
+        className="absolute w-full h-full"
         resizeMode="cover"
         blurRadius={0.5}
-        fadeDuration={300}
       />
 
       {/* Dark Overlay */}
-      <View style={styles.overlay} />
+      <View className="absolute w-full h-full bg-black/50" />
 
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView
-          style={styles.keyboardView}
+          className="flex-1 justify-center items-center px-6"
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           {/* Login Card */}
-          <View style={styles.card}>
+          <View className="w-full max-w-md bg-surface/95 rounded-3xl px-8 py-10 border border-border/20">
             {/* Logo and Title */}
-            <View style={styles.header}>
-              <View style={styles.logoContainer}>
+            <View className="items-center mb-8">
+              <View className="w-18 h-18 rounded-full bg-accent/15 items-center justify-center mb-4">
                 <Image
                   source={require("@/assets/logo/logo.webp")}
-                  style={styles.logo}
+                  className="w-12 h-12"
                   resizeMode="contain"
                 />
               </View>
-              <Text style={styles.title}>Let&apos;s Get You Back In</Text>
+              <Text className="text-2xl font-bold text-center">
+                Let's Get You Back In
+              </Text>
             </View>
 
             {/* Login Form */}
-            <View style={styles.form}>
+            <View className="w-full">
               {/* Login Button */}
-              <TouchableOpacity
-                style={[
-                  styles.loginButton,
-                  isLoading && styles.loginButtonDisabled,
-                ]}
+              <Button
+                size="lg"
+                className="bg-accent"
+                isDisabled={isLoading}
                 onPress={handleLogin}
-                activeOpacity={0.8}
-                disabled={isLoading}
               >
                 {isLoading ? (
-                  <ActivityIndicator color="#000000" />
+                  <ActivityIndicator colorClassName="accent-black" />
                 ) : (
-                  <Text style={styles.loginButtonText}>
-                    Continue with WorkOS
-                  </Text>
+                  <Button.Label>Continue with WorkOS</Button.Label>
                 )}
-              </TouchableOpacity>
+              </Button>
 
               {/* Sign Up Link */}
-              <View style={styles.signUpContainer}>
-                <Text style={styles.signUpText}>
-                  Don&apos;t have an account?{" "}
+              <View className="flex-row items-center justify-center mt-4">
+                <Text className="text-base text-muted">
+                  Don't have an account?{" "}
                 </Text>
-                <TouchableOpacity onPress={handleSignUp} disabled={isLoading}>
-                  <Text style={styles.signUpLink}>Sign up</Text>
-                </TouchableOpacity>
+                <PressableFeedback
+                  onPress={handleSignUp}
+                  isDisabled={isLoading}
+                >
+                  <Text className="text-base text-accent font-semibold">
+                    Sign up
+                  </Text>
+                </PressableFeedback>
               </View>
             </View>
 
             {/* Footer */}
-            <View style={styles.footer}>
-              <TouchableOpacity>
-                <Text style={styles.footerLink}>Terms of Service</Text>
-              </TouchableOpacity>
-              <Text style={styles.footerText}> and </Text>
-              <TouchableOpacity>
-                <Text style={styles.footerLink}>Privacy Policy</Text>
-              </TouchableOpacity>
+            <View className="flex-row items-center justify-center mt-6 flex-wrap">
+              <PressableFeedback>
+                <Text className="text-sm text-muted underline">
+                  Terms of Service
+                </Text>
+              </PressableFeedback>
+              <Text className="text-sm text-muted mx-1"> and </Text>
+              <PressableFeedback>
+                <Text className="text-sm text-muted underline">
+                  Privacy Policy
+                </Text>
+              </PressableFeedback>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -146,136 +140,3 @@ export default function LoginScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0a1929",
-  },
-  backgroundImage: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-  },
-  overlay: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  },
-  safeArea: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: ChatTheme.spacing.lg,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 450,
-    backgroundColor: "rgba(26, 26, 26, 0.95)",
-    borderRadius: ChatTheme.borderRadius.lg + 4,
-    paddingHorizontal: ChatTheme.spacing.xl,
-    paddingVertical: ChatTheme.spacing.xl + 8,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 20,
-  },
-  header: {
-    alignItems: "center",
-    marginBottom: ChatTheme.spacing.xl,
-  },
-  logoContainer: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: "rgba(22, 193, 255, 0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: ChatTheme.spacing.md,
-  },
-  logo: {
-    width: 50,
-    height: 50,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: ChatTheme.textPrimary,
-    fontFamily: ChatTheme.fonts.bold,
-    textAlign: "center",
-  },
-  form: {
-    width: "100%",
-  },
-  loginButton: {
-    backgroundColor: ChatTheme.accent,
-    borderRadius: ChatTheme.borderRadius.md,
-    paddingVertical: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: ChatTheme.spacing.md,
-    shadowColor: ChatTheme.accent,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
-    minHeight: 48,
-  },
-  loginButtonDisabled: {
-    opacity: 0.6,
-  },
-  loginButtonText: {
-    fontSize: ChatTheme.fontSize.md,
-    fontWeight: "600",
-    color: "#000000",
-    fontFamily: ChatTheme.fonts.semibold,
-  },
-  signUpContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: ChatTheme.spacing.md,
-  },
-  signUpText: {
-    fontSize: ChatTheme.fontSize.md,
-    color: ChatTheme.textSecondary,
-    fontFamily: ChatTheme.fonts.regular,
-  },
-  signUpLink: {
-    fontSize: ChatTheme.fontSize.md,
-    color: ChatTheme.accent,
-    fontFamily: ChatTheme.fonts.semibold,
-    fontWeight: "600",
-  },
-  footer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: ChatTheme.spacing.lg,
-    flexWrap: "wrap",
-  },
-  footerText: {
-    fontSize: ChatTheme.fontSize.sm,
-    color: ChatTheme.textSecondary,
-    fontFamily: ChatTheme.fonts.regular,
-  },
-  footerLink: {
-    fontSize: ChatTheme.fontSize.sm,
-    color: ChatTheme.textSecondary,
-    fontFamily: ChatTheme.fonts.regular,
-    textDecorationLine: "underline",
-  },
-});

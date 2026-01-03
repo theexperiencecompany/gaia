@@ -8,19 +8,39 @@ from typing import Optional, Tuple
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from app.agents.prompts.workflow_prompts import TODO_WORKFLOW_DESCRIPTION_TEMPLATE
 from app.api.v1.middleware.tiered_rate_limiter import tiered_rate_limit
 from app.config.loggers import worker_logger as logger
 from app.config.token_repository import token_repository
+from app.core.websocket_manager import get_websocket_manager
 from app.db.mongodb.collections import todos_collection
 from app.models.chat_models import MessageModel
 from app.models.message_models import (
     MessageRequestWithHistory,
     SelectedWorkflowData,
 )
+from app.models.notification.notification_models import (
+    ActionConfig,
+    ActionStyle,
+    ActionType,
+    ChannelConfig,
+    NotificationAction,
+    NotificationContent,
+    NotificationRequest,
+    NotificationSourceEnum,
+    RedirectConfig,
+)
+from app.models.workflow_models import (
+    CreateWorkflowRequest,
+    TriggerConfig,
+    TriggerType,
+)
 from app.services.model_service import get_user_selected_model
+from app.services.notification_service import notification_service
 from app.services.todos.todo_service import TodoService
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
+    add_workflow_execution_messages,
     get_or_create_workflow_conversation,
 )
 from app.services.workflow.scheduler import WorkflowScheduler
@@ -84,6 +104,7 @@ async def process_workflow_generation_task(
     """
     Process workflow generation task for todos.
     Migrated from RabbitMQ to ARQ for unified task processing.
+    Broadcasts WebSocket event when workflow generation completes.
 
     Args:
         ctx: ARQ context
@@ -95,28 +116,30 @@ async def process_workflow_generation_task(
     Returns:
         Processing result message
     """
-    from app.models.workflow_models import (
-        CreateWorkflowRequest,
-        TriggerConfig,
-        TriggerType,
-    )
-    from app.services.workflow.service import WorkflowService
-
     logger.info(f"Processing workflow generation for todo {todo_id}: {title}")
 
     try:
-        # Create standalone workflow using the new workflow system
+        # Create rich description using the template
+        workflow_description = TODO_WORKFLOW_DESCRIPTION_TEMPLATE.format(
+            title=title,
+            details_section=f"**Details:** {description}" if description else "",
+        )
+        # Create standalone workflow with todo workflow flag
         workflow_request = CreateWorkflowRequest(
             title=f"Todo: {title}",
-            description=description or f"Workflow for todo: {title}",
+            description=workflow_description,
             trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
-            generate_immediately=True,  # Generate steps immediately
+            generate_immediately=True,
         )
 
-        workflow = await WorkflowService.create_workflow(workflow_request, user_id)
+        workflow = await WorkflowService.create_workflow(
+            workflow_request,
+            user_id,
+            is_todo_workflow=True,
+            source_todo_id=todo_id,
+        )
 
         if workflow and workflow.id:
-            # Update the todo with the workflow_id for linking
             update_data = {
                 "workflow_id": workflow.id,
                 "updated_at": datetime.now(timezone.utc),
@@ -131,8 +154,26 @@ async def process_workflow_generation_task(
                     f"Successfully generated and linked standalone workflow {workflow.id} for todo {todo_id} with {len(workflow.steps)} steps"
                 )
 
-                # Invalidate cache for this todo
                 await TodoService._invalidate_cache(user_id, None, todo_id, "update")
+
+                try:
+                    websocket_manager = get_websocket_manager()
+                    await websocket_manager.broadcast_to_user(
+                        user_id,
+                        {
+                            "type": "workflow.generated",
+                            "todo_id": todo_id,
+                            "workflow": workflow.model_dump(mode="json"),
+                        },
+                    )
+                    logger.info(f"WebSocket event sent for workflow {workflow.id}")
+                except Exception as ws_error:
+                    logger.warning(f"Failed to send WebSocket event: {ws_error}")
+
+                # Clear the generating flag
+                from app.services.workflow.queue_service import WorkflowQueueService
+
+                await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
 
                 return f"Successfully generated standalone workflow {workflow.id} for todo {todo_id}"
             else:
@@ -146,11 +187,35 @@ async def process_workflow_generation_task(
             raise ValueError("Workflow generation failed: No workflow created")
 
     except Exception as e:
-        # Log the error but don't try to update legacy workflow fields
+        # Log the error
         error_msg = (
             f"Failed to process workflow generation for todo {todo_id}: {str(e)}"
         )
         logger.error(error_msg)
+
+        # Clear the generating flag on failure too
+        try:
+            from app.services.workflow.queue_service import WorkflowQueueService
+
+            await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
+        except Exception:  # nosec B110 - Intentional: cleanup should not raise
+            pass
+
+        # Broadcast failure WebSocket event so frontend can handle it
+        try:
+            websocket_manager = get_websocket_manager()
+            await websocket_manager.broadcast_to_user(
+                user_id,
+                {
+                    "type": "workflow.generation_failed",
+                    "todo_id": todo_id,
+                    "error": str(e),
+                },
+            )
+            logger.info(f"WebSocket failure event sent for todo {todo_id}")
+        except Exception as ws_error:
+            logger.warning(f"Failed to send failure WebSocket event: {ws_error}")
+
         raise
 
 
@@ -294,8 +359,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
                     "id": step.id,
                     "title": step.title,
                     "description": step.description,
-                    "tool_name": step.tool_name,
-                    "tool_category": step.tool_category,
+                    "category": step.category,
                 }
             )
 
@@ -367,27 +431,6 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
         return [error_message]
 
 
-def format_workflow_steps_as_prompt(workflow) -> str:
-    """Convert workflow steps into a natural language prompt for LLM execution."""
-    prompt = f"""Please execute the following workflow steps in sequence:
-
-**Workflow Goal**: {getattr(workflow, "description", "Complete the defined workflow tasks")}
-
-**Steps to execute**:
-"""
-
-    for i, step in enumerate(workflow.steps, 1):
-        prompt += f"\n{i}. **{step.title}**"
-        prompt += f"\n   - Description: {step.description}"
-        prompt += f"\n   - Tool: {step.tool_name}"
-        if hasattr(step, "tool_inputs") and step.tool_inputs:
-            prompt += f"\n   - Inputs: {step.tool_inputs}"
-        prompt += "\n"
-
-    prompt += "\nExecute each step using the appropriate tools and provide the results."
-    return prompt
-
-
 async def regenerate_workflow_steps(
     ctx: dict,
     workflow_id: str,
@@ -437,6 +480,7 @@ async def regenerate_workflow_steps(
 async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> str:
     """
     Generate workflow steps for a workflow.
+    Broadcasts WebSocket event when complete if it's a todo workflow.
 
     Args:
         ctx: ARQ context
@@ -455,6 +499,29 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
         # Generate steps using the service method
         await WorkflowService._generate_workflow_steps(workflow_id, user_id)
 
+        # Fetch the updated workflow to get the generated steps
+        updated_workflow = await WorkflowService.get_workflow(workflow_id, user_id)
+
+        # If this is a todo workflow, send WebSocket event
+        if (
+            updated_workflow
+            and updated_workflow.is_todo_workflow
+            and updated_workflow.source_todo_id
+        ):
+            try:
+                websocket_manager = get_websocket_manager()
+                await websocket_manager.broadcast_to_user(
+                    user_id,
+                    {
+                        "type": "workflow.generated",
+                        "todo_id": updated_workflow.source_todo_id,
+                        "workflow": updated_workflow.model_dump(mode="json"),
+                    },
+                )
+                logger.info(f"WebSocket event sent for todo workflow {workflow_id}")
+            except Exception as ws_error:
+                logger.warning(f"Failed to send WebSocket event: {ws_error}")
+
         result = f"Successfully generated steps for workflow {workflow_id}"
         logger.info(result)
         return result
@@ -469,10 +536,6 @@ async def create_workflow_completion_notification(
     workflow, execution_messages, user_id: str
 ):
     """Store workflow execution messages and send completion notification."""
-    from app.services.workflow.conversation_service import (
-        add_workflow_execution_messages,
-        get_or_create_workflow_conversation,
-    )
 
     # Get or create conversation (required for storage)
     conversation = await get_or_create_workflow_conversation(
@@ -509,19 +572,6 @@ async def create_workflow_completion_notification(
 
     # Send notification (best effort - don't fail if this breaks)
     try:
-        from app.models.notification.notification_models import (
-            ActionConfig,
-            ActionStyle,
-            ActionType,
-            ChannelConfig,
-            NotificationAction,
-            NotificationContent,
-            NotificationRequest,
-            NotificationSourceEnum,
-            RedirectConfig,
-        )
-        from app.services.notification_service import notification_service
-
         await notification_service.create_notification(
             NotificationRequest(
                 user_id=user_id,
@@ -556,91 +606,3 @@ async def create_workflow_completion_notification(
         logger.info(f"Notification sent for workflow {workflow.id}")
     except Exception as e:
         logger.error(f"Failed to send notification for workflow {workflow.id}: {e}")
-        # Don't raise - notification is optional
-
-
-# from old process_workflow.py - kept for reference
-# async def process_workflow_generation(task_data: Dict[str, Any]) -> None:
-#     """
-#     Process workflow generation task in the background.
-
-#     Args:
-#         task_data: Dictionary containing todo_id, user_id, title, and description
-#     """
-#     try:
-#         todo_id = task_data.get("todo_id")
-#         user_id = task_data.get("user_id")
-#         title = task_data.get("title")
-#         description = task_data.get("description")
-
-#         if not all([todo_id, user_id, title]):
-#             logger.error(f"Missing required fields in workflow task data: {task_data}")
-#             return
-
-#         logger.info(f"Starting workflow generation for todo {todo_id}: {title}")
-
-#         # Create standalone workflow using the new workflow system
-#         from app.models.workflow_models import (
-#             CreateWorkflowRequest,
-#             TriggerConfig,
-#             TriggerType,
-#         )
-#         from app.services.workflow.service import WorkflowService
-
-#         workflow_request = CreateWorkflowRequest(
-#             title=f"Todo: {title}",
-#             description=description or f"Workflow for todo: {title}",
-#             trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
-#             generate_immediately=True,  # Generate steps immediately
-#         )
-
-#         workflow = await WorkflowService.create_workflow(workflow_request, str(user_id))
-
-#         if workflow and workflow.id:
-#             # Update the todo with the workflow_id for linking
-#             update_data = {
-#                 "workflow_id": workflow.id,
-#                 "updated_at": datetime.now(timezone.utc),
-#             }
-
-#             result = await todos_collection.update_one(
-#                 {"_id": ObjectId(todo_id), "user_id": user_id}, {"$set": update_data}
-#             )
-
-#             if result.modified_count > 0:
-#                 logger.info(
-#                     f"Successfully generated and linked standalone workflow {workflow.id} for todo {todo_id} with {len(workflow.steps)} steps"
-#                 )
-
-#                 if not user_id:
-#                     logger.warning(
-#                         f"User ID is missing for todo {todo_id}. Cannot invalidate cache."
-#                     )
-#                     return
-
-#                 # Invalidate cache for this todo
-#                 await TodoService._invalidate_cache(user_id, None, todo_id, "update")
-#             else:
-#                 logger.warning(f"Todo {todo_id} not found or not updated with workflow")
-
-#         else:
-#             logger.error(
-#                 f"Failed to generate workflow for todo {todo_id}: No workflow created"
-#             )
-
-#     except Exception as e:
-#         # Mark workflow generation as failed on exception
-#         try:
-#             todo_id = task_data.get("todo_id")
-#             user_id = task_data.get("user_id")
-#             if todo_id and user_id:
-#                 # Just log the failure, don't update legacy fields
-#                 logger.error(f"Failed to generate workflow for todo {todo_id}")
-#         except Exception as update_error:
-#             logger.error(
-#                 f"Failed to update workflow status to failed: {str(update_error)}"
-#             )
-
-#         logger.error(
-#             f"Error processing workflow generation task: {str(e)}", exc_info=True
-#         )

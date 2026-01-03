@@ -38,6 +38,7 @@ export interface Conversation {
   starred?: boolean;
   is_system_generated?: boolean;
   system_purpose?: SystemPurpose;
+  is_unread?: boolean;
   createdAt: string;
   updatedAt?: string;
 }
@@ -85,6 +86,7 @@ export const chatApi = {
       starred?: boolean;
       is_system_generated?: boolean;
       system_purpose?: SystemPurpose;
+      is_unread?: boolean;
       createdAt: string;
       updatedAt?: string;
       messages: MessageType[];
@@ -197,6 +199,16 @@ export const chatApi = {
     );
   },
 
+  // Mark conversation as read
+  markAsRead: async (conversationId: string): Promise<void> => {
+    return apiService.patch(`/conversations/${conversationId}/read`, {});
+  },
+
+  // Mark conversation as unread
+  markAsUnread: async (conversationId: string): Promise<void> => {
+    return apiService.patch(`/conversations/${conversationId}/unread`, {});
+  },
+
   // Save incomplete conversation when stream is cancelled
   saveIncompleteConversation: async (
     inputText: string,
@@ -242,6 +254,11 @@ export const chatApi = {
     externalController?: AbortController,
     selectedWorkflow: WorkflowData | null = null,
     selectedCalendarEvent: SelectedCalendarEventData | null = null,
+    replyToMessage: {
+      id: string;
+      content: string;
+      role: "user" | "assistant";
+    } | null = null,
   ) => {
     const controller = externalController || new AbortController();
     // Extract fileIds from fileData for backward compatibility
@@ -274,6 +291,7 @@ export const chatApi = {
           toolCategory, // Add toolCategory to the request body
           selectedWorkflow, // Add selectedWorkflow to the request body
           selectedCalendarEvent, // Add selectedCalendarEvent to the request body
+          replyToMessage, // Add replyToMessage to the request body
           messages: convoMessages
             .slice(-30)
             .filter(({ response }) => response.trim().length > 0)

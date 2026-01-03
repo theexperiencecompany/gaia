@@ -37,22 +37,27 @@ def get_token(
     }
     if conversationId:
         metadata["conversationId"] = conversationId
-    at = (
-        api.AccessToken(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)
-        .with_identity(identity)
-        .with_name(display_name)
-        .with_metadata(json.dumps(metadata))
-        .with_grants(
-            api.VideoGrants(
-                room_join=True,
-                room=room_name,
-                can_publish=True,
-                can_subscribe=True,
-                can_publish_data=True,
-                can_update_own_metadata=True,
+    try:
+        at = (
+            api.AccessToken(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)
+            .with_identity(identity)
+            .with_name(display_name)
+            .with_metadata(json.dumps(metadata))
+            .with_grants(
+                api.VideoGrants(
+                    room_join=True,
+                    room=room_name,
+                    can_publish=True,
+                    can_subscribe=True,
+                    can_publish_data=True,
+                    can_update_own_metadata=True,
+                )
             )
         )
-    )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate voice token: {str(e)}"
+        )
 
     return {
         "serverUrl": settings.LIVEKIT_URL,

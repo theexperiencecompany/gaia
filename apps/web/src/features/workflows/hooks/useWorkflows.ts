@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-
-import { type Workflow, workflowApi } from "../api/workflowApi";
+import { useEffect } from "react";
+import type { Workflow } from "../api/workflowApi";
+import { useWorkflowsStore } from "../stores/workflowsStore";
 
 interface UseWorkflowsReturn {
   workflows: Workflow[];
@@ -14,52 +14,20 @@ interface UseWorkflowsReturn {
 }
 
 export const useWorkflows = (autoFetch: boolean = true): UseWorkflowsReturn => {
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [isLoading, setIsLoading] = useState(autoFetch);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchWorkflows = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const response = await workflowApi.listWorkflows();
-      setWorkflows(response.workflows);
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to fetch workflows";
-      setError(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const addWorkflow = useCallback((workflow: Workflow) => {
-    setWorkflows((prev) => [workflow, ...prev]);
-  }, []);
-
-  const updateWorkflow = useCallback(
-    (workflowId: string, updates: Partial<Workflow>) => {
-      setWorkflows((prev) =>
-        prev.map((workflow) =>
-          workflow.id === workflowId ? { ...workflow, ...updates } : workflow,
-        ),
-      );
-    },
-    [],
-  );
-
-  const removeWorkflow = useCallback((workflowId: string) => {
-    setWorkflows((prev) =>
-      prev.filter((workflow) => workflow.id !== workflowId),
-    );
-  }, []);
-
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
+  // Get state and actions from Zustand store (shared across all consumers)
+  const {
+    workflows,
+    isLoading,
+    error,
+    fetchWorkflows,
+    addWorkflow,
+    updateWorkflow,
+    removeWorkflow,
+    clearError,
+  } = useWorkflowsStore();
 
   // Auto-fetch on mount if enabled
+  // fetchWorkflows is stable (defined in Zustand store, not recreated)
   useEffect(() => {
     if (autoFetch) {
       fetchWorkflows();

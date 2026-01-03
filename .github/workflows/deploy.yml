@@ -68,12 +68,12 @@ jobs:
               git pull origin master
 
               # Stop all containers before pulling to avoid volume mount issues
-              docker compose -f docker-compose.prod.yml down
+              docker compose -f infra/docker/docker-compose.prod.yml down
 
-              docker compose -f docker-compose.prod.yml pull
+              docker compose -f infra/docker/docker-compose.prod.yml pull
 
               # Recreate services with updated images (respecting dependencies)
-              docker compose -f docker-compose.prod.yml up -d --remove-orphans
+              docker compose -f infra/docker/docker-compose.prod.yml up -d --remove-orphans
               docker image prune -f
             "
 
@@ -86,7 +86,7 @@ jobs:
             --zone=$GCP_ZONE \
             --command="
               cd /home/aryan/gaia
-              docker compose -f docker-compose.prod.yml ps
+              docker compose -f infra/docker/docker-compose.prod.yml ps
             ")
 
           echo "$output"

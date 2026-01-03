@@ -1,8 +1,3 @@
-/**
- * AI Models Data
- * Available AI models for selection
- */
-
 import type { AIModel } from "../types";
 
 export const AI_MODELS: AIModel[] = [

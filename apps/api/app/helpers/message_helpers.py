@@ -15,6 +15,7 @@ from app.agents.templates.agent_template import (
 from app.config.loggers import llm_logger as logger
 from app.models.message_models import (
     FileData,
+    ReplyToMessageData,
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
@@ -181,19 +182,17 @@ async def format_workflow_execution_message(
     # Use fresh database data if available, otherwise use passed data
     if workflow and workflow.steps:
         steps_text = "\n".join(
-            f"{i}. **{step.title}** (Tool: {step.tool_name})\n   Description: {step.description}"
+            f"{i}. **{step.title}** (Category: {step.category})\n   Description: {step.description}"
             for i, step in enumerate(workflow.steps, 1)
         )
-        tools_text = ", ".join(step.tool_name for step in workflow.steps)
         workflow_title = workflow.title
         workflow_description = workflow.description
     else:
         # Fallback to passed data
         steps_text = "\n".join(
-            f"{i}. **{step['title']}** (Tool: {step['tool_name']})\n   Description: {step['description']}"
+            f"{i}. **{step['title']}** (Category: {step['category']})\n   Description: {step['description']}"
             for i, step in enumerate(selected_workflow.steps, 1)
         )
-        tools_text = ", ".join(step["tool_name"] for step in selected_workflow.steps)
         workflow_title = selected_workflow.title
         workflow_description = selected_workflow.description
 
@@ -201,7 +200,6 @@ async def format_workflow_execution_message(
         "workflow_title": workflow_title,
         "workflow_description": workflow_description,
         "workflow_steps": steps_text,
-        "tool_names": tools_text,
     }
 
     # Email-triggered workflows get enhanced context
@@ -244,6 +242,21 @@ Time: {time}"""
 
     if event.calendarTitle:
         context += f"\nCalendar: {event.calendarTitle}"
+
+    return f"{context}\n\n{existing_content}" if existing_content else context
+
+
+def format_reply_context(
+    reply_to_message: ReplyToMessageData, existing_content: str = ""
+) -> str:
+    """Format reply-to-message context for AI conversation.
+
+    This adds context about which message the user is replying to,
+    helping the AI understand the conversation thread context.
+    """
+    role_label = "their own" if reply_to_message.role == "user" else "your"
+
+    context = f"""[The user is responding to {role_label} earlier message: "{reply_to_message.content}"]"""
 
     return f"{context}\n\n{existing_content}" if existing_content else context
 

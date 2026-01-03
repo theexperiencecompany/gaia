@@ -19,29 +19,19 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.release_created || steps.release-fallback.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name || steps.release-fallback.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version || steps.release-fallback.outputs.version }}
-      paths_released: ${{ steps.release.outputs.paths_released || steps.release-fallback.outputs.paths_released }}
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      paths_released: ${{ steps.release.outputs.paths_released }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run Release Please with GitHub changelog
+      - name: Run Release Please
         id: release
-        continue-on-error: true
         uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: config/release-please-config.json
-          manifest-file: config/.release-please-manifest.json
-
-      - name: Run Release Please with default changelog (fallback)
-        id: release-fallback
-        if: steps.release.outcome == 'failure'
-        uses: googleapis/release-please-action@v4
-        with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-          config-file: config/release-please-config-fallback.json
           manifest-file: config/.release-please-manifest.json
 
   # Trigger desktop release build when a release is created

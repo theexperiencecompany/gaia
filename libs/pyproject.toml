@@ -1,0 +1,27 @@
+[project]
+name = "gaia-shared"
+version = "0.1.0"
+description = "Shared utilities for GAIA applications"
+requires-python = ">=3.11"
+
+dependencies = [
+  "loguru>=0.7.3",
+  "pydantic>=2.10.0",
+  "pydantic-settings>=2.8.1",
+  "python-dotenv>=1.0.0",
+  "infisicalsdk>=1.0.7",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.4.4",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shared*"]

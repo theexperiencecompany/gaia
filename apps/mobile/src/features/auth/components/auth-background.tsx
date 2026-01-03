@@ -1,8 +1,3 @@
-/**
- * Auth Background Component
- * Reusable background with image and overlay for auth screens
- */
-
 import {
   Image,
   type ImageSourcePropType,

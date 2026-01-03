@@ -1,3 +1,4 @@
+import "../../global.css";
 import "react-native-gesture-handler";
 import {
   Inter_400Regular,
@@ -13,20 +14,20 @@ import {
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+import { HeroUINativeProvider } from "heroui-native";
 import { useEffect } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
-import { PortalHost } from "@rn-primitives/portal";
-import { View } from "react-native";
+import { Uniwind } from "uniwind";
+
 import { AuthProvider } from "@/features/auth";
 import { ChatProvider } from "@/features/chat";
-import "../../global.css";
-import { colorScheme } from "nativewind";
 
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
-  colorScheme.set("dark");
+Uniwind.setTheme("dark");
 
+export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -35,7 +36,6 @@ export default function RootLayout() {
     RobotoMono_400Regular,
     RobotoMono_500Medium,
   });
-
   useEffect(() => {
     if (fontsLoaded) {
       SplashScreen.hideAsync();
@@ -47,19 +47,25 @@ export default function RootLayout() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
-      <AuthProvider>
-        <ChatProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="login" options={{ headerShown: false }} />
-            <Stack.Screen name="signup" options={{ headerShown: false }} />
-            <Stack.Screen name="(chat)" options={{ headerShown: false }} />
-          </Stack>
-          <PortalHost />
-        </ChatProvider>
-      </AuthProvider>
-      <StatusBar style="auto" />
-    </View>
+    <AuthProvider>
+      <ChatProvider>
+        <GestureHandlerRootView style={{ flex: 1 }} className="bg:dark">
+          <HeroUINativeProvider>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(app)" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="login/index"
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="signup/index"
+                options={{ headerShown: false }}
+              />
+            </Stack>
+            <StatusBar style="auto" />
+          </HeroUINativeProvider>
+        </GestureHandlerRootView>
+      </ChatProvider>
+    </AuthProvider>
   );
 }

@@ -16,6 +16,7 @@ export interface IConversation {
   starred?: boolean;
   isSystemGenerated?: boolean;
   systemPurpose?: SystemPurpose | null;
+  isUnread?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,6 +53,14 @@ export interface IMessage {
   isConvoSystemGenerated?: boolean;
   metadata?: Record<string, unknown>;
   optimistic?: boolean; // Temporary message waiting for backend ID
+
+  // Reply data
+  replyToMessageId?: string | null;
+  replyToMessageData?: {
+    id: string;
+    content: string;
+    role: "user" | "assistant";
+  } | null;
 }
 
 class MessageQueue {

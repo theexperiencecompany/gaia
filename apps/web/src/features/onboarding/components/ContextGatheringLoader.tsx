@@ -175,31 +175,35 @@ export default function ContextGatheringLoader({
     };
   }, [setPhase, personalizationData?.phase]);
 
-  // Handlers
-  const handleDismiss = () => {
-    if (phase !== OnboardingPhase.PERSONALIZATION_COMPLETE) return;
-
-    localStorage.setItem(dismissalKey, "true");
-    setPhase(OnboardingPhase.GETTING_STARTED);
-  };
-
-  const handleShowMeAround = async () => {
+  // Shared helper to handle phase transition
+  const transitionToGettingStarted = async () => {
     try {
-      // Open the modal
-      onComplete();
-
       // Update backend phase
       await apiService.post("/onboarding/phase", {
         phase: OnboardingPhase.GETTING_STARTED,
       });
 
-      // Save dismissal state
+      // Update local state
       localStorage.setItem(dismissalKey, "true");
-      // Update global store immediately
       setPhase(OnboardingPhase.GETTING_STARTED);
-    } catch {
-      toast.error("Failed to update progress. Please try again.");
+    } catch (err) {
+      console.error("Failed to transition phase:", err);
+      // If it fails, we still want to update local state so user isn't stuck
+      setPhase(OnboardingPhase.GETTING_STARTED);
+      localStorage.setItem(dismissalKey, "true");
     }
+  };
+
+  // Handlers
+  const handleDismiss = async () => {
+    await transitionToGettingStarted();
+  };
+
+  const handleShowMeAround = async () => {
+    // Open the modal first
+    onComplete();
+    // Then persist the state change
+    await transitionToGettingStarted();
   };
 
   // Rendering helpers
@@ -323,7 +327,7 @@ export default function ContextGatheringLoader({
           {/* Real progress bar */}
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-primary via-purple-500 to-pink-500 transition-all duration-700 ease-out"
+              className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
               style={{ width: `${getProgressPercentage()}%` }}
             />
           </div>

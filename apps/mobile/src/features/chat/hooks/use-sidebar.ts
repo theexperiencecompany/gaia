@@ -1,8 +1,3 @@
-/**
- * useSidebar Hook
- * Manages sidebar with DrawerLayout ref
- */
-
 import { useCallback, useRef } from "react";
 import type { DrawerLayoutMethods } from "react-native-gesture-handler/ReanimatedDrawerLayout";
 

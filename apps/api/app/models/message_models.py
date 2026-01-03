@@ -36,6 +36,14 @@ class SelectedCalendarEventData(BaseModel):
     isAllDay: Optional[bool] = False
 
 
+class ReplyToMessageData(BaseModel):
+    """Data for the message being replied to."""
+
+    id: str  # Message ID being replied to
+    content: str  # Preview of the message content (truncated)
+    role: str  # "user" or "assistant"
+
+
 class MessageRequestWithHistory(BaseModel):
     message: str
     conversation_id: Optional[str] = None
@@ -50,6 +58,7 @@ class MessageRequestWithHistory(BaseModel):
     selectedCalendarEvent: Optional[SelectedCalendarEventData] = (
         None  # Calendar event selected for context
     )
+    replyToMessage: Optional[ReplyToMessageData] = None  # Message being replied to
 
 
 class SaveIncompleteConversationRequest(BaseModel):
@@ -61,6 +70,7 @@ class SaveIncompleteConversationRequest(BaseModel):
     toolCategory: Optional[str] = None
     selectedWorkflow: Optional[SelectedWorkflowData] = None
     selectedCalendarEvent: Optional[SelectedCalendarEventData] = None
+    replyToMessage: Optional[ReplyToMessageData] = None
     incomplete_response: str = ""  # The partial response from the bot
 
 

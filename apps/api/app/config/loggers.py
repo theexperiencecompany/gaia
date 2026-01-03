@@ -1,31 +1,20 @@
 """
 Centralized application logger definitions for the GAIA backend system.
 
-This module provides pre-configured, contextual loggers for all major application components.
-Each logger is optimized for its specific domain with appropriate formatting, filtering,
-and routing through the advanced logging infrastructure.
-
-Features:
-- Domain-specific loggers for different application areas (auth, database, API, etc.)
-- Consistent naming and context injection across all loggers
-- Automatic integration with the centralized logging configuration
-- Easy-to-use logger instances ready for import and immediate use
+This module re-exports loggers from gaia_shared and provides additional
+domain-specific loggers for the API application.
 
 Usage:
     from app.config.loggers import auth_logger, mongo_logger
 
     auth_logger.info("User authenticated successfully")
     mongo_logger.error("Database connection failed")
-
-All loggers automatically include contextual information such as timestamps,
-log levels, source locations, and are routed through the configured file
-handlers for proper log management and retention.
 """
 
-from app.config.logging import get_contextual_logger
+# Re-export from shared library
+from shared.py.logging import get_contextual_logger, configure_loguru, logger
 
 # Pre-configured contextual loggers for different application domains
-# Each logger includes domain-specific context and routing configuration
 app_logger = get_contextual_logger("main")
 worker_logger = get_contextual_logger("worker")
 arq_worker_logger = get_contextual_logger("arq:worker")
@@ -55,3 +44,38 @@ blogs_logger = get_contextual_logger("blogs")
 reminders_logger = get_contextual_logger("reminders")
 usage_logger = get_contextual_logger("usage")
 token_repository_logger = get_contextual_logger("token_repository")
+
+__all__ = [
+    "logger",
+    "configure_loguru",
+    "get_contextual_logger",
+    "app_logger",
+    "worker_logger",
+    "arq_worker_logger",
+    "llm_logger",
+    "audio_logger",
+    "goals_logger",
+    "auth_logger",
+    "cloudinary_logger",
+    "mongo_logger",
+    "chroma_logger",
+    "redis_logger",
+    "calendar_logger",
+    "chat_logger",
+    "image_logger",
+    "notes_logger",
+    "search_logger",
+    "profiler_logger",
+    "general_logger",
+    "langchain_logger",
+    "request_logger",
+    "notification_logger",
+    "mail_webhook_logger",
+    "common_logger",
+    "todos_logger",
+    "memory_logger",
+    "blogs_logger",
+    "reminders_logger",
+    "usage_logger",
+    "token_repository_logger",
+]

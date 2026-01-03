@@ -206,13 +206,11 @@ export function generateUseCaseStructuredData(
 
   // Generate tools from steps
   if (useCase.steps && useCase.steps.length > 0) {
-    const toolsFromSteps = useCase.steps
-      .filter((step) => step.tool_name)
-      .map((step) => ({
-        "@type": "HowToTool" as const,
-        name: step.tool_name || step.tool_category,
-        description: step.description,
-      }));
+    const toolsFromSteps = useCase.steps.map((step) => ({
+      "@type": "HowToTool" as const,
+      name: step.category,
+      description: step.description,
+    }));
 
     if (toolsFromSteps.length > 0) {
       structuredData.tool = toolsFromSteps;

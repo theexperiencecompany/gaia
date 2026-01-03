@@ -47,9 +47,7 @@ export async function generateMetadata({
         detailed_description: found.description,
         slug: found.id,
         action_type: "workflow",
-        integrations:
-          found.steps?.filter((s) => s.tool_name).map((s) => s.tool_name!) ||
-          [],
+        integrations: found.steps?.map((s) => s.category) || [],
         categories: found.categories || ["featured"],
         published_id: found.id,
         creator: found.creator,
@@ -73,9 +71,7 @@ export async function generateMetadata({
       detailed_description: workflow.description,
       slug: workflow.id,
       action_type: "workflow",
-      integrations:
-        workflow.steps?.filter((s) => s.tool_name).map((s) => s.tool_name!) ||
-        [],
+      integrations: workflow.steps?.map((s) => s.category) || [],
       categories: ["Community"],
       published_id: workflow.id,
       creator: workflow.creator,
@@ -113,7 +109,7 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
         title: found.title,
         description: found.description || "",
         action_type: "workflow",
-        integrations: found.steps?.map((s) => s.tool_name || "") || [],
+        integrations: found.steps?.map((s) => s.category) || [],
         categories: found.categories || ["featured"],
         published_id: found.id,
         slug: found.id,

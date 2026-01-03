@@ -41,52 +41,58 @@ export default function UseCaseSection({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
   );
-  const { workflows, isLoading: isLoadingWorkflows } = useWorkflows();
+
+  // Only fetch user workflows if we need to show them
+  const { workflows, isLoading: isLoadingWorkflows } = useWorkflows(
+    !hideUserWorkflows,
+  );
 
   // Local state for fetching explore workflows if not provided as props
   const [localExploreWorkflows, setLocalExploreWorkflows] = useState<UseCase[]>(
     [],
   );
+  const [hasFetchedLocal, setHasFetchedLocal] = useState(false);
 
-  // Fetch explore workflows if not provided as props
+  // Fetch explore workflows only if not provided as props and not already fetched
   useEffect(() => {
-    if (!propExploreWorkflows || propExploreWorkflows.length === 0) {
-      const fetchExploreWorkflows = async () => {
-        try {
-          const resp = await workflowApi.getExploreWorkflows(50, 0);
-          const converted = resp.workflows.map((w) => ({
-            title: w.title,
-            description: w.description,
-            action_type: "workflow" as const,
-            integrations:
-              w.steps
-                ?.map((s) => s.tool_category)
-                .filter((v, i, a) => a.indexOf(v) === i) || [],
-            categories: w.categories || ["featured"],
-            published_id: w.id,
-            slug: w.id,
-            steps: w.steps,
-            creator: w.creator,
-            total_executions: w.total_executions || 0,
-          }));
-          setLocalExploreWorkflows(converted);
-        } catch (error) {
-          console.error("Error fetching explore workflows:", error);
-        }
-      };
+    // Skip if props are provided or already fetched
+    if (propExploreWorkflows && propExploreWorkflows.length > 0) return;
+    if (hasFetchedLocal) return;
 
-      fetchExploreWorkflows();
-    }
-  }, [propExploreWorkflows]);
+    const fetchExploreWorkflows = async () => {
+      try {
+        setHasFetchedLocal(true);
+        const resp = await workflowApi.getExploreWorkflows(50, 0);
+        const converted = resp.workflows.map((w) => ({
+          title: w.title,
+          description: w.description,
+          action_type: "workflow" as const,
+          integrations:
+            w.steps
+              ?.map((s) => s.category)
+              .filter((v, i, a) => a.indexOf(v) === i) || [],
+          categories: w.categories || ["featured"],
+          published_id: w.id,
+          slug: w.id,
+          steps: w.steps,
+          creator: w.creator,
+          total_executions: w.total_executions || 0,
+        }));
+        setLocalExploreWorkflows(converted);
+      } catch (error) {
+        console.error("Error fetching explore workflows:", error);
+      }
+    };
+
+    fetchExploreWorkflows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Use provided explore workflows or local ones
   const exploreWorkflows =
     propExploreWorkflows && propExploreWorkflows.length > 0
       ? propExploreWorkflows
       : localExploreWorkflows;
-
-  // Use only explore workflows from API
-  const allUseCases = exploreWorkflows;
 
   // Generate categories dynamically from the actual data
   const dynamicCategories = Array.from(
@@ -132,12 +138,12 @@ export default function UseCaseSection({
 
   const filteredUseCases =
     selectedCategory === null
-      ? allUseCases.filter((useCase: UseCase) =>
+      ? exploreWorkflows.filter((useCase: UseCase) =>
           useCase.categories?.includes("featured"),
         ) // Show featured when null (fallback)
       : selectedCategory === "all"
-        ? allUseCases
-        : allUseCases.filter((useCase: UseCase) =>
+        ? exploreWorkflows
+        : exploreWorkflows.filter((useCase: UseCase) =>
             useCase.categories?.includes(selectedCategory),
           );
 

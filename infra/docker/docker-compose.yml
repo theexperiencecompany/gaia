@@ -5,11 +5,15 @@ services:
   gaia-backend:
     container_name: gaia-backend
     profiles: ["backend", "all"]
-    build: ./api
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
     image: gaia
-    working_dir: /app
+    working_dir: /app/apps/api
     command:
       [
+        "uv",
+        "run",
         "python",
         "-m",
         "uvicorn",
@@ -28,10 +32,11 @@ services:
       # PYTHONPROFILEIMPORTTIME: 1
       FORCE_COLOR: 1
       WORKER_TYPE: main_app
+      PYTHONPATH: /app/apps/api
     env_file:
-      - ./api/.env
+      - ../../apps/api/.env
     volumes:
-      - ./api:/app
+      - ../../apps/api/app:/app/apps/api/app
     ports:
       - "8000:80"
     restart: on-failure
@@ -153,15 +158,16 @@ services:
     container_name: arq_worker
     image: gaia
     profiles: ["worker", "all"]
-    working_dir: /app
+    working_dir: /app/apps/api
     env_file:
-      - ./api/.env
+      - ../../apps/api/.env
     environment:
       - WORKER_TYPE=arq_worker
-    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
+      - PYTHONPATH=/app/apps/api
+    command: ["uv", "run", "python", "-m", "arq", "app.worker.WorkerSettings"]
     restart: always
     volumes:
-      - ./api:/app
+      - ../../apps/api/app:/app/apps/api/app
     depends_on:
       redis:
         condition: service_healthy
@@ -178,7 +184,7 @@ services:
       ME_CONFIG_BASICAUTH_USERNAME: admin
       ME_CONFIG_BASICAUTH_PASSWORD: password # pragma: allowlist secret
     ports:
-      - "8081:8081"
+      - "8083:8081"
     depends_on:
       mongo:
         condition: service_healthy
@@ -190,10 +196,10 @@ services:
     container_name: voice-agent-worker
     profiles: ["backend", "voice"]
     build:
-      context: ./backend
-      dockerfile: Dockerfile.voice-agent
+      context: ../..
+      dockerfile: apps/voice-agent/Dockerfile
     image: gaia-voice-agent
-    working_dir: /app
+    working_dir: /app/apps/voice-agent
     environment:
       PYTHONUNBUFFERED: 1
       FORCE_COLOR: 1
@@ -204,7 +210,7 @@ services:
       LOCAL_FILES_ONLY: "0"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
     env_file:
-      - ./backend/.env
+      - ../../apps/api/.env
     volumes:
       - voice_agent_models:/home/appuser/.cache/huggingface
     restart: on-failure

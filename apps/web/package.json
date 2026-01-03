@@ -1,7 +1,7 @@
 {
   "name": "gaia",
   "description": "Frontend Website of GAIA - The personal AI assistant",
-  "version": "0.10.1",
+  "version": "0.12.0",
   "private": true,
   "homepage": "https://github.com/theexperiencecompany/gaia",
   "bugs": {
@@ -178,6 +178,7 @@
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.180.0",
     "tinycolor2": "^1.6.0",
+    "ts-key-enum": "^3.0.13",
     "uuid": "^13.0.0",
     "vaul": "^1.1.2",
     "zod": "^3.25.76",

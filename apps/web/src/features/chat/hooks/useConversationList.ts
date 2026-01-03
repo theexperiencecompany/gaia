@@ -25,6 +25,7 @@ export const useConversationList = () => {
       starred: conv.starred,
       is_system_generated: conv.isSystemGenerated,
       system_purpose: conv.systemPurpose,
+      is_unread: conv.isUnread,
       user_id: conv.userId,
       created_at: conv.createdAt.toISOString(),
       updated_at: conv.updatedAt.toISOString(),

@@ -93,14 +93,12 @@ export default function TodoSection({
             id: string;
             title: string;
             description: string;
-            tool_name: string;
-            tool_category: string;
+            category: string;
           }) => ({
             id: step.id,
             title: step.title,
             description: step.description,
-            tool_name: step.tool_name,
-            tool_category: step.tool_category,
+            category: step.category,
           }),
         ),
       };
@@ -262,7 +260,7 @@ export default function TodoSection({
                 <div className="flex items-start gap-3">
                   <button
                     type="button"
-                    className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
                       todo.completed
                         ? "border-success bg-success"
                         : "border-zinc-600 hover:border-zinc-500"
