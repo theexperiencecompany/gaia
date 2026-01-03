@@ -17,10 +17,10 @@ from tests.composio_tools.conftest import execute_tool
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def linkedin_resource(composio_client, user_id, request, confirm_action):
     """
-    Class-scoped fixture to create a shared LinkedIn post.
+    Function-scoped fixture to create a shared LinkedIn post.
     Prompts for user confirmation before creation.
     """
     confirm_action(
