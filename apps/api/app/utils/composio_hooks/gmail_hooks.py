@@ -66,15 +66,21 @@ def gmail_fetch_emails_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
     - format: default to "full"
     - Add Gmail search syntax tips to description
     """
-    props = schema.input_parameters.get("properties", {})
+    input_params = schema.input_parameters
+    if not isinstance(input_params, dict):
+        return schema
+
+    props = input_params.get("properties", {})
+    if not isinstance(props, dict):
+        return schema
 
     if tool == "GMAIL_FETCH_EMAILS":
         # Set max_results default to 10
-        if "max_results" in props:
+        if "max_results" in props and isinstance(props["max_results"], dict):
             props["max_results"]["default"] = 10
 
         # Set label_ids default to ["INBOX"]
-        if "label_ids" in props:
+        if "label_ids" in props and isinstance(props["label_ids"], dict):
             props["label_ids"]["default"] = ["INBOX"]
 
         # Add Gmail search syntax tips to description
@@ -93,7 +99,7 @@ def gmail_fetch_emails_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
         schema.description += search_tips
 
     # Set format default to "full" for detailed content
-    if "format" in props:
+    if "format" in props and isinstance(props["format"], dict):
         props["format"]["default"] = "full"
 
     return schema
@@ -346,10 +352,13 @@ def gmail_attachment_after_hook(
 ) -> Any:
     """Process attachment response to extract metadata only."""
     try:
-        if not response or "error" in response["data"]:
+        if not response["successful"]:
             return response["data"]
 
         # Extract only metadata, not the base64 content
+        if not isinstance(response["data"], dict):
+            return response["data"]
+
         processed_response = {
             "attachmentId": response["data"].get("attachmentId", ""),
             "filename": response["data"].get("filename", ""),
@@ -689,16 +698,16 @@ def gmail_get_contacts_after_hook(
         if writer is not None and contact_list:
             payload = {
                 "contacts_data": contact_list,
-                "total_count": response_data.get("totalPeople", len(contact_list)),
-                "next_page_token": response_data.get("nextPageToken"),
+                "total_count": response["data"].get("totalPeople", len(contact_list)),
+                "next_page_token": response["data"].get("nextPageToken"),
             }
             writer(payload)
 
         # Return minimal data for LLM
         return {
             "contacts": llm_contacts,
-            "total_count": response_data.get("totalPeople", len(llm_contacts)),
-            "has_more": bool(response_data.get("nextPageToken")),
+            "total_count": response["data"].get("totalPeople", len(llm_contacts)),
+            "has_more": bool(response["data"].get("nextPageToken")),
         }
 
     except Exception as e:

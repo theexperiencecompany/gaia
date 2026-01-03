@@ -26,6 +26,7 @@ from app.templates.docstrings.notion_tool_docs import (
 )
 from app.utils.notion_md import blocks_to_markdown, markdown_to_notion_blocks
 from composio import Composio
+from composio.core.models.tools import ToolExecutionResponse
 
 
 def register_notion_custom_tools(composio: Composio) -> List[str]:
@@ -67,7 +68,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         # Get page title using NOTION_GET_PAGE_PROPERTY_ACTION
         title = ""
         try:
-            title_response = composio.tools.execute(
+            title_response: ToolExecutionResponse = composio.tools.execute(
                 slug="NOTION_GET_PAGE_PROPERTY_ACTION",
                 arguments={
                     "page_id": request.page_id,
@@ -77,24 +78,26 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
                 dangerously_skip_version_check=True,
                 user_id=auth_credentials.get("user_id"),
             )
-            title_data = (
-                title_response.data
-                if hasattr(title_response, "data")
-                else title_response
-            )
-            if isinstance(title_data, dict) and "data" in title_data:
-                title_data = title_data["data"]
-            # Extract title from results array
-            results = title_data.get("results", [])
-            for item in results:
-                if item.get("type") == "title" and item.get("title"):
-                    title = item["title"].get("plain_text", "")
-                    break
+            # Composio tools return ToolExecutionResponse format
+            if not title_response["successful"]:
+                logger.warning(f"Failed to fetch title: {title_response.get('error')}")
+            else:
+                title_data = title_response["data"]
+                # Extract title from results array
+                if isinstance(title_data, dict):
+                    results = title_data.get("results", [])
+                else:
+                    results = []
+                if isinstance(results, list):
+                    for item in results:
+                        if item.get("type") == "title" and item.get("title"):
+                            title = item["title"].get("plain_text", "")
+                            break
         except Exception as e:
             logger.warning(f"Could not fetch title: {e}")
 
         # Call NOTION_FETCH_ALL_BLOCK_CONTENTS via composio
-        blocks_response = composio.tools.execute(
+        blocks_response: ToolExecutionResponse = composio.tools.execute(
             slug="NOTION_FETCH_ALL_BLOCK_CONTENTS",
             arguments={
                 "block_id": request.page_id,
@@ -106,22 +109,24 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
             user_id=auth_credentials.get("user_id"),
         )
 
-        # Extract blocks from response
-        blocks_data = (
-            blocks_response.data
-            if hasattr(blocks_response, "data")
-            else blocks_response
+        # Extract blocks from response (ToolExecutionResponse format)
+        if not blocks_response["successful"]:
+            raise ValueError(f"Failed to fetch blocks: {blocks_response.get('error')}")
+
+        blocks_data = blocks_response["data"]
+        blocks = (
+            blocks_data.get("results", blocks_data.get("blocks", []))
+            if isinstance(blocks_data, dict)
+            else []
         )
-        if isinstance(blocks_data, dict) and "data" in blocks_data:
-            if "successful" in blocks_data and not blocks_data["successful"]:
-                raise ValueError(f"Failed to fetch blocks: {blocks_data.get('error')}")
-            blocks_data = blocks_data["data"]
-        blocks = blocks_data.get("results", blocks_data.get("blocks", []))
 
         # Convert to markdown (with block IDs for insertion positioning)
-        markdown = blocks_to_markdown(
-            blocks, include_block_ids=request.include_block_ids
-        )
+        if isinstance(blocks, list):
+            markdown = blocks_to_markdown(
+                blocks, include_block_ids=request.include_block_ids
+            )
+        else:
+            markdown = ""
 
         # Prepend title as H1 if present
         if title:
@@ -131,7 +136,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
             "page_id": request.page_id,
             "title": title,
             "markdown": markdown,
-            "block_count": len(blocks),
+            "block_count": len(blocks) if isinstance(blocks, list) else 0,
         }
 
     @composio.tools.custom_tool(toolkit="NOTION")
@@ -160,7 +165,7 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
             params["after"] = request.after
 
         # Call NOTION_ADD_MULTIPLE_PAGE_CONTENT
-        response = composio.tools.execute(
+        response: ToolExecutionResponse = composio.tools.execute(
             slug="NOTION_ADD_MULTIPLE_PAGE_CONTENT",
             arguments=params,
             version=auth_credentials.get("version"),
@@ -168,11 +173,11 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
             user_id=auth_credentials.get("user_id"),
         )
 
-        data = response.data if hasattr(response, "data") else response
-        if isinstance(data, dict) and "data" in data:
-            if "successful" in data and not data["successful"]:
-                raise ValueError(f"Failed to insert markdown: {data.get('error')}")
-            data = data["data"]
+        # ToolExecutionResponse format
+        if not response["successful"]:
+            raise ValueError(f"Failed to insert markdown: {response.get('error')}")
+
+        data = response["data"]
 
         return {
             "parent_block_id": request.parent_block_id,

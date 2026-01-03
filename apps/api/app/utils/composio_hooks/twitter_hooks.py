@@ -84,9 +84,15 @@ def twitter_timeline_schema_modifier(tool: str, toolkit: str, schema: Tool) -> T
     """
     Set sensible defaults for timeline requests.
     """
-    props = schema.input_parameters.get("properties", {})
+    input_params = schema.input_parameters
+    if not isinstance(input_params, dict):
+        return schema
 
-    if "max_results" in props:
+    props = input_params.get("properties", {})
+    if not isinstance(props, dict):
+        return schema
+
+    if "max_results" in props and isinstance(props["max_results"], dict):
         props["max_results"]["default"] = 20
 
     return schema

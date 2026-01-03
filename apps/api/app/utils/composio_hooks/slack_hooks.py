@@ -22,18 +22,24 @@ def slack_search_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
     - count: default to 20 (reasonable number of results)
     - Add guidance about using recent results first
     """
-    props = schema.input_parameters.get("properties", {})
+    input_params = schema.input_parameters
+    if not isinstance(input_params, dict):
+        return schema
+
+    props = input_params.get("properties", {})
+    if not isinstance(props, dict):
+        return schema
 
     # Set sort default to timestamp (chronological order)
-    if "sort" in props:
+    if "sort" in props and isinstance(props["sort"], dict):
         props["sort"]["default"] = "timestamp"
 
     # Set sort_dir default to desc (newest first)
-    if "sort_dir" in props:
+    if "sort_dir" in props and isinstance(props["sort_dir"], dict):
         props["sort_dir"]["default"] = "desc"
 
     # Set count default to 20 for reasonable results
-    if "count" in props:
+    if "count" in props and isinstance(props["count"], dict):
         props["count"]["default"] = 20
 
     # Add search guidance to description

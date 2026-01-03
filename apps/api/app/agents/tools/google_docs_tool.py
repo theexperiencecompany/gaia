@@ -7,6 +7,7 @@ for calling other Composio tools.
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
+import json
 from typing import Any, Dict, List
 
 import httpx
@@ -27,6 +28,7 @@ from app.utils.google_docs_utils import (
     generate_toc_text,
 )
 from composio import Composio
+from composio.core.models.tools import ToolExecutionResponse
 
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 
@@ -121,7 +123,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         try:
-            get_doc_result = composio.tools.execute(
+            get_doc_result: ToolExecutionResponse = composio.tools.execute(
                 slug="GOOGLEDOCS_GET_DOCUMENT_BY_ID",
                 arguments={"id": request.document_id},
                 version=auth_credentials.get("version"),
@@ -132,40 +134,34 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
             print(f"DEBUG: TypeError in execute: {e}")
             raise
 
-        # Unwrap response if it's a dict with data/successful keys
-        response_data = (
-            get_doc_result.data if hasattr(get_doc_result, "data") else get_doc_result
-        )
-        if isinstance(response_data, dict) and "data" in response_data:
-            if "successful" in response_data and not response_data["successful"]:
-                raise ValueError(
-                    f"Failed to get document: {response_data.get('error')}"
-                )
-            doc_data = response_data["data"]
-            # Handle double wrapping if data is stringified JSON
-            if isinstance(doc_data, str):
-                import json
+        # Unwrap response (ToolExecutionResponse format)
+        if not get_doc_result["successful"]:
+            raise ValueError(f"Failed to get document: {get_doc_result.get('error')}")
 
-                try:
-                    doc_data = json.loads(doc_data)
-                except Exception:
-                    pass  # nosec
-        else:
-            doc_data = response_data
+        doc_data = get_doc_result["data"]
+        # Handle double wrapping if data is stringified JSON
+        if isinstance(doc_data, str):
+            try:
+                doc_data = json.loads(doc_data)
+            except Exception:
+                pass  # nosec
 
         if not doc_data or "body" not in doc_data:
             raise ValueError("Failed to get document or document has no body content")
 
         # Step 2: Extract headings from document
+        if not isinstance(doc_data, dict):
+            raise ValueError("Document data is not in expected format")
         headings = extract_headings_from_document(
-            doc_data, request.include_heading_levels
+            doc_data,
+            request.include_heading_levels,
         )
 
         # Step 3: Generate TOC text
         toc_text = generate_toc_text(headings, request.title)
 
         # Step 4: Insert TOC at specified position using composio.tools.execute
-        insert_result = composio.tools.execute(
+        insert_result: ToolExecutionResponse = composio.tools.execute(
             slug="GOOGLEDOCS_INSERT_TEXT_ACTION",
             arguments={
                 "document_id": request.document_id,
@@ -177,16 +173,11 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
             user_id=auth_credentials.get("user_id"),
         )
 
-        # Unwrap response if it's a dict with data/successful keys
-        response_data = (
-            insert_result.data if hasattr(insert_result, "data") else insert_result
-        )
-        if isinstance(response_data, dict) and "data" in response_data:
-            if "successful" in response_data and not response_data["successful"]:
-                raise ValueError(f"Failed to insert text: {response_data.get('error')}")
-            insert_data = response_data["data"]
-        else:
-            insert_data = response_data
+        # Unwrap response (ToolExecutionResponse format)
+        if not insert_result["successful"]:
+            raise ValueError(f"Failed to insert text: {insert_result.get('error')}")
+
+        insert_data = insert_result["data"]
 
         doc_url = f"https://docs.google.com/document/d/{request.document_id}/edit"
 
