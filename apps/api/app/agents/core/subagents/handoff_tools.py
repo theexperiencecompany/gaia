@@ -32,6 +32,7 @@ from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
+from app.utils.agent_utils import format_tool_progress
 
 SUBAGENTS_NAMESPACE = ("subagents",)
 
@@ -269,7 +270,7 @@ async def handoff(
         writer(
             {
                 "progress": {
-                    "message": f"Handing off to {agent_name}",
+                    "message": f"Handing off to {agent_name.replace('_', ' ').title()}",
                     "tool_name": "handoff",
                     "tool_category": "handoff",
                     "show_category": False,
@@ -293,6 +294,13 @@ async def handoff(
                     continue
 
                 if chunk and isinstance(chunk, AIMessageChunk):
+                    # Emit tool progress with inputs (same as main agent)
+                    if chunk.tool_calls:
+                        for tool_call in chunk.tool_calls:
+                            progress_data = await format_tool_progress(tool_call)
+                            if progress_data:
+                                writer(progress_data)
+
                     content = str(chunk.content)
                     if content:
                         complete_message += content

@@ -61,12 +61,18 @@ async def format_tool_progress(tool_call: ToolCall) -> Optional[dict]:
             if len(parts) >= 2:
                 tool_category = parts[1]
 
+    # Get tool_call_id and args from the tool call
+    tool_call_id = tool_call.get("id")
+    tool_args = tool_call.get("args", {})
+
     return {
         "progress": {
             "message": tool_display_name,
             "tool_name": tool_name_raw,
             "tool_category": tool_category,
             "show_category": show_category,
+            "tool_call_id": tool_call_id,
+            "inputs": tool_args if tool_args else None,
         }
     }
 

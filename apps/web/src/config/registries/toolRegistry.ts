@@ -63,6 +63,9 @@ export interface ToolCallEntry {
   tool_category: string;
   message: string;
   show_category?: boolean;
+  tool_call_id?: string;
+  inputs?: Record<string, unknown>;
+  output?: string;
 }
 
 export const TOOL_REGISTRY = {

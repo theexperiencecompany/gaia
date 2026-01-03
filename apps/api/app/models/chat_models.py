@@ -49,6 +49,11 @@ class ToolProgressData(BaseModel):
     tool_name: str = Field(..., description="Raw tool name identifier")
     tool_category: Optional[str] = Field(None, description="Category for icon display")
     show_category: bool = Field(True, description="Whether to show category text in UI")
+    tool_call_id: Optional[str] = Field(
+        None, description="Unique ID for this tool call"
+    )
+    inputs: Optional[dict] = Field(None, description="Tool input arguments")
+    output: Optional[str] = Field(None, description="Tool output result")
 
 
 tool_fields = [

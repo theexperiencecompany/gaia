@@ -191,12 +191,92 @@ export const useChatStream = () => {
           tool_category: progressData.tool_category ?? "",
           message: progressData.message,
           show_category: progressData.show_category,
+          tool_call_id: progressData.tool_call_id,
+          inputs: progressData.inputs,
         } as ToolDataEntry["data"],
         timestamp: new Date().toISOString(),
       };
       updateBotMessage({
         tool_data: [...existingToolData, toolEntry],
       });
+
+      // Sync to store for persistence
+      const conversationId =
+        refs.current.newConversation.id ||
+        useChatStore.getState().activeConversationId;
+      if (refs.current.botMessage?.message_id && conversationId) {
+        updateBotMessageInStore(conversationId);
+      }
+    }
+  };
+
+  const handleToolOutput = (toolOutput: {
+    tool_call_id: string;
+    output: string;
+  }) => {
+    // Find and update the matching tool call entry with output
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    const updatedToolData = existingToolData.map((entry): ToolDataEntry => {
+      if (entry.tool_name === "tool_calls_data") {
+        const data = entry.data as Record<string, unknown>;
+        if (data.tool_call_id === toolOutput.tool_call_id) {
+          return {
+            ...entry,
+            data: {
+              ...data,
+              output: toolOutput.output,
+            } as ToolDataEntry["data"],
+          };
+        }
+      }
+      return entry;
+    });
+
+    updateBotMessage({
+      tool_data: updatedToolData,
+    });
+
+    // Sync to store for persistence
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
+    }
+  };
+
+  const handleToolInputs = (toolInputs: {
+    tool_call_id: string;
+    inputs: Record<string, unknown>;
+  }) => {
+    // Find and update the matching tool call entry with inputs
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    const updatedToolData = existingToolData.map((entry): ToolDataEntry => {
+      if (entry.tool_name === "tool_calls_data") {
+        const data = entry.data as Record<string, unknown>;
+        if (data.tool_call_id === toolInputs.tool_call_id) {
+          return {
+            ...entry,
+            data: {
+              ...data,
+              inputs: toolInputs.inputs,
+            } as ToolDataEntry["data"],
+          };
+        }
+      }
+      return entry;
+    });
+
+    updateBotMessage({
+      tool_data: updatedToolData,
+    });
+
+    // Sync to store for persistence
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
     }
   };
 
@@ -443,6 +523,14 @@ export const useChatStream = () => {
         handleProgressUpdate(data.progress);
       }
 
+      if (data.tool_output) {
+        handleToolOutput(data.tool_output);
+      }
+
+      if (data.tool_inputs) {
+        handleToolInputs(data.tool_inputs);
+      }
+
       if (handleImageGeneration(data)) return;
 
       if (data.conversation_id) {
@@ -592,6 +680,8 @@ export const useChatStream = () => {
       refs.current.userMessage =
         currentMessages.find((m) => m.type === "user") || null;
       refs.current.optimisticUserId = optimisticUserId || null;
+
+      resetLoadingText();
 
       refs.current.botMessage = {
         type: "bot",

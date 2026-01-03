@@ -12,6 +12,22 @@ export interface ToolProgressData {
   tool_category?: string;
   /** Whether to show category text in UI (default: true) */
   show_category?: boolean;
+  /** Unique ID for this tool call */
+  tool_call_id?: string;
+  /** Tool input arguments */
+  inputs?: Record<string, unknown>;
+  /** Tool output result */
+  output?: string;
+}
+
+/**
+ * Tool output data from backend when tool execution completes.
+ */
+export interface ToolOutputData {
+  /** The tool_call_id this output corresponds to */
+  tool_call_id: string;
+  /** The output from the tool execution */
+  output: string;
 }
 
 // Define image data structure for image generation

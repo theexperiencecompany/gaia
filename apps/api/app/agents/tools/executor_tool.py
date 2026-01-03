@@ -8,6 +8,7 @@ from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import llm_logger as logger
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.message_helpers import create_system_message
+from app.utils.agent_utils import format_tool_progress
 from app.utils.chat_utils import get_user_id_from_config, get_user_name_from_config
 from langchain_core.messages import AIMessageChunk, HumanMessage
 from langchain_core.runnables import RunnableConfig
@@ -109,6 +110,12 @@ async def call_executor(
                     and isinstance(chunk, AIMessageChunk)
                     and metadata.get("agent_name") == "executor_agent"
                 ):
+                    if chunk.tool_calls:
+                        for tool_call in chunk.tool_calls:
+                            progress_data = await format_tool_progress(tool_call)
+                            if progress_data:
+                                writer(progress_data)
+
                     content = str(chunk.content)
                     if content:
                         complete_message += content

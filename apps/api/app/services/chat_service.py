@@ -96,6 +96,14 @@ async def chat_stream(
                         # new_data["tool_data"] is already a list of ToolDataEntry objects
                         for tool_entry in new_data["tool_data"]:
                             tool_data["tool_data"].append(tool_entry)
+
+                            # Check if this is a progress event (tool_calls_data)
+                            # Progress events are streamed directly - yield original chunk
+                            # and don't re-emit as tool_data to avoid duplication
+                            if tool_entry.get("tool_name") == "tool_calls_data":
+                                yield chunk
+                                continue
+
                             current_tool_data = {"tool_data": tool_entry}
                             yield f"data: {json.dumps(current_tool_data)}\n\n"
                     else:
@@ -184,6 +192,25 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
         # If tool_data already exists in unified format, return it directly
         if "tool_data" in data:
             return {"tool_data": data["tool_data"]}
+
+        # Handle progress events - convert to tool_calls_data format for persistence
+        if "progress" in data and isinstance(data["progress"], dict):
+            progress = data["progress"]
+            if progress.get("tool_name"):
+                timestamp = datetime.now(timezone.utc).isoformat()
+                tool_entry: ToolDataEntry = {
+                    "tool_name": "tool_calls_data",
+                    "data": {
+                        "tool_name": progress.get("tool_name"),
+                        "tool_category": progress.get("tool_category", ""),
+                        "message": progress.get("message", ""),
+                        "show_category": progress.get("show_category", True),
+                        "tool_call_id": progress.get("tool_call_id"),
+                        "inputs": progress.get("inputs"),
+                    },
+                    "timestamp": timestamp,
+                }
+                return {"tool_data": [tool_entry]}
 
         # Map of legacy field names to their new unified tool names
 

@@ -95,6 +95,10 @@ export default function KeyboardShortcutsProvider({
   useHotkeys(
     "c",
     (e) => {
+      // Ignore if any modifier key is pressed (e.g., Ctrl+C for copy)
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        return;
+      }
       const target = e.target as HTMLElement;
       if (
         target.tagName === "INPUT" ||

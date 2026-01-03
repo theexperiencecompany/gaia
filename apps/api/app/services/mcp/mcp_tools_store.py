@@ -8,7 +8,8 @@ so other users can see available tools without connecting first.
 
 from typing import Optional
 
-from sqlalchemy import select, delete
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 
 from app.config.loggers import langchain_logger as logger
 from app.db.postgresql import get_db_session
@@ -24,6 +25,8 @@ class MCPToolsStore:
         Tools are stored when first user connects. Subsequent users
         will see these tools in the frontend without connecting.
 
+        Uses upsert to handle concurrent writes gracefully.
+
         Args:
             integration_id: MCP integration ID (e.g., "linear")
             tools: List of dicts with 'name' and 'description' keys
@@ -32,21 +35,19 @@ class MCPToolsStore:
             return
 
         async with get_db_session() as session:
-            # Delete existing tools for this integration (fresh insert)
-            await session.execute(
-                delete(MCPIntegrationTool).where(
-                    MCPIntegrationTool.integration_id == integration_id
-                )
-            )
-
-            # Insert new tools
+            # Use upsert (INSERT ON CONFLICT) to handle concurrent writes
             for tool in tools:
-                tool_record = MCPIntegrationTool(
+                stmt = insert(MCPIntegrationTool).values(
                     integration_id=integration_id,
                     tool_name=tool.get("name", ""),
                     tool_description=tool.get("description"),
                 )
-                session.add(tool_record)
+                # On conflict, update the description (in case it changed)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["integration_id", "tool_name"],
+                    set_={"tool_description": stmt.excluded.tool_description},
+                )
+                await session.execute(stmt)
 
             await session.commit()
             logger.info(
