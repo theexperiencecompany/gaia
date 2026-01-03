@@ -22,12 +22,14 @@ export default function AppLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: "transparent" },
+          contentStyle: { backgroundColor: "#0a0a0a" },
+          animation: "none",
+          animationDuration: 0,
         }}
       >
-        <Stack.Screen name="index" options={{ animation: "none" }} />
-        <Stack.Screen name="(chat)/[id]" options={{ animation: "none" }} />
-        <Stack.Screen name="test/index" options={{ animation: "none" }} />
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(chat)/[id]" />
+        <Stack.Screen name="test/index" />
       </Stack>
     </View>
   );

@@ -123,13 +123,18 @@ const INTEGRATIONS: Integration[] = [
 
 const FILTER_OPTIONS = ["All", "Gmail", "GitHub", "Google", "Productivity"];
 
-export function ConnectDrawer() {
+interface ConnectDrawerProps {
+  onOpen?: () => void;
+}
+
+export function ConnectDrawer({ onOpen }: ConnectDrawerProps) {
   const popoverRef = useRef<PopoverTriggerRef>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("All");
   const [integrations, setIntegrations] = useState(INTEGRATIONS);
 
   const handleOpen = () => {
+    onOpen?.();
     popoverRef.current?.open();
   };
 
@@ -173,7 +178,11 @@ export function ConnectDrawer() {
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Overlay />
-        <Popover.Content presentation="bottom-sheet" snapPoints={["70%"]}>
+        <Popover.Content 
+          presentation="bottom-sheet" 
+          snapPoints={["70%"]}
+          index={0}
+        >
           <View className="flex-row items-center justify-between px-4 pb-4">
             <Popover.Title>Connect Tools</Popover.Title>
             <Popover.Close />

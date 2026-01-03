@@ -193,7 +193,7 @@ function MessageBubble({
             ))}
         </View>
 
-        {variant === "received" && !isLoading && grouped === "last" && (
+        {variant === "received" && !isLoading && (grouped === "last" || grouped === "none") && (
           <View className="flex-row items-center gap-3 mt-1.5 px-1">
             <Pressable className="p-1 active:opacity-60">
               <HugeiconsIcon icon={Copy01Icon} size={16} color="#8e8e93" />

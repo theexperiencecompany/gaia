@@ -1,6 +1,6 @@
 import { Button } from "heroui-native";
-import { useState } from "react";
-import { TextInput, View } from "react-native";
+import { useRef, useState } from "react";
+import { Keyboard, TextInput, View } from "react-native";
 import {
   ArrowUp02Icon,
   HugeiconsIcon,
@@ -24,6 +24,7 @@ export function ChatInput({
   onChangeText,
 }: ChatInputProps) {
   const [internalMessage, setInternalMessage] = useState("");
+  const inputRef = useRef<TextInput>(null);
 
   const message = value ?? internalMessage;
   const setMessage = onChangeText ?? setInternalMessage;
@@ -35,10 +36,16 @@ export function ChatInput({
     }
   };
 
+  const dismissKeyboard = () => {
+    inputRef.current?.blur();
+    Keyboard.dismiss();
+  };
+
   return (
     <View className="w-full">
       <View className="bg-surface rounded-4xl">
         <TextInput
+          ref={inputRef}
           className="px-4 py-6 text-base text-foreground min-h-14"
           placeholder={placeholder}
           placeholderTextColor="#6b6b6b"
@@ -55,17 +62,19 @@ export function ChatInput({
               isIconOnly
               size="sm"
               className="rounded-full"
+              onPress={dismissKeyboard}
             >
               <HugeiconsIcon icon={PlusSignIcon} size={18} color="#8e8e93" />
             </Button>
 
-            <ConnectDrawer />
+            <ConnectDrawer onOpen={dismissKeyboard} />
 
             <Button
               variant="tertiary"
               isIconOnly
               size="sm"
               className="rounded-full"
+              onPress={dismissKeyboard}
             >
               <HugeiconsIcon icon={UserIcon} size={18} color="#8e8e93" />
             </Button>
