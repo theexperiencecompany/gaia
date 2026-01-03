@@ -8,7 +8,7 @@ from typing import List
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.rate_limiter import limiter
-from app.config.loggers import general_logger as logger
+from app.config.loggers import general_logger as logger, get_current_event
 from app.models.payment_models import (
     CreateSubscriptionRequest,
     PaymentVerificationResponse,
@@ -26,6 +26,11 @@ router = APIRouter()
 @limiter.limit("30/minute")
 async def get_plans_endpoint(request: Request, active_only: bool = True):
     """Get all available subscription plans."""
+    wide_event = get_current_event()
+    if wide_event:
+        wide_event.set_operation(operation="get_plans", resource_type="plan")
+        wide_event.set_business_context(active_only=active_only)
+
     return await payment_service.get_plans(active_only=active_only)
 
 
@@ -40,6 +45,17 @@ async def create_subscription_endpoint(
     user_id = current_user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
+
+    wide_event = get_current_event()
+    if wide_event:
+        wide_event.set_operation(
+            operation="create_subscription",
+            resource_type="subscription",
+        )
+        wide_event.set_business_context(
+            product_id=subscription_data.product_id,
+            quantity=subscription_data.quantity,
+        )
 
     return await payment_service.create_subscription(
         user_id, subscription_data.product_id, subscription_data.quantity
@@ -57,6 +73,13 @@ async def verify_payment_endpoint(
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    wide_event = get_current_event()
+    if wide_event:
+        wide_event.set_operation(
+            operation="verify_payment",
+            resource_type="payment",
+        )
+
     result = await payment_service.verify_payment_completion(user_id)
     return PaymentVerificationResponse(**result)
 
@@ -72,6 +95,13 @@ async def get_subscription_status_endpoint(
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    wide_event = get_current_event()
+    if wide_event:
+        wide_event.set_operation(
+            operation="get_subscription_status",
+            resource_type="subscription",
+        )
+
     return await payment_service.get_user_subscription_status(user_id)
 
 
@@ -83,6 +113,17 @@ async def handle_dodo_webhook(
     webhook_signature: str = Header(..., alias="webhook-signature"),
 ):
     """Handle incoming webhooks from Dodo Payments with signature verification."""
+    wide_event = get_current_event()
+    if wide_event:
+        wide_event.set_operation(
+            operation="handle_webhook",
+            resource_type="webhook",
+        )
+        wide_event.set_business_context(
+            webhook_id=webhook_id,
+            webhook_source="dodo_payments",
+        )
+
     try:
         # Get raw body for signature verification
         body = await request.body()
@@ -97,16 +138,30 @@ async def handle_dodo_webhook(
 
         # Verify webhook signature using Standard Webhooks library
         if not payment_webhook_service.verify_webhook_signature(payload, headers):
-            logger.warning("Invalid webhook signature")
+            logger.warning(
+                "webhook_signature_invalid",
+                webhook_id=webhook_id,
+            )
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
         # Parse webhook data
         webhook_data = json.loads(payload)
+        event_type = webhook_data.get("type", "unknown")
+
+        if wide_event:
+            wide_event.set_business_context(
+                webhook_event_type=event_type,
+            )
 
         # Process the webhook
         result = await payment_webhook_service.process_webhook(webhook_data)
 
-        logger.info(f"Webhook processed: {result.event_type} - {result.status}")
+        logger.info(
+            "webhook_processed",
+            webhook_id=webhook_id,
+            event_type=result.event_type,
+            status=result.status,
+        )
         return {
             "status": "success",
             "event_type": result.event_type,
@@ -117,8 +172,16 @@ async def handle_dodo_webhook(
     except HTTPException:
         raise
     except json.JSONDecodeError:
-        logger.error("Invalid JSON in webhook payload")
+        logger.error(
+            "webhook_invalid_json",
+            webhook_id=webhook_id,
+        )
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
     except Exception as e:
-        logger.error(f"Error processing webhook: {e}")
+        logger.error(
+            "webhook_processing_failed",
+            webhook_id=webhook_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise HTTPException(status_code=500, detail="Webhook processing failed")

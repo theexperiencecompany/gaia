@@ -4,7 +4,13 @@ Centralized application logger definitions for the GAIA backend system.
 This module re-exports loggers from gaia_shared and provides additional
 domain-specific loggers for the API application.
 
-Usage:
+Simple Usage (request context auto-captured by middleware):
+    from app.config.loggers import log
+
+    log.info("user_action", action="login", user_id="123")
+    log.error("payment_failed", error="card_declined")
+
+Contextual Logger:
     from app.config.loggers import auth_logger, mongo_logger
 
     auth_logger.info("User authenticated successfully")
@@ -12,7 +18,31 @@ Usage:
 """
 
 # Re-export from shared library
-from shared.py.logging import get_contextual_logger, configure_loguru, logger
+from shared.py.logging import (
+    get_contextual_logger,
+    configure_loguru,
+    logger,
+    # New simple API
+    log,
+    get_request_context,
+    set_request_context,
+    clear_request_context,
+    RequestContext,
+    StructuredLogger,
+    # Legacy wide event exports
+    WideEvent,
+    WideEventLogger,
+    wide_logger,
+    SamplingConfig,
+    SamplingDecision,
+    should_sample,
+    get_sampling_config,
+    configure_sampling,
+    get_current_event,
+    set_current_event,
+    clear_current_event,
+    create_wide_event,
+)
 
 # Pre-configured contextual loggers for different application domains
 app_logger = get_contextual_logger("main")
@@ -49,6 +79,14 @@ __all__ = [
     "logger",
     "configure_loguru",
     "get_contextual_logger",
+    # New simple API
+    "log",
+    "get_request_context",
+    "set_request_context",
+    "clear_request_context",
+    "RequestContext",
+    "StructuredLogger",
+    # Domain loggers
     "app_logger",
     "worker_logger",
     "arq_worker_logger",
@@ -78,4 +116,17 @@ __all__ = [
     "reminders_logger",
     "usage_logger",
     "token_repository_logger",
+    # Legacy wide event exports
+    "WideEvent",
+    "WideEventLogger",
+    "wide_logger",
+    "SamplingConfig",
+    "SamplingDecision",
+    "should_sample",
+    "get_sampling_config",
+    "configure_sampling",
+    "get_current_event",
+    "set_current_event",
+    "clear_current_event",
+    "create_wide_event",
 ]

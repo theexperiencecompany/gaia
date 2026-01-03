@@ -1,10 +1,11 @@
 """Memory service layer for handling all memory operations with latest Mem0 API."""
 
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
 from app.agents.memory.client import memory_client_manager
-from app.config.loggers import llm_logger as logger
+from app.config.loggers import llm_logger as logger, get_current_event
 from app.utils.general_utils import describe_structure
 from app.models.memory_models import (
     MemoryEntry,
@@ -35,7 +36,9 @@ class MemoryService:
             Validated user_id or None
         """
         if not user_id:
-            self.logger.warning("No user_id provided for memory operation")
+            self.logger.warning(
+                "memory_operation_no_user_id",
+            )
             return None
 
         # Handle different user_id formats
@@ -56,7 +59,11 @@ class MemoryService:
             MemoryEntry or None if parsing fails
         """
         if not isinstance(result, dict):
-            self.logger.warning(f"Expected dict, got {type(result)}: {result}")
+            self.logger.warning(
+                "memory_parse_invalid_type",
+                expected="dict",
+                actual=type(result).__name__,
+            )
             return None
 
         # Extract memory content - v2 API uses "memory" field
@@ -357,7 +364,9 @@ class MemoryService:
                 continue
 
         self.logger.info(
-            f"Successfully parsed {len(parsed_relations)}/{len(relations)} graph relationships"
+            "graph_relationships_parsed",
+            total=len(relations),
+            parsed=len(parsed_relations),
         )
         return parsed_relations
 
@@ -386,9 +395,23 @@ class MemoryService:
             For async_mode=True, returns MemoryEntry with event_id and PENDING status.
             For async_mode=False, returns MemoryEntry with full memory content.
         """
+        start_time = time.time()
         user_id = self._validate_user_id(user_id)
         if not user_id:
             return None
+
+        # Enrich wide event
+        wide_event = get_current_event()
+        if wide_event:
+            wide_event.set_operation(
+                operation="store_memory",
+                resource_type="memory",
+            )
+            wide_event.set_business_context(
+                conversation_id=conversation_id,
+                memory_async_mode=async_mode,
+                message_length=len(message),
+            )
 
         try:
             # Prepare metadata
@@ -401,6 +424,7 @@ class MemoryService:
 
             # Use v2 API to add memory
             # Messages format allows Mem0 to infer structured memories
+            external_start = time.time()
             result = await client.add(
                 messages=[{"role": "user", "content": message}],
                 user_id=user_id,
@@ -408,22 +432,27 @@ class MemoryService:
                 run_id=conversation_id,
                 async_mode=async_mode,
             )
+            external_duration_ms = (time.time() - external_start) * 1000
+
+            if wide_event:
+                wide_event.add_external_call(external_duration_ms)
 
             mode_str = "async" if async_mode else "sync"
-            self.logger.info(f"Memory stored for user {user_id} (mode: {mode_str})")
 
             # Log raw response structure to check for graph data
-            if isinstance(result, dict):
-                self.logger.info(f"Add response keys: {list(result.keys())}")
-                # Check for graph-related data in add response
-                if "relations" in result:
-                    self.logger.info(
-                        f"Add response contains 'relations': {len(result.get('relations', []))} items"
-                    )
-                if "graph" in result:
-                    self.logger.info(
-                        f"Add response contains 'graph': {type(result.get('graph'))}"
-                    )
+            response_keys = list(result.keys()) if isinstance(result, dict) else []
+            relations_count = len(result.get("relations", [])) if isinstance(result, dict) else 0
+
+            self.logger.info(
+                "memory_stored",
+                user_id=user_id,
+                mode=mode_str,
+                conversation_id=conversation_id,
+                message_length=len(message),
+                external_call_ms=external_duration_ms,
+                response_keys=response_keys,
+                relations_count=relations_count,
+            )
 
             # v2 API response format: {"results": [...]}
             results_list: List[Dict[str, Any]]
@@ -438,12 +467,18 @@ class MemoryService:
                 results_list = cast(List[Dict[str, Any]], result)
             else:
                 self.logger.warning(
-                    f"Unexpected response format from mem0 add: {type(result)}"
+                    "memory_store_unexpected_response",
+                    user_id=user_id,
+                    response_type=type(result).__name__,
                 )
                 return None
 
             if not results_list:
-                self.logger.debug("No memories created (NOOP event)")
+                self.logger.debug(
+                    "memory_store_noop",
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                )
                 return None
 
             # Parse the first result (primary memory)
@@ -456,10 +491,24 @@ class MemoryService:
                 if metadata:
                     memory_entry.metadata.update(metadata)
 
+            total_duration_ms = (time.time() - start_time) * 1000
+            self.logger.info(
+                "memory_store_completed",
+                user_id=user_id,
+                memory_id=memory_entry.id if memory_entry else None,
+                total_duration_ms=total_duration_ms,
+            )
+
             return memory_entry
 
         except Exception as e:
-            self.logger.error(f"Error storing memory for user {user_id}: {e}")
+            self.logger.error(
+                "memory_store_failed",
+                user_id=user_id,
+                conversation_id=conversation_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return None
 
     async def store_memory_batch(
@@ -548,37 +597,54 @@ class MemoryService:
                 # Log details about what was stored
                 if success_count == 0:
                     self.logger.warning(
-                        f"Mem0 returned 0 memories from {len(messages)} messages in {batch_elapsed:.2f}s. "
-                        f"Response: {result}"
+                        "memory_batch_no_results",
+                        user_id=user_id,
+                        message_count=len(messages),
+                        duration_s=batch_elapsed,
                     )
                 else:
-                    self.logger.info(
-                        f"✓ Stored {success_count} memories in {batch_elapsed:.2f}s "
-                        f"(batch_size={len(messages)}, mode={'async' if async_mode else 'sync'})"
-                    )
-                    # Log sample of events
                     events = [r.get("event", "UNKNOWN") for r in results_list[:5]]
-                    self.logger.debug(f"Sample events: {events}")
+                    self.logger.info(
+                        "memory_batch_stored",
+                        user_id=user_id,
+                        success_count=success_count,
+                        message_count=len(messages),
+                        mode="async" if async_mode else "sync",
+                        duration_s=batch_elapsed,
+                        sample_events=events,
+                    )
 
                 return success_count > 0
             elif isinstance(result, list):
                 batch_elapsed = time.time() - batch_start
                 self.logger.info(
-                    f"✓ Stored {len(result)} memories in {batch_elapsed:.2f}s "
-                    f"(batch_size={len(messages)}, mode={'async' if async_mode else 'sync'})"
+                    "memory_batch_stored",
+                    user_id=user_id,
+                    success_count=len(result),
+                    message_count=len(messages),
+                    mode="async" if async_mode else "sync",
+                    duration_s=batch_elapsed,
                 )
                 return len(result) > 0
             else:
                 batch_elapsed = time.time() - batch_start
                 self.logger.warning(
-                    f"Unexpected response format from mem0 batch add in {batch_elapsed:.2f}s: {type(result)}, value: {result}"
+                    "memory_batch_unexpected_response",
+                    user_id=user_id,
+                    response_type=type(result).__name__,
+                    duration_s=batch_elapsed,
                 )
                 return False
 
         except Exception as e:
             batch_elapsed = time.time() - batch_start
             self.logger.error(
-                f"Error storing memory batch for user {user_id} after {batch_elapsed:.2f}s: {e}"
+                "memory_batch_failed",
+                user_id=user_id,
+                message_count=len(messages),
+                duration_s=batch_elapsed,
+                error=str(e),
+                error_type=type(e).__name__,
             )
             return False
 
@@ -601,15 +667,29 @@ class MemoryService:
         Returns:
             MemorySearchResult with matching memories and relations
         """
+        start_time = time.time()
         user_id = self._validate_user_id(user_id)
         if not user_id:
             return MemorySearchResult()
+
+        # Enrich wide event
+        wide_event = get_current_event()
+        if wide_event:
+            wide_event.set_operation(
+                operation="search_memories",
+                resource_type="memory",
+            )
+            wide_event.set_business_context(
+                memory_search_limit=limit,
+                query_length=len(query),
+            )
 
         try:
             client = await self._get_client()
 
             # v2 API search with reranking for better results
             # Use filters parameter to properly scope the search
+            external_start = time.time()
             response = await client.search(
                 query=query,
                 filters={"user_id": user_id},
@@ -617,6 +697,10 @@ class MemoryService:
                 rerank=True,
                 threshold=threshold,
             )
+            external_duration_ms = (time.time() - external_start) * 1000
+
+            if wide_event:
+                wide_event.add_external_call(external_duration_ms)
 
             # v2 API response format: {"results": [...], "relations": [...]}
             memories_list: List[Dict[str, Any]] = []
@@ -632,7 +716,9 @@ class MemoryService:
                 memories_list = response
             else:
                 self.logger.warning(
-                    f"Unexpected response format from mem0 search: {type(response)}"
+                    "memory_search_unexpected_response",
+                    user_id=user_id,
+                    response_type=type(response).__name__,
                 )
                 return MemorySearchResult()
 
@@ -640,8 +726,16 @@ class MemoryService:
             memories = self._parse_memory_list(memories_list, user_id)
             relations = self._parse_relationships(relations_list)
 
-            self.logger.debug(
-                f"Search found {len(memories)} memories and {len(relations)} relations for user {user_id}"
+            total_duration_ms = (time.time() - start_time) * 1000
+            self.logger.info(
+                "memory_search_completed",
+                user_id=user_id,
+                query_length=len(query),
+                limit=limit,
+                memory_count=len(memories),
+                relation_count=len(relations),
+                external_call_ms=external_duration_ms,
+                total_duration_ms=total_duration_ms,
             )
 
             return MemorySearchResult(
@@ -651,7 +745,13 @@ class MemoryService:
             )
 
         except Exception as e:
-            self.logger.error(f"Error searching memories for user {user_id}: {e}")
+            self.logger.error(
+                "memory_search_failed",
+                user_id=user_id,
+                query_length=len(query),
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return MemorySearchResult()
 
     async def get_all_memories(
@@ -668,24 +768,36 @@ class MemoryService:
         Returns:
             MemorySearchResult with user's memories and graph relations
         """
+        start_time = time.time()
         user_id = self._validate_user_id(user_id)
         if not user_id:
             return MemorySearchResult()
+
+        # Enrich wide event
+        wide_event = get_current_event()
+        if wide_event:
+            wide_event.set_operation(
+                operation="get_all_memories",
+                resource_type="memory",
+            )
 
         try:
             client = await self._get_client()
 
             # v1.1 format includes graph relationships if graph memory is enabled at project level
+            external_start = time.time()
             response = await client.get_all(
                 filters={"AND": [{"user_id": user_id}]},
                 output_format="v1.1",
             )
+            external_duration_ms = (time.time() - external_start) * 1000
 
-            structure = describe_structure(response)
-            logger.info("response_structure=" + "\n".join(structure))
+            if wide_event:
+                wide_event.add_external_call(external_duration_ms)
 
             # Check if graph data is present
             has_graph_data = False
+            graph_keys_found = []
             if isinstance(response, dict):
                 possible_graph_keys = [
                     "relations",
@@ -693,16 +805,8 @@ class MemoryService:
                     "graph",
                     "entities",
                 ]
-                has_graph_data = any(key in response for key in possible_graph_keys)
-                logger.info(f"Graph data present in response: {has_graph_data}")
-                if has_graph_data:
-                    logger.info(
-                        f"Graph keys found: {[k for k in possible_graph_keys if k in response]}"
-                    )
-                else:
-                    logger.warning(
-                        "No graph relationships in response. Graph memory may not be enabled at project level."
-                    )
+                graph_keys_found = [k for k in possible_graph_keys if k in response]
+                has_graph_data = len(graph_keys_found) > 0
 
             # v2 API response format: {"results": [...], "relations": [...]}
             memories_list: List[Dict[str, Any]] = []
@@ -717,8 +821,16 @@ class MemoryService:
             memory_entries = self._parse_memory_list(memories_list, user_id)
             relationships = self._parse_relationships(relationships_list)
 
+            total_duration_ms = (time.time() - start_time) * 1000
             self.logger.info(
-                f"Retrieved {len(memory_entries)} memories and {len(relationships)} graph relations for user {user_id}"
+                "memories_retrieved",
+                user_id=user_id,
+                memory_count=len(memory_entries),
+                relation_count=len(relationships),
+                has_graph_data=has_graph_data,
+                graph_keys=graph_keys_found,
+                external_call_ms=external_duration_ms,
+                total_duration_ms=total_duration_ms,
             )
 
             return MemorySearchResult(
@@ -728,7 +840,12 @@ class MemoryService:
             )
 
         except Exception as e:
-            self.logger.error(f"Error retrieving all memories for user {user_id}: {e}")
+            self.logger.error(
+                "memories_retrieval_failed",
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return MemorySearchResult()
 
     async def delete_memory(self, memory_id: str, user_id: Optional[str]) -> bool:
@@ -742,6 +859,7 @@ class MemoryService:
         Returns:
             True if successful, False otherwise
         """
+        start_time = time.time()
         user_id = self._validate_user_id(user_id)
         if not user_id:
             return False
@@ -750,14 +868,26 @@ class MemoryService:
             client = await self._get_client()
 
             # v2 API delete by memory_id
+            external_start = time.time()
             result = await client.delete(memory_id=memory_id)
+            external_duration_ms = (time.time() - external_start) * 1000
 
-            self.logger.info(f"Memory {memory_id} deleted for user {user_id}: {result}")
+            self.logger.info(
+                "memory_deleted",
+                user_id=user_id,
+                memory_id=memory_id,
+                external_call_ms=external_duration_ms,
+                total_duration_ms=(time.time() - start_time) * 1000,
+            )
             return True
 
         except Exception as e:
             self.logger.error(
-                f"Error deleting memory {memory_id} for user {user_id}: {e}"
+                "memory_delete_failed",
+                user_id=user_id,
+                memory_id=memory_id,
+                error=str(e),
+                error_type=type(e).__name__,
             )
             return False
 
@@ -771,6 +901,7 @@ class MemoryService:
         Returns:
             True if successful, False otherwise
         """
+        start_time = time.time()
         user_id = self._validate_user_id(user_id)
         if not user_id:
             return False
@@ -779,13 +910,25 @@ class MemoryService:
             client = await self._get_client()
 
             # v2 API delete_all with user filter
+            external_start = time.time()
             result = await client.delete_all(user_id=user_id)
+            external_duration_ms = (time.time() - external_start) * 1000
 
-            self.logger.info(f"All memories deleted for user {user_id}: {result}")
+            self.logger.info(
+                "all_memories_deleted",
+                user_id=user_id,
+                external_call_ms=external_duration_ms,
+                total_duration_ms=(time.time() - start_time) * 1000,
+            )
             return True
 
         except Exception as e:
-            self.logger.error(f"Error deleting all memories for user {user_id}: {e}")
+            self.logger.error(
+                "all_memories_delete_failed",
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return False
 
     async def get_project_info(self) -> Dict[str, Any]:

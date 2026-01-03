@@ -1,7 +1,8 @@
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from app.config.loggers import auth_logger as logger
+from app.config.loggers import auth_logger as logger, get_current_event
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
 
@@ -20,16 +21,38 @@ async def get_current_user(request: Request):
         HTTPException: On authentication failure
     """
     if not hasattr(request.state, "authenticated") or not request.state.authenticated:
-        logger.info("No authenticated user found in request state")
+        logger.info(
+            "auth_failed_no_session",
+            path=request.url.path,
+            method=request.method,
+        )
         raise HTTPException(
             status_code=401, detail="Unauthorized: Authentication required"
         )
     if not request.state.user:
-        logger.error("User marked as authenticated but no user data found")
+        logger.error(
+            "auth_failed_no_user_data",
+            path=request.url.path,
+            method=request.method,
+        )
         raise HTTPException(status_code=401, detail="Unauthorized: User data missing")
 
-    # Return user info from request state
-    return request.state.user
+    user = request.state.user
+    user_id = user.get("user_id")
+
+    # Enrich wide event with user context
+    wide_event = get_current_event()
+    if wide_event:
+        wide_event.set_user_context(user=user)
+
+    logger.debug(
+        "auth_success",
+        user_id=user_id,
+        path=request.url.path,
+        method=request.method,
+    )
+
+    return user
 
 
 async def get_current_user_ws(websocket: WebSocket):
@@ -48,21 +71,38 @@ async def get_current_user_ws(websocket: WebSocket):
     """
     from app.utils.auth_utils import authenticate_workos_session
 
+    start_time = time.time()
+
     # Extract the session cookie from WebSocket
     wos_session = websocket.cookies.get("wos_session")
 
     if not wos_session:
-        logger.info("No session cookie in WebSocket request")
+        logger.info(
+            "ws_auth_no_session",
+            client_host=websocket.client.host if websocket.client else "unknown",
+        )
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
 
     # Use shared authentication logic
     user_info, _ = await authenticate_workos_session(session_token=wos_session)
 
+    duration_ms = (time.time() - start_time) * 1000
+
     if not user_info:
-        logger.warning("WebSocket authentication failed")
+        logger.warning(
+            "ws_auth_failed",
+            duration_ms=duration_ms,
+            client_host=websocket.client.host if websocket.client else "unknown",
+        )
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
+
+    logger.info(
+        "ws_auth_success",
+        user_id=user_info.get("user_id"),
+        duration_ms=duration_ms,
+    )
 
     return user_info
 
@@ -87,7 +127,11 @@ def get_user_timezone(
     user_tz = ZoneInfo(x_timezone)
     now = datetime.now(user_tz)
 
-    logger.debug(f"User timezone: {user_tz}, Current time: {now}")
+    logger.debug(
+        "timezone_resolved",
+        timezone=x_timezone,
+        current_time=now.isoformat(),
+    )
     return x_timezone, now
 
 
@@ -107,16 +151,26 @@ async def get_user_timezone_from_preferences(
     try:
         # Only check the root level timezone field
         timezone = user.get("timezone")
-        logger.debug(f"User timezone from user.timezone: {timezone}")
 
         if timezone and timezone.strip():
-            logger.debug(f"Using user's stored timezone: {timezone}")
+            logger.debug(
+                "user_timezone_from_preferences",
+                user_id=user.get("user_id"),
+                timezone=timezone,
+            )
             return timezone.strip()
 
         # Fallback to UTC
-        logger.debug("No user timezone found, falling back to UTC")
+        logger.debug(
+            "user_timezone_fallback_utc",
+            user_id=user.get("user_id"),
+        )
         return "UTC"
 
     except Exception as e:
-        logger.warning(f"Error getting user timezone from preferences: {e}")
+        logger.warning(
+            "user_timezone_error",
+            user_id=user.get("user_id"),
+            error=str(e),
+        )
         return "UTC"
