@@ -32,6 +32,7 @@ icon: "laptop-code"
   <Accordion icon="code" title="Development Tools">
     - Git (for version control)
     - [mise](https://mise.jdx.dev) (task runner and tool manager)
+    - For mobile development: Xcode (iOS) and/or Android Studio (Android)
   </Accordion>
 
   <Accordion icon="terminal" title="System Requirements">
@@ -131,6 +132,7 @@ mise doctor
         ```bash
         cp apps/api/.env.example apps/api/.env
         cp apps/web/.env.example apps/web/.env
+        cp apps/mobile/.env.example apps/mobile/.env
         ```
 
         Edit `apps/api/.env` with your secrets. See [Environment Variables](/configuration/environment-variables).
@@ -144,10 +146,13 @@ mise doctor
         This will:
         - Check `.env` files exist
         - Start Docker services
-        - Install Python 3.11 via mise
+        - Install Python 3.12 via mise
         - Install API dependencies (uv sync)
         - Install Node 22 via mise
         - Install web dependencies (pnpm install)
+        - Install mobile dependencies (pnpm install)
+        - Install desktop dependencies (pnpm install)
+        - Install voice agent dependencies
         - Seed AI models
       </Step>
 
@@ -175,6 +180,7 @@ mise doctor
         cd gaia
         cp apps/api/.env.example apps/api/.env
         cp apps/web/.env.example apps/web/.env
+        cp apps/mobile/.env.example apps/mobile/.env
         ```
       </Step>
 

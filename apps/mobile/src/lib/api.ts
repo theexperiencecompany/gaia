@@ -1,11 +1,5 @@
-import { Platform } from "react-native";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
-
-const API_BASE_URL = __DEV__
-  ? Platform.OS === "android"
-    ? "http://10.0.2.2:8000/api/v1" // Android emulator
-    : "http://192.168.1.126:8000/api/v1" // iOS simulator / physical device - update with your IP
-  : "https://api.heygaia.io/api/v1";
+import { API_BASE_URL } from "./constants";
 
 function getUserTimezone(): string {
   try {

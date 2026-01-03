@@ -34,21 +34,27 @@ Run from project root.
 | `mise dev`      | API + web in parallel (starts Docker) |
 | `mise dev:api`  | API server only (port 8000)           |
 | `mise dev:web`  | Web app only (port 3000)              |
+| `mise dev:mobile` | Mobile app (Expo dev server)        |
+| `mise dev:desktop` | Desktop app (Electron)             |
 | `mise dev:arq`  | ARQ background worker                 |
-| `mise dev:full` | API + web + ARQ worker                |
+| `mise dev:voice` | Voice agent worker                   |
+| `mise dev:full` | API + web + ARQ + voice worker        |
 | `mise dev:docs` | Documentation server                  |
 
 ---
 
 ## Setup Commands
 
-| Command           | Description                                              |
-| ----------------- | -------------------------------------------------------- |
-| `mise setup`      | Complete setup (env check → deps → docker → seed models) |
-| `mise setup:env`  | Check if `.env` files exist                              |
-| `mise setup:api`  | Install API dependencies (uv sync)                       |
-| `mise setup:web`  | Install web dependencies (pnpm install)                  |
-| `mise setup:deps` | Install all dependencies                                 |
+| Command                  | Description                                                    |
+| ------------------------ | -------------------------------------------------------------- |
+| `mise setup`             | Complete setup for all apps (env check → deps → docker → seed) |
+| `mise setup:env`         | Check if `.env` files exist (api, mobile)                      |
+| `mise setup:api`         | Install API dependencies (uv sync)                             |
+| `mise setup:web`         | Install web dependencies (pnpm install)                        |
+| `mise setup:mobile`      | Install mobile dependencies (pnpm install)                     |
+| `mise setup:desktop`     | Install desktop dependencies (pnpm install)                    |
+| `mise setup:voice-agent` | Install voice agent dependencies + download models             |
+| `mise setup:deps`        | Install all dependencies                                       |
 
 ---
 
@@ -218,6 +224,40 @@ Run from `apps/web/` or use `mise -C apps/web <task>`.
 | `mise format`  | Format with biome                     |
 | `mise analyze` | Bundle size analysis                  |
 | `mise clean`   | Clean `.next` and caches              |
+
+---
+
+## Mobile-Specific Commands
+
+Run from `apps/mobile/` or use `mise -C apps/mobile <task>`.
+
+| Command              | Description                              |
+| -------------------- | ---------------------------------------- |
+| `mise dev`           | Start Expo development server            |
+| `mise android`       | Run on Android device/emulator           |
+| `mise ios`           | Run on iOS device/simulator              |
+| `mise web`           | Run on Web                               |
+| `mise prebuild`      | Generate native code                     |
+| `mise eas:build`     | Build with EAS Build (cloud)             |
+| `mise eas:submit`    | Submit to app stores                     |
+| `mise clean`         | Clean build artifacts                    |
+
+---
+
+## Desktop-Specific Commands
+
+Run from `apps/desktop/` or use `mise -C apps/desktop <task>`.
+
+| Command         | Description                              |
+| --------------- | ---------------------------------------- |
+| `mise dev`      | Run desktop app in dev mode              |
+| `mise build`    | Build Electron main and preload          |
+| `mise start`    | Run built app in production mode         |
+| `mise dist`     | Create distributable for current platform|
+| `mise dist:mac` | Create macOS distributable (DMG + ZIP)   |
+| `mise dist:win` | Create Windows distributable (NSIS)      |
+| `mise dist:linux`| Create Linux distributable (AppImage)   |
+| `mise clean`    | Clean all build artifacts                |
 
 ---
 

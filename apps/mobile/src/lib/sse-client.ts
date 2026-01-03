@@ -1,6 +1,6 @@
-import { Platform } from "react-native";
 import EventSource from "react-native-sse";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
+import { API_BASE_URL } from "./constants";
 
 export interface SSEEvent {
   id?: string;
@@ -19,12 +19,6 @@ export interface SSEOptions {
   body?: unknown;
 }
 
-const API_BASE_URL = __DEV__
-  ? Platform.OS === "android"
-    ? "http://10.0.2.2:8000/api/v1"
-    : "http://192.168.1.126:8000/api/v1"
-  : "https://api.heygaia.io/api/v1";
-
 function getTimezone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -36,7 +30,7 @@ function getTimezone(): string {
 export async function createSSEConnection(
   endpoint: string,
   callbacks: SSECallbacks,
-  options: SSEOptions = {},
+  options: SSEOptions = {}
 ): Promise<AbortController> {
   const controller = new AbortController();
   const token = await getAuthToken();
