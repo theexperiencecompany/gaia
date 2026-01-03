@@ -9,6 +9,7 @@ Usage:
     pytest -s tests/composio_tools/test_twitter.py -v --user-id USER_ID
 """
 
+import logging
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +18,8 @@ from pytest_check import check
 
 from tests.composio_tools.config_utils import get_integration_config
 from tests.composio_tools.conftest import execute_tool
+
+logger = logging.getLogger(__name__)
 
 
 # Mock get_stream_writer for tools that use LangGraph context
@@ -145,7 +148,7 @@ class TestTwitterDestructiveOperations:
         thread_url = data.get("thread_url") or data.get("url")
 
         assert thread_url, "Should return thread_url"
-        print(f"\nThread created successfully: {thread_url}")
+        logger.info(f"\nThread created successfully: {thread_url}")
 
         # Cleanup
         ids_to_delete = []
@@ -163,8 +166,10 @@ class TestTwitterDestructiveOperations:
                     user_id,
                 )
                 if not cleanup.get("successful"):
-                    print(f"⚠️ Failed to delete ID {tid}: {cleanup.get('error')}")
+                    logger.warning(
+                        f"⚠️ Failed to delete ID {tid}: {cleanup.get('error')}"
+                    )
         else:
-            print(
+            logger.warning(
                 f"⚠️ Could not identify tweet IDs. Please manually delete: {thread_url}"
             )

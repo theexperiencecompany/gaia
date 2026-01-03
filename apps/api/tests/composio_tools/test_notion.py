@@ -33,8 +33,6 @@ def test_page(composio_client, user_id) -> Generator[Dict[str, Any], None, None]
     title = f"[PYTEST] Test Page {timestamp}"
 
     # Create a new Notion page
-    # Tool name likely NOTION_CREATE_PAGE or NOTION_create_notion_page
-    # We'll try NOTION_CREATE_PAGE first based on common patterns
     try:
         create_result = execute_tool(
             composio_client,

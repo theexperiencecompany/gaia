@@ -14,6 +14,9 @@ Usage:
 NOTE: Linear has no delete issue API. Created issues must be manually archived.
 """
 
+import json
+import uuid
+
 import pytest
 from pytest_check import check
 
@@ -146,8 +149,6 @@ class TestLinearDestructiveOperations:
         team_id = teams[0].get("id")
 
         # 2. Create Issue
-        import uuid
-
         unique_id = str(uuid.uuid4())[:8]
         title = f"[PYTEST] Temp Issue {unique_id}"
 
@@ -160,8 +161,6 @@ class TestLinearDestructiveOperations:
         assert result.get("successful"), f"Setup failed: {result.get('error')}"
         data = result.get("data", {})
         if isinstance(data, str):
-            import json
-
             try:
                 data = json.loads(data)
             except Exception:
@@ -181,12 +180,7 @@ class TestLinearDestructiveOperations:
             "identifier": issue.get("identifier"),
         }
 
-        # 3. Cleanup (Archive)
-        # Linear doesn't have hard delete, so we might just leave it
-        # OR attempt to state-change if we knew the Canceled state ID.
-        # Since we don't easily have state IDs without querying, we accept "Archive" means created test artifacts persist in 'Todo' or default state
-        # UNLESS we find "Canceled" state.
-        # Ideally we would set state to Canceled.
+        # 3. Cleanup (Archive) - Pass for now as Linear has no delete API
         pass
 
     @pytest.fixture
@@ -197,8 +191,6 @@ class TestLinearDestructiveOperations:
             composio_client, "LINEAR_CUSTOM_GET_WORKSPACE_CONTEXT", {}, user_id
         )
         team_id = context.get("data", {}).get("teams", [])[0].get("id")
-
-        import uuid
 
         unique_id = str(uuid.uuid4())[:8]
         result = execute_tool(
@@ -212,8 +204,6 @@ class TestLinearDestructiveOperations:
         )
         data = result.get("data", {})
         if isinstance(data, str):
-            import json
-
             try:
                 data = json.loads(data)
             except Exception:
@@ -229,7 +219,6 @@ class TestLinearDestructiveOperations:
             "identifier": issue2.get("identifier"),
         }
 
-    # @pytest.mark.skip(reason="IRREVERSIBLE: Linear has no delete API. Run manually.")
     def test_create_issue(self, composio_client, user_id, fresh_issue):
         """Test CUSTOM_CREATE_ISSUE creates an issue.
 
@@ -251,8 +240,6 @@ class TestLinearDestructiveOperations:
 
         data = search.get("data", {})
         if isinstance(data, str):
-            import json
-
             try:
                 data = json.loads(data)
             except Exception:
@@ -292,8 +279,6 @@ class TestLinearDestructiveOperations:
 
         data = search.get("data", {})
         if isinstance(data, str):
-            import json
-
             try:
                 data = json.loads(data)
             except Exception:

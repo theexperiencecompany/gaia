@@ -8,33 +8,29 @@ Usage:
     pytest -s tests/composio_tools/test_linkedin.py -v --user-id USER_ID
 """
 
+import logging
+
 import pytest
 
 from tests.composio_tools.conftest import execute_tool
 
+logger = logging.getLogger(__name__)
+
 
 @pytest.fixture(scope="class")
-def linkedin_resource(composio_client, user_id, request):
+def linkedin_resource(composio_client, user_id, request, confirm_action):
     """
     Class-scoped fixture to create a shared LinkedIn post.
     Prompts for user confirmation before creation.
     """
-    # check for --yes or prompt
-    auto_confirm = request.config.getoption("--yes", default=False)
-
-    if not auto_confirm:
-        print("\n\n!! WARNING: LinkedIn tests are DESTRUCTIVE !!")
-        print("This will create a REAL post on your profile.")
-        print("The post cannot be deleted via API. You must delete it manually.")
-        try:
-            resp = input("Do you want to proceed? (y/N): ")
-            if resp.lower() not in ["y", "yes"]:
-                pytest.skip("User declined LinkedIn tests")
-        except OSError:
-            pytest.fail("Cannot read input. Run with '-s' for interactive mode.")
+    confirm_action(
+        "LinkedIn tests are DESTRUCTIVE!\n"
+        "This will create a REAL post on your profile.\n"
+        "The post cannot be deleted via API. You must delete it manually."
+    )
 
     # Create Post
-    print("\n Creating LinkedIn Post...")
+    logger.info("Creating LinkedIn Post...")
     result = execute_tool(
         composio_client,
         "LINKEDIN_CUSTOM_CREATE_POST",
@@ -53,16 +49,16 @@ def linkedin_resource(composio_client, user_id, request):
     if not post_urn:
         pytest.fail("Post created but no URN returned")
 
-    print(f"\n✅ Post Created: {post_url} (URN: {post_urn})")
+    logger.info(f"✅ Post Created: {post_url} (URN: {post_urn})")
 
     resource = {"post_urn": post_urn, "post_url": post_url}
 
     yield resource
 
     # Teardown / Reminder
-    print("\n\n🛑 TEST COMPLETE. PLEASE MANUALLY DELETE THE POST:")
-    print(f"🔗 {post_url}")
-    print(f"URN: {post_urn}\n")
+    logger.info("\n\n🛑 TEST COMPLETE. PLEASE MANUALLY DELETE THE POST:")
+    logger.info(f"🔗 {post_url}")
+    logger.info(f"URN: {post_urn}\n")
 
 
 class TestLinkedInOperations:
@@ -74,7 +70,7 @@ class TestLinkedInOperations:
         post_urn = linkedin_resource["post_urn"]
 
         # 1. React to Post
-        print("\n[Step 1] Reacting to post...")
+        logger.info("Reacting to post...")
         react_res = execute_tool(
             composio_client,
             "LINKEDIN_CUSTOM_REACT_TO_POST",
@@ -84,7 +80,7 @@ class TestLinkedInOperations:
         assert react_res.get("successful"), f"React failed: {react_res.get('error')}"
 
         # 2. Add Comment
-        print("\n[Step 2] Adding comment...")
+        logger.info("Adding comment...")
         comment_res = execute_tool(
             composio_client,
             "LINKEDIN_CUSTOM_ADD_COMMENT",
@@ -96,7 +92,7 @@ class TestLinkedInOperations:
         )
 
         # 3. Get Reactions (Verify)
-        print("\n[Step 3] Verifying reactions...")
+        logger.info("Verifying reactions...")
         get_react_res = execute_tool(
             composio_client,
             "LINKEDIN_CUSTOM_GET_POST_REACTIONS",
@@ -107,7 +103,7 @@ class TestLinkedInOperations:
         # Note: API might have lag, so just asserting call success is safer than asserting count > 0 immediately
 
         # 4. Get Comments (Verify)
-        print("\n[Step 4] Verifying comments...")
+        logger.info("Verifying comments...")
         get_comm_res = execute_tool(
             composio_client,
             "LINKEDIN_CUSTOM_GET_POST_COMMENTS",
@@ -117,7 +113,7 @@ class TestLinkedInOperations:
         assert get_comm_res.get("successful")
 
         # 5. Delete Reaction
-        print("\n[Step 5] Deleting reaction...")
+        logger.info("Deleting reaction...")
         del_react_res = execute_tool(
             composio_client,
             "LINKEDIN_CUSTOM_DELETE_REACTION",

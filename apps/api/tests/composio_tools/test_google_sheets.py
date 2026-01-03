@@ -5,7 +5,7 @@ Tests 5 sheets tools with self-contained fixtures:
 - CUSTOM_SET_DATA_VALIDATION
 - CUSTOM_ADD_CONDITIONAL_FORMAT
 - CUSTOM_CREATE_CHART
-- CUSTOM_CREATE_PIVOT_TABLE (skipped - requires specific headers)
+- CUSTOM_CREATE_PIVOT_TABLE
 - CUSTOM_SHARE_SPREADSHEET
 
 
@@ -16,10 +16,12 @@ Usage:
     pytest tests/composio_tools/test_google_sheets.py -v --user-id USER_ID
 """
 
+import json
 from datetime import datetime
 from typing import Any, Dict, Generator
 
 import pytest
+from app.models.google_sheets_models import CreatePivotTableInput
 
 from tests.composio_tools.config_utils import get_integration_config
 from tests.composio_tools.conftest import execute_tool
@@ -58,8 +60,6 @@ def test_spreadsheet(composio_client, user_id) -> Generator[Dict[str, Any], None
     data = create_result.get("data", {})
     # Handle potentially stringified data
     if isinstance(data, str):
-        import json
-
         try:
             data = json.loads(data)
         except Exception:
@@ -110,8 +110,6 @@ def test_spreadsheet(composio_client, user_id) -> Generator[Dict[str, Any], None
     }
 
     yield spreadsheet_info
-
-    pass
 
 
 class TestGoogleSheetsOperations:
@@ -177,8 +175,6 @@ class TestGoogleSheetsOperations:
 
     def test_create_pivot_table(self, composio_client, user_id, test_spreadsheet):
         """Test CUSTOM_CREATE_PIVOT_TABLE creates a pivot table."""
-        from app.models.google_sheets_models import CreatePivotTableInput
-
         # Use Sheet1 as destination, placing pivot at F1 (away from data at A1:D10)
         sheet_name = test_spreadsheet["sheet_name"]
 
@@ -192,7 +188,6 @@ class TestGoogleSheetsOperations:
             "destination_sheet_name": sheet_name,
             "destination_cell": "F1",  # Placed after the data columns
         }
-        print(f"DEBUG: Pivot Table Input: {args}")
 
         # Verify payload strictly against model
         try:
@@ -210,8 +205,6 @@ class TestGoogleSheetsOperations:
         assert result.get("successful"), f"API call failed: {result.get('error')}"
         data = result.get("data", {})
         if isinstance(data, str):
-            import json
-
             try:
                 data = json.loads(data)
             except Exception:

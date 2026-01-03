@@ -13,6 +13,7 @@ Usage:
 
 import asyncio
 import json
+import logging
 from typing import Any, Dict
 
 import app.patches  # noqa: F401, E402
@@ -26,13 +27,15 @@ from tests.composio_tools.config_utils import get_user_id
 # Apply nest_asyncio for nested event loops
 nest_asyncio.apply()
 
+logger = logging.getLogger(__name__)
+
 
 def pytest_addoption(parser):
     """Add custom CLI options for pytest."""
     parser.addoption(
         "--user-id",
         action="store",
-        default=None,  # No longer required - uses config/env as fallback
+        default=None,
         help="User ID for Composio authentication",
     )
     parser.addoption(
@@ -57,7 +60,6 @@ def user_id(request) -> str:
         return cli_user_id
 
     # Fall back to config/env
-
     config_user_id = get_user_id()
 
     if not config_user_id:
