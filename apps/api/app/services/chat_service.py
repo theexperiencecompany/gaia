@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
@@ -55,6 +56,23 @@ async def chat_stream(
         f"User {user.get('user_id')} started a conversation with ID {conversation_id}"
     )
 
+    # Start description generation immediately as a background task for new conversations
+    description_task = None
+    if is_new_conversation:
+        last_message = body.messages[-1] if body.messages else None
+        selectedTool = body.selectedTool if body.selectedTool else None
+        selectedWorkflow = body.selectedWorkflow if body.selectedWorkflow else None
+
+        description_task = asyncio.create_task(
+            generate_and_update_description(
+                conversation_id,
+                last_message,
+                user,
+                selectedTool,
+                selectedWorkflow,
+            )
+        )
+
     user_id = user.get("user_id")
     user_model_config = None
     if user_id:
@@ -74,6 +92,16 @@ async def chat_stream(
         user_model_config=user_model_config,
         usage_metadata_callback=usage_metadata_callback,
     ):
+        # Check if description is ready and send it immediately
+        if description_task and description_task.done():
+            try:
+                description = description_task.result()
+                yield f"""data: {json.dumps({"conversation_description": description})}\n\n"""
+                description_task = None  # Clear task after yielding
+            except Exception as e:
+                logger.error(f"Failed to get conversation description: {e}")
+                description_task = None  # Clear task to avoid retry
+
         # Skip [DONE] marker from agent - we'll send it after description generation
         if chunk == "data: [DONE]\n\n":
             continue
@@ -132,21 +160,10 @@ async def chat_stream(
         else:
             yield chunk
 
-    # Generate and stream description for new conversations
-    if is_new_conversation:
-        last_message = body.messages[-1] if body.messages else None
-        selectedTool = body.selectedTool if body.selectedTool else None
-        selectedWorkflow = body.selectedWorkflow if body.selectedWorkflow else None
-
+    # Await and stream description if not already sent
+    if description_task:
         try:
-            description = await generate_and_update_description(
-                conversation_id,
-                last_message,
-                user,
-                selectedTool,
-                selectedWorkflow,
-            )
-
+            description = await description_task
             # Stream the updated description
             yield f"""data: {json.dumps({"conversation_description": description})}\n\n"""
         except Exception as e:

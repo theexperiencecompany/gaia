@@ -163,7 +163,7 @@ export default function ChatRenderer({
         );
       })}
       {isLoading && (
-        <div className="flex items-center gap-4 pt-3 pl-12 text-sm font-medium">
+        <div className="flex items-center gap-4 pl-12 text-sm font-medium">
           {toolInfo?.toolCategory &&
             getToolCategoryIcon(toolInfo.toolCategory, {
               size: 18,
