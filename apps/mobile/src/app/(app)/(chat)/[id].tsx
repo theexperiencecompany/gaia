@@ -1,9 +1,10 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { FlashList } from "@shopify/flash-list";
-import { View } from "react-native";
+import { Keyboard, View } from "react-native";
 import DrawerLayout, {
   DrawerPosition,
+  DrawerState,
   DrawerType,
 } from "react-native-gesture-handler/ReanimatedDrawerLayout";
 import Animated, {
@@ -29,7 +30,7 @@ import { getRelevantThinkingMessage } from "@/features/chat/utils/playfulThinkin
 export default function ChatPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { setActiveChatId, createNewChat } = useChatContext();
+  const { setActiveChatId } = useChatContext();
 
   useEffect(() => {
     if (id) {
@@ -61,6 +62,10 @@ export default function ChatPage() {
 
   const animatedContainerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -keyboard.height.value }],
+  }));
+
+  const animatedInputContainerStyle = useAnimatedStyle(() => ({
+    paddingBottom: 6,
   }));
 
   useEffect(() => {
@@ -101,8 +106,8 @@ export default function ChatPage() {
   };
 
   const handleNewChat = () => {
-    createNewChat();
     closeSidebar();
+    setActiveChatId(null);
     router.replace("/");
   };
 
@@ -142,6 +147,9 @@ export default function ChatPage() {
         drawerType={DrawerType.FRONT}
         overlayColor="rgba(0, 0, 0, 0.7)"
         renderNavigationView={renderDrawerContent}
+        onDrawerStateChanged={(newState) => {
+          if (newState !== DrawerState.IDLE) Keyboard.dismiss();
+        }}
       >
         <View className="flex-1">
           <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
@@ -179,7 +187,7 @@ export default function ChatPage() {
                 />
               </View>
 
-              <View className="px-2 bg-surface rounded-t-4xl">
+              <Animated.View className="px-2 bg-surface rounded-t-4xl" style={animatedInputContainerStyle}>
                 <ChatInput
                   onSend={(msg) => {
                     setLastUserMessage(msg);
@@ -189,7 +197,7 @@ export default function ChatPage() {
                   value={inputValue}
                   onChangeText={setInputValue}
                 />
-              </View>
+              </Animated.View>
               </Animated.View>
             </View>
           </SafeAreaView>

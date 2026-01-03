@@ -12,10 +12,7 @@ export function SidebarFooter() {
   const popoverRef = useRef<PopoverTriggerRef>(null);
   const router = useRouter();
 
-  /**
-   * Handle sign out with navigation.
-   * signOut clears auth state, then we navigate to login.
-   */
+
   const handleSignOut = useCallback(async () => {
     await signOut();
     router.replace("/login");

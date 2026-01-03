@@ -1,9 +1,10 @@
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { FlashList } from "@shopify/flash-list";
-import { Text, View } from "react-native";
+import { Keyboard, Text, View } from "react-native";
 import DrawerLayout, {
   DrawerPosition,
+  DrawerState,
   DrawerType,
 } from "react-native-gesture-handler/ReanimatedDrawerLayout";
 import Animated, {
@@ -28,13 +29,17 @@ import { getRelevantThinkingMessage } from "@/features/chat/utils/playfulThinkin
 
 export default function IndexScreen() {
   const router = useRouter();
-  const { setActiveChatId, createNewChat } = useChatContext();
+  const { setActiveChatId } = useChatContext();
   const { drawerRef, closeSidebar, toggleSidebar } = useSidebar();
 
   const keyboard = useAnimatedKeyboard();
 
   const animatedContainerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -keyboard.height.value }],
+  }));
+
+  const animatedInputContainerStyle = useAnimatedStyle(() => ({
+    paddingBottom: 6,
   }));
 
   const {
@@ -96,9 +101,9 @@ export default function IndexScreen() {
   };
 
   const handleNewChat = () => {
-    createNewChat();
     closeSidebar();
-    router.replace("/");
+    // Already on index, just reset the active chat to start fresh
+    setActiveChatId(null);
   };
 
   const handleSendMessage = async (text: string) => {
@@ -137,6 +142,9 @@ export default function IndexScreen() {
         drawerType={DrawerType.FRONT}
         overlayColor="rgba(0, 0, 0, 0.7)"
         renderNavigationView={renderDrawerContent}
+        onDrawerStateChanged={(newState) => {
+          if (newState !== DrawerState.IDLE) Keyboard.dismiss();
+        }}
       >
         <View className="flex-1">
           <SafeAreaView style={{ flex: 1 }} edges={["top"]}>

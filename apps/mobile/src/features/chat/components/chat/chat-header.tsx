@@ -6,6 +6,7 @@ import {
   HugeiconsIcon,
   Menu01Icon,
   Search01Icon,
+  BubbleChatAddIcon,
 } from "@/components/icons";
 import type { AIModel } from "@/features/chat/types";
 
@@ -30,24 +31,18 @@ export function ChatHeader({
         </View>
       </PressableFeedback>
 
-      <View className="flex-row items-center gap-2 px-3 py-1.5">
-        <Text className="text-sm text-foreground font-bold tracking-tight">
-          {"GAIA Free"}
-        </Text>
-        <HugeiconsIcon icon={ArrowDown01Icon} size={14} color="#666666" />
-      </View>
 
-      <View className="flex-row gap-1">
+      <View className="flex-row gap-2">
         {onSearchPress && (
           <PressableFeedback onPress={onSearchPress}>
             <View className="p-1">
-              <HugeiconsIcon icon={Search01Icon} size={20} color="#ffffff" />
+              <HugeiconsIcon icon={Search01Icon} size={18} color="#bbbbbb" />
             </View>
           </PressableFeedback>
         )}
         <PressableFeedback onPress={onNewChatPress}>
           <View className="p-1">
-            <HugeiconsIcon icon={Edit01Icon} size={18} color="#bbbbbb" />
+            <HugeiconsIcon icon={BubbleChatAddIcon} size={18} color="#bbbbbb" />
           </View>
         </PressableFeedback>
       </View>
