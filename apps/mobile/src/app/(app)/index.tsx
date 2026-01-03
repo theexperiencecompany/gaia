@@ -1,17 +1,17 @@
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import {
-  FlatList,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
-  Text,
-  View,
-} from "react-native";
+import { FlashList } from "@shopify/flash-list";
+import { Text, View } from "react-native";
 import DrawerLayout, {
   DrawerPosition,
   DrawerType,
 } from "react-native-gesture-handler/ReanimatedDrawerLayout";
+import Animated, {
+  runOnJS,
+  useAnimatedKeyboard,
+  useAnimatedReaction,
+  useAnimatedStyle,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChatInput } from "@/components/ui/chat-input";
 import {
@@ -31,7 +31,12 @@ export default function IndexScreen() {
   const { setActiveChatId, createNewChat } = useChatContext();
   const { drawerRef, closeSidebar, toggleSidebar } = useSidebar();
 
-  // Use null for new chats - backend will create conversation ID in first SSE event
+  const keyboard = useAnimatedKeyboard();
+
+  const animatedContainerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -keyboard.height.value }],
+  }));
+
   const {
     messages,
     isTyping,
@@ -44,37 +49,45 @@ export default function IndexScreen() {
 
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [thinkingMessage, setThinkingMessage] = useState(() =>
-    getRelevantThinkingMessage(""),
+    getRelevantThinkingMessage("")
   );
 
-  // Update active chat ID when conversation is created by backend
   useEffect(() => {
     if (conversationId) {
       setActiveChatId(conversationId);
     }
   }, [conversationId, setActiveChatId]);
 
-  // Rotate playful thinking messages when typing but no tool progress
   useEffect(() => {
     if (isTyping && !progress) {
-      // Set initial message immediately
       setThinkingMessage(getRelevantThinkingMessage(lastUserMessage));
       const interval = setInterval(
         () => {
           setThinkingMessage(getRelevantThinkingMessage(lastUserMessage));
         },
-        2000 + Math.random() * 1000,
+        2000 + Math.random() * 1000
       );
       return () => clearInterval(interval);
     }
   }, [isTyping, progress, lastUserMessage]);
 
-  // Get the display message for loading state - use progress when available, otherwise use thinking message
   const displayMessage = progress || thinkingMessage;
 
   useEffect(() => {
     scrollToBottom();
   }, [messages.length, scrollToBottom]);
+
+  useAnimatedReaction(
+    () => keyboard.height.value,
+    (currentHeight, previousHeight) => {
+      if (
+        currentHeight > 0 &&
+        (previousHeight === null || currentHeight > previousHeight)
+      ) {
+        runOnJS(scrollToBottom)();
+      }
+    }
+  );
 
   const handleSelectChat = (chatId: string) => {
     setActiveChatId(chatId);
@@ -112,7 +125,7 @@ export default function IndexScreen() {
         />
       );
     },
-    [messages.length, isTyping, displayMessage],
+    [messages.length, isTyping, displayMessage]
   );
 
   return (
@@ -125,11 +138,7 @@ export default function IndexScreen() {
         overlayColor="rgba(0, 0, 0, 0.7)"
         renderNavigationView={renderDrawerContent}
       >
-        <KeyboardAvoidingView
-          className="flex-1"
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-        >
+        <View className="flex-1">
           <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
             <ChatHeader
               onMenuPress={toggleSidebar}
@@ -137,53 +146,52 @@ export default function IndexScreen() {
               onSearchPress={() => console.log("Search pressed")}
             />
 
-            <View className="flex-1">
-              {messages.length === 0 && !isTyping ? (
-                <View className="flex-1 items-center justify-center px-6">
-                  <Text className="text-2xl font-semibold text-foreground mb-2">
-                    What can I help you with?
-                  </Text>
-                  <Text className="text-default-500 text-center">
-                    Start a conversation by typing a message below
-                  </Text>
-                </View>
-              ) : (
-                <FlatList
-                  ref={flatListRef}
-                  data={messages}
-                  renderItem={renderMessage}
-                  keyExtractor={(item) => item.id}
-                  extraData={[
-                    messages[messages.length - 1]?.text,
-                    isTyping,
-                    displayMessage,
-                  ]}
-                  contentContainerStyle={{
-                    flexGrow: 1,
-                    paddingTop: 16,
-                    paddingBottom: 32,
-                  }}
-                  showsVerticalScrollIndicator={true}
-                  keyboardShouldPersistTaps="handled"
-                  initialNumToRender={20}
-                  maxToRenderPerBatch={10}
-                  windowSize={10}
-                  keyboardDismissMode="on-drag"
-                  onScrollBeginDrag={Keyboard.dismiss}
-                  onContentSizeChange={() => {
-                    if (messages.length > 0) {
-                      flatListRef.current?.scrollToEnd({ animated: false });
-                    }
-                  }}
-                />
-              )}
-            </View>
+            <View style={{ flex: 1, overflow: 'hidden' }}>
+              <Animated.View style={[{ flex: 1 }, animatedContainerStyle]}>
+                <View style={{ flex: 1 }}>
+                {messages.length === 0 && !isTyping ? (
+                  <View className="flex-1 items-center justify-center px-6">
+                    <Text className="text-2xl font-semibold text-foreground mb-2">
+                      What can I help you with?
+                    </Text>
+                    <Text className="text-default-500 text-center">
+                      Start a conversation by typing a message below
+                    </Text>
+                  </View>
+                ) : (
+                  <FlashList
+                    ref={flatListRef}
+                    data={messages}
+                    renderItem={renderMessage}
+                    keyExtractor={(item) => item.id}
+                    extraData={[
+                      messages[messages.length - 1]?.text,
+                      isTyping,
+                      displayMessage,
+                    ]}
+                    contentContainerStyle={{
+                      paddingTop: 16,
+                      paddingBottom: 90,
+                    }}
+                    showsVerticalScrollIndicator={true}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    onLoad={() => {
+                      if (messages.length > 0) {
+                        flatListRef.current?.scrollToEnd({ animated: false });
+                      }
+                    }}
+                  />
+                )}
+              </View>
 
-            <View className="px-2 pb-2 bg-surface rounded-t-4xl">
-              <ChatInput onSend={handleSendMessage} />
+              <Animated.View className="px-2 bg-surface rounded-t-4xl" style={animatedInputContainerStyle}>
+                <ChatInput onSend={handleSendMessage} />
+              </Animated.View>
+              </Animated.View>
             </View>
           </SafeAreaView>
-        </KeyboardAvoidingView>
+        </View>
       </DrawerLayout>
     </View>
   );

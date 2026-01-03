@@ -46,7 +46,7 @@ async def login_workos_mobile():
     """Start WorkOS SSO flow for mobile apps (Expo)."""
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
-        redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
+        redirect_uri="http://192.168.1.126:8000/api/v1/oauth/workos/mobile/callback",
     )
     return {"url": authorization_url}
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FlatList } from "react-native";
+import type { FlashListRef } from "@shopify/flash-list";
 import { useShallow } from "zustand/react/shallow";
 import { useChatStore } from "@/stores/chat-store";
 import { chatApi, fetchChatStream, type Message } from "../api/chat-api";
@@ -14,7 +14,7 @@ interface UseChatReturn {
   isLoading: boolean;
   progress: string | null;
   conversationId: string | null;
-  flatListRef: React.RefObject<FlatList | null>;
+  flatListRef: React.RefObject<FlashListRef<Message> | null>;
   sendMessage: (text: string) => Promise<void>;
   cancelStream: () => void;
   scrollToBottom: () => void;
@@ -22,7 +22,7 @@ interface UseChatReturn {
 }
 
 export function useChat(chatId: string | null): UseChatReturn {
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<FlashListRef<Message>>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingResponseRef = useRef<string>("");
   const activeConvIdRef = useRef<string | null>(chatId);
@@ -85,7 +85,7 @@ export function useChat(chatId: string | null): UseChatReturn {
   }, [chatId, fetchMessagesFromServer]);
 
   const scrollToBottom = useCallback(() => {
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+    flatListRef.current?.scrollToEnd({ animated: true });
   }, []);
 
   const cancelStream = useCallback(() => {

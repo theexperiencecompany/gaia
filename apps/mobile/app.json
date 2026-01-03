@@ -19,7 +19,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.sanku02.gaiamobile"
     },
     "web": {
       "output": "static",
@@ -50,6 +51,9 @@
     "extra": {
       "router": {
         "root": "./src/app"
+      },
+      "eas": {
+        "projectId": "dfc106f0-990f-4593-97ed-7999efde6e8c"
       }
     }
   }
