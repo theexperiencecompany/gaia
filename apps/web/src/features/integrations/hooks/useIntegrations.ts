@@ -137,9 +137,9 @@ export const useIntegrations = (): UseIntegrationsReturn => {
           queryClient.refetchQueries({
             queryKey: ["tools", "available"],
           });
-        } else if (result.status === "redirecting") {
-          toast.dismiss(toastId);
         }
+        // For "redirecting" status (OAuth flow), don't dismiss toast -
+        // let it persist until page unloads, redirect page will show result
 
         return result;
       } catch (error) {

@@ -148,11 +148,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         mcp_config=MCPConfig(
             server_url="https://mcp.notion.com/sse",
             requires_auth=True,
-            # Notion MCP uses explicit OAuth endpoints (not .well-known discovery)
-            oauth_metadata={
-                "authorization_endpoint": "https://mcp.notion.com/authorize",
-                "token_endpoint": "https://mcp.notion.com/token",
-            },
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,

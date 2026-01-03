@@ -332,11 +332,9 @@ async def composio_callback(
             f"Composio connection successful: user={user_id}, "
             f"integration={integration_config.id}, account={connectedAccountId}"
         )
-        # Add success parameter to URL
+        # Add success parameter and integration name to URL
         separator = "?" if "?" not in redirect_path else "&"
-        redirect_url = (
-            f"{settings.FRONTEND_URL}/{redirect_path}{separator}oauth_success=true"
-        )
+        redirect_url = f"{settings.FRONTEND_URL}/{redirect_path}{separator}oauth_success=true&integration={integration_config.id}"
         return RedirectResponse(url=redirect_url)
 
     except Exception as e:
@@ -455,9 +453,7 @@ async def callback(
 
         # Redirect to the original page with success indicator
         separator = "&" if "?" in redirect_path else "?"
-        redirect_url = (
-            f"{settings.FRONTEND_URL}{redirect_path}{separator}oauth_success=true"
-        )
+        redirect_url = f"{settings.FRONTEND_URL}{redirect_path}{separator}oauth_success=true&integration=google"
         response = RedirectResponse(url=redirect_url)
 
         return response

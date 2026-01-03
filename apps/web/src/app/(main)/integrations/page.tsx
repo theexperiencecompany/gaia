@@ -61,6 +61,29 @@ export default function IntegrationsPage() {
   useEffect(() => {
     const status = searchParams.get("status");
     const integrationId = searchParams.get("id");
+    const oauthSuccess = searchParams.get("oauth_success");
+    const oauthIntegration = searchParams.get("integration");
+
+    // Handle OAuth success callback
+    if (oauthSuccess === "true") {
+      // Clear query params
+      router.replace("/integrations", { scroll: false });
+
+      // Find integration name for nicer toast message
+      const integration = oauthIntegration
+        ? integrations.find(
+            (i) => i.id.toLowerCase() === oauthIntegration.toLowerCase(),
+          )
+        : null;
+      const integrationName =
+        integration?.name || oauthIntegration || "Integration";
+
+      toast.success(`Connected to ${integrationName}`);
+      // Refresh both integration status AND tools cache to show new MCP tools
+      refreshStatus();
+      queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+      return;
+    }
 
     if (status && integrationId) {
       // Clear query params
