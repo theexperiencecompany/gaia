@@ -165,8 +165,13 @@ class MCPClient:
                     f"starts_with_bearer={stored_token.lower().startswith('bearer ')}, "
                     f"preview={stored_token[:20]}..."
                 )
-                # mcp-use accepts auth as string for bearer token
-                server_config["auth"] = stored_token
+                # mcp-use HttpConnector handles auth as follows:
+                # - If string: adds "Bearer {token}" to Authorization header
+                # - So pass raw token WITHOUT Bearer prefix
+                raw_token = stored_token
+                if stored_token.lower().startswith("bearer "):
+                    raw_token = stored_token[7:]  # Remove "Bearer " prefix
+                server_config["auth"] = raw_token
             else:
                 logger.warning(
                     f"No stored OAuth token found for {integration_id} - connection may fail"
@@ -456,10 +461,20 @@ class MCPClient:
             response.raise_for_status()
             tokens = response.json()
 
+        # Debug: Log token info (safely) to understand what we're getting
+        access_token = tokens.get("access_token", "")
+        logger.info(
+            f"Token exchange response for {integration_id}: "
+            f"access_token_length={len(access_token)}, "
+            f"has_refresh={bool(tokens.get('refresh_token'))}, "
+            f"token_type={tokens.get('token_type', 'unknown')}, "
+            f"access_token_preview={access_token[:20] if access_token else 'N/A'}..."
+        )
+
         # Store tokens
         await self.token_store.store_oauth_tokens(
             integration_id=integration_id,
-            access_token=tokens.get("access_token"),
+            access_token=access_token,
             refresh_token=tokens.get("refresh_token"),
         )
 
