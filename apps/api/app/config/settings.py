@@ -160,6 +160,7 @@ class ProductionSettings(CommonSettings):
     # AI & Machine Learning
     OPENAI_API_KEY: str
     GOOGLE_API_KEY: str
+    OPENROUTER_API_KEY: str
 
     # Media & Content Processing
     ASSEMBLYAI_API_KEY: str
@@ -283,6 +284,7 @@ class DevelopmentSettings(CommonSettings):
     # AI & Machine Learning
     OPENAI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
+    OPENROUTER_API_KEY: Optional[str] = None
 
     # Media & Content Processing
     ASSEMBLYAI_API_KEY: Optional[str] = None
