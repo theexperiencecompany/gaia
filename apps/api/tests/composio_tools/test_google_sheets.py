@@ -73,14 +73,15 @@ def test_spreadsheet(composio_client, user_id) -> Generator[Dict[str, Any], None
     if not spreadsheet_id:
         pytest.skip(f"Could not get spreadsheet ID from create response: {data}")
 
-    # Add some test data using GOOGLESHEETS_BATCH_UPDATE
+    # Add some test data using GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND
     try:
-        execute_tool(
+        append_result = execute_tool(
             composio_client,
-            "GOOGLESHEETS_BATCH_UPDATE",
+            "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
             {
-                "spreadsheet_id": spreadsheet_id,
-                "range": f"{sheet_name}!A1:D10",
+                "spreadsheetId": spreadsheet_id,
+                "range": f"{sheet_name}!A1",
+                "valueInputOption": "USER_ENTERED",
                 "values": [
                     ["Name", "Category", "Value", "Score"],
                     ["Item A", "Type 1", "100", "85"],
@@ -96,6 +97,8 @@ def test_spreadsheet(composio_client, user_id) -> Generator[Dict[str, Any], None
             },
             user_id,
         )
+        if not append_result.get("successful"):
+            pytest.skip(f"Could not add test data: {append_result.get('error')}")
     except Exception as e:
         pytest.skip(f"Could not add test data (check Google Sheets connection): {e}")
 
@@ -176,35 +179,33 @@ class TestGoogleSheetsOperations:
         """Test CUSTOM_CREATE_PIVOT_TABLE creates a pivot table."""
         from app.models.google_sheets_models import CreatePivotTableInput
 
-        try:
-            args = {
-                "spreadsheet_id": test_spreadsheet["spreadsheet_id"],
-                "source_sheet_name": test_spreadsheet["sheet_name"],
-                "source_range": "A1:D10",  # Includes headers
-                "rows": ["Category"],
-                "columns": ["Name"],
-                "values": [{"column": "Value", "aggregation": "SUM"}],
-                "destination_sheet_name": "Pivot Table",
-                "destination_cell": "A1",
-            }
-            print(f"DEBUG: Pivot Table Input: {args}")
-            # Verify payload strictly against model
-            try:
-                CreatePivotTableInput(**args)
-            except Exception as e:
-                pytest.fail(f"Local Validation Failed: {e}")
+        # Use Sheet1 as destination, placing pivot at F1 (away from data at A1:D10)
+        sheet_name = test_spreadsheet["sheet_name"]
 
-            result = execute_tool(
-                composio_client,
-                "GOOGLESHEETS_CUSTOM_CREATE_PIVOT_TABLE",
-                args,
-                user_id,
-            )
-        except Exception:
-            # Pivot table might fail if "Pivot Table" sheet already exists or similar
-            # But in a fresh sheet it should work.
-            # Fallback for debugging if it fails
-            pytest.fail("Failed to create pivot table")
+        args = {
+            "spreadsheet_id": test_spreadsheet["spreadsheet_id"],
+            "source_sheet_name": sheet_name,
+            "source_range": "A1:D10",  # Includes headers
+            "rows": ["Category"],
+            "columns": ["Name"],
+            "values": [{"column": "Value", "aggregation": "SUM"}],
+            "destination_sheet_name": sheet_name,
+            "destination_cell": "F1",  # Placed after the data columns
+        }
+        print(f"DEBUG: Pivot Table Input: {args}")
+
+        # Verify payload strictly against model
+        try:
+            CreatePivotTableInput(**args)
+        except Exception as e:
+            pytest.fail(f"Local Validation Failed: {e}")
+
+        result = execute_tool(
+            composio_client,
+            "GOOGLESHEETS_CUSTOM_CREATE_PIVOT_TABLE",
+            args,
+            user_id,
+        )
 
         assert result.get("successful"), f"API call failed: {result.get('error')}"
         data = result.get("data", {})
@@ -219,7 +220,7 @@ class TestGoogleSheetsOperations:
         if not isinstance(data, dict):
             pytest.fail(f"Response data is not a dict: {data}")
 
-        assert data.get("pivot_sheet") == "Pivot Table"
+        assert data.get("pivot_sheet") == sheet_name
 
     def test_share_spreadsheet(self, composio_client, user_id, test_spreadsheet):
         """Test CUSTOM_SHARE_SPREADSHEET (via GOOGLESHEETS_CUSTOM_SHARE_SPREADSHEET)."""

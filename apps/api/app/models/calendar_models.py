@@ -681,15 +681,15 @@ class ListCalendarsInput(BaseModel):
 class FetchEventsInput(BaseModel):
     """Input for fetching events from one or more calendars."""
 
-    calendar_ids: Optional[List[str]] = Field(
-        default=None,
-        description="Calendar IDs to fetch from. If None, fetches from all user's selected calendars. Use ['primary'] for just the primary calendar.",
+    calendar_ids: list[str] = Field(
+        default_factory=list,
+        description="Calendar IDs to fetch from. If empty, fetches from all user's selected calendars. Use ['primary'] for just the primary calendar.",
     )
-    time_min: Optional[str] = Field(
+    time_min: str | None = Field(
         default=None,
         description="Start time filter (ISO format). Defaults to current time.",
     )
-    time_max: Optional[str] = Field(
+    time_max: str | None = Field(
         default=None, description="End time filter (ISO format)"
     )
     max_results: int = Field(
@@ -771,15 +771,15 @@ class AddRecurrenceInput(BaseModel):
         ..., description="Recurrence frequency"
     )
     interval: int = Field(default=1, description="Interval between occurrences", ge=1)
-    count: Optional[int] = Field(
-        default=None, description="Number of occurrences (don't use with until_date)"
+    count: int = Field(
+        default=0, description="Number of occurrences (don't use with until_date)"
     )
-    until_date: Optional[str] = Field(
-        default=None,
+    until_date: str = Field(
+        default="",
         description="End date for recurrence (YYYY-MM-DD) (don't use with count)",
     )
-    by_day: Optional[List[str]] = Field(
-        default=None,
+    by_day: list[str] = Field(
+        default_factory=list,
         description="Days of week: 'SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'",
     )
 
@@ -795,6 +795,6 @@ class AddRecurrenceInput(BaseModel):
 
     @model_validator(mode="after")
     def validate_recurrence(self):
-        if self.count is not None and self.until_date is not None:
+        if self.count > 0 and self.until_date:
             raise ValueError("Cannot specify both 'count' and 'until_date'")
         return self

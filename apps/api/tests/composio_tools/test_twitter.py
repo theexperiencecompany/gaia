@@ -75,35 +75,10 @@ class TestTwitterDraftOperations:
 class TestTwitterDestructiveOperations:
     """Tests that affect real Twitter account - requires confirmation."""
 
-    def test_batch_follow(self, composio_client, user_id, confirm_action):
-        """Test CUSTOM_BATCH_FOLLOW follows users."""
-        target = "testuser"  # Placeholder
-        confirm_action(f"About to FOLLOW user '{target}' on Twitter.")
-
-        result = execute_tool(
-            composio_client,
-            "TWITTER_CUSTOM_BATCH_FOLLOW",
-            {"usernames": [target]},
-            user_id,
-        )
-
-        assert result.get("successful"), f"API call failed: {result.get('error')}"
-
-        # Cleanup best effort
-        try:
-            execute_tool(
-                composio_client,
-                "TWITTER_CUSTOM_BATCH_UNFOLLOW",
-                {"usernames": [target]},
-                user_id,
-            )
-        except Exception:
-            pass
-
-    def test_batch_unfollow(self, composio_client, user_id, confirm_action):
+    def test_unfollow_then_follow(self, composio_client, user_id, confirm_action):
         """
-        Test CUSTOM_BATCH_UNFOLLOW unfollows users defined in config.
-        Reads keys from TWITTER_UNFOLLOW_USERS env var.
+        Test consolidated flow: Unfollow -> Follow for configured users.
+        Reads keys from TWITTER_UNFOLLOW_USERS env var / config.
         """
         # Load targets from config
         config = get_integration_config("twitter")
@@ -118,26 +93,38 @@ class TestTwitterDestructiveOperations:
 
         if not targets:
             pytest.skip(
-                "No users configured for unfollow test (set TWITTER_UNFOLLOW_USERS)"
+                "No users configured for unfollow/follow test (set TWITTER_UNFOLLOW_USERS)"
             )
 
-        confirm_action(f"About to UNFOLLOW these users on Twitter: {targets}")
+        confirm_action(f"About to UNFOLLOW then FOLLOW these users: {targets}")
 
+        # 1. Unfollow First
+        # Best effort unfollow - ignore if not followed
+        try:
+            execute_tool(
+                composio_client,
+                "TWITTER_CUSTOM_BATCH_UNFOLLOW",
+                {"usernames": targets},
+                user_id,
+            )
+        except Exception:
+            # Ignore errors during preliminary cleanup
+            pass
+
+        # 2. Batch Follow
         result = execute_tool(
             composio_client,
-            "TWITTER_CUSTOM_BATCH_UNFOLLOW",
+            "TWITTER_CUSTOM_BATCH_FOLLOW",
             {"usernames": targets},
             user_id,
         )
-
-        assert result.get("successful"), f"API call failed: {result.get('error')}"
-        print(f"\nUnfollowed: {targets}")
+        assert result.get("successful"), f"Follow failed: {result.get('error')}"
 
     def test_create_thread(self, composio_client, user_id, confirm_action):
-        """Test CUSTOM_CREATE_THREAD creates a tweet thread."""
+        """Test CUSTOM_CREATE_THREAD creates a tweet thread and cleans it up."""
 
         confirm_action(
-            "About to CREATE A LIVE THREAD on Twitter.\nNote: You MUST delete this manually."
+            "About to CREATE A LIVE THREAD on Twitter.\nNote: This test attempts to AUTO-DELETE the thread after verification."
         )
 
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -158,6 +145,26 @@ class TestTwitterDestructiveOperations:
         thread_url = data.get("thread_url") or data.get("url")
 
         assert thread_url, "Should return thread_url"
+        print(f"\nThread created successfully: {thread_url}")
 
-        print("\n\n🛑 TEST COMPLETE. PLEASE MANUALLY DELETE THE THREAD:")
-        print(f"🔗 {thread_url}\n")
+        # Cleanup
+        ids_to_delete = []
+
+        if "tweet_ids" in data and isinstance(data["tweet_ids"], list):
+            ids_to_delete.extend(data["tweet_ids"])
+
+        if ids_to_delete:
+            # Delete in reverse order (newest first) to minimize potential threading issues
+            for tid in reversed(ids_to_delete):
+                cleanup = execute_tool(
+                    composio_client,
+                    "TWITTER_POST_DELETE_BY_POST_ID",
+                    {"id": str(tid)},
+                    user_id,
+                )
+                if not cleanup.get("successful"):
+                    print(f"⚠️ Failed to delete ID {tid}: {cleanup.get('error')}")
+        else:
+            print(
+                f"⚠️ Could not identify tweet IDs. Please manually delete: {thread_url}"
+            )

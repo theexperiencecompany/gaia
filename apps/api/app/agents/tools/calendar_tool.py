@@ -218,7 +218,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         result = calendar_service.get_calendar_events(
             user_id=user_id,
             access_token=access_token,
-            selected_calendars=request.calendar_ids,
+            selected_calendars=request.calendar_ids if request.calendar_ids else None,
             time_min=time_min,
             time_max=request.time_max,
             max_results=request.max_results,
@@ -416,9 +416,9 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         rrule_parts = [f"FREQ={request.frequency}"]
         if request.interval != 1:
             rrule_parts.append(f"INTERVAL={request.interval}")
-        if request.count is not None:
+        if request.count > 0:
             rrule_parts.append(f"COUNT={request.count}")
-        if request.until_date is not None:
+        if request.until_date:
             until_formatted = request.until_date.replace("-", "")
             rrule_parts.append(f"UNTIL={until_formatted}")
         if request.by_day:

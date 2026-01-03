@@ -10,6 +10,8 @@ Usage:
     python -m tests.composio_tools.run_tests all
     python -m tests.composio_tools.run_tests calendar -v
     python -m tests.composio_tools.run_tests all --skip-destructive
+    python -m tests.composio_tools.run_tests gmail -s
+    python -m tests.composio_tools.run_tests twitter --confirm
 """
 
 import argparse
@@ -39,6 +41,8 @@ Examples:
     python -m tests.composio_tools.run_tests notion linkedin
     python -m tests.composio_tools.run_tests all
     python -m tests.composio_tools.run_tests calendar -v
+    python -m tests.composio_tools.run_tests gmail -s
+    python -m tests.composio_tools.run_tests twitter --confirm
         """,
     )
     parser.add_argument(
@@ -62,8 +66,19 @@ Examples:
         help="Override user ID from config/env",
     )
     parser.add_argument(
+        "-s",
+        action="store_true",
+        help="Allow stdout to be shown (interactive mode)",
+    )
+    parser.add_argument(
         "-k",
         help="Run only tests matching expression (passed to pytest)",
+    )
+    parser.add_argument(
+        "--confirm-action",
+        "--confirm",
+        action="store_true",
+        help="Confirm destructive actions before execution (passes --yes to pytest)",
     )
     return parser.parse_args()
 
@@ -141,6 +156,12 @@ def run_tests(test_files: list[str], args) -> int:
 
     if args.k:
         cmd.extend(["-k", args.k])
+
+    if args.s:
+        cmd.append("-s")
+
+    if args.confirm_action:
+        cmd.append("--yes")
 
     # Print what we're running
     print(f"\n🧪 Running tests for: {', '.join(test_files)}")
