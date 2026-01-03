@@ -97,6 +97,7 @@ export default function KeyboardShortcutsProvider({
     (e) => {
       // Ignore if any modifier key is pressed (e.g., Ctrl+C for copy)
       if (e.ctrlKey || e.metaKey || e.altKey) {
+        console.log("Modifier key pressed, ignoring 'c' shortcut");
         return;
       }
       const target = e.target as HTMLElement;
@@ -109,7 +110,7 @@ export default function KeyboardShortcutsProvider({
       }
       createActionRef.current?.();
     },
-    { enableOnFormTags: false, keyup: true, keydown: false },
+    // { enableOnFormTags: false, keyup: true, keydown: false },
   );
 
   // ===========================================
