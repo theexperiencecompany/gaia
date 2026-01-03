@@ -22,6 +22,7 @@
     "@react-navigation/drawer": "^7.7.10",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
+    "@shopify/flash-list": "^2.2.0",
     "clsx": "^2.1.1",
     "expo": "~54.0.29",
     "expo-auth-session": "~7.0.10",
