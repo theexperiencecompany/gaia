@@ -10,7 +10,7 @@ from app.agents.core.nodes import (
     follow_up_actions_node,
     trim_messages_node,
 )
-from app.agents.core.nodes.filter_messages import create_filter_messages_node
+from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.llm.client import init_llm
@@ -49,10 +49,7 @@ async def build_executor_graph(
         retrieve_tools_coroutine=get_retrieve_tools_function(),
         initial_tool_ids=["handoff"],
         pre_model_hooks=[
-            create_filter_messages_node(
-                agent_name="executor_agent",
-                allow_memory_system_messages=True,
-            ),
+            filter_messages_node,
             trim_messages_node,
         ],
         end_graph_hooks=[
@@ -110,10 +107,7 @@ async def build_comms_graph(
         disable_retrieve_tools=True,
         initial_tool_ids=["call_executor"],
         pre_model_hooks=[
-            create_filter_messages_node(
-                agent_name="comms_agent",
-                allow_memory_system_messages=True,
-            ),
+            filter_messages_node,
             trim_messages_node,
         ],
         end_graph_hooks=[

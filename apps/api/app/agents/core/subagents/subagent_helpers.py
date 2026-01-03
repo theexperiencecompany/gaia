@@ -108,10 +108,7 @@ async def create_subagent_system_message(
         base_system_prompt=base_system_prompt,
     )
 
-    return SystemMessage(
-        content=system_prompt,
-        additional_kwargs={"visible_to": {agent_name}},
-    )
+    return SystemMessage(content=system_prompt)
 
 
 def get_integration_info(integration_id: str) -> Optional[OAuthIntegration]:
@@ -208,8 +205,4 @@ async def create_agent_context_message(
 
     content = "\n".join(context_parts) + memories_section
 
-    return SystemMessage(
-        content=content,
-        memory_message=True,
-        additional_kwargs={"visible_to": {agent_name}},
-    )
+    return SystemMessage(content=content, memory_message=True)

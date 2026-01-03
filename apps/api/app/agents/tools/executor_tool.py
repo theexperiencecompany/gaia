@@ -73,10 +73,7 @@ async def call_executor(
             "messages": [
                 system_message,
                 context_message,
-                HumanMessage(
-                    content=task,
-                    additional_kwargs={"visible_to": {"executor_agent"}},
-                ),
+                HumanMessage(content=task),
             ]
         }
 
