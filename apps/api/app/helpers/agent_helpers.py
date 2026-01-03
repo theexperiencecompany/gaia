@@ -42,6 +42,8 @@ def build_agent_config(
     usage_metadata_callback: Optional[UsageMetadataCallbackHandler] = None,
     thread_id: Optional[str] = None,
     base_configurable: Optional[dict] = None,
+    selected_tool: Optional[str] = None,
+    tool_category: Optional[str] = None,
 ) -> dict:
     """Build configuration for graph execution with optional authentication tokens.
 
@@ -55,6 +57,8 @@ def build_agent_config(
         user_model_config: Optional model configuration with provider and token limits
         thread_id: Optional override for thread_id (defaults to conversation_id)
         base_configurable: Optional base configurable to inherit from (for child agents)
+        selected_tool: Optional tool name selected via slash command
+        tool_category: Optional category of the selected tool
 
     Returns:
         Configuration dictionary formatted for LangGraph execution with configurable
@@ -118,6 +122,8 @@ def build_agent_config(
         provider_name = base_configurable.get("provider", provider_name)
         max_tokens = base_configurable.get("max_tokens", max_tokens)
         model_name = base_configurable.get("model_name", model_name)
+        selected_tool = selected_tool or base_configurable.get("selected_tool")
+        tool_category = tool_category or base_configurable.get("tool_category")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -129,6 +135,8 @@ def build_agent_config(
         "max_tokens": max_tokens,
         "model_name": model_name,
         "model": model_name,
+        "selected_tool": selected_tool,
+        "tool_category": tool_category,
     }
 
     config = {

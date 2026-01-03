@@ -76,6 +76,7 @@ async def _core_agent_logic(
             user_name=user.get("name"),
             user_dict=user,
             selected_tool=request.selectedTool,
+            tool_category=request.toolCategory,
             selected_workflow=request.selectedWorkflow,
             selected_calendar_event=request.selectedCalendarEvent,
             reply_to_message=request.replyToMessage,
@@ -101,6 +102,8 @@ async def _core_agent_logic(
         user_model_config=user_model_config,
         usage_metadata_callback=usage_metadata_callback,
         agent_name="comms_agent",
+        selected_tool=request.selectedTool,
+        tool_category=request.toolCategory,
     )
 
     return graph, initial_state, config

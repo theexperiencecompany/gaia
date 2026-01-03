@@ -84,7 +84,7 @@ async def call_executor(
                     content=task,
                     additional_kwargs={"visible_to": {"executor_agent"}},
                 ),
-            ]
+            ],
         }
 
         complete_message = ""
