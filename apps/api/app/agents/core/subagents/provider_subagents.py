@@ -17,6 +17,7 @@ from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.core.lazy_loader import providers
+from app.services.mcp.mcp_client import get_mcp_client
 
 from .base_subagent import SubAgentFactory
 
@@ -41,10 +42,16 @@ async def create_subagent(integration_id: str):
     config = integration.subagent_config
     tool_registry = await get_tool_registry()
 
-    # Handle MCP-managed integrations (like DeepWiki)
-    if integration.managed_by == "mcp" and integration.mcp_config:
-        from app.services.mcp.mcp_client import get_mcp_client
+    # Handle internal integrations (like todos) - tools are already registered
+    if integration.managed_by == "internal":
+        # Internal integrations use core tools that are registered at startup
+        # No additional setup needed - tools are already in the registry
+        logger.info(
+            f"Internal integration {integration_id}: using pre-registered tools"
+        )
 
+    # Handle MCP-managed integrations (like DeepWiki)
+    elif integration.managed_by == "mcp" and integration.mcp_config:
         category_name = integration.id
 
         # Skip auth-required MCPs here - they need user-specific tokens
@@ -119,8 +126,6 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
 
     config = integration.subagent_config
     tool_registry = await get_tool_registry()
-
-    from app.services.mcp.mcp_client import get_mcp_client
 
     # Use user-specific category name to avoid conflicts
     category_name = f"mcp_{integration.id}_{user_id}"

@@ -50,23 +50,14 @@ const IntegrationRow: React.FC<{
       </div>
 
       <div className="shrink-0">
-        {isConnected &&
-          !(
-            integration.managedBy === "mcp" && integration.authType === "none"
-          ) && (
-            <Chip size="sm" variant="flat" color="success">
-              Connected
-            </Chip>
-          )}
+        {isConnected && (
+          <Chip size="sm" variant="flat" color="success">
+            Connected
+          </Chip>
+        )}
         {!isAvailable && (
           <Chip size="sm" variant="flat" color="default">
             Coming Soon
-          </Chip>
-        )}
-        {/* Show "Always available" for unauthenticated MCPs */}
-        {integration.managedBy === "mcp" && integration.authType === "none" && (
-          <Chip size="sm" variant="flat" color="secondary">
-            Always available
           </Chip>
         )}
 
@@ -81,12 +72,6 @@ const IntegrationRow: React.FC<{
           >
             Connect
           </Button>
-        )}
-
-        {!isAvailable && (
-          <Chip size="sm" variant="flat" color="default" className="text-xs">
-            Soon
-          </Chip>
         )}
       </div>
     </div>

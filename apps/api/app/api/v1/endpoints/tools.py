@@ -24,11 +24,19 @@ async def list_available_tools(
     """
     Get a list of all available tools with their metadata.
 
+    Includes:
+    - Platform tools (always available)
+    - Global MCP tools (stored when any user first connects to an MCP integration)
+
+    Note: This endpoint returns global tool metadata for fast frontend visibility.
+    User-specific tool connections are validated separately via integration status.
+
     Returns:
         ToolsListResponse: List of tools with descriptions, parameters, and categories
     """
     try:
-        return await get_available_tools()
+        user_id = user.get("user_id")
+        return await get_available_tools(user_id=user_id)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve tools: {str(e)}"

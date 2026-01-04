@@ -10,6 +10,7 @@ import { toast } from "sonner";
 
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
+import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
 import { IntegrationsSearchInput } from "@/features/integrations/components/IntegrationsSearchInput";
@@ -29,6 +30,10 @@ export default function IntegrationsPage() {
     disconnectIntegration,
     refreshStatus,
   } = useIntegrations();
+
+  // Pre-fetch tools on page load - this ensures tools are loaded immediately
+  // rather than waiting for sidebar to open
+  const { tools: _prefetchedTools } = useToolsWithIntegrations();
 
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -50,6 +55,43 @@ export default function IntegrationsPage() {
     string | null
   >(null);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+
+  // Track if sidebar is open to know when to update content
+  const isSidebarOpen = useRightSidebar((state) => state.isOpen);
+
+  // Update sidebar content when selected integration status changes
+  // This ensures the sidebar reflects the latest connection state
+  useEffect(() => {
+    if (!selectedIntegrationId || !isSidebarOpen) return;
+
+    const selectedIntegration = integrations.find(
+      (i) => i.id === selectedIntegrationId,
+    );
+
+    if (!selectedIntegration) return;
+
+    const handleDisconnect = async (id: string) => {
+      await disconnectIntegration(id);
+      setTimeout(() => closeRightSidebar(), 500);
+    };
+
+    setRightSidebarContent(
+      <IntegrationSidebar
+        integration={selectedIntegration}
+        onConnect={connectIntegration}
+        onDisconnect={handleDisconnect}
+        category={selectedIntegration.name}
+      />,
+    );
+  }, [
+    selectedIntegrationId,
+    integrations,
+    isSidebarOpen,
+    setRightSidebarContent,
+    connectIntegration,
+    disconnectIntegration,
+    closeRightSidebar,
+  ]);
 
   // Bearer token modal state
   const [bearerModalOpen, setBearerModalOpen] = useState(false);
@@ -158,36 +200,9 @@ export default function IntegrationsPage() {
   const handleIntegrationClick = useCallback(
     (integrationId: string) => {
       setSelectedIntegrationId(integrationId);
-      const selectedIntegration = integrations.find(
-        (i) => i.id === integrationId,
-      );
-
-      if (!selectedIntegration) return;
-
-      const handleDisconnect = async (id: string) => {
-        await disconnectIntegration(id);
-        // Close the sidebar after successful disconnect
-        setTimeout(() => closeRightSidebar(), 500);
-      };
-
-      setRightSidebarContent(
-        <IntegrationSidebar
-          integration={selectedIntegration}
-          onConnect={connectIntegration}
-          onDisconnect={handleDisconnect}
-          category={selectedIntegration.name}
-        />,
-      );
       openRightSidebar("sidebar");
     },
-    [
-      integrations,
-      setRightSidebarContent,
-      openRightSidebar,
-      connectIntegration,
-      disconnectIntegration,
-      closeRightSidebar,
-    ],
+    [openRightSidebar],
   );
 
   // Sync close action from right sidebar

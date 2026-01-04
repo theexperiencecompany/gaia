@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Optional
 from urllib.parse import urlencode
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
@@ -12,16 +13,35 @@ from app.config.settings import settings
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
+from app.models.integration_models import (
+    AddUserIntegrationRequest,
+    CreateCustomIntegrationRequest,
+    IntegrationResponse,
+    MarketplaceResponse,
+    UpdateCustomIntegrationRequest,
+    UserIntegrationsListResponse,
+)
 from app.models.oauth_models import IntegrationConfigResponse
 from app.services.composio.composio_service import (
     COMPOSIO_SOCIAL_CONFIGS,
     get_composio_service,
 )
+from app.services.integration_service import (
+    add_user_integration,
+    create_custom_integration,
+    delete_custom_integration,
+    get_all_integrations,
+    get_integration_details,
+    get_user_integrations,
+    remove_user_integration,
+    update_custom_integration,
+    update_user_integration_status,
+)
+from app.services.mcp.mcp_client import get_mcp_client
 from app.services.oauth_service import get_all_integrations_status
 from app.services.oauth_state_service import create_oauth_state
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
-from app.services.mcp.mcp_client import get_mcp_client
 
 router = APIRouter()
 
@@ -182,16 +202,13 @@ async def disconnect_integration(
             )
 
     elif integration.managed_by == "mcp":
-        # Check if this is an unauthenticated MCP - they can't be disconnected
-        if integration.mcp_config and not integration.mcp_config.requires_auth:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{integration.name} is always available and cannot be disconnected",
-            )
-        # Handle MCP integration disconnection
+        # Handle MCP integration disconnection (both auth and unauth)
         try:
             mcp_client = get_mcp_client(user_id=str(user_id))
             await mcp_client.disconnect(integration_id)
+            # Also remove from user_integrations for unauthenticated MCPs
+            if integration.mcp_config and not integration.mcp_config.requires_auth:
+                await remove_user_integration(str(user_id), integration_id)
         except Exception as e:
             logger.error(
                 f"Error disconnecting MCP integration {integration_id} for user {user_id}: {e}"
@@ -212,6 +229,15 @@ async def disconnect_integration(
         logger.info(f"OAuth status cache invalidated for user {user_id}")
     except Exception as e:
         logger.warning(f"Failed to invalidate OAuth status cache: {e}")
+
+    # Update user_integrations status in MongoDB
+    try:
+        await update_user_integration_status(str(user_id), integration_id, "created")
+        logger.info(
+            f"Updated user_integrations status to 'created' for {integration_id}"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to update user_integrations status: {e}")
 
     return JSONResponse(
         content={
@@ -258,10 +284,10 @@ async def login_integration(
         )
         return RedirectResponse(url=url["redirect_url"])
     elif integration.managed_by == "mcp":
-        # MCP integrations don't need OAuth - they're always connected
+        # MCP integrations use dedicated /mcp/connect endpoint
         raise HTTPException(
             status_code=400,
-            detail=f"{integration.name} doesn't require connection. It's always available.",
+            detail=f"Use POST /api/v1/mcp/connect/{integration_id} to connect MCP integrations.",
         )
     elif integration.provider == "google":
         # Get base scopes
@@ -304,3 +330,229 @@ async def login_integration(
         status_code=400,
         detail=f"OAuth provider {integration.provider} not implemented",
     )
+
+
+@router.get("/marketplace", response_model=MarketplaceResponse)
+async def list_marketplace_integrations(
+    category: Optional[str] = None,
+):
+    """
+    Get all available integrations for the marketplace.
+
+    This is a public endpoint that returns:
+    - Platform integrations from code (OAUTH_INTEGRATIONS)
+    - Public custom integrations from MongoDB
+    """
+    try:
+        result = await get_all_integrations(category=category)
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching marketplace integrations: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch integrations")
+
+
+@router.get("/marketplace/{integration_id}", response_model=IntegrationResponse)
+async def get_marketplace_integration(integration_id: str):
+    """
+    Get details for a single integration.
+    """
+    integration = await get_integration_details(integration_id)
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integration not found")
+    return integration
+
+
+@router.get("/users/me/integrations", response_model=UserIntegrationsListResponse)
+async def list_user_integrations(
+    user: dict = Depends(get_current_user),
+):
+    """
+    Get all integrations the current user has added to their workspace.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+
+    try:
+        result = await get_user_integrations(str(user_id))
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching user integrations for {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch user integrations")
+
+
+@router.post("/users/me/integrations")
+async def add_integration_to_workspace(
+    request: AddUserIntegrationRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Add an integration to the current user's workspace.
+
+    If the integration doesn't require authentication, it will be
+    immediately connected. Otherwise, status will be 'created' until
+    the user completes OAuth.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+
+    try:
+        user_integration = await add_user_integration(
+            str(user_id), request.integration_id
+        )
+        return JSONResponse(
+            content={
+                "status": "success",
+                "message": "Integration added to workspace",
+                "integration_id": user_integration.integration_id,
+                "connection_status": user_integration.status,
+            }
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error adding integration for {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to add integration")
+
+
+@router.delete("/users/me/integrations/{integration_id}")
+async def remove_integration_from_workspace(
+    integration_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Remove an integration from the current user's workspace.
+
+    This does NOT disconnect OAuth - it just removes the integration
+    from the user's workspace list.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+
+    try:
+        removed = await remove_user_integration(str(user_id), integration_id)
+        if not removed:
+            raise HTTPException(
+                status_code=404, detail="Integration not found in workspace"
+            )
+
+        return JSONResponse(
+            content={
+                "status": "success",
+                "message": "Integration removed from workspace",
+                "integration_id": integration_id,
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing integration for {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to remove integration")
+
+
+@router.post("/custom")
+async def create_custom_mcp_integration(
+    request: CreateCustomIntegrationRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Create a custom MCP integration.
+
+    The integration will be automatically added to the creator's workspace.
+    If is_public=True, it will be visible in the marketplace.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+
+    try:
+        integration = await create_custom_integration(str(user_id), request)
+        return JSONResponse(
+            content={
+                "status": "success",
+                "message": "Custom integration created",
+                "integration_id": integration.integration_id,
+                "name": integration.name,
+            }
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating custom integration for {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create integration")
+
+
+@router.patch("/custom/{integration_id}")
+async def update_custom_mcp_integration(
+    integration_id: str,
+    request: UpdateCustomIntegrationRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Update a custom MCP integration.
+
+    Only the creator of the integration can update it.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+
+    try:
+        updated = await update_custom_integration(str(user_id), integration_id, request)
+        if not updated:
+            raise HTTPException(
+                status_code=404,
+                detail="Integration not found or you are not the owner",
+            )
+
+        return JSONResponse(
+            content={
+                "status": "success",
+                "message": "Integration updated",
+                "integration_id": updated.integration_id,
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating integration {integration_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update integration")
+
+
+@router.delete("/custom/{integration_id}")
+async def delete_custom_mcp_integration(
+    integration_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Delete a custom MCP integration.
+
+    Only the creator can delete it. This also removes it from
+    all users' workspaces.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+
+    try:
+        deleted = await delete_custom_integration(str(user_id), integration_id)
+        if not deleted:
+            raise HTTPException(
+                status_code=404,
+                detail="Integration not found or you are not the owner",
+            )
+
+        return JSONResponse(
+            content={
+                "status": "success",
+                "message": "Integration deleted",
+                "integration_id": integration_id,
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting integration {integration_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete integration")

@@ -12,6 +12,17 @@ All metadata comes from oauth_config.py OAUTH_INTEGRATIONS.
 from datetime import datetime
 from typing import Annotated, List, Optional, TypedDict
 
+from langchain_core.messages import (
+    AIMessageChunk,
+    HumanMessage,
+    ToolMessage,
+)
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
+from langgraph.store.base import BaseStore, PutOp
+
+from app.agents.core.subagents.provider_subagents import create_subagent_for_user
 from app.agents.core.subagents.subagent_helpers import (
     create_subagent_system_message,
 )
@@ -19,19 +30,10 @@ from app.config.loggers import common_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.core.lazy_loader import providers
 from app.helpers.agent_helpers import build_agent_config
+from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth_service import (
     check_integration_status,
 )
-from langchain_core.messages import (
-    AIMessageChunk,
-    HumanMessage,
-)
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
-from langgraph.store.base import BaseStore
-from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.agents.core.subagents.provider_subagents import create_subagent_for_user
 from app.utils.agent_utils import format_tool_progress
 
 SUBAGENTS_NAMESPACE = ("subagents",)
@@ -102,8 +104,6 @@ def _get_subagent_by_id(subagent_id: str):
 
 async def index_subagents_to_store(store: BaseStore) -> None:
     """Index all subagents into the store for semantic search with rich descriptions."""
-    from langgraph.store.base import PutOp
-
     subagent_integrations = _get_subagent_integrations()
 
     put_ops = []
@@ -214,7 +214,8 @@ async def handoff(
                 return f"Error: Failed to create {agent_name} subagent"
         else:
             # Non-MCP or non-auth-required MCP integrations
-            if integration.managed_by != "mcp" and user_id:
+            # Skip connection check for internal integrations (always available)
+            if integration.managed_by not in ("mcp", "internal") and user_id:
                 error_message = await check_integration_connection(
                     integration.id, user_id
                 )
@@ -278,12 +279,33 @@ async def handoff(
             }
         )
 
+        pending_tool_calls: dict[str, dict] = {}
+
         async for event in subagent_graph.astream(
             initial_state,
-            stream_mode=["messages", "custom"],
+            stream_mode=["messages", "custom", "updates"],
             config=subagent_runnable_config,
         ):
-            stream_mode, payload = event
+            # Handle both 2-tuple and 3-tuple formats
+            if len(event) == 2:
+                stream_mode, payload = event
+            else:
+                continue
+
+            # Capture complete args from updates stream
+            if stream_mode == "updates":
+                for node_name, state_update in payload.items():
+                    if isinstance(state_update, dict) and "messages" in state_update:
+                        for msg in state_update["messages"]:
+                            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                                for tc in msg.tool_calls:
+                                    tc_id = tc.get("id")
+                                    if tc_id:
+                                        pending_tool_calls[tc_id] = {
+                                            "name": tc.get("name"),
+                                            "args": tc.get("args", {}),
+                                        }
+                continue
 
             if stream_mode == "custom":
                 writer(payload)
@@ -297,13 +319,51 @@ async def handoff(
                     # Emit tool progress with inputs (same as main agent)
                     if chunk.tool_calls:
                         for tool_call in chunk.tool_calls:
-                            progress_data = await format_tool_progress(tool_call)
-                            if progress_data:
-                                writer(progress_data)
+                            tc_id = tool_call.get("id")
+                            if tc_id and tc_id not in pending_tool_calls:
+                                progress_data = await format_tool_progress(tool_call)
+                                if progress_data:
+                                    writer(progress_data)
+                                pending_tool_calls[tc_id] = {
+                                    "name": tool_call.get("name"),
+                                    "args": tool_call.get("args", {}),
+                                }
+                            elif tc_id:
+                                pending_tool_calls[tc_id]["args"] = tool_call.get(
+                                    "args", {}
+                                )
 
                     content = str(chunk.content)
                     if content:
                         complete_message += content
+
+                # Handle ToolMessage - emit inputs and outputs
+                elif chunk and isinstance(chunk, ToolMessage):
+                    tc_id = chunk.tool_call_id
+                    # Emit tool_inputs
+                    if tc_id and tc_id in pending_tool_calls:
+                        stored_call = pending_tool_calls[tc_id]
+                        if stored_call.get("args"):
+                            writer(
+                                {
+                                    "tool_inputs": {
+                                        "tool_call_id": tc_id,
+                                        "inputs": stored_call["args"],
+                                    }
+                                }
+                            )
+                        del pending_tool_calls[tc_id]
+                    # Emit tool_output
+                    writer(
+                        {
+                            "tool_output": {
+                                "tool_call_id": tc_id,
+                                "output": chunk.content[:1000]
+                                if isinstance(chunk.content, str)
+                                else str(chunk.content)[:1000],
+                            }
+                        }
+                    )
 
         return complete_message if complete_message else "Task completed"
 

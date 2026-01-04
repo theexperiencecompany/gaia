@@ -121,7 +121,8 @@ Available Capabilities (use retrieve_tools to discover specific tools):
 For provider-specific operations (email, calendar, social media, productivity apps, development tools, task management), use the unified tool discovery:
 • `retrieve_tools(query="email")` - Returns both direct tools AND subagents
   - Direct tools: "web_search_tool", etc.
-  - Subagents: "subagent:gmail", "subagent:google_calendar", "subagent:notion", "subagent:todo", etc.
+  - Subagents: "subagent:gmail", "subagent:google_calendar", "subagent:notion", etc.
+  - Note: Subagents only appear for integrations the user has connected
 • `handoff(subagent_id, task)` - Delegate to subagent (use ID from retrieve_tools)
 
 How to use:

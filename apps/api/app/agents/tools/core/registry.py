@@ -203,7 +203,13 @@ class ToolRegistry:
         )
 
         self._add_category("notifications", tools=[*notification_tool.tools])
-        self._add_category("todos", tools=[*todo_tool.tools])
+        self._add_category(
+            "todos",
+            tools=[*todo_tool.tools],
+            is_delegated=True,
+            integration_name="todos",
+            space="todos",
+        )
         self._add_category("reminders", tools=[*reminder_tool.tools])
         self._add_category("goal_tracking", tools=goal_tool.tools)
         self._add_category("support", tools=[support_tool.create_support_ticket])
@@ -344,58 +350,17 @@ class ToolRegistry:
     async def load_all_mcp_tools(self):
         """
         Load all tools from MCP-managed integrations.
-        Similar to load_all_provider_tools but for MCP servers.
+
+        NOTE: MCP tools are now user-specific. Unauthenticated MCPs require
+        explicit user connection just like authenticated ones. All MCP tools
+        are loaded per-user via load_user_mcp_tools() at agent runtime.
+
+        This method is kept for backward compatibility but is now a no-op.
         """
-        from app.config.oauth_config import OAUTH_INTEGRATIONS
-
-        async def load_mcp_integration(integration):
-            category_name = integration.id
-
-            # Skip if already loaded
-            if category_name in self._categories:
-                return
-
-            # Skip MCP integrations requiring auth at startup - load on user connect
-            mcp_config = integration.mcp_config
-            if mcp_config.requires_auth:
-                logger.info(f"Skipping auth-required MCP {integration.id} at startup")
-                return
-
-            try:
-                from app.services.mcp.mcp_client import get_mcp_client
-
-                # Use system user for unauthenticated MCP connections at startup
-                mcp_client = get_mcp_client(user_id="_system")
-                tools = await mcp_client.connect(integration.id)
-
-                if tools:
-                    space = (
-                        integration.subagent_config.tool_space
-                        if integration.subagent_config
-                        else "mcp"
-                    )
-                    self._add_category(
-                        name=category_name,
-                        tools=tools,
-                        space=space,
-                        integration_name=integration.id,
-                    )
-                    await self._index_category_tools(category_name)
-                    logger.info(
-                        f"Registered {len(tools)} MCP tools from {integration.id}"
-                    )
-            except Exception as e:
-                logger.info(f"MCP {integration.id} not loaded at startup: {e}")
-
-        # Collect all MCP integrations
-        mcp_integrations = [
-            integration
-            for integration in OAUTH_INTEGRATIONS
-            if integration.managed_by == "mcp" and integration.mcp_config
-        ]
-
-        # Load all MCP tools in parallel
-        await asyncio.gather(*[load_mcp_integration(i) for i in mcp_integrations])
+        logger.info(
+            "MCP tools are now user-specific - skipping global startup load. "
+            "Tools loaded per-user via load_user_mcp_tools()"
+        )
 
     async def _index_category_tools(self, category_name: str):
         """Index tools from a category into ChromaDB store."""
@@ -465,14 +430,17 @@ class ToolRegistry:
             # Get space from integration config
             integration = get_integration_by_id(integration_id)
             space = "mcp"
+            has_subagent = False
             if integration and integration.subagent_config:
                 space = integration.subagent_config.tool_space
+                has_subagent = integration.subagent_config.has_subagent
 
             self._add_category(
                 name=category_name,
                 tools=tools,
                 space=space,
                 integration_name=integration_id,
+                is_delegated=has_subagent,
             )
             await self._index_category_tools(category_name)
             loaded[integration_id] = tools

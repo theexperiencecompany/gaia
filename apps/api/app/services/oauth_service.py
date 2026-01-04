@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from bson import ObjectId
+from fastapi import HTTPException
+
 from app.config.loggers import app_logger as logger
 from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
@@ -14,14 +17,16 @@ from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
 from app.services.composio.composio_service import get_composio_service
+from app.services.integration_service import (
+    check_user_has_integration,
+    update_user_integration_status,
+)
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
 )
 from app.utils.email_utils import add_contact_to_resend, send_welcome_email
 from app.utils.redis_utils import RedisPoolManager
-from bson import ObjectId
-from fastapi import HTTPException
 
 
 async def store_user_info(name: str, email: str, picture_url: Optional[str]):
@@ -151,14 +156,18 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
                 integration = next(
                     (i for i in OAUTH_INTEGRATIONS if i.id == integration_id), None
                 )
-                # Unauthenticated MCPs are always connected - no DB check needed
+                # Unauthenticated MCPs require explicit user connection via user_integrations
                 if (
                     integration
                     and integration.mcp_config
                     and not integration.mcp_config.requires_auth
                 ):
-                    result[integration_id] = True
+                    # Check if user has connected this unauthenticated MCP
+                    result[integration_id] = await check_user_has_integration(
+                        user_id, integration_id
+                    )
                 else:
+                    # Authenticated MCPs check mcp_credentials table
                     result[integration_id] = await token_store.is_connected(
                         integration_id
                     )
@@ -323,6 +332,15 @@ async def handle_oauth_connection(
         logger.info(f"OAuth status cache invalidated for user {user_id}")
     except Exception as e:
         logger.warning(f"Failed to invalidate OAuth status cache: {e}")
+
+    # Update user_integrations status in MongoDB
+    try:
+        await update_user_integration_status(
+            user_id, integration_config.id, "connected"
+        )
+        logger.info(f"Updated user_integrations status for {integration_config.id}")
+    except Exception as e:
+        logger.warning(f"Failed to update user_integrations status: {e}")
 
     if integration_config.metadata_config:
         background_tasks.add_task(

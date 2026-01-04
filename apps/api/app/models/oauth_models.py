@@ -83,31 +83,6 @@ class MCPCredential(Base):
     )
 
 
-class MCPIntegrationTool(Base):
-    """Global MCP tool metadata storage.
-
-    Stores tool name and description for each MCP integration.
-    This is global (not per-user) - tools are stored once when first user connects
-    and shared across all users for frontend visibility.
-    """
-
-    __tablename__ = "mcp_integration_tools"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    integration_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    tool_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    tool_description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=func.now(), nullable=False
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "integration_id", "tool_name", name="uq_mcp_tools_integration_name"
-        ),
-    )
-
-
 class OAuthScope(BaseModel):
     """OAuth scope configuration."""
 
@@ -216,7 +191,7 @@ class OAuthIntegration(BaseModel):
     is_featured: bool = False  # Featured integrations displayed at the top
     # Short name for slash command dropdowns and quick access
     short_name: Optional[str] = None  # e.g., "gmail", "calendar", "drive", "docs"
-    managed_by: Literal["self", "composio", "mcp"]
+    managed_by: Literal["self", "composio", "mcp", "internal"]
     # Composio-specific configuration
     composio_config: Optional[ComposioConfig] = None
     # MCP-specific configuration
@@ -244,5 +219,5 @@ class IntegrationConfigResponse(BaseModel):
     displayPriority: int
     includedIntegrations: List[str]
     isFeatured: bool
-    managedBy: Literal["self", "composio", "mcp"]
+    managedBy: Literal["self", "composio", "mcp", "internal"]
     authType: Optional[Literal["none", "oauth", "bearer"]] = None

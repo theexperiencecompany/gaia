@@ -317,7 +317,14 @@ def create_agent(
             kwargs = {**tool_call["args"]}
             if store_arg:
                 kwargs[store_arg] = store
-            result = retrieve_tools.invoke(kwargs)
+            # Pass config for user_id extraction and namespace filtering
+            # Explicitly pass user_id in kwargs if available in config
+            if config:
+                user_id = config.get("configurable", {}).get("user_id")
+                if user_id:
+                    kwargs["user_id"] = user_id
+
+            result = retrieve_tools.invoke(kwargs, config=config)
 
             # Handle both RetrieveToolsResult dict and plain list (from default langgraph_bigtool)
             if isinstance(result, dict):
@@ -354,7 +361,14 @@ def create_agent(
             kwargs = {**tool_call["args"]}
             if store_arg:
                 kwargs[store_arg] = store
-            result = await retrieve_tools.ainvoke(kwargs)
+            # Pass config for user_id extraction and namespace filtering
+            # Explicitly pass user_id in kwargs if available in config
+            if config:
+                user_id = config.get("configurable", {}).get("user_id")
+                if user_id:
+                    kwargs["user_id"] = user_id
+
+            result = await retrieve_tools.ainvoke(kwargs, config=config)
 
             # Handle both RetrieveToolsResult dict and plain list (from default langgraph_bigtool)
             if isinstance(result, dict):

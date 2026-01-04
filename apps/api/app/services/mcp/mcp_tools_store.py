@@ -4,20 +4,19 @@ Global MCP Tool Storage Service.
 Stores MCP tool metadata globally (not per-user) for frontend visibility.
 When a user first connects to an MCP integration, tools are stored globally
 so other users can see available tools without connecting first.
+
+Uses MongoDB `integrations` collection to store tool metadata within the
+integration document as `tools` array.
 """
 
 from typing import Optional
 
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
-
 from app.config.loggers import langchain_logger as logger
-from app.db.postgresql import get_db_session
-from app.models.oauth_models import MCPIntegrationTool
+from app.db.mongodb.collections import integrations_collection
 
 
 class MCPToolsStore:
-    """Global MCP tool metadata storage."""
+    """Global MCP tool metadata storage using MongoDB."""
 
     async def store_tools(self, integration_id: str, tools: list[dict]) -> None:
         """Store tools for an MCP integration (global, not per-user).
@@ -25,7 +24,7 @@ class MCPToolsStore:
         Tools are stored when first user connects. Subsequent users
         will see these tools in the frontend without connecting.
 
-        Uses upsert to handle concurrent writes gracefully.
+        Updates the `tools` array in the integration document.
 
         Args:
             integration_id: MCP integration ID (e.g., "linear")
@@ -34,25 +33,32 @@ class MCPToolsStore:
         if not tools:
             return
 
-        async with get_db_session() as session:
-            # Use upsert (INSERT ON CONFLICT) to handle concurrent writes
-            for tool in tools:
-                stmt = insert(MCPIntegrationTool).values(
-                    integration_id=integration_id,
-                    tool_name=tool.get("name", ""),
-                    tool_description=tool.get("description"),
-                )
-                # On conflict, update the description (in case it changed)
-                stmt = stmt.on_conflict_do_update(
-                    index_elements=["integration_id", "tool_name"],
-                    set_={"tool_description": stmt.excluded.tool_description},
-                )
-                await session.execute(stmt)
+        try:
+            # Format tools for storage
+            formatted_tools = [
+                {"name": t.get("name", ""), "description": t.get("description", "")}
+                for t in tools
+            ]
 
-            await session.commit()
-            logger.info(
-                f"Stored {len(tools)} global tools for MCP integration {integration_id}"
+            # Update the integration document with tools
+            result = await integrations_collection.update_one(
+                {"integration_id": integration_id},
+                {
+                    "$set": {"tools": formatted_tools},
+                    "$setOnInsert": {
+                        "integration_id": integration_id,
+                        "source": "platform",
+                    },
+                },
+                upsert=True,
             )
+
+            if result.modified_count > 0 or result.upserted_id:
+                logger.info(
+                    f"Stored {len(tools)} global tools for MCP integration {integration_id}"
+                )
+        except Exception as e:
+            logger.error(f"Error storing tools for {integration_id}: {e}")
 
     async def get_tools(self, integration_id: str) -> Optional[list[dict]]:
         """Get stored tools for an MCP integration.
@@ -61,21 +67,15 @@ class MCPToolsStore:
             List of tool dicts with 'name' and 'description', or None if not found.
         """
         try:
-            async with get_db_session() as session:
-                result = await session.execute(
-                    select(MCPIntegrationTool).where(
-                        MCPIntegrationTool.integration_id == integration_id
-                    )
-                )
-                tools = result.scalars().all()
+            doc = await integrations_collection.find_one(
+                {"integration_id": integration_id},
+                {"tools": 1},
+            )
 
-                if not tools:
-                    return None
+            if not doc or "tools" not in doc:
+                return None
 
-                return [
-                    {"name": t.tool_name, "description": t.tool_description}
-                    for t in tools
-                ]
+            return doc["tools"]
         except Exception as e:
             logger.error(f"Error getting tools for {integration_id}: {e}")
             return None
@@ -87,19 +87,19 @@ class MCPToolsStore:
             Dict mapping integration_id to list of tool dicts.
         """
         try:
-            async with get_db_session() as session:
-                result = await session.execute(select(MCPIntegrationTool))
-                tools = result.scalars().all()
+            cursor = integrations_collection.find(
+                {"tools": {"$exists": True, "$ne": []}},
+                {"integration_id": 1, "tools": 1},
+            )
 
-                grouped: dict[str, list[dict]] = {}
-                for tool in tools:
-                    if tool.integration_id not in grouped:
-                        grouped[tool.integration_id] = []
-                    grouped[tool.integration_id].append(
-                        {"name": tool.tool_name, "description": tool.tool_description}
-                    )
+            grouped: dict[str, list[dict]] = {}
+            async for doc in cursor:
+                integration_id = doc.get("integration_id")
+                tools = doc.get("tools", [])
+                if integration_id and tools:
+                    grouped[integration_id] = tools
 
-                return grouped
+            return grouped
         except Exception as e:
             logger.error(f"Error getting all MCP tools: {e}")
             return {}

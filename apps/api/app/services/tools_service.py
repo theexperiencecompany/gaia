@@ -2,31 +2,49 @@
 Service for managing and retrieving tool information.
 """
 
-from typing import Dict
+import asyncio
+from typing import Dict, Optional
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import langchain_logger as logger
-from app.decorators.caching import Cacheable
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
+from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 
 
-@Cacheable(smart_hash=True, ttl=21600, model=ToolsListResponse)  # 6 hours
-async def get_available_tools() -> ToolsListResponse:
-    """Get list of all available tools with their metadata."""
-    tool_infos = []
-    categories = set()
+async def get_available_tools(user_id: Optional[str] = None) -> ToolsListResponse:
+    """Get list of all available tools with their metadata.
 
+    Fetches tools from multiple sources in parallel:
+    1. Tool registry (provider tools)
+    2. Global MCP tools store (MongoDB) - sufficient for frontend visibility
+
+    Note: We only fetch global MCP tools here, not user-specific tools.
+    User-specific tool loading (via get_all_connected_tools) is slow because
+    it establishes websocket connections. For frontend visibility, global
+    tools are sufficient - they're stored when the first user connects.
+
+    The user_id parameter is kept for future use but currently not used
+    for tool fetching (only global tools are shown).
+    """
+    _ = user_id  # Reserved for future use (e.g., user-specific tool filtering)
+
+    tool_infos: list[ToolInfo] = []
+    categories: set[str] = set()
+    seen_integrations: set[str] = set()
+
+    # Load tool registry
     tool_registry = await get_tool_registry()
-    await tool_registry.load_all_provider_tools()
-    await tool_registry.load_all_mcp_tools()
 
-    # Use category-based approach for better performance and integration info
+    # Load provider and MCP tools in parallel
+    await asyncio.gather(
+        tool_registry.load_all_provider_tools(),
+        tool_registry.load_all_mcp_tools(),
+    )
+
+    # Get category-based tools from registry
     _categories = tool_registry.get_all_category_objects(
         ignore_categories=["delegation"]
     )
-
-    # Track which integrations we've already added tools for
-    seen_integrations: set[str] = set()
 
     for category, category_obj in _categories.items():
         if category_obj.integration_name:
@@ -40,18 +58,20 @@ async def get_available_tools() -> ToolsListResponse:
             tool_infos.append(tool_info)
             categories.add(category)
 
-    # Include auth-required MCP tools from global storage
-    # These are stored when first user connects and shared across all users
-    from app.services.mcp.mcp_tools_store import get_mcp_tools_store
-
+    # Fetch global MCP tools from MongoDB
+    # These are stored when the first user connects to an MCP integration
+    mcp_store = get_mcp_tools_store()
     try:
-        mcp_store = get_mcp_tools_store()
         global_mcp_tools = await mcp_store.get_all_mcp_tools()
+    except Exception as e:
+        logger.warning(f"Failed to fetch global MCP tools: {e}")
+        global_mcp_tools = {}
 
+    # Process global MCP tools
+    if global_mcp_tools:
         logger.info(f"MCP global tools from DB: {list(global_mcp_tools.keys())}")
 
         for integration_id, tools in global_mcp_tools.items():
-            # Skip if we already have tools for this integration from registry
             if integration_id in seen_integrations:
                 logger.debug(f"Skipping {integration_id} - already in registry")
                 continue
@@ -66,8 +86,7 @@ async def get_available_tools() -> ToolsListResponse:
                 categories.add(integration_id)
 
             logger.info(f"Added {len(tools)} tools from MCP {integration_id}")
-    except Exception as e:
-        logger.warning(f"Failed to fetch global MCP tools: {e}")
+            seen_integrations.add(integration_id)
 
     return ToolsListResponse(
         tools=tool_infos,
@@ -102,10 +121,13 @@ async def get_tool_categories() -> Dict[str, int]:
     """Get all tool categories with their counts."""
     category_counts: Dict[str, int] = {}
     tool_registry = await get_tool_registry()
-    await tool_registry.load_all_provider_tools()
-    await tool_registry.load_all_mcp_tools()
 
-    # Use the new category-based approach for better performance
+    # Load in parallel
+    await asyncio.gather(
+        tool_registry.load_all_provider_tools(),
+        tool_registry.load_all_mcp_tools(),
+    )
+
     all_categories = tool_registry.get_all_category_objects()
 
     for category_name, category_obj in all_categories.items():

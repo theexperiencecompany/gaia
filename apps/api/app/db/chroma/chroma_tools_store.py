@@ -310,7 +310,7 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     name="chroma_tools_store",
     required_keys=[],
     strategy=MissingKeyStrategy.ERROR,
-    auto_initialize=False,
+    auto_initialize=True,
 )
 async def initialize_chroma_tools_store():
     """Initialize and return the ChromaDB-backed tools store with incremental updates.

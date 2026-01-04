@@ -98,27 +98,16 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               {integration.name}
             </h1>
 
-            {isConnected &&
-              !(
-                integration.managedBy === "mcp" &&
-                integration.authType === "none"
-              ) && (
-                <Chip size="sm" variant="flat" color="success">
-                  Connected
-                </Chip>
-              )}
+            {isConnected && (
+              <Chip size="sm" variant="flat" color="success">
+                Connected
+              </Chip>
+            )}
             {!isAvailable && (
               <Chip size="sm" variant="flat" color="default">
                 Coming Soon
               </Chip>
             )}
-            {/* Show "Always available" for unauthenticated MCPs */}
-            {integration.managedBy === "mcp" &&
-              integration.authType === "none" && (
-                <Chip size="sm" variant="flat" color="secondary">
-                  Always available
-                </Chip>
-              )}
           </div>
 
           <p className="text-sm leading-relaxed font-light text-zinc-400">
@@ -126,12 +115,8 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           </p>
         </div>
 
-        {/* Hide connect/disconnect for unauthenticated MCPs */}
-        {integration.managedBy === "mcp" && integration.authType === "none" ? (
-          <div className="text-sm text-zinc-400">
-            This integration is always available - no connection needed.
-          </div>
-        ) : !isConnected ? (
+        {/* Connect/Disconnect buttons for all integrations */}
+        {!isConnected ? (
           <RaisedButton
             color="#00bbff"
             className="font-medium text-black!"

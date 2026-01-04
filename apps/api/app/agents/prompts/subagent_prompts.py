@@ -447,6 +447,14 @@ TWITTER_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
 — 4. Engagement Monitoring:
 1. TWITTER_POST_USAGE → 2. TWITTER_LIST_POST_LIKERS → 3. Strategy optimization
 
+— 5. Sending a Direct Message (DM) to a User:
+1. TWITTER_USER_LOOKUP_ME → Get your own user ID (required as participant_id for DM creation)
+2. TWITTER_USER_LOOKUP_BY_USERNAME → Get the target user's ID by their username
+3. TWITTER_SEND_A_NEW_MESSAGE_TO_A_USER → Send the DM using the target user's ID
+
+Note: You MUST fetch both your own user ID and the recipient's user ID before sending a DM.
+The DM tools require user IDs, not usernames. Always verify the target user exists before attempting to send.
+
 — When to Escalate:
 - Tasks requiring integration with external marketing tools
 - Complex analytics requiring specialized social media management platforms

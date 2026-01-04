@@ -90,14 +90,12 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     return integrationConfigs
       .map((integration) => {
         const status = getIntegrationStatus(integration.id);
-        // Unauthenticated MCPs are always connected
-        const isUnauthenticatedMcp =
-          integration.managedBy === "mcp" && integration.authType === "none";
+        // Use actual connection status from backend (no more hardcoded "always connected")
         return {
           ...integration,
-          status: (isUnauthenticatedMcp || status?.connected
+          status: status?.connected
             ? "connected"
-            : "not_connected") as Integration["status"],
+            : ("not_connected" as Integration["status"]),
         };
       })
       .sort((a, b) => {
@@ -131,12 +129,15 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         if (result.status === "connected") {
           toast.success(`Connected to ${integrationName}`, { id: toastId });
           // Refetch both status and tools to show new MCP tools immediately
-          queryClient.refetchQueries({
-            queryKey: ["integrations", "status"],
-          });
-          queryClient.refetchQueries({
-            queryKey: ["tools", "available"],
-          });
+          // Await both refetches to ensure UI updates with fresh data
+          await Promise.all([
+            queryClient.refetchQueries({
+              queryKey: ["integrations", "status"],
+            }),
+            queryClient.refetchQueries({
+              queryKey: ["tools", "available"],
+            }),
+          ]);
         }
         // For "redirecting" status (OAuth flow), don't dismiss toast -
         // let it persist until page unloads, redirect page will show result

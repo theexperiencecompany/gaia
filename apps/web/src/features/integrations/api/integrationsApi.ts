@@ -1,6 +1,13 @@
 import { apiService } from "@/lib/api";
 
-import type { Integration, IntegrationStatus } from "../types";
+import type {
+  CreateCustomIntegrationRequest,
+  Integration,
+  IntegrationStatus,
+  MarketplaceIntegration,
+  MarketplaceResponse,
+  UserIntegrationsResponse,
+} from "../types";
 
 export interface IntegrationStatusResponse {
   integrations: IntegrationStatus[];
@@ -65,7 +72,7 @@ export const integrationsApi = {
 
   /**
    * Connect an integration
-   * - For unauthenticated MCP: POST to backend directly, no redirect
+   * - For unauthenticated MCP: POST to backend to create user_integrations record
    * - For bearer auth: pass bearerToken from modal, POST to backend directly
    * - For OAuth: redirect to loginEndpoint, backend handles OAuth flow
    */
@@ -88,9 +95,13 @@ export const integrationsApi = {
       );
     }
 
-    // Unauthenticated MCPs are always connected - no API call needed
+    // For MCP integrations with no auth, call API to create user_integrations record
     if (integration.managedBy === "mcp" && integration.authType === "none") {
-      return { status: "connected", toolsCount: 0 };
+      const response = await apiService.post(
+        `/mcp/connect/${integration.id}`,
+        {},
+      );
+      return response as { status: string; toolsCount?: number };
     }
 
     // For MCP integrations with bearer auth, call API directly
@@ -126,13 +137,30 @@ export const integrationsApi = {
    */
   disconnectIntegration: async (integrationId: string): Promise<void> => {
     try {
-      await apiService.delete(
-        `/integrations/${integrationId}`,
-        {},
-        {
-          successMessage: "Integration disconnected successfully",
-        },
+      // Get the integration config to check if it's MCP
+      const configResponse = await integrationsApi.getIntegrationConfig();
+      const integration = configResponse.integrations.find(
+        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );
+
+      // MCP integrations use the /mcp endpoint
+      if (integration?.managedBy === "mcp") {
+        await apiService.delete(
+          `/mcp/${integrationId}`,
+          {},
+          {
+            successMessage: "Integration disconnected successfully",
+          },
+        );
+      } else {
+        await apiService.delete(
+          `/integrations/${integrationId}`,
+          {},
+          {
+            successMessage: "Integration disconnected successfully",
+          },
+        );
+      }
     } catch (error) {
       console.error(`Failed to disconnect ${integrationId}:`, error);
       throw error;
@@ -179,6 +207,130 @@ export const integrationsApi = {
     } catch (error) {
       console.error("Failed to get MCP status:", error);
       return { integrations: [] };
+    }
+  },
+
+  // Marketplace API Methods
+
+  /**
+   * Get all available integrations from the marketplace
+   */
+  getMarketplace: async (category?: string): Promise<MarketplaceResponse> => {
+    try {
+      const params = category
+        ? `?category=${encodeURIComponent(category)}`
+        : "";
+      const response = await apiService.get(
+        `/integrations/marketplace${params}`,
+      );
+      return response as MarketplaceResponse;
+    } catch (error) {
+      console.error("Failed to get marketplace:", error);
+      return { featured: [], integrations: [], total: 0 };
+    }
+  },
+
+  /**
+   * Get a single integration from the marketplace
+   */
+  getMarketplaceIntegration: async (
+    integrationId: string,
+  ): Promise<MarketplaceIntegration | null> => {
+    try {
+      const response = await apiService.get(
+        `/integrations/marketplace/${integrationId}`,
+      );
+      return response as MarketplaceIntegration;
+    } catch (error) {
+      console.error(`Failed to get integration ${integrationId}:`, error);
+      return null;
+    }
+  },
+
+  /**
+   * Get user's added integrations
+   */
+  getUserIntegrations: async (): Promise<UserIntegrationsResponse> => {
+    try {
+      const response = await apiService.get(
+        "/integrations/users/me/integrations",
+      );
+      return response as UserIntegrationsResponse;
+    } catch (error) {
+      console.error("Failed to get user integrations:", error);
+      return { integrations: [], total: 0 };
+    }
+  },
+
+  /**
+   * Add an integration to user's workspace
+   */
+  addToWorkspace: async (
+    integrationId: string,
+  ): Promise<{
+    status: string;
+    integration_id: string;
+    connection_status: string;
+  }> => {
+    try {
+      const response = await apiService.post(
+        "/integrations/users/me/integrations",
+        {
+          integration_id: integrationId,
+        },
+      );
+      return response as {
+        status: string;
+        integration_id: string;
+        connection_status: string;
+      };
+    } catch (error) {
+      console.error(`Failed to add integration ${integrationId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Remove an integration from user's workspace
+   */
+  removeFromWorkspace: async (integrationId: string): Promise<void> => {
+    try {
+      await apiService.delete(
+        `/integrations/users/me/integrations/${integrationId}`,
+      );
+    } catch (error) {
+      console.error(`Failed to remove integration ${integrationId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Create a custom MCP integration
+   */
+  createCustomIntegration: async (
+    request: CreateCustomIntegrationRequest,
+  ): Promise<{ integration_id: string; name: string }> => {
+    try {
+      const response = await apiService.post("/integrations/custom", request);
+      return response as { integration_id: string; name: string };
+    } catch (error) {
+      console.error("Failed to create custom integration:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Delete a custom integration
+   */
+  deleteCustomIntegration: async (integrationId: string): Promise<void> => {
+    try {
+      await apiService.delete(`/integrations/custom/${integrationId}`);
+    } catch (error) {
+      console.error(
+        `Failed to delete custom integration ${integrationId}:`,
+        error,
+      );
+      throw error;
     }
   },
 };

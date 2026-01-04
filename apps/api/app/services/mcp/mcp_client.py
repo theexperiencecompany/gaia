@@ -528,13 +528,41 @@ class MCPClient:
         """
         Get tools from all connected MCP integrations for this user.
 
+        Queries BOTH:
+        - mcp_credentials (PostgreSQL) for authenticated MCPs
+        - user_integrations (MongoDB) for unauthenticated MCPs user has connected
+
         For auth-required MCPs: Uses cached tool metadata to create stub tools
         (avoids reconnecting to MCP server just to list tools).
         For unauthenticated MCPs: Connects on-demand.
 
         Returns dict mapping integration_id -> list of tools.
         """
-        connected_ids = await self.token_store.get_connected_integrations()
+        # Get authenticated MCP connections from PostgreSQL
+        auth_connected = await self.token_store.get_connected_integrations()
+
+        # Get unauthenticated MCP connections from MongoDB user_integrations
+        # Import here to avoid circular import
+        unauth_connected: list[str] = []
+        try:
+            from app.services.integration_service import get_user_connected_integrations
+
+            user_integrations = await get_user_connected_integrations(self.user_id)
+            for ui in user_integrations:
+                integration_id = ui.get("integration_id")
+                # Check if this is an unauthenticated MCP
+                integration = get_integration_by_id(integration_id)
+                if (
+                    integration
+                    and integration.mcp_config
+                    and not integration.mcp_config.requires_auth
+                ):
+                    unauth_connected.append(integration_id)
+        except Exception as e:
+            logger.warning(f"Failed to get unauth MCPs from user_integrations: {e}")
+
+        # Combine both sources (deduplicate)
+        connected_ids = list(set(auth_connected) | set(unauth_connected))
         all_tools: dict[str, list[BaseTool]] = {}
 
         for integration_id in connected_ids:
@@ -572,8 +600,6 @@ class MCPClient:
                     )
             except Exception as e:
                 logger.warning(f"Failed to get tools for MCP {integration_id}: {e}")
-                # Don't mark as failed - might just be a temporary connection issue
-                # await self.token_store.update_status(integration_id, "failed", str(e))
 
         return all_tools
 

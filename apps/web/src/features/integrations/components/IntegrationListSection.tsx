@@ -64,21 +64,17 @@ function IntegrationListSection() {
           </p>
         </div>
 
-        {/* MCP integrations don't show any status - they're always available without connection */}
-        {integration.managedBy !== "mcp" && (
-          <>
-            {!isConnected && isAvailable && (
-              <Button
-                size="sm"
-                variant="flat"
-                color="primary"
-                className="flex-shrink-0 text-xs"
-                onPress={() => handleConnect(integration.id)}
-              >
-                Connect
-              </Button>
-            )}
-          </>
+        {/* Show connect button for all available integrations */}
+        {!isConnected && isAvailable && (
+          <Button
+            size="sm"
+            variant="flat"
+            color="primary"
+            className="flex-shrink-0 text-xs"
+            onPress={() => handleConnect(integration.id)}
+          >
+            Connect
+          </Button>
         )}
       </div>
     );

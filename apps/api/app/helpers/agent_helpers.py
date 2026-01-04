@@ -293,9 +293,12 @@ async def execute_graph_streaming(
         initial_state,
         stream_mode=["messages", "custom", "updates"],
         config=config,
+        subgraphs=True,
     ):
-        # Handle both 2-tuple (messages/custom) and updates format
-        if len(event) == 2:
+        # Handle both 2-tuple and 3-tuple (with subgraphs=True)
+        if len(event) == 3:
+            ns, stream_mode, payload = event
+        elif len(event) == 2:
             stream_mode, payload = event
         else:
             continue

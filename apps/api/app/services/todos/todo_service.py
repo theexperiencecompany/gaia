@@ -514,6 +514,14 @@ class TodoService:
                 if not subtask.get("id"):
                     subtask["id"] = str(uuid.uuid4())
 
+        # Track completion timestamp
+        if "completed" in update_dict:
+            if update_dict["completed"]:
+                update_dict["completed_at"] = datetime.now(timezone.utc)
+            else:
+                # Clear completed_at when unmarking as complete
+                update_dict["completed_at"] = None
+
         update_dict["updated_at"] = datetime.now(timezone.utc)
 
         # Update and return - this also verifies ownership atomically
