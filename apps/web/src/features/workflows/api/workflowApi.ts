@@ -8,6 +8,7 @@ import type {
   CommunityWorkflow,
   CommunityWorkflowsResponse,
   CreateWorkflowRequest,
+  TriggerSchema,
   Workflow,
   WorkflowExecutionRequest,
   WorkflowExecutionResponse,
@@ -231,6 +232,13 @@ export const workflowApi = {
   getPublicWorkflow: async (workflowId: string): Promise<WorkflowResponse> => {
     return apiService.get<WorkflowResponse>(`/workflows/public/${workflowId}`, {
       errorMessage: "Failed to fetch public workflow",
+    });
+  },
+
+  // Get available trigger schemas
+  getTriggerSchemas: async (): Promise<TriggerSchema[]> => {
+    return apiService.get<TriggerSchema[]>("/triggers/schema", {
+      errorMessage: "Failed to fetch trigger schemas",
     });
   },
 };

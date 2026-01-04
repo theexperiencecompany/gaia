@@ -6,13 +6,14 @@ This module defines SQLAlchemy models for OAuth tokens.
 
 from collections.abc import Callable
 from datetime import datetime
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from app.db.postgresql import Base
 from pydantic import BaseModel
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
+
+from app.db.postgresql import Base
 
 
 class OAuthToken(Base):
@@ -53,17 +54,59 @@ class OAuthScope(BaseModel):
     description: str
 
 
-TRIGGER_TYPES = Literal["GMAIL_NEW_GMAIL_MESSAGE"]
+class TriggerFieldConfig(BaseModel):
+    """Configuration for a specific trigger field."""
+
+    name: str
+    type: Literal["string", "integer", "boolean", "number"]
+    description: str
+    required: bool = True
+    default: Optional[Any] = None
+
+
+class TriggerConfigFieldSchema(BaseModel):
+    """Schema for a single trigger configuration field (workflow triggers)."""
+
+    type: Literal["string", "integer", "boolean", "number"]
+    default: Any
+    min: Optional[int] = None
+    max: Optional[int] = None
+    options_endpoint: Optional[str] = None  # e.g., "/calendar/list" for dynamic options
+    description: Optional[str] = None
+
+
+class WorkflowTriggerSchema(BaseModel):
+    """Schema for workflow trigger definitions.
+
+    This defines how a trigger appears in the workflow creation UI,
+    including the user-facing configuration fields.
+    """
+
+    slug: str  # e.g., "calendar_event_created"
+    composio_slug: str  # e.g., "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER"
+    name: str
+    description: str
+    config_schema: Dict[str, TriggerConfigFieldSchema] = {}
 
 
 class TriggerConfig(BaseModel):
-    """Configuration for a specific trigger."""
+    """Configuration for a specific trigger.
 
-    slug: TRIGGER_TYPES  # Extendable for more triggers
+    This is used in OAuthIntegration.associated_triggers to define
+    triggers that can be used with an integration.
+    """
+
+    slug: str
     name: str
     description: str
     config: Optional[dict] = None
     get_config: Optional[Callable] = None
+    config_fields: Optional[List[TriggerFieldConfig]] = (
+        None  # Required configuration fields from user
+    )
+    auto_activate: bool = True  # Whether to activate seamlessly on connection
+    # Workflow trigger schema for frontend UI
+    workflow_trigger_schema: Optional[WorkflowTriggerSchema] = None
 
 
 class ComposioConfig(BaseModel):

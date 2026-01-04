@@ -42,6 +42,9 @@ from app.models.oauth_models import (
     ProviderMetadataConfig,
     SubAgentConfig,
     TriggerConfig,
+    TriggerConfigFieldSchema,
+    TriggerFieldConfig,
+    WorkflowTriggerSchema,
 )
 
 # Define all integrations dynamically
@@ -70,6 +73,60 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_exqcpnLvCzGJ",
             toolkit="GOOGLECALENDAR",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
+                name="Event Created",
+                description="Polling trigger that fires when a new calendar event is created.",
+                auto_activate=True,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="calendar_event_created",
+                    composio_slug="GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
+                    name="New Calendar Event",
+                    description="Trigger when new events are created",
+                    config_schema={
+                        "calendar_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="primary",
+                            options_endpoint="/calendar/list",
+                            description="Calendar to monitor for new events",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER",
+                name="Event Starting Soon",
+                description="Triggers when a calendar event is starting soon",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="calendar_event_starting_soon",
+                    composio_slug="GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER",
+                    name="Event Starting Soon",
+                    description="Trigger before events start",
+                    config_schema={
+                        "calendar_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="primary",
+                            options_endpoint="/calendar/list",
+                            description="Calendar to monitor for upcoming events",
+                        ),
+                        "minutes_before_start": TriggerConfigFieldSchema(
+                            type="integer",
+                            default=10,
+                            min=1,
+                            max=1440,
+                            description="Trigger when event is within this many minutes from starting",
+                        ),
+                        "include_all_day": TriggerConfigFieldSchema(
+                            type="boolean",
+                            default=False,
+                            description="Whether to include all-day events",
+                        ),
+                    },
+                ),
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="google_calendar_agent",
@@ -149,6 +206,14 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 name="New Gmail Message",
                 description="Triggered when a new Gmail message arrives",
                 config={"labelIds": "INBOX", "user_id": "me", "interval": 1},
+                auto_activate=True,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="gmail_new_message",
+                    composio_slug="GMAIL_NEW_GMAIL_MESSAGE",
+                    name="New Gmail Message",
+                    description="Trigger when a new email arrives",
+                    config_schema={},
+                ),
             )
         ],
         subagent_config=SubAgentConfig(
@@ -232,6 +297,30 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_18I3fRfWyXDu",
             toolkit="GOOGLESHEETS",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="GOOGLESHEETS_NEW_ROWS_TRIGGER",
+                name="New Rows in Sheet",
+                description="Triggered when new rows are added to a specific Google Sheet.",
+                auto_activate=False,
+                config={"interval": 1, "start_row": 2},
+                config_fields=[
+                    TriggerFieldConfig(
+                        name="spreadsheet_id",
+                        type="string",
+                        description="The ID of the Google Spreadsheet to monitor",
+                        required=True,
+                    ),
+                    TriggerFieldConfig(
+                        name="sheet_name",
+                        type="string",
+                        description="The name of the specific sheet/tab to monitor",
+                        required=False,
+                        default="Sheet1",
+                    ),
+                ],
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="google_sheets_agent",
@@ -283,6 +372,68 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_y2VK4j0ATiZo",
             toolkit="GITHUB",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="GITHUB_COMMIT_EVENT",
+                name="Commit Event",
+                description="Triggered when a new commit is pushed to a repository.",
+                auto_activate=False,
+                config_fields=[
+                    TriggerFieldConfig(
+                        name="owner",
+                        type="string",
+                        description="Owner of the repository (username or org)",
+                        required=True,
+                    ),
+                    TriggerFieldConfig(
+                        name="repo",
+                        type="string",
+                        description="Repository name",
+                        required=True,
+                    ),
+                ],
+            ),
+            TriggerConfig(
+                slug="GITHUB_PULL_REQUEST_EVENT",
+                name="Pull Request Event",
+                description="Triggered when a pull request is opened, closed, or synchronized.",
+                auto_activate=False,
+                config_fields=[
+                    TriggerFieldConfig(
+                        name="owner",
+                        type="string",
+                        description="Owner of the repository (username or org)",
+                        required=True,
+                    ),
+                    TriggerFieldConfig(
+                        name="repo",
+                        type="string",
+                        description="Repository name",
+                        required=True,
+                    ),
+                ],
+            ),
+            TriggerConfig(
+                slug="GITHUB_ISSUE_ADDED_EVENT",
+                name="Issue Added",
+                description="Triggered when a new issue is added to the repository.",
+                auto_activate=False,
+                config_fields=[
+                    TriggerFieldConfig(
+                        name="owner",
+                        type="string",
+                        description="Owner of the repository (username or org)",
+                        required=True,
+                    ),
+                    TriggerFieldConfig(
+                        name="repo",
+                        type="string",
+                        description="Repository name",
+                        required=True,
+                    ),
+                ],
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="github_agent",
@@ -363,6 +514,36 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_mnrcEhhTXPVS",
             toolkit="LINEAR",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="LINEAR_ISSUE_CREATED_TRIGGER",
+                name="Issue Created",
+                description="Triggered when a new issue is created in Linear.",
+                auto_activate=False,
+                config_fields=[
+                    TriggerFieldConfig(
+                        name="team_id",
+                        type="string",
+                        description="ID of the team to filter issues by",
+                        required=True,
+                    )
+                ],
+            ),
+            TriggerConfig(
+                slug="LINEAR_COMMENT_EVENT_TRIGGER",
+                name="Comment Received",
+                description="Triggered when a new comment is posted on an issue.",
+                auto_activate=False,
+                config_fields=[
+                    TriggerFieldConfig(
+                        name="team_id",
+                        type="string",
+                        description="ID of the team to filter comments by",
+                        required=True,
+                    )
+                ],
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="linear_agent",
@@ -389,6 +570,20 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_acm0K6K_kWxY",
             toolkit="SLACK",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="SLACK_RECEIVE_MESSAGE",
+                name="New Message Received",
+                description="Triggered when a new message is posted to a Slack channel.",
+                auto_activate=True,
+            ),
+            TriggerConfig(
+                slug="SLACK_RECEIVE_DIRECT_MESSAGE",
+                name="New DM Received",
+                description="Triggered when a new direct message is sent to a user in Slack.",
+                auto_activate=True,
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="slack_agent",
@@ -465,6 +660,14 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_TOjltL3O2kEB",
             toolkit="TODOIST",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="TODOIST_NEW_TASK_CREATED",
+                name="New Task Created",
+                description="Trigger when a new task is added to Todoist.",
+                auto_activate=True,  # Seems to be workspace/user wide based on description, checking schema would be safer but assuming True based on simple description
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="todoist_agent",
@@ -588,6 +791,28 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_gF2RuhulKw3I",
             toolkit="ASANA",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="ASANA_TASK_TRIGGER",
+                name="Task Trigger",
+                description="Triggered when a task involves the user.",
+                auto_activate=False,
+                config_fields=[
+                    TriggerFieldConfig(
+                        name="workspace_gid",
+                        type="string",
+                        description="Global ID of your workspace",
+                        required=True,
+                    ),
+                    TriggerFieldConfig(
+                        name="project_gid",
+                        type="string",
+                        description="Global ID of your project",
+                        required=True,
+                    ),
+                ],
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="asana_agent",
@@ -613,6 +838,22 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_nMjBqOcjLTGW",
             toolkit="TRELLO",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="TRELLO_NEW_CARD_TRIGGER",
+                name="New Card Trigger",
+                description="Triggered when a card is created in the specified board",
+                auto_activate=False,
+                config_fields=[
+                    TriggerFieldConfig(
+                        name="board_id",
+                        type="string",
+                        description="ID of the board to monitor",
+                        required=True,
+                    ),
+                ],
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="trello_agent",

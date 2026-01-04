@@ -5,4 +5,3 @@
 export * from "./appConfig";
 export * from "./registries/baseMessageRegistry";
 export * from "./registries/toolRegistry";
-export * from "./registries/triggerRegistry";

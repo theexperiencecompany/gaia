@@ -383,8 +383,19 @@ class ComposioService:
     ):
         """
         Handle the subscription trigger for a specific provider.
+        Only subscribes to triggers marked with auto_activate=True.
         """
-        logger.info(f"Subscribing triggers for user {user_id}: {triggers}")
+        # Filter triggers that should be auto-activated
+        active_triggers = [t for t in triggers if t.auto_activate]
+
+        if not active_triggers:
+            logger.info(f"No auto-active triggers to subscribe for user {user_id}")
+            return []
+
+        logger.info(
+            f"Subscribing to {len(active_triggers)} auto-active triggers for user {user_id}"
+        )
+
         try:
             # Create tasks for each trigger to run them concurrently
             def create_trigger(trigger: TriggerConfig):
@@ -396,7 +407,7 @@ class ComposioService:
 
             tasks = [
                 asyncio.get_event_loop().run_in_executor(None, create_trigger, trigger)
-                for trigger in triggers
+                for trigger in active_triggers
             ]
 
             # Execute all trigger creation tasks concurrently

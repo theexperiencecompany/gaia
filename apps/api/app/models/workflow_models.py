@@ -4,12 +4,17 @@ Clean and lean workflow models for GAIA workflow system.
 
 import uuid
 from datetime import datetime, timezone
+from datetime import timezone as dt_timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
+
+import pytz
+from pydantic import BaseModel, Field, field_validator
 
 from app.config.loggers import general_logger as logger
 from app.models.scheduler_models import BaseScheduledTask
-from pydantic import BaseModel, Field, field_validator
+from app.models.trigger_configs import TriggerConfigData
+from app.utils.cron_utils import get_next_run_time
 
 
 class TriggerType(str, Enum):
@@ -51,12 +56,28 @@ class GeneratedWorkflow(BaseModel):
 
 
 class TriggerConfig(BaseModel):
-    """Configuration for workflow triggers."""
+    """Configuration for workflow triggers.
+
+    Uses a discriminated union pattern for type-safe provider configs.
+    Provider-specific data is stored in `trigger_data` field.
+    """
 
     type: TriggerType = Field(description="Type of trigger")
     enabled: bool = Field(default=True, description="Whether the trigger is enabled")
 
-    # Schedule configuration
+    # Type-safe provider config using discriminated union
+    trigger_data: Optional[TriggerConfigData] = Field(
+        default=None,
+        description="Provider-specific trigger configuration",
+    )
+
+    # Composio trigger tracking
+    composio_trigger_ids: Optional[List[str]] = Field(
+        default=None,
+        description="List of Composio trigger IDs registered for this workflow",
+    )
+
+    # Schedule configuration (generic, not provider-specific)
     cron_expression: Optional[str] = Field(
         default=None, description="Cron expression for scheduled workflows"
     )
@@ -65,11 +86,6 @@ class TriggerConfig(BaseModel):
     )
     next_run: Optional[datetime] = Field(
         default=None, description="Next scheduled execution time"
-    )
-
-    # Calendar trigger configuration
-    calendar_patterns: Optional[List[str]] = Field(
-        default=None, description="Calendar event patterns"
     )
 
     def calculate_next_run(
@@ -87,12 +103,6 @@ class TriggerConfig(BaseModel):
         """
         if self.type != TriggerType.SCHEDULE or not self.cron_expression:
             return None
-
-        from datetime import timezone as dt_timezone
-        from typing import Union
-
-        import pytz
-        from app.utils.cron_utils import get_next_run_time
 
         try:
             # Use user_timezone parameter, fallback to trigger config timezone, then UTC
