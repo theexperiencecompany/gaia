@@ -139,7 +139,7 @@ function MessageBubble({
   return (
     <View
       className={cn(
-        "flex-row items-center gap-2",
+        "flex-row items-start gap-2",
         variant === "sent" ? "self-end" : "self-start"
       )}
     >
