@@ -10,16 +10,12 @@ import DrawerLayout, {
   DrawerType,
 } from "react-native-gesture-handler/ReanimatedDrawerLayout";
 import Animated, {
-  FadeIn,
-  FadeInDown,
-  FadeInUp,
+  Easing,
   runOnJS,
   useAnimatedKeyboard,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
-  withSpring,
   withTiming,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -47,40 +43,23 @@ export default function IndexScreen() {
     transform: [{ translateY: -keyboard.height.value }],
   }));
 
-  // Entrance animations
-  const backgroundOpacity = useSharedValue(0);
-  const headerOpacity = useSharedValue(0);
-  const contentScale = useSharedValue(0.9);
-  const contentOpacity = useSharedValue(0);
-  const inputOpacity = useSharedValue(0);
-  const inputScale = useSharedValue(0.95);
+  const [isReady, setIsReady] = useState(false);
+  const screenOpacity = useSharedValue(0);
 
   useEffect(() => {
-    // Staggered entrance animations
-    backgroundOpacity.value = withTiming(1, { duration: 800 });
-    headerOpacity.value = withDelay(200, withTiming(1, { duration: 600 }));
-    contentOpacity.value = withDelay(400, withTiming(1, { duration: 600 }));
-    contentScale.value = withDelay(400, withSpring(1, { damping: 15, stiffness: 100 }));
-    inputOpacity.value = withDelay(500, withTiming(1, { duration: 400 }));
-    inputScale.value = withDelay(500, withSpring(1, { damping: 20, stiffness: 150 }));
+    // Small delay to ensure layout is ready before animating
+    const timer = setTimeout(() => {
+      setIsReady(true);
+      screenOpacity.value = withTiming(1, { 
+        duration: 400,
+        easing: Easing.out(Easing.ease),
+      });
+    }, 50);
+    return () => clearTimeout(timer);
   }, []);
 
-  const animatedBackgroundStyle = useAnimatedStyle(() => ({
-    opacity: backgroundOpacity.value * 0.65,
-  }));
-
-  const animatedHeaderStyle = useAnimatedStyle(() => ({
-    opacity: headerOpacity.value,
-  }));
-
-  const animatedContentStyle = useAnimatedStyle(() => ({
-    opacity: contentOpacity.value,
-    transform: [{ scale: contentScale.value }],
-  }));
-
-  const animatedInputStyle = useAnimatedStyle(() => ({
-    opacity: inputOpacity.value,
-    transform: [{ scale: inputScale.value }],
+  const animatedScreenStyle = useAnimatedStyle(() => ({
+    opacity: screenOpacity.value,
   }));
 
   const {
@@ -178,27 +157,22 @@ export default function IndexScreen() {
   );
 
   return (
-    <View className="flex-1">
-      <Animated.Image
+    <Animated.View className="flex-1" style={animatedScreenStyle}>
+      <Image
         source={require("@/assets/background/chat.jpg")}
-        className="absolute w-full h-full"
-        style={animatedBackgroundStyle}
+        className="absolute w-full h-full opacity-65"
         resizeMode="cover"
       />
-      <Animated.View 
-        style={[{ position: 'absolute', width: '100%', height: '100%' }, animatedBackgroundStyle]}
-      >
-        <LinearGradient
-          colors={[
-            "rgba(0,0,0,0.3)",
-            "rgba(255,255,255,0.1)",
-            "rgba(0,0,0,0.0)",
-            "rgba(0,0,0,0.75)",
-          ]}
-          locations={[0, 0.2, 0.45, 1]}
-          className="absolute w-full h-full"
-        />
-      </Animated.View>
+      <LinearGradient
+        colors={[
+          "rgba(0,0,0,0.3)",
+          "rgba(255,255,255,0.1)",
+          "rgba(0,0,0,0.0)",
+          "rgba(0,0,0,0.75)",
+        ]}
+        locations={[0, 0.2, 0.45, 1]}
+        className="absolute w-full h-full"
+      />
 
       <DrawerLayout
         ref={drawerRef}
@@ -213,29 +187,24 @@ export default function IndexScreen() {
       >
         <View className="flex-1">
           <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-            <Animated.View style={animatedHeaderStyle}>
-              <ChatHeader
-                onMenuPress={toggleSidebar}
-                onNewChatPress={handleNewChat}
-                onSearchPress={() => console.log("Search pressed")}
-              />
-            </Animated.View>
+            <ChatHeader
+              onMenuPress={toggleSidebar}
+              onNewChatPress={handleNewChat}
+              onSearchPress={() => console.log("Search pressed")}
+            />
 
             <View style={{ flex: 1, overflow: "hidden" }}>
               <Animated.View style={[{ flex: 1 }, animatedContainerStyle]}>
                 <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
                   {messages.length === 0 && !isTyping ? (
-                    <Animated.View 
-                      className="flex-1 items-center justify-center px-6"
-                      style={animatedContentStyle}
-                    >
+                    <View className="flex-1 items-center justify-center px-6">
                       <Text variant={"h2"} className="">
                         What can I help you with?
                       </Text>
                       <Text className="text-xs">
                         Start a conversation by typing a message below
                       </Text>
-                    </Animated.View>
+                    </View>
                   ) : (
                     <FlashList
                       ref={flatListRef}
@@ -263,17 +232,14 @@ export default function IndexScreen() {
                   )}
                 </Pressable>
 
-                <Animated.View 
-                  className="px-2 pb-5 bg-surface rounded-t-4xl border border-white/30 border-b-0"
-                  style={animatedInputStyle}
-                >
+                <View className="px-2 pb-5 bg-surface rounded-t-4xl border border-white/30 border-b-0">
                   <ChatInput onSend={handleSendMessage} />
-                </Animated.View>
+                </View>
               </Animated.View>
             </View>
           </SafeAreaView>
         </View>
       </DrawerLayout>
-    </View>
+    </Animated.View>
   );
 }

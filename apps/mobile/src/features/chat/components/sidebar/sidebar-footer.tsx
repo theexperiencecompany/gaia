@@ -30,6 +30,9 @@ export function SidebarFooter() {
     popoverRef.current?.open();
   };
 
+  // Get the profile picture URL
+  const profilePicture = user?.picture;
+
   if (isLoading) {
     return (
       <View className="border-t border-border py-2">
@@ -48,11 +51,14 @@ export function SidebarFooter() {
             className="flex-row items-center px-4 py-2 gap-3"
             onPress={handleOpenSettings}
           >
-            <Avatar alt="user" size="sm" color="accent">
-              {user?.picture ? (
-                <Avatar.Image source={{ uri: user.picture }} />
-              ) : null}
-              <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
+            <Avatar alt={user?.name || "User"} size="sm" color="accent">
+              {profilePicture ? (
+                <Avatar.Image 
+                  source={{ uri: profilePicture }} 
+                />
+              ) : (
+                <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
+              )}
             </Avatar>
             <View className="flex-1">
               <Text className="text-sm font-semibold" numberOfLines={1}>
