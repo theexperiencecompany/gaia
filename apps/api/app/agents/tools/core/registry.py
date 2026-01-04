@@ -210,8 +210,20 @@ class ToolRegistry:
             integration_name="todos",
             space="todos",
         )
-        self._add_category("reminders", tools=[*reminder_tool.tools])
-        self._add_category("goal_tracking", tools=goal_tool.tools)
+        self._add_category(
+            "reminders",
+            tools=[*reminder_tool.tools],
+            is_delegated=True,
+            integration_name="reminders",
+            space="reminders",
+        )
+        self._add_category(
+            "goal_tracking",
+            tools=goal_tool.tools,
+            is_delegated=True,
+            integration_name="goals",
+            space="goals",
+        )
         self._add_category("support", tools=[support_tool.create_support_ticket])
         self._add_category("memory", tools=memory_tools.tools)
         self._add_category("integrations", tools=integration_tool.tools)

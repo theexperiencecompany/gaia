@@ -14,6 +14,7 @@ import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithInte
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
 import { IntegrationsSearchInput } from "@/features/integrations/components/IntegrationsSearchInput";
+import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
@@ -50,6 +51,9 @@ export default function IntegrationsPage() {
   const searchQuery = useIntegrationsStore((state) => state.searchQuery);
   const setSearchQuery = useIntegrationsStore((state) => state.setSearchQuery);
   const clearSearch = useIntegrationsStore((state) => state.clearSearch);
+
+  // Get filtered integrations for Enter key handler
+  const { filteredIntegrations } = useIntegrationSearch(integrations);
 
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<
     string | null
@@ -168,6 +172,21 @@ export default function IntegrationsPage() {
     },
   );
 
+  const handleIntegrationClick = useCallback(
+    (integrationId: string) => {
+      setSelectedIntegrationId(integrationId);
+      openRightSidebar("sidebar");
+    },
+    [openRightSidebar],
+  );
+
+  // Handler for pressing Enter in search input - selects first result
+  const handleEnterSearch = useCallback(() => {
+    if (filteredIntegrations.length > 0) {
+      handleIntegrationClick(filteredIntegrations[0].id);
+    }
+  }, [filteredIntegrations, handleIntegrationClick]);
+
   // Set header with search input
   useEffect(() => {
     setHeader(
@@ -181,6 +200,7 @@ export default function IntegrationsPage() {
           value={searchQuery}
           onChange={setSearchQuery}
           onClear={clearSearch}
+          onEnter={handleEnterSearch}
           endContent={
             <div className="flex items-center gap-1.5">
               <Kbd keys={[isMac ? "command" : "ctrl"]}>F</Kbd>
@@ -190,20 +210,19 @@ export default function IntegrationsPage() {
       </div>,
     );
     return () => setHeader(null);
-  }, [searchQuery, setSearchQuery, clearSearch, setHeader, isMac]);
+  }, [
+    searchQuery,
+    setSearchQuery,
+    clearSearch,
+    setHeader,
+    isMac,
+    handleEnterSearch,
+  ]);
 
   // Set sidebar to sidebar mode (not sheet)
   useEffect(() => {
     setRightSidebarVariant("sidebar");
   }, [setRightSidebarVariant]);
-
-  const handleIntegrationClick = useCallback(
-    (integrationId: string) => {
-      setSelectedIntegrationId(integrationId);
-      openRightSidebar("sidebar");
-    },
-    [openRightSidebar],
-  );
 
   // Sync close action from right sidebar
   useEffect(() => {

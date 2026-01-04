@@ -51,9 +51,17 @@ def _build_integrations_config():
     """
     Build and cache the integrations configuration response.
     This function is cached using lru_cache for performance.
+
+    Note: Internal integrations (managed_by="internal") like todos, reminders,
+    and goals are core platform features that don't require user connection.
+    They are filtered out from the frontend integrations UI.
     """
     integration_configs = []
     for integration in OAUTH_INTEGRATIONS:
+        # Skip internal integrations - they're core platform features, not user-connectable
+        if integration.managed_by == "internal":
+            continue
+
         # Determine loginEndpoint based on managed_by
         if not integration.available:
             login_endpoint = None

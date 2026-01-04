@@ -211,9 +211,12 @@ def get_retrieve_tools_function(
             search_tasks.append(store.asearch((tool_space,), query=query, limit=limit))
 
         # Also search in any other user namespaces (for MCP integrations)
-        for ns in user_namespaces:
-            if ns not in {"general", "subagents", tool_space}:
-                search_tasks.append(store.asearch((ns,), query=query, limit=5))
+        # BUT only when in main agent context (include_subagents=True)
+        # Subagents should ONLY search their own tool_space to avoid cross-pollination
+        if include_subagents:
+            for ns in user_namespaces:
+                if ns not in {"general", "subagents", tool_space}:
+                    search_tasks.append(store.asearch((ns,), query=query, limit=5))
 
         # Include subagents search if requested
         # But we'll filter results later based on connected integrations
