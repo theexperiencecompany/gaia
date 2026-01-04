@@ -12,7 +12,6 @@ export function SidebarFooter() {
   const popoverRef = useRef<PopoverTriggerRef>(null);
   const router = useRouter();
 
-
   const handleSignOut = useCallback(async () => {
     await signOut();
     router.replace("/login");
@@ -70,7 +69,7 @@ export function SidebarFooter() {
           <Popover.Overlay />
           <Popover.Content
             presentation="bottom-sheet"
-            snapPoints={["90%"]}
+            snapPoints={["50%"]}
             index={0}
           >
             <SettingsSheetContent user={user} onSignOut={handleSignOut} />

@@ -164,7 +164,7 @@ export function useChat(chatId: string | null, options?: UseChatOptions): UseCha
             messages: [...currentMessages, userMessage],
           },
           {
-            onConversationCreated: (newConvId, userMsgId, botMsgId) => {
+            onConversationCreated: (newConvId, userMsgId, botMsgId, description) => {
               const store = useChatStore.getState();
               const msgs = store.messagesByConversation[storeKey] || [];
 
@@ -180,7 +180,16 @@ export function useChat(chatId: string | null, options?: UseChatOptions): UseCha
                 store.clearMessages(storeKey);
                 store.markConversationFetched(newConvId);
                 store.setStreamingState({ conversationId: newConvId });
-                store.setActiveChatId(newConvId); // Persist in store for cross-navigation
+                store.setActiveChatId(newConvId);
+                
+                // Add to conversations list for sidebar
+                store.addConversation({
+                  id: newConvId,
+                  title: description || 'New conversation',
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                });
+                
                 activeConvIdRef.current = newConvId;
                 setCurrentConversationId(newConvId);
                 options?.onNavigate?.(newConvId);

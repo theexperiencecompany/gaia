@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Message } from "@/features/chat/api/chat-api";
+import type { Conversation } from "@/features/chat/types";
 
 interface StreamingState {
   isTyping: boolean;
@@ -10,6 +11,7 @@ interface StreamingState {
 
 interface ChatState {
   messagesByConversation: Record<string, Message[]>;
+  conversations: Conversation[];
   activeChatId: string | null;
   streamingState: StreamingState;
   fetchedConversations: Set<string>;
@@ -26,10 +28,14 @@ interface ChatState {
   markConversationFetched: (conversationId: string) => void;
   isConversationFetched: (conversationId: string) => boolean;
   clearConversationFetched: (conversationId: string) => void;
+  setConversations: (conversations: Conversation[]) => void;
+  addConversation: (conversation: Conversation) => void;
+  updateConversationTitle: (conversationId: string, title: string) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   messagesByConversation: {},
+  conversations: [],
   activeChatId: null,
   streamingState: {
     isTyping: false,
@@ -118,4 +124,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       newSet.delete(conversationId);
       return { fetchedConversations: newSet };
     }),
+
+  setConversations: (conversations) => set({ conversations }),
+
+  addConversation: (conversation) =>
+    set((state) => {
+      // Don't add if already exists
+      if (state.conversations.some((c) => c.id === conversation.id)) {
+        return state;
+      }
+      // Add to beginning of list (newest first)
+      return { conversations: [conversation, ...state.conversations] };
+    }),
+
+  updateConversationTitle: (conversationId, title) =>
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
+        c.id === conversationId ? { ...c, title } : c
+      ),
+    })),
 }));

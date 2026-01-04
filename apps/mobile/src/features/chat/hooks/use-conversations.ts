@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Conversation } from "@/features/chat/types";
 import { apiService } from "@/lib/api";
+import { useChatStore } from "@/stores/chat-store";
 
 // Re-export for backwards compatibility
 export type { Conversation, GroupedConversations } from "@/features/chat/types";
@@ -51,7 +52,8 @@ function normalizeConversation(apiConv: ApiConversation): Conversation {
 }
 
 export function useConversations(): UseConversationsReturn {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const conversations = useChatStore((state) => state.conversations);
+  const setStoreConversations = useChatStore((state) => state.setConversations);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,17 +69,16 @@ export function useConversations(): UseConversationsReturn {
       const normalizedConversations = (data.conversations || []).map(
         normalizeConversation,
       );
-      setConversations(normalizedConversations);
+      setStoreConversations(normalizedConversations);
     } catch (err) {
       console.error("Error fetching conversations:", err);
       setError(
         err instanceof Error ? err.message : "Failed to fetch conversations",
       );
-      setConversations([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [setStoreConversations]);
 
   useEffect(() => {
     fetchConversations();

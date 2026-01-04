@@ -1,23 +1,20 @@
-import { Avatar, Button, Divider, Popover } from "heroui-native";
-import { ScrollView, View } from "react-native";
+import { Avatar, Button } from "heroui-native";
+import { Linking, Pressable, View } from "react-native";
 import {
-  ArrowRight01Icon,
   HugeiconsIcon,
   Logout01Icon,
   Moon02Icon,
-  Notification01Icon,
   Settings01Icon,
-  ShieldKeyIcon,
   UserIcon,
+  CustomerSupportIcon,
+  InformationSquareIcon,
+  FavouriteIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import type { UserInfo } from "@/features/auth";
 
 interface SettingsSheetProps {
-  user?: {
-    name?: string;
-    email?: string;
-    picture?: string;
-  } | null;
+  user: UserInfo | null;
   onSignOut: () => void;
 }
 
@@ -25,21 +22,28 @@ interface SettingsItemProps {
   icon: unknown;
   label: string;
   onPress: () => void;
+  iconColor?: string;
 }
 
-function SettingsItem({ icon, label, onPress }: SettingsItemProps) {
+function SettingsItem({
+  icon,
+  label,
+  onPress,
+  iconColor = "#a1a1aa",
+}: SettingsItemProps) {
   return (
-    <Button
-      variant="ghost"
+    <Pressable
       onPress={onPress}
-      className="justify-start px-4 py-3"
+      className="flex-row items-center px-4 py-3 active:bg-white/5"
     >
-      <HugeiconsIcon icon={icon} size={18} color="#8e8e93" />
-      <Button.Label className="flex-1 ml-3 text-sm text-foreground">
-        {label}
-      </Button.Label>
-      <HugeiconsIcon icon={ArrowRight01Icon} size={14} color="#8e8e93" />
-    </Button>
+      <View
+        style={{ backgroundColor: "#141414" }}
+        className="w-8 h-8 rounded-lg items-center justify-center mr-3"
+      >
+        <HugeiconsIcon icon={icon} size={16} color={iconColor} />
+      </View>
+      <Text className="flex-1 text-sm">{label}</Text>
+    </Pressable>
   );
 }
 
@@ -53,21 +57,21 @@ export function SettingsSheetContent({ user, onSignOut }: SettingsSheetProps) {
     return name[0].toUpperCase();
   };
 
-  return (
-    <ScrollView className="flex-1">
-      <View className="flex-row items-center justify-between px-4 pb-4">
-        <Text className="text-lg font-semibold">Settings</Text>
-        <Popover.Close />
-      </View>
+  const openLink = (url: string) => {
+    Linking.openURL(url);
+  };
 
-      <View className="flex-row items-center px-4 py-3 gap-3">
+  return (
+    <View className="pb-4">
+      {/* User Profile Section */}
+      <Pressable className="flex-row items-center px-4 py-3 active:bg-white/5">
         <Avatar alt="user" size="md" color="accent">
           {user?.picture ? (
             <Avatar.Image source={{ uri: user.picture }} />
           ) : null}
           <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
         </Avatar>
-        <View className="flex-1">
+        <View className="flex-1 ml-3">
           <Text className="font-semibold" numberOfLines={1}>
             {user?.name || "User"}
           </Text>
@@ -75,43 +79,66 @@ export function SettingsSheetContent({ user, onSignOut }: SettingsSheetProps) {
             {user?.email || ""}
           </Text>
         </View>
-        <HugeiconsIcon icon={ArrowRight01Icon} size={16} color="#8e8e93" />
-      </View>
+      </Pressable>
 
-      <Divider className="my-2" />
+      {/* Upgrade to Pro */}
+      <Pressable
+        style={{ backgroundColor: "#141414" }}
+        className="mx-4 my-2 py-3 px-4 rounded-xl flex-row items-center"
+        onPress={() => openLink("https://gaia.com/pricing")}
+      >
+        <HugeiconsIcon icon={FavouriteIcon} size={18} color="#00bbff" />
+        <Text className="ml-3 text-sm font-medium">Upgrade to Pro</Text>
+      </Pressable>
 
+      {/* Divider */}
+      <View className="h-px bg-white/5 mx-4 my-2" />
+
+      {/* Settings Section */}
       <Text className="text-xs text-muted px-4 py-2 uppercase tracking-wider">
-        General
+        Settings
       </Text>
+      <SettingsItem icon={UserIcon} label="Profile" onPress={() => {}} />
+      <SettingsItem
+        icon={Settings01Icon}
+        label="Preferences"
+        onPress={() => {}}
+      />
+      <SettingsItem icon={Moon02Icon} label="Appearance" onPress={() => {}} />
 
-      <View>
-        <SettingsItem icon={UserIcon} label="Profile" onPress={() => {}} />
-        <SettingsItem icon={Moon02Icon} label="Appearance" onPress={() => {}} />
-        <SettingsItem
-          icon={Notification01Icon}
-          label="Notifications"
-          onPress={() => {}}
-        />
-        <SettingsItem
-          icon={ShieldKeyIcon}
-          label="Privacy & Security"
-          onPress={() => {}}
-        />
-        <SettingsItem
-          icon={Settings01Icon}
-          label="App Settings"
-          onPress={() => {}}
-        />
-      </View>
+      {/* Divider */}
+      <View className="h-px bg-white/5 mx-4 my-2" />
 
-      <Divider className="my-2" />
+      {/* Support Section */}
+      <Text className="text-xs text-muted px-4 py-2 uppercase tracking-wider">
+        Support
+      </Text>
+      <SettingsItem
+        icon={CustomerSupportIcon}
+        label="Help & Support"
+        onPress={() => openLink("https://gaia.com/support")}
+      />
+      <SettingsItem
+        icon={InformationSquareIcon}
+        label="About"
+        onPress={() => {}}
+      />
 
-      <View className="px-4 py-2">
-        <Button onPress={onSignOut} variant="danger">
-          <HugeiconsIcon icon={Logout01Icon} size={16} color="#ffffff" />
-          <Button.Label>Logout</Button.Label>
+      {/* Divider */}
+      <View className="h-px bg-white/5 mx-4 my-2" />
+
+      {/* Logout */}
+      <View className="px-4 pt-2">
+        <Button
+          onPress={onSignOut}
+          variant="ghost"
+          style={{ backgroundColor: "#141414" }}
+          className="border-0"
+        >
+          <HugeiconsIcon icon={Logout01Icon} size={16} color="#ef4444" />
+          <Button.Label>Sign out</Button.Label>
         </Button>
       </View>
-    </ScrollView>
+    </View>
   );
 }

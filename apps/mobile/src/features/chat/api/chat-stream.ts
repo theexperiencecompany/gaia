@@ -7,6 +7,7 @@ export interface StreamCallbacks {
     conversationId: string,
     userMessageId: string,
     botMessageId: string,
+    description?: string | null,
   ) => void;
   onProgress?: (message: string, toolName?: string) => void;
   onFollowUpActions?: (actions: string[]) => void;
@@ -28,6 +29,7 @@ interface StreamEventData {
   type?: string;
   content?: string;
   conversation_id?: string;
+  conversation_description?: string | null;
   message_id?: string;
   response?: string;
   error?: string;
@@ -119,11 +121,14 @@ export async function fetchChatStream(
           console.log(
             "[chat-stream] Conversation created:",
             parsed.conversation_id,
+            "description:",
+            parsed.conversation_description,
           );
           callbacks.onConversationCreated?.(
             parsed.conversation_id,
             parsed.user_message_id,
             parsed.bot_message_id,
+            parsed.conversation_description,
           );
         }
 
