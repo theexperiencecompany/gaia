@@ -8,6 +8,10 @@ const EMPTY_MESSAGES: Message[] = [];
 
 export type { Message } from "../api/chat-api";
 
+interface UseChatOptions {
+  onNavigate?: (conversationId: string) => void;
+}
+
 interface UseChatReturn {
   messages: Message[];
   isTyping: boolean;
@@ -21,21 +25,31 @@ interface UseChatReturn {
   refetch: () => Promise<void>;
 }
 
-export function useChat(chatId: string | null): UseChatReturn {
+export function useChat(chatId: string | null, options?: UseChatOptions): UseChatReturn {
   const flatListRef = useRef<FlashListRef<Message>>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingResponseRef = useRef<string>("");
-  const activeConvIdRef = useRef<string | null>(chatId);
+  
+  // Get the active chat ID from store - this persists across navigation
+  const storeActiveChatId = useChatStore((state) => state.activeChatId);
+  
+  // Use chatId prop if provided, otherwise fall back to store's activeChatId
+  const effectiveChatId = chatId ?? storeActiveChatId;
+  
+  const activeConvIdRef = useRef<string | null>(effectiveChatId);
   const [isLoading, setIsLoading] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<
     string | null
-  >(chatId);
+  >(effectiveChatId);
 
-  // Reset when chatId prop changes
+  // Sync when chatId prop or store's activeChatId changes
   useEffect(() => {
-    setCurrentConversationId(chatId);
-    activeConvIdRef.current = chatId;
-  }, [chatId]);
+    const newEffectiveId = chatId ?? storeActiveChatId;
+    if (newEffectiveId && !newEffectiveId.startsWith('temp-')) {
+      setCurrentConversationId(newEffectiveId);
+      activeConvIdRef.current = newEffectiveId;
+    }
+  }, [chatId, storeActiveChatId]);
 
   const messages = useChatStore(
     useShallow((state) =>
@@ -135,10 +149,18 @@ export function useChat(chatId: string | null): UseChatReturn {
       streamingResponseRef.current = "";
 
       try {
+        // Determine the conversation ID to send to API
+        // - If we have a real conversation ID (not temp), use it
+        // - Otherwise, send null to create a new conversation
+        const existingConvId = activeConvIdRef.current;
+        const apiConversationId = existingConvId && !existingConvId.startsWith('temp-') 
+          ? existingConvId 
+          : null;
+        
         const controller = await fetchChatStream(
           {
             message: text,
-            conversationId: chatId, // null for new, actual ID for existing
+            conversationId: apiConversationId,
             messages: [...currentMessages, userMessage],
           },
           {
@@ -153,14 +175,15 @@ export function useChat(chatId: string | null): UseChatReturn {
                 return msg;
               });
 
-              // For new conversations, migrate to real ID
               if (!chatId && newConvId) {
                 store.setMessages(newConvId, updatedMsgs);
                 store.clearMessages(storeKey);
                 store.markConversationFetched(newConvId);
                 store.setStreamingState({ conversationId: newConvId });
+                store.setActiveChatId(newConvId); // Persist in store for cross-navigation
                 activeConvIdRef.current = newConvId;
                 setCurrentConversationId(newConvId);
+                options?.onNavigate?.(newConvId);
               } else {
                 store.setMessages(storeKey, updatedMsgs);
               }
@@ -222,9 +245,7 @@ export function useChat(chatId: string | null): UseChatReturn {
     [chatId, currentConversationId, cancelStream],
   );
 
-  useEffect(() => {
-    return () => abortControllerRef.current?.abort();
-  }, []);
+
 
   const refetch = useCallback(async () => {
     if (chatId) {

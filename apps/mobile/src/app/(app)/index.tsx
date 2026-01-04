@@ -50,7 +50,11 @@ export default function IndexScreen() {
     flatListRef,
     sendMessage,
     scrollToBottom,
-  } = useChat(null);
+  } = useChat(null, {
+    onNavigate: (newConversationId) => {
+      router.replace(`/(chat)/${newConversationId}`);
+    },
+  });
 
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [thinkingMessage, setThinkingMessage] = useState(() =>
@@ -102,7 +106,6 @@ export default function IndexScreen() {
 
   const handleNewChat = () => {
     closeSidebar();
-    // Already on index, just reset the active chat to start fresh
     setActiveChatId(null);
   };
 
@@ -154,48 +157,51 @@ export default function IndexScreen() {
               onSearchPress={() => console.log("Search pressed")}
             />
 
-            <View style={{ flex: 1, overflow: 'hidden' }}>
+            <View style={{ flex: 1, overflow: "hidden" }}>
               <Animated.View style={[{ flex: 1 }, animatedContainerStyle]}>
                 <View style={{ flex: 1 }}>
-                {messages.length === 0 && !isTyping ? (
-                  <View className="flex-1 items-center justify-center px-6">
-                    <Text className="text-2xl font-semibold text-foreground mb-2">
-                      What can I help you with?
-                    </Text>
-                    <Text className="text-default-500 text-center">
-                      Start a conversation by typing a message below
-                    </Text>
-                  </View>
-                ) : (
-                  <FlashList
-                    ref={flatListRef}
-                    data={messages}
-                    renderItem={renderMessage}
-                    keyExtractor={(item) => item.id}
-                    extraData={[
-                      messages[messages.length - 1]?.text,
-                      isTyping,
-                      displayMessage,
-                    ]}
-                    contentContainerStyle={{
-                      paddingTop: 16,
-                      paddingBottom: 90,
-                    }}
-                    showsVerticalScrollIndicator={true}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="on-drag"
-                    onLoad={() => {
-                      if (messages.length > 0) {
-                        flatListRef.current?.scrollToEnd({ animated: false });
-                      }
-                    }}
-                  />
-                )}
-              </View>
+                  {messages.length === 0 && !isTyping ? (
+                    <View className="flex-1 items-center justify-center px-6">
+                      <Text className="text-2xl font-semibold text-foreground mb-2">
+                        What can I help you with?
+                      </Text>
+                      <Text className="text-default-500 text-center">
+                        Start a conversation by typing a message below
+                      </Text>
+                    </View>
+                  ) : (
+                    <FlashList
+                      ref={flatListRef}
+                      data={messages}
+                      renderItem={renderMessage}
+                      keyExtractor={(item) => item.id}
+                      extraData={[
+                        messages[messages.length - 1]?.text,
+                        isTyping,
+                        displayMessage,
+                      ]}
+                      contentContainerStyle={{
+                        paddingTop: 16,
+                        paddingBottom: 90,
+                      }}
+                      showsVerticalScrollIndicator={true}
+                      keyboardShouldPersistTaps="handled"
+                      keyboardDismissMode="on-drag"
+                      onLoad={() => {
+                        if (messages.length > 0) {
+                          flatListRef.current?.scrollToEnd({ animated: false });
+                        }
+                      }}
+                    />
+                  )}
+                </View>
 
-              <Animated.View className="px-2 bg-surface rounded-t-4xl" style={animatedInputContainerStyle}>
-                <ChatInput onSend={handleSendMessage} />
-              </Animated.View>
+                <Animated.View
+                  className="px-2 bg-surface rounded-t-4xl"
+                  style={animatedInputContainerStyle}
+                >
+                  <ChatInput onSend={handleSendMessage} />
+                </Animated.View>
               </Animated.View>
             </View>
           </SafeAreaView>

@@ -159,45 +159,48 @@ export default function ChatPage() {
               onSearchPress={() => console.log("Search pressed")}
             />
 
-            <View style={{ flex: 1, overflow: 'hidden' }}>
+            <View style={{ flex: 1, overflow: "hidden" }}>
               <Animated.View style={[{ flex: 1 }, animatedContainerStyle]}>
                 <View style={{ flex: 1 }}>
                   <FlashList
-                  ref={flatListRef}
-                  data={messages}
-                  renderItem={renderMessage}
-                  keyExtractor={(item) => item.id}
-                  extraData={[
-                    messages[messages.length - 1]?.text,
-                    isTyping,
-                    displayMessage,
-                  ]}
-                  contentContainerStyle={{
-                    paddingTop: 16,
-                    paddingBottom: 90,
-                  }}
-                  showsVerticalScrollIndicator={true}
-                  keyboardShouldPersistTaps="handled"
-                  keyboardDismissMode="on-drag"
-                  onLoad={() => {
-                    if (messages.length > 0) {
-                      flatListRef.current?.scrollToEnd({ animated: false });
-                    }
-                  }}
-                />
-              </View>
+                    ref={flatListRef}
+                    data={messages}
+                    renderItem={renderMessage}
+                    keyExtractor={(item) => item.id}
+                    extraData={[
+                      messages[messages.length - 1]?.text,
+                      isTyping,
+                      displayMessage,
+                    ]}
+                    contentContainerStyle={{
+                      paddingTop: 16,
+                      paddingBottom: 90,
+                    }}
+                    showsVerticalScrollIndicator={true}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    onLoad={() => {
+                      if (messages.length > 0) {
+                        flatListRef.current?.scrollToEnd({ animated: false });
+                      }
+                    }}
+                  />
+                </View>
 
-              <Animated.View className="px-2 bg-surface rounded-t-4xl" style={animatedInputContainerStyle}>
-                <ChatInput
-                  onSend={(msg) => {
-                    setLastUserMessage(msg);
-                    sendMessage(msg);
-                    setInputValue("");
-                  }}
-                  value={inputValue}
-                  onChangeText={setInputValue}
-                />
-              </Animated.View>
+                <Animated.View
+                  className="px-2 bg-surface rounded-t-4xl"
+                  style={animatedInputContainerStyle}
+                >
+                  <ChatInput
+                    onSend={(msg) => {
+                      setLastUserMessage(msg);
+                      sendMessage(msg);
+                      setInputValue("");
+                    }}
+                    value={inputValue}
+                    onChangeText={setInputValue}
+                  />
+                </Animated.View>
               </Animated.View>
             </View>
           </SafeAreaView>
