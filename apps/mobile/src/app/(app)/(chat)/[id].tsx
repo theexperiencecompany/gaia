@@ -188,7 +188,7 @@ export default function ChatPage() {
                 </View>
 
                 <Animated.View
-                  className="px-2 bg-surface rounded-t-4xl"
+                  className="px-2 pb-2 bg-surface rounded-t-4xl"
                   style={animatedInputContainerStyle}
                 >
                   <ChatInput
