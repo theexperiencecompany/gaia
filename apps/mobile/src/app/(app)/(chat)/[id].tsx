@@ -60,12 +60,8 @@ export default function ChatPage() {
 
   const keyboard = useAnimatedKeyboard();
 
-  const animatedContainerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -keyboard.height.value }],
-  }));
-
-  const animatedInputContainerStyle = useAnimatedStyle(() => ({
-    paddingBottom: 6,
+  const animatedInputStyle = useAnimatedStyle(() => ({
+    bottom: keyboard.height.value,
   }));
 
   useEffect(() => {
@@ -160,47 +156,45 @@ export default function ChatPage() {
             />
 
             <View style={{ flex: 1, overflow: "hidden" }}>
-              <Animated.View style={[{ flex: 1 }, animatedContainerStyle]}>
-                <View style={{ flex: 1 }}>
-                  <FlashList
-                    ref={flatListRef}
-                    data={messages}
-                    renderItem={renderMessage}
-                    keyExtractor={(item) => item.id}
-                    extraData={[
-                      messages[messages.length - 1]?.text,
-                      isTyping,
-                      displayMessage,
-                    ]}
-                    contentContainerStyle={{
-                      paddingTop: 16,
-                      paddingBottom: 90,
-                    }}
-                    showsVerticalScrollIndicator={true}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="on-drag"
-                    onLoad={() => {
-                      if (messages.length > 0) {
-                        flatListRef.current?.scrollToEnd({ animated: false });
-                      }
-                    }}
-                  />
-                </View>
+              <View style={{ flex: 1 }}>
+                <FlashList
+                  ref={flatListRef}
+                  data={messages}
+                  renderItem={renderMessage}
+                  keyExtractor={(item) => item.id}
+                  extraData={[
+                    messages[messages.length - 1]?.text,
+                    isTyping,
+                    displayMessage,
+                  ]}
+                  contentContainerStyle={{
+                    paddingTop: 16,
+                    paddingBottom: 90,
+                  }}
+                  showsVerticalScrollIndicator={true}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode="on-drag"
+                  onLoad={() => {
+                    if (messages.length > 0) {
+                      flatListRef.current?.scrollToEnd({ animated: false });
+                    }
+                  }}
+                />
+              </View>
 
-                <Animated.View
-                  className="px-2 pb-2 bg-surface rounded-t-4xl"
-                  style={animatedInputContainerStyle}
-                >
-                  <ChatInput
-                    onSend={(msg) => {
-                      setLastUserMessage(msg);
-                      sendMessage(msg);
-                      setInputValue("");
-                    }}
-                    value={inputValue}
-                    onChangeText={setInputValue}
-                  />
-                </Animated.View>
+              <Animated.View
+                className="absolute left-0 right-0 px-2 pb-2 bg-surface rounded-t-4xl"
+                style={animatedInputStyle}
+              >
+                <ChatInput
+                  onSend={(msg) => {
+                    setLastUserMessage(msg);
+                    sendMessage(msg);
+                    setInputValue("");
+                  }}
+                  value={inputValue}
+                  onChangeText={setInputValue}
+                />
               </Animated.View>
             </View>
           </SafeAreaView>

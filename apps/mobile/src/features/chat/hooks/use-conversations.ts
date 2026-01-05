@@ -104,10 +104,10 @@ export function groupConversationsByDate(conversations: Conversation[]) {
   const todayChats: Conversation[] = [];
   const yesterdayChats: Conversation[] = [];
   const lastWeekChats: Conversation[] = [];
-  const olderChats: Conversation[] = [];
+  const previousChats: Conversation[] = [];
 
   conversations.forEach((conv) => {
-    const convDate = new Date(conv.updated_at || conv.created_at);
+    const convDate = new Date(conv.created_at);
 
     if (conv.is_starred) {
       starred.push(conv);
@@ -118,7 +118,7 @@ export function groupConversationsByDate(conversations: Conversation[]) {
     } else if (convDate >= lastWeek) {
       lastWeekChats.push(conv);
     } else {
-      olderChats.push(conv);
+      previousChats.push(conv);
     }
   });
 
@@ -127,6 +127,6 @@ export function groupConversationsByDate(conversations: Conversation[]) {
     today: todayChats,
     yesterday: yesterdayChats,
     lastWeek: lastWeekChats,
-    older: olderChats,
+    previousChats,
   };
 }
