@@ -146,8 +146,19 @@ export const IntegrationsList: React.FC<{
   // Derive categories from backend integrations data
   const availableCategories = useMemo(() => {
     const uniqueCategories = getUniqueCategories(integrations);
-    return sortCategories(uniqueCategories);
+    const sorted = sortCategories(uniqueCategories);
+    // Add "created_by_you" at the start if user has custom integrations
+    const hasCreatedByYou = integrations.some((i) => i.createdBy);
+    if (hasCreatedByYou) {
+      return ["created_by_you", ...sorted];
+    }
+    return sorted;
   }, [integrations]);
+
+  // Integrations created by the user
+  const createdByYouIntegrations = useMemo(() => {
+    return filteredIntegrations.filter((i) => i.createdBy);
+  }, [filteredIntegrations]);
 
   // Separate featured integrations
   const featuredIntegrations = useMemo(() => {
@@ -169,10 +180,16 @@ export const IntegrationsList: React.FC<{
 
   // For when a specific category is selected
   const integrationsInSelectedCategory = useMemo(() => {
+    if (selectedCategory === "created_by_you") {
+      return createdByYouIntegrations;
+    }
     return filteredIntegrations.filter((i) => i.category === selectedCategory);
-  }, [filteredIntegrations, selectedCategory]);
+  }, [filteredIntegrations, selectedCategory, createdByYouIntegrations]);
 
-  const hasResults = filteredIntegrations.length > 0;
+  const hasResults =
+    selectedCategory === "created_by_you"
+      ? createdByYouIntegrations.length > 0
+      : filteredIntegrations.length > 0;
 
   return (
     <div>
@@ -214,18 +231,36 @@ export const IntegrationsList: React.FC<{
       )}
 
       {/* Featured Section */}
-      {featuredIntegrations.length > 0 && !searchQuery && (
-        <>
-          <IntegrationSection
-            title="Featured"
-            integrations={featuredIntegrations}
-            chipColor="primary"
-            onConnect={handleConnect}
-            onIntegrationClick={onIntegrationClick}
-          />
-          <Separator className="border-zinc-800 border-t-1 mb-8" />
-        </>
-      )}
+      {featuredIntegrations.length > 0 &&
+        !searchQuery &&
+        selectedCategory === "all" && (
+          <>
+            <IntegrationSection
+              title="Featured"
+              integrations={featuredIntegrations}
+              chipColor="primary"
+              onConnect={handleConnect}
+              onIntegrationClick={onIntegrationClick}
+            />
+            <Separator className="border-zinc-800 border-t-1 mb-8" />
+          </>
+        )}
+
+      {/* Created by You Section */}
+      {createdByYouIntegrations.length > 0 &&
+        !searchQuery &&
+        selectedCategory === "all" && (
+          <>
+            <IntegrationSection
+              title="Created by You"
+              integrations={createdByYouIntegrations}
+              chipColor="primary"
+              onConnect={handleConnect}
+              onIntegrationClick={onIntegrationClick}
+            />
+            <Separator className="border-zinc-800 border-t-1 mb-8" />
+          </>
+        )}
 
       {/* Category Sections */}
       {selectedCategory === "all" ? (

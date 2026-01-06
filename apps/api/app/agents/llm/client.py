@@ -80,7 +80,7 @@ def init_gemini_llm():
     warning_message="OpenRouter API key not configured. Models provided via OpenRouter (Grok, etc.) will not work.",
 )
 def init_openrouter_llm():
-    """Initialize OpenRouter LLM for Grok and other models."""
+    """Initialize OpenRouter LLM for Grok and other models with reasoning support."""
     return ChatOpenAI(
         model=PROVIDER_MODELS["openrouter"],
         temperature=0.1,
@@ -91,6 +91,11 @@ def init_openrouter_llm():
         default_headers={
             "HTTP-Referer": settings.FRONTEND_URL,
             "X-Title": "GAIA",
+        },
+        extra_body={
+            "reasoning": {
+                "effort": "medium",  # Enable reasoning for thinking models (Grok, Claude 3.7+, DeepSeek R1)
+            }
         },
     ).configurable_fields(
         model_name=ConfigurableField(

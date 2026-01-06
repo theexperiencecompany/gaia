@@ -54,6 +54,48 @@ class MCPClient:
         self._clients: dict[str, BaseMCPClient] = {}
         self._tools: dict[str, list[BaseTool]] = {}
 
+    async def probe_connection(self, server_url: str) -> dict:
+        """
+        Probe an MCP server to determine auth requirements.
+
+        Used to quickly check if an MCP server requires authentication
+        before attempting a full connection.
+
+        Returns:
+            {
+                "requires_auth": bool,
+                "auth_type": "none" | "oauth",
+                "oauth_challenge": dict,  # if OAuth, contains WWW-Authenticate data
+                "error": str,  # if probe failed
+            }
+        """
+        try:
+            challenge = await extract_auth_challenge(server_url)
+
+            # If we got a 401 with WWW-Authenticate, OAuth is required
+            if challenge.get("raw"):
+                logger.info(f"Probe {server_url}: OAuth required")
+                return {
+                    "requires_auth": True,
+                    "auth_type": "oauth",
+                    "oauth_challenge": challenge,
+                }
+
+            # No 401 = no auth required, or server accepts anonymous access
+            logger.info(f"Probe {server_url}: No auth required")
+            return {
+                "requires_auth": False,
+                "auth_type": "none",
+            }
+
+        except Exception as e:
+            logger.warning(f"Probe failed for {server_url}: {e}")
+            return {
+                "requires_auth": False,
+                "auth_type": "unknown",
+                "error": str(e),
+            }
+
     async def _discover_oauth_config(
         self, integration_id: str, mcp_config: MCPConfig
     ) -> dict:
@@ -327,12 +369,24 @@ class MCPClient:
         2. Fetches Authorization Server Metadata for endpoints
         3. Uses DCR on auth server if no client_id configured
         4. Returns authorization URL for browser redirect
-        """
-        integration = get_integration_by_id(integration_id)
-        if not integration or not integration.mcp_config:
-            raise ValueError(f"Integration {integration_id} not found")
 
-        mcp_config = integration.mcp_config
+        Supports both platform integrations (from code) and custom integrations (from MongoDB).
+        """
+        # Try platform integration first
+        integration = get_integration_by_id(integration_id)
+        mcp_config = integration.mcp_config if integration else None
+
+        # Fallback to custom integration from MongoDB
+        if not mcp_config:
+            custom_doc = await integrations_collection.find_one(
+                {"integration_id": integration_id}
+            )
+            if custom_doc and custom_doc.get("mcp_config"):
+                mcp_config = MCPConfig(**custom_doc["mcp_config"])
+                logger.info(f"Building OAuth URL for custom MCP: {integration_id}")
+
+        if not mcp_config:
+            raise ValueError(f"Integration {integration_id} not found")
 
         # Full MCP OAuth discovery
         oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
@@ -455,11 +509,21 @@ class MCPClient:
         if not is_valid:
             raise ValueError("Invalid OAuth state")
 
+        # Try platform integration first
         integration = get_integration_by_id(integration_id)
-        if not integration or not integration.mcp_config:
-            raise ValueError(f"Integration {integration_id} not found")
+        mcp_config = integration.mcp_config if integration else None
 
-        mcp_config = integration.mcp_config
+        # Fallback to custom integration from MongoDB
+        if not mcp_config:
+            custom_doc = await integrations_collection.find_one(
+                {"integration_id": integration_id}
+            )
+            if custom_doc and custom_doc.get("mcp_config"):
+                mcp_config = MCPConfig(**custom_doc["mcp_config"])
+                logger.info(f"Handling OAuth callback for custom MCP: {integration_id}")
+
+        if not mcp_config:
+            raise ValueError(f"Integration {integration_id} not found")
 
         # Get OAuth config (should be cached from build_oauth_auth_url)
         oauth_config = await self._discover_oauth_config(integration_id, mcp_config)

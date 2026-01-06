@@ -10,6 +10,7 @@ This module defines Pydantic models for:
 from datetime import datetime
 from typing import List, Literal, Optional
 
+from app.models.oauth_models import MCPConfig as MCPConfigDoc
 from pydantic import BaseModel, Field
 
 
@@ -18,16 +19,6 @@ class IntegrationTool(BaseModel):
 
     name: str
     description: Optional[str] = None
-
-
-class MCPConfigDoc(BaseModel):
-    """MCP configuration stored in MongoDB for custom integrations."""
-
-    server_url: str
-    requires_auth: bool = False
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
-    transport: Optional[str] = None
-    oauth_scopes: Optional[List[str]] = None
 
 
 class ComposioConfigDoc(BaseModel):
@@ -250,3 +241,39 @@ class UserIntegrationsListResponse(BaseModel):
 
     integrations: List[UserIntegrationResponse] = Field(default_factory=list)
     total: int = 0
+
+
+class ConnectIntegrationRequest(BaseModel):
+    """Request to connect an integration."""
+
+    redirect_path: str = Field(
+        default="/integrations",
+        description="Frontend path to redirect after OAuth completes",
+    )
+    bearer_token: Optional[str] = Field(
+        None, description="Bearer token for integrations that use token auth"
+    )
+
+
+class ConnectIntegrationResponse(BaseModel):
+    """
+    Unified response for integration connection.
+
+    Frontend handles response based on status:
+    - connected: Integration is ready to use
+    - redirect: OAuth required, frontend should redirect to url
+    - error: Connection failed
+    """
+
+    status: Literal["connected", "redirect", "error"]
+    integration_id: str
+    message: Optional[str] = None
+
+    # For status="connected"
+    tools_count: Optional[int] = None
+
+    # For status="redirect"
+    redirect_url: Optional[str] = None
+
+    # For status="error"
+    error: Optional[str] = None

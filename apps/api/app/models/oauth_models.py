@@ -158,6 +158,8 @@ class MCPConfig(BaseModel):
     # If True: OAuth discovery + DCR flow is used
     # If False: Direct connection without authentication
     requires_auth: bool = False
+    # Authentication type hint (from MCPConfigDoc for custom integrations)
+    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
     # Optional: Override transport (auto-detected by default)
     transport: Optional[str] = None
     # Optional: Pre-registered OAuth client credentials

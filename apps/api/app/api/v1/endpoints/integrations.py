@@ -13,8 +13,11 @@ from app.config.settings import settings
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
+from app.helpers.mcp_helpers import get_api_base_url, invalidate_mcp_status_cache
 from app.models.integration_models import (
     AddUserIntegrationRequest,
+    ConnectIntegrationRequest,
+    ConnectIntegrationResponse,
     CreateCustomIntegrationRequest,
     IntegrationResponse,
     MarketplaceResponse,
@@ -38,6 +41,7 @@ from app.services.integration_service import (
     update_user_integration_status,
 )
 from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.services.oauth_service import get_all_integrations_status
 from app.services.oauth_state_service import create_oauth_state
 from fastapi import APIRouter, Depends, HTTPException
@@ -317,6 +321,10 @@ async def login_integration(
     # Streamlined composio integration handling
     composio_providers = set([k for k in COMPOSIO_SOCIAL_CONFIGS.keys()])
     if integration.provider in composio_providers:
+        # Ensure user_integrations record exists with status "created"
+        await update_user_integration_status(
+            str(user["user_id"]), integration_id, "created"
+        )
         provider_key = integration.provider
         url = await composio_service.connect_account(
             provider_key, user["user_id"], state_token=state_token
@@ -329,6 +337,11 @@ async def login_integration(
             detail=f"Use POST /api/v1/mcp/connect/{integration_id} to connect MCP integrations.",
         )
     elif integration.provider == "google":
+        # Ensure user_integrations record exists with status "created"
+        await update_user_integration_status(
+            str(user["user_id"]), integration_id, "created"
+        )
+
         # Get base scopes
         base_scopes = ["openid", "profile", "email"]
 
@@ -368,6 +381,256 @@ async def login_integration(
     raise HTTPException(
         status_code=400,
         detail=f"OAuth provider {integration.provider} not implemented",
+    )
+
+
+@router.post("/connect/{integration_id}", response_model=ConnectIntegrationResponse)
+async def connect_integration(
+    integration_id: str,
+    request: ConnectIntegrationRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Unified endpoint to connect any integration type.
+
+    This is the single entry point for all integration connections.
+    The backend determines the appropriate connection method based on:
+    - managed_by: mcp, composio, self
+    - requires_auth: whether OAuth is needed
+    - source: platform or custom
+
+    Response statuses:
+    - connected: Integration is ready to use (no auth needed or already authed)
+    - redirect: OAuth required, frontend should redirect to redirect_url
+    - error: Connection failed
+
+    For OAuth flows, the frontend should redirect the browser to redirect_url.
+    After OAuth completes, the callback will redirect back to redirect_path.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+
+    # Try to find integration in platform config first
+    platform_integration = get_integration_by_id(integration_id)
+
+    # If not found, check custom integrations in MongoDB
+    custom_integration = None
+    if not platform_integration:
+        custom_integration = await get_integration_details(integration_id)
+        if not custom_integration:
+            raise HTTPException(
+                status_code=404, detail=f"Integration {integration_id} not found"
+            )
+
+    # Determine integration properties
+    if platform_integration:
+        managed_by = platform_integration.managed_by
+        requires_auth = False
+        provider = platform_integration.provider
+
+        if platform_integration.mcp_config:
+            requires_auth = platform_integration.mcp_config.requires_auth
+        elif platform_integration.composio_config:
+            requires_auth = True
+        elif managed_by == "self":
+            requires_auth = True
+
+        if not platform_integration.available:
+            return ConnectIntegrationResponse(
+                status="error",
+                integration_id=integration_id,
+                error=f"Integration {integration_id} is not available yet",
+            )
+    else:
+        # Custom integration (always MCP)
+        managed_by = custom_integration.managed_by
+        requires_auth = custom_integration.requires_auth
+        provider = None
+
+    # Handle based on managed_by type
+    try:
+        if managed_by == "mcp":
+            return await _connect_mcp_integration(
+                user_id=str(user_id),
+                integration_id=integration_id,
+                requires_auth=requires_auth,
+                redirect_path=request.redirect_path,
+                bearer_token=request.bearer_token,
+            )
+
+        elif managed_by == "composio":
+            return await _connect_composio_integration(
+                user_id=str(user_id),
+                integration_id=integration_id,
+                provider=provider,
+                redirect_path=request.redirect_path,
+            )
+
+        elif managed_by == "self":
+            return await _connect_self_integration(
+                user=user,
+                integration_id=integration_id,
+                provider=provider,
+                redirect_path=request.redirect_path,
+            )
+
+        else:
+            return ConnectIntegrationResponse(
+                status="error",
+                integration_id=integration_id,
+                error=f"Unsupported integration type: {managed_by}",
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to connect {integration_id}: {e}")
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            error=str(e),
+        )
+
+
+async def _connect_mcp_integration(
+    user_id: str,
+    integration_id: str,
+    requires_auth: bool,
+    redirect_path: str,
+    bearer_token: Optional[str] = None,
+) -> ConnectIntegrationResponse:
+    """Handle MCP integration connection."""
+    mcp_client = get_mcp_client(user_id=user_id)
+
+    if requires_auth:
+        # OAuth required - return redirect URL
+        await update_user_integration_status(user_id, integration_id, "created")
+
+        auth_url = await mcp_client.build_oauth_auth_url(
+            integration_id=integration_id,
+            redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+            redirect_path=redirect_path,
+        )
+
+        return ConnectIntegrationResponse(
+            status="redirect",
+            integration_id=integration_id,
+            redirect_url=auth_url,
+            message="OAuth authentication required",
+        )
+
+    # No auth required - connect directly
+    await update_user_integration_status(user_id, integration_id, "connected")
+
+    tools = await mcp_client.connect(integration_id)
+    tools_count = len(tools) if tools else 0
+
+    # Store tools globally for frontend visibility
+    if tools:
+        global_store = get_mcp_tools_store()
+        tool_metadata = [
+            {"name": t.name, "description": t.description or ""} for t in tools
+        ]
+        await global_store.store_tools(integration_id, tool_metadata)
+
+    await invalidate_mcp_status_cache(user_id)
+
+    return ConnectIntegrationResponse(
+        status="connected",
+        integration_id=integration_id,
+        tools_count=tools_count,
+        message="Integration connected successfully",
+    )
+
+
+async def _connect_composio_integration(
+    user_id: str,
+    integration_id: str,
+    provider: str,
+    redirect_path: str,
+) -> ConnectIntegrationResponse:
+    """Handle Composio integration connection."""
+    composio_service = get_composio_service()
+
+    # Create state token for OAuth
+    state_token = await create_oauth_state(
+        user_id=user_id,
+        redirect_path=redirect_path,
+        integration_id=integration_id,
+    )
+
+    await update_user_integration_status(user_id, integration_id, "created")
+
+    url = await composio_service.connect_account(
+        provider, user_id, state_token=state_token
+    )
+
+    return ConnectIntegrationResponse(
+        status="redirect",
+        integration_id=integration_id,
+        redirect_url=url["redirect_url"],
+        message="OAuth authentication required",
+    )
+
+
+async def _connect_self_integration(
+    user: dict,
+    integration_id: str,
+    provider: str,
+    redirect_path: str,
+) -> ConnectIntegrationResponse:
+    """Handle self-managed integration connection (Google)."""
+    user_id = user.get("user_id")
+
+    if provider != "google":
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            error=f"Provider {provider} not implemented",
+        )
+
+    # Create state token for OAuth
+    state_token = await create_oauth_state(
+        user_id=user_id,
+        redirect_path=redirect_path,
+        integration_id=integration_id,
+    )
+
+    await update_user_integration_status(str(user_id), integration_id, "created")
+
+    # Build Google OAuth URL
+    base_scopes = ["openid", "profile", "email"]
+    new_scopes = get_integration_scopes(integration_id)
+
+    # Get existing scopes
+    existing_scopes = []
+    try:
+        token = await token_repository.get_token(
+            str(user_id), "google", renew_if_expired=False
+        )
+        existing_scopes = str(token.get("scope", "")).split()
+    except Exception as e:
+        logger.debug(f"Could not get existing scopes for user {user_id}: {e}")
+
+    all_scopes = list(set(base_scopes + existing_scopes + new_scopes))
+
+    params = {
+        "response_type": "code",
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "redirect_uri": settings.GOOGLE_CALLBACK_URL,
+        "scope": " ".join(all_scopes),
+        "access_type": "offline",
+        "prompt": "consent",
+        "include_granted_scopes": "true",
+        "login_hint": user.get("email"),
+        "state": state_token,
+    }
+    auth_url = f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
+
+    return ConnectIntegrationResponse(
+        status="redirect",
+        integration_id=integration_id,
+        redirect_url=auth_url,
+        message="OAuth authentication required",
     )
 
 
@@ -501,6 +764,11 @@ async def create_custom_mcp_integration(
 
     The integration will be automatically added to the creator's workspace.
     If is_public=True, it will be visible in the marketplace.
+
+    After creation, immediately probes the server and attempts connection:
+    - No auth required: Connects and returns tools_count
+    - OAuth required: Returns oauth_url for frontend to redirect
+    - Connection failed: Returns error message
     """
     user_id = user.get("user_id")
     if not user_id:
@@ -508,12 +776,65 @@ async def create_custom_mcp_integration(
 
     try:
         integration = await create_custom_integration(str(user_id), request)
+
+        # Immediately test connection after creation
+        connection_result = {"status": "created"}
+        mcp_client = get_mcp_client(user_id=str(user_id))
+
+        try:
+            # Probe for auth requirements
+            probe_result = await mcp_client.probe_connection(request.server_url)
+
+            if probe_result.get("error"):
+                # Probe failed - server may be unreachable
+                connection_result = {
+                    "status": "failed",
+                    "error": probe_result["error"],
+                }
+            elif not probe_result.get("requires_auth"):
+                # No auth needed - connect immediately
+                tools = await mcp_client.connect(integration.integration_id)
+                await update_user_integration_status(
+                    str(user_id), integration.integration_id, "connected"
+                )
+                connection_result = {
+                    "status": "connected",
+                    "tools_count": len(tools) if tools else 0,
+                }
+                logger.info(
+                    f"Auto-connected custom MCP {integration.integration_id}: "
+                    f"{connection_result['tools_count']} tools"
+                )
+            else:
+                # OAuth required - build auth URL for frontend
+                # Status remains "created" until OAuth completes successfully
+                auth_url = await mcp_client.build_oauth_auth_url(
+                    integration_id=integration.integration_id,
+                    redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+                    redirect_path="/integrations",
+                )
+                connection_result = {
+                    "status": "requires_oauth",
+                    "oauth_url": auth_url,
+                }
+                logger.info(f"Custom MCP {integration.integration_id} requires OAuth")
+
+        except Exception as conn_err:
+            logger.warning(
+                f"Auto-connect failed for {integration.integration_id}: {conn_err}"
+            )
+            connection_result = {
+                "status": "failed",
+                "error": str(conn_err),
+            }
+
         return JSONResponse(
             content={
                 "status": "success",
                 "message": "Custom integration created",
                 "integration_id": integration.integration_id,
                 "name": integration.name,
+                "connection": connection_result,
             }
         )
     except ValueError as e:

@@ -28,7 +28,11 @@ export function useIntegrationSearch(integrations: Integration[]) {
 
     // Apply category filter
     if (selectedCategory !== "all") {
-      results = results.filter((i) => i.category === selectedCategory);
+      if (selectedCategory === "created_by_you") {
+        results = results.filter((i) => i.createdBy);
+      } else {
+        results = results.filter((i) => i.category === selectedCategory);
+      }
     }
 
     return results;

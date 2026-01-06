@@ -3,7 +3,6 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import React, { useState } from "react";
-
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { RaisedButton, SidebarHeader } from "@/components/ui";
 import { SidebarContent } from "@/components/ui/sidebar";
@@ -11,6 +10,7 @@ import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithInte
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { Integration } from "@/features/integrations/types";
+import { Unlink04Icon } from "@/icons";
 
 interface IntegrationSidebarProps {
   integration: Integration;
@@ -28,6 +28,8 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   category,
 }) => {
   const isConnected = integration.status === "connected";
+  // Show retry if integration requires auth and is not connected
+  const showRetry = !isConnected && integration.requiresAuth;
   // Custom integrations are always available (no OAuth flow needed)
   // Platform integrations use available field or loginEndpoint presence
   const isAvailable =
@@ -100,16 +102,29 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         </div>
 
         <div className="mb-0 mt-2 flex flex-col items-start gap-1">
+          {integration.createdBy && (
+            <Chip
+              size="sm"
+              variant="flat"
+              color="default"
+              radius="sm"
+              className="mb-2 text-xs text-zinc-400 font-light relative right-1"
+            >
+              Created by You
+            </Chip>
+          )}
           <div className="flex w-full items-center justify-between">
             <h1 className="text-2xl font-semibold text-zinc-100">
               {integration.name}
             </h1>
 
-            {isConnected && (
-              <Chip size="sm" variant="flat" color="success">
-                Connected
-              </Chip>
-            )}
+            <div className="flex items-end gap-1">
+              {isConnected && (
+                <Chip size="sm" variant="flat" color="success">
+                  Connected
+                </Chip>
+              )}
+            </div>
           </div>
 
           <p className="text-sm leading-relaxed font-light text-zinc-400">
@@ -126,7 +141,13 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             disabled={!isAvailable || isConnecting}
             isLoading={isConnecting}
           >
-            {isConnecting ? "Connecting..." : isAvailable ? "Connect" : ""}
+            {isConnecting
+              ? "Connecting..."
+              : showRetry
+                ? "Retry Connection"
+                : isAvailable
+                  ? "Connect"
+                  : ""}
           </RaisedButton>
         ) : (
           onDisconnect && (
@@ -137,6 +158,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               onPress={handleDisconnect}
               isLoading={isDisconnecting}
               isDisabled={isDisconnecting}
+              endContent={
+                <Unlink04Icon width={20} height={20} className="outline-0!" />
+              }
             >
               Disconnect
             </Button>

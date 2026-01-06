@@ -72,6 +72,10 @@ async def connect_mcp_oauth(
 
     client = get_mcp_client(user_id=str(user_id))
 
+    # Ensure user_integrations record exists with status "created"
+    # Status will be set to "connected" only after successful OAuth callback
+    await update_user_integration_status(str(user_id), integration_id, "created")
+
     try:
         auth_url = await client.build_oauth_auth_url(
             integration_id=integration_id,
@@ -86,6 +90,91 @@ async def connect_mcp_oauth(
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error={str(e)}"
         )
+
+
+@router.post("/test/{integration_id}")
+async def test_mcp_connection(
+    integration_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Test connection to an MCP server.
+
+    Probes the server and returns auth requirements.
+    Can be used to retry failed connections.
+    """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+
+    client = get_mcp_client(user_id=str(user_id))
+
+    # Get server URL from integration config
+    integration = get_integration_by_id(integration_id)
+    server_url = None
+
+    if integration and integration.mcp_config:
+        server_url = integration.mcp_config.server_url
+    else:
+        # Try custom integration from MongoDB
+        from app.db.mongodb.collections import integrations_collection
+
+        custom_doc = await integrations_collection.find_one(
+            {"integration_id": integration_id}
+        )
+        if custom_doc and custom_doc.get("mcp_config"):
+            server_url = custom_doc["mcp_config"].get("server_url")
+
+    if not server_url:
+        raise HTTPException(status_code=404, detail="Integration not found")
+
+    # Probe the server
+    probe_result = await client.probe_connection(server_url)
+
+    if probe_result.get("error"):
+        return JSONResponse(
+            content={
+                "status": "failed",
+                "error": probe_result["error"],
+            }
+        )
+
+    if not probe_result.get("requires_auth"):
+        # Try to connect
+        try:
+            tools = await client.connect(integration_id)
+            await update_user_integration_status(
+                str(user_id), integration_id, "connected"
+            )
+            await invalidate_mcp_status_cache(str(user_id))
+            return JSONResponse(
+                content={
+                    "status": "connected",
+                    "tools_count": len(tools) if tools else 0,
+                }
+            )
+        except Exception as e:
+            return JSONResponse(
+                content={
+                    "status": "failed",
+                    "error": str(e),
+                }
+            )
+
+    # OAuth required
+    from app.helpers.mcp_helpers import get_api_base_url
+
+    auth_url = await client.build_oauth_auth_url(
+        integration_id=integration_id,
+        redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+        redirect_path="/integrations",
+    )
+    return JSONResponse(
+        content={
+            "status": "requires_oauth",
+            "oauth_url": auth_url,
+        }
+    )
 
 
 @router.post("/connect/{integration_id}", response_model=MCPConnectResponse)

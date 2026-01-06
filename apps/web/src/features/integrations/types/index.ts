@@ -107,3 +107,25 @@ export interface CreateCustomIntegrationRequest {
   auth_type?: "none" | "oauth" | "bearer";
   is_public?: boolean;
 }
+
+/**
+ * Result of connection testing after creating a custom integration
+ */
+export interface ConnectionTestResult {
+  status: "connected" | "requires_oauth" | "failed" | "created";
+  tools_count?: number;
+  oauth_url?: string;
+  error?: string;
+}
+
+/**
+ * Response from create custom integration endpoint
+ * Includes automatic connection test result
+ */
+export interface CreateCustomIntegrationResponse {
+  status: string;
+  message: string;
+  integration_id: string;
+  name: string;
+  connection?: ConnectionTestResult;
+}

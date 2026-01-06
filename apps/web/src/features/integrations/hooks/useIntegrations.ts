@@ -3,7 +3,11 @@ import { useCallback, useMemo } from "react";
 import { toast } from "sonner";
 
 import { integrationsApi } from "../api/integrationsApi";
-import type { CreateCustomIntegrationRequest, Integration } from "../types";
+import type {
+  CreateCustomIntegrationRequest,
+  CreateCustomIntegrationResponse,
+  Integration,
+} from "../types";
 
 export interface UseIntegrationsReturn {
   // Data
@@ -19,7 +23,7 @@ export interface UseIntegrationsReturn {
   disconnectIntegration: (integrationId: string) => Promise<void>;
   createCustomIntegration: (
     request: CreateCustomIntegrationRequest,
-  ) => Promise<{ integration_id: string }>;
+  ) => Promise<CreateCustomIntegrationResponse>;
   deleteCustomIntegration: (integrationId: string) => Promise<void>;
 
   // Refresh
@@ -141,6 +145,9 @@ export const useIntegrations = (): UseIntegrationsReturn => {
             queryClient.refetchQueries({ queryKey: ["integrations"] }),
             queryClient.refetchQueries({ queryKey: ["tools", "available"] }),
           ]);
+        } else if (result.status === "redirecting") {
+          // OAuth redirect in progress - dismiss toast, browser will navigate
+          toast.dismiss(toastId);
         }
 
         return result;
@@ -174,10 +181,14 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   );
 
   // Create custom integration mutation
+  // Backend now auto-connects, so we need to refetch both integrations AND tools
   const createMutation = useMutation({
     mutationFn: integrationsApi.createCustomIntegration,
     onSuccess: () => {
+      // Refetch integrations to update connection status
       queryClient.refetchQueries({ queryKey: ["integrations"] });
+      // Refetch tools since backend auto-connects and discovers tools
+      queryClient.refetchQueries({ queryKey: ["tools", "available"] });
     },
   });
 

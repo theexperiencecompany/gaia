@@ -38,7 +38,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
     setIsLoading(true);
 
     try {
-      await createCustomIntegration({
+      const result = await createCustomIntegration({
         name,
         description: description.trim() || undefined,
         server_url: serverUrl,
@@ -47,9 +47,35 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
         is_public: false,
       });
 
-      toast.success("Custom integration created successfully!");
-      refetch();
-      handleClose();
+      // Handle auto-connection result
+      const connection = result.connection;
+
+      if (connection?.status === "connected") {
+        toast.success(
+          `Connected to ${result.name} with ${connection.tools_count || 0} tools!`,
+        );
+        refetch();
+        handleClose();
+      } else if (connection?.status === "requires_oauth") {
+        toast.info("Authorization required - redirecting...");
+        refetch();
+        handleClose();
+        // Redirect to OAuth URL
+        if (connection.oauth_url && typeof window !== "undefined") {
+          window.location.href = connection.oauth_url;
+        }
+      } else if (connection?.status === "failed") {
+        toast.warning(
+          `Integration created, but connection failed: ${connection.error || "Unknown error"}. You can retry from the integrations page.`,
+        );
+        refetch();
+        handleClose();
+      } else {
+        // Default: just created, no connection attempt
+        toast.success("Custom integration created successfully!");
+        refetch();
+        handleClose();
+      }
     } catch (error) {
       console.error("Failed to create custom integration:", error);
       toast.error(

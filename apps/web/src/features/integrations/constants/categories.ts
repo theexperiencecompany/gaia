@@ -11,6 +11,7 @@
  */
 export const CATEGORY_LABELS: Record<string, string> = {
   all: "All",
+  created_by_you: "Created by You",
   productivity: "Productivity",
   developer: "Developer",
   business: "Business",
@@ -42,6 +43,7 @@ export function getUniqueCategories(
  * Preferred display order for categories (those not listed appear at the end)
  */
 export const CATEGORY_DISPLAY_PRIORITY: Record<string, number> = {
+  created_by_you: 0,
   productivity: 1,
   developer: 2,
   business: 3,

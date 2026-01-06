@@ -1,7 +1,9 @@
 import { apiService } from "@/lib/api";
 
 import type {
+  ConnectionTestResult,
   CreateCustomIntegrationRequest,
+  CreateCustomIntegrationResponse,
   Integration,
   IntegrationStatus,
   MarketplaceIntegration,
@@ -71,96 +73,65 @@ export const integrationsApi = {
   },
 
   /**
-   * Connect an integration
-   * - For unauthenticated MCP: POST to backend to create user_integrations record
-   * - For bearer auth: pass bearerToken from modal, POST to backend directly
-   * - For OAuth: redirect to loginEndpoint, backend handles OAuth flow
+   * Connect an integration using the unified backend endpoint.
+   *
+   * The backend handles all integration types (MCP, Composio, Google, custom)
+   * and returns one of:
+   * - connected: Integration is ready to use
+   * - redirect: OAuth required, frontend should redirect to redirect_url
+   * - error: Connection failed
    */
   connectIntegration: async (
     integrationId: string,
     bearerToken?: string,
   ): Promise<{ status: string; toolsCount?: number }> => {
-    // Normalize to lowercase (backend may return uppercase toolkit names)
-    const normalizedId = integrationId.toLowerCase();
-
-    // Get the integration config first
-    const configResponse = await integrationsApi.getIntegrationConfig();
-    const integration = configResponse.integrations.find(
-      (i) => i.id.toLowerCase() === normalizedId,
-    );
-
-    if (!integration || !integration.loginEndpoint) {
-      throw new Error(
-        `Integration ${integrationId} is not available for connection`,
-      );
-    }
-
-    // For MCP integrations with no auth, call API to create user_integrations record
-    if (integration.managedBy === "mcp" && integration.authType === "none") {
-      const response = await apiService.post(
-        `/mcp/connect/${integration.id}`,
-        {},
-      );
-      return response as { status: string; toolsCount?: number };
-    }
-
-    // For MCP integrations with bearer auth, call API directly
-    if (integration.managedBy === "mcp" && integration.authType === "bearer") {
-      const response = await apiService.post(`/mcp/connect/${integration.id}`, {
-        bearer_token: bearerToken,
-      });
-      return response as { status: string; toolsCount?: number };
-    }
-
-    // If bearer token provided (from modal for non-MCP), POST to backend
-    if (bearerToken) {
-      const response = await apiService.post(`mcp/connect/${integration.id}`, {
-        bearer_token: bearerToken,
-      });
-      return response as { status: string; toolsCount?: number };
-    }
-
     if (typeof window === "undefined") return { status: "error" };
 
-    const frontendPath = window.location.pathname + window.location.search;
+    const redirectPath = window.location.pathname + window.location.search;
 
-    // Navigate to loginEndpoint for OAuth - backend handles redirects
-    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-    const fullUrl = `${backendUrl}${integration.loginEndpoint}?redirect_path=${encodeURIComponent(frontendPath)}`;
+    const response = (await apiService.post(
+      `/integrations/connect/${integrationId}`,
+      {
+        redirect_path: redirectPath,
+        bearer_token: bearerToken,
+      },
+    )) as {
+      status: "connected" | "redirect" | "error";
+      integration_id: string;
+      message?: string;
+      tools_count?: number;
+      redirect_url?: string;
+      error?: string;
+    };
 
-    window.location.href = fullUrl;
-    return { status: "redirecting" };
+    if (response.status === "redirect" && response.redirect_url) {
+      window.location.href = response.redirect_url;
+      return { status: "redirecting" };
+    }
+
+    if (response.status === "error") {
+      throw new Error(response.error || "Failed to connect integration");
+    }
+
+    return {
+      status: response.status,
+      toolsCount: response.tools_count,
+    };
   },
 
   /**
-   * Disconnect an integration (placeholder for future implementation)
+   * Disconnect an integration.
+   * The backend handles all integration types uniformly.
    */
   disconnectIntegration: async (integrationId: string): Promise<void> => {
     try {
-      // Get the integration config to check if it's MCP
-      const configResponse = await integrationsApi.getIntegrationConfig();
-      const integration = configResponse.integrations.find(
-        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
+      await apiService.delete(
+        `/integrations/${integrationId}`,
+        {},
+        {
+          successMessage: "Integration disconnected successfully",
+        },
       );
-
-      // MCP integrations use the /mcp endpoint
-      if (integration?.managedBy === "mcp") {
-        await apiService.delete(
-          `/mcp/${integrationId}`,
-          {},
-          {
-            successMessage: "Integration disconnected successfully",
-          },
-        );
-      } else {
-        await apiService.delete(
-          `/integrations/${integrationId}`,
-          {},
-          {
-            successMessage: "Integration disconnected successfully",
-          },
-        );
-      }
     } catch (error) {
       console.error(`Failed to disconnect ${integrationId}:`, error);
       throw error;
@@ -168,21 +139,21 @@ export const integrationsApi = {
   },
 
   /**
-   * Connect an MCP integration with bearer token
+   * Connect an MCP integration with bearer token.
+   * Uses the unified connect endpoint.
    */
   connectMCPWithToken: async (
     integrationId: string,
     bearerToken: string,
   ): Promise<{ status: string; toolsCount: number }> => {
-    try {
-      const response = await apiService.post(`/mcp/connect/${integrationId}`, {
-        bearer_token: bearerToken,
-      });
-      return response as { status: string; toolsCount: number };
-    } catch (error) {
-      console.error(`Failed to connect MCP ${integrationId}:`, error);
-      throw error;
-    }
+    const result = await integrationsApi.connectIntegration(
+      integrationId,
+      bearerToken,
+    );
+    return {
+      status: result.status,
+      toolsCount: result.toolsCount ?? 0,
+    };
   },
 
   /**
@@ -305,16 +276,33 @@ export const integrationsApi = {
   },
 
   /**
-   * Create a custom MCP integration
+   * Create a custom MCP integration.
+   * Returns connection result with auto-connection status.
    */
   createCustomIntegration: async (
     request: CreateCustomIntegrationRequest,
-  ): Promise<{ integration_id: string; name: string }> => {
+  ): Promise<CreateCustomIntegrationResponse> => {
     try {
       const response = await apiService.post("/integrations/custom", request);
-      return response as { integration_id: string; name: string };
+      return response as CreateCustomIntegrationResponse;
     } catch (error) {
       console.error("Failed to create custom integration:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Test connection to an MCP server.
+   * Can be used to retry failed connections.
+   */
+  testConnection: async (
+    integrationId: string,
+  ): Promise<ConnectionTestResult> => {
+    try {
+      const response = await apiService.post(`/mcp/test/${integrationId}`, {});
+      return response as ConnectionTestResult;
+    } catch (error) {
+      console.error(`Failed to test connection ${integrationId}:`, error);
       throw error;
     }
   },

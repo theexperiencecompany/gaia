@@ -272,7 +272,9 @@ async def add_user_integration(
     if existing:
         raise ValueError(f"Integration '{integration_id}' already added to workspace")
 
-    # Determine initial status - if no auth required, connect immediately
+    # Determine initial status:
+    # - No auth required: connect immediately
+    # - Auth required: set to created (needs OAuth to complete)
     status = "connected" if not integration.requires_auth else "created"
     connected_at = datetime.utcnow() if status == "connected" else None
 
