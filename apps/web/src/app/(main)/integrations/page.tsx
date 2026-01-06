@@ -25,15 +25,10 @@ import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function IntegrationsPage() {
   const queryClient = useQueryClient();
-  const {
-    integrations,
-    connectIntegration,
-    disconnectIntegration,
-    refreshStatus,
-  } = useIntegrations();
+  const { integrations, connectIntegration, disconnectIntegration, refetch } =
+    useIntegrations();
 
-  // Pre-fetch tools on page load - this ensures tools are loaded immediately
-  // rather than waiting for sidebar to open
+  // Pre-fetch tools on page load
   const { tools: _prefetchedTools } = useToolsWithIntegrations();
 
   const searchParams = useSearchParams();
@@ -64,7 +59,6 @@ export default function IntegrationsPage() {
   const isSidebarOpen = useRightSidebar((state) => state.isOpen);
 
   // Update sidebar content when selected integration status changes
-  // This ensures the sidebar reflects the latest connection state
   useEffect(() => {
     if (!selectedIntegrationId || !isSidebarOpen) return;
 
@@ -112,10 +106,7 @@ export default function IntegrationsPage() {
 
     // Handle OAuth success callback
     if (oauthSuccess === "true") {
-      // Clear query params
       router.replace("/integrations", { scroll: false });
-
-      // Find integration name for nicer toast message
       const integration = oauthIntegration
         ? integrations.find(
             (i) => i.id.toLowerCase() === oauthIntegration.toLowerCase(),
@@ -125,22 +116,18 @@ export default function IntegrationsPage() {
         integration?.name || oauthIntegration || "Integration";
 
       toast.success(`Connected to ${integrationName}`);
-      // Refresh both integration status AND tools cache to show new MCP tools
-      refreshStatus();
+      refetch();
       queryClient.refetchQueries({ queryKey: ["tools", "available"] });
       return;
     }
 
     if (status && integrationId) {
-      // Clear query params
       router.replace("/integrations", { scroll: false });
 
       if (status === "connected") {
         const integration = integrations.find((i) => i.id === integrationId);
         toast.success(`Connected to ${integration?.name || integrationId}`);
-        // Refresh both integration status AND tools cache to show new MCP tools
-        refreshStatus();
-        // Force refetch tools - don't just invalidate, actually refetch
+        refetch();
         queryClient.refetchQueries({ queryKey: ["tools", "available"] });
       } else if (status === "bearer_required") {
         const integration = integrations.find((i) => i.id === integrationId);
@@ -152,15 +139,15 @@ export default function IntegrationsPage() {
         toast.error(`Connection failed: ${error || "Unknown error"}`);
       }
     }
-  }, [searchParams, integrations, router, refreshStatus, queryClient]);
+  }, [searchParams, integrations, router, refetch, queryClient]);
 
   const handleBearerSubmit = async (id: string, token: string) => {
     await connectIntegration(id, token);
     toast.success(`Connected to ${bearerIntegrationName}`);
-    refreshStatus();
+    refetch();
   };
 
-  // Keyboard shortcut to focus search input (Cmd+F on Mac, Ctrl+F on Windows)
+  // Keyboard shortcut to focus search input
   useHotkeys(
     "mod+f",
     (e) => {
@@ -180,7 +167,7 @@ export default function IntegrationsPage() {
     [openRightSidebar],
   );
 
-  // Handler for pressing Enter in search input - selects first result
+  // Handler for pressing Enter in search input
   const handleEnterSearch = useCallback(() => {
     if (filteredIntegrations.length > 0) {
       handleIntegrationClick(filteredIntegrations[0].id);
@@ -219,7 +206,7 @@ export default function IntegrationsPage() {
     handleEnterSearch,
   ]);
 
-  // Set sidebar to sidebar mode (not sheet)
+  // Set sidebar to sidebar mode
   useEffect(() => {
     setRightSidebarVariant("sidebar");
   }, [setRightSidebarVariant]);

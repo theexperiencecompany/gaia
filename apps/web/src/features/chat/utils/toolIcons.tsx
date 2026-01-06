@@ -358,6 +358,7 @@ const AutoInvertIcon: React.FC<{
 export const getToolCategoryIcon = (
   category: string,
   iconProps: IconProps = {},
+  iconUrl?: string | null,
 ) => {
   const { showBackground = true, iconOnly = false, ...restProps } = iconProps;
 
@@ -395,7 +396,27 @@ export const getToolCategoryIcon = (
     }
   }
 
-  if (!config) return null;
+  // If no predefined config found, try iconUrl fallback for custom integrations
+  if (!config) {
+    if (iconUrl) {
+      const iconElement = (
+        <AutoInvertIcon
+          alt={`${category} Icon`}
+          size={defaultProps.size}
+          width={defaultProps.width}
+          height={defaultProps.height}
+          className={restProps.className}
+          src={iconUrl}
+        />
+      );
+      return showBackground ? (
+        <div className="rounded-lg p-1 bg-zinc-700">{iconElement}</div>
+      ) : (
+        iconElement
+      );
+    }
+    return null;
+  }
 
   const iconElement = config.isImage ? (
     <AutoInvertIcon

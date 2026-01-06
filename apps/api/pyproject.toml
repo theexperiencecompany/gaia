@@ -29,6 +29,8 @@ dependencies = [
   "filelock>=3.20.1",
   "mcp-use>=1.5.1",
   "livekit-api>=1.1.0",
+  "extract-favicon>=0.5.1",
+  "favicon>=0.7.0",
 ]
 
 

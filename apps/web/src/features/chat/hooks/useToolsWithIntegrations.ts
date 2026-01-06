@@ -23,7 +23,7 @@ export interface UseToolsWithIntegrationsReturn {
  * to determine which tools are locked/available
  */
 export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
-  const { getIntegrationsWithStatus } = useIntegrations();
+  const { integrations } = useIntegrations();
 
   // Use shared tools query with consistent 3-hour caching
   const {
@@ -52,8 +52,6 @@ export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
   const enhancedTools = useMemo((): EnhancedToolInfo[] => {
     if (!toolsData?.tools) return [];
 
-    const integrationsWithStatus = getIntegrationsWithStatus();
-
     return toolsData.tools.map((tool: ToolInfo): EnhancedToolInfo => {
       let isLocked = false;
 
@@ -63,7 +61,7 @@ export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
           tool.required_integration.toLowerCase();
 
         // Check if required integration is connected
-        const requiredIntegration = integrationsWithStatus.find(
+        const requiredIntegration = integrations.find(
           (integration) =>
             integration.id.toLowerCase() === normalizedRequiredIntegration,
         );
@@ -74,7 +72,7 @@ export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
 
       // Find integration details (normalize for case-insensitive lookup)
       const integrationDetails = tool.required_integration
-        ? integrationsWithStatus.find(
+        ? integrations.find(
             (integration) =>
               integration.id.toLowerCase() ===
               tool.required_integration!.toLowerCase(),
@@ -98,7 +96,7 @@ export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
         isLocked,
       };
     });
-  }, [toolsData?.tools, getIntegrationsWithStatus]);
+  }, [toolsData?.tools, integrations]);
 
   // Group tools by category
   const toolsByCategory = useMemo((): Record<string, EnhancedToolInfo[]> => {

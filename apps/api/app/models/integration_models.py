@@ -76,6 +76,9 @@ class Integration(BaseModel):
     tools: List[IntegrationTool] = Field(
         default_factory=list, description="Tool list for frontend display only"
     )
+    icon_url: Optional[str] = Field(
+        None, description="Favicon URL fetched from MCP server subdomain"
+    )
     display_priority: int = Field(0, description="Higher priority shows first")
     is_featured: bool = Field(False, description="Show in featured section")
 
@@ -120,7 +123,7 @@ class CreateCustomIntegrationRequest(BaseModel):
     """Request to create a custom MCP integration."""
 
     name: str = Field(..., min_length=1, max_length=100)
-    description: str = Field(..., min_length=1, max_length=500)
+    description: Optional[str] = Field(None, max_length=500)
     category: str = Field(default="custom")
     server_url: str = Field(..., description="MCP server URL")
     requires_auth: bool = Field(False)
@@ -158,6 +161,9 @@ class IntegrationResponse(BaseModel):
     # Tool metadata for frontend display
     tools: List[IntegrationTool] = Field(default_factory=list)
 
+    # Icon URL for custom integrations (favicon from MCP server)
+    icon_url: Optional[str] = None
+
     # Custom integration fields
     is_public: Optional[bool] = None
     created_by: Optional[str] = None
@@ -186,6 +192,7 @@ class IntegrationResponse(BaseModel):
             requires_auth=requires_auth,
             auth_type=auth_type,
             tools=integration.tools,
+            icon_url=integration.icon_url,
             is_public=integration.is_public,
             created_by=integration.created_by,
         )

@@ -16,10 +16,12 @@ from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import get_integration_by_id
+from app.db.mongodb.collections import integrations_collection
 from app.helpers.mcp_helpers import create_stub_tools_from_cache
 from app.models.oauth_models import MCPConfig
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.utils.favicon_utils import fetch_favicon_from_url
 from app.utils.mcp_oauth_utils import (
     extract_auth_challenge,
     fetch_auth_server_metadata,
@@ -185,12 +187,28 @@ class MCPClient:
 
         For unauthenticated MCPs: Connects directly.
         For OAuth MCPs: Uses stored credentials from completed OAuth flow.
+        Supports both platform integrations (from code) and custom integrations (from MongoDB).
         """
+        # Try platform integration first
         integration = get_integration_by_id(integration_id)
-        if not integration or not integration.mcp_config:
+        mcp_config = None
+        is_custom = False
+
+        if integration and integration.mcp_config:
+            mcp_config = integration.mcp_config
+        else:
+            # Try custom integration from MongoDB
+            custom_doc = await integrations_collection.find_one(
+                {"integration_id": integration_id}
+            )
+            if custom_doc and custom_doc.get("mcp_config"):
+                mcp_config = MCPConfig(**custom_doc["mcp_config"])
+                is_custom = True
+                logger.info(f"Found custom MCP integration: {integration_id}")
+
+        if not mcp_config:
             raise ValueError(f"MCP integration {integration_id} not found")
 
-        mcp_config = integration.mcp_config
         config = await self._build_config(integration_id, mcp_config)
 
         try:
@@ -249,6 +267,12 @@ class MCPClient:
             await global_store.store_tools(integration_id, tool_metadata)
             logger.info(f"Stored {len(tools)} tools globally for {integration_id}")
 
+            # For custom integrations: fetch favicon and index tools in ChromaDB
+            if is_custom:
+                await self._handle_custom_integration_connect(
+                    integration_id, mcp_config.server_url, tools
+                )
+
             logger.info(f"Connected to MCP {integration_id}: {len(tools)} tools")
             return tools
 
@@ -256,6 +280,39 @@ class MCPClient:
             logger.error(f"Failed to connect to MCP {integration_id}: {e}")
             await self.token_store.update_status(integration_id, "failed", str(e))
             raise
+
+    async def _handle_custom_integration_connect(
+        self, integration_id: str, server_url: str, tools: list[BaseTool]
+    ) -> None:
+        """
+        Handle post-connect tasks for custom integrations.
+
+        1. Fetch and store favicon from the MCP server subdomain
+        2. Index tools in ChromaDB for semantic discovery
+        """
+        # 1. Fetch and store favicon from subdomain
+        try:
+            icon_url = await fetch_favicon_from_url(server_url)
+            if icon_url:
+                await integrations_collection.update_one(
+                    {"integration_id": integration_id},
+                    {"$set": {"icon_url": icon_url}},
+                )
+                logger.info(f"Stored favicon for {integration_id}: {icon_url}")
+        except Exception as e:
+            logger.warning(f"Failed to fetch favicon for {integration_id}: {e}")
+
+        # 2. Index tools in ChromaDB for semantic discovery
+        try:
+            from app.db.chroma.chroma_tools_store import index_tools_to_store
+
+            tools_with_space = [(tool, integration_id) for tool in tools]
+            await index_tools_to_store(tools_with_space)
+            logger.info(f"Indexed {len(tools)} tools for {integration_id} in ChromaDB")
+        except Exception as e:
+            logger.warning(
+                f"Failed to index tools in ChromaDB for {integration_id}: {e}"
+            )
 
     async def build_oauth_auth_url(
         self,

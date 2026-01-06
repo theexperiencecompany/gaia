@@ -72,12 +72,16 @@ export default function IntegrationsSidebar() {
       variant="light"
       radius="sm"
       size="sm"
-      startContent={getToolCategoryIcon(integration.id, {
-        size: 18,
-        width: 18,
-        height: 18,
-        showBackground: false,
-      })}
+      startContent={getToolCategoryIcon(
+        integration.id,
+        {
+          size: 18,
+          width: 18,
+          height: 18,
+          showBackground: false,
+        },
+        integration.iconUrl,
+      )}
     >
       <span className="truncate">{integration.name}</span>
     </Button>

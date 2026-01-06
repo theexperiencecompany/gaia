@@ -28,8 +28,11 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   category,
 }) => {
   const isConnected = integration.status === "connected";
-  // Use backend's 'available' field - MCP integrations have available=true but loginEndpoint=null
-  const isAvailable = integration.available ?? !!integration.loginEndpoint;
+  // Custom integrations are always available (no OAuth flow needed)
+  // Platform integrations use available field or loginEndpoint presence
+  const isAvailable =
+    integration.source === "custom" ||
+    (integration.available ?? !!integration.loginEndpoint);
   const { tools } = useToolsWithIntegrations();
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -84,12 +87,16 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     <div className="flex h-full max-h-[calc(100vh-60px)] flex-col px-5">
       <SidebarHeader>
         <div className="w-fit">
-          {getToolCategoryIcon(integration.id, {
-            size: 40,
-            width: 40,
-            height: 40,
-            showBackground: false,
-          })}
+          {getToolCategoryIcon(
+            integration.id,
+            {
+              size: 40,
+              width: 40,
+              height: 40,
+              showBackground: false,
+            },
+            integration.iconUrl,
+          )}
         </div>
 
         <div className="mb-0 mt-2 flex flex-col items-start gap-1">
@@ -101,11 +108,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             {isConnected && (
               <Chip size="sm" variant="flat" color="success">
                 Connected
-              </Chip>
-            )}
-            {!isAvailable && (
-              <Chip size="sm" variant="flat" color="default">
-                Coming Soon
               </Chip>
             )}
           </div>
@@ -124,11 +126,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             disabled={!isAvailable || isConnecting}
             isLoading={isConnecting}
           >
-            {isConnecting
-              ? "Connecting..."
-              : isAvailable
-                ? "Connect"
-                : "Coming Soon"}
+            {isConnecting ? "Connecting..." : isAvailable ? "Connect" : ""}
           </RaisedButton>
         ) : (
           onDisconnect && (

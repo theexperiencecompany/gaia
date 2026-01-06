@@ -21,8 +21,10 @@ const IntegrationRow: React.FC<{
   onClick: (id: string) => void;
 }> = ({ integration, onConnect, onClick }) => {
   const isConnected = integration.status === "connected";
-  // Use backend's 'available' field
-  const isAvailable = integration.available ?? !!integration.loginEndpoint;
+  // Custom integrations are always available
+  const isAvailable =
+    integration.source === "custom" ||
+    (integration.available ?? !!integration.loginEndpoint);
 
   const handleClick = () => {
     onClick(integration.id);
@@ -34,12 +36,16 @@ const IntegrationRow: React.FC<{
       onClick={handleClick}
     >
       <div className="shrink-0">
-        {getToolCategoryIcon(integration.id, {
-          size: 32,
-          width: 32,
-          height: 32,
-          showBackground: false,
-        })}
+        {getToolCategoryIcon(
+          integration.id,
+          {
+            size: 32,
+            width: 32,
+            height: 32,
+            showBackground: false,
+          },
+          integration.iconUrl,
+        )}
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -53,11 +59,6 @@ const IntegrationRow: React.FC<{
         {isConnected && (
           <Chip size="sm" variant="flat" color="success">
             Connected
-          </Chip>
-        )}
-        {!isAvailable && (
-          <Chip size="sm" variant="flat" color="default">
-            Coming Soon
           </Chip>
         )}
 
@@ -153,7 +154,7 @@ export const IntegrationsList: React.FC<{
     return filteredIntegrations.filter((i) => i.isFeatured && i.loginEndpoint);
   }, [filteredIntegrations]);
 
-  // Group ALL integrations by category (featured will appear in both Featured and their category)
+  // Group ALL integrations by category
   const integrationsByCategory = useMemo(() => {
     const grouped: Record<string, Integration[]> = {};
 
@@ -175,7 +176,7 @@ export const IntegrationsList: React.FC<{
 
   return (
     <div>
-      {/* Category Filter - categories derived from backend data */}
+      {/* Category Filter */}
       <div className="mb-6">
         <CategoryFilter
           categories={availableCategories}
@@ -228,7 +229,6 @@ export const IntegrationsList: React.FC<{
 
       {/* Category Sections */}
       {selectedCategory === "all" ? (
-        // When "All" is selected, show integrations grouped by category
         availableCategories.map((category) => {
           const categoryIntegrations = integrationsByCategory[category];
           if (!categoryIntegrations || categoryIntegrations.length === 0)
@@ -245,7 +245,6 @@ export const IntegrationsList: React.FC<{
           );
         })
       ) : (
-        // When a specific category is selected, show all integrations in that category
         <IntegrationSection
           title={getCategoryLabel(selectedCategory)}
           integrations={integrationsInSelectedCategory}

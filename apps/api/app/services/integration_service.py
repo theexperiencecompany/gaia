@@ -400,6 +400,8 @@ async def create_custom_integration(
     Raises:
         ValueError: If integration with same ID already exists
     """
+    from app.utils.favicon_utils import fetch_favicon_from_url
+
     # Generate integration_id from name
     integration_id = f"custom_{request.name.lower().replace(' ', '_')}_{user_id[:8]}"
 
@@ -410,15 +412,25 @@ async def create_custom_integration(
     if existing:
         raise ValueError(f"Integration with ID '{integration_id}' already exists")
 
+    # Fetch favicon from MCP server (non-blocking, don't fail if it doesn't work)
+    icon_url = None
+    try:
+        icon_url = await fetch_favicon_from_url(request.server_url)
+        if icon_url:
+            logger.info(f"Fetched favicon for {integration_id}: {icon_url}")
+    except Exception as e:
+        logger.warning(f"Failed to fetch favicon for {integration_id}: {e}")
+
     integration = Integration(
         integration_id=integration_id,
         name=request.name,
-        description=request.description,
+        description=request.description or "",
         category=request.category,
         managed_by="mcp",
         source="custom",
         is_public=request.is_public,
         created_by=user_id,
+        icon_url=icon_url,
         mcp_config=MCPConfigDoc(
             server_url=request.server_url,
             requires_auth=request.requires_auth,

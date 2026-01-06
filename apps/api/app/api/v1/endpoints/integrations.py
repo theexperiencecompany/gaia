@@ -161,18 +161,49 @@ async def disconnect_integration(
 ):
     """
     Disconnect a connected integration for the current user.
-    Only supports Composio-managed integrations.
+    Supports platform integrations (Composio, self, MCP) and custom integrations.
     """
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
+    # Try platform integration first
     integration = get_integration_by_id(integration_id)
-    if not integration:
-        raise HTTPException(
-            status_code=404, detail=f"Integration {integration_id} not found"
-        )
 
+    # If not found in platform list, check MongoDB for custom integrations
+    if not integration:
+        integration_details = await get_integration_details(integration_id)
+        if not integration_details or integration_details.source != "custom":
+            raise HTTPException(
+                status_code=404, detail=f"Integration {integration_id} not found"
+            )
+
+        # Handle custom MCP integration disconnect
+        try:
+            mcp_client = get_mcp_client(user_id=str(user_id))
+            await mcp_client.disconnect(integration_id)
+            # Remove from user_integrations
+            await remove_user_integration(str(user_id), integration_id)
+            # If user is the creator, also delete the integration itself
+            if integration_details.created_by == str(user_id):
+                await delete_custom_integration(str(user_id), integration_id)
+
+            return JSONResponse(
+                content={
+                    "status": "success",
+                    "message": f"Successfully disconnected {integration_details.name}",
+                    "integrationId": integration_id,
+                }
+            )
+        except Exception as e:
+            logger.error(
+                f"Error disconnecting custom integration {integration_id} for user {user_id}: {e}"
+            )
+            raise HTTPException(
+                status_code=500, detail="Failed to disconnect integration"
+            )
+
+    # Handle platform integrations
     if integration.managed_by == "composio":
         composio_service = get_composio_service()
         try:

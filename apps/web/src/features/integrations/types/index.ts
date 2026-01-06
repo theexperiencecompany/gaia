@@ -31,6 +31,8 @@ export interface Integration {
   isPublic?: boolean;
   createdBy?: string;
   tools?: Array<{ name: string; description?: string }>;
+  // Custom integration icon (favicon from MCP server)
+  iconUrl?: string;
 }
 
 export interface IntegrationStatus {
@@ -72,6 +74,7 @@ export interface MarketplaceIntegration {
   requires_auth: boolean;
   auth_type?: "oauth" | "bearer" | "none";
   tools?: Array<{ name: string; description?: string }>;
+  icon_url?: string;
   is_public?: boolean;
   created_by?: string;
 }
@@ -97,7 +100,7 @@ export interface UserIntegrationsResponse {
 
 export interface CreateCustomIntegrationRequest {
   name: string;
-  description: string;
+  description?: string;
   category?: string;
   server_url: string;
   requires_auth?: boolean;

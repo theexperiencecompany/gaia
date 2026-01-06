@@ -8,9 +8,14 @@ import {
   ModalContent,
   ModalFooter,
   ModalHeader,
+  Textarea,
 } from "@heroui/react";
 import { useState } from "react";
+import { toast } from "sonner";
+
 import { ConnectIcon, KeyIcon, PuzzleIcon } from "@/icons";
+
+import { useIntegrations } from "../hooks/useIntegrations";
 
 interface MCPIntegrationModalProps {
   isOpen: boolean;
@@ -22,27 +27,42 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
   onClose,
 }) => {
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [serverUrl, setServerUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  const { createCustomIntegration, refetch } = useIntegrations();
+
   const handleCreate = async () => {
     setIsLoading(true);
 
-    console.log("Creating MCP Integration:", {
-      name,
-      serverUrl,
-      apiKey: apiKey ? "***" : "(empty)",
-    });
+    try {
+      await createCustomIntegration({
+        name,
+        description: description.trim() || undefined,
+        server_url: serverUrl,
+        requires_auth: !!apiKey,
+        auth_type: apiKey ? "bearer" : "none",
+        is_public: false,
+      });
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    setIsLoading(false);
-    handleClose();
+      toast.success("Custom integration created successfully!");
+      refetch();
+      handleClose();
+    } catch (error) {
+      console.error("Failed to create custom integration:", error);
+      toast.error(
+        `Failed to create integration: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleClose = () => {
     setName("");
+    setDescription("");
     setServerUrl("");
     setApiKey("");
     onClose();
@@ -63,8 +83,8 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
         <ModalHeader className="flex flex-col gap-1">
           <h2 className="text-xl font-semibold">New Integration</h2>
           <p className="text-sm font-normal text-zinc-400">
-            Use the Model Context Protocol to extend GAIA's capabilities with
-            external data and tools
+            Use the Model Context Protocol to extend GAIA&apos;s capabilities
+            with external data and tools
           </p>
         </ModalHeader>
 
@@ -77,6 +97,15 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
               onValueChange={setName}
               isRequired
               startContent={<PuzzleIcon width={16} height={16} />}
+            />
+
+            <Textarea
+              label="Description"
+              placeholder="What does this integration do?"
+              value={description}
+              onValueChange={setDescription}
+              minRows={2}
+              maxRows={3}
             />
 
             <Input
