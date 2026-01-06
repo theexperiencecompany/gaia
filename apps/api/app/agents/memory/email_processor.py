@@ -158,14 +158,6 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     Returns dict with processing stats.
     """
     user = await users_collection.find_one({"_id": ObjectId(user_id)})
-    if user and user.get("email_memory_processed", False):
-        logger.info(f"User {user_id} emails already processed, skipping")
-        return {
-            "total": 0,
-            "successful": 0,
-            "already_processed": True,
-            "processing_complete": True,
-        }
 
     # Extract user name for consistent memory attribution
     user_name = user.get("name") if user else None
@@ -178,7 +170,6 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
     fetch_start_time = time.time()
     page_token = None
-    batch_count = 0
 
     # Track memory storage tasks to await completion
     email_storage_tasks = []
@@ -200,27 +191,30 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
     except Exception as e:
         logger.warning(f"Failed to emit initial progress: {e}")
 
-    # Check for last scan timestamp
+    # Load Gmail scan state
     last_scan_timestamp = None
+    processed_message_ids = set()
+
     if user:
         scan_states = user.get("integration_scan_states", {})
         if isinstance(scan_states, dict):
             gmail_state = scan_states.get("gmail", {})
             if isinstance(gmail_state, dict):
                 last_scan_timestamp = gmail_state.get("last_scan_timestamp")
+                processed_message_ids = set(
+                    gmail_state.get("processed_message_ids", [])
+                )
 
     # Build query with timestamp if available
     current_query = EMAIL_QUERY
-    if last_scan_timestamp:
-        if isinstance(last_scan_timestamp, datetime):
-            timestamp_seconds = int(last_scan_timestamp.timestamp())
-            current_query = f"{EMAIL_QUERY} after:{timestamp_seconds}"
+    if last_scan_timestamp and isinstance(last_scan_timestamp, datetime):
+        timestamp_seconds = int(last_scan_timestamp.timestamp())
+        current_query = f"{EMAIL_QUERY} after:{timestamp_seconds}"
 
     try:
         while total_fetched < MAX_RESULTS:
             remaining = MAX_RESULTS - total_fetched
             batch_size = min(BATCH_SIZE, remaining)
-            batch_count += 1
 
             result = await search_messages(
                 user_id=user_id,
@@ -230,9 +224,20 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
             )
 
             batch_emails = result.get("messages", [])
-
             if not batch_emails:
                 break
+
+            # Remove already processed emails
+            new_batch_emails = [
+                email for email in batch_emails
+                if email.get("id") not in processed_message_ids
+            ]
+
+            if not new_batch_emails:
+                page_token = result.get("nextPageToken")
+                if not page_token:
+                    break
+                continue
 
             # Update page token for next iteration
             page_token = result.get("nextPageToken")
@@ -253,12 +258,16 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
             except Exception as e:
                 logger.warning(f"Failed to emit progress update: {e}")
 
-            # Process content (platform emails automatically excluded)
-            processed_batch, failed = process_email_content(batch_emails)
+            # Process only new emails
+            processed_batch, failed = process_email_content(new_batch_emails)
             total_parsed += len(processed_batch)
             total_failed += failed
 
-            # Store batch to Mem0 with sync mode during onboarding (ensures completion)
+            # Track new IDs (commit later)
+            new_ids = [
+                email.get("id") for email in new_batch_emails if email.get("id")
+            ]
+
             if processed_batch:
                 task = asyncio.create_task(
                     store_emails_to_mem0(
@@ -271,26 +280,26 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
                 )
                 email_storage_tasks.append(task)
 
+            processed_message_ids.update(new_ids)
+
             if not page_token:
                 break
 
     except Exception as e:
         logger.error(f"Error in email processing pipeline: {e}")
 
-    # Await all email storage tasks in parallel with error handling
+    # Await all email storage tasks
     logger.info(
         f"Awaiting {len(email_storage_tasks)} email storage tasks to complete in parallel..."
     )
-    storage_results: list[Any] = []
+
     storage_errors = 0
     if email_storage_tasks:
         try:
-            # Gather all results, including exceptions
             storage_results = await asyncio.gather(
                 *email_storage_tasks, return_exceptions=True
             )
 
-            # Count successes and errors
             for idx, result in enumerate(storage_results):
                 if isinstance(result, Exception):
                     storage_errors += 1
@@ -305,14 +314,26 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
             logger.error(f"Critical error in email storage tasks: {e}")
             storage_errors = len(email_storage_tasks)
 
-    # Wait for profile extraction task (also with error handling)
+    # Persist processed Gmail message IDs
+    try:
+        await users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "integration_scan_states.gmail.processed_message_ids": list(processed_message_ids)
+                }
+            },
+        )
+    except Exception as e:
+        logger.error(f"Failed to update processed Gmail message IDs: {e}")
+
+    # Wait for profile extraction task
     profiles_stored = 0
     try:
         profile_result: Dict[str, int] = await profile_extraction_task
         profiles_stored = profile_result.get("profiles_stored", 0)
     except Exception as e:
         logger.error(f"Profile extraction task failed: {e}")
-        # Continue anyway - don't let profile failures block completion
 
     total_elapsed = time.time() - fetch_start_time
     logger.info(
@@ -321,11 +342,8 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
         f"{storage_errors} storage errors"
     )
 
-    # Mark as complete if we processed ANY emails, even if some storage failed
     processing_complete = total_parsed > 0
 
-    # ALWAYS mark as complete and trigger completion events
-    # This ensures the frontend gets the "show me around" button
     try:
         if processing_complete:
             await mark_email_processing_complete(
@@ -334,18 +352,14 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
             logger.info(f"✓ Marked email processing as complete for user {user_id}")
     except Exception as e:
         logger.error(f"Failed to mark email processing complete: {e}")
-        # Continue anyway - we still want to trigger post-onboarding
 
-    # Trigger post-onboarding personalization (always run, even if storage had errors)
     try:
         await process_post_onboarding_personalization(user_id)
         logger.info(f"✓ Post-onboarding personalization triggered for user {user_id}")
     except Exception as e:
         logger.error(f"Post-onboarding personalization failed: {e}", exc_info=True)
-        # Don't fail the entire process - user still gets onboarded
 
-    # Update the scan timestamp after processing (regardless of success/failure)
-    # This prevents re-scanning the same emails
+    # Update the scan timestamp
     try:
         current_time = datetime.now(timezone.utc)
         await users_collection.update_one(
