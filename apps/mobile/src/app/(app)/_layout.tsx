@@ -1,6 +1,7 @@
 import { Redirect, Stack } from "expo-router";
 import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "@/features/auth";
+import { SidebarProvider } from "@/features/chat";
 
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -18,19 +19,21 @@ export default function AppLayout() {
   }
 
   return (
-    <View className="flex-1 bg-background">
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: "#0a0a0a" },
-          animation: "none",
-          animationDuration: 0,
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(chat)/[id]" />
-        <Stack.Screen name="test/index" />
-      </Stack>
-    </View>
+    <SidebarProvider>
+      <View className="flex-1 bg-background">
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: "#0a0a0a" },
+            animation: "none",
+            animationDuration: 0,
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(chat)/[id]" />
+          <Stack.Screen name="test/index" />
+        </Stack>
+      </View>
+    </SidebarProvider>
   );
 }

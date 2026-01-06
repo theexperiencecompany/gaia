@@ -19,7 +19,6 @@ interface AuthContextType {
   isLoading: boolean;
   user: UserInfo | null;
   signOut: () => Promise<void>;
-  /** Refresh auth state from storage */
   refreshAuth: () => Promise<void>;
 }
 

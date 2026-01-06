@@ -22,6 +22,7 @@ import { Uniwind } from "uniwind";
 
 import { AuthProvider } from "@/features/auth";
 import { ChatProvider } from "@/features/chat";
+import { QueryProvider } from "@/lib/query-provider";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -47,25 +48,27 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <ChatProvider>
-        <GestureHandlerRootView style={{ flex: 1 }} className="bg:dark">
-          <HeroUINativeProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(app)" options={{ headerShown: false }} />
-              <Stack.Screen
-                name="login/index"
-                options={{ headerShown: false }}
-              />
-              <Stack.Screen
-                name="signup/index"
-                options={{ headerShown: false }}
-              />
-            </Stack>
-            <StatusBar style="auto" />
-          </HeroUINativeProvider>
-        </GestureHandlerRootView>
-      </ChatProvider>
-    </AuthProvider>
+    <QueryProvider>
+      <AuthProvider>
+        <ChatProvider>
+          <GestureHandlerRootView style={{ flex: 1 }} className="bg:dark">
+            <HeroUINativeProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(app)" options={{ headerShown: false }} />
+                <Stack.Screen
+                  name="login/index"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="signup/index"
+                  options={{ headerShown: false }}
+                />
+              </Stack>
+              <StatusBar style="auto" />
+            </HeroUINativeProvider>
+          </GestureHandlerRootView>
+        </ChatProvider>
+      </AuthProvider>
+    </QueryProvider>
   );
 }

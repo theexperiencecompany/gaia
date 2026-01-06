@@ -7,7 +7,7 @@ import {
   PlusSignIcon,
   UserIcon,
 } from "@/components/icons";
-import { ConnectDrawer } from "@/features/chat/components/chat/connect-drawer";
+import { ConnectDrawer } from "@/features/integrations";
 import { cn } from "@/lib/utils";
 
 interface ChatInputProps {

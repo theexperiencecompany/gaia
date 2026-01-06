@@ -6,7 +6,7 @@ interface StreamingState {
   isTyping: boolean;
   isStreaming: boolean;
   conversationId: string | null;
-  progress: string | null; // Current progress message (e.g., "Executing Call Executor...")
+  progress: string | null;
 }
 
 interface ChatState {
@@ -14,7 +14,6 @@ interface ChatState {
   conversations: Conversation[];
   activeChatId: string | null;
   streamingState: StreamingState;
-  fetchedConversations: Set<string>;
 
   setActiveChatId: (id: string | null) => void;
   setMessages: (conversationId: string, messages: Message[]) => void;
@@ -22,12 +21,9 @@ interface ChatState {
   updateLastMessage: (conversationId: string, text: string) => void;
   updateLastMessageFollowUp: (
     conversationId: string,
-    actions: string[],
+    actions: string[]
   ) => void;
   setStreamingState: (state: Partial<StreamingState>) => void;
-  markConversationFetched: (conversationId: string) => void;
-  isConversationFetched: (conversationId: string) => boolean;
-  clearConversationFetched: (conversationId: string) => void;
   setConversations: (conversations: Conversation[]) => void;
   addConversation: (conversation: Conversation) => void;
   updateConversationTitle: (conversationId: string, title: string) => void;
@@ -43,7 +39,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     conversationId: null,
     progress: null,
   },
-  fetchedConversations: new Set<string>(),
 
   setActiveChatId: (id) => set({ activeChatId: id }),
 
@@ -107,33 +102,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingState: { ...state.streamingState, ...newState },
     })),
 
-  markConversationFetched: (conversationId) =>
-    set((state) => {
-      const newSet = new Set(state.fetchedConversations);
-      newSet.add(conversationId);
-      return { fetchedConversations: newSet };
-    }),
-
-  isConversationFetched: (conversationId) => {
-    return get().fetchedConversations.has(conversationId);
-  },
-
-  clearConversationFetched: (conversationId) =>
-    set((state) => {
-      const newSet = new Set(state.fetchedConversations);
-      newSet.delete(conversationId);
-      return { fetchedConversations: newSet };
-    }),
-
   setConversations: (conversations) => set({ conversations }),
 
   addConversation: (conversation) =>
     set((state) => {
-      // Don't add if already exists
       if (state.conversations.some((c) => c.id === conversation.id)) {
         return state;
       }
-      // Add to beginning of list (newest first)
       return { conversations: [conversation, ...state.conversations] };
     }),
 

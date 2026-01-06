@@ -3,6 +3,12 @@ import type { FlashListRef } from "@shopify/flash-list";
 import { useShallow } from "zustand/react/shallow";
 import { useChatStore } from "@/stores/chat-store";
 import { chatApi, fetchChatStream, type Message } from "../api/chat-api";
+import {
+  useConversationQuery,
+  useChatQueryClient,
+  chatKeys,
+} from "../api/queries";
+import { useQueryClient } from "@tanstack/react-query";
 
 const EMPTY_MESSAGES: Message[] = [];
 
@@ -25,78 +31,65 @@ interface UseChatReturn {
   refetch: () => Promise<void>;
 }
 
-export function useChat(chatId: string | null, options?: UseChatOptions): UseChatReturn {
+export function useChat(
+  chatId: string | null,
+  options?: UseChatOptions
+): UseChatReturn {
   const flatListRef = useRef<FlashListRef<Message>>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingResponseRef = useRef<string>("");
-  
-  // Get the active chat ID from store - this persists across navigation
+  const queryClient = useQueryClient();
+
   const storeActiveChatId = useChatStore((state) => state.activeChatId);
-  
-  // Use chatId prop if provided, otherwise fall back to store's activeChatId
   const effectiveChatId = chatId ?? storeActiveChatId;
-  
+
   const activeConvIdRef = useRef<string | null>(effectiveChatId);
-  const [isLoading, setIsLoading] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<
     string | null
   >(effectiveChatId);
 
-  // Sync when chatId prop or store's activeChatId changes
   useEffect(() => {
     const newEffectiveId = chatId ?? storeActiveChatId;
-    if (newEffectiveId && !newEffectiveId.startsWith('temp-')) {
+    if (newEffectiveId && !newEffectiveId.startsWith("temp-")) {
       setCurrentConversationId(newEffectiveId);
       activeConvIdRef.current = newEffectiveId;
     }
   }, [chatId, storeActiveChatId]);
 
-  const messages = useChatStore(
+  const {
+    data: cachedMessages,
+    isLoading,
+    refetch: refetchQuery,
+  } = useConversationQuery(currentConversationId);
+
+  const streamingMessages = useChatStore(
     useShallow((state) =>
       currentConversationId
-        ? (state.messagesByConversation[currentConversationId] ??
-          EMPTY_MESSAGES)
-        : EMPTY_MESSAGES,
-    ),
+        ? (state.messagesByConversation[currentConversationId] ?? null)
+        : null
+    )
   );
 
+  const messages = streamingMessages ?? cachedMessages ?? EMPTY_MESSAGES;
+
   const streamingState = useChatStore(
-    useShallow((state) => state.streamingState),
+    useShallow((state) => state.streamingState)
   );
+
   const isTyping =
     streamingState.isTyping &&
     streamingState.conversationId === currentConversationId;
+
   const progress =
     streamingState.conversationId === currentConversationId
       ? streamingState.progress
       : null;
 
-  // Fetch messages for existing conversations
-  const fetchMessagesFromServer = useCallback(
-    async (conversationId: string) => {
-      const store = useChatStore.getState();
-      if (store.isConversationFetched(conversationId)) return;
-
-      setIsLoading(true);
-      try {
-        const serverMessages = await chatApi.fetchMessages(conversationId);
-        if (serverMessages.length > 0) {
-          store.setMessages(conversationId, serverMessages);
-          store.markConversationFetched(conversationId);
-          await chatApi.markConversationAsRead(conversationId);
-        }
-      } catch (error) {
-        console.error("Error fetching messages:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [],
-  );
-
   useEffect(() => {
-    if (chatId) fetchMessagesFromServer(chatId);
-  }, [chatId, fetchMessagesFromServer]);
+    if (cachedMessages && cachedMessages.length > 0 && currentConversationId) {
+      chatApi.markConversationAsRead(currentConversationId);
+    }
+  }, [cachedMessages, currentConversationId]);
 
   const scrollToBottom = useCallback(() => {
     flatListRef.current?.scrollToEnd({ animated: true });
@@ -131,7 +124,6 @@ export function useChat(chatId: string | null, options?: UseChatOptions): UseCha
         timestamp: new Date(),
       };
 
-      // Use existing conversation ID or create temp key for new chats
       const storeKey = activeConvIdRef.current || `temp-${Date.now()}`;
       activeConvIdRef.current = storeKey;
 
@@ -139,8 +131,12 @@ export function useChat(chatId: string | null, options?: UseChatOptions): UseCha
         setCurrentConversationId(storeKey);
       }
 
-      const currentMessages = store.messagesByConversation[storeKey] || [];
-      store.setMessages(storeKey, [...currentMessages, userMessage, aiMessage]);
+      const existingMessages =
+        store.messagesByConversation[storeKey] ??
+        cachedMessages ??
+        EMPTY_MESSAGES;
+
+      store.setMessages(storeKey, [...existingMessages, userMessage, aiMessage]);
       store.setStreamingState({
         isTyping: true,
         isStreaming: true,
@@ -149,26 +145,28 @@ export function useChat(chatId: string | null, options?: UseChatOptions): UseCha
       streamingResponseRef.current = "";
 
       try {
-        // Determine the conversation ID to send to API
-        // - If we have a real conversation ID (not temp), use it
-        // - Otherwise, send null to create a new conversation
         const existingConvId = activeConvIdRef.current;
-        const apiConversationId = existingConvId && !existingConvId.startsWith('temp-') 
-          ? existingConvId 
-          : null;
-        
+        const apiConversationId =
+          existingConvId && !existingConvId.startsWith("temp-")
+            ? existingConvId
+            : null;
+
         const controller = await fetchChatStream(
           {
             message: text,
             conversationId: apiConversationId,
-            messages: [...currentMessages, userMessage],
+            messages: [...existingMessages, userMessage],
           },
           {
-            onConversationCreated: (newConvId, userMsgId, botMsgId, description) => {
+            onConversationCreated: (
+              newConvId,
+              userMsgId,
+              botMsgId,
+              description
+            ) => {
               const store = useChatStore.getState();
               const msgs = store.messagesByConversation[storeKey] || [];
 
-              // Update message IDs
               const updatedMsgs = msgs.map((msg, idx) => {
                 if (idx === msgs.length - 2) return { ...msg, id: userMsgId };
                 if (idx === msgs.length - 1) return { ...msg, id: botMsgId };
@@ -178,18 +176,20 @@ export function useChat(chatId: string | null, options?: UseChatOptions): UseCha
               if (!chatId && newConvId) {
                 store.setMessages(newConvId, updatedMsgs);
                 store.clearMessages(storeKey);
-                store.markConversationFetched(newConvId);
                 store.setStreamingState({ conversationId: newConvId });
                 store.setActiveChatId(newConvId);
-                
-                // Add to conversations list for sidebar
+
                 store.addConversation({
                   id: newConvId,
-                  title: description || 'New conversation',
+                  title: description || "New conversation",
                   created_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
                 });
-                
+
+                queryClient.invalidateQueries({
+                  queryKey: chatKeys.conversations(),
+                });
+
                 activeConvIdRef.current = newConvId;
                 setCurrentConversationId(newConvId);
                 options?.onNavigate?.(newConvId);
@@ -203,11 +203,10 @@ export function useChat(chatId: string | null, options?: UseChatOptions): UseCha
                 .getState()
                 .updateLastMessage(
                   activeConvIdRef.current!,
-                  streamingResponseRef.current,
+                  streamingResponseRef.current
                 );
             },
             onProgress: (message) => {
-              console.log("[useChat] onProgress received:", message);
               useChatStore.getState().setStreamingState({ progress: message });
             },
             onFollowUpActions: (actions) => {
@@ -216,7 +215,19 @@ export function useChat(chatId: string | null, options?: UseChatOptions): UseCha
                 .updateLastMessageFollowUp(activeConvIdRef.current!, actions);
             },
             onDone: () => {
-              useChatStore.getState().setStreamingState({
+              const finalConvId = activeConvIdRef.current;
+              const store = useChatStore.getState();
+              const finalMessages = store.messagesByConversation[finalConvId!];
+
+              if (finalMessages && finalConvId) {
+                queryClient.setQueryData(
+                  chatKeys.messages(finalConvId),
+                  finalMessages
+                );
+                store.clearMessages(finalConvId);
+              }
+
+              store.setStreamingState({
                 isTyping: false,
                 isStreaming: false,
                 conversationId: null,
@@ -236,10 +247,10 @@ export function useChat(chatId: string | null, options?: UseChatOptions): UseCha
                 .getState()
                 .updateLastMessage(
                   activeConvIdRef.current!,
-                  "Sorry, I encountered an error. Please try again.",
+                  "Sorry, I encountered an error. Please try again."
                 );
             },
-          },
+          }
         );
         abortControllerRef.current = controller;
       } catch (error) {
@@ -251,17 +262,14 @@ export function useChat(chatId: string | null, options?: UseChatOptions): UseCha
         });
       }
     },
-    [chatId, currentConversationId, cancelStream],
+    [chatId, currentConversationId, cancelStream, cachedMessages, queryClient, options]
   );
 
-
-
   const refetch = useCallback(async () => {
-    if (chatId) {
-      useChatStore.getState().clearConversationFetched(chatId);
-      await fetchMessagesFromServer(chatId);
+    if (currentConversationId) {
+      await refetchQuery();
     }
-  }, [chatId, fetchMessagesFromServer]);
+  }, [currentConversationId, refetchQuery]);
 
   return {
     messages,

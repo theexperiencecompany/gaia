@@ -1,29 +1,20 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { FlashList } from "@shopify/flash-list";
-import { Keyboard, View } from "react-native";
-import DrawerLayout, {
-  DrawerPosition,
-  DrawerState,
-  DrawerType,
-} from "react-native-gesture-handler/ReanimatedDrawerLayout";
+import { View } from "react-native";
 import Animated, {
   runOnJS,
   useAnimatedKeyboard,
   useAnimatedReaction,
   useAnimatedStyle,
 } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { ChatInput } from "@/components/ui/chat-input";
 import {
-  ChatHeader,
+  ChatLayout,
   ChatMessage,
   type Message,
-  SIDEBAR_WIDTH,
-  SidebarContent,
   useChat,
   useChatContext,
-  useSidebar,
 } from "@/features/chat";
 import { getRelevantThinkingMessage } from "@/features/chat/utils/playfulThinking";
 
@@ -47,11 +38,6 @@ export default function ChatPage() {
     scrollToBottom,
   } = useChat(id || null);
 
-  useEffect(() => {
-    console.log("[ChatPage] isTyping:", isTyping, "progress:", progress);
-  }, [isTyping, progress]);
-
-  const { drawerRef, closeSidebar, toggleSidebar } = useSidebar();
   const [inputValue, setInputValue] = useState("");
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [thinkingMessage, setThinkingMessage] = useState(() =>
@@ -95,25 +81,9 @@ export default function ChatPage() {
     }
   );
 
-  const handleSelectChat = (chatId: string) => {
-    setActiveChatId(chatId);
-    closeSidebar();
-    router.replace(`/(chat)/${chatId}`);
-  };
-
-  const handleNewChat = () => {
-    closeSidebar();
-    setActiveChatId(null);
-    router.replace("/");
-  };
-
   const handleFollowUpAction = useCallback((action: string) => {
     setInputValue(action);
   }, []);
-
-  const renderDrawerContent = () => (
-    <SidebarContent onSelectChat={handleSelectChat} onNewChat={handleNewChat} />
-  );
 
   const renderMessage = useCallback(
     ({ item, index }: { item: Message; index: number }) => {
@@ -135,71 +105,49 @@ export default function ChatPage() {
   );
 
   return (
-    <View className="flex-1">
-      <DrawerLayout
-        ref={drawerRef}
-        drawerWidth={SIDEBAR_WIDTH}
-        drawerPosition={DrawerPosition.LEFT}
-        drawerType={DrawerType.FRONT}
-        overlayColor="rgba(0, 0, 0, 0.7)"
-        renderNavigationView={renderDrawerContent}
-        onDrawerStateChanged={(newState) => {
-          if (newState !== DrawerState.IDLE) Keyboard.dismiss();
-        }}
-      >
-        <View className="flex-1">
-          <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-            <ChatHeader
-              onMenuPress={toggleSidebar}
-              onNewChatPress={handleNewChat}
-              onSearchPress={() => console.log("Search pressed")}
-            />
-
-            <View style={{ flex: 1, overflow: "hidden" }}>
-              <View style={{ flex: 1 }}>
-                <FlashList
-                  ref={flatListRef}
-                  data={messages}
-                  renderItem={renderMessage}
-                  keyExtractor={(item) => item.id}
-                  extraData={[
-                    messages[messages.length - 1]?.text,
-                    isTyping,
-                    displayMessage,
-                  ]}
-                  contentContainerStyle={{
-                    paddingTop: 16,
-                    paddingBottom: 90,
-                  }}
-                  showsVerticalScrollIndicator={true}
-                  keyboardShouldPersistTaps="handled"
-                  keyboardDismissMode="on-drag"
-                  onLoad={() => {
-                    if (messages.length > 0) {
-                      flatListRef.current?.scrollToEnd({ animated: false });
-                    }
-                  }}
-                />
-              </View>
-
-              <Animated.View
-                className="absolute left-0 right-0 px-2 pb-2 bg-surface rounded-t-4xl"
-                style={animatedInputStyle}
-              >
-                <ChatInput
-                  onSend={(msg) => {
-                    setLastUserMessage(msg);
-                    sendMessage(msg);
-                    setInputValue("");
-                  }}
-                  value={inputValue}
-                  onChangeText={setInputValue}
-                />
-              </Animated.View>
-            </View>
-          </SafeAreaView>
+    <ChatLayout>
+      <View style={{ flex: 1, overflow: "hidden" }}>
+        <View style={{ flex: 1 }}>
+          <FlashList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            extraData={[
+              messages[messages.length - 1]?.text,
+              isTyping,
+              displayMessage,
+            ]}
+            contentContainerStyle={{
+              paddingTop: 16,
+              paddingBottom: 90,
+            }}
+            showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            onLoad={() => {
+              if (messages.length > 0) {
+                flatListRef.current?.scrollToEnd({ animated: false });
+              }
+            }}
+          />
         </View>
-      </DrawerLayout>
-    </View>
+
+        <Animated.View
+          className="absolute left-0 right-0 px-2 pb-2 bg-surface rounded-t-4xl"
+          style={animatedInputStyle}
+        >
+          <ChatInput
+            onSend={(msg) => {
+              setLastUserMessage(msg);
+              sendMessage(msg);
+              setInputValue("");
+            }}
+            value={inputValue}
+            onChangeText={setInputValue}
+          />
+        </Animated.View>
+      </View>
+    </ChatLayout>
   );
 }
