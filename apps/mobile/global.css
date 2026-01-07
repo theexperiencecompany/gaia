@@ -16,7 +16,6 @@
       --accent-foreground: #000000;
     }
     @variant dark {
-      /* biome-ignore lint/suspicious/noDuplicateCustomProperties: < we need this for the buttons> */
       --accent: #00bbff;
       --accent-foreground: #000000;
     }

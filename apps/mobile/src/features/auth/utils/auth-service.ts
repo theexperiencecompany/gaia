@@ -25,7 +25,7 @@ export async function getLoginUrl(callbackUri: string): Promise<string> {
     // Pass the redirect URI to the backend so it knows where to redirect
     const url = `${API_BASE_URL}/oauth/login/workos/mobile?redirect_uri=${encodeURIComponent(callbackUri)}`;
     console.log("Fetching login URL from:", url);
-    
+
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -35,7 +35,7 @@ export async function getLoginUrl(callbackUri: string): Promise<string> {
     const data: LoginUrlResponse = await response.json();
     return data.url;
   } catch (error) {
-    console.log(error)
+    console.log(error);
     console.error("Error getting login URL:", error);
     throw new Error("Failed to initiate login");
   }
@@ -44,14 +44,11 @@ export async function getLoginUrl(callbackUri: string): Promise<string> {
 export async function startOAuthFlow(): Promise<string> {
   try {
     console.log("Generated Redirect URI:", redirectUri);
-    
+
     const authUrl = await getLoginUrl(redirectUri);
     console.log("Auth URL:", authUrl);
 
-    const result = await WebBrowser.openAuthSessionAsync(
-      authUrl,
-      redirectUri,
-    );
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
 
     console.log("Auth result:", result);
 

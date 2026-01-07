@@ -76,8 +76,8 @@ export function ConnectDrawer({ onOpen }: ConnectDrawerProps) {
       prev.map((integration) =>
         integration.id === id
           ? { ...integration, connected: !integration.connected }
-          : integration
-      )
+          : integration,
+      ),
     );
   };
 
@@ -124,7 +124,7 @@ export function ConnectDrawer({ onOpen }: ConnectDrawerProps) {
         </Button>
       </Pressable>
     ),
-    []
+    [],
   );
 
   const ListHeader = useCallback(
@@ -170,7 +170,7 @@ export function ConnectDrawer({ onOpen }: ConnectDrawerProps) {
         </View>
       </>
     ),
-    [searchQuery, selectedFilter, filteredIntegrations]
+    [searchQuery, selectedFilter, filteredIntegrations],
   );
 
   const ListEmpty = useCallback(
@@ -183,7 +183,7 @@ export function ConnectDrawer({ onOpen }: ConnectDrawerProps) {
           </Text>
         </View>
       ) : null,
-    [isLoading]
+    [isLoading],
   );
 
   return (

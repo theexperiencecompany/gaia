@@ -21,7 +21,7 @@ interface ChatState {
   updateLastMessage: (conversationId: string, text: string) => void;
   updateLastMessageFollowUp: (
     conversationId: string,
-    actions: string[]
+    actions: string[],
   ) => void;
   setStreamingState: (state: Partial<StreamingState>) => void;
   setConversations: (conversations: Conversation[]) => void;
@@ -29,7 +29,7 @@ interface ChatState {
   updateConversationTitle: (conversationId: string, title: string) => void;
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>((set, _get) => ({
   messagesByConversation: {},
   conversations: [],
   activeChatId: null,
@@ -115,7 +115,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   updateConversationTitle: (conversationId, title) =>
     set((state) => ({
       conversations: state.conversations.map((c) =>
-        c.id === conversationId ? { ...c, title } : c
+        c.id === conversationId ? { ...c, title } : c,
       ),
     })),
 }));

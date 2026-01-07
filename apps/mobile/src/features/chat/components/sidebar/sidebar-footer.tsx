@@ -53,9 +53,7 @@ export function SidebarFooter() {
           >
             <Avatar alt={user?.name || "User"} size="sm" color="accent">
               {profilePicture ? (
-                <Avatar.Image 
-                  source={{ uri: profilePicture }} 
-                />
+                <Avatar.Image source={{ uri: profilePicture }} />
               ) : (
                 <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
               )}

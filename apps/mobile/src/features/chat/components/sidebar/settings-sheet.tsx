@@ -1,14 +1,14 @@
 import { Avatar, Button } from "heroui-native";
 import { Linking, Pressable, View } from "react-native";
 import {
+  CustomerSupportIcon,
+  FavouriteIcon,
   HugeiconsIcon,
+  InformationSquareIcon,
   Logout01Icon,
   Moon02Icon,
   Settings01Icon,
   UserIcon,
-  CustomerSupportIcon,
-  InformationSquareIcon,
-  FavouriteIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import type { UserInfo } from "@/features/auth";

@@ -42,14 +42,11 @@ export async function getLoginUrl(callbackUri: string): Promise<string> {
 export async function startOAuthFlow(): Promise<string> {
   try {
     console.log("Generated Redirect URI:", redirectUri);
-    
+
     const authUrl = await getLoginUrl(redirectUri);
     console.log("Auth URL:", authUrl);
 
-    const result = await WebBrowser.openAuthSessionAsync(
-      authUrl,
-      redirectUri,
-    );
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
 
     console.log("Auth result:", result);
 

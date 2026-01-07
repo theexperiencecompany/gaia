@@ -30,7 +30,7 @@ function getTimezone(): string {
 export async function createSSEConnection(
   endpoint: string,
   callbacks: SSECallbacks,
-  options: SSEOptions = {}
+  options: SSEOptions = {},
 ): Promise<AbortController> {
   const controller = new AbortController();
   const token = await getAuthToken();

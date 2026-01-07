@@ -1,14 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import type { FlashListRef } from "@shopify/flash-list";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useChatStore } from "@/stores/chat-store";
 import { chatApi, fetchChatStream, type Message } from "../api/chat-api";
-import {
-  useConversationQuery,
-  useChatQueryClient,
-  chatKeys,
-} from "../api/queries";
-import { useQueryClient } from "@tanstack/react-query";
+import { chatKeys, useConversationQuery } from "../api/queries";
 
 const EMPTY_MESSAGES: Message[] = [];
 
@@ -33,7 +29,7 @@ interface UseChatReturn {
 
 export function useChat(
   chatId: string | null,
-  options?: UseChatOptions
+  options?: UseChatOptions,
 ): UseChatReturn {
   const flatListRef = useRef<FlashListRef<Message>>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -70,14 +66,14 @@ export function useChat(
     useShallow((state) =>
       currentConversationId
         ? (state.messagesByConversation[currentConversationId] ?? null)
-        : null
-    )
+        : null,
+    ),
   );
 
   const messages = streamingMessages ?? cachedMessages ?? EMPTY_MESSAGES;
 
   const streamingState = useChatStore(
-    useShallow((state) => state.streamingState)
+    useShallow((state) => state.streamingState),
   );
 
   const isTyping =
@@ -140,7 +136,11 @@ export function useChat(
         cachedMessages ??
         EMPTY_MESSAGES;
 
-      store.setMessages(storeKey, [...existingMessages, userMessage, aiMessage]);
+      store.setMessages(storeKey, [
+        ...existingMessages,
+        userMessage,
+        aiMessage,
+      ]);
       store.setStreamingState({
         isTyping: true,
         isStreaming: true,
@@ -166,7 +166,7 @@ export function useChat(
               newConvId,
               userMsgId,
               botMsgId,
-              description
+              description,
             ) => {
               const store = useChatStore.getState();
               const msgs = store.messagesByConversation[storeKey] || [];
@@ -207,7 +207,7 @@ export function useChat(
                 .getState()
                 .updateLastMessage(
                   activeConvIdRef.current!,
-                  streamingResponseRef.current
+                  streamingResponseRef.current,
                 );
             },
             onProgress: (message) => {
@@ -226,7 +226,7 @@ export function useChat(
               if (finalMessages && finalConvId) {
                 queryClient.setQueryData(
                   chatKeys.messages(finalConvId),
-                  finalMessages
+                  finalMessages,
                 );
                 store.clearMessages(finalConvId);
               }
@@ -251,10 +251,10 @@ export function useChat(
                 .getState()
                 .updateLastMessage(
                   activeConvIdRef.current!,
-                  "Sorry, I encountered an error. Please try again."
+                  "Sorry, I encountered an error. Please try again.",
                 );
             },
-          }
+          },
         );
         abortControllerRef.current = controller;
       } catch (error) {
@@ -266,7 +266,14 @@ export function useChat(
         });
       }
     },
-    [chatId, currentConversationId, cancelStream, cachedMessages, queryClient, options]
+    [
+      chatId,
+      currentConversationId,
+      cancelStream,
+      cachedMessages,
+      queryClient,
+      options,
+    ],
   );
 
   const refetch = useCallback(async () => {

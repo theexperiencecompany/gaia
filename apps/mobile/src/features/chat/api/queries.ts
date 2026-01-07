@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Conversation } from "@/features/chat/types";
+import { apiService } from "@/lib/api";
 import type { Message } from "./chat-api";
 import { chatApi } from "./chat-api";
-import { apiService } from "@/lib/api";
-import type { Conversation } from "@/features/chat/types";
 
 interface ApiConversation {
   _id: string;
@@ -36,7 +36,7 @@ function normalizeConversation(apiConv: ApiConversation): Conversation {
 
 async function fetchConversationsList(): Promise<Conversation[]> {
   const data = await apiService.get<ConversationsResponse>(
-    "/conversations?page=1&limit=100"
+    "/conversations?page=1&limit=100",
   );
   return (data.conversations || []).map(normalizeConversation);
 }

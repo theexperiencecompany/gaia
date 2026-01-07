@@ -66,7 +66,7 @@ function PulsingDots() {
             duration: 400,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       );
 
     const a1 = animate(dot1, 0);
@@ -118,8 +118,7 @@ function PulsingDots() {
 }
 
 interface MessageBubbleProps
-  extends
-    React.ComponentPropsWithoutRef<typeof View>,
+  extends React.ComponentPropsWithoutRef<typeof View>,
     MessageBubbleVariantProps {
   message?: string;
   showAvatar?: boolean;
@@ -140,7 +139,7 @@ function MessageBubble({
     <View
       className={cn(
         "flex-row items-start gap-2",
-        variant === "sent" ? "self-end" : "self-start"
+        variant === "sent" ? "self-end" : "self-start",
       )}
     >
       {variant !== "sent" && showAvatar && (
@@ -165,7 +164,7 @@ function MessageBubble({
             isLoading
               ? "px-0 py-2.5"
               : messageBubbleVariants({ variant, grouped }),
-            className
+            className,
           )}
         >
           {children ??
@@ -185,7 +184,7 @@ function MessageBubble({
                   "text-base",
                   variant === "sent"
                     ? "text-accent-foreground"
-                    : "text-foreground"
+                    : "text-foreground",
                 )}
               >
                 {message}
@@ -193,25 +192,31 @@ function MessageBubble({
             ))}
         </View>
 
-        {variant === "received" && !isLoading && (grouped === "last" || grouped === "none") && (
-          <View className="flex-row items-center gap-3 mt-1.5 px-1">
-            <Pressable className="p-1 active:opacity-60">
-              <HugeiconsIcon icon={Copy01Icon} size={16} color="#8e8e93" />
-            </Pressable>
-            <Pressable className="p-1 active:opacity-60">
-              <HugeiconsIcon icon={ThumbsUpIcon} size={16} color="#8e8e93" />
-            </Pressable>
-            <Pressable className="p-1 active:opacity-60">
-              <HugeiconsIcon icon={ThumbsDownIcon} size={16} color="#8e8e93" />
-            </Pressable>
-            <Pressable className="p-1 active:opacity-60">
-              <HugeiconsIcon icon={Pin02Icon} size={16} color="#8e8e93" />
-            </Pressable>
-            <Pressable className="p-1 active:opacity-60">
-              <HugeiconsIcon icon={Message01Icon} size={16} color="#8e8e93" />
-            </Pressable>
-          </View>
-        )}
+        {variant === "received" &&
+          !isLoading &&
+          (grouped === "last" || grouped === "none") && (
+            <View className="flex-row items-center gap-3 mt-1.5 px-1">
+              <Pressable className="p-1 active:opacity-60">
+                <HugeiconsIcon icon={Copy01Icon} size={16} color="#8e8e93" />
+              </Pressable>
+              <Pressable className="p-1 active:opacity-60">
+                <HugeiconsIcon icon={ThumbsUpIcon} size={16} color="#8e8e93" />
+              </Pressable>
+              <Pressable className="p-1 active:opacity-60">
+                <HugeiconsIcon
+                  icon={ThumbsDownIcon}
+                  size={16}
+                  color="#8e8e93"
+                />
+              </Pressable>
+              <Pressable className="p-1 active:opacity-60">
+                <HugeiconsIcon icon={Pin02Icon} size={16} color="#8e8e93" />
+              </Pressable>
+              <Pressable className="p-1 active:opacity-60">
+                <HugeiconsIcon icon={Message01Icon} size={16} color="#8e8e93" />
+              </Pressable>
+            </View>
+          )}
       </View>
     </View>
   );
@@ -244,7 +249,7 @@ function ChatMessage({
       className={cn(
         "flex w-full flex-col",
         variant === "sent" ? "items-end" : "items-start",
-        className
+        className,
       )}
     >
       <View className="flex flex-col">
@@ -262,7 +267,7 @@ function ChatMessage({
         <Text
           className={cn(
             "mt-1 px-2 text-xs text-muted",
-            variant === "sent" && "text-right"
+            variant === "sent" && "text-right",
           )}
         >
           {timestamp}

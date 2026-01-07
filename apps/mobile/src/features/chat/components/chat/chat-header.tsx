@@ -1,12 +1,10 @@
 import { PressableFeedback } from "heroui-native";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import {
-  ArrowDown01Icon,
-  Edit01Icon,
+  BubbleChatAddIcon,
   HugeiconsIcon,
   Menu01Icon,
   Search01Icon,
-  BubbleChatAddIcon,
 } from "@/components/icons";
 import type { AIModel } from "@/features/chat/types";
 

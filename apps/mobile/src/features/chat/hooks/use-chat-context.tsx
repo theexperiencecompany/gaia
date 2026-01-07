@@ -54,7 +54,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
       createNewChat,
       clearActiveMessages,
     }),
-    [activeChatId, setActiveChatId, createNewChat, clearActiveMessages]
+    [activeChatId, setActiveChatId, createNewChat, clearActiveMessages],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

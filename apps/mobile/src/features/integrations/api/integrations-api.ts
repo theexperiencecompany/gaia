@@ -83,10 +83,7 @@ export async function fetchIntegrationsConfig(): Promise<
     );
 
     return configResponse.integrations.map((integration) =>
-      normalizeIntegration(
-        integration,
-        statusMap.get(integration.id) ?? false,
-      ),
+      normalizeIntegration(integration, statusMap.get(integration.id) ?? false),
     );
   } catch (error) {
     console.error("Error fetching integrations config:", error);
@@ -112,9 +109,7 @@ export async function initiateIntegrationLogin(
   loginEndpoint: string,
 ): Promise<string> {
   try {
-    const response = await apiService.get<{ url: string }>(
-      `/${loginEndpoint}`,
-    );
+    const response = await apiService.get<{ url: string }>(`/${loginEndpoint}`);
     return response.url;
   } catch (error) {
     console.error("Error initiating integration login:", error);

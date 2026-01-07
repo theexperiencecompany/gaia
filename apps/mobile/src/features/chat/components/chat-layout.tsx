@@ -7,8 +7,8 @@ import DrawerLayout, {
 } from "react-native-gesture-handler/ReanimatedDrawerLayout";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChatHeader, SIDEBAR_WIDTH, SidebarContent } from "@/features/chat";
-import { useChatContext } from "@/features/chat/hooks/use-chat-context";
 import { useSidebar } from "@/features/chat/hooks/sidebar-context";
+import { useChatContext } from "@/features/chat/hooks/use-chat-context";
 
 interface ChatLayoutProps {
   children: ReactNode;
@@ -23,7 +23,7 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
     (chatId: string) => {
       setActiveChatId(chatId);
     },
-    [setActiveChatId]
+    [setActiveChatId],
   );
 
   const handleNewChat = useCallback(() => {
@@ -39,7 +39,7 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
         onNewChat={handleNewChat}
       />
     ),
-    [handleSelectChat, handleNewChat]
+    [handleSelectChat, handleNewChat],
   );
 
   return (

@@ -24,7 +24,7 @@ export function useConversations(): UseConversationsReturn {
 }
 
 export function groupConversationsByDate(
-  conversations: Conversation[]
+  conversations: Conversation[],
 ): GroupedConversations {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
