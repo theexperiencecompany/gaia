@@ -57,7 +57,13 @@ export function TriggerSelectToggle({
             onSelectionChange(selected);
           }}
           isLoading={isLoading}
-          renderValue={renderValue}
+          renderValue={
+            renderValue as
+              | ((
+                  items: { key?: React.Key; textValue?: string }[],
+                ) => React.ReactNode)
+              | undefined
+          }
           className="w-full max-w-xl"
           description={
             <div className="flex justify-between items-center">
