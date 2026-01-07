@@ -1,18 +1,20 @@
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
-import { Avatar, Popover, type PopoverTriggerRef } from "heroui-native";
+import { Avatar } from "heroui-native";
 import { useCallback, useRef } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import { ArrowDown01Icon, HugeiconsIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth";
-import { SettingsSheetContent } from "./settings-sheet";
+import { SettingsBottomSheet } from "./settings-bottom-sheet";
 
 export function SidebarFooter() {
   const { user, isLoading, signOut } = useAuth();
-  const popoverRef = useRef<PopoverTriggerRef>(null);
+  const bottomSheetRef = useRef<BottomSheetModal>(null);
   const router = useRouter();
 
   const handleSignOut = useCallback(async () => {
+    bottomSheetRef.current?.dismiss();
     await signOut();
     router.replace("/login");
   }, [signOut, router]);
@@ -27,10 +29,9 @@ export function SidebarFooter() {
   };
 
   const handleOpenSettings = () => {
-    popoverRef.current?.open();
+    bottomSheetRef.current?.present();
   };
 
-  // Get the profile picture URL
   const profilePicture = user?.picture;
 
   if (isLoading) {
@@ -44,42 +45,36 @@ export function SidebarFooter() {
   }
 
   return (
-    <View className="border-t border-border py-3">
-      <Popover>
-        <Popover.Trigger ref={popoverRef} asChild={false}>
-          <Pressable
-            className="flex-row items-center px-4 py-2 gap-3"
-            onPress={handleOpenSettings}
-          >
-            <Avatar alt={user?.name || "User"} size="sm" color="accent">
-              {profilePicture ? (
-                <Avatar.Image source={{ uri: profilePicture }} />
-              ) : (
-                <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
-              )}
-            </Avatar>
-            <View className="flex-1">
-              <Text className="text-sm font-semibold" numberOfLines={1}>
-                {user?.name || "User"}
-              </Text>
-              <Text className="text-[9px] text-muted uppercase font-bold tracking-[0.15em]">
-                GAIA Free
-              </Text>
-            </View>
-            <HugeiconsIcon icon={ArrowDown01Icon} size={16} color="#8e8e93" />
-          </Pressable>
-        </Popover.Trigger>
-        <Popover.Portal>
-          <Popover.Overlay />
-          <Popover.Content
-            presentation="bottom-sheet"
-            snapPoints={["50%"]}
-            index={0}
-          >
-            <SettingsSheetContent user={user} onSignOut={handleSignOut} />
-          </Popover.Content>
-        </Popover.Portal>
-      </Popover>
-    </View>
+    <>
+      <View className="border-t border-border py-3">
+        <Pressable
+          className="flex-row items-center px-4 py-2 gap-3"
+          onPress={handleOpenSettings}
+        >
+          <Avatar alt={user?.name || "User"} size="sm" color="accent">
+            {profilePicture ? (
+              <Avatar.Image source={{ uri: profilePicture }} />
+            ) : (
+              <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
+            )}
+          </Avatar>
+          <View className="flex-1">
+            <Text className="text-sm font-semibold" numberOfLines={1}>
+              {user?.name || "User"}
+            </Text>
+            <Text className="text-[9px] text-muted uppercase font-bold tracking-[0.15em]">
+              GAIA Free
+            </Text>
+          </View>
+          <HugeiconsIcon icon={ArrowDown01Icon} size={16} color="#8e8e93" />
+        </Pressable>
+      </View>
+
+      <SettingsBottomSheet
+        ref={bottomSheetRef}
+        user={user}
+        onSignOut={handleSignOut}
+      />
+    </>
   );
 }

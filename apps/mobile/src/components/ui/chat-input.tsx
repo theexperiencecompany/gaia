@@ -1,13 +1,8 @@
 import { Button } from "heroui-native";
 import { useRef, useState } from "react";
 import { Keyboard, TextInput, View } from "react-native";
-import {
-  ArrowUp02Icon,
-  HugeiconsIcon,
-  PlusSignIcon,
-  UserIcon,
-} from "@/components/icons";
-import { ConnectDrawer } from "@/features/integrations";
+import { ArrowUp02Icon, HugeiconsIcon, PlusSignIcon } from "@/components/icons";
+import { ConnectDrawerTrigger } from "@/features/integrations";
 import { cn } from "@/lib/utils";
 
 interface ChatInputProps {
@@ -67,17 +62,7 @@ export function ChatInput({
               <HugeiconsIcon icon={PlusSignIcon} size={18} color="#8e8e93" />
             </Button>
 
-            <ConnectDrawer onOpen={dismissKeyboard} />
-
-            <Button
-              variant="tertiary"
-              isIconOnly
-              size="sm"
-              className="rounded-full"
-              onPress={dismissKeyboard}
-            >
-              <HugeiconsIcon icon={UserIcon} size={18} color="#8e8e93" />
-            </Button>
+            <ConnectDrawerTrigger onOpen={dismissKeyboard} />
           </View>
 
           <View className="flex-row items-center gap-2">

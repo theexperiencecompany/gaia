@@ -16,6 +16,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { HeroUINativeProvider } from "heroui-native";
 import { useEffect } from "react";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import { Uniwind } from "uniwind";
@@ -53,18 +54,20 @@ export default function RootLayout() {
         <ChatProvider>
           <GestureHandlerRootView style={{ flex: 1 }} className="bg:dark">
             <HeroUINativeProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(app)" options={{ headerShown: false }} />
-                <Stack.Screen
-                  name="login/index"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="signup/index"
-                  options={{ headerShown: false }}
-                />
-              </Stack>
-              <StatusBar style="auto" />
+              <BottomSheetModalProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(app)" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    name="login/index"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="signup/index"
+                    options={{ headerShown: false }}
+                  />
+                </Stack>
+                <StatusBar style="auto" />
+              </BottomSheetModalProvider>
             </HeroUINativeProvider>
           </GestureHandlerRootView>
         </ChatProvider>
