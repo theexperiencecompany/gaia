@@ -16,6 +16,7 @@ import {
 } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   TextInput,
@@ -28,7 +29,11 @@ import {
   Wrench01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { fetchIntegrationsConfig } from "../api";
+import {
+  connectIntegration,
+  disconnectIntegration,
+  fetchIntegrationsConfig,
+} from "../api";
 import type { IntegrationWithStatus } from "../types";
 
 const FILTER_OPTIONS = [
@@ -58,6 +63,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
     );
     const [isLoading, setIsLoading] = useState(false);
     const [hasLoaded, setHasLoaded] = useState(false);
+    const [connectingId, setConnectingId] = useState<string | null>(null);
 
     const snapPoints = useMemo(() => ["70%"], []);
 
@@ -87,6 +93,15 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
       }
     };
 
+    const refreshIntegrations = async () => {
+      try {
+        const data = await fetchIntegrationsConfig();
+        setIntegrations(data);
+      } catch (error) {
+        console.error("Failed to refresh integrations:", error);
+      }
+    };
+
     const filteredIntegrations = integrations.filter((integration) => {
       const matchesSearch = integration.name
         .toLowerCase()
@@ -103,14 +118,29 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
       return matchesSearch && matchesFilter;
     });
 
-    const handleConnect = (id: string) => {
-      setIntegrations((prev) =>
-        prev.map((integration) =>
-          integration.id === id
-            ? { ...integration, connected: !integration.connected }
-            : integration
-        )
-      );
+    const handleConnect = async (integration: IntegrationWithStatus) => {
+      if (connectingId) return;
+
+      if (integration.connected) {
+        setConnectingId(integration.id);
+        const success = await disconnectIntegration(integration.id);
+        if (success) {
+          await refreshIntegrations();
+        } else {
+          Alert.alert("Error", "Failed to disconnect integration");
+        }
+        setConnectingId(null);
+      } else {
+        setConnectingId(integration.id);
+        const result = await connectIntegration(integration.id);
+
+        if (result.success) {
+          await refreshIntegrations();
+        } else if (!result.cancelled) {
+          Alert.alert("Error", result.error || "Failed to connect integration");
+        }
+        setConnectingId(null);
+      }
     };
 
     const renderBackdrop = useCallback(
@@ -126,49 +156,59 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
     );
 
     const renderItem = useCallback(
-      ({ item: integration }: { item: IntegrationWithStatus }) => (
-        <Pressable
-          onPress={() => handleConnect(integration.id)}
-          className="flex-row items-center px-4 py-3 active:opacity-60"
-        >
-          <View className="w-9 h-9 rounded-lg items-center justify-center mr-3">
-            <Image
-              source={{ uri: integration.logo }}
-              style={{ width: 28, height: 28 }}
-              contentFit="contain"
-            />
-          </View>
+      ({ item: integration }: { item: IntegrationWithStatus }) => {
+        const isConnecting = connectingId === integration.id;
 
-          <View className="flex-1 mr-3">
-            <Text className="font-medium text-sm">{integration.name}</Text>
-            <Text className="text-muted text-xs" numberOfLines={1}>
-              {integration.description}
-            </Text>
-          </View>
-
-          <Button
-            size="sm"
-            variant="tertiary"
-            onPress={() => handleConnect(integration.id)}
-            className={
-              integration.connected
-                ? "bg-success/15 px-3 min-w-22.5"
-                : "bg-muted/10 px-3 min-w-22.5"
-            }
+        return (
+          <Pressable
+            onPress={() => handleConnect(integration)}
+            className="flex-row items-center px-4 py-3 active:opacity-60"
+            disabled={isConnecting}
           >
-            <Button.Label
+            <View className="w-9 h-9 rounded-lg items-center justify-center mr-3">
+              <Image
+                source={{ uri: integration.logo }}
+                style={{ width: 28, height: 28 }}
+                contentFit="contain"
+              />
+            </View>
+
+            <View className="flex-1 mr-3">
+              <Text className="font-medium text-sm">{integration.name}</Text>
+              <Text className="text-muted text-xs" numberOfLines={1}>
+                {integration.description}
+              </Text>
+            </View>
+
+            <Button
+              size="sm"
+              variant="tertiary"
+              onPress={() => handleConnect(integration)}
+              isDisabled={isConnecting}
               className={
                 integration.connected
-                  ? "text-success text-xs"
-                  : "text-muted text-xs"
+                  ? "bg-success/15 px-3 min-w-22.5"
+                  : "bg-muted/10 px-3 min-w-22.5"
               }
             >
-              {integration.connected ? "Connected" : "Connect"}
-            </Button.Label>
-          </Button>
-        </Pressable>
-      ),
-      []
+              {isConnecting ? (
+                <ActivityIndicator size="small" color="#8e8e93" />
+              ) : (
+                <Button.Label
+                  className={
+                    integration.connected
+                      ? "text-success text-xs"
+                      : "text-muted text-xs"
+                  }
+                >
+                  {integration.connected ? "Connected" : "Connect"}
+                </Button.Label>
+              )}
+            </Button>
+          </Pressable>
+        );
+      },
+      [connectingId]
     );
 
     const ListHeader = useCallback(

@@ -1,10 +1,14 @@
 import { apiService } from "@/lib/api";
+import { API_ORIGIN } from "@/lib/constants";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import type {
-  Integration,
   IntegrationsConfigResponse,
   IntegrationsStatusResponse,
   IntegrationWithStatus,
 } from "../types";
+
+WebBrowser.maybeCompleteAuthSession();
 
 const INTEGRATION_LOGOS: Record<string, string> = {
   google_calendar:
@@ -59,7 +63,7 @@ function getIntegrationLogo(id: string): string {
 }
 
 function normalizeIntegration(
-  integration: Integration,
+  integration: IntegrationsConfigResponse["integrations"][0],
   connected: boolean = false,
 ): IntegrationWithStatus {
   return {
@@ -105,20 +109,54 @@ export async function fetchIntegrationsStatus(): Promise<
   }
 }
 
-export async function initiateIntegrationLogin(
-  loginEndpoint: string,
-): Promise<string> {
+export interface ConnectIntegrationResult {
+  success: boolean;
+  cancelled?: boolean;
+  error?: string;
+}
+
+export async function connectIntegration(
+  integrationId: string,
+): Promise<ConnectIntegrationResult> {
   try {
-    const response = await apiService.get<{ url: string }>(`/${loginEndpoint}`);
-    return response.url;
+    const redirectUri = Linking.createURL("integrations/callback");
+    const authUrl = `${API_ORIGIN}/api/v1/integrations/login/${integrationId}?redirect_path=${encodeURIComponent(redirectUri)}`;
+
+    console.log("Opening integration auth URL:", authUrl);
+
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+
+    if (result.type === "success") {
+      return { success: true };
+    } else if (result.type === "cancel") {
+      return { success: false, cancelled: true };
+    } else {
+      return { success: false, error: "Authentication failed" };
+    }
   } catch (error) {
-    console.error("Error initiating integration login:", error);
-    throw new Error("Failed to initiate integration login");
+    console.error("Error connecting integration:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Connection failed",
+    };
+  }
+}
+
+export async function disconnectIntegration(
+  integrationId: string,
+): Promise<boolean> {
+  try {
+    await apiService.post(`/integrations/${integrationId}/disconnect`, {});
+    return true;
+  } catch (error) {
+    console.error("Error disconnecting integration:", error);
+    return false;
   }
 }
 
 export const integrationsApi = {
   fetchIntegrationsConfig,
   fetchIntegrationsStatus,
-  initiateIntegrationLogin,
+  connectIntegration,
+  disconnectIntegration,
 };
