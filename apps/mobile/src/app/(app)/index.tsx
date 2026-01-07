@@ -131,36 +131,36 @@ function ChatContent({
   const showEmptyState = messages.length === 0 && !isTyping && !activeChatId;
 
   return (
-    <View style={{ flex: 1, overflow: "hidden" }}>
-      <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
-        {showEmptyState ? (
+    <View style={{ flex: 1 }}>
+      {showEmptyState ? (
+        <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
           <EmptyState />
-        ) : (
-          <FlashList
-            ref={flatListRef}
-            data={messages}
-            renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
-            extraData={[
-              messages[messages.length - 1]?.text,
-              isTyping,
-              displayMessage,
-            ]}
-            contentContainerStyle={{
-              paddingTop: 90,
-              paddingBottom: 90,
-            }}
-            showsVerticalScrollIndicator={true}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            onLoad={() => {
-              if (messages.length > 0) {
-                flatListRef.current?.scrollToEnd({ animated: false });
-              }
-            }}
-          />
-        )}
-      </Pressable>
+        </Pressable>
+      ) : (
+        <FlashList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => item.id}
+          extraData={[
+            messages[messages.length - 1]?.text,
+            isTyping,
+            displayMessage,
+          ]}
+          contentContainerStyle={{
+            paddingTop: 16,
+            paddingBottom: 90,
+          }}
+          showsVerticalScrollIndicator={true}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onLoad={() => {
+            if (messages.length > 0) {
+              flatListRef.current?.scrollToEnd({ animated: false });
+            }
+          }}
+        />
+      )}
 
       <Animated.View
         className="absolute left-0 right-0 px-2 pb-5 bg-surface rounded-t-4xl"
@@ -198,13 +198,13 @@ export default function ChatScreen() {
   }));
 
   return (
-    <ChatLayout>
-      <Animated.View className="flex-1" style={animatedScreenStyle}>
-        {!activeChatId && (
+    <ChatLayout
+      background={
+        !activeChatId ? (
           <>
             <Image
               source={require("@/assets/background/chat.jpg")}
-              className="absolute w-full h-full opacity-65"
+              style={{ width: "100%", height: "100%", opacity: 0.65 }}
               resizeMode="cover"
             />
             <LinearGradient
@@ -215,10 +215,13 @@ export default function ChatScreen() {
                 "rgba(0,0,0,0.75)",
               ]}
               locations={[0, 0.2, 0.45, 1]}
-              className="absolute w-full h-full"
+              style={{ position: "absolute", width: "100%", height: "100%" }}
             />
           </>
-        )}
+        ) : undefined
+      }
+    >
+      <Animated.View className="flex-1" style={animatedScreenStyle}>
         <ChatContent activeChatId={activeChatId} />
       </Animated.View>
     </ChatLayout>

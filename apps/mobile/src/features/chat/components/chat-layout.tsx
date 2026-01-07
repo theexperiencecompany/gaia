@@ -12,9 +12,10 @@ import { useSidebar } from "@/features/chat/hooks/sidebar-context";
 
 interface ChatLayoutProps {
   children: ReactNode;
+  background?: ReactNode;
 }
 
-export function ChatLayout({ children }: ChatLayoutProps) {
+export function ChatLayout({ children, background }: ChatLayoutProps) {
   const { setActiveChatId, clearActiveMessages } = useChatContext();
   const { drawerRef, toggleSidebar, closeSidebar } = useSidebar();
 
@@ -54,17 +55,27 @@ export function ChatLayout({ children }: ChatLayoutProps) {
           if (newState !== DrawerState.IDLE) Keyboard.dismiss();
         }}
       >
-        <View className="flex-1">
-          {children}
-          <SafeAreaView
-            style={{ position: "absolute", top: 0, left: 0, right: 0 }}
-            edges={["top"]}
-          >
+        <View style={{ flex: 1 }}>
+          {background && (
+            <View
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+              }}
+            >
+              {background}
+            </View>
+          )}
+          <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
             <ChatHeader
               onMenuPress={toggleSidebar}
               onNewChatPress={handleNewChat}
               onSearchPress={() => console.log("Search pressed")}
             />
+            <View style={{ flex: 1 }}>{children}</View>
           </SafeAreaView>
         </View>
       </DrawerLayout>
