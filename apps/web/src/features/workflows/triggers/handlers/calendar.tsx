@@ -159,7 +159,7 @@ function CalendarSettings({
             value={String(config.minutes_before_start || 10)}
             onChange={(e) => {
               const val = parseInt(e.target.value, 10);
-              if (!isNaN(val) && val >= 1 && val <= 1440) {
+              if (!Number.isNaN(val) && val >= 1 && val <= 1440) {
                 handleMinutesChange(val);
               }
             }}

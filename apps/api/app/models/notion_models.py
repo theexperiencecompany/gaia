@@ -52,3 +52,19 @@ class CreateTestPageInput(BaseModel):
 
     title: str = Field(..., description="Title of the page")
     parent_page_id: Optional[str] = Field(None, description="Parent page ID (optional)")
+
+
+class FetchDataInput(BaseModel):
+    """Input for fetching databases or pages from Notion."""
+
+    fetch_type: Literal["databases", "pages"] = Field(
+        ..., description="Type of data to fetch: 'databases' or 'pages'."
+    )
+    page_size: int = Field(
+        default=100,
+        description="Maximum number of results to return (default: 100).",
+    )
+    query: Optional[str] = Field(
+        default=None,
+        description="Optional search query to filter results by title or content.",
+    )

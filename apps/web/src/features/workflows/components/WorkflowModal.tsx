@@ -23,7 +23,6 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { toast } from "sonner";
 import CustomSpinner from "@/components/ui/spinner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import {
   AlertCircleIcon,

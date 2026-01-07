@@ -69,3 +69,20 @@ Returns:
     success: True if inserted successfully
     blocks_added: Number of blocks added
 """
+
+FETCH_DATA_DOC = """Fetch databases or pages from Notion workspace.
+
+Use this to discover available databases and pages in the user's Notion workspace.
+This is useful for configuration, selection, or browsing purposes.
+
+Internally uses Notion's /v1/search API endpoint to query resources.
+
+Args:
+    fetch_type: Type of data to fetch - 'databases' or 'pages'
+    page_size: Maximum number of results to return (default: 100)
+    query: Optional search query to filter results by title or content
+
+Returns:
+    success: True if fetched successfully
+    values: Array of simplified objects with {id, title, type} for each result
+"""

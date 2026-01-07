@@ -5,7 +5,7 @@ All provider-specific trigger handlers must extend this class.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from app.models.workflow_models import Workflow
 
@@ -84,3 +84,33 @@ class TriggerHandler(ABC):
             List of workflows to execute
         """
         pass
+
+    async def get_config_options(
+        self,
+        trigger_name: str,
+        field_name: str,
+        user_id: str,
+        integration_id: str,
+        parent_ids: Optional[List[str]] = None,
+        **kwargs: Any,
+    ) -> List[Dict[str, str]]:
+        """Get dynamic options for a trigger configuration field.
+
+        Optional method for handlers to provide dropdown options for
+        configuration fields (e.g., list of channels, boards, repos).
+
+        Supports cascading dropdowns by accepting parent_ids to filter children.
+
+        Args:
+            trigger_name: The trigger slug (e.g., 'slack_new_message')
+            field_name: The config field name (e.g., 'channel_id')
+            user_id: The user ID
+            integration_id: The integration ID (e.g., 'slack')
+            parent_ids: Parent IDs for cascading options (e.g., workspace IDs)
+
+        Returns:
+            List of options as [{"value": "...", "label": "..."}]
+            For grouped options: [{"group": "...", "options": [...]}]
+            Empty list if no dynamic options available
+        """
+        return []

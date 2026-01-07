@@ -4,7 +4,6 @@ import { type ReactNode, Suspense } from "react";
 
 import { ElectronRouteGuard } from "@/components/electron";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
-import SuspenseLoader from "@/components/shared/SuspenseLoader";
 import { Toaster } from "@/components/ui/sonner";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";

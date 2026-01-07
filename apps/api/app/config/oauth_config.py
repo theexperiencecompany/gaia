@@ -43,7 +43,6 @@ from app.models.oauth_models import (
     SubAgentConfig,
     TriggerConfig,
     TriggerConfigFieldSchema,
-    TriggerFieldConfig,
     WorkflowTriggerSchema,
 )
 
@@ -171,6 +170,47 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_coVAA1WRsbdK",  # TODO: Replace with actual auth_config_id
             toolkit="GOOGLEDOCS",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="GOOGLEDOCS_PAGE_ADDED_TRIGGER",
+                name="New Document Created",
+                description="Triggers when a new Google Doc is created in your workspace.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="google_docs_new_document",
+                    composio_slug="GOOGLEDOCS_PAGE_ADDED_TRIGGER",
+                    name="New Google Doc Created",
+                    description="Trigger when a new document is created",
+                    config_schema={},
+                ),
+            ),
+            TriggerConfig(
+                slug="GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER",
+                name="Document Deleted",
+                description="Triggers when a Google Doc is deleted in your workspace.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="google_docs_document_deleted",
+                    composio_slug="GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER",
+                    name="Document Deleted",
+                    description="Trigger when a document is deleted",
+                    config_schema={},
+                ),
+            ),
+            TriggerConfig(
+                slug="GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER",
+                name="Document Updated",
+                description="Triggers when a Google Doc is updated in your workspace.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="google_docs_document_updated",
+                    composio_slug="GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER",
+                    name="Document Updated",
+                    description="Trigger when a document is updated",
+                    config_schema={},
+                ),
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="google_docs_agent",
@@ -243,6 +283,59 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_DR3IWp9-Kezl",
             toolkit="NOTION",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="NOTION_PAGE_ADDED_TO_DATABASE",
+                name="New Page in Database",
+                description="Triggers when a new page is added to a Notion database.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="notion_new_page_in_db",
+                    composio_slug="NOTION_PAGE_ADDED_TO_DATABASE",
+                    name="New Page in Database",
+                    description="Trigger when a page is added to a specific database",
+                    config_schema={
+                        "database_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="The ID of the Notion database to monitor",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="NOTION_PAGE_UPDATED_TRIGGER",
+                name="Page Updated",
+                description="Triggers when any block within a specified Notion page is updated.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="notion_page_updated",
+                    composio_slug="NOTION_PAGE_UPDATED_TRIGGER",
+                    name="Page Updated",
+                    description="Trigger when a specific page is updated",
+                    config_schema={
+                        "page_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="The ID of the Notion page to monitor",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="NOTION_ALL_PAGE_EVENTS_TRIGGER",
+                name="All Page Events",
+                description="Triggers when any Notion page is created or updated across the workspace.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="notion_all_page_events",
+                    composio_slug="NOTION_ALL_PAGE_EVENTS_TRIGGER",
+                    name="Any Page Event",
+                    description="Trigger on any page creation or update",
+                    config_schema={},
+                ),
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="notion_agent",
@@ -303,22 +396,43 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 name="New Rows in Sheet",
                 description="Triggered when new rows are added to a specific Google Sheet.",
                 auto_activate=False,
-                config={"interval": 1, "start_row": 2},
-                config_fields=[
-                    TriggerFieldConfig(
-                        name="spreadsheet_id",
-                        type="string",
-                        description="The ID of the Google Spreadsheet to monitor",
-                        required=True,
-                    ),
-                    TriggerFieldConfig(
-                        name="sheet_name",
-                        type="string",
-                        description="The name of the specific sheet/tab to monitor",
-                        required=False,
-                        default="Sheet1",
-                    ),
-                ],
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="google_sheets_new_row",
+                    composio_slug="GOOGLESHEETS_NEW_ROWS_TRIGGER",
+                    name="New Row Added",
+                    description="Trigger when a new row is added",
+                    config_schema={
+                        "spreadsheet_ids": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Comma-separated spreadsheet IDs to monitor (empty for all)",
+                        ),
+                        "sheet_names": TriggerConfigFieldSchema(
+                            type="string",
+                            description="Comma-separated sheet names (empty for all sheets)",
+                            default="",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER",
+                name="New Sheet Added",
+                description="Triggered when a new sheet/tab is created in a Google Spreadsheet.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="google_sheets_new_sheet",
+                    composio_slug="GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER",
+                    name="New Spreadsheet Tab",
+                    description="Trigger when a new sheet is added",
+                    config_schema={
+                        "spreadsheet_ids": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Comma-separated spreadsheet IDs to monitor",
+                        ),
+                    },
+                ),
             ),
         ],
         subagent_config=SubAgentConfig(
@@ -378,60 +492,96 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 name="Commit Event",
                 description="Triggered when a new commit is pushed to a repository.",
                 auto_activate=False,
-                config_fields=[
-                    TriggerFieldConfig(
-                        name="owner",
-                        type="string",
-                        description="Owner of the repository (username or org)",
-                        required=True,
-                    ),
-                    TriggerFieldConfig(
-                        name="repo",
-                        type="string",
-                        description="Repository name",
-                        required=True,
-                    ),
-                ],
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="github_commit_event",
+                    composio_slug="GITHUB_COMMIT_EVENT",
+                    name="New Commit",
+                    description="Trigger on new commits to a repository",
+                    config_schema={
+                        "owner": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Owner of the repository (username or org)",
+                        ),
+                        "repo": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Repository name",
+                        ),
+                    },
+                ),
             ),
             TriggerConfig(
                 slug="GITHUB_PULL_REQUEST_EVENT",
                 name="Pull Request Event",
                 description="Triggered when a pull request is opened, closed, or synchronized.",
                 auto_activate=False,
-                config_fields=[
-                    TriggerFieldConfig(
-                        name="owner",
-                        type="string",
-                        description="Owner of the repository (username or org)",
-                        required=True,
-                    ),
-                    TriggerFieldConfig(
-                        name="repo",
-                        type="string",
-                        description="Repository name",
-                        required=True,
-                    ),
-                ],
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="github_pr_event",
+                    composio_slug="GITHUB_PULL_REQUEST_EVENT",
+                    name="Pull Request Updates",
+                    description="Trigger on PR open, close, or sync",
+                    config_schema={
+                        "owner": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Owner of the repository (username or org)",
+                        ),
+                        "repo": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Repository name",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="GITHUB_STAR_ADDED_EVENT",
+                name="Star Added",
+                description="Triggered when a new star is added to the repository.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="github_star_added",
+                    composio_slug="GITHUB_STAR_ADDED_EVENT",
+                    name="New Repository Star",
+                    description="Trigger when someone stars the repository",
+                    config_schema={
+                        "owner": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Owner of the repository (username or org)",
+                        ),
+                        "repo": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Repository name",
+                        ),
+                    },
+                ),
             ),
             TriggerConfig(
                 slug="GITHUB_ISSUE_ADDED_EVENT",
                 name="Issue Added",
                 description="Triggered when a new issue is added to the repository.",
                 auto_activate=False,
-                config_fields=[
-                    TriggerFieldConfig(
-                        name="owner",
-                        type="string",
-                        description="Owner of the repository (username or org)",
-                        required=True,
-                    ),
-                    TriggerFieldConfig(
-                        name="repo",
-                        type="string",
-                        description="Repository name",
-                        required=True,
-                    ),
-                ],
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="github_issue_added",
+                    composio_slug="GITHUB_ISSUE_ADDED_EVENT",
+                    name="New Issue Created",
+                    description="Trigger when a new issue is created",
+                    config_schema={
+                        "owner": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Owner of the repository (username or org)",
+                        ),
+                        "repo": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Repository name",
+                        ),
+                    },
+                ),
             ),
         ],
         subagent_config=SubAgentConfig(
@@ -520,28 +670,57 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 name="Issue Created",
                 description="Triggered when a new issue is created in Linear.",
                 auto_activate=False,
-                config_fields=[
-                    TriggerFieldConfig(
-                        name="team_id",
-                        type="string",
-                        description="ID of the team to filter issues by",
-                        required=True,
-                    )
-                ],
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="linear_issue_created",
+                    composio_slug="LINEAR_ISSUE_CREATED_TRIGGER",
+                    name="New Linear Issue",
+                    description="Trigger when a new issue is created",
+                    config_schema={
+                        "team_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="ID of the team to filter issues by",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="LINEAR_ISSUE_UPDATED_TRIGGER",
+                name="Issue Updated",
+                description="Triggered when an issue is updated in Linear.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="linear_issue_updated",
+                    composio_slug="LINEAR_ISSUE_UPDATED_TRIGGER",
+                    name="Updated Linear Issue",
+                    description="Trigger when an issue is updated",
+                    config_schema={
+                        "team_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="ID of the team to filter issues by",
+                        ),
+                    },
+                ),
             ),
             TriggerConfig(
                 slug="LINEAR_COMMENT_EVENT_TRIGGER",
                 name="Comment Received",
                 description="Triggered when a new comment is posted on an issue.",
                 auto_activate=False,
-                config_fields=[
-                    TriggerFieldConfig(
-                        name="team_id",
-                        type="string",
-                        description="ID of the team to filter comments by",
-                        required=True,
-                    )
-                ],
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="linear_comment_added",
+                    composio_slug="LINEAR_COMMENT_EVENT_TRIGGER",
+                    name="New Comment",
+                    description="Trigger when a comment is added",
+                    config_schema={
+                        "team_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="ID of the team to filter comments by",
+                        ),
+                    },
+                ),
             ),
         ],
         subagent_config=SubAgentConfig(
@@ -573,15 +752,60 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         associated_triggers=[
             TriggerConfig(
                 slug="SLACK_RECEIVE_MESSAGE",
-                name="New Message Received",
-                description="Triggered when a new message is posted to a Slack channel.",
-                auto_activate=True,
+                name="New Message",
+                description="Triggered when messages are posted in Slack",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="slack_new_message",
+                    composio_slug="SLACK_RECEIVE_MESSAGE",
+                    name="New Slack Message",
+                    description="Trigger on new Slack messages with optional filtering",
+                    config_schema={
+                        "channel_ids": TriggerConfigFieldSchema(
+                            type="string",
+                            description="Channel IDs to monitor (leave empty for all channels)",
+                            default="",
+                        ),
+                        "exclude_bot_messages": TriggerConfigFieldSchema(
+                            type="boolean",
+                            description="Exclude messages from bots",
+                            default=False,
+                        ),
+                        "exclude_direct_messages": TriggerConfigFieldSchema(
+                            type="boolean",
+                            description="Exclude 1:1 direct messages",
+                            default=False,
+                        ),
+                        "exclude_group_messages": TriggerConfigFieldSchema(
+                            type="boolean",
+                            description="Exclude private group messages",
+                            default=False,
+                        ),
+                        "exclude_mpim_messages": TriggerConfigFieldSchema(
+                            type="boolean",
+                            description="Exclude multi-person direct messages",
+                            default=False,
+                        ),
+                        "exclude_thread_replies": TriggerConfigFieldSchema(
+                            type="boolean",
+                            description="Exclude replies in threads",
+                            default=False,
+                        ),
+                    },
+                ),
             ),
             TriggerConfig(
-                slug="SLACK_RECEIVE_DIRECT_MESSAGE",
-                name="New DM Received",
-                description="Triggered when a new direct message is sent to a user in Slack.",
-                auto_activate=True,
+                slug="SLACK_CHANNEL_CREATED",
+                name="Channel Created",
+                description="Triggered when a new channel is created",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="slack_channel_created",
+                    composio_slug="SLACK_CHANNEL_CREATED",
+                    name="New Slack Channel",
+                    description="Trigger when a channel is created",
+                    config_schema={},
+                ),
             ),
         ],
         subagent_config=SubAgentConfig(
@@ -665,7 +889,14 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 slug="TODOIST_NEW_TASK_CREATED",
                 name="New Task Created",
                 description="Trigger when a new task is added to Todoist.",
-                auto_activate=True,  # Seems to be workspace/user wide based on description, checking schema would be safer but assuming True based on simple description
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="todoist_new_task_created",
+                    composio_slug="TODOIST_NEW_TASK_CREATED",
+                    name="New Task Created",
+                    description="Trigger when a new task is added to Todoist.",
+                    config_schema={},
+                ),
             ),
         ],
         subagent_config=SubAgentConfig(
@@ -797,20 +1028,24 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 name="Task Trigger",
                 description="Triggered when a task involves the user.",
                 auto_activate=False,
-                config_fields=[
-                    TriggerFieldConfig(
-                        name="workspace_gid",
-                        type="string",
-                        description="Global ID of your workspace",
-                        required=True,
-                    ),
-                    TriggerFieldConfig(
-                        name="project_gid",
-                        type="string",
-                        description="Global ID of your project",
-                        required=True,
-                    ),
-                ],
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="asana_task_trigger",
+                    composio_slug="ASANA_TASK_TRIGGER",
+                    name="Task Trigger",
+                    description="Triggered when a task involves the user.",
+                    config_schema={
+                        "project_id": TriggerConfigFieldSchema(
+                            type="string",
+                            description="ID of the project to trigger on.",
+                            default="",
+                        ),
+                        "workspace_id": TriggerConfigFieldSchema(
+                            type="string",
+                            description="ID of the workspace to trigger on.",
+                            default="",
+                        ),
+                    },
+                ),
             ),
         ],
         subagent_config=SubAgentConfig(
@@ -838,22 +1073,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auth_config_id="ac_nMjBqOcjLTGW",
             toolkit="TRELLO",
         ),
-        associated_triggers=[
-            TriggerConfig(
-                slug="TRELLO_NEW_CARD_TRIGGER",
-                name="New Card Trigger",
-                description="Triggered when a card is created in the specified board",
-                auto_activate=False,
-                config_fields=[
-                    TriggerFieldConfig(
-                        name="board_id",
-                        type="string",
-                        description="ID of the board to monitor",
-                        required=True,
-                    ),
-                ],
-            ),
-        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="trello_agent",

@@ -20,7 +20,7 @@ export const useTriggerSchemas = (
       const response = await workflowApi.getTriggerSchemas();
       return response;
     },
-    staleTime: Infinity, // Aggressive caching since schemas rarely change
+    staleTime: 0, // Aggressive caching since schemas rarely change
     gcTime: 0, // 24 hours
     refetchOnWindowFocus: false,
     ...options,

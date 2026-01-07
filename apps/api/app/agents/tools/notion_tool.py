@@ -15,11 +15,13 @@ from app.config.loggers import chat_logger as logger
 from app.decorators import with_doc
 from app.models.notion_models import (
     CreateTestPageInput,
+    FetchDataInput,
     FetchPageAsMarkdownInput,
     InsertMarkdownInput,
     MovePageInput,
 )
 from app.templates.docstrings.notion_tool_docs import (
+    FETCH_DATA_DOC,
     FETCH_PAGE_AS_MARKDOWN_DOC,
     INSERT_MARKDOWN_DOC,
     MOVE_PAGE_DOC,
@@ -187,6 +189,88 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         }
 
     @composio.tools.custom_tool(toolkit="NOTION")
+    @with_doc(FETCH_DATA_DOC)
+    def FETCH_DATA(
+        request: FetchDataInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Fetch databases or pages from Notion workspace."""
+        headers = {
+            "Authorization": f"Bearer {auth_credentials.get('access_token')}",
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json",
+        }
+
+        # Build search filter based on fetch_type
+        search_filter = {"property": "object", "value": request.fetch_type.rstrip("s")}
+
+        # Build search body
+        search_body: Dict[str, Any] = {
+            "filter": search_filter,
+            "page_size": min(request.page_size, 100),  # Notion max is 100
+        }
+
+        # Add query if provided
+        if request.query:
+            search_body["query"] = request.query
+
+        try:
+            # Call Notion search API
+            resp = httpx.post(
+                "https://api.notion.com/v1/search",
+                headers=headers,
+                json=search_body,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            search_results = resp.json()
+
+            # Extract and simplify results
+            results = search_results.get("results", [])
+            values = []
+
+            for item in results:
+                item_id = item.get("id")
+                object_type = item.get("object")
+
+                # Extract title based on object type
+                title = "Untitled"
+                if object_type == "database":
+                    # Database title is in title array
+                    title_array = item.get("title", [])
+                    if title_array and len(title_array) > 0:
+                        title = title_array[0].get("plain_text", "Untitled")
+                elif object_type == "page":
+                    # Page title is in properties
+                    properties = item.get("properties", {})
+                    # Find title property (it varies, usually "title" or "Name")
+                    for prop_name, prop_value in properties.items():
+                        if prop_value.get("type") == "title":
+                            title_data = prop_value.get("title", [])
+                            if title_data and len(title_data) > 0:
+                                title = title_data[0].get("plain_text", "Untitled")
+                            break
+
+                if item_id:
+                    values.append({"id": item_id, "title": title, "type": object_type})
+
+            return {
+                "values": values,
+                "count": len(values),
+                "has_more": search_results.get("has_more", False),
+            }
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Notion API error: {e.response.text}")
+            raise RuntimeError(
+                f"Failed to fetch {request.fetch_type}: {e.response.text}"
+            )
+        except Exception as e:
+            logger.error(f"Error fetching Notion {request.fetch_type}: {e}")
+            raise RuntimeError(f"Failed to fetch {request.fetch_type}: {str(e)}")
+
+    @composio.tools.custom_tool(toolkit="NOTION")
     @with_doc("Create a simple test page for integration testing.")
     def CUSTOM_CREATE_TEST_PAGE(
         request: CreateTestPageInput,
@@ -252,5 +336,6 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         "NOTION_MOVE_PAGE",
         "NOTION_FETCH_PAGE_AS_MARKDOWN",
         "NOTION_INSERT_MARKDOWN",
+        "NOTION_FETCH_DATA",
         "NOTION_CUSTOM_CREATE_TEST_PAGE",
     ]

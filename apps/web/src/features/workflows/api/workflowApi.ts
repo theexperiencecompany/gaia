@@ -241,4 +241,35 @@ export const workflowApi = {
       errorMessage: "Failed to fetch trigger schemas",
     });
   },
+
+  // Get dynamic options for trigger configuration field
+  getTriggerOptions: async (
+    integrationId: string,
+    triggerSlug: string,
+    fieldName: string,
+    queryParams?: Record<string, string | number | boolean>,
+  ): Promise<{ value: string; label: string }[]> => {
+    const params = new URLSearchParams({
+      integration_id: integrationId,
+      trigger_slug: triggerSlug,
+      field_name: fieldName,
+    });
+
+    if (queryParams) {
+      Object.entries(queryParams).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, String(value));
+        }
+      });
+    }
+
+    const response = await apiService.get<{
+      options: { value: string; label: string }[];
+    }>(`/triggers/options?${params.toString()}`, {
+      errorMessage: "Failed to fetch trigger options",
+      silent: true, // Fail silently if options not available
+    });
+
+    return response.options || [];
+  },
 };

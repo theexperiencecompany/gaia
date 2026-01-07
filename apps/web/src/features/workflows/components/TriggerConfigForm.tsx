@@ -1,9 +1,9 @@
 "use client";
 
-import { Select, SelectItem } from "@heroui/select";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { TriggerAutocomplete } from "@/features/workflows/components/TriggerAutocomplete";
 import {
   createDefaultTriggerConfig,
   getTriggerHandler,
@@ -26,26 +26,62 @@ export function TriggerConfigForm({
 }: TriggerConfigFormProps) {
   const { data: triggerSchemas, isLoading: schemasLoading } =
     useTriggerSchemas();
+  const { integrations, connectIntegration } = useIntegrations();
 
-  const selectedSchema = triggerSchemas?.find(
-    (s) => s.slug === selectedTrigger,
-  );
+  // Get integration statuses
+  const integrationStatusMap = useMemo(() => {
+    const map = new Map<string, boolean>();
+    integrations.forEach((integration) => {
+      map.set(integration.id, integration.status === "connected");
+    });
+    return map;
+  }, [integrations]);
 
-  // Sync trigger config when selectedTrigger exists but config type doesn't match
-  // This handles the case when switching back to trigger tab with a previous selection
+  const handleTriggerSelect = (trigger: string | null) => {
+    if (!trigger) {
+      onTriggerChange("");
+      // When cleared, we might want to reset config or keep it as is?
+      // Resetting to some default or leaving it.
+      // onTriggerChange usually expects a string based on props.
+      // User typed `selectedTrigger: string`.
+      // If we pass empty string, handler will be null.
+      return;
+    }
+
+    onTriggerChange(trigger);
+
+    // Find schema here if needed for sync (though usually done in effect, but safer here)
+    const schema = triggerSchemas?.find((s) => s.slug === trigger);
+
+    const defaultConfig = createDefaultTriggerConfig(trigger);
+    if (defaultConfig) {
+      // Add integration_id and trigger_slug to config
+      onConfigChange({
+        ...defaultConfig,
+        integration_id: schema?.integration_id,
+        trigger_slug: schema?.slug,
+      });
+    } else {
+      onConfigChange({
+        type: "manual",
+        enabled: true,
+      });
+    }
+  };
+
+  // Sync config when selectedTrigger changes (redundant if handleTriggerSelect does it,
+  // but good for initial load or external changes)
+  // However, handleTriggerSelect handles the user interaction.
+  // This effect handles "if selectedTrigger is passed but config doesn't match".
   useEffect(() => {
     if (!selectedTrigger || schemasLoading) return;
 
-    // Check if the current trigger config type matches the selected trigger
     const handler = getTriggerHandler(selectedTrigger);
     if (!handler) return;
 
-    // Check if current config is a valid trigger type (not schedule/manual)
     const isValidTriggerConfig =
       triggerConfig.type !== "schedule" && triggerConfig.type !== "manual";
 
-    // If we have a selected trigger but the config doesn't match (e.g., was reset to schedule/manual)
-    // recreate the config for the selected trigger
     if (!isValidTriggerConfig) {
       const defaultConfig = createDefaultTriggerConfig(selectedTrigger);
       if (defaultConfig) {
@@ -54,76 +90,26 @@ export function TriggerConfigForm({
     }
   }, [selectedTrigger, triggerConfig.type, schemasLoading, onConfigChange]);
 
-  const handleTriggerSelect = (trigger: string) => {
-    onTriggerChange(trigger);
-
-    // Create default config using handler
-    const defaultConfig = createDefaultTriggerConfig(trigger);
-    if (defaultConfig) {
-      onConfigChange(defaultConfig);
-    } else {
-      // Fallback to manual
-      onConfigChange({
-        type: "manual",
-        enabled: true,
-      });
-    }
+  const handleConnectIntegration = async (integrationId: string) => {
+    await connectIntegration(integrationId);
   };
 
-  if (schemasLoading) {
-    return <div className="animate-pulse h-12 bg-zinc-800 rounded-lg" />;
-  }
-
-  // Get the handler for the current trigger to render its settings component
   const handler = getTriggerHandler(selectedTrigger);
   const SettingsComponent = handler?.SettingsComponent;
 
   return (
     <div className="w-full space-y-4">
-      {/* Trigger selector */}
-      <Select
-        aria-label="Choose a trigger"
-        placeholder="Choose a trigger for your workflow"
-        fullWidth
-        className="w-full max-w-xl"
-        selectedKeys={selectedTrigger ? [selectedTrigger] : []}
-        onSelectionChange={(keys) => {
-          const trigger = Array.from(keys)[0] as string;
-          handleTriggerSelect(trigger);
-        }}
-        startContent={
-          selectedSchema &&
-          getToolCategoryIcon(selectedSchema.integration_id, {
-            width: 20,
-            height: 20,
-            showBackground: false,
-          })
-        }
-      >
-        {(triggerSchemas ?? []).map((schema) => (
-          <SelectItem
-            key={schema.slug}
-            textValue={schema.name}
-            startContent={getToolCategoryIcon(schema.integration_id, {
-              width: 20,
-              height: 20,
-              showBackground: false,
-            })}
-            description={schema.description}
-          >
-            {schema.name}
-          </SelectItem>
-        ))}
-      </Select>
+      {/* Searchable trigger autocomplete */}
+      <TriggerAutocomplete
+        selectedTrigger={selectedTrigger}
+        onTriggerChange={handleTriggerSelect}
+        triggerSchemas={triggerSchemas}
+        isLoading={schemasLoading}
+        integrationStatusMap={integrationStatusMap}
+        onConnectIntegration={handleConnectIntegration}
+      />
 
-      {/* Trigger description */}
-      {selectedSchema && (
-        <p className="px-1 text-xs text-zinc-500">
-          {selectedSchema.description}
-        </p>
-      )}
-
-      {/* Render handler-specific settings if available - GENERIC, no type checks */}
+      {/* Render handler-specific settings */}
       {SettingsComponent && (
         <SettingsComponent
           triggerConfig={triggerConfig}

@@ -24,6 +24,7 @@ class TriggerType(str, Enum):
     SCHEDULE = "schedule"
     EMAIL = "email"
     CALENDAR = "calendar"
+    APP = "app"
 
 
 class WorkflowStep(BaseModel):

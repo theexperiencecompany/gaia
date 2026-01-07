@@ -13,9 +13,16 @@
 import type { ComponentType } from "react";
 import {
   calendarTriggerHandler,
+  githubTriggerHandler,
   gmailTriggerHandler,
+  googleDocsTriggerHandler,
+  googleSheetsTriggerHandler,
+  linearTriggerHandler,
   manualTriggerHandler,
+  notionTriggerHandler,
   scheduleTriggerHandler,
+  slackTriggerHandler,
+  trelloTriggerHandler,
 } from "./handlers";
 import type { TriggerConfig, TriggerSchema } from "./types";
 
@@ -73,9 +80,16 @@ export interface RegisteredHandler {
  */
 const handlers: RegisteredHandler[] = [
   calendarTriggerHandler,
+  githubTriggerHandler,
   gmailTriggerHandler,
-  scheduleTriggerHandler,
+  googleDocsTriggerHandler,
+  googleSheetsTriggerHandler,
+  linearTriggerHandler,
   manualTriggerHandler,
+  notionTriggerHandler,
+  scheduleTriggerHandler,
+  slackTriggerHandler,
+  trelloTriggerHandler,
 ];
 
 /**
