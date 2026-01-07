@@ -7,7 +7,7 @@ from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
-from app.db.redis import delete_cache
+from app.db.redis import delete_cache, redis_cache
 from app.services.calendar_service import initialize_calendar_preferences
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth_service import handle_oauth_connection, store_user_info
@@ -42,8 +42,20 @@ async def login_workos():
     return RedirectResponse(url=authorization_url)
 
 
-# Temporary storage for mobile redirect URIs (in production, use Redis with TTL)
-_mobile_redirect_uris: dict[str, str] = {}
+MOBILE_REDIRECT_TTL = 300  
+
+async def _store_mobile_redirect(state: str, redirect_uri: str) -> None:
+    """Store mobile redirect URI in Redis with TTL."""
+    await redis_cache.client.setex(f"mobile_redirect:{state}", MOBILE_REDIRECT_TTL, redirect_uri)
+
+
+async def _get_and_delete_mobile_redirect(state: str) -> str | None:
+    """Get and delete mobile redirect URI from Redis (consume once)."""
+    key = f"mobile_redirect:{state}"
+    uri = await redis_cache.client.get(key)
+    if uri:
+        await redis_cache.client.delete(key)
+    return uri
 
 
 @router.get("/login/workos/mobile")
@@ -60,13 +72,13 @@ async def login_workos_mobile(redirect_uri: Optional[str] = None):
     # Store the mobile app's redirect URI
     # Default to gaiamobile:// scheme if not provided
     mobile_callback = redirect_uri or "gaiamobile://auth/callback"
-    _mobile_redirect_uris[state] = mobile_callback
+    await _store_mobile_redirect(state, mobile_callback)
     
     logger.info(f"Mobile OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}...")
     
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
-        redirect_uri="http://192.168.1.126:8000/api/v1/oauth/workos/mobile/callback",
+        redirect_uri=f"{settings.API_URL}/api/v1/oauth/workos/mobile/callback",
         state=state,
     )
     return {"url": authorization_url}
@@ -82,7 +94,10 @@ async def workos_mobile_callback(
     Returns a deep link redirect to the mobile app with the auth token.
     """
     # Get the stored redirect URI for this auth flow
-    mobile_redirect = _mobile_redirect_uris.pop(state, None) if state else None
+    mobile_redirect: str | None = None
+    if state:
+        mobile_redirect = await _get_and_delete_mobile_redirect(state)
+    
     if not mobile_redirect:
         mobile_redirect = "gaiamobile://auth/callback"
         logger.warning(f"No stored redirect URI for state, using default: {mobile_redirect}")
