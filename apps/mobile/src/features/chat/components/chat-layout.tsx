@@ -1,4 +1,3 @@
-import { useRouter } from "expo-router";
 import { type ReactNode, useCallback } from "react";
 import { Keyboard, View } from "react-native";
 import DrawerLayout, {
@@ -16,24 +15,21 @@ interface ChatLayoutProps {
 }
 
 export function ChatLayout({ children }: ChatLayoutProps) {
-  const router = useRouter();
-  const { setActiveChatId } = useChatContext();
+  const { setActiveChatId, clearActiveMessages } = useChatContext();
   const { drawerRef, toggleSidebar, closeSidebar } = useSidebar();
 
   const handleSelectChat = useCallback(
     (chatId: string) => {
       setActiveChatId(chatId);
-      closeSidebar();
-      router.replace(`/(chat)/${chatId}`);
     },
-    [closeSidebar, router, setActiveChatId]
+    [setActiveChatId]
   );
 
   const handleNewChat = useCallback(() => {
     closeSidebar();
+    clearActiveMessages();
     setActiveChatId(null);
-    router.replace("/");
-  }, [closeSidebar, router, setActiveChatId]);
+  }, [closeSidebar, clearActiveMessages, setActiveChatId]);
 
   const renderDrawerContent = useCallback(
     () => (
@@ -59,13 +55,16 @@ export function ChatLayout({ children }: ChatLayoutProps) {
         }}
       >
         <View className="flex-1">
-          <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+          {children}
+          <SafeAreaView
+            style={{ position: "absolute", top: 0, left: 0, right: 0 }}
+            edges={["top"]}
+          >
             <ChatHeader
               onMenuPress={toggleSidebar}
               onNewChatPress={handleNewChat}
               onSearchPress={() => console.log("Search pressed")}
             />
-            {children}
           </SafeAreaView>
         </View>
       </DrawerLayout>

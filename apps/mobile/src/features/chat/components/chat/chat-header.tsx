@@ -24,13 +24,12 @@ export function ChatHeader({
   onSearchPress,
 }: ChatHeaderProps) {
   return (
-    <View className="flex-row items-center justify-between px-6 py-4 border-b border-border/10 bg-surface-1">
+    <View className="flex-row items-center justify-between px-6 py-4 border-b border-border/10">
       <PressableFeedback onPress={onMenuPress}>
         <View className="p-1">
           <HugeiconsIcon icon={Menu01Icon} size={24} color="#ffffff" />
         </View>
       </PressableFeedback>
-
 
       <View className="flex-row gap-2">
         {onSearchPress && (

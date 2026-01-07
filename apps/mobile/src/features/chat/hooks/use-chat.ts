@@ -50,7 +50,11 @@ export function useChat(
 
   useEffect(() => {
     const newEffectiveId = chatId ?? storeActiveChatId;
-    if (newEffectiveId && !newEffectiveId.startsWith("temp-")) {
+    if (newEffectiveId === null) {
+      // Reset to null when starting a new chat
+      setCurrentConversationId(null);
+      activeConvIdRef.current = null;
+    } else if (!newEffectiveId.startsWith("temp-")) {
       setCurrentConversationId(newEffectiveId);
       activeConvIdRef.current = newEffectiveId;
     }
