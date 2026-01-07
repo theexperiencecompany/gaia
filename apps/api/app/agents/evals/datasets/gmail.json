@@ -1,0 +1,205 @@
+{
+  "name": "Gmail Capabilities",
+  "description": "Evaluation dataset for Gmail subagent capabilities including email composition, reading, organizing, and managing drafts. Includes lazy queries, intentional mistakes, and ambiguous items requiring resolution.",
+  "version": "1.0.0",
+  "subagent": "gmail_agent",
+  "integration_id": "gmail",
+  "items": [
+    {
+      "input": "send email to john@example.com about the meeting tomorrow",
+      "expected_output": "1. Compose email to john@example.com. 2. Add subject about meeting tomorrow. 3. Send email.",
+      "context": "User wants to send a simple email",
+      "tags": ["email", "send", "lazy"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show me my unread emails",
+      "expected_output": "Fetch emails with unread filter and display list.",
+      "context": "User wants to see unread emails",
+      "tags": ["email", "fetch", "filter"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create draft for sarah@company.com with subject 'Project Update' and tell her the deadline is extended to Friday",
+      "expected_output": "Create email draft with recipient sarah@company.com, subject 'Project Update', body about deadline extension.",
+      "context": "User wants to create a draft email",
+      "tags": ["draft", "create", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "reply to the last email from mike about the budget",
+      "expected_output": "1. Search emails from Mike about budget. 2. Find the thread. 3. Reply to the thread.",
+      "context": "User wants to reply to a specific email thread",
+      "tags": ["email", "reply", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "forward the invoice email to accounting@company.com",
+      "expected_output": "1. Search for email containing 'invoice'. 2. Forward to accounting@company.com.",
+      "context": "User wants to forward without specifying exact email",
+      "tags": ["email", "forward", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "label all emails from newsletter@example.com as promotions",
+      "expected_output": "1. List labels to get promotions label ID. 2. Fetch emails from newsletter@example.com. 3. Add label to each email.",
+      "context": "User wants to bulk label emails",
+      "tags": ["email", "label", "bulk", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create a new label called 'Important Clients'",
+      "expected_output": "Create new Gmail label named 'Important Clients'.",
+      "context": "User wants to create a custom label",
+      "tags": ["label", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "delete the draft about quarterly report",
+      "expected_output": "1. List drafts. 2. Find draft about quarterly report. 3. Delete draft.",
+      "context": "User wants to delete a specific draft",
+      "tags": ["draft", "delete", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "send my saved draft to the marketing team",
+      "expected_output": "1. List drafts. 2. Identify relevant draft. 3. Send the draft.",
+      "context": "User wants to send an existing draft",
+      "tags": ["draft", "send", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "what emails did I receive from amazon last week",
+      "expected_output": "Search emails from Amazon with date filter for last week and display results.",
+      "context": "User wants to search emails with sender and date",
+      "tags": ["email", "search", "filter", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "move email from bob to trash",
+      "expected_output": "1. Search for recent email from bob. 2. Move email to trash.",
+      "context": "User provided incomplete info about which email",
+      "tags": ["email", "trash", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "send email to sara@company.com and cc her manager at manager@company.com about Q4 results",
+      "expected_output": "Compose and send email with To: sara@company.com, CC: manager@company.com, subject/body about Q4 results.",
+      "context": "User wants to send email with CC",
+      "tags": ["email", "send", "cc", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "check my gmial profile",
+      "expected_output": "1. Recognize 'gmial' as typo for 'gmail'. 2. Get Gmail profile information.",
+      "context": "User made typo in 'gmail'",
+      "tags": ["profile", "get", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "find emails with attachments from this month",
+      "expected_output": "Search emails with has:attachment filter and date range for current month.",
+      "context": "User wants to find emails with attachments",
+      "tags": ["email", "search", "attachment", "filter"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "show me the conversation thread with alex about the contract",
+      "expected_output": "1. Search emails from/to Alex about contract. 2. Fetch message by thread ID to show full conversation.",
+      "context": "User wants to see email thread",
+      "tags": ["thread", "fetch", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "remove the 'Work' label from all emails older than 6 months",
+      "expected_output": "1. List labels to find Work label ID. 2. Fetch emails with Work label older than 6 months. 3. Batch modify to remove label.",
+      "context": "User wants bulk label removal",
+      "tags": ["label", "remove", "bulk", "filter", "detailed"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "who sent me the most emails this week",
+      "expected_output": "1. Fetch emails from this week. 2. Analyze senders. 3. Report top sender.",
+      "context": "User wants email analytics",
+      "tags": ["email", "fetch", "analytics", "detailed"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "list all my labels",
+      "expected_output": "Retrieve and display all Gmail labels including system and custom labels.",
+      "context": "User wants to see available labels",
+      "tags": ["label", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "mark the email from HR as read",
+      "expected_output": "1. Search for email from HR. 2. Modify email labels to remove UNREAD.",
+      "context": "User wants to mark email as read",
+      "tags": ["email", "modify", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "compose email to team@company.com with HTML formatting including bold heading and bullet points",
+      "expected_output": "Create email with HTML body containing bold text and list elements, set is_html=True.",
+      "context": "User wants HTML formatted email",
+      "tags": ["email", "create", "html", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "search for emails containing 'quarterly report' in subject",
+      "expected_output": "Search emails with subject:quarterly report query.",
+      "context": "User wants subject-specific search",
+      "tags": ["email", "search", "subject"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get my contacts list",
+      "expected_output": "Fetch contacts from Gmail account.",
+      "context": "User wants to see contacts",
+      "tags": ["contacts", "get"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "search contacts for john",
+      "expected_output": "Search people/contacts for name matching 'john'.",
+      "context": "User wants to find a contact",
+      "tags": ["contacts", "search"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show me drafts",
+      "expected_output": "List all email drafts with details.",
+      "context": "User wants to see saved drafts",
+      "tags": ["draft", "list", "lazy"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "update the draft for john to add a PS about the deadline",
+      "expected_output": "1. List drafts. 2. Find draft for john. 3. Update draft body to add PS section.",
+      "context": "User wants to modify existing draft",
+      "tags": ["draft", "update", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "archive all emails from notifications@social.com",
+      "expected_output": "1. Fetch emails from notifications@social.com. 2. Batch modify to add ARCHIVE label / remove INBOX.",
+      "context": "User wants to bulk archive",
+      "tags": ["email", "archive", "bulk", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "how many emails do I have total",
+      "expected_output": "Get Gmail profile to retrieve total message count.",
+      "context": "User wants email statistics",
+      "tags": ["profile", "stats"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "permanently delete all emails in trash",
+      "expected_output": "1. Fetch emails with label TRASH. 2. Ask for user confirmation. 3. Batch delete messages.",
+      "context": "User wants to empty trash - destructive action",
+      "tags": ["email", "delete", "bulk", "destructive"],
+      "metadata": { "difficulty": "hard" }
+    }
+  ]
+}

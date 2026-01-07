@@ -29,6 +29,7 @@ from app.utils.workflow_utils import (
 from .generation_service import WorkflowGenerationService
 from .queue_service import WorkflowQueueService
 from .scheduler import workflow_scheduler
+from .trigger_service import TriggerService
 from .validators import WorkflowValidator
 
 
@@ -308,6 +309,9 @@ class WorkflowService:
     async def delete_workflow(workflow_id: str, user_id: str) -> bool:
         """Delete a workflow."""
         try:
+            # Get workflow first to access trigger config
+            workflow = await WorkflowService.get_workflow(workflow_id, user_id)
+
             # Cancel any scheduled executions before deleting
             await workflow_scheduler.cancel_scheduled_workflow_execution(workflow_id)
 
@@ -318,6 +322,20 @@ class WorkflowService:
                 logger.warning(
                     f"Additional cleanup failed for workflow {workflow_id}: {e}"
                 )
+
+            # Unregister Composio triggers if any
+            if workflow:
+                trigger_type = workflow.trigger_config.type
+                trigger_ids = (
+                    getattr(workflow.trigger_config, "composio_trigger_ids", None) or []
+                )
+                if trigger_ids and trigger_type:
+                    await TriggerService.unregister_triggers(
+                        user_id, trigger_type, trigger_ids
+                    )
+                    logger.info(
+                        f"Unregistered {len(trigger_ids)} Composio triggers for deleted workflow {workflow_id}"
+                    )
 
             result = await workflows_collection.delete_one(
                 {"_id": workflow_id, "user_id": user_id}
@@ -417,10 +435,36 @@ class WorkflowService:
             if not workflow:
                 return None
 
-            # Update trigger to enabled and status to active
-            update_data = {
+            # 1. Register Composio triggers FIRST (Fail-safe)
+            trigger_type = workflow.trigger_config.type
+            trigger_ids = []
+
+            if trigger_type in [
+                "calendar_event_created",
+                "calendar_event_starting_soon",
+            ]:
+                trigger_data = workflow.trigger_config.trigger_data
+                if trigger_data:
+                    config = (
+                        trigger_data.model_dump()
+                        if hasattr(trigger_data, "model_dump")
+                        else {}
+                    )
+                    trigger_ids = await TriggerService.register_triggers(
+                        user_id=user_id,
+                        workflow_id=workflow_id,
+                        trigger_name=trigger_type,
+                        config=config,
+                    )
+                    logger.info(
+                        f"Registered {len(trigger_ids)} Composio triggers for workflow {workflow_id}"
+                    )
+
+            # 2. Update status and store triggers
+            update_data: dict[str, Any] = {
                 "activated": True,
                 "trigger_config.enabled": True,
+                "trigger_config.composio_trigger_ids": trigger_ids,
                 "updated_at": datetime.now(timezone.utc),
             }
 
@@ -429,16 +473,21 @@ class WorkflowService:
             )
 
             if result.matched_count == 0:
+                # Rollback triggers if DB update fails
+                if trigger_ids:
+                    await TriggerService.unregister_triggers(
+                        user_id, trigger_type, trigger_ids
+                    )
                 return None
 
-            # Get updated workflow
+            # 3. Get updated workflow
             updated_workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not updated_workflow:
                 return None
 
-            # Schedule if workflow is scheduled type
+            # 4. Schedule if needed
             if (
-                updated_workflow.trigger_config.type == "schedule"
+                trigger_type == "schedule"
                 and updated_workflow.trigger_config.enabled
                 and updated_workflow.trigger_config.next_run
             ):
@@ -458,6 +507,10 @@ class WorkflowService:
             logger.error(f"Error activating workflow {workflow_id}: {str(e)}")
             raise
 
+        except Exception as e:
+            logger.error(f"Error activating workflow {workflow_id}: {str(e)}")
+            raise
+
     @staticmethod
     async def deactivate_workflow(
         workflow_id: str, user_id: str, user_timezone: Optional[str] = None
@@ -471,10 +524,24 @@ class WorkflowService:
             # Cancel any scheduled executions
             await workflow_scheduler.cancel_scheduled_workflow_execution(workflow_id)
 
-            # Update trigger to disabled and status to inactive
-            update_data = {
+            # Unregister Composio triggers if any
+            trigger_type = workflow.trigger_config.type
+            trigger_ids = (
+                getattr(workflow.trigger_config, "composio_trigger_ids", None) or []
+            )
+            if trigger_ids and trigger_type:
+                await TriggerService.unregister_triggers(
+                    user_id, trigger_type, trigger_ids
+                )
+                logger.info(
+                    f"Unregistered {len(trigger_ids)} Composio triggers for workflow {workflow_id}"
+                )
+
+            # Update trigger to disabled and clear trigger IDs
+            update_data: dict[str, Any] = {
                 "activated": False,
                 "trigger_config.enabled": False,
+                "trigger_config.composio_trigger_ids": [],
                 "updated_at": datetime.now(timezone.utc),
             }
 

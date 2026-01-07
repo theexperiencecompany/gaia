@@ -6,6 +6,7 @@ reviews:
   # Configure which branches to review
   branches:
     - "master"
+    - "develop"
 
   # Whether to review draft PRs
   draft: false

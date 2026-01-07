@@ -92,8 +92,7 @@ async def workos_mobile_callback(code: Optional[str] = None) -> RedirectResponse
         )
 
     except Exception as e:
-        logger.error(
-            f"Unexpected error during WorkOS mobile callback: {str(e)}")
+        logger.error(f"Unexpected error during WorkOS mobile callback: {str(e)}")
         return RedirectResponse(
             url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=server_error"
         )
@@ -133,8 +132,7 @@ async def workos_desktop_callback(
     try:
         # Validate code parameter
         if not code:
-            logger.error(
-                "No authorization code received from WorkOS (desktop)")
+            logger.error("No authorization code received from WorkOS (desktop)")
             return RedirectResponse(url="gaia://auth/callback?error=missing_code")
 
         auth_response = workos.user_management.authenticate_with_code(
@@ -164,8 +162,7 @@ async def workos_desktop_callback(
         return RedirectResponse(url=f"gaia://auth/callback?error={e.detail}")
 
     except Exception as e:
-        logger.error(
-            f"Unexpected error during WorkOS desktop callback: {str(e)}")
+        logger.error(f"Unexpected error during WorkOS desktop callback: {str(e)}")
         return RedirectResponse(url="gaia://auth/callback?error=server_error")
 
 
@@ -415,8 +412,7 @@ async def callback(
         user_picture = user_info.get("picture")
 
         if not user_email:
-            raise HTTPException(
-                status_code=400, detail="Email not found in user info")
+            raise HTTPException(status_code=400, detail="Email not found in user info")
 
         # Store user info and get user_id
         user_id = await store_user_info(user_name, user_email, user_picture)
@@ -453,7 +449,7 @@ async def callback(
             logger.warning(f"Failed to invalidate OAuth status cache: {e}")
 
         # Initialize calendar preferences (select all calendars by default)
-        await initialize_calendar_preferences(
+        initialize_calendar_preferences(
             user_id=str(user_id),
             access_token=access_token,
         )

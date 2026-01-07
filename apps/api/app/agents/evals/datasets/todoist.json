@@ -1,0 +1,149 @@
+{
+  "name": "Todoist Capabilities",
+  "description": "Evaluation dataset for Todoist subagent capabilities including task management, projects, labels, and sections. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "todoist_agent",
+  "integration_id": "todoist",
+  "items": [
+    {
+      "input": "create task 'Review PR' due tomorrow",
+      "expected_output": "Create task with content 'Review PR' and due date set to tomorrow.",
+      "context": "User wants to create task",
+      "tags": ["task", "create", "due"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show my tasks for today",
+      "expected_output": "Get active tasks filtered for today.",
+      "context": "User wants today's tasks",
+      "tags": ["task", "list", "today"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "complete the task about documentation",
+      "expected_output": "1. Find task about documentation. 2. Close/complete task.",
+      "context": "User wants to complete task",
+      "tags": ["task", "complete", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create project 'Q4 Goals'",
+      "expected_output": "Create new project with name 'Q4 Goals'.",
+      "context": "User wants new project",
+      "tags": ["project", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "list all my projects",
+      "expected_output": "Get all projects.",
+      "context": "User wants projects list",
+      "tags": ["project", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add task to Work project",
+      "expected_output": "1. Get projects. 2. Find Work project. 3. Create task in that project.",
+      "context": "User wants task in specific project",
+      "tags": ["task", "create", "project", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create label 'urgent' with red color",
+      "expected_output": "Create label with name 'urgent' and red color.",
+      "context": "User wants new label",
+      "tags": ["label", "create", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add label to task about meeting",
+      "expected_output": "1. Find task about meeting. 2. Update task with label.",
+      "context": "User wants to label task",
+      "tags": ["task", "label", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create section 'In Progress' in project",
+      "expected_output": "1. Find project. 2. Create section with name 'In Progress'.",
+      "context": "User wants section in project",
+      "tags": ["section", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "set priority to 1 for deployment task",
+      "expected_output": "1. Find deployment task. 2. Update task priority.",
+      "context": "User wants to prioritize",
+      "tags": ["task", "update", "priority", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add comment to task about blockers",
+      "expected_output": "1. Find task. 2. Create comment on task.",
+      "context": "User wants to comment",
+      "tags": ["comment", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "delete completed project",
+      "expected_output": "1. Find completed project. 2. Request confirmation. 3. Delete project.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["project", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "archive old project",
+      "expected_output": "1. Find old project. 2. Archive project.",
+      "context": "User wants to archive",
+      "tags": ["project", "archive", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get all labels",
+      "expected_output": "Get all personal labels.",
+      "context": "User wants label list",
+      "tags": ["label", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create subtask under main task",
+      "expected_output": "1. Find main task. 2. Create task with parent_id.",
+      "context": "User wants subtask",
+      "tags": ["task", "create", "subtask", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get toodist tasks",
+      "expected_output": "1. Recognize 'toodist' as typo for 'todoist'. 2. Get active tasks.",
+      "context": "User made typo",
+      "tags": ["task", "list", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "who are collaborators on shared project",
+      "expected_output": "1. Find shared project. 2. Get project collaborators.",
+      "context": "User wants collaborators",
+      "tags": ["project", "collaborators", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "move task to different section",
+      "expected_output": "1. Find task. 2. Find section. 3. Update task section_id.",
+      "context": "User wants to move task",
+      "tags": ["task", "move", "section", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get shared labels in workspace",
+      "expected_output": "Get shared labels across workspace.",
+      "context": "User wants shared labels",
+      "tags": ["label", "shared", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "update task due date to next monday",
+      "expected_output": "1. Find task. 2. Update task due_date.",
+      "context": "User wants to reschedule",
+      "tags": ["task", "update", "due", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    }
+  ]
+}

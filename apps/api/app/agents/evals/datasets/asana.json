@@ -1,0 +1,149 @@
+{
+  "name": "Asana Capabilities",
+  "description": "Evaluation dataset for Asana subagent capabilities including task management, projects, sections, and goals. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "asana_agent",
+  "integration_id": "asana",
+  "items": [
+    {
+      "input": "create task 'Review documentation' in my project",
+      "expected_output": "1. Get workspaces. 2. Find project. 3. Create task in project.",
+      "context": "User wants to create task",
+      "tags": ["task", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list my tasks",
+      "expected_output": "Get tasks assigned to current user.",
+      "context": "User wants to see tasks",
+      "tags": ["task", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create project 'Q4 Roadmap' in workspace",
+      "expected_output": "1. Get workspaces. 2. Create project with name.",
+      "context": "User wants new project",
+      "tags": ["project", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add task to In Progress section",
+      "expected_output": "1. Find task. 2. Find section 'In Progress'. 3. Add task to section.",
+      "context": "User wants to move task",
+      "tags": ["task", "section", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create tag 'urgent' with red color",
+      "expected_output": "1. Get workspace. 2. Create tag with name and color.",
+      "context": "User wants new tag",
+      "tags": ["tag", "create", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add followers to the deployment task",
+      "expected_output": "1. Find deployment task. 2. Add followers to task.",
+      "context": "User wants to add followers",
+      "tags": ["task", "followers", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "set due date for task to next friday",
+      "expected_output": "1. Find task. 2. Update task with due_on date.",
+      "context": "User wants deadline",
+      "tags": ["task", "update", "due", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "assign task to sarah",
+      "expected_output": "1. Find task. 2. Find user sarah. 3. Update task assignee.",
+      "context": "User wants to assign",
+      "tags": ["task", "assign", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "complete the review task",
+      "expected_output": "1. Find review task. 2. Mark task as completed.",
+      "context": "User wants to complete task",
+      "tags": ["task", "complete", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get all projects in workspace",
+      "expected_output": "List all projects in user's workspace.",
+      "context": "User wants projects list",
+      "tags": ["project", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create section 'Backlog' in project",
+      "expected_output": "1. Find project. 2. Create section with name.",
+      "context": "User wants new section",
+      "tags": ["section", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add comment to task about blockers",
+      "expected_output": "1. Find task. 2. Create story/comment on task.",
+      "context": "User wants to comment",
+      "tags": ["task", "comment", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "delete the old project",
+      "expected_output": "1. Find old project. 2. Request confirmation. 3. Delete project.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["project", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get my asanna goals",
+      "expected_output": "1. Recognize 'asanna' as typo for 'asana'. 2. Get goals.",
+      "context": "User made typo",
+      "tags": ["goal", "list", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create goal 'Complete Q4 deliverables'",
+      "expected_output": "1. Get workspace. 2. Create goal with name.",
+      "context": "User wants new goal",
+      "tags": ["goal", "create"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add supporting relationship to goal",
+      "expected_output": "1. Find goal. 2. Find supporting project/task. 3. Add relationship.",
+      "context": "User wants to link goal",
+      "tags": ["goal", "relationship", "add", "lazy"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "get tasks in project Alpha",
+      "expected_output": "1. Find project Alpha. 2. Get tasks in project.",
+      "context": "User wants project tasks",
+      "tags": ["task", "list", "project", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create subtask under main task",
+      "expected_output": "1. Find main task. 2. Create task with parent.",
+      "context": "User wants subtask",
+      "tags": ["task", "create", "subtask", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "allocate time for john on project",
+      "expected_output": "1. Find user john. 2. Find project. 3. Create allocation.",
+      "context": "User wants time allocation",
+      "tags": ["allocation", "create", "lazy"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "list all teams in workspace",
+      "expected_output": "Get teams in user's workspace.",
+      "context": "User wants teams list",
+      "tags": ["team", "list"],
+      "metadata": { "difficulty": "easy" }
+    }
+  ]
+}

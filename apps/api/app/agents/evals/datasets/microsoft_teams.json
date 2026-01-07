@@ -1,0 +1,184 @@
+{
+  "name": "Microsoft Teams Capabilities",
+  "description": "Evaluation dataset for Microsoft Teams subagent capabilities including messaging, channel management, team operations, and meetings. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "microsoft_teams_agent",
+  "integration_id": "microsoft_teams",
+  "items": [
+    {
+      "input": "send message to General channel in Marketing team",
+      "expected_output": "1. List teams. 2. Find Marketing team. 3. Find General channel. 4. Post message to channel.",
+      "context": "User wants to send channel message",
+      "tags": ["message", "send", "channel"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list all my teams",
+      "expected_output": "List all Microsoft Teams accessible by user.",
+      "context": "User wants to see teams",
+      "tags": ["team", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create new team called 'Project Alpha'",
+      "expected_output": "Create new team with display name 'Project Alpha'.",
+      "context": "User wants to create team",
+      "tags": ["team", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get channels in Engineering team",
+      "expected_output": "1. List teams. 2. Find Engineering team. 3. List channels for that team.",
+      "context": "User wants to see channels",
+      "tags": ["channel", "list", "team"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create channel #backend in DevOps team",
+      "expected_output": "1. List teams. 2. Find DevOps team. 3. Create channel named 'backend'.",
+      "context": "User wants to create channel",
+      "tags": ["channel", "create", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "send chat message to john about the deadline",
+      "expected_output": "1. List users. 2. Find john. 3. Create/find one-on-one chat. 4. Send message about deadline.",
+      "context": "User wants to send DM",
+      "tags": ["message", "chat", "dm", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get my recent chats",
+      "expected_output": "Get all chats for authenticated user.",
+      "context": "User wants to see conversations",
+      "tags": ["chat", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "search messages about 'quarterly report'",
+      "expected_output": "Search Teams messages with KQL query for 'quarterly report'.",
+      "context": "User wants to search message history",
+      "tags": ["message", "search"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "schedule teams meeting for tomorrow at 3pm",
+      "expected_output": "Create online meeting with start time set to tomorrow 3pm.",
+      "context": "User wants to schedule meeting",
+      "tags": ["meeting", "create", "schedule"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add sarah to Engineering team",
+      "expected_output": "1. List teams. 2. Find Engineering team. 3. List users. 4. Find sarah. 5. Add member to team.",
+      "context": "User wants to add team member",
+      "tags": ["team", "member", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list members of Sales team",
+      "expected_output": "1. List teams. 2. Find Sales team. 3. List team members.",
+      "context": "User wants to see team members",
+      "tags": ["team", "member", "list"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "archive the old-project team",
+      "expected_output": "1. List teams. 2. Find old-project team. 3. Request confirmation. 4. Archive team.",
+      "context": "User wants to archive team - needs consent",
+      "tags": ["team", "archive", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get messages from #general in Product team",
+      "expected_output": "1. List teams. 2. Find Product team. 3. Find General channel. 4. List channel messages.",
+      "context": "User wants to read channel history",
+      "tags": ["message", "list", "channel"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "reply to the message about deployment",
+      "expected_output": "1. Search messages about deployment. 2. Get message details. 3. Reply to the message.",
+      "context": "User wants to reply to message",
+      "tags": ["message", "reply", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "search files in teams for 'budget spreadsheet'",
+      "expected_output": "Search files with KQL query for 'budget spreadsheet'.",
+      "context": "User wants to find files",
+      "tags": ["file", "search"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "update team name from ProjectX to Project-X",
+      "expected_output": "1. List teams. 2. Find ProjectX team. 3. Update team with new display name.",
+      "context": "User wants to rename team",
+      "tags": ["team", "update", "rename"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list all users in organization",
+      "expected_output": "List all users in the organization directory.",
+      "context": "User wants to see org members",
+      "tags": ["user", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get team details for Marketing",
+      "expected_output": "1. List teams. 2. Find Marketing team. 3. Get team details.",
+      "context": "User wants team info",
+      "tags": ["team", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create group chat with john and sarah about project",
+      "expected_output": "1. List users. 2. Find john and sarah. 3. Create group chat with those members.",
+      "context": "User wants group chat",
+      "tags": ["chat", "create", "group", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "send message to teeams channel",
+      "expected_output": "1. Recognize 'teeams' as typo for 'teams'. 2. Ask for clarification on which channel/team.",
+      "context": "User made typo in 'teams'",
+      "tags": ["message", "send", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "delete the old team",
+      "expected_output": "1. List teams. 2. Find team matching 'old'. 3. Request confirmation. 4. Delete team.",
+      "context": "User wants to delete team - needs consent",
+      "tags": ["team", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "unarchive Support team",
+      "expected_output": "1. List teams. 2. Find Support team. 3. Unarchive team.",
+      "context": "User wants to restore archived team",
+      "tags": ["team", "unarchive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get replies to the announcement message",
+      "expected_output": "1. Search messages for announcement. 2. Get message ID. 3. List message replies.",
+      "context": "User wants to see thread replies",
+      "tags": ["message", "replies", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "update message in chat to fix typo",
+      "expected_output": "1. Get recent chat messages. 2. Find message with typo. 3. Update chat message.",
+      "context": "User wants to edit sent message",
+      "tags": ["message", "update", "chat", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "find people related to me",
+      "expected_output": "List people relevant to authenticated user (org graph).",
+      "context": "User wants to see connections",
+      "tags": ["people", "list"],
+      "metadata": { "difficulty": "easy" }
+    }
+  ]
+}
