@@ -9,22 +9,6 @@ from typing import Optional
 from pydantic import BaseModel
 
 
-class MCPConnectRequest(BaseModel):
-    """Request body for MCP connection."""
-
-    bearer_token: Optional[str] = None
-
-
-class MCPConnectResponse(BaseModel):
-    """Response for MCP connection."""
-
-    status: str
-    integration_id: str
-    tools_count: int
-    redirect_url: Optional[str] = None
-    message: Optional[str] = None
-
-
 class MCPToolInfo(BaseModel):
     """Individual tool information."""
 

@@ -31,8 +31,9 @@ function IntegrationListSection() {
 
   const renderIntegration = (integration: (typeof integrations)[0]) => {
     const isConnected = integration.status === "connected";
-    // Use backend's 'available' field - MCP integrations have available=true but loginEndpoint=null
-    const isAvailable = integration.available ?? !!integration.loginEndpoint;
+    // Use backend's 'available' field for platform integrations
+    const isAvailable =
+      integration.source === "custom" || integration.available;
 
     return (
       <div

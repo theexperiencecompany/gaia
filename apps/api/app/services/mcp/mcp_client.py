@@ -198,28 +198,30 @@ class MCPClient:
         if mcp_config.transport:
             server_config["transport"] = mcp_config.transport
 
-        # For OAuth integrations, try to use stored token
-        if mcp_config.requires_auth:
-            stored_token = await self.token_store.get_oauth_token(integration_id)
-            if stored_token:
-                # Debug: log token details (safely)
-                logger.info(
-                    f"OAuth token for {integration_id}: "
-                    f"length={len(stored_token)}, "
-                    f"starts_with_bearer={stored_token.lower().startswith('bearer ')}, "
-                    f"preview={stored_token[:20]}..."
-                )
-                # mcp-use HttpConnector handles auth as follows:
-                # - If string: adds "Bearer {token}" to Authorization header
-                # - So pass raw token WITHOUT Bearer prefix
-                raw_token = stored_token
-                if stored_token.lower().startswith("bearer "):
-                    raw_token = stored_token[7:]  # Remove "Bearer " prefix
-                server_config["auth"] = raw_token
-            else:
-                logger.warning(
-                    f"No stored OAuth token found for {integration_id} - connection may fail"
-                )
+        # ALWAYS check for stored OAuth token, regardless of requires_auth flag.
+        # This handles custom integrations where OAuth was discovered dynamically
+        # but requires_auth was never updated in MongoDB from false to true.
+        stored_token = await self.token_store.get_oauth_token(integration_id)
+        if stored_token:
+            # Debug: log token details (safely)
+            logger.info(
+                f"OAuth token for {integration_id}: "
+                f"length={len(stored_token)}, "
+                f"starts_with_bearer={stored_token.lower().startswith('bearer ')}, "
+                f"preview={stored_token[:20]}..."
+            )
+            # mcp-use HttpConnector handles auth as follows:
+            # - If string: adds "Bearer {token}" to Authorization header
+            # - So pass raw token WITHOUT Bearer prefix
+            raw_token = stored_token
+            if stored_token.lower().startswith("bearer "):
+                raw_token = stored_token[7:]  # Remove "Bearer " prefix
+            server_config["auth"] = raw_token
+        elif mcp_config.requires_auth:
+            # Only warn if requires_auth is explicitly set - means token should exist
+            logger.warning(
+                f"No stored OAuth token found for {integration_id} - connection may fail"
+            )
 
         return {"mcpServers": {integration_id: server_config}}
 

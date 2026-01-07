@@ -1,6 +1,5 @@
 from functools import lru_cache
 from typing import Optional
-from urllib.parse import urlencode
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.loggers import auth_logger as logger
@@ -9,7 +8,6 @@ from app.config.oauth_config import (
     get_integration_by_id,
     get_integration_scopes,
 )
-from app.config.settings import settings
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
@@ -26,7 +24,6 @@ from app.models.integration_models import (
 )
 from app.models.oauth_models import IntegrationConfigResponse
 from app.services.composio.composio_service import (
-    COMPOSIO_SOCIAL_CONFIGS,
     get_composio_service,
 )
 from app.services.integration_service import (
@@ -44,8 +41,9 @@ from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.services.oauth_service import get_all_integrations_status
 from app.services.oauth_state_service import create_oauth_state
+from app.utils.oauth_utils import build_google_oauth_url
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
@@ -66,14 +64,6 @@ def _build_integrations_config():
         if integration.managed_by == "internal":
             continue
 
-        # Determine loginEndpoint based on managed_by
-        if not integration.available:
-            login_endpoint = None
-        elif integration.managed_by == "mcp":
-            login_endpoint = f"mcp/connect/{integration.id}"
-        else:
-            login_endpoint = f"integrations/login/{integration.id}"
-
         # Determine authType for MCP integrations (for frontend display)
         auth_type = None
         if integration.mcp_config:
@@ -86,7 +76,6 @@ def _build_integrations_config():
             category=integration.category,
             provider=integration.provider,
             available=integration.available,
-            loginEndpoint=login_endpoint,
             isSpecial=integration.is_special,
             displayPriority=integration.display_priority,
             includedIntegrations=integration.included_integrations,
@@ -291,99 +280,6 @@ async def disconnect_integration(
     )
 
 
-@router.get("/login/{integration_id}")
-async def login_integration(
-    integration_id: str,
-    redirect_path: str,
-    user: dict = Depends(get_current_user),
-):
-    """Dynamic OAuth login for any configured integration."""
-    integration = get_integration_by_id(integration_id)
-    composio_service = get_composio_service()
-
-    if not integration:
-        raise HTTPException(
-            status_code=404, detail=f"Integration {integration_id} not found"
-        )
-
-    if not integration.available:
-        raise HTTPException(
-            status_code=400, detail=f"Integration {integration_id} is not available yet"
-        )
-
-    # Create secure state token for OAuth flow
-    state_token = await create_oauth_state(
-        user_id=user["user_id"],
-        redirect_path=redirect_path,
-        integration_id=integration_id,
-    )
-
-    # Streamlined composio integration handling
-    composio_providers = set([k for k in COMPOSIO_SOCIAL_CONFIGS.keys()])
-    if integration.provider in composio_providers:
-        # Ensure user_integrations record exists with status "created"
-        await update_user_integration_status(
-            str(user["user_id"]), integration_id, "created"
-        )
-        provider_key = integration.provider
-        url = await composio_service.connect_account(
-            provider_key, user["user_id"], state_token=state_token
-        )
-        return RedirectResponse(url=url["redirect_url"])
-    elif integration.managed_by == "mcp":
-        # MCP integrations use dedicated /mcp/connect endpoint
-        raise HTTPException(
-            status_code=400,
-            detail=f"Use POST /api/v1/mcp/connect/{integration_id} to connect MCP integrations.",
-        )
-    elif integration.provider == "google":
-        # Ensure user_integrations record exists with status "created"
-        await update_user_integration_status(
-            str(user["user_id"]), integration_id, "created"
-        )
-
-        # Get base scopes
-        base_scopes = ["openid", "profile", "email"]
-
-        # Get new integration scopes
-        new_scopes = get_integration_scopes(integration_id)
-
-        # Get existing scopes from user's current token
-        existing_scopes = []
-        user_id = user.get("user_id")
-
-        if user_id:
-            try:
-                token = await token_repository.get_token(
-                    str(user_id), "google", renew_if_expired=False
-                )
-                existing_scopes = str(token.get("scope", "")).split()
-            except Exception as e:
-                logger.warning(f"Could not get existing scopes: {e}")
-
-        # Combine all scopes (base + existing + new), removing duplicates
-        all_scopes = list(set(base_scopes + existing_scopes + new_scopes))
-
-        params = {
-            "response_type": "code",
-            "client_id": settings.GOOGLE_CLIENT_ID,
-            "redirect_uri": settings.GOOGLE_CALLBACK_URL,
-            "scope": " ".join(all_scopes),
-            "access_type": "offline",
-            "prompt": "consent",  # Only force consent for additional scopes
-            "include_granted_scopes": "true",  # Include previously granted scopes
-            "login_hint": user.get("email"),
-            "state": state_token,  # Secure state token for CSRF protection
-        }
-        auth_url = f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
-        return RedirectResponse(url=auth_url)
-
-    raise HTTPException(
-        status_code=400,
-        detail=f"OAuth provider {integration.provider} not implemented",
-    )
-
-
 @router.post("/connect/{integration_id}", response_model=ConnectIntegrationResponse)
 async def connect_integration(
     integration_id: str,
@@ -456,7 +352,6 @@ async def connect_integration(
                 integration_id=integration_id,
                 requires_auth=requires_auth,
                 redirect_path=request.redirect_path,
-                bearer_token=request.bearer_token,
             )
 
         elif managed_by == "composio":
@@ -496,7 +391,6 @@ async def _connect_mcp_integration(
     integration_id: str,
     requires_auth: bool,
     redirect_path: str,
-    bearer_token: Optional[str] = None,
 ) -> ConnectIntegrationResponse:
     """Handle MCP integration connection."""
     mcp_client = get_mcp_client(user_id=user_id)
@@ -597,34 +491,13 @@ async def _connect_self_integration(
 
     await update_user_integration_status(str(user_id), integration_id, "created")
 
-    # Build Google OAuth URL
-    base_scopes = ["openid", "profile", "email"]
-    new_scopes = get_integration_scopes(integration_id)
-
-    # Get existing scopes
-    existing_scopes = []
-    try:
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=False
-        )
-        existing_scopes = str(token.get("scope", "")).split()
-    except Exception as e:
-        logger.debug(f"Could not get existing scopes for user {user_id}: {e}")
-
-    all_scopes = list(set(base_scopes + existing_scopes + new_scopes))
-
-    params = {
-        "response_type": "code",
-        "client_id": settings.GOOGLE_CLIENT_ID,
-        "redirect_uri": settings.GOOGLE_CALLBACK_URL,
-        "scope": " ".join(all_scopes),
-        "access_type": "offline",
-        "prompt": "consent",
-        "include_granted_scopes": "true",
-        "login_hint": user.get("email"),
-        "state": state_token,
-    }
-    auth_url = f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
+    # Build Google OAuth URL using shared helper
+    auth_url = await build_google_oauth_url(
+        user_email=user.get("email", ""),
+        state_token=state_token,
+        integration_scopes=get_integration_scopes(integration_id),
+        user_id=str(user_id),
+    )
 
     return ConnectIntegrationResponse(
         status="redirect",

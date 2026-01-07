@@ -7,6 +7,7 @@ import type {
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
   Integration,
+  IntegrationStatus,
 } from "../types";
 
 export interface UseIntegrationsReturn {
@@ -15,10 +16,14 @@ export interface UseIntegrationsReturn {
   isLoading: boolean;
   error: Error | null;
 
+  // Helpers
+  getIntegrationStatus: (
+    integrationId: string,
+  ) => IntegrationStatus | undefined;
+
   // Actions
   connectIntegration: (
     integrationId: string,
-    bearerToken?: string,
   ) => Promise<{ status: string; toolsCount?: number }>;
   disconnectIntegration: (integrationId: string) => Promise<void>;
   createCustomIntegration: (
@@ -89,7 +94,12 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       name: ui.integration.name,
       description: ui.integration.description,
       category: ui.integration.category as Integration["category"],
-      status: ui.status === "connected" ? "connected" : "not_connected",
+      status:
+        ui.status === "connected"
+          ? "connected"
+          : ui.status === "created"
+            ? "created"
+            : "not_connected",
       managedBy: ui.integration.managed_by,
       source: ui.integration.source,
       requiresAuth: ui.integration.requires_auth,
@@ -112,6 +122,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         const status = statuses.find((s) => s.integrationId === pi.id);
         return {
           ...pi,
+          source: "platform" as const,
           status: status?.connected ? "connected" : ("not_connected" as const),
         };
       });
@@ -119,11 +130,20 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     return [...userIntegrationsList, ...availablePlatformIntegrations];
   }, [configData, userIntegrationsData, statusData]);
 
+  // Get status for a specific integration
+  const getIntegrationStatus = useCallback(
+    (integrationId: string): IntegrationStatus | undefined => {
+      return statusData?.integrations.find(
+        (s) => s.integrationId.toLowerCase() === integrationId.toLowerCase(),
+      );
+    },
+    [statusData],
+  );
+
   // Connect integration
   const connectIntegration = useCallback(
     async (
       integrationId: string,
-      bearerToken?: string,
     ): Promise<{ status: string; toolsCount?: number }> => {
       const integration = integrations.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
@@ -133,10 +153,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       const toastId = toast.loading(`Connecting to ${integrationName}...`);
 
       try {
-        const result = await integrationsApi.connectIntegration(
-          integrationId,
-          bearerToken,
-        );
+        const result = await integrationsApi.connectIntegration(integrationId);
 
         if (result.status === "connected") {
           toast.success(`Connected to ${integrationName}`, { id: toastId });
@@ -223,6 +240,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     integrations,
     isLoading: configLoading || userIntegrationsLoading || statusLoading,
     error: error as Error | null,
+    getIntegrationStatus,
     connectIntegration,
     disconnectIntegration,
     createCustomIntegration,

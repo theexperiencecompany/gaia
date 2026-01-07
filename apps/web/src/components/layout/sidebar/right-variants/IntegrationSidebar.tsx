@@ -28,13 +28,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   category,
 }) => {
   const isConnected = integration.status === "connected";
-  // Show retry if integration requires auth and is not connected
-  const showRetry = !isConnected && integration.requiresAuth;
-  // Custom integrations are always available (no OAuth flow needed)
-  // Platform integrations use available field or loginEndpoint presence
-  const isAvailable =
-    integration.source === "custom" ||
-    (integration.available ?? !!integration.loginEndpoint);
+  // Show retry only if OAuth was started but not completed (status = "created")
+  const showRetry = integration.status === "created";
+  // Custom integrations are always available, platform integrations use available field
+  const isAvailable = integration.source === "custom" || integration.available;
   const { tools } = useToolsWithIntegrations();
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -139,7 +136,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             className="font-medium text-black!"
             onClick={handleConnect}
             disabled={!isAvailable || isConnecting}
-            isLoading={isConnecting}
           >
             {isConnecting
               ? "Connecting..."

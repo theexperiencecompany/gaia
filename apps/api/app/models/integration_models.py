@@ -250,9 +250,6 @@ class ConnectIntegrationRequest(BaseModel):
         default="/integrations",
         description="Frontend path to redirect after OAuth completes",
     )
-    bearer_token: Optional[str] = Field(
-        None, description="Bearer token for integrations that use token auth"
-    )
 
 
 class ConnectIntegrationResponse(BaseModel):

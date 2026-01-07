@@ -23,8 +23,8 @@ const IntegrationItem: React.FC<{
   size?: "default" | "small";
 }> = ({ integration, onConnect, onClick, size }) => {
   const isConnected = integration.status === "connected";
-  // Use backend's 'available' field - MCP integrations have available=true but loginEndpoint=null
-  const isAvailable = integration.available ?? !!integration.loginEndpoint;
+  // Custom integrations are always available, platform integrations use available field
+  const isAvailable = integration.source === "custom" || integration.available;
 
   const handleClick = () => {
     onClick(integration.id);
@@ -141,7 +141,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   const statusOrder = {
     connected: 0,
     not_connected: 1,
-    // al: 1,
+    created: 1, // Same priority as not_connected
     error: 2,
   };
 

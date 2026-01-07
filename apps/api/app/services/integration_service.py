@@ -240,6 +240,7 @@ async def get_user_connected_integrations(user_id: str) -> List[Dict[str, Any]]:
 async def add_user_integration(
     user_id: str,
     integration_id: str,
+    initial_status: Optional[str] = None,
 ) -> UserIntegration:
     """
     Add an integration to user's workspace.
@@ -250,6 +251,7 @@ async def add_user_integration(
     Args:
         user_id: The user's ID
         integration_id: ID of integration to add
+        initial_status: Optional override for initial status (e.g., 'created' for custom MCPs)
 
     Returns:
         The created UserIntegration
@@ -273,9 +275,13 @@ async def add_user_integration(
         raise ValueError(f"Integration '{integration_id}' already added to workspace")
 
     # Determine initial status:
+    # - If initial_status is provided, use it (for custom MCPs that need probe first)
     # - No auth required: connect immediately
     # - Auth required: set to created (needs OAuth to complete)
-    status = "connected" if not integration.requires_auth else "created"
+    if initial_status:
+        status = initial_status
+    else:
+        status = "connected" if not integration.requires_auth else "created"
     connected_at = datetime.utcnow() if status == "connected" else None
 
     user_integration = UserIntegration(
@@ -443,8 +449,9 @@ async def create_custom_integration(
 
     await integrations_collection.insert_one(integration.model_dump())
 
-    # Auto-add to user's workspace
-    await add_user_integration(user_id, integration_id)
+    # Auto-add to user's workspace with status='created'
+    # The probe/connect flow in the endpoint will update to 'connected' after success
+    await add_user_integration(user_id, integration_id, initial_status="created")
 
     logger.info(f"User {user_id} created custom integration {integration_id}")
 

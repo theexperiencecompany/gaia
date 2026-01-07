@@ -56,7 +56,7 @@ export const useMarketplace = (category?: string): UseMarketplaceReturn => {
   // Query for user's integrations
   const { data: userIntegrationsData, isLoading: isLoadingUserIntegrations } =
     useQuery({
-      queryKey: ["user-integrations"],
+      queryKey: ["integrations", "user"],
       queryFn: integrationsApi.getUserIntegrations,
     });
 
@@ -97,9 +97,9 @@ export const useMarketplace = (category?: string): UseMarketplaceReturn => {
   // Add to workspace mutation
   const addMutation = useMutation({
     mutationFn: integrationsApi.addToWorkspace,
-    onSuccess: (_, integrationId) => {
+    onSuccess: () => {
       toast.success("Integration added to workspace");
-      queryClient.invalidateQueries({ queryKey: ["user-integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", "user"] });
       queryClient.invalidateQueries({ queryKey: ["integrations", "status"] });
     },
     onError: (error) => {
@@ -112,9 +112,9 @@ export const useMarketplace = (category?: string): UseMarketplaceReturn => {
   // Remove from workspace mutation
   const removeMutation = useMutation({
     mutationFn: integrationsApi.removeFromWorkspace,
-    onSuccess: (_, integrationId) => {
+    onSuccess: () => {
       toast.success("Integration removed from workspace");
-      queryClient.invalidateQueries({ queryKey: ["user-integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", "user"] });
       queryClient.invalidateQueries({ queryKey: ["integrations", "status"] });
     },
     onError: (error) => {
@@ -130,7 +130,7 @@ export const useMarketplace = (category?: string): UseMarketplaceReturn => {
     onSuccess: () => {
       toast.success("Custom integration created");
       queryClient.invalidateQueries({ queryKey: ["marketplace"] });
-      queryClient.invalidateQueries({ queryKey: ["user-integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", "user"] });
     },
     onError: (error) => {
       toast.error(
@@ -145,7 +145,7 @@ export const useMarketplace = (category?: string): UseMarketplaceReturn => {
     onSuccess: () => {
       toast.success("Custom integration deleted");
       queryClient.invalidateQueries({ queryKey: ["marketplace"] });
-      queryClient.invalidateQueries({ queryKey: ["user-integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", "user"] });
     },
     onError: (error) => {
       toast.error(

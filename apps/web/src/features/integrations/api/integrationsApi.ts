@@ -83,7 +83,6 @@ export const integrationsApi = {
    */
   connectIntegration: async (
     integrationId: string,
-    bearerToken?: string,
   ): Promise<{ status: string; toolsCount?: number }> => {
     if (typeof window === "undefined") return { status: "error" };
 
@@ -93,7 +92,6 @@ export const integrationsApi = {
       `/integrations/connect/${integrationId}`,
       {
         redirect_path: redirectPath,
-        bearer_token: bearerToken,
       },
     )) as {
       status: "connected" | "redirect" | "error";
@@ -135,49 +133,6 @@ export const integrationsApi = {
     } catch (error) {
       console.error(`Failed to disconnect ${integrationId}:`, error);
       throw error;
-    }
-  },
-
-  /**
-   * Connect an MCP integration with bearer token.
-   * Uses the unified connect endpoint.
-   */
-  connectMCPWithToken: async (
-    integrationId: string,
-    bearerToken: string,
-  ): Promise<{ status: string; toolsCount: number }> => {
-    const result = await integrationsApi.connectIntegration(
-      integrationId,
-      bearerToken,
-    );
-    return {
-      status: result.status,
-      toolsCount: result.toolsCount ?? 0,
-    };
-  },
-
-  /**
-   * Get MCP integration status
-   */
-  getMCPStatus: async (): Promise<{
-    integrations: Array<{
-      integrationId: string;
-      connected: boolean;
-      status: string;
-    }>;
-  }> => {
-    try {
-      const response = await apiService.get("/mcp/status", { silent: true });
-      return response as {
-        integrations: Array<{
-          integrationId: string;
-          connected: boolean;
-          status: string;
-        }>;
-      };
-    } catch (error) {
-      console.error("Failed to get MCP status:", error);
-      return { integrations: [] };
     }
   },
 

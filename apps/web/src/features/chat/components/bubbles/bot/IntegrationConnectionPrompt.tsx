@@ -24,7 +24,7 @@ export default function IntegrationConnectionPrompt({
   }
 
   const isConnected = integration.status === "connected";
-  const isAvailable = !!integration.loginEndpoint;
+  const isAvailable = integration.source === "custom" || integration.available;
 
   const handleConnect = async () => {
     try {

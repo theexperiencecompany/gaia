@@ -1,7 +1,8 @@
 """
 MCP Integration API Routes.
 
-Handles MCP connection, OAuth callbacks, disconnection, and tool discovery.
+Handles MCP OAuth callbacks and tool discovery.
+Connection/disconnection is handled by the unified /integrations endpoints.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,8 +19,6 @@ from app.helpers.mcp_helpers import (
     invalidate_mcp_status_cache,
 )
 from app.models.mcp_models import (
-    MCPConnectRequest,
-    MCPConnectResponse,
     MCPIntegrationStatus,
     MCPStatusResponse,
     MCPToolInfo,
@@ -27,69 +26,12 @@ from app.models.mcp_models import (
 )
 from app.services.integration_service import (
     check_user_has_integration,
-    remove_user_integration,
     update_user_integration_status,
 )
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 
 router = APIRouter()
-
-
-@router.get("/connect/{integration_id}")
-async def connect_mcp_oauth(
-    integration_id: str,
-    redirect_path: str = Query("/integrations"),
-    user: dict = Depends(get_current_user),
-):
-    """
-    Initiate OAuth flow for an MCP integration via browser redirect.
-
-    This endpoint is for MCP integrations that require authentication.
-    For unauthenticated MCPs, use POST /connect/{integration_id}.
-    """
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
-
-    integration = get_integration_by_id(integration_id)
-    if not integration or integration.managed_by != "mcp":
-        raise HTTPException(
-            status_code=404, detail=f"MCP integration {integration_id} not found"
-        )
-
-    mcp_config = integration.mcp_config
-    if not mcp_config:
-        raise HTTPException(status_code=400, detail="MCP config missing")
-
-    # Only auth-required integrations should use this endpoint
-    if not mcp_config.requires_auth:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Use POST /api/v1/mcp/connect/{integration_id} for unauthenticated integrations",
-        )
-
-    client = get_mcp_client(user_id=str(user_id))
-
-    # Ensure user_integrations record exists with status "created"
-    # Status will be set to "connected" only after successful OAuth callback
-    await update_user_integration_status(str(user_id), integration_id, "created")
-
-    try:
-        auth_url = await client.build_oauth_auth_url(
-            integration_id=integration_id,
-            redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
-            redirect_path=redirect_path,
-        )
-        return RedirectResponse(url=auth_url)
-
-    except Exception as e:
-        logger.error(f"OAuth initiation failed for {integration_id}: {e}")
-        frontend_url = get_frontend_url()
-        return RedirectResponse(
-            url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error={str(e)}"
-        )
 
 
 @router.post("/test/{integration_id}")
@@ -162,8 +104,6 @@ async def test_mcp_connection(
             )
 
     # OAuth required
-    from app.helpers.mcp_helpers import get_api_base_url
-
     auth_url = await client.build_oauth_auth_url(
         integration_id=integration_id,
         redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
@@ -175,73 +115,6 @@ async def test_mcp_connection(
             "oauth_url": auth_url,
         }
     )
-
-
-@router.post("/connect/{integration_id}", response_model=MCPConnectResponse)
-async def connect_mcp(
-    integration_id: str,
-    request: MCPConnectRequest,
-    user: dict = Depends(get_current_user),
-):
-    """
-    Connect to an MCP integration.
-
-    For unauthenticated MCPs - creates user_integrations record and fetches tools.
-    For OAuth MCPs - use GET /connect/{integration_id} instead (browser redirect).
-    """
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
-
-    integration = get_integration_by_id(integration_id)
-    if not integration or integration.managed_by != "mcp":
-        raise HTTPException(
-            status_code=404, detail=f"MCP integration {integration_id} not found"
-        )
-
-    mcp_config = integration.mcp_config
-    if not mcp_config:
-        raise HTTPException(status_code=400, detail="MCP config missing")
-
-    # OAuth-required MCPs should use GET endpoint for browser redirect
-    if mcp_config.requires_auth:
-        raise HTTPException(
-            status_code=400,
-            detail=f"OAuth integrations require browser redirect. Use GET /api/v1/mcp/connect/{integration_id}",
-        )
-
-    # Unauthenticated MCPs - create user_integrations record and fetch tools
-    try:
-        # Create/update user_integrations record
-        await update_user_integration_status(str(user_id), integration_id, "connected")
-        logger.info(f"Created user_integrations record for {integration_id}")
-
-        # Connect to MCP server and fetch tools
-        client = get_mcp_client(user_id=str(user_id))
-        tools = await client.connect(integration_id)
-        tools_count = len(tools) if tools else 0
-
-        # Store tools globally for frontend visibility
-        if tools:
-            global_store = get_mcp_tools_store()
-            tool_metadata = [
-                {"name": t.name, "description": t.description or ""} for t in tools
-            ]
-            await global_store.store_tools(integration_id, tool_metadata)
-            logger.info(f"Stored {tools_count} tools globally for {integration_id}")
-
-        # Invalidate status cache
-        await invalidate_mcp_status_cache(str(user_id))
-
-        return MCPConnectResponse(
-            status="connected",
-            integration_id=integration_id,
-            tools_count=tools_count,
-            message=f"{integration.name} connected successfully",
-        )
-    except Exception as e:
-        logger.error(f"Failed to connect {integration_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to connect: {str(e)}")
 
 
 @router.get("/oauth/callback")
@@ -322,46 +195,6 @@ async def mcp_oauth_callback(
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error={str(e)}"
         )
-
-
-@router.delete("/{integration_id}")
-async def disconnect_mcp_integration(
-    integration_id: str,
-    user: dict = Depends(get_current_user),
-):
-    """Disconnect an MCP integration."""
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
-
-    integration = get_integration_by_id(integration_id)
-    if not integration or not integration.mcp_config:
-        raise HTTPException(status_code=404, detail="MCP integration not found")
-
-    # For unauthenticated MCPs, just remove user_integrations record
-    if not integration.mcp_config.requires_auth:
-        removed = await remove_user_integration(str(user_id), integration_id)
-        if not removed:
-            raise HTTPException(
-                status_code=404, detail="Integration not found in your workspace"
-            )
-        await invalidate_mcp_status_cache(str(user_id))
-        return JSONResponse(
-            content={"status": "success", "message": f"Disconnected {integration_id}"}
-        )
-
-    # For authenticated MCPs, clear credentials
-    client = get_mcp_client(user_id=str(user_id))
-    await client.disconnect(integration_id)
-
-    # Also remove from user_integrations
-    await remove_user_integration(str(user_id), integration_id)
-
-    await invalidate_mcp_status_cache(str(user_id))
-
-    return JSONResponse(
-        content={"status": "success", "message": f"Disconnected {integration_id}"}
-    )
 
 
 @router.get("/tools/{integration_id}", response_model=MCPToolsResponse)

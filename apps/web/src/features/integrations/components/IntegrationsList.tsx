@@ -21,10 +21,8 @@ const IntegrationRow: React.FC<{
   onClick: (id: string) => void;
 }> = ({ integration, onConnect, onClick }) => {
   const isConnected = integration.status === "connected";
-  // Custom integrations are always available
-  const isAvailable =
-    integration.source === "custom" ||
-    (integration.available ?? !!integration.loginEndpoint);
+  // Custom integrations are always available, platform integrations use available field
+  const isAvailable = integration.source === "custom" || integration.available;
 
   const handleClick = () => {
     onClick(integration.id);
@@ -162,7 +160,7 @@ export const IntegrationsList: React.FC<{
 
   // Separate featured integrations
   const featuredIntegrations = useMemo(() => {
-    return filteredIntegrations.filter((i) => i.isFeatured && i.loginEndpoint);
+    return filteredIntegrations.filter((i) => i.isFeatured && i.available);
   }, [filteredIntegrations]);
 
   // Group ALL integrations by category
@@ -234,32 +232,26 @@ export const IntegrationsList: React.FC<{
       {featuredIntegrations.length > 0 &&
         !searchQuery &&
         selectedCategory === "all" && (
-          <>
-            <IntegrationSection
-              title="Featured"
-              integrations={featuredIntegrations}
-              chipColor="primary"
-              onConnect={handleConnect}
-              onIntegrationClick={onIntegrationClick}
-            />
-            <Separator className="border-zinc-800 border-t-1 mb-8" />
-          </>
+          <IntegrationSection
+            title="Featured"
+            integrations={featuredIntegrations}
+            chipColor="primary"
+            onConnect={handleConnect}
+            onIntegrationClick={onIntegrationClick}
+          />
         )}
 
       {/* Created by You Section */}
       {createdByYouIntegrations.length > 0 &&
         !searchQuery &&
         selectedCategory === "all" && (
-          <>
-            <IntegrationSection
-              title="Created by You"
-              integrations={createdByYouIntegrations}
-              chipColor="primary"
-              onConnect={handleConnect}
-              onIntegrationClick={onIntegrationClick}
-            />
-            <Separator className="border-zinc-800 border-t-1 mb-8" />
-          </>
+          <IntegrationSection
+            title="Created by You"
+            integrations={createdByYouIntegrations}
+            // chipColor="primary"
+            onConnect={handleConnect}
+            onIntegrationClick={onIntegrationClick}
+          />
         )}
 
       {/* Category Sections */}

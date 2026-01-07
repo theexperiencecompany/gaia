@@ -1,5 +1,6 @@
 import io
-from typing import cast
+from typing import List, cast
+from urllib.parse import urlencode
 
 import cloudinary
 import cloudinary.uploader
@@ -11,6 +12,56 @@ from app.config.settings import settings
 from app.config.token_repository import token_repository
 
 http_async_client = httpx.AsyncClient()
+
+
+async def build_google_oauth_url(
+    user_email: str,
+    state_token: str,
+    integration_scopes: List[str],
+    user_id: str | None = None,
+) -> str:
+    """
+    Build a Google OAuth authorization URL with proper scope handling.
+
+    Args:
+        user_email: User's email for login hint
+        state_token: OAuth state token for CSRF protection
+        integration_scopes: New scopes to request for this integration
+        user_id: Optional user ID to fetch existing scopes
+
+    Returns:
+        Complete Google OAuth authorization URL
+    """
+    # Base scopes always required
+    base_scopes = ["openid", "profile", "email"]
+
+    # Get existing scopes from user's current token
+    existing_scopes: List[str] = []
+    if user_id:
+        try:
+            token = await token_repository.get_token(
+                str(user_id), "google", renew_if_expired=False
+            )
+            if token:
+                existing_scopes = str(token.get("scope", "")).split()
+        except Exception as e:
+            logger.debug(f"Could not get existing scopes for user {user_id}: {e}")
+
+    # Combine all scopes (base + existing + new), removing duplicates
+    all_scopes = list(set(base_scopes + existing_scopes + integration_scopes))
+
+    params = {
+        "response_type": "code",
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "redirect_uri": settings.GOOGLE_CALLBACK_URL,
+        "scope": " ".join(all_scopes),
+        "access_type": "offline",
+        "prompt": "consent",
+        "include_granted_scopes": "true",
+        "login_hint": user_email,
+        "state": state_token,
+    }
+    return f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
 
 
 async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:

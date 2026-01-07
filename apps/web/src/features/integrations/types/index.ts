@@ -13,10 +13,7 @@ export interface Integration {
     | "social"
     | "business"
     | "custom";
-  status: "connected" | "not_connected" | "error";
-  loginEndpoint?: string;
-  disconnectEndpoint?: string;
-  settingsPath?: string;
+  status: "connected" | "not_connected" | "created" | "error";
   // New properties for unified integrations
   isSpecial?: boolean;
   displayPriority?: number;

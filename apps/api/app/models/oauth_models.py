@@ -216,10 +216,10 @@ class IntegrationConfigResponse(BaseModel):
     category: str
     provider: str
     available: bool
-    loginEndpoint: Optional[str]
     isSpecial: bool
     displayPriority: int
     includedIntegrations: List[str]
     isFeatured: bool
     managedBy: Literal["self", "composio", "mcp", "internal"]
     authType: Optional[Literal["none", "oauth", "bearer"]] = None
+    source: Literal["platform"] = "platform"

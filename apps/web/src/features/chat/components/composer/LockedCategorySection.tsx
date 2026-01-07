@@ -39,8 +39,9 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
     }
   };
 
-  // Check if integration is available (has loginEndpoint)
-  const isAvailable = !!integration?.loginEndpoint;
+  // Check if integration is available
+  const isAvailable =
+    integration?.source === "custom" || integration?.available;
   const isConnected = integration?.status === "connected";
 
   return (

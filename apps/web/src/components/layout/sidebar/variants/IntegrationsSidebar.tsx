@@ -54,6 +54,7 @@ export default function IntegrationsSidebar() {
 
   const renderIntegrationItem = (integration: Integration) => {
     const isConnected = integration.status === "connected";
+    const isCreated = integration.status === "created";
 
     return (
       <Button
@@ -84,6 +85,9 @@ export default function IntegrationsSidebar() {
 
           {isConnected && (
             <span className="h-1.5 w-1.5 rounded-full bg-success" />
+          )}
+          {isCreated && (
+            <span className="h-1.5 w-1.5 rounded-full bg-warning" />
           )}
         </div>
       </Button>
