@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app.config.loggers import app_logger as logger
-from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
@@ -24,13 +24,12 @@ from app.models.integration_models import (
     IntegrationResponse,
     IntegrationTool,
     MarketplaceResponse,
-    MCPConfigDoc,
     UpdateCustomIntegrationRequest,
     UserIntegration,
     UserIntegrationResponse,
     UserIntegrationsListResponse,
 )
-from app.services.mcp.mcp_token_store import MCPTokenStore
+from app.models.oauth_models import MCPConfig
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 
 
@@ -126,8 +125,7 @@ async def get_integration_details(integration_id: str) -> Optional[IntegrationRe
     """
     Get single integration details by ID.
 
-    Checks platform integrations first, then custom integrations in MongoDB.
-    Hydrates tools from global store.
+    Uses IntegrationResolver for unified lookup and hydrates tools from global store.
 
     Args:
         integration_id: The integration ID to look up
@@ -135,39 +133,40 @@ async def get_integration_details(integration_id: str) -> Optional[IntegrationRe
     Returns:
         IntegrationResponse or None if not found
     """
+    from app.services.integration_resolver import IntegrationResolver
+
     # Fetch tools from global store
     tools_store = get_mcp_tools_store()
     stored_tools = await tools_store.get_tools(integration_id)
 
-    # Step 1: Check platform integrations
-    oauth_int = get_integration_by_id(integration_id)
-    if oauth_int:
-        response = IntegrationResponse.from_oauth_integration(oauth_int)
-        # Hydrate tools
-        if stored_tools:
-            response.tools = [
-                IntegrationTool(name=t["name"], description=t.get("description"))
-                for t in stored_tools
-            ]
-        return response
+    # Use IntegrationResolver for unified lookup
+    resolved = await IntegrationResolver.resolve(integration_id)
+    if not resolved:
+        return None
 
-    # Step 2: Check MongoDB for custom integrations
-    doc = await integrations_collection.find_one({"integration_id": integration_id})
-    if doc:
+    # Build response based on source
+    if resolved.platform_integration:
+        response = IntegrationResponse.from_oauth_integration(
+            resolved.platform_integration
+        )
+    elif resolved.custom_doc:
         try:
-            integration = Integration(**doc)
+            integration = Integration(**resolved.custom_doc)
             response = IntegrationResponse.from_integration(integration)
-            # Hydrate tools if not already in doc
-            if not response.tools and stored_tools:
-                response.tools = [
-                    IntegrationTool(name=t["name"], description=t.get("description"))
-                    for t in stored_tools
-                ]
-            return response
         except Exception as e:
             logger.error(f"Failed to parse integration {integration_id}: {e}")
+            return None
+    else:
+        return None
 
-    return None
+    # Hydrate tools
+    if stored_tools and not response.tools:
+        response.tools = [
+            IntegrationTool(name=t["name"], description=t.get("description"))
+            for t in stored_tools
+        ]
+
+    return response
 
 
 async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
@@ -439,7 +438,7 @@ async def create_custom_integration(
         is_public=request.is_public,
         created_by=user_id,
         icon_url=icon_url,
-        mcp_config=MCPConfigDoc(
+        mcp_config=MCPConfig(
             server_url=request.server_url,
             requires_auth=request.requires_auth,
             auth_type=request.auth_type,
@@ -562,14 +561,12 @@ async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
     """
     Get the set of integration namespaces (tool spaces) that user has connected.
 
-    Queries ALL integration sources in parallel for unified namespace discovery:
-    - user_integrations (MongoDB) - marketplace preferences for unauthenticated MCPs
-    - mcp_credentials (PostgreSQL) - actual MCP tokens for authenticated MCPs
-    - oauth_service (cached) - Composio and self-managed integrations
-    - internal integrations - always available (e.g., todos)
-
-    This ensures all users (including legacy users) can discover tools from their
-    connected integrations.
+    Uses the cached get_all_integrations_status() for unified namespace discovery.
+    This returns connected integrations from:
+    - user_integrations (MongoDB) - for unauthenticated MCPs
+    - mcp_credentials (PostgreSQL) - for authenticated MCPs
+    - Composio API - for Composio-managed integrations
+    - oauth_tokens (PostgreSQL) - for self-managed integrations
 
     Args:
         user_id: The user's ID
@@ -585,7 +582,6 @@ async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
     namespaces.update({"general", "subagents"})
 
     # Internal integrations (like todos) are core platform features - always available
-    # They're NOT integrations that need connecting via UI
     internal_integrations = [
         integration.id
         for integration in OAUTH_INTEGRATIONS
@@ -593,48 +589,27 @@ async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
     ]
     namespaces.update(internal_integrations)
 
-    async def fetch_mongodb_integrations() -> list[str]:
-        try:
-            connected = await get_user_connected_integrations(user_id)
-            return [doc["integration_id"] for doc in connected]
-        except Exception as e:
-            logger.warning(f"Failed to get user_integrations from MongoDB: {e}")
-            return []
+    # Use cached unified status check for all connected integrations
+    try:
+        all_statuses = await get_all_integrations_status(user_id)
+        connected = [
+            integration_id
+            for integration_id, is_connected in all_statuses.items()
+            if is_connected
+        ]
+        namespaces.update(connected)
+    except Exception as e:
+        logger.warning(f"Failed to get integration status: {e}")
 
-    async def fetch_postgres_integrations() -> list[str]:
-        try:
-            token_store = MCPTokenStore(user_id)
-            return await token_store.get_connected_integrations()
-        except Exception as e:
-            logger.warning(f"Failed to get mcp_credentials from PostgreSQL: {e}")
-            return []
-
-    async def fetch_oauth_integrations() -> list[str]:
-        """Get all connected integrations (Composio, self-managed, MCP) from unified status."""
-        try:
-            all_statuses = await get_all_integrations_status(user_id)
-            return [
-                integration_id
-                for integration_id, connected in all_statuses.items()
-                if connected
-            ]
-        except Exception as e:
-            logger.warning(f"Failed to get oauth integration status: {e}")
-            return []
-
-    # Fetch from all sources in parallel
-    (
-        mongo_integrations,
-        postgres_integrations,
-        oauth_integrations,
-    ) = await asyncio.gather(
-        fetch_mongodb_integrations(),
-        fetch_postgres_integrations(),
-        fetch_oauth_integrations(),
-    )
-
-    namespaces.update(mongo_integrations)
-    namespaces.update(postgres_integrations)
-    namespaces.update(oauth_integrations)
+    # Also include custom integrations from MongoDB (not in OAUTH_INTEGRATIONS)
+    try:
+        custom_connected = await get_user_connected_integrations(user_id)
+        for doc in custom_connected:
+            integration_id = doc.get("integration_id", "")
+            # Add custom integrations (they start with 'custom_')
+            if integration_id.startswith("custom_"):
+                namespaces.add(integration_id)
+    except Exception as e:
+        logger.warning(f"Failed to get custom integrations from MongoDB: {e}")
 
     return namespaces

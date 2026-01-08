@@ -10,7 +10,7 @@ This module defines Pydantic models for:
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from app.models.oauth_models import MCPConfig as MCPConfigDoc
+from app.models.oauth_models import MCPConfig
 from pydantic import BaseModel, Field
 
 
@@ -60,7 +60,7 @@ class Integration(BaseModel):
     )
 
     # Configuration (one of these based on managed_by)
-    mcp_config: Optional[MCPConfigDoc] = None
+    mcp_config: Optional[MCPConfig] = None
     composio_config: Optional[ComposioConfigDoc] = None
 
     # Frontend display metadata

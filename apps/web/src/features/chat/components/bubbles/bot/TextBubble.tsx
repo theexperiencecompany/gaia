@@ -35,6 +35,7 @@ import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import { IntegrationListSection } from "@/features/integrations";
+import type { IntegrationConnectionData } from "@/features/integrations/types";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
 import { Alert01Icon } from "@/icons";
@@ -59,7 +60,6 @@ import type {
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
-import type { IntegrationConnectionData } from "@/types/features/integrationTypes";
 import type {
   ContactData,
   EmailFetchData,

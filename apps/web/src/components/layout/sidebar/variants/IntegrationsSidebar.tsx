@@ -19,8 +19,12 @@ import { accordionItemStyles } from "../constants";
 
 export default function IntegrationsSidebar() {
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
-  const { integrations, connectIntegration, disconnectIntegration } =
-    useIntegrations();
+  const {
+    integrations,
+    connectIntegration,
+    disconnectIntegration,
+    deleteCustomIntegration,
+  } = useIntegrations();
 
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
   const openRightSidebar = useRightSidebar((state) => state.open);
@@ -33,11 +37,17 @@ export default function IntegrationsSidebar() {
         setTimeout(() => closeRightSidebar(), 500);
       };
 
+      const handleDelete = async (id: string) => {
+        await deleteCustomIntegration(id);
+        setTimeout(() => closeRightSidebar(), 500);
+      };
+
       setRightSidebarContent(
         <IntegrationSidebar
           integration={integration}
           onConnect={connectIntegration}
           onDisconnect={handleDisconnect}
+          onDelete={integration.source === "custom" ? handleDelete : undefined}
           category={integration.name}
         />,
       );
@@ -48,6 +58,7 @@ export default function IntegrationsSidebar() {
       openRightSidebar,
       connectIntegration,
       disconnectIntegration,
+      deleteCustomIntegration,
       closeRightSidebar,
     ],
   );

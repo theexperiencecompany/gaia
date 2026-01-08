@@ -195,7 +195,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
 
           <SidebarInset className="flex h-screen flex-col bg-primary-bg">
             <header
-              className="flex shrink-0 items-center justify-between px-6 py-3 pl-3"
+              className="flex shrink-0 items-center justify-between p-2"
               onClick={closeOnTouch}
             >
               {!currentOpen && <HeaderSidebarTrigger />}

@@ -17,10 +17,7 @@ from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
 from app.services.composio.composio_service import get_composio_service
-from app.services.integration_service import (
-    check_user_has_integration,
-    update_user_integration_status,
-)
+from app.services.integration_service import update_user_integration_status
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
@@ -106,9 +103,10 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
     """
     Get status for ALL integrations for a user. This is the ONLY cached function.
 
-    This function retrieves the connection status for all available integrations
-    and caches the entire result. All other status check functions should use this
-    cached data rather than making separate API calls.
+    Strategy:
+    1. Query MongoDB user_integrations first (canonical source for user connections)
+    2. For platform integrations not in user_integrations, check external services
+       (supports legacy users who connected before user_integrations existed)
 
     Args:
         user_id: The user ID to check status for
@@ -117,24 +115,44 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
         dict[str, bool]: Mapping of integration_id -> connection status for ALL integrations
     """
     result = {}
+
+    # Step 1: Get all user_integrations from MongoDB (canonical source)
+    from app.db.mongodb.collections import user_integrations_collection
+
+    user_ints = await user_integrations_collection.find({"user_id": user_id}).to_list(
+        100
+    )
+    mongo_status = {
+        doc["integration_id"]: doc.get("status") == "connected" for doc in user_ints
+    }
+
+    # Track which platform integrations need external verification
     composio_providers = []
     composio_id_to_provider = {}
-    mcp_integrations = []
+    mcp_auth_integrations = []  # Only auth-required MCPs need PostgreSQL check
 
-    # Group integrations by type
     for integration in OAUTH_INTEGRATIONS:
         if not integration.available:
             result[integration.id] = False
             continue
 
-        # MCP integrations - check credentials table
+        # If user has this integration in MongoDB, use that status
+        if integration.id in mongo_status:
+            result[integration.id] = mongo_status[integration.id]
+            continue
+
+        # Not in MongoDB - check external services (legacy support)
         if integration.managed_by == "mcp":
-            mcp_integrations.append(integration.id)
+            if integration.mcp_config and integration.mcp_config.requires_auth:
+                mcp_auth_integrations.append(integration.id)
+            else:
+                # Unauthenticated MCP not in user_integrations = not connected
+                result[integration.id] = False
         elif integration.managed_by == "composio":
             composio_providers.append(integration.provider)
             composio_id_to_provider[integration.id] = integration.provider
         elif integration.managed_by == "self":
-            # Check self-managed integrations individually
+            # Check self-managed integrations (Google) via PostgreSQL tokens
             try:
                 token = await token_repository.get_token(
                     user_id, integration.provider, renew_if_expired=True
@@ -148,35 +166,18 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
                 logger.debug(f"Token not found for {integration.provider}: {e}")
                 result[integration.id] = False
 
-    # Batch check all MCP integrations
-    if mcp_integrations:
+    # Step 2: Batch check auth-required MCP integrations not in MongoDB
+    if mcp_auth_integrations:
         try:
             token_store = MCPTokenStore(user_id=user_id)
-            for integration_id in mcp_integrations:
-                integration = next(
-                    (i for i in OAUTH_INTEGRATIONS if i.id == integration_id), None
-                )
-                # Unauthenticated MCPs require explicit user connection via user_integrations
-                if (
-                    integration
-                    and integration.mcp_config
-                    and not integration.mcp_config.requires_auth
-                ):
-                    # Check if user has connected this unauthenticated MCP
-                    result[integration_id] = await check_user_has_integration(
-                        user_id, integration_id
-                    )
-                else:
-                    # Authenticated MCPs check mcp_credentials table
-                    result[integration_id] = await token_store.is_connected(
-                        integration_id
-                    )
+            for integration_id in mcp_auth_integrations:
+                result[integration_id] = await token_store.is_connected(integration_id)
         except Exception as e:
             logger.error(f"Error checking MCP integrations: {e}")
-            for integration_id in mcp_integrations:
+            for integration_id in mcp_auth_integrations:
                 result[integration_id] = False
 
-    # Batch check all Composio integrations
+    # Step 3: Batch check Composio integrations not in MongoDB
     if composio_providers:
         try:
             composio_service = get_composio_service()
@@ -189,6 +190,11 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
             logger.error(f"Error batch checking Composio integrations: {e}")
             for integration_id in composio_id_to_provider.keys():
                 result[integration_id] = False
+
+    # Include custom integrations from MongoDB that are connected
+    for integration_id, is_connected in mongo_status.items():
+        if integration_id not in result:
+            result[integration_id] = is_connected
 
     return result
 

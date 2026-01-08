@@ -1,5 +1,6 @@
 "use client";
 
+import { Kbd } from "@heroui/kbd";
 import {
   Button,
   Input,
@@ -10,11 +11,11 @@ import {
   ModalHeader,
   Textarea,
 } from "@heroui/react";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { toast } from "sonner";
-
+import { useModalForm } from "@/hooks/ui/useModalForm";
+import { usePlatform } from "@/hooks/ui/usePlatform";
 import { ConnectIcon, KeyIcon, PuzzleIcon } from "@/icons";
-
 import { useIntegrations } from "../hooks/useIntegrations";
 
 interface MCPIntegrationModalProps {
@@ -22,79 +23,119 @@ interface MCPIntegrationModalProps {
   onClose: () => void;
 }
 
+interface MCPFormData {
+  name: string;
+  description: string;
+  server_url: string;
+  api_key: string;
+  requires_auth: boolean;
+  auth_type: "none" | "oauth" | "bearer";
+  is_public: boolean;
+  [key: string]: unknown;
+}
+
 export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [serverUrl, setServerUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-
+  const { isMac, modifierKeyName } = usePlatform();
   const { createCustomIntegration, refetch } = useIntegrations();
 
-  const handleCreate = async () => {
-    setIsLoading(true);
+  const initialData = useMemo<MCPFormData>(
+    () => ({
+      name: "",
+      description: "",
+      server_url: "",
+      api_key: "",
+      requires_auth: false,
+      auth_type: "none",
+      is_public: false,
+    }),
+    [],
+  );
 
-    try {
-      const result = await createCustomIntegration({
-        name,
-        description: description.trim() || undefined,
-        server_url: serverUrl,
-        requires_auth: !!apiKey,
-        auth_type: apiKey ? "bearer" : "none",
-        is_public: false,
-      });
+  const { formData, loading, handleSubmit, updateField, resetForm } =
+    useModalForm<MCPFormData>({
+      initialData,
+      validate: [
+        { field: "name", required: true, message: "Name is required" },
+        {
+          field: "server_url",
+          required: true,
+          custom: (value) => {
+            if (!value || typeof value !== "string")
+              return "Server URL is required";
+            if (!/^https?:\/\/.+/.test(value)) {
+              return "Please enter a valid URL starting with http:// or https://";
+            }
+            return null;
+          },
+        },
+      ],
+      onSubmit: async (data) => {
+        const result = await createCustomIntegration({
+          name: data.name,
+          description: data.description?.trim() || undefined,
+          server_url: data.server_url,
+          requires_auth: !!data.api_key,
+          auth_type: data.api_key ? "bearer" : "none",
+          is_public: false,
+        });
 
-      // Handle auto-connection result
-      const connection = result.connection;
+        // Handle auto-connection result
+        const connection = result.connection;
 
-      if (connection?.status === "connected") {
-        toast.success(
-          `Connected to ${result.name} with ${connection.tools_count || 0} tools!`,
-        );
-        refetch();
-        handleClose();
-      } else if (connection?.status === "requires_oauth") {
-        toast.info("Authorization required - redirecting...");
-        refetch();
-        handleClose();
-        // Redirect to OAuth URL
-        if (connection.oauth_url && typeof window !== "undefined") {
-          window.location.href = connection.oauth_url;
+        if (connection?.status === "connected") {
+          toast.success(
+            `Connected to ${result.name} with ${connection.tools_count || 0} tools!`,
+          );
+        } else if (connection?.status === "requires_oauth") {
+          toast.info("Authorization required - redirecting...");
+          // Redirect to OAuth URL
+          if (connection.oauth_url && typeof window !== "undefined") {
+            window.location.href = connection.oauth_url;
+          }
+        } else if (connection?.status === "failed") {
+          toast.warning(
+            `Integration created, but connection failed: ${connection.error || "Unknown error"}. You can retry from the integrations page.`,
+          );
+        } else {
+          toast.success("Custom integration created successfully!");
         }
-      } else if (connection?.status === "failed") {
-        toast.warning(
-          `Integration created, but connection failed: ${connection.error || "Unknown error"}. You can retry from the integrations page.`,
-        );
-        refetch();
-        handleClose();
-      } else {
-        // Default: just created, no connection attempt
-        toast.success("Custom integration created successfully!");
-        refetch();
-        handleClose();
-      }
-    } catch (error) {
-      console.error("Failed to create custom integration:", error);
-      toast.error(
-        `Failed to create integration: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  const handleClose = () => {
-    setName("");
-    setDescription("");
-    setServerUrl("");
-    setApiKey("");
+        refetch();
+      },
+      onSuccess: () => {
+        handleClose();
+      },
+      resetOnSuccess: true,
+    });
+
+  const handleClose = useCallback(() => {
+    resetForm();
     onClose();
-  };
+  }, [resetForm, onClose]);
 
-  const isValid = name.trim() !== "" && serverUrl.trim() !== "";
+  // Keyboard shortcut handler for Cmd/Ctrl + Enter to submit
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (!isOpen || loading) return;
+
+      const modifierKey = isMac ? e.metaKey : e.ctrlKey;
+      if (modifierKey && e.key === "Enter") {
+        e.preventDefault();
+        handleSubmit();
+      }
+    },
+    [isOpen, loading, isMac, handleSubmit],
+  );
+
+  useEffect(() => {
+    if (isOpen) {
+      document.addEventListener("keydown", handleKeyDown);
+      return () => document.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [isOpen, handleKeyDown]);
 
   return (
     <Modal
@@ -119,17 +160,18 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
             <Input
               label="Name"
               placeholder="Integration Name"
-              value={name}
-              onValueChange={setName}
+              value={formData.name}
+              onValueChange={(v) => updateField("name", v)}
               isRequired
               startContent={<PuzzleIcon width={16} height={16} />}
+              autoFocus
             />
 
             <Textarea
               label="Description"
               placeholder="What does this integration do?"
-              value={description}
-              onValueChange={setDescription}
+              value={formData.description || ""}
+              onValueChange={(v) => updateField("description", v)}
               minRows={2}
               maxRows={3}
             />
@@ -137,8 +179,8 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
             <Input
               label="Server URL"
               placeholder="https://mcp.example.com/sse"
-              value={serverUrl}
-              onValueChange={setServerUrl}
+              value={formData.server_url}
+              onValueChange={(v) => updateField("server_url", v)}
               isRequired
               startContent={<ConnectIcon width={16} height={16} />}
             />
@@ -146,8 +188,8 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
             <Input
               label="API Key (optional)"
               placeholder="sk-..."
-              value={apiKey}
-              onValueChange={setApiKey}
+              value={formData.api_key || ""}
+              onValueChange={(v) => updateField("api_key", v)}
               type="password"
               description="If provided, API key authentication will be used. Leave empty to automatically detect OAuth requirements."
               startContent={<KeyIcon width={16} height={16} />}
@@ -160,15 +202,15 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
             color="default"
             variant="light"
             onPress={handleClose}
-            isDisabled={isLoading}
+            isDisabled={loading}
           >
             Cancel
           </Button>
           <Button
             color="primary"
-            onPress={handleCreate}
-            isLoading={isLoading}
-            isDisabled={!isValid || isLoading}
+            onPress={handleSubmit}
+            isLoading={loading}
+            endContent={!loading && <Kbd keys={[modifierKeyName, "enter"]} />}
           >
             Create
           </Button>

@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from app.config.loggers import todos_logger
-from app.constants.todos import INBOX_PROJECT_ID
 from app.db.mongodb.collections import (
     projects_collection,
     todos_collection,

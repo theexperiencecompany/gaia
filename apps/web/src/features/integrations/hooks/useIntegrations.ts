@@ -94,12 +94,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       name: ui.integration.name,
       description: ui.integration.description,
       category: ui.integration.category as Integration["category"],
-      status:
-        ui.status === "connected"
-          ? "connected"
-          : ui.status === "created"
-            ? "created"
-            : "not_connected",
+      status: ui.status === "connected" ? "connected" : "not_connected",
       managedBy: ui.integration.managed_by,
       source: ui.integration.source,
       requiresAuth: ui.integration.requires_auth,

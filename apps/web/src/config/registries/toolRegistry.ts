@@ -1,3 +1,4 @@
+import type { IntegrationConnectionData } from "@/features/integrations/types";
 import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
@@ -17,7 +18,6 @@ import type {
   CalendarFetchData,
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
-import type { IntegrationConnectionData } from "@/types/features/integrationTypes";
 import type {
   ContactData,
   EmailFetchData,

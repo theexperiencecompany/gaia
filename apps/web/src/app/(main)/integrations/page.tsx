@@ -25,8 +25,13 @@ import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function IntegrationsPage() {
   const queryClient = useQueryClient();
-  const { integrations, connectIntegration, disconnectIntegration, refetch } =
-    useIntegrations();
+  const {
+    integrations,
+    connectIntegration,
+    disconnectIntegration,
+    deleteCustomIntegration,
+    refetch,
+  } = useIntegrations();
 
   // Pre-fetch tools on page load
   const { tools: _prefetchedTools } = useToolsWithIntegrations();
@@ -73,11 +78,19 @@ export default function IntegrationsPage() {
       setTimeout(() => closeRightSidebar(), 500);
     };
 
+    const handleDelete = async (id: string) => {
+      await deleteCustomIntegration(id);
+      setTimeout(() => closeRightSidebar(), 500);
+    };
+
     setRightSidebarContent(
       <IntegrationSidebar
         integration={selectedIntegration}
         onConnect={connectIntegration}
         onDisconnect={handleDisconnect}
+        onDelete={
+          selectedIntegration.source === "custom" ? handleDelete : undefined
+        }
         category={selectedIntegration.name}
       />,
     );
@@ -88,6 +101,7 @@ export default function IntegrationsPage() {
     setRightSidebarContent,
     connectIntegration,
     disconnectIntegration,
+    deleteCustomIntegration,
     closeRightSidebar,
   ]);
 
@@ -177,7 +191,7 @@ export default function IntegrationsPage() {
   // Set header with search input
   useEffect(() => {
     setHeader(
-      <div className="py-2 flex items-center justify-between w-full gap-4">
+      <div className="py-1 flex items-center justify-between w-full gap-4">
         <HeaderTitle
           icon={<ConnectIcon width={20} height={20} />}
           text="Integrations"

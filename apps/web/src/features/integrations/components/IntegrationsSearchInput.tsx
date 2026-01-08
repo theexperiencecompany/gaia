@@ -28,8 +28,9 @@ export const IntegrationsSearchInput = forwardRef<
       type="text"
       value={value}
       isClearable={!!value}
-      className="max-w-xl"
-      radius="full"
+      className="max-w-lg"
+      // radius="full"
+      // size="sm"
       startContent={<SearchIcon width={16} height={16} />}
       endContent={!value ? endContent : undefined}
       onValueChange={onChange}

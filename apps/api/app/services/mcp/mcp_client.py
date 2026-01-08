@@ -15,10 +15,10 @@ from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 
 from app.config.loggers import langchain_logger as logger
-from app.config.oauth_config import get_integration_by_id
 from app.db.mongodb.collections import integrations_collection
 from app.helpers.mcp_helpers import create_stub_tools_from_cache
 from app.models.oauth_models import MCPConfig
+from app.services.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.utils.favicon_utils import fetch_favicon_from_url
@@ -233,25 +233,13 @@ class MCPClient:
         For OAuth MCPs: Uses stored credentials from completed OAuth flow.
         Supports both platform integrations (from code) and custom integrations (from MongoDB).
         """
-        # Try platform integration first
-        integration = get_integration_by_id(integration_id)
-        mcp_config = None
-        is_custom = False
-
-        if integration and integration.mcp_config:
-            mcp_config = integration.mcp_config
-        else:
-            # Try custom integration from MongoDB
-            custom_doc = await integrations_collection.find_one(
-                {"integration_id": integration_id}
-            )
-            if custom_doc and custom_doc.get("mcp_config"):
-                mcp_config = MCPConfig(**custom_doc["mcp_config"])
-                is_custom = True
-                logger.info(f"Found custom MCP integration: {integration_id}")
-
-        if not mcp_config:
+        # Resolve integration from platform config or MongoDB
+        resolved = await IntegrationResolver.resolve(integration_id)
+        if not resolved or not resolved.mcp_config:
             raise ValueError(f"MCP integration {integration_id} not found")
+
+        mcp_config = resolved.mcp_config
+        is_custom = resolved.source == "custom"
 
         config = await self._build_config(integration_id, mcp_config)
 
@@ -374,21 +362,14 @@ class MCPClient:
 
         Supports both platform integrations (from code) and custom integrations (from MongoDB).
         """
-        # Try platform integration first
-        integration = get_integration_by_id(integration_id)
-        mcp_config = integration.mcp_config if integration else None
-
-        # Fallback to custom integration from MongoDB
-        if not mcp_config:
-            custom_doc = await integrations_collection.find_one(
-                {"integration_id": integration_id}
-            )
-            if custom_doc and custom_doc.get("mcp_config"):
-                mcp_config = MCPConfig(**custom_doc["mcp_config"])
-                logger.info(f"Building OAuth URL for custom MCP: {integration_id}")
-
-        if not mcp_config:
+        # Resolve integration from platform config or MongoDB
+        resolved = await IntegrationResolver.resolve(integration_id)
+        if not resolved or not resolved.mcp_config:
             raise ValueError(f"Integration {integration_id} not found")
+
+        mcp_config = resolved.mcp_config
+        if resolved.source == "custom":
+            logger.info(f"Building OAuth URL for custom MCP: {integration_id}")
 
         # Full MCP OAuth discovery
         oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
@@ -511,21 +492,14 @@ class MCPClient:
         if not is_valid:
             raise ValueError("Invalid OAuth state")
 
-        # Try platform integration first
-        integration = get_integration_by_id(integration_id)
-        mcp_config = integration.mcp_config if integration else None
-
-        # Fallback to custom integration from MongoDB
-        if not mcp_config:
-            custom_doc = await integrations_collection.find_one(
-                {"integration_id": integration_id}
-            )
-            if custom_doc and custom_doc.get("mcp_config"):
-                mcp_config = MCPConfig(**custom_doc["mcp_config"])
-                logger.info(f"Handling OAuth callback for custom MCP: {integration_id}")
-
-        if not mcp_config:
+        # Resolve integration from platform config or MongoDB
+        resolved = await IntegrationResolver.resolve(integration_id)
+        if not resolved or not resolved.mcp_config:
             raise ValueError(f"Integration {integration_id} not found")
+
+        mcp_config = resolved.mcp_config
+        if resolved.source == "custom":
+            logger.info(f"Handling OAuth callback for custom MCP: {integration_id}")
 
         # Get OAuth config (should be cached from build_oauth_auth_url)
         oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
@@ -613,12 +587,8 @@ class MCPClient:
 
     async def disconnect(self, integration_id: str) -> None:
         """Disconnect from an MCP server."""
-        integration = get_integration_by_id(integration_id)
-        if (
-            integration
-            and integration.mcp_config
-            and not integration.mcp_config.requires_auth
-        ):
+        resolved = await IntegrationResolver.resolve(integration_id)
+        if resolved and resolved.mcp_config and not resolved.requires_auth:
             logger.info(f"Skipping disconnect for unauthenticated MCP {integration_id}")
             return
 
@@ -673,13 +643,9 @@ class MCPClient:
             user_integrations = await get_user_connected_integrations(self.user_id)
             for ui in user_integrations:
                 integration_id = ui.get("integration_id")
-                # Check if this is an unauthenticated MCP
-                integration = get_integration_by_id(integration_id)
-                if (
-                    integration
-                    and integration.mcp_config
-                    and not integration.mcp_config.requires_auth
-                ):
+                # Check if this is an unauthenticated MCP via resolver
+                resolved = await IntegrationResolver.resolve(integration_id)
+                if resolved and resolved.mcp_config and not resolved.requires_auth:
                     unauth_connected.append(integration_id)
         except Exception as e:
             logger.warning(f"Failed to get unauth MCPs from user_integrations: {e}")
@@ -695,14 +661,10 @@ class MCPClient:
                     all_tools[integration_id] = self._tools[integration_id]
                     continue
 
-                integration = get_integration_by_id(integration_id)
+                resolved = await IntegrationResolver.resolve(integration_id)
 
                 # For auth-required MCPs, try cached tools first
-                if (
-                    integration
-                    and integration.mcp_config
-                    and integration.mcp_config.requires_auth
-                ):
+                if resolved and resolved.mcp_config and resolved.requires_auth:
                     cached = await self.token_store.get_cached_tools(integration_id)
                     if cached:
                         stub_tools = create_stub_tools_from_cache(

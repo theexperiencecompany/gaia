@@ -18,6 +18,7 @@ interface IntegrationSidebarProps {
     integrationId: string,
   ) => Promise<{ status: string; toolsCount?: number }>;
   onDisconnect?: (integrationId: string) => void;
+  onDelete?: (integrationId: string) => Promise<void>;
   category?: string;
 }
 
@@ -25,6 +26,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   integration,
   onConnect,
   onDisconnect,
+  onDelete,
   category,
 }) => {
   const isConnected = integration.status === "connected";
@@ -34,7 +36,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const isAvailable = integration.source === "custom" || integration.available;
   const { tools } = useToolsWithIntegrations();
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
 
   // Get tools that belong to this integration or its included integrations
@@ -78,6 +82,24 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       } finally {
         setIsDisconnecting(false);
         setShowDisconnectDialog(false);
+      }
+    }
+  };
+
+  const handleDelete = () => {
+    if (onDelete) {
+      setShowDeleteDialog(true);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (onDelete) {
+      setIsDeleting(true);
+      try {
+        await onDelete(integration.id);
+      } finally {
+        setIsDeleting(false);
+        setShowDeleteDialog(false);
       }
     }
   };
@@ -162,6 +184,20 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             </Button>
           )
         )}
+
+        {/* Delete button for integrations with status=created */}
+        {showRetry && onDelete && (
+          <Button
+            color="danger"
+            variant="light"
+            fullWidth
+            onPress={handleDelete}
+            isLoading={isDeleting}
+            isDisabled={isDeleting}
+          >
+            Delete Integration
+          </Button>
+        )}
         {integrationTools.length > 0 && (
           <h2 className="mb-1 mt-3 text-xs font-medium text-zinc-400 -ml-1">
             Available Tools ({integrationTools.length})
@@ -201,6 +237,17 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         variant="destructive"
         onConfirm={confirmDisconnect}
         onCancel={() => setShowDisconnectDialog(false)}
+      />
+
+      <ConfirmationDialog
+        isOpen={showDeleteDialog}
+        title="Delete Integration"
+        message={`Are you sure you want to delete ${integration.name}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteDialog(false)}
       />
     </div>
   );

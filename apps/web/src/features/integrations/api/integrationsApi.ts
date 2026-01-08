@@ -1,18 +1,17 @@
 import { apiService } from "@/lib/api";
 
 import type {
-  ConnectionTestResult,
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
   Integration,
-  IntegrationStatus,
-  MarketplaceIntegration,
-  MarketplaceResponse,
   UserIntegrationsResponse,
 } from "../types";
 
 export interface IntegrationStatusResponse {
-  integrations: IntegrationStatus[];
+  integrations: Array<{
+    integrationId: string;
+    connected: boolean;
+  }>;
 }
 
 export interface IntegrationConfigResponse {
@@ -34,52 +33,24 @@ export const integrationsApi = {
       throw error;
     }
   },
+
   /**
-   * Get the status of all integrations for the current user
+   * Get user's integrations with status
    */
-  getIntegrationStatus: async (): Promise<IntegrationStatusResponse> => {
+  getUserIntegrations: async (): Promise<UserIntegrationsResponse> => {
     try {
-      const response = (await apiService.get("/integrations/status", {
-        silent: true,
-      })) as {
-        integrations: Array<{
-          integrationId: string;
-          connected: boolean;
-        }>;
-        debug?: {
-          authorized_scopes: string[];
-        };
-      };
-
-      // Map backend response to frontend format
-      const integrations: IntegrationStatus[] = response.integrations.map(
-        (integration) => ({
-          integrationId: integration.integrationId,
-          connected: integration.connected,
-          lastConnected: integration.connected
-            ? new Date().toISOString()
-            : undefined,
-        }),
+      const response = await apiService.get(
+        "/integrations/users/me/integrations",
       );
-
-      return { integrations };
+      return response as UserIntegrationsResponse;
     } catch (error) {
-      console.error("Failed to get integration status:", error);
-      // Return empty array if we can't determine status
-      return {
-        integrations: [],
-      };
+      console.error("Failed to get user integrations:", error);
+      return { integrations: [], total: 0 };
     }
   },
 
   /**
    * Connect an integration using the unified backend endpoint.
-   *
-   * The backend handles all integration types (MCP, Composio, Google, custom)
-   * and returns one of:
-   * - connected: Integration is ready to use
-   * - redirect: OAuth required, frontend should redirect to redirect_url
-   * - error: Connection failed
    */
   connectIntegration: async (
     integrationId: string,
@@ -119,7 +90,6 @@ export const integrationsApi = {
 
   /**
    * Disconnect an integration.
-   * The backend handles all integration types uniformly.
    */
   disconnectIntegration: async (integrationId: string): Promise<void> => {
     try {
@@ -133,58 +103,6 @@ export const integrationsApi = {
     } catch (error) {
       console.error(`Failed to disconnect ${integrationId}:`, error);
       throw error;
-    }
-  },
-
-  // Marketplace API Methods
-
-  /**
-   * Get all available integrations from the marketplace
-   */
-  getMarketplace: async (category?: string): Promise<MarketplaceResponse> => {
-    try {
-      const params = category
-        ? `?category=${encodeURIComponent(category)}`
-        : "";
-      const response = await apiService.get(
-        `/integrations/marketplace${params}`,
-      );
-      return response as MarketplaceResponse;
-    } catch (error) {
-      console.error("Failed to get marketplace:", error);
-      return { featured: [], integrations: [], total: 0 };
-    }
-  },
-
-  /**
-   * Get a single integration from the marketplace
-   */
-  getMarketplaceIntegration: async (
-    integrationId: string,
-  ): Promise<MarketplaceIntegration | null> => {
-    try {
-      const response = await apiService.get(
-        `/integrations/marketplace/${integrationId}`,
-      );
-      return response as MarketplaceIntegration;
-    } catch (error) {
-      console.error(`Failed to get integration ${integrationId}:`, error);
-      return null;
-    }
-  },
-
-  /**
-   * Get user's added integrations
-   */
-  getUserIntegrations: async (): Promise<UserIntegrationsResponse> => {
-    try {
-      const response = await apiService.get(
-        "/integrations/users/me/integrations",
-      );
-      return response as UserIntegrationsResponse;
-    } catch (error) {
-      console.error("Failed to get user integrations:", error);
-      return { integrations: [], total: 0 };
     }
   },
 
@@ -232,7 +150,6 @@ export const integrationsApi = {
 
   /**
    * Create a custom MCP integration.
-   * Returns connection result with auto-connection status.
    */
   createCustomIntegration: async (
     request: CreateCustomIntegrationRequest,
@@ -248,14 +165,23 @@ export const integrationsApi = {
 
   /**
    * Test connection to an MCP server.
-   * Can be used to retry failed connections.
    */
   testConnection: async (
     integrationId: string,
-  ): Promise<ConnectionTestResult> => {
+  ): Promise<{
+    status: "connected" | "requires_oauth" | "failed";
+    tools_count?: number;
+    oauth_url?: string;
+    error?: string;
+  }> => {
     try {
       const response = await apiService.post(`/mcp/test/${integrationId}`, {});
-      return response as ConnectionTestResult;
+      return response as {
+        status: "connected" | "requires_oauth" | "failed";
+        tools_count?: number;
+        oauth_url?: string;
+        error?: string;
+      };
     } catch (error) {
       console.error(`Failed to test connection ${integrationId}:`, error);
       throw error;

@@ -5,4 +5,4 @@
 export * from "./IntegrationListSection";
 export * from "./IntegrationsCard";
 export * from "./IntegrationsSearchInput";
-export * from "./MCPIntegrationModal.1";
+export * from "./MCPIntegrationModal";

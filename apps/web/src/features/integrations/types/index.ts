@@ -76,12 +76,6 @@ export interface MarketplaceIntegration {
   created_by?: string;
 }
 
-export interface MarketplaceResponse {
-  featured: MarketplaceIntegration[];
-  integrations: MarketplaceIntegration[];
-  total: number;
-}
-
 export interface UserIntegration {
   integration_id: string;
   status: "created" | "connected";
@@ -125,4 +119,27 @@ export interface CreateCustomIntegrationResponse {
   integration_id: string;
   name: string;
   connection?: ConnectionTestResult;
+}
+
+/**
+ * Integration connection types for chat messages
+ * (Merged from types/features/integrationTypes.ts)
+ */
+export interface IntegrationConnectionData {
+  integration_id: string;
+  message: string;
+}
+
+export interface IntegrationInfo {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  connected: boolean;
+}
+
+export interface IntegrationListData {
+  integrations: IntegrationInfo[];
+  total_count: number;
+  connected_count: number;
 }
