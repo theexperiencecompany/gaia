@@ -1,7 +1,7 @@
-import { apiService } from "@/lib/api";
-import { API_ORIGIN } from "@/lib/constants";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
+import { apiService } from "@/lib/api";
+import { API_ORIGIN } from "@/lib/constants";
 import type {
   IntegrationsConfigResponse,
   IntegrationsStatusResponse,

@@ -1,8 +1,8 @@
 import {
   BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
   BottomSheetFlatList,
   BottomSheetModal,
-  type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import { Image } from "expo-image";
 import { Button, Chip } from "heroui-native";
@@ -59,7 +59,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedFilter, setSelectedFilter] = useState("All");
     const [integrations, setIntegrations] = useState<IntegrationWithStatus[]>(
-      []
+      [],
     );
     const [isLoading, setIsLoading] = useState(false);
     const [hasLoaded, setHasLoaded] = useState(false);
@@ -152,7 +152,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
           opacity={0.5}
         />
       ),
-      []
+      [],
     );
 
     const renderItem = useCallback(
@@ -208,7 +208,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
           </Pressable>
         );
       },
-      [connectingId]
+      [connectingId],
     );
 
     const ListHeader = useCallback(
@@ -221,7 +221,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
           </Text>
         </View>
       ),
-      [filteredIntegrations]
+      [filteredIntegrations],
     );
 
     const ListEmpty = useCallback(
@@ -234,7 +234,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
             </Text>
           </View>
         ) : null,
-      [isLoading]
+      [isLoading],
     );
 
     return (
@@ -302,7 +302,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
         />
       </BottomSheetModal>
     );
-  }
+  },
 );
 
 ConnectDrawer.displayName = "ConnectDrawer";

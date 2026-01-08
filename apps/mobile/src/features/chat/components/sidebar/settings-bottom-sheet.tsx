@@ -1,30 +1,30 @@
 import {
   BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
   BottomSheetModal,
   BottomSheetScrollView,
-  type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import { Avatar } from "heroui-native";
 import { forwardRef, useCallback, useMemo } from "react";
 import { Linking, Pressable, View } from "react-native";
 import {
   ArrowRight01Icon,
+  BookOpen01Icon,
+  BrainIcon,
+  ChartLineData01Icon,
+  CustomerSupportIcon,
   DiscordIcon,
   Download04Icon,
   HugeiconsIcon,
+  KeyboardIcon,
   Logout01Icon,
   MagicWand01Icon,
   Settings01Icon,
   Settings02Icon,
+  TwitterIcon,
   UserCircleIcon,
   UserIcon,
   WhatsappIcon,
-  KeyboardIcon,
-  BrainIcon,
-  ChartLineData01Icon,
-  BookOpen01Icon,
-  CustomerSupportIcon,
-  TwitterIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import type { UserInfo } from "@/features/auth";
@@ -110,7 +110,7 @@ export const SettingsBottomSheet = forwardRef<
         opacity={0.5}
       />
     ),
-    []
+    [],
   );
 
   return (
