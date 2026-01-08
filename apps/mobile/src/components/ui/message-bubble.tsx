@@ -66,7 +66,7 @@ function PulsingDots() {
             duration: 400,
             useNativeDriver: true,
           }),
-        ]),
+        ])
       );
 
     const a1 = animate(dot1, 0);
@@ -118,7 +118,8 @@ function PulsingDots() {
 }
 
 interface MessageBubbleProps
-  extends React.ComponentPropsWithoutRef<typeof View>,
+  extends
+    React.ComponentPropsWithoutRef<typeof View>,
     MessageBubbleVariantProps {
   message?: string;
   showAvatar?: boolean;
@@ -139,7 +140,7 @@ function MessageBubble({
     <View
       className={cn(
         "flex-row items-start gap-2",
-        variant === "sent" ? "self-end" : "self-start",
+        variant === "sent" ? "self-end" : "self-start"
       )}
     >
       {variant !== "sent" && showAvatar && (
@@ -164,7 +165,7 @@ function MessageBubble({
             isLoading
               ? "px-0 py-2.5"
               : messageBubbleVariants({ variant, grouped }),
-            className,
+            className
           )}
         >
           {children ??
@@ -184,7 +185,7 @@ function MessageBubble({
                   "text-base",
                   variant === "sent"
                     ? "text-accent-foreground"
-                    : "text-foreground",
+                    : "text-foreground"
                 )}
               >
                 {message}
@@ -249,7 +250,7 @@ function ChatMessage({
       className={cn(
         "flex w-full flex-col",
         variant === "sent" ? "items-end" : "items-start",
-        className,
+        className
       )}
     >
       <View className="flex flex-col">
@@ -267,7 +268,7 @@ function ChatMessage({
         <Text
           className={cn(
             "mt-1 px-2 text-xs text-muted",
-            variant === "sent" && "text-right",
+            variant === "sent" && "text-right"
           )}
         >
           {timestamp}

@@ -13,7 +13,6 @@ export default function SignUpScreen() {
   const router = useRouter();
 
   const handleGoogleSignUp = () => {
-    console.log("Google Sign Up");
     router.replace("/");
   };
 

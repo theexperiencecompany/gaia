@@ -23,7 +23,7 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
     (chatId: string) => {
       setActiveChatId(chatId);
     },
-    [setActiveChatId],
+    [setActiveChatId]
   );
 
   const handleNewChat = useCallback(() => {
@@ -39,7 +39,7 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
         onNewChat={handleNewChat}
       />
     ),
-    [handleSelectChat, handleNewChat],
+    [handleSelectChat, handleNewChat]
   );
 
   return (
@@ -73,7 +73,7 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
             <ChatHeader
               onMenuPress={toggleSidebar}
               onNewChatPress={handleNewChat}
-              onSearchPress={() => console.log("Search pressed")}
+              onSearchPress={() => {}}
             />
             <View style={{ flex: 1 }}>{children}</View>
           </SafeAreaView>

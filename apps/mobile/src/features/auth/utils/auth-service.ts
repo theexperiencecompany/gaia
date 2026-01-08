@@ -4,9 +4,6 @@ import { API_BASE_URL } from "../../../lib/constants";
 
 WebBrowser.maybeCompleteAuthSession();
 
-// Use Linking to create the redirect URI - this ensures it matches the app's scheme
-// In Expo Go: exp://192.168.x.x:8081/--/auth/callback
-// In Dev Build: gaiamobile://auth/callback
 const redirectUri = Linking.createURL("auth/callback");
 
 export interface LoginUrlResponse {
@@ -22,10 +19,7 @@ export interface UserInfoResponse {
 
 export async function getLoginUrl(callbackUri: string): Promise<string> {
   try {
-    // Pass the redirect URI to the backend so it knows where to redirect
     const url = `${API_BASE_URL}/oauth/login/workos/mobile?redirect_uri=${encodeURIComponent(callbackUri)}`;
-    console.log("Fetching login URL from:", url);
-
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -35,7 +29,6 @@ export async function getLoginUrl(callbackUri: string): Promise<string> {
     const data: LoginUrlResponse = await response.json();
     return data.url;
   } catch (error) {
-    console.log(error);
     console.error("Error getting login URL:", error);
     throw new Error("Failed to initiate login");
   }
@@ -43,24 +36,16 @@ export async function getLoginUrl(callbackUri: string): Promise<string> {
 
 export async function startOAuthFlow(): Promise<string> {
   try {
-    console.log("Generated Redirect URI:", redirectUri);
-
     const authUrl = await getLoginUrl(redirectUri);
-    console.log("Auth URL:", authUrl);
-
     const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
-
-    console.log("Auth result:", result);
 
     if (result.type === "success" && result.url) {
       const url = new URL(result.url);
       const token = url.searchParams.get("token");
-      console.log("token is here", token);
 
       if (!token) {
         throw new Error("No token received from authentication");
       }
-      console.log(token);
       return token;
     } else if (result.type === "cancel") {
       throw new Error("Authentication was cancelled");
@@ -84,7 +69,6 @@ export async function fetchUserInfo(token: string): Promise<UserInfoResponse> {
     });
 
     if (!response.ok) {
-      console.log(response);
       throw new Error("Failed to fetch user info");
     }
 

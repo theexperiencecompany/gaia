@@ -121,9 +121,6 @@ export async function connectIntegration(
   try {
     const redirectUri = Linking.createURL("integrations/callback");
     const authUrl = `${API_ORIGIN}/api/v1/integrations/login/${integrationId}?redirect_path=${encodeURIComponent(redirectUri)}`;
-
-    console.log("Opening integration auth URL:", authUrl);
-
     const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
 
     if (result.type === "success") {

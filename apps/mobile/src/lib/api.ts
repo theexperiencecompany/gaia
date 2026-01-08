@@ -49,9 +49,6 @@ async function request<T = unknown>(config: RequestConfig): Promise<T> {
   }
 
   const fullUrl = `${API_BASE_URL}${url}`;
-
-  console.log(`[API] ${method} ${fullUrl}`);
-
   const response = await fetch(fullUrl, fetchConfig);
 
   if (!response.ok) {

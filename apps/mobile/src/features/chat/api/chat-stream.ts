@@ -106,24 +106,11 @@ export async function fetchChatStream(
           return;
         }
 
-        // Log all parsed events for debugging
-        console.log(
-          "[chat-stream] Parsed event:",
-          JSON.stringify(parsed, null, 2),
-        );
-
-        // First event contains conversation_id and message IDs
         if (
           parsed.conversation_id &&
           parsed.bot_message_id &&
           parsed.user_message_id
         ) {
-          console.log(
-            "[chat-stream] Conversation created:",
-            parsed.conversation_id,
-            "description:",
-            parsed.conversation_description,
-          );
           callbacks.onConversationCreated?.(
             parsed.conversation_id,
             parsed.user_message_id,
@@ -132,31 +119,25 @@ export async function fetchChatStream(
           );
         }
 
-        // Progress updates (tool execution status)
         if (parsed.progress) {
-          console.log("[chat-stream] Progress:", parsed.progress);
           callbacks.onProgress?.(
             parsed.progress.message,
             parsed.progress.tool_name,
           );
         }
 
-        // Stream response chunks
         if (parsed.response) {
           callbacks.onChunk(parsed.response);
         }
 
-        // Follow up actions
         if (parsed.follow_up_actions && parsed.follow_up_actions.length > 0) {
           callbacks.onFollowUpActions?.(parsed.follow_up_actions);
         }
       },
       onError: (error) => {
-        console.log("[chat-stream] Error:", error);
         callbacks.onError?.(error);
       },
       onClose: () => {
-        console.log("[chat-stream] Connection closed");
         callbacks.onDone();
       },
     },

@@ -56,9 +56,7 @@ export async function createSSEConnection(
     timeoutBeforeConnection: 0, // Connect immediately
   });
 
-  es.addEventListener("open", () => {
-    console.log("[SSE] Connection opened");
-  });
+  es.addEventListener("open", () => {});
 
   es.addEventListener("message", (event) => {
     if (event.data) {
@@ -77,11 +75,9 @@ export async function createSSEConnection(
   });
 
   es.addEventListener("close", () => {
-    console.log("[SSE] Connection closed");
     callbacks.onClose?.();
   });
 
-  // Handle abort
   controller.signal.addEventListener("abort", () => {
     es.removeAllEventListeners();
     es.close();

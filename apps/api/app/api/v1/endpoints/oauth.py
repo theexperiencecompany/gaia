@@ -15,6 +15,7 @@ from app.services.oauth_state_service import validate_and_consume_oauth_state
 from app.utils.oauth_utils import fetch_user_info_from_google, get_tokens_from_code
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
+from app.constants.general import MOBILE_REDIRECT_TTL
 from workos import WorkOSClient
 
 router = APIRouter()
@@ -42,7 +43,6 @@ async def login_workos():
     return RedirectResponse(url=authorization_url)
 
 
-MOBILE_REDIRECT_TTL = 300  
 
 async def _store_mobile_redirect(state: str, redirect_uri: str) -> None:
     """Store mobile redirect URI in Redis with TTL."""

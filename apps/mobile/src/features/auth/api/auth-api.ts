@@ -4,9 +4,6 @@ import { API_ORIGIN as OAUTH_BASE_URL } from "../../../lib/constants";
 
 WebBrowser.maybeCompleteAuthSession();
 
-// Use Linking to create the redirect URI - this ensures it matches the app's scheme
-// In Expo Go: exp://192.168.x.x:8081/--/auth/callback
-// In Dev Build: gaiamobile://auth/callback
 const redirectUri = Linking.createURL("auth/callback");
 
 export interface LoginUrlResponse {
@@ -22,7 +19,6 @@ export interface UserInfoResponse {
 
 export async function getLoginUrl(callbackUri: string): Promise<string> {
   try {
-    // Pass the redirect URI to the backend so it knows where to redirect
     const response = await fetch(
       `${OAUTH_BASE_URL}/api/v1/oauth/login/workos/mobile?redirect_uri=${encodeURIComponent(callbackUri)}`,
     );
@@ -41,14 +37,8 @@ export async function getLoginUrl(callbackUri: string): Promise<string> {
 
 export async function startOAuthFlow(): Promise<string> {
   try {
-    console.log("Generated Redirect URI:", redirectUri);
-
     const authUrl = await getLoginUrl(redirectUri);
-    console.log("Auth URL:", authUrl);
-
     const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
-
-    console.log("Auth result:", result);
 
     if (result.type === "success" && result.url) {
       const url = new URL(result.url);
@@ -96,9 +86,6 @@ export async function fetchUserInfo(token: string): Promise<UserInfoResponse> {
   }
 }
 
-/**
- * Logout from the server
- */
 export async function logout(token: string): Promise<void> {
   try {
     await fetch(`${OAUTH_BASE_URL}/api/v1/oauth/logout`, {

@@ -32,7 +32,7 @@ export function ChatInput({
 
   return (
     <View className="flex-row items-end rounded-3xl bg-surface-2 px-3 py-2 border border-border/10 shadow-lg">
-      <PressableFeedback onPress={() => console.log("Attach pressed")}>
+      <PressableFeedback onPress={() => {}}>
         <View className="h-10 w-10 items-center justify-center rounded-full">
           <HugeiconsIcon icon={PlusSignIcon} size={20} color="#8e8e93" />
         </View>
