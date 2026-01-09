@@ -7,6 +7,12 @@ from typing import Any, Dict, List, Optional, Set
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
+from app.models.composio_schemas import (
+    SlackChannelCreatedPayload,
+    SlackListAllChannelsData,
+    SlackListAllChannelsInput,
+    SlackReceiveMessagePayload,
+)
 from app.models.workflow_models import TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
@@ -143,6 +149,18 @@ class SlackTriggerHandler(TriggerHandler):
     ) -> List[Workflow]:
         """Find workflows matching a Slack trigger event."""
         try:
+            # Validate payload based on event/trigger type
+            try:
+                if (
+                    "channel_created" in event_type.lower()
+                    or "channel_created" in trigger_id
+                ):
+                    SlackChannelCreatedPayload.model_validate(data)
+                elif "message" in event_type.lower() or "message" in trigger_id:
+                    SlackReceiveMessagePayload.model_validate(data)
+            except Exception as e:
+                logger.debug(f"Slack payload validation failed: {e}")
+
             query = {
                 "activated": True,
                 "trigger_config.type": TriggerType.APP,
@@ -174,9 +192,15 @@ class SlackTriggerHandler(TriggerHandler):
                         selected_channels = [
                             c.strip() for c in channel_ids_str.split(",") if c.strip()
                         ]
-                        message_channel = data.get("channel") or data.get(
-                            "channel_id", ""
-                        )
+                        # Use typed payload model for type-safe access
+                        try:
+                            payload = SlackReceiveMessagePayload.model_validate(data)
+                            message_channel = payload.channel or ""
+                        except Exception:
+                            # Fallback to dict access if validation fails
+                            message_channel = data.get("channel") or data.get(
+                                "channel_id", ""
+                            )
 
                         # If channels specified and message not in list, skip
                         if (
@@ -228,63 +252,40 @@ class SlackTriggerHandler(TriggerHandler):
                 page_count = 0
 
                 while page_count < max_pages:
-                    # Build params with all channel types and pagination
-                    params: Dict[str, Any] = {
-                        "limit": 1000,  # Max allowed by Slack API
-                        "exclude_archived": True,
-                        # Include all channel types
-                        "types": "public_channel,private_channel,mpim,im",
-                    }
-
-                    if cursor:
-                        params["cursor"] = cursor
-
-                    # Invoke the tool
-                    result: ToolExecutionResponse = await asyncio.to_thread(
-                        tool.invoke, params
+                    # Build params with typed model
+                    input_model = SlackListAllChannelsInput(
+                        limit=1000,
+                        exclude_archived=True,
+                        types="public_channel,private_channel,mpim,im",
+                        cursor=cursor,
                     )
 
-                    # Check if successful
-                    if not result.get("successful", False):
-                        logger.error(
-                            f"Slack API error: {result.get('error', 'Unknown error')}"
-                        )
+                    result: ToolExecutionResponse = await asyncio.to_thread(
+                        tool.invoke, input_model.model_dump(exclude_none=True)
+                    )
+
+                    # Check response status
+                    if not result["successful"]:
+                        logger.error(f"Slack API error: {result['error']}")
                         break
 
-                    # Extract channels from data
-                    # Response structure: {data: {ok, channels: [...], response_metadata}}
-                    data = result.get("data", {})
-
-                    if not isinstance(data, dict):
-                        logger.error("Unexpected data format from Slack API")
-                        break
-
-                    # Check if API call was successful
-                    if not data.get("ok", False):
-                        logger.error(
-                            f"Slack API returned ok=false: {data.get('error')}"
-                        )
-                        break
-
-                    channels = data.get("channels", [])
+                    data = SlackListAllChannelsData.model_validate(result["data"])
+                    channels_data = data.get_channels()
 
                     # Add channels from this page
-                    for channel in channels:
-                        if not isinstance(channel, dict):
-                            continue
-
-                        channel_id = channel.get("id")
-                        channel_name = channel.get("name")
+                    for channel in channels_data:
+                        channel_id = channel.id
+                        channel_name = channel.name
 
                         if channel_id and channel_name:
                             # Format label based on channel type
-                            if channel.get("is_im"):
-                                # Direct message - use different formatting
+                            if channel.is_im:
+                                # Direct message
                                 label = f"DM: {channel_name}"
-                            elif channel.get("is_mpim"):
+                            elif channel.is_mpim:
                                 # Group DM
                                 label = f"Group: {channel_name}"
-                            elif channel.get("is_private"):
+                            elif channel.is_private:
                                 # Private channel
                                 label = f"🔒 {channel_name}"
                             else:
@@ -294,18 +295,10 @@ class SlackTriggerHandler(TriggerHandler):
                             all_channels.append({"value": channel_id, "label": label})
 
                     # Check for next page
-                    response_metadata = data.get("response_metadata", {})
-                    next_cursor = (
-                        response_metadata.get("next_cursor")
-                        if isinstance(response_metadata, dict)
-                        else None
-                    )
-
-                    if not next_cursor:
-                        # No more pages
+                    cursor = data.next_cursor
+                    if not cursor:
                         break
 
-                    cursor = next_cursor
                     page_count += 1
 
                 logger.info(f"Returning {len(all_channels)} Slack channel options")

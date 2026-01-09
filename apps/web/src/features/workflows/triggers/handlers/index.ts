@@ -11,4 +11,3 @@ export { linearTriggerHandler } from "./linear";
 export { notionTriggerHandler } from "./notion";
 export { manualTriggerHandler, scheduleTriggerHandler } from "./schedule";
 export { slackTriggerHandler } from "./slack";
-export { trelloTriggerHandler } from "./trello";

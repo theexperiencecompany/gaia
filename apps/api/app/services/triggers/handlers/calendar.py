@@ -12,6 +12,10 @@ from typing import Any, Dict, List, Set
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
+from app.models.composio_schemas import (
+    GoogleCalendarEventCreatedPayload,
+    GoogleCalendarEventStartingSoonPayload,
+)
 from app.models.workflow_models import TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
@@ -139,6 +143,23 @@ class CalendarTriggerHandler(TriggerHandler):
                 "trigger_config.enabled": True,
                 "trigger_config.composio_trigger_ids": trigger_id,
             }
+
+            # optional: validate payload for calendar events
+            # Validate payload based on event type
+            if "event_created" in event_type.lower():
+                try:
+                    GoogleCalendarEventCreatedPayload.model_validate(data)
+                except Exception as e:
+                    logger.debug(
+                        f"Calendar event created payload validation failed: {e}"
+                    )
+            elif "event_starting_soon" in event_type.lower():
+                try:
+                    GoogleCalendarEventStartingSoonPayload.model_validate(data)
+                except Exception as e:
+                    logger.debug(
+                        f"Calendar event starting soon payload validation failed: {e}"
+                    )
 
             cursor = workflows_collection.find(query)
             workflows: List[Workflow] = []

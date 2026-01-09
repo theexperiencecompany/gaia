@@ -114,6 +114,7 @@ class ComposioConfig(BaseModel):
 
     auth_config_id: str
     toolkit: str
+    toolkit_version: str | None = None  # e.g., "20260107_00"
 
 
 class SubAgentConfig(BaseModel):

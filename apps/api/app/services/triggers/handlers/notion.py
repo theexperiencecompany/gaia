@@ -9,10 +9,16 @@ from typing import Any, Dict, List, Optional, Set, TypedDict
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
+from app.models.composio_schemas import (
+    NotionAllPageEventsPayload,
+    NotionFetchDataData,
+    NotionFetchDataInput,
+    NotionPageAddedPayload,
+    NotionPageUpdatedPayload,
+)
 from app.models.workflow_models import TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
-from composio.types import ToolExecutionResponse
 
 
 class NotionTitleProperty(TypedDict):
@@ -86,66 +92,49 @@ class NotionTriggerHandler(TriggerHandler):
         try:
             composio_service = get_composio_service()
 
-            # Get pagination and search params
-            page_size = int(kwargs.get("page_size", 100))
-            search_query = kwargs.get("search", "").strip()
-
-            # Determine fetch type based on field name
-            fetch_type = None
-            if field_name == "database_id" or field_name == "database_ids":
-                fetch_type = "databases"
-            elif field_name == "page_id" or field_name == "page_ids":
-                fetch_type = "pages"
-
-            if not fetch_type:
-                return []
-
             # Use NOTION_FETCH_DATA tool
             tool = composio_service.get_tool("NOTION_FETCH_DATA", user_id=user_id)
             if not tool:
                 logger.error("Notion FETCH_DATA tool not found")
                 return []
 
-            # Invoke tool with parameters
-            params = {
-                "fetch_type": fetch_type,
-                "page_size": page_size,
-            }
-            if search_query:
-                params["query"] = search_query
+            # Determine fetch_type based on field_name
+            if field_name == "database_id":
+                fetch_type = "databases"
+            elif field_name == "page_id":
+                fetch_type = "pages"
+            else:
+                logger.warning(f"Unknown Notion field '{field_name}', fetching all")
+                fetch_type = "all"
 
-            result: ToolExecutionResponse = await asyncio.to_thread(tool.invoke, params)
+            # Invoke tool with typed input
+            input_model = NotionFetchDataInput(
+                fetch_type=fetch_type,
+                page_size=100,
+                query=kwargs.get("search"),
+            )
 
-            # Check if successful
-            if not result.get("successful", False):
-                logger.error(
-                    f"Notion API error: {result.get('error', 'Unknown error')}"
-                )
+            logger.debug(f"Notion fetch input: {input_model.model_dump()}")
+
+            result = await asyncio.to_thread(
+                tool.invoke, input_model.model_dump(exclude_none=True)
+            )
+
+            if not result["successful"]:
+                logger.error(f"Notion API error: {result['error']}")
                 return []
 
-            # Extract values from data - the response has a 'values' field
-            # which contains simplified list of resources with id, title, and type
-            data = result.get("data", {})
-
-            if not isinstance(data, dict):
-                logger.error("Unexpected data format from Notion API")
-                return []
-
-            # The 'values' field contains the simplified projection
-            values = data.get("values", [])
-
+            # Extract and parse data
+            data = NotionFetchDataData.model_validate(result["data"])
+            items = data.get_items()
             options = []
-            for item in values:
-                if not isinstance(item, dict):
+
+            for item in items:
+                if not item.id:
                     continue
 
-                item_id = item.get("id")
-                title = item.get("title", "Untitled")
-
-                if not item_id:
-                    continue
-
-                options.append({"value": item_id, "label": title})
+                label = item.title or "Untitled"
+                options.append({"value": item.id, "label": label})
 
             logger.info(f"Returning {len(options)} Notion {field_name} options")
             return options
@@ -278,6 +267,18 @@ class NotionTriggerHandler(TriggerHandler):
                 "trigger_config.enabled": True,
                 "trigger_config.composio_trigger_ids": trigger_id,
             }
+
+            # optional: validate payload for page added events
+            # Validate payload
+            try:
+                if "new_page" in event_type.lower():
+                    NotionPageAddedPayload.model_validate(data)
+                elif "page_updated" in event_type.lower():
+                    NotionPageUpdatedPayload.model_validate(data)
+                elif "all_page_events" in event_type.lower():
+                    NotionAllPageEventsPayload.model_validate(data)
+            except Exception as e:
+                logger.debug(f"Notion payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
             workflows: List[Workflow] = []

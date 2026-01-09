@@ -7,6 +7,14 @@ from typing import Any, Dict, List, Optional, Set
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
+from app.models.composio_schemas import (
+    GoogleSheetsGetSheetNamesData,
+    GoogleSheetsGetSheetNamesInput,
+    GoogleSheetsNewRowPayload,
+    GoogleSheetsNewSheetAddedPayload,
+    GoogleSheetsSearchSpreadsheetsData,
+    GoogleSheetsSearchSpreadsheetsInput,
+)
 from app.models.workflow_models import TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
@@ -55,9 +63,6 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
             # Get spreadsheets list
             if field_name == "spreadsheet_ids":
-                # Get search query if provided
-                search_query = kwargs.get("search", "").strip()
-
                 # Use LangChain wrapper pattern
                 tool = composio_service.get_tool(
                     "GOOGLESHEETS_SEARCH_SPREADSHEETS",
@@ -67,56 +72,39 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                     logger.error("Google Sheets search spreadsheets tool not found")
                     return []
 
-                # Invoke tool with search params - only use supported fields
-                params: Dict[str, Any] = {
-                    "max_results": 100,
-                }
-                if search_query:
-                    params["query"] = search_query
-
+                # Invoke tool with typed input
+                input_model = GoogleSheetsSearchSpreadsheetsInput(max_results=100)
                 result: ToolExecutionResponse = await asyncio.to_thread(
-                    tool.invoke, params
+                    tool.invoke,
+                    input_model.model_dump(exclude_none=True, by_alias=True),
                 )
 
-                # Check if result is valid dict
-                if not isinstance(result, dict):
-                    logger.error(
-                        f"Google Sheets API returned invalid response: {result}"
-                    )
+                # Check response status
+                if not result["successful"]:
+                    logger.error(f"Google Sheets API error: {result['error']}")
                     return []
 
-                # Check if successful
-                if not result.get("successful", False):
-                    logger.error(
-                        f"Google Sheets API error: {result.get('error', 'Unknown error')}"
-                    )
-                    return []
-
-                # Extract spreadsheets from data
-                data = result.get("data", {})
-                spreadsheets = data.get("spreadsheets", [])
+                # Extract and parse data
+                data = GoogleSheetsSearchSpreadsheetsData.model_validate(result["data"])
 
                 # Convert to options format with shared indicator
                 options = []
-                for sheet in spreadsheets:
-                    if "id" not in sheet or "name" not in sheet:
+                for sheet in data.spreadsheets:
+                    if not sheet.id or not sheet.name:
                         continue
 
                     # Check if spreadsheet is shared (not owned by current user)
-                    is_shared = sheet.get("shared", False)
-                    owners = sheet.get("owners", [])
+                    is_shared = sheet.shared or False
                     is_owned_by_me = (
-                        any(owner.get("me", False) for owner in owners)
-                        if owners
-                        else False
+                        any(o.me for o in sheet.owners) if sheet.owners else False
                     )
 
                     # Create label with shared indicator
-                    label = sheet["name"]
+                    label = sheet.name
                     if is_shared and not is_owned_by_me:
-                        label = f"{sheet['name']} (Shared)"
+                        label = f"{sheet.name} (Shared)"
 
-                    options.append({"value": sheet["id"], "label": label})
+                    options.append({"value": sheet.id, "label": label})
 
                 logger.info(
                     f"Returning {len(options)} Google Sheets spreadsheet options"
@@ -125,77 +113,60 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
             # Get sheets grouped by spreadsheet (cascading)
             elif field_name == "sheet_names" and parent_ids:
-                grouped_results = []
+                tool = composio_service.get_tool(
+                    "GOOGLESHEETS_GET_SHEET_NAMES",
+                    user_id=user_id,
+                )
+                if not tool:
+                    logger.error("Google Sheets get sheet names tool not found")
+                    return []
 
-                for spreadsheet_id in parent_ids:
-                    # Use LangChain wrapper pattern for getting sheet names
-                    tool = composio_service.get_tool(
-                        "GOOGLESHEETS_GET_SHEET_NAMES",
-                        user_id=user_id,
+                # Fetch sheet names for all spreadsheets in parallel
+                async def fetch_sheets_for_spreadsheet(
+                    spreadsheet_id: str,
+                ) -> Dict[str, Any] | None:
+                    """Fetch sheet names for a single spreadsheet."""
+                    input_model = GoogleSheetsGetSheetNamesInput(
+                        spreadsheet_id=spreadsheet_id
                     )
-                    if not tool:
-                        logger.error("Google Sheets get sheet names tool not found")
-                        continue
-
                     sheets_result: ToolExecutionResponse = await asyncio.to_thread(
-                        tool.invoke, {"spreadsheet_id": spreadsheet_id}
+                        tool.invoke,
+                        input_model.model_dump(exclude_none=True, by_alias=True),
                     )
 
-                    # Check if successful
-                    if not sheets_result.get("successful", False):
+                    if not sheets_result["successful"]:
                         logger.error(
-                            f"Failed to get sheet names for {spreadsheet_id}: {sheets_result.get('error', 'Unknown error')}"
+                            f"Failed to get sheet names for {spreadsheet_id}: "
+                            f"{sheets_result['error']}"
                         )
-                        continue
+                        return None
 
-                    # Extract sheet names from data
-                    data = sheets_result.get("data", {})
-                    sheet_names = data.get("sheet_names", [])
-
-                    # Get spreadsheet name from the list (we need to search for it)
-                    search_tool = composio_service.get_tool(
-                        "GOOGLESHEETS_SEARCH_SPREADSHEETS",
-                        user_id=user_id,
+                    sheet_data = GoogleSheetsGetSheetNamesData.model_validate(
+                        sheets_result["data"]
                     )
-                    if search_tool:
-                        # Search for this specific spreadsheet to get its name
-                        search_result: ToolExecutionResponse = await asyncio.to_thread(
-                            search_tool.invoke,
-                            {"max_results": 1000},  # Get all to find our specific one
-                        )
-                        if search_result.get("successful", False):
-                            search_data = search_result.get("data", {})
-                            all_spreadsheets = search_data.get("spreadsheets", [])
-                            matching_sheet = next(
-                                (
-                                    s
-                                    for s in all_spreadsheets
-                                    if s.get("id") == spreadsheet_id
-                                ),
-                                None,
-                            )
-                            spreadsheet_name = (
-                                matching_sheet.get("name", spreadsheet_id)
-                                if matching_sheet
-                                else spreadsheet_id
-                            )
-                        else:
-                            spreadsheet_name = spreadsheet_id
-                    else:
-                        spreadsheet_name = spreadsheet_id
+                    sheet_names = sheet_data.sheet_names
 
-                    # Convert to options format with unique keys
-                    # Format: spreadsheet_id::sheet_name (using :: as separator)
+                    if not sheet_names:
+                        return None
+
+                    # Use spreadsheet_id as group name for now
                     options = [
                         {"value": f"{spreadsheet_id}::{name}", "label": name}
                         for name in sheet_names
                         if name
                     ]
+                    return {"group": spreadsheet_id, "options": options}
 
-                    if options:
-                        grouped_results.append(
-                            {"group": spreadsheet_name, "options": options}
-                        )
+                # Run all fetches in parallel
+                results = await asyncio.gather(
+                    *[fetch_sheets_for_spreadsheet(sid) for sid in parent_ids],
+                    return_exceptions=True,
+                )
+
+                # Filter out None/errors and collect results
+                grouped_results = [
+                    r for r in results if isinstance(r, dict) and r is not None
+                ]
 
                 logger.info(f"Returning {len(grouped_results)} grouped sheet options")
                 return grouped_results
@@ -340,6 +311,16 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 "trigger_config.enabled": True,
                 "trigger_config.composio_trigger_ids": trigger_id,
             }
+
+            # optional: validate payload if it's a new row event
+            # Validate payload
+            try:
+                if "new_row" in event_type.lower():
+                    GoogleSheetsNewRowPayload.model_validate(data)
+                elif "new_sheet" in event_type.lower():
+                    GoogleSheetsNewSheetAddedPayload.model_validate(data)
+            except Exception as e:
+                logger.debug(f"Google Sheets payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
             workflows: List[Workflow] = []

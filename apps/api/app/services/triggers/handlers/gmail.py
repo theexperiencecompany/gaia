@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Set
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
+from app.models.composio_schemas import GmailNewMessagePayload
 from app.models.workflow_models import TriggerType, Workflow
 from app.services.triggers.base import TriggerHandler
 
@@ -50,6 +51,13 @@ class GmailTriggerHandler(TriggerHandler):
     ) -> List[Workflow]:
         """Find workflows with Gmail/email triggers for a user."""
         try:
+            # Validate payload structure (for logging/debugging purposes primarily)
+            # We still rely on user_id from the top-level data dict for now as it might be an envelope field
+            try:
+                GmailNewMessagePayload.model_validate(data)
+            except Exception as e:
+                logger.debug(f"Gmail payload validation failed: {e}")
+
             user_id = data.get("user_id")
             if not user_id:
                 logger.error("No user_id in Gmail webhook data")

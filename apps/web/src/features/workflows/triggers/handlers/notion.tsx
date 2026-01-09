@@ -46,7 +46,11 @@ function NotionSettings({
   const isPageTrigger = config.type === "notion_page_updated";
 
   // Fetch databases for database trigger
-  const { data: dbData, isLoading: isLoadingDb } = useTriggerOptions(
+  const {
+    data: dbData,
+    isLoading: isLoadingDb,
+    isFetching: isFetchingDb,
+  } = useTriggerOptions(
     integrationId,
     triggerSlug,
     "database_id",
@@ -54,12 +58,20 @@ function NotionSettings({
   );
 
   // Fetch pages for page trigger
-  const { data: pageData, isLoading: isLoadingPage } = useTriggerOptions(
+  const {
+    data: pageData,
+    isLoading: isLoadingPage,
+    isFetching: isFetchingPage,
+  } = useTriggerOptions(
     integrationId,
     triggerSlug,
     "page_id",
     isConnected && isPageTrigger && !!triggerSlug,
   );
+
+  // Show loading if either loading or fetching
+  const showDbLoading = isLoadingDb || isFetchingDb;
+  const showPageLoading = isLoadingPage || isFetchingPage;
 
   const dbOptions = (dbData || []) as OptionItem[];
   const pageOptions = (pageData || []) as OptionItem[];
@@ -105,7 +117,7 @@ function NotionSettings({
                 database_id: selectedIds[0] || "", // Backward compatibility
               });
             },
-            isLoading: isLoadingDb,
+            isLoading: showDbLoading,
             placeholder: "Select databases",
             renderValue: (items: { key: string; textValue: string }[]) => {
               const count = items.length;
@@ -142,7 +154,7 @@ function NotionSettings({
                 page_id: selectedIds[0] || "", // Backward compatibility
               });
             },
-            isLoading: isLoadingPage,
+            isLoading: showPageLoading,
             placeholder: "Select pages",
             renderValue: (items: { key: string; textValue: string }[]) => {
               const count = items.length;

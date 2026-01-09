@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Set
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
+from app.models.composio_schemas import GoogleDocsPageAddedPayload
 from app.models.workflow_models import TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
@@ -108,6 +109,12 @@ class GoogleDocsTriggerHandler(TriggerHandler):
                 "trigger_config.enabled": True,
                 "trigger_config.composio_trigger_ids": trigger_id,
             }
+
+            # Optional: validate payload
+            try:
+                GoogleDocsPageAddedPayload.model_validate(data)
+            except Exception as e:
+                logger.debug(f"Google Docs payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
             workflows: List[Workflow] = []

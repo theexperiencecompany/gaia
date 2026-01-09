@@ -7,6 +7,14 @@ from typing import Any, Dict, List, Optional, Set
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
+from app.models.composio_schemas import (
+    GitHubCommitEventPayload,
+    GitHubIssueAddedEventPayload,
+    GitHubListRepositoriesData,
+    GitHubListRepositoriesInput,
+    GitHubPullRequestEventPayload,
+    GitHubStarAddedEventPayload,
+)
 from app.models.workflow_models import TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
@@ -55,63 +63,51 @@ class GitHubTriggerHandler(TriggerHandler):
         **kwargs: Any,
     ) -> List[Dict[str, Any]]:
         """Get dynamic options for GitHub trigger config fields."""
-        try:
-            composio_service = get_composio_service()
+        composio_service = get_composio_service()
 
-            # Get pagination params if provided
-            page = int(kwargs.get("page", 1))
-            search_query = kwargs.get("search", "").strip()
+        # Get pagination params if provided
+        page = int(kwargs.get("page", 1))
+        search_query = kwargs.get("search", "").strip()
 
-            # Use LangChain wrapper pattern
-            tool = composio_service.get_tool(
-                "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
-                user_id=user_id,
-            )
-            if not tool:
-                logger.error("GitHub list repositories tool not found")
-                return []
-
-            # Invoke tool with pagination params
-            params = {"per_page": 100, "page": page}
-            result: ToolExecutionResponse = await asyncio.to_thread(tool.invoke, params)
-
-            # Check if successful
-            if not result.get("successful", False):
-                logger.error(
-                    f"GitHub API error: {result.get('error', 'Unknown error')}"
-                )
-                return []
-
-            # Extract repositories from data
-            data = result.get("data", {})
-            repos = []
-
-            # Handle different response formats
-            repos = data.get("repositories", data.get("data", []))
-
-            # Filter by search query if provided
-            if search_query:
-                search_lower = search_query.lower()
-                repos = [
-                    r
-                    for r in repos
-                    if "full_name" in r and search_lower in r["full_name"].lower()
-                ]
-
-            # Convert to options format
-            options = []
-            for repo in repos:
-                if "full_name" in repo:
-                    options.append(
-                        {"value": repo["full_name"], "label": repo["full_name"]}
-                    )
-
-            logger.info(f"Returning {len(options)} GitHub repository options")
-            return options
-
-        except Exception as e:
-            logger.error(f"Failed to get GitHub options: {e}")
+        # Use LangChain wrapper pattern
+        tool = composio_service.get_tool(
+            "GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER",
+            user_id=user_id,
+        )
+        if not tool:
+            logger.error("GitHub list repositories tool not found")
             return []
+
+        # Invoke tool with typed input
+        params = GitHubListRepositoriesInput(per_page=100, page=page).model_dump(
+            exclude_none=True
+        )
+        result: ToolExecutionResponse = await asyncio.to_thread(tool.invoke, params)
+
+        # Check response status
+        if not result["successful"]:
+            logger.error(f"GitHub API error: {result['error']}")
+            return []
+
+        # Extract and parse data
+        raw_data = result["data"]
+        repos = GitHubListRepositoriesData.from_response_data(raw_data)
+
+        # Filter by search query if provided
+        if search_query:
+            search_lower = search_query.lower()
+            repos = [
+                r for r in repos if r.full_name and search_lower in r.full_name.lower()
+            ]
+
+        # Convert to options format
+        options = []
+        for repo in repos:
+            if repo.full_name:
+                options.append({"value": repo.full_name, "label": repo.full_name})
+
+        logger.info(f"Returning {len(options)} GitHub repository options")
+        return options
 
     async def register(
         self,
@@ -179,6 +175,19 @@ class GitHubTriggerHandler(TriggerHandler):
     ) -> List[Workflow]:
         """Find workflows matching a GitHub trigger event."""
         try:
+            # Validate payload based on event type
+            try:
+                if "commit_event" in event_type.lower():
+                    GitHubCommitEventPayload.model_validate(data)
+                elif "pull_request" in event_type.lower():
+                    GitHubPullRequestEventPayload.model_validate(data)
+                elif "star_added" in event_type.lower():
+                    GitHubStarAddedEventPayload.model_validate(data)
+                elif "issue_added" in event_type.lower():
+                    GitHubIssueAddedEventPayload.model_validate(data)
+            except Exception as e:
+                logger.debug(f"GitHub payload validation failed: {e}")
+
             query = {
                 "activated": True,
                 "trigger_config.type": TriggerType.APP,

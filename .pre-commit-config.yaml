@@ -3,17 +3,26 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-yaml
+        priority: 1
       - id: check-json
         exclude: ^(apps/web/.*tsconfig.*\.json|\.vscode/.*\.json)$
+        priority: 1
       - id: check-toml
+        priority: 1
       - id: check-merge-conflict
+        priority: 1
       - id: check-added-large-files
         exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock)$
+        priority: 1
       - id: check-ast
         exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
+        priority: 1
       - id: check-docstring-first
+        priority: 1
       - id: check-case-conflict
+        priority: 1
       - id: detect-private-key
+        priority: 1
 
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.4.0

@@ -326,7 +326,7 @@ function GitHubSettings({
                 />
               </div>
             </div>
-            <div className="flex items-center justify-between text-xs text-zinc-500 px-1">
+            <div className="flex items-center justify-between text-xs text-zinc-500 px-1 max-w-xl">
               <span className="flex items-center gap-2">
                 Press{" "}
                 <kbd className="px-2 py-1 bg-zinc-800/80 border border-zinc-700/50 rounded shadow-sm font-mono text-zinc-400">

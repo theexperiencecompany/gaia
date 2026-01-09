@@ -171,8 +171,20 @@ export function TriggerAutocomplete({
             <AutocompleteItem
               key={schema.slug}
               textValue={schema.name}
-              className="data-[hover=true]:bg-primary/90 data-[hover=true]:text-primary-foreground/90"
-            />
+              startContent={getToolCategoryIcon(schema.integration_id, {
+                width: 20,
+                height: 20,
+                showBackground: false,
+              })}
+              className="group"
+            >
+              <div className="flex flex-col">
+                <span className="text-small">{schema.name}</span>
+                <span className="text-tiny text-zinc-500 group-data-[hover=true]:text-zinc-300">
+                  {schema.description}
+                </span>
+              </div>
+            </AutocompleteItem>
           ));
 
           const connectionItem = !isConnected ? (

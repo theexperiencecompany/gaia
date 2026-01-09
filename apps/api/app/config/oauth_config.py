@@ -71,6 +71,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_exqcpnLvCzGJ",
             toolkit="GOOGLECALENDAR",
+            toolkit_version="20260107_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -169,6 +170,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_coVAA1WRsbdK",  # TODO: Replace with actual auth_config_id
             toolkit="GOOGLEDOCS",
+            toolkit_version="20260107_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -238,7 +240,9 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="gmail",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_svLPDmjcTVMX", toolkit="GMAIL"
+            auth_config_id="ac_svLPDmjcTVMX",
+            toolkit="GMAIL",
+            toolkit_version="20260107_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -282,6 +286,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_DR3IWp9-Kezl",
             toolkit="NOTION",
+            toolkit_version="20260107_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -360,6 +365,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_vloH3fnhIeUa",
             toolkit="TWITTER",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -389,6 +395,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_18I3fRfWyXDu",
             toolkit="GOOGLESHEETS",
+            toolkit_version="20260107_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -423,7 +430,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 workflow_trigger_schema=WorkflowTriggerSchema(
                     slug="google_sheets_new_sheet",
                     composio_slug="GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER",
-                    name="New Spreadsheet Tab",
+                    name="New Spreadsheet",
                     description="Trigger when a new sheet is added",
                     config_schema={
                         "spreadsheet_ids": TriggerConfigFieldSchema(
@@ -459,6 +466,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_GMeJBELf3z_m",
             toolkit="LINKEDIN",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -485,6 +493,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_y2VK4j0ATiZo",
             toolkit="GITHUB",
+            toolkit_version="20260107_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -613,6 +622,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_7-hfiMVLhcDN",
             toolkit="REDDIT",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -638,6 +648,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_QPtQsXnIYm4C",
             toolkit="AIRTABLE",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -663,6 +674,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_mnrcEhhTXPVS",
             toolkit="LINEAR",
+            toolkit_version="20260107_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -748,6 +760,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_acm0K6K_kWxY",
             toolkit="SLACK",
+            toolkit_version="20260107_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -833,6 +846,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_rcnwYp1PRCVr",
             toolkit="HUBSPOT",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -858,6 +872,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_xPSnVjKyHCDb",
             toolkit="GOOGLETASKS",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -883,6 +898,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_TOjltL3O2kEB",
             toolkit="TODOIST",
+            toolkit_version="20260107_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -921,7 +937,9 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="teams",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_0kzvAbsi2xu3", toolkit="MICROSOFTTEAMS"
+            auth_config_id="ac_0kzvAbsi2xu3",
+            toolkit="MICROSOFT_TEAMS",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -945,7 +963,9 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="zoom",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_fABNBG17lf2A", toolkit="ZOOM"
+            auth_config_id="ac_fABNBG17lf2A",
+            toolkit="ZOOM",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -971,6 +991,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_GsHKAmsiGvz1",
             toolkit="GOOGLEMEET",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -996,6 +1017,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_vy6NqsFlzLuO",
             toolkit="GOOGLE_MAPS",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -1021,6 +1043,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_gF2RuhulKw3I",
             toolkit="ASANA",
+            toolkit_version="20260107_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -1072,6 +1095,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_nMjBqOcjLTGW",
             toolkit="TRELLO",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -1097,6 +1121,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_JP45uYkUcjVV",
             toolkit="INSTAGRAM",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -1122,6 +1147,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_cyT9vqo3pcF3",
             toolkit="CLICKUP",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,

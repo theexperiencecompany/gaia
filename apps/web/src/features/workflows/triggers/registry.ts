@@ -22,7 +22,6 @@ import {
   notionTriggerHandler,
   scheduleTriggerHandler,
   slackTriggerHandler,
-  trelloTriggerHandler,
 } from "./handlers";
 import type { TriggerConfig, TriggerSchema } from "./types";
 
@@ -89,7 +88,6 @@ const handlers: RegisteredHandler[] = [
   notionTriggerHandler,
   scheduleTriggerHandler,
   slackTriggerHandler,
-  trelloTriggerHandler,
 ];
 
 /**

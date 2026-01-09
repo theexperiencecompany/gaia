@@ -22,8 +22,25 @@ COMPOSIO_SOCIAL_CONFIGS = get_composio_social_configs()
 
 class ComposioService:
     def __init__(self, api_key: str):
+        from app.config.oauth_config import OAUTH_INTEGRATIONS
+
+        # Build toolkit_versions from oauth_config for version pinning
+        toolkit_versions: dict[str, str] = {}
+        for integration in OAUTH_INTEGRATIONS:
+            if (
+                integration.composio_config
+                and integration.composio_config.toolkit_version
+            ):
+                toolkit_name = integration.composio_config.toolkit.lower()
+                toolkit_versions[toolkit_name] = (
+                    integration.composio_config.toolkit_version
+                )
+
         self.composio = Composio(
-            provider=LangchainProvider(), api_key=api_key, timeout=120
+            provider=LangchainProvider(),
+            api_key=api_key,
+            timeout=120,
+            toolkit_versions=toolkit_versions if toolkit_versions else None,
         )
         custom_tools_registry.initialize(self.composio)
 
