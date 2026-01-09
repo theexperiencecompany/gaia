@@ -90,24 +90,24 @@ export const useIntegrations = (): UseIntegrationsReturn => {
 
     // Build integration list from user's integrations (includes custom)
     const userIntegrationsList: Integration[] = userIntegrations.map((ui) => ({
-      id: ui.integration_id,
+      id: ui.integrationId,
       name: ui.integration.name,
       description: ui.integration.description,
       category: ui.integration.category as Integration["category"],
       status: ui.status === "connected" ? "connected" : "not_connected",
-      managedBy: ui.integration.managed_by,
+      managedBy: ui.integration.managedBy,
       source: ui.integration.source,
-      requiresAuth: ui.integration.requires_auth,
-      authType: ui.integration.auth_type,
+      requiresAuth: ui.integration.requiresAuth,
+      authType: ui.integration.authType,
       tools: ui.integration.tools,
-      iconUrl: ui.integration.icon_url ?? undefined,
-      isPublic: ui.integration.is_public ?? undefined,
-      createdBy: ui.integration.created_by ?? undefined,
+      iconUrl: ui.integration.iconUrl ?? undefined,
+      isPublic: ui.integration.isPublic ?? undefined,
+      createdBy: ui.integration.createdBy ?? undefined,
     }));
 
     // Get IDs of integrations user already has
     const userIntegrationIds = new Set(
-      userIntegrations.map((ui) => ui.integration_id),
+      userIntegrations.map((ui) => ui.integrationId),
     );
 
     // Add platform integrations that user hasn't added yet

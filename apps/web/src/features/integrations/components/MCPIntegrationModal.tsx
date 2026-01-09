@@ -87,13 +87,13 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
 
         if (connection?.status === "connected") {
           toast.success(
-            `Connected to ${result.name} with ${connection.tools_count || 0} tools!`,
+            `Connected to ${result.name} with ${connection.toolsCount || 0} tools!`,
           );
         } else if (connection?.status === "requires_oauth") {
           toast.info("Authorization required - redirecting...");
           // Redirect to OAuth URL
-          if (connection.oauth_url && typeof window !== "undefined") {
-            window.location.href = connection.oauth_url;
+          if (connection.oauthUrl && typeof window !== "undefined") {
+            window.location.href = connection.oauthUrl;
           }
         } else if (connection?.status === "failed") {
           toast.warning(

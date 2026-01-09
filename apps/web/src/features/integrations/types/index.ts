@@ -58,29 +58,30 @@ export interface IntegrationActionEvent {
   action: IntegrationAction;
 }
 
-// Marketplace API Types
+// Marketplace API Types - matches backend IntegrationResponse with camelCase aliases
 export interface MarketplaceIntegration {
-  integration_id: string;
+  integrationId: string;
   name: string;
   description: string;
   category: string;
-  managed_by: "self" | "composio" | "mcp" | "internal";
+  managedBy: "self" | "composio" | "mcp" | "internal";
   source: "platform" | "custom";
-  is_featured: boolean;
-  display_priority: number;
-  requires_auth: boolean;
-  auth_type?: "oauth" | "bearer" | "none";
+  isFeatured: boolean;
+  displayPriority: number;
+  requiresAuth: boolean;
+  authType?: "oauth" | "bearer" | "none";
   tools?: Array<{ name: string; description?: string }>;
-  icon_url?: string;
-  is_public?: boolean;
-  created_by?: string;
+  iconUrl?: string;
+  isPublic?: boolean;
+  createdBy?: string;
 }
 
+// Matches backend UserIntegrationResponse with camelCase aliases
 export interface UserIntegration {
-  integration_id: string;
+  integrationId: string;
   status: "created" | "connected";
-  created_at: string;
-  connected_at?: string;
+  createdAt: string;
+  connectedAt?: string;
   integration: MarketplaceIntegration;
 }
 
@@ -101,22 +102,23 @@ export interface CreateCustomIntegrationRequest {
 
 /**
  * Result of connection testing after creating a custom integration
+ * Matches backend CustomIntegrationConnectionResult
  */
 export interface ConnectionTestResult {
   status: "connected" | "requires_oauth" | "failed" | "created";
-  tools_count?: number;
-  oauth_url?: string;
+  toolsCount?: number;
+  oauthUrl?: string;
   error?: string;
 }
 
 /**
  * Response from create custom integration endpoint
- * Includes automatic connection test result
+ * Matches backend CreateCustomIntegrationResponse
  */
 export interface CreateCustomIntegrationResponse {
   status: string;
   message: string;
-  integration_id: string;
+  integrationId: string;
   name: string;
   connection?: ConnectionTestResult;
 }
