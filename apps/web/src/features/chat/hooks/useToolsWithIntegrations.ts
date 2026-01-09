@@ -90,6 +90,7 @@ export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
               requiredIntegration: tool.required_integration.toLowerCase(),
               integrationName:
                 integrationDetails?.name || tool.required_integration,
+              iconUrl: integrationDetails?.iconUrl,
               isRequired: true,
             }
           : undefined,

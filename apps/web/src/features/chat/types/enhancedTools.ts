@@ -7,6 +7,7 @@ export interface ToolIntegrationRequirement {
   category: string;
   requiredIntegration: string; // Integration ID from backend
   integrationName: string; // Display name for integration
+  iconUrl?: string; // Icon URL for the integration
   description?: string;
   isRequired: boolean; // If true, tool is completely disabled without integration
 }

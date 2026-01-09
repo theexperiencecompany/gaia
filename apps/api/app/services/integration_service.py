@@ -18,6 +18,7 @@ from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
 )
+from app.decorators.caching import CacheInvalidator
 from app.models.integration_models import (
     CreateCustomIntegrationRequest,
     Integration,
@@ -300,9 +301,12 @@ async def add_user_integration(
     return user_integration
 
 
+@CacheInvalidator(key_patterns=["tools:user:{user_id}"])
 async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     """
     Remove an integration from user's workspace.
+
+    Invalidates the user's tools cache since available tools have changed.
 
     Args:
         user_id: The user's ID
@@ -325,6 +329,7 @@ async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     return False
 
 
+@CacheInvalidator(key_patterns=["tools:user:{user_id}"])
 async def update_user_integration_status(
     user_id: str,
     integration_id: str,
@@ -529,7 +534,8 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
     Delete a custom integration.
 
     Only the creator can delete their custom integration.
-    Also removes all user_integrations referencing this integration.
+    Also removes all user_integrations referencing this integration
+    and cleans up ChromaDB subagent entry.
 
     Args:
         user_id: The user making the deletion
@@ -551,6 +557,20 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
         await user_integrations_collection.delete_many(
             {"integration_id": integration_id}
         )
+
+        # Remove subagent entry from ChromaDB
+        try:
+            from app.core.lazy_loader import providers
+
+            store = await providers.aget("chroma_tools_store")
+            if store:
+                await store.adelete(namespace=("subagents",), key=integration_id)
+                logger.info(
+                    f"Deleted subagent entry for {integration_id} from ChromaDB"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to delete subagent from ChromaDB: {e}")
+
         logger.info(f"User {user_id} deleted custom integration {integration_id}")
         return True
 

@@ -163,14 +163,20 @@ export const IntegrationsList: React.FC<{
     return filteredIntegrations.filter((i) => i.isFeatured && i.available);
   }, [filteredIntegrations]);
 
-  // Group ALL integrations by category
+  // Group ALL integrations by category, sorted: connected first, then alphabetically
   const integrationsByCategory = useMemo(() => {
     const grouped: Record<string, Integration[]> = {};
 
     for (const category of availableCategories) {
-      grouped[category] = filteredIntegrations.filter(
-        (i) => i.category === category,
-      );
+      grouped[category] = filteredIntegrations
+        .filter((i) => i.category === category)
+        .sort((a, b) => {
+          // Connected first
+          if (a.status === "connected" && b.status !== "connected") return -1;
+          if (a.status !== "connected" && b.status === "connected") return 1;
+          // Then alphabetically
+          return a.name.localeCompare(b.name);
+        });
     }
 
     return grouped;
@@ -256,21 +262,23 @@ export const IntegrationsList: React.FC<{
 
       {/* Category Sections */}
       {selectedCategory === "all" ? (
-        availableCategories.map((category) => {
-          const categoryIntegrations = integrationsByCategory[category];
-          if (!categoryIntegrations || categoryIntegrations.length === 0)
-            return null;
+        availableCategories
+          .filter((cat) => cat !== "created_by_you" && cat !== "custom")
+          .map((category) => {
+            const categoryIntegrations = integrationsByCategory[category];
+            if (!categoryIntegrations || categoryIntegrations.length === 0)
+              return null;
 
-          return (
-            <IntegrationSection
-              key={category}
-              title={getCategoryLabel(category)}
-              integrations={categoryIntegrations}
-              onConnect={handleConnect}
-              onIntegrationClick={onIntegrationClick}
-            />
-          );
-        })
+            return (
+              <IntegrationSection
+                key={category}
+                title={getCategoryLabel(category)}
+                integrations={categoryIntegrations}
+                onConnect={handleConnect}
+                onIntegrationClick={onIntegrationClick}
+              />
+            );
+          })
       ) : (
         <IntegrationSection
           title={getCategoryLabel(selectedCategory)}

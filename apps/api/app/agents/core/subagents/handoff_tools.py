@@ -90,15 +90,51 @@ def _get_subagent_integrations() -> List:
     ]
 
 
-def _get_subagent_by_id(subagent_id: str):
-    """Get subagent integration by ID or short_name."""
+async def _get_subagent_by_id(subagent_id: str):
+    """
+    Get subagent integration by ID or short_name.
+
+    Checks both platform integrations (OAUTH_INTEGRATIONS) and
+    custom MCPs from MongoDB.
+
+    Returns:
+        Integration config or dict with custom MCP info, or None if not found
+    """
     search_id = subagent_id.lower().strip()
+
+    # Check platform integrations first
     for integ in OAUTH_INTEGRATIONS:
         if integ.id.lower() == search_id or (
             integ.short_name and integ.short_name.lower() == search_id
         ):
             if integ.subagent_config and integ.subagent_config.has_subagent:
                 return integ
+
+    # Check custom MCPs in MongoDB
+    from app.db.mongodb.collections import integrations_collection
+
+    # Search by integration_id (case-insensitive)
+    custom = await integrations_collection.find_one(
+        {
+            "source": "custom",
+            "$or": [
+                {"integration_id": {"$regex": f"^{search_id}$", "$options": "i"}},
+                {"name": {"$regex": f"^{search_id}$", "$options": "i"}},
+            ],
+        }
+    )
+
+    if custom:
+        # Return a dict that mimics the integration structure
+        return {
+            "id": custom.get("integration_id"),
+            "name": custom.get("name"),
+            "source": "custom",
+            "managed_by": "mcp",
+            "mcp_config": custom.get("mcp_config"),
+            "subagent_config": None,  # Custom MCPs don't have static subagent config
+        }
+
     return None
 
 
@@ -116,9 +152,10 @@ async def index_subagents_to_store(store: BaseStore) -> None:
 
         description = (
             f"{provider_name} ({short_name}). "
-            f"{provider_name} specializes in {cfg.domain}. "
-            f"Use {provider_name} for: {cfg.use_cases}. "
-            f"{provider_name} capabilities: {cfg.capabilities}"
+            f"Domain: {cfg.domain}. "
+            f"Use cases: {cfg.use_cases}. "
+            f"Capabilities: {cfg.capabilities}. "
+            f"Examples: {cfg.example_queries if hasattr(cfg, 'example_queries') and cfg.example_queries else 'manage, create, update, fetch, send'}"
         )
 
         put_ops.append(
@@ -137,6 +174,48 @@ async def index_subagents_to_store(store: BaseStore) -> None:
     if put_ops:
         await store.abatch(put_ops)
         logger.info(f"Indexed {len(put_ops)} subagents to store")
+
+
+async def index_custom_mcp_as_subagent(
+    store: BaseStore,
+    integration_id: str,
+    name: str,
+    description: str,
+) -> None:
+    """
+    Index a custom MCP as a subagent for handoff discovery.
+
+    Called when user connects a custom MCP to make it immediately
+    available for semantic search and handoff.
+
+    Args:
+        store: The ChromaStore instance
+        integration_id: Unique ID of the custom integration
+        name: Display name of the integration
+        description: Description of what the integration does
+    """
+    # Create rich description for semantic matching
+    rich_description = (
+        f"{name}. Custom MCP integration. "
+        f"{description}. "
+        f"Use cases: data fetching, automation, API access, external services. "
+        f"Examples: fetch data, scrape, query, automate"
+    )
+
+    put_op = PutOp(
+        namespace=SUBAGENTS_NAMESPACE,
+        key=integration_id,
+        value={
+            "id": integration_id,
+            "name": name,
+            "description": rich_description,
+            "source": "custom",  # Mark as custom for filtering
+        },
+        index=["description"],
+    )
+
+    await store.abatch([put_op])
+    logger.info(f"Indexed custom MCP {integration_id} as subagent")
 
 
 @tool
@@ -177,9 +256,9 @@ async def handoff(
         # Strip 'subagent:' prefix if present
         clean_id = subagent_id.replace("subagent:", "").strip()
 
-        integration = _get_subagent_by_id(clean_id)
+        integration = await _get_subagent_by_id(clean_id)
 
-        if not integration or not integration.subagent_config:
+        if not integration:
             available = [i.id for i in _get_subagent_integrations()][:5]
             return (
                 f"Subagent '{subagent_id}' not found. "
@@ -187,47 +266,77 @@ async def handoff(
                 f"Examples: {', '.join([f'subagent:{a}' for a in available])}{'...' if len(available) == 5 else ''}"
             )
 
-        subagent_cfg = integration.subagent_config
-        agent_name = subagent_cfg.agent_name
+        # Handle custom MCPs (returned as dict from MongoDB)
+        is_custom = (
+            isinstance(integration, dict) and integration.get("source") == "custom"
+        )
 
-        # Handle auth-required MCP integrations specially
-        if (
-            integration.managed_by == "mcp"
-            and integration.mcp_config
-            and integration.mcp_config.requires_auth
-        ):
+        if is_custom:
+            # Custom MCP - create subagent on-the-fly
+            integration_id = integration.get("id")
+            integration_name = integration.get("name", integration_id)
+
             if not user_id:
-                return f"Error: {agent_name} requires authentication. Please sign in first."
+                return f"Error: {integration_name} requires authentication. Please sign in first."
 
-            # Check if user has connected this MCP integration
-            token_store = MCPTokenStore(user_id=user_id)
-            is_connected = await token_store.is_connected(integration.id)
-            if not is_connected:
-                return (
-                    f"Error: {agent_name} requires OAuth connection. "
-                    f"Please connect {integration.name} first via settings."
-                )
-
-            # Create subagent on-the-fly with user's tokens
-            subagent_graph = await create_subagent_for_user(integration.id, user_id)
+            # Create subagent for custom MCP
+            subagent_graph = await create_subagent_for_user(integration_id, user_id)
             if not subagent_graph:
-                return f"Error: Failed to create {agent_name} subagent"
+                return f"Error: Failed to create subagent for {integration_name}"
+
+            agent_name = f"custom_mcp_{integration_id}"
+
+        elif hasattr(integration, "subagent_config") and integration.subagent_config:
+            # Platform integration with subagent config
+            subagent_cfg = integration.subagent_config
+            agent_name = subagent_cfg.agent_name
+
+            # Handle auth-required MCP integrations specially
+            if (
+                integration.managed_by == "mcp"
+                and integration.mcp_config
+                and integration.mcp_config.requires_auth
+            ):
+                if not user_id:
+                    return f"Error: {agent_name} requires authentication. Please sign in first."
+
+                # Check if user has connected this MCP integration
+                token_store = MCPTokenStore(user_id=user_id)
+                is_connected = await token_store.is_connected(integration.id)
+                if not is_connected:
+                    return (
+                        f"Error: {agent_name} requires OAuth connection. "
+                        f"Please connect {integration.name} first via settings."
+                    )
+
+                # Create subagent on-the-fly with user's tokens
+                subagent_graph = await create_subagent_for_user(integration.id, user_id)
+                if not subagent_graph:
+                    return f"Error: Failed to create {agent_name} subagent"
+            else:
+                # Non-MCP or non-auth-required MCP integrations
+                # Skip connection check for internal integrations (always available)
+                if integration.managed_by not in ("mcp", "internal") and user_id:
+                    error_message = await check_integration_connection(
+                        integration.id, user_id
+                    )
+                    if error_message:
+                        return error_message
+
+                subagent_graph = await providers.aget(agent_name)
+                if not subagent_graph:
+                    return f"Error: {agent_name} not available"
         else:
-            # Non-MCP or non-auth-required MCP integrations
-            # Skip connection check for internal integrations (always available)
-            if integration.managed_by not in ("mcp", "internal") and user_id:
-                error_message = await check_integration_connection(
-                    integration.id, user_id
-                )
-                if error_message:
-                    return error_message
+            return f"Error: {subagent_id} is not configured as a subagent"
 
-            subagent_graph = await providers.aget(agent_name)
-            if not subagent_graph:
-                return f"Error: {agent_name} not available"
+        # Get integration ID properly (dict for custom, object for platform)
+        if is_custom:
+            int_id = integration.get("id")
+        else:
+            int_id = integration.id
 
         thread_id = configurable.get("thread_id", "")
-        subagent_thread_id = f"{integration.id}_{thread_id}"
+        subagent_thread_id = f"{int_id}_{thread_id}"
 
         user = {
             "user_id": user_id,
@@ -249,7 +358,7 @@ async def handoff(
         )
 
         system_message = await create_subagent_system_message(
-            integration_id=integration.id,
+            integration_id=int_id,
             agent_name=agent_name,
             user_id=user_id,
         )
@@ -340,15 +449,21 @@ async def handoff(
                 # Handle ToolMessage - emit inputs and outputs
                 elif chunk and isinstance(chunk, ToolMessage):
                     tc_id = chunk.tool_call_id
-                    # Emit tool_inputs
+                    # Emit tool_inputs with category and icon for frontend
                     if tc_id and tc_id in pending_tool_calls:
                         stored_call = pending_tool_calls[tc_id]
                         if stored_call.get("args"):
+                            # Get icon_url for custom integrations
+                            icon_url = None
+                            if is_custom:
+                                icon_url = integration.get("icon_url")
                             writer(
                                 {
                                     "tool_inputs": {
                                         "tool_call_id": tc_id,
                                         "inputs": stored_call["args"],
+                                        "tool_category": int_id,
+                                        "icon_url": icon_url,
                                     }
                                 }
                             )

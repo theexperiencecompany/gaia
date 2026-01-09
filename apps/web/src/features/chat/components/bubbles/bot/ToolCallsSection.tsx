@@ -52,6 +52,7 @@ export default function ToolCallsSection({
               width: 21,
               height: 21,
             },
+            call.icon_url,
           ) || (
             <div className="p-1 bg-zinc-800 rounded-lg text-zinc-400 backdrop-blur">
               <ToolsIcon width={21} height={21} />
@@ -135,11 +136,15 @@ export default function ToolCallsSection({
                 >
                   <div className="flex flex-col items-center self-stretch">
                     <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
-                      {getToolCategoryIcon(call.tool_category || "general", {
-                        size: 21,
-                        width: 21,
-                        height: 21,
-                      }) || (
+                      {getToolCategoryIcon(
+                        call.tool_category || "general",
+                        {
+                          size: 21,
+                          width: 21,
+                          height: 21,
+                        },
+                        call.icon_url,
+                      ) || (
                         <div className="p-1 bg-zinc-800 rounded-lg">
                           <ToolsIcon width={21} height={21} />
                         </div>

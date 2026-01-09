@@ -694,6 +694,34 @@ async def create_custom_mcp_integration(
                 await update_user_integration_status(
                     str(user_id), integration.integration_id, "connected"
                 )
+
+                # Index tools to ChromaDB for immediate semantic search
+                if tools:
+                    from app.agents.tools.core.registry import get_tool_registry
+                    from app.agents.core.subagents.handoff_tools import (
+                        index_custom_mcp_as_subagent,
+                    )
+                    from app.core.lazy_loader import providers
+
+                    tool_registry = await get_tool_registry()
+                    category_name = f"mcp_{integration.integration_id}_{user_id}"
+                    await tool_registry._index_category_tools(category_name)
+
+                    # Index as subagent for handoff discovery
+                    store = await providers.aget("chroma_tools_store")
+                    if store:
+                        await index_custom_mcp_as_subagent(
+                            store=store,
+                            integration_id=integration.integration_id,
+                            name=integration.name,
+                            description=integration.description or "",
+                        )
+
+                    logger.info(
+                        f"Indexed {len(tools)} tools and subagent for "
+                        f"{integration.integration_id}"
+                    )
+
                 connection_result = {
                     "status": "connected",
                     "tools_count": len(tools) if tools else 0,

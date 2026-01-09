@@ -1,6 +1,5 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import type { Selection } from "@heroui/react";
 import type React from "react";
 
@@ -44,12 +43,16 @@ const IntegrationItem: React.FC<{
     >
       <div className="flex items-center gap-3">
         <div className="shrink-0">
-          {getToolCategoryIcon(integration.id, {
-            size: 26,
-            width: 26,
-            height: 26,
-            showBackground: false,
-          })}
+          {getToolCategoryIcon(
+            integration.id,
+            {
+              size: 26,
+              width: 26,
+              height: 26,
+              showBackground: false,
+            },
+            integration.iconUrl,
+          )}
         </div>
 
         {size !== "small" ? (
@@ -63,41 +66,33 @@ const IntegrationItem: React.FC<{
           <div className="flex-1 text-sm font-medium">{integration.name}</div>
         )}
 
-        <div className="shrink-0">
+        <div className="shrink-0 flex items-center gap-2">
+          {/* Status Dots - always show */}
+          {isConnected && (
+            <span className="h-2 w-2 rounded-full bg-success mr-2" />
+          )}
+
+          {integration.status === "created" && (
+            <span className="h-2 w-2 rounded-full bg-warning mr-2" />
+          )}
+
+          {/* Connect button - only show for integrations that require auth */}
           {!(
             integration.managedBy === "mcp" && integration.authType === "none"
-          ) && (
-            <>
-              {isConnected && (
-                <Chip size="sm" variant="flat" color="success">
-                  Connected
-                </Chip>
-              )}
-
-              {isAvailable && !isConnected && (
-                <Button
-                  size="sm"
-                  variant="flat"
-                  color="primary"
-                  className="text-xs text-primary"
-                  onPress={handleConnectClick}
-                >
-                  Connect
-                </Button>
-              )}
-
-              {!isAvailable && (
-                <Chip
-                  size="sm"
-                  variant="flat"
-                  color="default"
-                  className="text-xs"
-                >
-                  Soon
-                </Chip>
-              )}
-            </>
-          )}
+          ) &&
+            isAvailable &&
+            !isConnected &&
+            integration.status !== "created" && (
+              <Button
+                size="sm"
+                variant="flat"
+                color="primary"
+                className="text-xs text-primary"
+                onPress={handleConnectClick}
+              >
+                Connect
+              </Button>
+            )}
         </div>
       </div>
     </div>
@@ -180,7 +175,13 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
           <div onClick={(e) => e.stopPropagation()}>
             <div className="grid grid-cols-2 gap-2 pl-1">
               {[...integrations]
-                .sort((a, b) => statusOrder[a.status] - statusOrder[b.status])
+                .sort((a, b) => {
+                  // Connected first, then alphabetically
+                  const aOrder = statusOrder[a.status] ?? 99;
+                  const bOrder = statusOrder[b.status] ?? 99;
+                  if (aOrder !== bOrder) return aOrder - bOrder;
+                  return a.name.localeCompare(b.name);
+                })
                 .map((integration) => (
                   <IntegrationItem
                     key={integration.id}

@@ -17,7 +17,15 @@ from app.services.tools_service import (
 router = APIRouter()
 
 
+def _tools_cache_key(*args, **kwargs) -> str:
+    """Generate cache key for tools endpoint using user_id from user dict."""
+    user = kwargs.get("user", {})
+    user_id = user.get("user_id", "anonymous")
+    return f"tools:user:{user_id}"
+
+
 @router.get("/tools", response_model=ToolsListResponse)
+@Cacheable(key_generator=_tools_cache_key, ttl=300, model=ToolsListResponse)  # 5 min
 async def list_available_tools(
     user: dict = Depends(get_current_user),
 ) -> ToolsListResponse:
@@ -30,6 +38,7 @@ async def list_available_tools(
 
     Note: This endpoint returns global tool metadata for fast frontend visibility.
     User-specific tool connections are validated separately via integration status.
+    Cached for 5 minutes per user to improve performance.
 
     Returns:
         ToolsListResponse: List of tools with descriptions, parameters, and categories

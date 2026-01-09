@@ -35,6 +35,19 @@ export const integrationsApi = {
   },
 
   /**
+   * Get integration status (connected/disconnected) for all platform integrations
+   */
+  getIntegrationStatus: async (): Promise<IntegrationStatusResponse> => {
+    try {
+      const response = await apiService.get("/integrations/status");
+      return response as IntegrationStatusResponse;
+    } catch (error) {
+      console.error("Failed to get integration status:", error);
+      return { integrations: [] };
+    }
+  },
+
+  /**
    * Get user's integrations with status
    */
   getUserIntegrations: async (): Promise<UserIntegrationsResponse> => {

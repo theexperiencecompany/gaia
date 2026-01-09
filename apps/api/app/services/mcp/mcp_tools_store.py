@@ -7,16 +7,25 @@ so other users can see available tools without connecting first.
 
 Uses MongoDB `integrations` collection to store tool metadata within the
 integration document as `tools` array.
+
+Performance: Uses in-memory TTL cache to reduce MongoDB queries.
 """
 
+import time
 from typing import Optional
 
 from app.config.loggers import langchain_logger as logger
 from app.db.mongodb.collections import integrations_collection
 
 
+# Simple in-memory TTL cache for global MCP tools
+_global_tools_cache: dict[str, list[dict]] | None = None
+_cache_timestamp: float = 0
+_CACHE_TTL_SECONDS: int = 300  # 5 minutes
+
+
 class MCPToolsStore:
-    """Global MCP tool metadata storage using MongoDB."""
+    """Global MCP tool metadata storage using MongoDB with in-memory caching."""
 
     async def store_tools(self, integration_id: str, tools: list[dict]) -> None:
         """Store tools for an MCP integration (global, not per-user).
@@ -54,6 +63,10 @@ class MCPToolsStore:
             )
 
             if result.modified_count > 0 or result.upserted_id:
+                # Invalidate cache on tool storage
+                global _global_tools_cache, _cache_timestamp
+                _global_tools_cache = None
+                _cache_timestamp = 0
                 logger.info(
                     f"Stored {len(tools)} global tools for MCP integration {integration_id}"
                 )
@@ -83,9 +96,23 @@ class MCPToolsStore:
     async def get_all_mcp_tools(self) -> dict[str, list[dict]]:
         """Get all stored MCP tools keyed by integration_id.
 
+        Uses in-memory cache with 5-minute TTL to reduce MongoDB queries.
+
         Returns:
             Dict mapping integration_id to list of tool dicts.
         """
+        global _global_tools_cache, _cache_timestamp
+
+        # Check if cache is valid
+        current_time = time.time()
+        if (
+            _global_tools_cache is not None
+            and (current_time - _cache_timestamp) < _CACHE_TTL_SECONDS
+        ):
+            logger.debug("Returning cached MCP tools")
+            return _global_tools_cache
+
+        # Cache miss or expired - fetch from MongoDB
         try:
             cursor = integrations_collection.find(
                 {"tools": {"$exists": True, "$ne": []}},
@@ -98,6 +125,11 @@ class MCPToolsStore:
                 tools = doc.get("tools", [])
                 if integration_id and tools:
                     grouped[integration_id] = tools
+
+            # Update cache
+            _global_tools_cache = grouped
+            _cache_timestamp = current_time
+            logger.debug(f"Cached {len(grouped)} MCP tool integrations")
 
             return grouped
         except Exception as e:

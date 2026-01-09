@@ -10,13 +10,13 @@ import { useIntegrations } from "@/features/integrations";
 function IntegrationListSection() {
   const { integrations, connectIntegration } = useIntegrations();
 
-  // Separate connected and not connected integrations
-  const connectedIntegrations = integrations.filter(
-    (i) => i.status === "connected",
-  );
-  const notConnectedIntegrations = integrations.filter(
-    (i) => i.status !== "connected",
-  );
+  // Separate connected and not connected integrations, sorted alphabetically
+  const connectedIntegrations = integrations
+    .filter((i) => i.status === "connected")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const notConnectedIntegrations = integrations
+    .filter((i) => i.status !== "connected")
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const total_count = integrations.length;
   const connected_count = connectedIntegrations.length;

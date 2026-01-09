@@ -66,6 +66,7 @@ export interface ToolCallEntry {
   tool_call_id?: string;
   inputs?: Record<string, unknown>;
   output?: string;
+  icon_url?: string; // For custom integrations with dynamic icons
 }
 
 export const TOOL_REGISTRY = {

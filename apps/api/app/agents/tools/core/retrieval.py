@@ -203,25 +203,17 @@ def get_retrieve_tools_function(
                 logger.warning(f"Failed to get user namespaces: {e}")
                 # Fall back to general search
 
-        # Build search tasks based on user's namespaces
+        # Build search tasks - only search general + subagents
+        # Individual integration tools are accessed via handoff to subagents
         search_tasks = []
 
-        # Search in tool_space (or user's connected integrations)
+        # Search in tool_space (general for main agent, or specific space for subagent)
         if tool_space in user_namespaces or tool_space == "general":
             search_tasks.append(store.asearch((tool_space,), query=query, limit=limit))
 
-        # Also search in any other user namespaces (for MCP integrations)
-        # BUT only when in main agent context (include_subagents=True)
-        # Subagents should ONLY search their own tool_space to avoid cross-pollination
+        # Include subagents search for main agent context
         if include_subagents:
-            for ns in user_namespaces:
-                if ns not in {"general", "subagents", tool_space}:
-                    search_tasks.append(store.asearch((ns,), query=query, limit=5))
-
-        # Include subagents search if requested
-        # But we'll filter results later based on connected integrations
-        if include_subagents:
-            search_tasks.append(store.asearch(("subagents",), query=query, limit=10))
+            search_tasks.append(store.asearch(("subagents",), query=query, limit=15))
 
         # Execute all searches
         if search_tasks:
