@@ -255,26 +255,26 @@ class MCPClient:
             # Without this, Pydantic defaults (None) cause MCP validation errors.
             tools = wrap_tools_with_null_filter(raw_tools)
 
-            # Debug: log each tool's schema to see what LLM will see
-            logger.info(f"=== MCP Tools Schema Debug for {integration_id} ===")
+            # Debug: log each tool's schema (DEBUG level to reduce noise)
+            logger.debug(f"=== MCP Tools Schema Debug for {integration_id} ===")
             for t in tools:
                 # Check tool.args as suggested by mcp-use docs
                 tool_args = getattr(t, "args", None)
-                logger.info(f"MCP tool '{t.name}': args={tool_args}")
+                logger.debug(f"MCP tool '{t.name}': args={tool_args}")
 
                 if hasattr(t, "args_schema") and t.args_schema:
                     try:
                         schema = t.args_schema.model_json_schema()
                         props = schema.get("properties", {})
                         required = schema.get("required", [])
-                        logger.info(
+                        logger.debug(
                             f"  -> {len(props)} properties, required={required}"
                         )
 
                     except Exception as e:
-                        logger.warning(f"MCP tool {t.name}: couldn't get schema: {e}")
+                        logger.debug(f"MCP tool {t.name}: couldn't get schema: {e}")
                 else:
-                    logger.warning(f"MCP tool {t.name}: NO args_schema!")
+                    logger.debug(f"MCP tool {t.name}: NO args_schema!")
 
             self._clients[integration_id] = client
             self._tools[integration_id] = tools
@@ -708,6 +708,9 @@ class MCPClient:
         )
 
 
-def get_mcp_client(user_id: str) -> MCPClient:
-    """Get MCP client for a user."""
-    return MCPClient(user_id=user_id)
+async def get_mcp_client(user_id: str) -> MCPClient:
+    """Get MCP client for a user from the pool."""
+    from app.services.mcp.mcp_client_pool import get_mcp_client_pool
+
+    pool = await get_mcp_client_pool()
+    return await pool.get(user_id)

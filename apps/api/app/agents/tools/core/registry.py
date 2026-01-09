@@ -262,7 +262,7 @@ class ToolRegistry:
             from app.services.mcp.mcp_client import get_mcp_client
 
             # Use system user for unauthenticated MCP connections at startup
-            mcp_client = get_mcp_client(user_id="_system")
+            mcp_client = await get_mcp_client(user_id="_system")
             tools = await mcp_client.connect(server_name)
 
             if tools:
@@ -422,7 +422,7 @@ class ToolRegistry:
         from app.config.oauth_config import get_integration_by_id
         from app.services.mcp.mcp_client import get_mcp_client
 
-        mcp_client = get_mcp_client(user_id=user_id)
+        mcp_client = await get_mcp_client(user_id=user_id)
         all_tools = await mcp_client.get_all_connected_tools()
 
         loaded: Dict[str, List[BaseTool]] = {}

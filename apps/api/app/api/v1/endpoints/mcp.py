@@ -39,7 +39,7 @@ async def test_mcp_connection(
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
-    client = get_mcp_client(user_id=str(user_id))
+    client = await get_mcp_client(user_id=str(user_id))
 
     # Get server URL using IntegrationResolver
     resolved = await IntegrationResolver.resolve(integration_id)
@@ -121,7 +121,7 @@ async def mcp_oauth_callback(
             url=f"{frontend_url}/integrations?status=failed&error=invalid_state"
         )
 
-    client = get_mcp_client(user_id=str(user_id))
+    client = await get_mcp_client(user_id=str(user_id))
 
     try:
         await client.handle_oauth_callback(

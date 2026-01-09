@@ -61,7 +61,7 @@ async def create_subagent(integration_id: str):
                 f"{integration_id} requires authentication - use create_subagent_for_user"
             )
         elif category_name not in tool_registry._categories:
-            mcp_client = get_mcp_client(user_id="_system")
+            mcp_client = await get_mcp_client(user_id="_system")
             tools = await mcp_client.connect(integration.id)
             if tools:
                 tool_registry._add_category(
@@ -131,7 +131,7 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
     category_name = f"mcp_{integration.id}_{user_id}"
 
     if category_name not in tool_registry._categories:
-        mcp_client = get_mcp_client(user_id=user_id)
+        mcp_client = await get_mcp_client(user_id=user_id)
 
         # get_all_connected_tools uses cached tools when available
         all_tools = await mcp_client.get_all_connected_tools()
