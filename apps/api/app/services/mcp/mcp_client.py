@@ -28,7 +28,6 @@ from app.utils.mcp_oauth_utils import (
 )
 from app.utils.mcp_utils import (
     generate_pkce_pair,
-    serialize_args_schema,
     wrap_tools_with_null_filter,
 )
 
@@ -88,6 +87,43 @@ class MCPClient:
                 "auth_type": "unknown",
                 "error": str(e),
             }
+
+    async def update_integration_auth_status(
+        self,
+        integration_id: str,
+        requires_auth: bool,
+        auth_type: str,
+    ) -> None:
+        """
+        Update integration auth status in MongoDB after probe discovery.
+
+        This ensures the stored mcp_config reflects the actual auth requirements
+        discovered from the MCP server, fixing stale requires_auth flags.
+
+        Args:
+            integration_id: The integration ID to update
+            requires_auth: Whether auth is required
+            auth_type: The auth type ("oauth", "none", etc.)
+        """
+        from app.db.mongodb.collections import integrations_collection
+
+        try:
+            result = await integrations_collection.update_one(
+                {"integration_id": integration_id},
+                {
+                    "$set": {
+                        "mcp_config.requires_auth": requires_auth,
+                        "mcp_config.auth_type": auth_type,
+                    }
+                },
+            )
+            if result.modified_count > 0:
+                logger.info(
+                    f"Updated auth status for {integration_id}: "
+                    f"requires_auth={requires_auth}, auth_type={auth_type}"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to update auth status for {integration_id}: {e}")
 
     async def _discover_oauth_config(
         self, integration_id: str, mcp_config: MCPConfig
@@ -191,23 +227,21 @@ class MCPClient:
         if mcp_config.transport:
             server_config["transport"] = mcp_config.transport
 
-        # ALWAYS check for stored OAuth token, regardless of requires_auth flag.
-        # This handles custom integrations where OAuth was discovered dynamically
-        # but requires_auth was never updated in MongoDB from false to true.
-        stored_token = await self.token_store.get_oauth_token(integration_id)
-        if stored_token:
-            # mcp-use HttpConnector handles auth as follows:
-            # - If string: adds "Bearer {token}" to Authorization header
-            # - So pass raw token WITHOUT Bearer prefix
-            raw_token = stored_token
-            if stored_token.lower().startswith("bearer "):
-                raw_token = stored_token[7:]  # Remove "Bearer " prefix
-            server_config["auth"] = raw_token
-        elif mcp_config.requires_auth:
-            # Only warn if requires_auth is explicitly set - means token should exist
-            logger.warning(
-                f"No stored OAuth token found for {integration_id} - connection may fail"
-            )
+        # Check for stored OAuth token if auth is required
+        if mcp_config.requires_auth:
+            stored_token = await self.token_store.get_oauth_token(integration_id)
+            if stored_token:
+                # mcp-use HttpConnector handles auth as follows:
+                # - If string: adds "Bearer {token}" to Authorization header
+                # - So pass raw token WITHOUT Bearer prefix
+                raw_token = stored_token
+                if stored_token.lower().startswith("bearer "):
+                    raw_token = stored_token[7:]  # Remove "Bearer " prefix
+                server_config["auth"] = raw_token
+            else:
+                logger.warning(
+                    f"No stored OAuth token found for {integration_id} - connection may fail"
+                )
 
         return {"mcpServers": {integration_id: server_config}}
 
@@ -244,21 +278,16 @@ class MCPClient:
             self._clients[integration_id] = client
             self._tools[integration_id] = tools
 
-            # Build tool metadata with schema for caching
+            # Build tool metadata for MongoDB (name and description only)
             tool_metadata = [
                 {
                     "name": t.name,
                     "description": t.description,
-                    "args_schema": serialize_args_schema(t),
                 }
                 for t in tools
             ]
 
-            # Store in per-user cache (used by stub tools for this user)
-            await self.token_store.store_cached_tools(integration_id, tool_metadata)
-
-            # Store tools globally for frontend visibility
-            # Always update to ensure latest tools are available (handles tool updates)
+            # Store tool names/descriptions globally in MongoDB for frontend visibility
             global_store = get_mcp_tools_store()
             await global_store.store_tools(integration_id, tool_metadata)
 
@@ -548,13 +577,8 @@ class MCPClient:
         """
         Get tools from all connected MCP integrations for this user.
 
-        Queries BOTH:
-        - mcp_credentials (PostgreSQL) for authenticated MCPs
-        - user_integrations (MongoDB) for unauthenticated MCPs user has connected
-
-        For auth-required MCPs: Uses cached tool metadata to create stub tools
-        (avoids reconnecting to MCP server just to list tools).
-        For unauthenticated MCPs: Connects on-demand.
+        Uses MongoDB as single source of truth for cached tool metadata.
+        Creates stub tools that connect on-demand when executed.
 
         Returns dict mapping integration_id -> list of tools.
         """
@@ -562,7 +586,6 @@ class MCPClient:
         auth_connected = await self.token_store.get_connected_integrations()
 
         # Get unauthenticated MCP connections from MongoDB user_integrations
-        # Import here to avoid circular import
         unauth_connected: list[str] = []
         try:
             from app.services.integration_service import get_user_connected_integrations
@@ -570,37 +593,36 @@ class MCPClient:
             user_integrations = await get_user_connected_integrations(self.user_id)
             for ui in user_integrations:
                 integration_id = ui.get("integration_id")
-                # Check if this is an unauthenticated MCP via resolver
-                resolved = await IntegrationResolver.resolve(integration_id)
-                if resolved and resolved.mcp_config and not resolved.requires_auth:
+                # Skip if already in auth_connected (avoid duplicates)
+                if integration_id and integration_id not in auth_connected:
                     unauth_connected.append(integration_id)
         except Exception as e:
             logger.warning(f"Failed to get unauth MCPs from user_integrations: {e}")
 
-        # Combine both sources (deduplicate)
+        # Combine both sources
         connected_ids = list(set(auth_connected) | set(unauth_connected))
         all_tools: dict[str, list[BaseTool]] = {}
 
+        # Get global tool store (MongoDB - single source of truth)
+        global_store = get_mcp_tools_store()
+
         for integration_id in connected_ids:
             try:
-                # Check if already connected in memory
+                # Check if already connected in memory (live tools)
                 if integration_id in self._tools:
                     all_tools[integration_id] = self._tools[integration_id]
                     continue
 
-                resolved = await IntegrationResolver.resolve(integration_id)
+                # Use MongoDB cached tools to create stubs (works for both auth and unauth)
+                cached = await global_store.get_tools(integration_id)
+                if cached:
+                    stub_tools = create_stub_tools_from_cache(
+                        self, integration_id, cached
+                    )
+                    all_tools[integration_id] = stub_tools
+                    continue
 
-                # For auth-required MCPs, try cached tools first
-                if resolved and resolved.mcp_config and resolved.requires_auth:
-                    cached = await self.token_store.get_cached_tools(integration_id)
-                    if cached:
-                        stub_tools = create_stub_tools_from_cache(
-                            self, integration_id, cached
-                        )
-                        all_tools[integration_id] = stub_tools
-                        continue
-
-                # Connect to get real tools
+                # No cached tools - connect to fetch them
                 tools = await self.connect(integration_id)
                 if tools:
                     all_tools[integration_id] = tools

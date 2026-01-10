@@ -78,7 +78,12 @@ async def test_mcp_connection(
                 }
             )
 
-    # OAuth required
+    # OAuth required - update MongoDB with discovered auth requirements
+    auth_type = probe_result.get("auth_type", "oauth")
+    await client.update_integration_auth_status(
+        integration_id, requires_auth=True, auth_type=auth_type
+    )
+
     auth_url = await client.build_oauth_auth_url(
         integration_id=integration_id,
         redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",

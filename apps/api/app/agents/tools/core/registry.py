@@ -415,7 +415,10 @@ class ToolRegistry:
         Load all connected MCP tools for a specific user.
 
         Connects to each MCP server the user has authenticated with,
-        retrieves tools, and adds them to the registry under user-specific categories.
+        retrieves tools, and adds them to the registry.
+
+        Category naming: mcp_{integration_id} (without user_id)
+        User association is tracked via _user_mcp_categories.
 
         Returns dict mapping integration_id -> list of tools loaded.
         """
@@ -427,14 +430,23 @@ class ToolRegistry:
 
         loaded: Dict[str, List[BaseTool]] = {}
 
+        # Track which MCP categories this user has access to
+        if not hasattr(self, "_user_mcp_categories"):
+            self._user_mcp_categories: Dict[str, set[str]] = {}
+        if user_id not in self._user_mcp_categories:
+            self._user_mcp_categories[user_id] = set()
+
         for integration_id, tools in all_tools.items():
             if not tools:
                 continue
 
-            # Category name includes user_id to keep tools separate
-            category_name = f"mcp_{integration_id}_{user_id}"
+            # Category name: mcp_{integration_id} (no user_id suffix)
+            category_name = f"mcp_{integration_id}"
 
-            # Skip if already loaded for this user
+            # Track this category for the user
+            self._user_mcp_categories[user_id].add(category_name)
+
+            # Skip if already loaded (category already exists)
             if category_name in self._categories:
                 loaded[integration_id] = tools
                 continue
@@ -469,15 +481,34 @@ class ToolRegistry:
         Returns mapping of tool name -> tool instance for user-specific MCP tools.
         """
         tools: Dict[str, BaseTool] = {}
-        prefix = f"mcp_"
-        suffix = f"_{user_id}"
 
-        for name, category in self._categories.items():
-            if name.startswith(prefix) and name.endswith(suffix):
+        # Get categories this user has access to
+        user_categories = getattr(self, "_user_mcp_categories", {}).get(user_id, set())
+
+        for category_name in user_categories:
+            category = self._categories.get(category_name)
+            if category:
                 for tool in category.tools:
                     tools[tool.name] = tool.tool
 
         return tools
+
+    def get_mcp_category_for_integration(self, integration_id: str) -> Optional[str]:
+        """
+        Get the MCP category name for a given integration ID.
+
+        This provides consistent lookup for MCP tools by integration.
+
+        Args:
+            integration_id: The integration ID (e.g., "linear", "notion")
+
+        Returns:
+            Category name (e.g., "mcp_linear") or None if not found
+        """
+        category_name = f"mcp_{integration_id}"
+        if category_name in self._categories:
+            return category_name
+        return None
 
     @cache
     def get_category_of_tool(self, tool_name: str) -> str:

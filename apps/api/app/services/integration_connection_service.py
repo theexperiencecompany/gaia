@@ -75,6 +75,11 @@ async def connect_mcp_integration(
         if probe_result.get("requires_auth"):
             logger.info(f"Probe detected OAuth for {integration_id}")
             requires_auth = True
+            # Update MongoDB with discovered auth requirements
+            auth_type = probe_result.get("auth_type", "oauth")
+            await mcp_client.update_integration_auth_status(
+                integration_id, requires_auth=True, auth_type=auth_type
+            )
 
     if requires_auth:
         if not is_platform:

@@ -105,7 +105,50 @@ class ComposioService:
             limit=1000,
         )
 
+        # Store tool names/descriptions in MongoDB for frontend visibility
+        await self._store_tool_metadata(tool_kit, result)
+
         return result
+
+    async def _store_tool_metadata(
+        self,
+        toolkit_name: str,
+        tools: list,
+    ) -> None:
+        """
+        Store Composio tool metadata in MongoDB for frontend visibility.
+
+        This ensures Composio tools appear in the same tool discovery flow
+        as MCP tools, providing a unified frontend experience.
+
+        Args:
+            toolkit_name: The Composio toolkit name (e.g., "GMAIL", "NOTION")
+            tools: List of Composio tool objects
+        """
+        from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+
+        if not tools:
+            return
+
+        try:
+            # Build lightweight metadata (name and description only)
+            tool_metadata = [
+                {
+                    "name": t.name,
+                    "description": getattr(t, "description", ""),
+                }
+                for t in tools
+            ]
+
+            store = get_mcp_tools_store()
+            await store.store_tools(toolkit_name.lower(), tool_metadata)
+            logger.debug(
+                f"Stored {len(tool_metadata)} Composio tool metadata for {toolkit_name}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to store Composio tool metadata for {toolkit_name}: {e}"
+            )
 
     async def get_tools_by_name(
         self,

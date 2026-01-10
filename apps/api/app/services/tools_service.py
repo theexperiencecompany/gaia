@@ -44,6 +44,7 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
     tool_infos: list[ToolInfo] = []
     categories: set[str] = set()
     seen_integrations: set[str] = set()
+    seen_tool_names: set[str] = set()  # Track tool names for deduplication
 
     # Load tool registry
     tool_registry = await get_tool_registry()
@@ -60,6 +61,12 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
         if category_obj.integration_name:
             seen_integrations.add(category_obj.integration_name)
         for tool in category_obj.tools:
+            # Skip duplicate tool names
+            if tool.name in seen_tool_names:
+                logger.debug(f"Skipping duplicate tool from registry: {tool.name}")
+                continue
+            seen_tool_names.add(tool.name)
+
             tool_info = ToolInfo(
                 name=tool.name,
                 category=category,
@@ -108,8 +115,17 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
                 continue
 
             for tool in tools:
+                tool_name = tool["name"]
+                # Skip duplicate tool names
+                if tool_name in seen_tool_names:
+                    logger.debug(
+                        f"Skipping duplicate tool from MCP {integration_id}: {tool_name}"
+                    )
+                    continue
+                seen_tool_names.add(tool_name)
+
                 tool_info = ToolInfo(
-                    name=tool["name"],
+                    name=tool_name,
                     category=integration_id,
                     integration_name=get_integration_name(integration_id),
                     required_integration=integration_id,
@@ -130,10 +146,22 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
         icon_url = custom.get("icon_url")
         custom_name = custom.get("name")
 
+        if not custom_tools:
+            continue
+
         for tool in custom_tools:
+            tool_name = tool["name"]
+            # Skip duplicate tool names
+            if tool_name in seen_tool_names:
+                logger.debug(
+                    f"Skipping duplicate tool from custom MCP {integration_id}: {tool_name}"
+                )
+                continue
+            seen_tool_names.add(tool_name)
+
             tool_infos.append(
                 ToolInfo(
-                    name=tool["name"],
+                    name=tool_name,
                     category=integration_id,
                     category_display_name=custom_name,
                     integration_name=custom_name,
@@ -143,11 +171,8 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
             )
             categories.add(integration_id)
 
-        if custom_tools:
-            logger.info(
-                f"Added {len(custom_tools)} tools from custom MCP {integration_id}"
-            )
-            seen_integrations.add(integration_id)
+        logger.info(f"Added {len(custom_tools)} tools from custom MCP {integration_id}")
+        seen_integrations.add(integration_id)
 
     return ToolsListResponse(
         tools=tool_infos,

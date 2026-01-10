@@ -274,6 +274,11 @@ async def create_custom_mcp_integration(
         elif probe_result.get("error"):
             connection_result = {"status": "failed", "error": probe_result["error"]}
         elif probe_result.get("requires_auth"):
+            # Update MongoDB with discovered auth requirements
+            auth_type = probe_result.get("auth_type", "oauth")
+            await mcp_client.update_integration_auth_status(
+                integration.integration_id, requires_auth=True, auth_type=auth_type
+            )
             try:
                 auth_url = await mcp_client.build_oauth_auth_url(
                     integration_id=integration.integration_id,
