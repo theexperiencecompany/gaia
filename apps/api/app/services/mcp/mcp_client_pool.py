@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from app.config.loggers import langchain_logger as logger
@@ -25,11 +25,11 @@ class PooledClient:
     """Wrapper for pooled MCPClient with metadata."""
 
     client: "MCPClient"
-    last_used: datetime = field(default_factory=datetime.utcnow)
+    last_used: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def touch(self):
         """Update last used timestamp."""
-        self.last_used = datetime.utcnow()
+        self.last_used = datetime.now(timezone.utc)
 
 
 class MCPClientPool:
@@ -96,7 +96,7 @@ class MCPClientPool:
     async def cleanup_stale(self):
         """Remove clients that haven't been used within TTL."""
         async with self._lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             stale = [
                 uid
                 for uid, pooled in self._clients.items()

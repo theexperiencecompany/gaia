@@ -15,7 +15,7 @@
     var(--font-anonymous-pro), ui-monospace, "Cascadia Code", "Source Code Pro",
     Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
-  --color-secondary-bg: #141414; /* darker */
+  --color-secondary-bg: #141414; /* sidebar */
   --color-primary-bg: #1a1a1a; /*  lighter*/
 
   /* Colors */

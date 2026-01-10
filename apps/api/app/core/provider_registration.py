@@ -51,6 +51,7 @@ from app.helpers.lifespan_helpers import (
     # setup_event_loop_policy,
 )
 from app.services.composio.composio_service import init_composio_service
+from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.startup_validation import validate_startup_requirements
 from pydantic import PydanticDeprecatedSince20
 
@@ -93,6 +94,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     init_checkpointer_manager()
     init_tool_registry()
     init_composio_service()
+    init_mcp_client_pool()
     init_embeddings()
     initialize_chroma_tools_store()
     init_cloudinary()
