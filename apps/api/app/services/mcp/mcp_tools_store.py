@@ -8,24 +8,22 @@ so other users can see available tools without connecting first.
 Uses MongoDB `integrations` collection to store tool metadata within the
 integration document as `tools` array.
 
-Performance: Uses in-memory TTL cache to reduce MongoDB queries.
+Performance: Uses Redis cache to reduce MongoDB queries across all workers.
 """
 
-import time
 from typing import Optional
 
 from app.config.loggers import langchain_logger as logger
 from app.db.mongodb.collections import integrations_collection
+from app.db.redis import delete_cache, get_cache, set_cache
 
-
-# Simple in-memory TTL cache for global MCP tools
-_global_tools_cache: dict[str, list[dict]] | None = None
-_cache_timestamp: float = 0
-_CACHE_TTL_SECONDS: int = 300  # 5 minutes
+# Redis cache key and TTL for global MCP tools
+MCP_TOOLS_CACHE_KEY = "mcp:tools:all"
+MCP_TOOLS_CACHE_TTL = 86400  # 24 hours (invalidated on write)
 
 
 class MCPToolsStore:
-    """Global MCP tool metadata storage using MongoDB with in-memory caching."""
+    """Global MCP tool metadata storage using MongoDB with Redis caching."""
 
     async def store_tools(self, integration_id: str, tools: list[dict]) -> None:
         """Store tools for an MCP integration (global, not per-user).
@@ -43,13 +41,11 @@ class MCPToolsStore:
             return
 
         try:
-            # Format tools for storage
             formatted_tools = [
                 {"name": t.get("name", ""), "description": t.get("description", "")}
                 for t in tools
             ]
 
-            # Update the integration document with tools
             result = await integrations_collection.update_one(
                 {"integration_id": integration_id},
                 {
@@ -63,10 +59,7 @@ class MCPToolsStore:
             )
 
             if result.modified_count > 0 or result.upserted_id:
-                # Invalidate cache on tool storage
-                global _global_tools_cache, _cache_timestamp
-                _global_tools_cache = None
-                _cache_timestamp = 0
+                await delete_cache(MCP_TOOLS_CACHE_KEY)
                 logger.info(
                     f"Stored {len(tools)} global tools for MCP integration {integration_id}"
                 )
@@ -96,23 +89,18 @@ class MCPToolsStore:
     async def get_all_mcp_tools(self) -> dict[str, list[dict]]:
         """Get all stored MCP tools keyed by integration_id.
 
-        Uses in-memory cache with 5-minute TTL to reduce MongoDB queries.
+        Uses Redis cache with 24-hour TTL (invalidated on tool storage).
 
         Returns:
             Dict mapping integration_id to list of tool dicts.
         """
-        global _global_tools_cache, _cache_timestamp
+        # Check Redis cache
+        cached = await get_cache(MCP_TOOLS_CACHE_KEY)
+        if cached:
+            logger.debug("Returning cached MCP tools from Redis")
+            return cached
 
-        # Check if cache is valid
-        current_time = time.time()
-        if (
-            _global_tools_cache is not None
-            and (current_time - _cache_timestamp) < _CACHE_TTL_SECONDS
-        ):
-            logger.debug("Returning cached MCP tools")
-            return _global_tools_cache
-
-        # Cache miss or expired - fetch from MongoDB
+        # Cache miss - fetch from MongoDB
         try:
             cursor = integrations_collection.find(
                 {"tools": {"$exists": True, "$ne": []}},
@@ -126,10 +114,9 @@ class MCPToolsStore:
                 if integration_id and tools:
                     grouped[integration_id] = tools
 
-            # Update cache
-            _global_tools_cache = grouped
-            _cache_timestamp = current_time
-            logger.debug(f"Cached {len(grouped)} MCP tool integrations")
+            # Store in Redis cache
+            await set_cache(MCP_TOOLS_CACHE_KEY, grouped, ttl=MCP_TOOLS_CACHE_TTL)
+            logger.debug(f"Cached {len(grouped)} MCP tool integrations in Redis")
 
             return grouped
         except Exception as e:

@@ -2,6 +2,8 @@
 
 from functools import lru_cache
 
+from mcp_use.exceptions import OAuthAuthenticationError
+
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_scopes
 from app.config.token_repository import token_repository
@@ -22,7 +24,6 @@ from app.services.integration_service import (
     update_user_integration_status,
 )
 from app.services.mcp.mcp_client import get_mcp_client
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.services.oauth_state_service import create_oauth_state
 from app.utils.oauth_utils import build_google_oauth_url
 
@@ -92,17 +93,27 @@ async def connect_mcp_integration(
             message="OAuth authentication required",
         )
 
-    tools = await mcp_client.connect(integration_id)
+    try:
+        tools = await mcp_client.connect(integration_id)
+    except OAuthAuthenticationError:
+        # Server requires OAuth - redirect to OAuth flow
+        logger.info(f"Connection got auth error, triggering OAuth for {integration_id}")
+        if not is_platform:
+            await update_user_integration_status(user_id, integration_id, "created")
+
+        auth_url = await mcp_client.build_oauth_auth_url(
+            integration_id=integration_id,
+            redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+            redirect_path=redirect_path,
+        )
+        return ConnectIntegrationResponse(
+            status="redirect",
+            integration_id=integration_id,
+            redirect_url=auth_url,
+            message="OAuth authentication required",
+        )
+
     tools_count = len(tools) if tools else 0
-
-    await update_user_integration_status(user_id, integration_id, "connected")
-
-    if tools:
-        global_store = get_mcp_tools_store()
-        tool_metadata = [
-            {"name": t.name, "description": t.description or ""} for t in tools
-        ]
-        await global_store.store_tools(integration_id, tool_metadata)
 
     await invalidate_mcp_status_cache(user_id)
 

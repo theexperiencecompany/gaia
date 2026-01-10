@@ -15,13 +15,11 @@ from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 
 from app.config.loggers import langchain_logger as logger
-from app.db.mongodb.collections import integrations_collection
 from app.helpers.mcp_helpers import create_stub_tools_from_cache
 from app.models.oauth_models import MCPConfig
 from app.services.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
-from app.utils.favicon_utils import fetch_favicon_from_url
 from app.utils.mcp_oauth_utils import (
     extract_auth_challenge,
     fetch_auth_server_metadata,
@@ -58,9 +56,6 @@ class MCPClient:
         """
         Probe an MCP server to determine auth requirements.
 
-        Used to quickly check if an MCP server requires authentication
-        before attempting a full connection.
-
         Returns:
             {
                 "requires_auth": bool,
@@ -72,17 +67,15 @@ class MCPClient:
         try:
             challenge = await extract_auth_challenge(server_url)
 
-            # If we got a 401 with WWW-Authenticate, OAuth is required
             if challenge.get("raw"):
-                logger.info(f"Probe {server_url}: OAuth required")
+                logger.debug(f"OAuth required for {server_url}")
                 return {
                     "requires_auth": True,
                     "auth_type": "oauth",
                     "oauth_challenge": challenge,
                 }
 
-            # No 401 = no auth required, or server accepts anonymous access
-            logger.info(f"Probe {server_url}: No auth required")
+            logger.debug(f"No auth required for {server_url}")
             return {
                 "requires_auth": False,
                 "auth_type": "none",
@@ -203,13 +196,6 @@ class MCPClient:
         # but requires_auth was never updated in MongoDB from false to true.
         stored_token = await self.token_store.get_oauth_token(integration_id)
         if stored_token:
-            # Debug: log token details (safely)
-            logger.info(
-                f"OAuth token for {integration_id}: "
-                f"length={len(stored_token)}, "
-                f"starts_with_bearer={stored_token.lower().startswith('bearer ')}, "
-                f"preview={stored_token[:20]}..."
-            )
             # mcp-use HttpConnector handles auth as follows:
             # - If string: adds "Bearer {token}" to Authorization header
             # - So pass raw token WITHOUT Bearer prefix
@@ -255,27 +241,6 @@ class MCPClient:
             # Without this, Pydantic defaults (None) cause MCP validation errors.
             tools = wrap_tools_with_null_filter(raw_tools)
 
-            # Debug: log each tool's schema (DEBUG level to reduce noise)
-            logger.debug(f"=== MCP Tools Schema Debug for {integration_id} ===")
-            for t in tools:
-                # Check tool.args as suggested by mcp-use docs
-                tool_args = getattr(t, "args", None)
-                logger.debug(f"MCP tool '{t.name}': args={tool_args}")
-
-                if hasattr(t, "args_schema") and t.args_schema:
-                    try:
-                        schema = t.args_schema.model_json_schema()
-                        props = schema.get("properties", {})
-                        required = schema.get("required", [])
-                        logger.debug(
-                            f"  -> {len(props)} properties, required={required}"
-                        )
-
-                    except Exception as e:
-                        logger.debug(f"MCP tool {t.name}: couldn't get schema: {e}")
-                else:
-                    logger.debug(f"MCP tool {t.name}: NO args_schema!")
-
             self._clients[integration_id] = client
             self._tools[integration_id] = tools
 
@@ -291,21 +256,25 @@ class MCPClient:
 
             # Store in per-user cache (used by stub tools for this user)
             await self.token_store.store_cached_tools(integration_id, tool_metadata)
-            logger.info(f"Cached {len(tools)} tools with schema for user")
 
             # Store tools globally for frontend visibility
             # Always update to ensure latest tools are available (handles tool updates)
             global_store = get_mcp_tools_store()
             await global_store.store_tools(integration_id, tool_metadata)
-            logger.info(f"Stored {len(tools)} tools globally for {integration_id}")
 
-            # For custom integrations: fetch favicon and index tools in ChromaDB
+            # For custom integrations: index tools in ChromaDB
             if is_custom:
                 await self._handle_custom_integration_connect(
                     integration_id, mcp_config.server_url, tools
                 )
 
-            logger.info(f"Connected to MCP {integration_id}: {len(tools)} tools")
+            # Update user integration status to connected (import here to avoid circular dependency)
+            from app.services.integration_service import update_user_integration_status
+
+            await update_user_integration_status(
+                self.user_id, integration_id, "connected"
+            )
+
             return tools
 
         except Exception as e:
@@ -316,31 +285,12 @@ class MCPClient:
     async def _handle_custom_integration_connect(
         self, integration_id: str, server_url: str, tools: list[BaseTool]
     ) -> None:
-        """
-        Handle post-connect tasks for custom integrations.
-
-        1. Fetch and store favicon from the MCP server subdomain
-        2. Index tools in ChromaDB for semantic discovery
-        """
-        # 1. Fetch and store favicon from subdomain
-        try:
-            icon_url = await fetch_favicon_from_url(server_url)
-            if icon_url:
-                await integrations_collection.update_one(
-                    {"integration_id": integration_id},
-                    {"$set": {"icon_url": icon_url}},
-                )
-                logger.info(f"Stored favicon for {integration_id}: {icon_url}")
-        except Exception as e:
-            logger.warning(f"Failed to fetch favicon for {integration_id}: {e}")
-
-        # 2. Index tools in ChromaDB for semantic discovery
+        """Index tools in ChromaDB for semantic discovery."""
         try:
             from app.db.chroma.chroma_tools_store import index_tools_to_store
 
             tools_with_space = [(tool, integration_id) for tool in tools]
             await index_tools_to_store(tools_with_space)
-            logger.info(f"Indexed {len(tools)} tools for {integration_id} in ChromaDB")
         except Exception as e:
             logger.warning(
                 f"Failed to index tools in ChromaDB for {integration_id}: {e}"
@@ -368,9 +318,6 @@ class MCPClient:
             raise ValueError(f"Integration {integration_id} not found")
 
         mcp_config = resolved.mcp_config
-        if resolved.source == "custom":
-            logger.info(f"Building OAuth URL for custom MCP: {integration_id}")
-
         # Full MCP OAuth discovery
         oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
 
@@ -439,12 +386,7 @@ class MCPClient:
         if scope_str:
             params["scope"] = scope_str
 
-        auth_url = f"{auth_endpoint}?{urllib.parse.urlencode(params)}"
-        logger.info(
-            f"Built OAuth URL for {integration_id}: "
-            f"endpoint={auth_endpoint}, resource={resource}, scope={scope_str or '(none)'}"
-        )
-        return auth_url
+        return f"{auth_endpoint}?{urllib.parse.urlencode(params)}"
 
     async def _register_client(
         self, integration_id: str, registration_endpoint: str, redirect_uri: str
@@ -498,8 +440,6 @@ class MCPClient:
             raise ValueError(f"Integration {integration_id} not found")
 
         mcp_config = resolved.mcp_config
-        if resolved.source == "custom":
-            logger.info(f"Handling OAuth callback for custom MCP: {integration_id}")
 
         # Get OAuth config (should be cached from build_oauth_auth_url)
         oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
@@ -558,24 +498,12 @@ class MCPClient:
             response.raise_for_status()
             tokens = response.json()
 
-        # Debug: Log token info (safely) to understand what we're getting
-        access_token = tokens.get("access_token", "")
-        logger.info(
-            f"Token exchange response for {integration_id}: "
-            f"access_token_length={len(access_token)}, "
-            f"has_refresh={bool(tokens.get('refresh_token'))}, "
-            f"token_type={tokens.get('token_type', 'unknown')}, "
-            f"access_token_preview={access_token[:20] if access_token else 'N/A'}..."
-        )
-
         # Store tokens
         await self.token_store.store_oauth_tokens(
             integration_id=integration_id,
-            access_token=access_token,
+            access_token=tokens.get("access_token", ""),
             refresh_token=tokens.get("refresh_token"),
         )
-
-        logger.info(f"OAuth token exchange successful for {integration_id}")
 
         try:
             return await self.connect(integration_id)
@@ -589,7 +517,6 @@ class MCPClient:
         """Disconnect from an MCP server."""
         resolved = await IntegrationResolver.resolve(integration_id)
         if resolved and resolved.mcp_config and not resolved.requires_auth:
-            logger.info(f"Skipping disconnect for unauthenticated MCP {integration_id}")
             return
 
         if integration_id in self._clients:
@@ -671,18 +598,13 @@ class MCPClient:
                             self, integration_id, cached
                         )
                         all_tools[integration_id] = stub_tools
-                        logger.info(
-                            f"Using {len(stub_tools)} cached tools for {integration_id}"
-                        )
                         continue
 
                 # Connect to get real tools
                 tools = await self.connect(integration_id)
                 if tools:
                     all_tools[integration_id] = tools
-                    logger.info(
-                        f"Connected to MCP {integration_id}: {len(tools)} tools"
-                    )
+
             except Exception as e:
                 logger.warning(f"Failed to get tools for MCP {integration_id}: {e}")
 

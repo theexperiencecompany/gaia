@@ -9,7 +9,7 @@ This service handles:
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 
 from app.config.loggers import app_logger as logger
@@ -288,7 +288,7 @@ async def add_user_integration(
         user_id=user_id,
         integration_id=integration_id,
         status=status,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
         connected_at=connected_at,
     )
 
@@ -355,13 +355,13 @@ async def update_user_integration_status(
         "integration_id": integration_id,
     }
     if status == "connected":
-        update_data["connected_at"] = datetime.utcnow()
+        update_data["connected_at"] = datetime.now(UTC)
 
     result = await user_integrations_collection.update_one(
         {"user_id": user_id, "integration_id": integration_id},
         {
             "$set": update_data,
-            "$setOnInsert": {"created_at": datetime.utcnow()},
+            "$setOnInsert": {"created_at": datetime.now(UTC)},
         },
         upsert=True,
     )
@@ -398,6 +398,7 @@ async def check_user_has_integration(user_id: str, integration_id: str) -> bool:
 async def create_custom_integration(
     user_id: str,
     request: CreateCustomIntegrationRequest,
+    icon_url: str | None = None,
 ) -> Integration:
     """
     Create a custom MCP integration.
@@ -405,6 +406,7 @@ async def create_custom_integration(
     Args:
         user_id: The user creating the integration
         request: Integration creation request
+        icon_url: Pre-fetched favicon URL (optional, for parallel fetching)
 
     Returns:
         The created Integration
@@ -412,26 +414,13 @@ async def create_custom_integration(
     Raises:
         ValueError: If integration with same ID already exists
     """
-    from app.utils.favicon_utils import fetch_favicon_from_url
-
-    # Generate integration_id from name
     integration_id = f"custom_{request.name.lower().replace(' ', '_')}_{user_id[:8]}"
 
-    # Check if ID already exists
     existing = await integrations_collection.find_one(
         {"integration_id": integration_id}
     )
     if existing:
         raise ValueError(f"Integration with ID '{integration_id}' already exists")
-
-    # Fetch favicon from MCP server (non-blocking, don't fail if it doesn't work)
-    icon_url = None
-    try:
-        icon_url = await fetch_favicon_from_url(request.server_url)
-        if icon_url:
-            logger.info(f"Fetched favicon for {integration_id}: {icon_url}")
-    except Exception as e:
-        logger.warning(f"Failed to fetch favicon for {integration_id}: {e}")
 
     integration = Integration(
         integration_id=integration_id,
@@ -448,7 +437,7 @@ async def create_custom_integration(
             requires_auth=request.requires_auth,
             auth_type=request.auth_type,
         ),
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
     await integrations_collection.insert_one(integration.model_dump())
@@ -456,8 +445,6 @@ async def create_custom_integration(
     # Auto-add to user's workspace with status='created'
     # The probe/connect flow in the endpoint will update to 'connected' after success
     await add_user_integration(user_id, integration_id, initial_status="created")
-
-    logger.info(f"User {user_id} created custom integration {integration_id}")
 
     return integration
 
@@ -557,6 +544,32 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
         await user_integrations_collection.delete_many(
             {"integration_id": integration_id}
         )
+
+        # Clean up MCP credentials from PostgreSQL (prevents orphaned records)
+        try:
+            from sqlalchemy import delete
+
+            from app.db.postgresql import get_db_session
+            from app.models.oauth_models import MCPCredential
+
+            async with get_db_session() as session:
+                await session.execute(
+                    delete(MCPCredential).where(
+                        MCPCredential.integration_id == integration_id
+                    )
+                )
+                await session.commit()
+                logger.debug(f"Deleted MCP credentials for {integration_id}")
+        except Exception as e:
+            logger.warning(f"Failed to delete MCP credentials: {e}")
+
+        # Invalidate global MCP tools cache
+        try:
+            from app.db.redis import delete_cache
+
+            await delete_cache("mcp:tools:all")
+        except Exception as e:
+            logger.warning(f"Failed to invalidate tools cache: {e}")
 
         # Remove subagent entry from ChromaDB
         try:

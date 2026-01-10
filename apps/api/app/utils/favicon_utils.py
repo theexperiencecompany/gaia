@@ -1,11 +1,11 @@
 """
-Favicon fetching utilities using multiple libraries for robustness.
+Favicon fetching utilities with Redis caching.
 
 Strategy:
-1. Try 'favicon' library (fast, simple)
-2. Fallback to 'extract-favicon' library (comprehensive with DuckDuckGo/Google APIs)
-
-For each library, tries both full domain (with subdomain) and root domain.
+1. Check Redis cache by root domain (e.g., smithery.ai)
+2. If miss, try 'favicon' library (fast, simple)
+3. Fallback to 'extract-favicon' library (DuckDuckGo/Google APIs)
+4. Cache result in Redis for 7 days
 """
 
 import time
@@ -16,6 +16,23 @@ import tldextract
 from extract_favicon import get_best_favicon
 
 from app.config.loggers import app_logger as logger
+from app.db.redis import get_cache, set_cache
+
+# Cache favicon URLs for 30 days (favicons rarely change)
+FAVICON_CACHE_TTL = 30 * 24 * 3600
+
+
+def _get_domain_cache_key(server_url: str) -> str:
+    """
+    Extract root domain for cache key.
+
+    Examples:
+        server.smithery.ai -> favicon:smithery.ai
+        auth.smithery.ai -> favicon:smithery.ai
+        mcp.example.com -> favicon:example.com
+    """
+    extracted = tldextract.extract(server_url)
+    return f"favicon:{extracted.top_domain_under_public_suffix}"
 
 
 def _try_favicon_library(url: str) -> str | None:
@@ -66,18 +83,47 @@ def _try_extract_favicon_library(url: str) -> str | None:
     return None
 
 
+async def _fetch_favicon_impl(server_url: str) -> str | None:
+    """
+    Internal implementation: fetch favicon from external sources.
+
+    Tries full domain first, then root domain as fallback.
+    """
+    parsed = urlparse(server_url)
+    scheme = parsed.scheme or "https"
+
+    # Extract domain parts using tldextract
+    extracted = tldextract.extract(server_url)
+
+    # Build list of URLs to try
+    urls_to_try = [f"{scheme}://{extracted.fqdn}"]
+
+    # If there's a subdomain, also try root domain as fallback
+    if extracted.subdomain:
+        urls_to_try.append(f"{scheme}://{extracted.top_domain_under_public_suffix}")
+
+    for url in urls_to_try:
+        logger.debug(f"Trying favicon for: {url}")
+
+        # Try favicon library first (faster, simpler)
+        result = _try_favicon_library(url)
+        if result:
+            return result
+
+        # Fallback to extract-favicon (DuckDuckGo/Google APIs)
+        result = _try_extract_favicon_library(url)
+        if result:
+            return result
+
+    return None
+
+
 async def fetch_favicon_from_url(server_url: str) -> str | None:
     """
-    Fetch favicon URL using multiple libraries and strategies.
+    Fetch favicon URL with Redis caching by root domain.
 
-    Tries the full URL first (with subdomain), then falls back to root domain.
-    For example, server.smithery.ai will try:
-    1. server.smithery.ai
-    2. smithery.ai (if subdomain exists)
-
-    For each URL, tries:
-    1. 'favicon' library (fast, parses HTML)
-    2. 'extract-favicon' library (DuckDuckGo + Google APIs)
+    Cache key is based on root domain (e.g., smithery.ai) so all
+    subdomains share the same cached favicon.
 
     Args:
         server_url: The URL to fetch favicon from
@@ -85,48 +131,22 @@ async def fetch_favicon_from_url(server_url: str) -> str | None:
     Returns:
         Favicon URL string or None if not found
     """
-    total_start = time.perf_counter()
+    cache_key = _get_domain_cache_key(server_url)
+
     try:
-        parsed = urlparse(server_url)
-        scheme = parsed.scheme or "https"
+        # Check Redis cache first
+        cached = await get_cache(cache_key)
+        if cached:
+            return cached
 
-        # Extract domain parts using tldextract
-        extracted = tldextract.extract(server_url)
+        # Cache miss - fetch from external sources
+        result = await _fetch_favicon_impl(server_url)
 
-        # Build list of URLs to try
-        urls_to_try = [f"{scheme}://{extracted.fqdn}"]
+        if result:
+            await set_cache(cache_key, result, ttl=FAVICON_CACHE_TTL)
 
-        # If there's a subdomain, also try root domain as fallback
-        if extracted.subdomain:
-            urls_to_try.append(f"{scheme}://{extracted.registered_domain}")
+        return result
 
-        for url in urls_to_try:
-            logger.info(f"Trying favicon for: {url}")
-
-            # Try favicon library first (faster, simpler)
-            result = _try_favicon_library(url)
-            if result:
-                elapsed = (time.perf_counter() - total_start) * 1000
-                logger.info(
-                    f"Found favicon via 'favicon' library in {elapsed:.1f}ms: {result}"
-                )
-                return result
-
-            # Fallback to extract-favicon (DuckDuckGo/Google APIs)
-            result = _try_extract_favicon_library(url)
-            if result:
-                elapsed = (time.perf_counter() - total_start) * 1000
-                logger.info(
-                    f"Found favicon via 'extract-favicon' library in {elapsed:.1f}ms: {result}"
-                )
-                return result
-
-        elapsed = (time.perf_counter() - total_start) * 1000
-        logger.info(f"No favicon found for {server_url} after {elapsed:.1f}ms")
-        return None
     except Exception as e:
-        elapsed = (time.perf_counter() - total_start) * 1000
-        logger.warning(
-            f"Failed to fetch favicon for {server_url} after {elapsed:.1f}ms: {e}"
-        )
+        logger.warning(f"Failed to fetch favicon for {server_url}: {e}")
         return None

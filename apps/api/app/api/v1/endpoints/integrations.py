@@ -3,6 +3,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from mcp_use.exceptions import OAuthAuthenticationError
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.loggers import auth_logger as logger
@@ -46,7 +47,6 @@ from app.services.integration_service import (
     update_custom_integration,
 )
 from app.services.mcp.mcp_client import get_mcp_client
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.services.oauth_service import get_all_integrations_status
 
 router = APIRouter()
@@ -246,44 +246,74 @@ async def create_custom_mcp_integration(
     request: CreateCustomIntegrationRequest,
     user_id: str = Depends(get_user_id),
 ) -> CreateCustomIntegrationResponse:
-    try:
-        integration = await create_custom_integration(user_id, request)
+    """Create a custom MCP integration."""
+    import asyncio
 
-        connection_result = {"status": "created"}
+    from app.utils.favicon_utils import fetch_favicon_from_url
+
+    try:
         mcp_client = await get_mcp_client(user_id=user_id)
 
-        try:
-            probe_result = await mcp_client.probe_connection(request.server_url)
+        # Parallel: Favicon fetch + MCP probe
+        favicon_result, probe_result = await asyncio.gather(
+            fetch_favicon_from_url(request.server_url),
+            mcp_client.probe_connection(request.server_url),
+            return_exceptions=True,
+        )
 
-            if probe_result.get("error"):
-                connection_result = {"status": "failed", "error": probe_result["error"]}
-            elif probe_result.get("requires_auth"):
+        icon_url = None
+        if favicon_result and not isinstance(favicon_result, Exception):
+            icon_url = favicon_result
+
+        integration = await create_custom_integration(user_id, request, icon_url)
+
+        connection_result = {"status": "created"}
+
+        if isinstance(probe_result, Exception):
+            connection_result = {"status": "failed", "error": str(probe_result)}
+        elif probe_result.get("error"):
+            connection_result = {"status": "failed", "error": probe_result["error"]}
+        elif probe_result.get("requires_auth"):
+            try:
                 auth_url = await mcp_client.build_oauth_auth_url(
                     integration_id=integration.integration_id,
                     redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
                     redirect_path="/integrations",
                 )
                 connection_result = {"status": "requires_oauth", "oauth_url": auth_url}
-            else:
+            except Exception as oauth_err:
+                logger.error(f"OAuth discovery failed: {oauth_err}")
+                connection_result = {
+                    "status": "failed",
+                    "error": f"OAuth required but discovery failed: {oauth_err}",
+                }
+        else:
+            # Connect to MCP server (no auth required)
+            # Note: status update and tool storage handled in connect()
+            try:
                 tools = await mcp_client.connect(integration.integration_id)
                 tools_count = len(tools) if tools else 0
                 connection_result = {"status": "connected", "tools_count": tools_count}
-
-                if tools:
-                    global_store = get_mcp_tools_store()
-                    tool_metadata = [
-                        {"name": t.name, "description": t.description or ""}
-                        for t in tools
-                    ]
-                    await global_store.store_tools(
-                        integration.integration_id, tool_metadata
+            except OAuthAuthenticationError:
+                logger.info(f"OAuth required for {integration.integration_id}")
+                try:
+                    auth_url = await mcp_client.build_oauth_auth_url(
+                        integration_id=integration.integration_id,
+                        redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+                        redirect_path="/integrations",
                     )
-
-        except Exception as conn_err:
-            logger.warning(
-                f"Auto-connect failed for {integration.integration_id}: {conn_err}"
-            )
-            connection_result = {"status": "failed", "error": str(conn_err)}
+                    connection_result = {
+                        "status": "requires_oauth",
+                        "oauth_url": auth_url,
+                    }
+                except Exception as oauth_err:
+                    connection_result = {
+                        "status": "failed",
+                        "error": f"OAuth required but discovery failed: {oauth_err}",
+                    }
+            except Exception as conn_err:
+                logger.warning(f"Connect failed: {conn_err}")
+                connection_result = {"status": "failed", "error": str(conn_err)}
 
         return CreateCustomIntegrationResponse(
             message="Custom integration created",

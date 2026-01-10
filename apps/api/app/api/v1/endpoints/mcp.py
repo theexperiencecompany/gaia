@@ -18,7 +18,6 @@ from app.helpers.mcp_helpers import (
     invalidate_mcp_status_cache,
 )
 from app.services.integration_resolver import IntegrationResolver
-from app.services.integration_service import update_user_integration_status
 from app.services.mcp.mcp_client import get_mcp_client
 
 router = APIRouter()
@@ -63,9 +62,7 @@ async def test_mcp_connection(
         # Try to connect
         try:
             tools = await client.connect(integration_id)
-            await update_user_integration_status(
-                str(user_id), integration_id, "connected"
-            )
+            # Note: status update now handled in connect()
             await invalidate_mcp_status_cache(str(user_id))
             return JSONResponse(
                 content={
@@ -152,15 +149,6 @@ async def mcp_oauth_callback(
             logger.warning(f"Failed to cache tools for {integration_id}: {tool_err}")
 
         await invalidate_mcp_status_cache(str(user_id))
-
-        # Update user_integrations status in MongoDB
-        try:
-            await update_user_integration_status(
-                str(user_id), integration_id, "connected"
-            )
-            logger.info(f"Updated user_integrations status for {integration_id}")
-        except Exception as status_err:
-            logger.warning(f"Failed to update user_integrations: {status_err}")
 
         frontend_url = get_frontend_url()
         return RedirectResponse(

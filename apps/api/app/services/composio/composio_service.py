@@ -81,9 +81,6 @@ class ComposioService:
         - Frontend streaming setup
         - All registered tool-specific hooks (Gmail, etc.)
         """
-        logger.info(f"Loading {tool_kit} toolkit...")
-        start_time = time.time()
-
         # Run the first tools.get() call asynchronously
         tools = await asyncio.to_thread(
             self.composio.tools.get, user_id="", toolkits=[tool_kit], limit=1000
@@ -108,10 +105,6 @@ class ComposioService:
             limit=1000,
         )
 
-        tools_time = time.time() - start_time
-        logger.info(
-            f"{tool_kit} toolkit loaded: {len(result)} tools in {tools_time:.3f}s"
-        )
         return result
 
     async def get_tools_by_name(
@@ -128,7 +121,6 @@ class ComposioService:
         - Frontend streaming setup
         - All registered tool-specific hooks (Gmail, etc.)
         """
-        logger.info(f"Loading tools: {tool_names}...")
         start_time = time.time()
 
         modifiers = []

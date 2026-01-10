@@ -10,6 +10,7 @@ from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.db.mongodb.collections import integrations_collection
 
 
 # Build a lookup map for integration names
@@ -77,10 +78,13 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
         if not user_id:
             return []
         try:
-            from app.db.mongodb.collections import integrations_collection
             return await integrations_collection.find(
                 {"source": "custom", "created_by": user_id, "status": "connected"},
-                {"integration_id": 1, "name": 1, "icon_url": 1}  # Projection for efficiency
+                {
+                    "integration_id": 1,
+                    "name": 1,
+                    "icon_url": 1,
+                },  # Projection for efficiency
             ).to_list(None)
         except Exception as e:
             logger.warning(f"Failed to fetch custom integrations: {e}")
@@ -99,11 +103,8 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
 
     # Process global MCP tools
     if global_mcp_tools:
-        logger.info(f"MCP global tools from DB: {list(global_mcp_tools.keys())}")
-
         for integration_id, tools in global_mcp_tools.items():
             if integration_id in seen_integrations:
-                logger.debug(f"Skipping {integration_id} - already in registry")
                 continue
 
             for tool in tools:
@@ -116,7 +117,6 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
                 tool_infos.append(tool_info)
                 categories.add(integration_id)
 
-            logger.info(f"Added {len(tools)} tools from MCP {integration_id}")
             seen_integrations.add(integration_id)
 
     # Process user's custom MCP tools (already fetched in parallel above)
@@ -126,7 +126,7 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
             continue
 
         # Get cached tools from MCP tools store
-        custom_tools = await mcp_store.get_integration_tools(integration_id)
+        custom_tools = await mcp_store.get_tools(integration_id)
         icon_url = custom.get("icon_url")
         custom_name = custom.get("name")
 
