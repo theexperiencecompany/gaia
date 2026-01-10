@@ -134,10 +134,10 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   ).length;
 
   const statusOrder = {
-    connected: 0,
-    not_connected: 1,
-    created: 1, // Same priority as not_connected
-    error: 2,
+    created: 0,
+    connected: 1,
+    not_connected: 2,
+    error: 3,
   };
 
   return (
