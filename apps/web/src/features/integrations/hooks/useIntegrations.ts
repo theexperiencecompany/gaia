@@ -94,7 +94,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       name: ui.integration.name,
       description: ui.integration.description,
       category: ui.integration.category as Integration["category"],
-      status: ui.status === "connected" ? "connected" : "not_connected",
+      status: ui.status as Integration["status"],
       managedBy: ui.integration.managedBy,
       source: ui.integration.source,
       requiresAuth: ui.integration.requiresAuth,
@@ -160,6 +160,9 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         } else if (result.status === "redirecting") {
           // OAuth redirect in progress - dismiss toast, browser will navigate
           toast.dismiss(toastId);
+        } else {
+          // Handle unexpected status (e.g., failed, pending, etc.)
+          toast.error(`Connection failed: ${result.status}`, { id: toastId });
         }
 
         return result;

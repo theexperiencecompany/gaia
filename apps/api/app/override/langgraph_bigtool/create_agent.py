@@ -37,6 +37,7 @@ from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.store.base import BaseStore
@@ -311,9 +312,25 @@ def create_agent(
             raise RuntimeError(
                 "retrieve_tools is disabled and select_tools should not be called"
             )
+
+        # Get stream writer to emit tool_inputs events
+        writer = get_stream_writer()
+
         selected_tools = {}
         response_tools = {}
         for tool_call in tool_calls:
+            # Emit tool_inputs immediately since we have complete args
+            # This fixes the race condition where args may be incomplete during streaming
+            if writer and tool_call.get("args"):
+                writer(
+                    {
+                        "tool_inputs": {
+                            "tool_call_id": tool_call.get("id"),
+                            "inputs": tool_call.get("args"),
+                        }
+                    }
+                )
+
             kwargs = {**tool_call["args"]}
             if store_arg:
                 kwargs[store_arg] = store
@@ -355,9 +372,23 @@ def create_agent(
             raise RuntimeError(
                 "retrieve_tools is disabled and aselect_tools should not be called"
             )
+
+        writer = get_stream_writer()
         selected_tools = {}
         response_tools = {}
         for tool_call in tool_calls:
+            # Emit tool_inputs immediately since we have complete args
+            # This fixes the race condition where args may be incomplete during streaming
+            if writer and tool_call.get("args"):
+                writer(
+                    {
+                        "tool_inputs": {
+                            "tool_call_id": tool_call.get("id"),
+                            "inputs": tool_call.get("args"),
+                        }
+                    }
+                )
+
             kwargs = {**tool_call["args"]}
             if store_arg:
                 kwargs[store_arg] = store
