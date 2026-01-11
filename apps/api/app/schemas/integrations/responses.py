@@ -3,30 +3,33 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 
 from app.schemas.common import SuccessResponse
 
 
-class IntegrationConfigItem(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+# Base model that auto-converts snake_case to camelCase for JSON serialization
+class CamelModel(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        alias_generator=to_camel,
+    )
 
+
+class IntegrationConfigItem(CamelModel):
     id: str
     name: str
     description: str
     category: str
     provider: str
     available: bool
-    is_special: bool = Field(alias="isSpecial")
-    display_priority: int = Field(alias="displayPriority")
-    included_integrations: List[str] = Field(alias="includedIntegrations")
-    is_featured: bool = Field(alias="isFeatured")
-    managed_by: Literal["self", "composio", "mcp", "internal"] = Field(
-        alias="managedBy"
-    )
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = Field(
-        None, alias="authType"
-    )
+    is_special: bool
+    display_priority: int
+    included_integrations: List[str]
+    is_featured: bool
+    managed_by: Literal["self", "composio", "mcp", "internal"]
+    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
     source: Literal["platform"] = "platform"
 
 
@@ -34,10 +37,8 @@ class IntegrationsConfigResponse(BaseModel):
     integrations: List[IntegrationConfigItem]
 
 
-class IntegrationStatusItem(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    integration_id: str = Field(alias="integrationId")
+class IntegrationStatusItem(CamelModel):
+    integration_id: str
     connected: bool
 
 
@@ -45,32 +46,24 @@ class IntegrationsStatusResponse(BaseModel):
     integrations: List[IntegrationStatusItem]
 
 
-class IntegrationSuccessResponse(SuccessResponse):
-    model_config = ConfigDict(populate_by_name=True)
-
-    integration_id: str = Field(alias="integrationId")
+class IntegrationSuccessResponse(SuccessResponse, CamelModel):
+    integration_id: str
 
 
-class AddUserIntegrationResponse(SuccessResponse):
-    model_config = ConfigDict(populate_by_name=True)
-
-    integration_id: str = Field(alias="integrationId")
-    connection_status: Literal["created", "connected"] = Field(alias="connectionStatus")
+class AddUserIntegrationResponse(SuccessResponse, CamelModel):
+    integration_id: str
+    connection_status: Literal["created", "connected"]
 
 
-class CustomIntegrationConnectionResult(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class CustomIntegrationConnectionResult(CamelModel):
     status: Literal["created", "connected", "requires_oauth", "failed"]
-    tools_count: Optional[int] = Field(None, alias="toolsCount")
-    oauth_url: Optional[str] = Field(None, alias="oauthUrl")
+    tools_count: Optional[int] = None
+    oauth_url: Optional[str] = None
     error: Optional[str] = None
 
 
-class CreateCustomIntegrationResponse(SuccessResponse):
-    model_config = ConfigDict(populate_by_name=True)
-
-    integration_id: str = Field(alias="integrationId")
+class CreateCustomIntegrationResponse(SuccessResponse, CamelModel):
+    integration_id: str
     name: str
     connection: CustomIntegrationConnectionResult
 
@@ -80,56 +73,46 @@ class IntegrationTool(BaseModel):
     description: Optional[str] = None
 
 
-class IntegrationResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    integration_id: str = Field(alias="integrationId")
+class IntegrationResponse(CamelModel):
+    integration_id: str
     name: str
     description: str
     category: str
-    managed_by: Literal["self", "composio", "mcp", "internal"] = Field(
-        alias="managedBy"
-    )
+    managed_by: Literal["self", "composio", "mcp", "internal"]
     source: Literal["platform", "custom"]
-    is_featured: bool = Field(alias="isFeatured")
-    display_priority: int = Field(alias="displayPriority")
-    requires_auth: bool = Field(False, alias="requiresAuth")
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = Field(
-        None, alias="authType"
-    )
-    tools: List[IntegrationTool] = Field(default_factory=list)
-    icon_url: Optional[str] = Field(None, alias="iconUrl")
-    is_public: Optional[bool] = Field(None, alias="isPublic")
-    created_by: Optional[str] = Field(None, alias="createdBy")
+    is_featured: bool
+    display_priority: int
+    requires_auth: bool = False
+    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
+    tools: List[IntegrationTool] = []
+    icon_url: Optional[str] = None
+    is_public: Optional[bool] = None
+    created_by: Optional[str] = None
 
 
-class UserIntegrationResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    integration_id: str = Field(alias="integrationId")
+class UserIntegrationResponse(CamelModel):
+    integration_id: str
     status: Literal["created", "connected"]
-    created_at: datetime = Field(alias="createdAt")
-    connected_at: Optional[datetime] = Field(None, alias="connectedAt")
+    created_at: datetime
+    connected_at: Optional[datetime] = None
     integration: IntegrationResponse
 
 
 class MarketplaceResponse(BaseModel):
-    featured: List[IntegrationResponse] = Field(default_factory=list)
-    integrations: List[IntegrationResponse] = Field(default_factory=list)
+    featured: List[IntegrationResponse] = []
+    integrations: List[IntegrationResponse] = []
     total: int = 0
 
 
 class UserIntegrationsListResponse(BaseModel):
-    integrations: List[UserIntegrationResponse] = Field(default_factory=list)
+    integrations: List[UserIntegrationResponse] = []
     total: int = 0
 
 
-class ConnectIntegrationResponse(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class ConnectIntegrationResponse(CamelModel):
     status: Literal["connected", "redirect", "error"]
-    integration_id: str = Field(alias="integrationId")
+    integration_id: str
     message: Optional[str] = None
-    tools_count: Optional[int] = Field(None, alias="toolsCount")
-    redirect_url: Optional[str] = Field(None, alias="redirectUrl")
+    tools_count: Optional[int] = None
+    redirect_url: Optional[str] = None
     error: Optional[str] = None

@@ -9,6 +9,7 @@ import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { CancelIcon, ConnectIcon, Gmail, GoogleCalendarIcon } from "@/icons";
+import { useIntegrationsStore } from "@/stores/integrationsStore";
 
 interface OnboardingIntegrationButtonsProps {
   className?: string;
@@ -59,8 +60,12 @@ export const OnboardingIntegrationButtons: React.FC<
       !int.isSpecial,
   );
 
-  const { searchQuery, setSearchQuery, clearSearch, filteredIntegrations } =
-    useIntegrationSearch(baseIntegrations);
+  const { filteredIntegrations } = useIntegrationSearch(baseIntegrations);
+
+  // Get search state from store
+  const searchQuery = useIntegrationsStore((state) => state.searchQuery);
+  const setSearchQuery = useIntegrationsStore((state) => state.setSearchQuery);
+  const clearSearch = useIntegrationsStore((state) => state.clearSearch);
 
   return (
     <div className={`mt-3 ml-1 flex w-fit flex-col gap-2 ${className}`}>
@@ -153,7 +158,7 @@ export const OnboardingIntegrationButtons: React.FC<
                         className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-800/50"
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <div className="flex-shrink-0">
+                          <div className="shrink-0">
                             {getToolCategoryIcon(integration.id, {
                               size: 24,
                               width: 24,
@@ -182,7 +187,7 @@ export const OnboardingIntegrationButtons: React.FC<
                           onPress={() =>
                             handleIntegrationConnect(integration.id)
                           }
-                          className="flex-shrink-0"
+                          className="shrink-0"
                         >
                           {isConnected ? "Connected" : "Connect"}
                         </Button>

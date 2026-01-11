@@ -128,7 +128,7 @@ class MCPClientPool:
             try:
                 await self._cleanup_task
             except asyncio.CancelledError:
-                pass
+                raise
 
         async with self._lock:
             for user_id in list(self._clients.keys()):

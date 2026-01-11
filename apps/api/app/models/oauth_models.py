@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Literal, Optional
 
 from app.db.postgresql import Base
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func

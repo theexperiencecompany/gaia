@@ -13,9 +13,7 @@ import { MCPIntegrationModal } from "@/features/integrations/components/MCPInteg
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
 import { PlusSignIcon } from "@/icons";
-import { cn } from "@/lib";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
-import { accordionItemStyles } from "../constants";
 
 export default function IntegrationsSidebar() {
   const { isOpen, onOpen, onOpenChange } = useDisclosure();

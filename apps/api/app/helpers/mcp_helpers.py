@@ -7,7 +7,7 @@ Contains helper functions for MCP operations:
 - Cache invalidation utilities
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import Field, create_model
@@ -46,7 +46,7 @@ def create_stub_tools_from_cache(
     client: "MCPClient",
     integration_id: str,
     cached_tools: list[dict],
-) -> list[BaseTool]:
+) -> Sequence[BaseTool]:
     """
     Create stub BaseTool objects from cached tool metadata.
 

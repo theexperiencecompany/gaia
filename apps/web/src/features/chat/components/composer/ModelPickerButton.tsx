@@ -1,5 +1,4 @@
 import {
-  Checkbox,
   Chip,
   Select,
   SelectItem,
@@ -143,7 +142,6 @@ const ModelPickerButton: React.FC = () => {
           title={provider}
         >
           {providerModels?.map((model) => {
-            const isSelected = model.model_id === selectedModelId;
             const isFree = model.lowest_tier.toLowerCase() === "free";
 
             return (

@@ -9,6 +9,11 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_use
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.helpers.mcp_helpers import get_api_base_url
+from app.models.integration_models import (
+    CreateCustomIntegrationRequest as CreateCustomIntegrationRequestModel,
+    UpdateCustomIntegrationRequest as UpdateCustomIntegrationRequestModel,
+    UserIntegrationsListResponse as UserIntegrationsListResponseModel,
+)
 from app.schemas.integrations.requests import (
     AddUserIntegrationRequest,
     ConnectIntegrationRequest,
@@ -136,6 +141,8 @@ async def connect_integration_endpoint(
                 if resolved.platform_integration
                 else None
             )
+            if not provider:
+                raise HTTPException(status_code=400, detail="Provider not configured")
             return await connect_composio_integration(
                 user_id=str(user_id),
                 integration_id=integration_id,
@@ -148,6 +155,8 @@ async def connect_integration_endpoint(
                 if resolved.platform_integration
                 else None
             )
+            if not provider:
+                raise HTTPException(status_code=400, detail="Provider not configured")
             return await connect_self_integration(
                 user_id=str(user_id),
                 user_email=user.get("email", ""),
@@ -190,7 +199,7 @@ async def get_marketplace_integration(integration_id: str):
 @router.get("/users/me/integrations", response_model=UserIntegrationsListResponse)
 async def list_user_integrations(
     user_id: str = Depends(get_user_id),
-) -> UserIntegrationsListResponse:
+) -> UserIntegrationsListResponseModel:
     try:
         return await get_user_integrations(user_id)
     except Exception as e:
@@ -265,7 +274,19 @@ async def create_custom_mcp_integration(
         if favicon_result and not isinstance(favicon_result, Exception):
             icon_url = favicon_result
 
-        integration = await create_custom_integration(user_id, request, icon_url)
+        integration = await create_custom_integration(
+            user_id,
+            CreateCustomIntegrationRequestModel(
+                name=request.name,
+                description=request.description,
+                category=request.category,
+                server_url=request.server_url,
+                requires_auth=request.requires_auth,
+                auth_type=request.auth_type,
+                is_public=request.is_public,
+            ),
+            icon_url,
+        )
 
         connection_result = {"status": "created"}
 
@@ -340,7 +361,18 @@ async def update_custom_mcp_integration(
     user_id: str = Depends(get_user_id),
 ) -> IntegrationSuccessResponse:
     try:
-        updated = await update_custom_integration(user_id, integration_id, request)
+        updated = await update_custom_integration(
+            user_id,
+            integration_id,
+            UpdateCustomIntegrationRequestModel(
+                name=request.name,
+                description=request.description,
+                server_url=request.server_url,
+                requires_auth=request.requires_auth,
+                auth_type=request.auth_type,
+                is_public=request.is_public,
+            ),
+        )
         if not updated:
             raise HTTPException(
                 status_code=404, detail="Integration not found or you are not the owner"

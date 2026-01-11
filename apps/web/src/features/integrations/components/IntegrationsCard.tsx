@@ -139,7 +139,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     not_connected: 2,
     error: 3,
   };
-
   return (
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion

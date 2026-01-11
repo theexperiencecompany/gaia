@@ -155,8 +155,9 @@ export default function IntegrationsPage() {
     }
   }, [searchParams, integrations, router, refetch, queryClient]);
 
-  const handleBearerSubmit = async (id: string, token: string) => {
-    await connectIntegration(id, token);
+  const handleBearerSubmit = async (id: string, _token: string) => {
+    // Note: Bearer token handling is done via the BearerTokenModal component directly
+    await connectIntegration(id);
     toast.success(`Connected to ${bearerIntegrationName}`);
     refetch();
   };

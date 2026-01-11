@@ -2,7 +2,6 @@
 Service for managing todo counts and ensuring consistency.
 """
 
-from typing import Optional
 
 from bson import ObjectId
 

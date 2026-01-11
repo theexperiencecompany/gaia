@@ -239,12 +239,12 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
         # Convert individual tool fields to unified format
         for field_name in tool_fields:
             if field_name in data and data[field_name] is not None:
-                tool_entry: ToolDataEntry = {
+                legacy_tool_entry: ToolDataEntry = {
                     "tool_name": field_name,
                     "data": data[field_name],
                     "timestamp": timestamp,
                 }
-                tool_data_entries.append(tool_entry)
+                tool_data_entries.append(legacy_tool_entry)
 
         # Return unified format if any tool data was found
         if tool_data_entries:

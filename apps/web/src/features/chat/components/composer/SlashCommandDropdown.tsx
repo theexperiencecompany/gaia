@@ -104,7 +104,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
         >
           <div className="flex items-center gap-2 p-2">
             {/* Icon */}
-            <div className="flex-shrink-0">
+            <div className="shrink-0">
               {getToolCategoryIcon(
                 match.tool.category,
                 {},
@@ -558,7 +558,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
             duration: 0.2,
             ease: [0.19, 1, 0.22, 1],
           }}
-          className="slash-command-dropdown fixed z-[200] overflow-hidden rounded-3xl border-1 border-zinc-800 bg-zinc-900/70 outline-0! backdrop-blur-xl"
+          className="slash-command-dropdown fixed z-200 overflow-hidden rounded-3xl border-1 border-zinc-800 bg-zinc-900/70 outline-0! backdrop-blur-xl"
           style={{
             ...(position.top !== undefined && { top: 0, height: position.top }),
             ...(position.bottom !== undefined && {
@@ -651,7 +651,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
           {/* Tool List */}
           <div
             ref={scrollContainerRef}
-            className={`relative z-[1] h-fit ${maxHeight} overflow-y-auto`}
+            className={`relative z-1 h-fit ${maxHeight} overflow-y-auto`}
           >
             <div className="py-2">
               {/* Single virtualized container for everything */}
