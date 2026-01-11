@@ -8,7 +8,6 @@ dependencies = [
   "gaia-shared",
   "aiohttp>=3.9.0",
   "livekit>=1.0.12",
-  "livekit-api",
   "livekit-agents[turn-detector,silero,deepgram]~=1.2",
   "livekit-plugins-noise-cancellation~=0.2",
   "livekit-plugins-elevenlabs~=1.2",

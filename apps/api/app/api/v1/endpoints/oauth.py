@@ -78,7 +78,7 @@ async def login_workos_mobile(redirect_uri: Optional[str] = None):
     
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
-        redirect_uri=f"{settings.API_URL}/api/v1/oauth/workos/mobile/callback",
+        redirect_uri=f"{settings.HOST}/api/v1/oauth/workos/mobile/callback",
         state=state,
     )
     return {"url": authorization_url}

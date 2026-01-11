@@ -158,6 +158,7 @@ backend = [
   "posthog>=5.4.0",
   "sentry-sdk[langgraph]>=2.44.0",
   "opik>=1.9.47",
+  "livekit-api",
 ]
 
 [[tool.uv.index]]

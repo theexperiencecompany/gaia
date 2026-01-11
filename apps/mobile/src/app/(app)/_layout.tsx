@@ -2,9 +2,14 @@ import { Redirect, Stack } from "expo-router";
 import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "@/features/auth";
 import { SidebarProvider } from "@/features/chat";
+import { useNotifications } from "@/features/notifications";
 
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth();
+
+  // Setup push notifications at app level (after auth)
+  // This ensures notifications work regardless of which screen is active
+  useNotifications();
 
   if (isLoading) {
     return (

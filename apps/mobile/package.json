@@ -5,8 +5,8 @@
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "biome check .",
     "lint:fix": "biome check --write ."
@@ -59,7 +59,10 @@
     "tailwind-merge": "^3.4.0",
     "tailwind-variants": "^3.2.2",
     "uniwind": "^1.2.2",
-    "zustand": "^5.0.9"
+    "zustand": "^5.0.9",
+    "expo-dev-client": "~6.0.20",
+    "expo-device": "~8.0.10",
+    "expo-notifications": "~0.32.15"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.18",

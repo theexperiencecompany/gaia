@@ -9,9 +9,13 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "io.heygaia.giamobile"
     },
     "android": {
+      "package": "io.heygaia.giamobile",
+      "googleServicesFile": "./google-services.json",
+      "fcmV1ServiceAccountJsonPath": "./gaia-c95f3-firebase-adminsdk-notification.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -20,7 +24,6 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.sanku02.gaiamobile",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -55,7 +58,17 @@
       ],
       "expo-font",
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#ffffff",
+          "sounds": ["./assets/sound/uwu.mp3"],
+          "defaultChannel": "gaia_channel",
+          "mode": "production"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
@@ -66,8 +79,9 @@
         "root": "./src/app"
       },
       "eas": {
-        "projectId": "dfc106f0-990f-4593-97ed-7999efde6e8c"
+        "projectId": "6a09b5f3-9ec3-4e47-9fbb-45b999b75558"
       }
-    }
+    },
+    "owner": "vinitthakkar45"
   }
 }

@@ -13,6 +13,7 @@ import {
   removeAuthToken,
   removeUserInfo,
 } from "@/features/auth/utils/auth-storage";
+import { unregisterDeviceOnLogout } from "@/features/notifications";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -72,6 +73,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
    */
   const signOut = useCallback(async () => {
     try {
+      // Unregister device token from push notifications
+      await unregisterDeviceOnLogout();
+
+      // Clear auth data
       await removeAuthToken();
       await removeUserInfo();
       setIsAuthenticated(false);
