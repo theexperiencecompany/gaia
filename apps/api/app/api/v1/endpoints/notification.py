@@ -1,6 +1,22 @@
 import asyncio
 from typing import Optional
 
+from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.config.loggers import notification_logger as logger
+from app.models.device_token_models import (
+    DeviceTokenRequest,
+    DeviceTokenResponse,
+)
+from app.models.notification.notification_models import (
+    NotificationStatus,
+)
+from app.models.notification.request_models import (
+    BulkActionRequest,
+    NotificationResponse,
+    PaginatedNotificationsResponse,
+)
+from app.services.device_token_service import get_device_token_service
+from app.services.notification_service import notification_service
 from fastapi import (
     APIRouter,
     Body,
@@ -10,23 +26,6 @@ from fastapi import (
     Query,
     Request,
 )
-
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.config.loggers import notification_logger as logger
-from app.models.notification.notification_models import (
-    NotificationStatus,
-)
-from app.models.notification.request_models import (
-    BulkActionRequest,
-    NotificationResponse,
-    PaginatedNotificationsResponse,
-)
-from app.models.device_token_models import (
-    DeviceTokenRequest,
-    DeviceTokenResponse,
-)
-from app.services.notification_service import notification_service
-from app.services.device_token_service import get_device_token_service
 
 router = APIRouter()
 
@@ -206,7 +205,7 @@ async def bulk_actions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/register-device", response_model=DeviceTokenResponse)
+@router.post(".notifications/register-device", response_model=DeviceTokenResponse)
 async def register_device_token(
     request: DeviceTokenRequest = Body(...),
     current_user: dict = Depends(get_current_user),
@@ -248,7 +247,7 @@ async def register_device_token(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/unregister-device", response_model=DeviceTokenResponse)
+@router.post("/notifications/unregister-device", response_model=DeviceTokenResponse)
 async def unregister_device_token(
     token: str = Body(..., embed=True),
     current_user: dict = Depends(get_current_user),

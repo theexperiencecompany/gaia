@@ -2,7 +2,7 @@
 Device Token Models for Push Notifications
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -40,10 +40,12 @@ class DeviceToken(BaseModel):
     device_id: Optional[str] = Field(None, description="Device identifier")
     is_active: bool = Field(default=True, description="Whether token is active")
     created_at: datetime = Field(
-        default_factory=datetime.utcnow, description="Token creation timestamp"
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Token creation timestamp",
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow, description="Last update timestamp"
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Last update timestamp",
     )
 
     class Config:

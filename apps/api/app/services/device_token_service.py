@@ -2,14 +2,13 @@
 Device Token Service for Push Notifications
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
-
-from motor.motor_asyncio import AsyncIOMotorCollection
 
 from app.config.loggers import notification_logger as logger
 from app.db.mongodb.mongodb import MongoDB
-from app.models.device_token_models import DeviceToken, PlatformType
+from app.models.device_token_models import PlatformType
+from motor.motor_asyncio import AsyncIOMotorCollection
 
 
 class DeviceTokenService:
@@ -40,39 +39,28 @@ class DeviceTokenService:
             True if successful, False otherwise
         """
         try:
-            # Check if token already exists
-            existing = await self.collection.find_one({"token": token})
-
-            if existing:
-                # Update existing token
-                await self.collection.update_one(
-                    {"token": token},
-                    {
-                        "$set": {
-                            "user_id": user_id,
-                            "platform": platform.value,
-                            "device_id": device_id,
-                            "is_active": True,
-                            "updated_at": datetime.utcnow(),
-                        }
+            now = datetime.now(timezone.utc)
+            # Use upsert to avoid race condition
+            result = await self.collection.update_one(
+                {"token": token},
+                {
+                    "$set": {
+                        "user_id": user_id,
+                        "platform": platform.value,
+                        "device_id": device_id,
+                        "is_active": True,
+                        "updated_at": now,
                     },
-                )
-                logger.info(f"Updated device token for user {user_id}")
-            else:
-                # Create new token
-                device_token = DeviceToken(
-                    user_id=user_id,
-                    token=token,
-                    platform=platform,
-                    device_id=device_id,
-                    is_active=True,
-                )
-                await self.collection.insert_one(device_token.model_dump())
+                    "$setOnInsert": {
+                        "created_at": now,
+                    },
+                },
+                upsert=True,
+            )
+            if result.upserted_id:
                 logger.info(f"Registered new device token for user {user_id}")
-
-            # Create index on user_id and token if not exists
-            await self.collection.create_index("user_id")
-            await self.collection.create_index("token", unique=True)
+            else:
+                logger.info(f"Updated device token for user {user_id}")
 
             return True
 
@@ -168,7 +156,7 @@ class DeviceTokenService:
                 {
                     "$set": {
                         "is_active": False,
-                        "updated_at": datetime.utcnow(),
+                        "updated_at": datetime.now(timezone.utc),
                     }
                 },
             )
