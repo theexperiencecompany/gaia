@@ -46,7 +46,10 @@ export async function unregisterDeviceOnLogout(): Promise<void> {
         await notificationsApi.unregisterDeviceToken(token);
         console.log("[Notifications] Device token unregistered from backend");
       } catch (error) {
-        console.error("[Notifications] Failed to unregister from backend:", error);
+        console.error(
+          "[Notifications] Failed to unregister from backend:",
+          error,
+        );
         // Continue even if backend call fails
       }
 

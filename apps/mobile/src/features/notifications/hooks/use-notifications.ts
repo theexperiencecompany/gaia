@@ -25,7 +25,8 @@ interface UseNotificationsReturn {
 
 export function useNotifications(): UseNotificationsReturn {
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
-  const [notification, setNotification] = useState<Notifications.Notification | null>(null);
+  const [notification, setNotification] =
+    useState<Notifications.Notification | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRegistered, setIsRegistered] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -63,7 +64,8 @@ export function useNotifications(): UseNotificationsReturn {
         }
 
         // Request permissions
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        const { status: existingStatus } =
+          await Notifications.getPermissionsAsync();
         let finalStatus = existingStatus;
 
         if (existingStatus !== "granted") {
@@ -80,7 +82,9 @@ export function useNotifications(): UseNotificationsReturn {
         }
 
         // Get Expo push token
-        const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+        const projectId =
+          Constants?.expoConfig?.extra?.eas?.projectId ??
+          Constants?.easConfig?.projectId;
 
         if (!projectId) {
           const errorMsg = "Project ID not found in app config";
@@ -114,7 +118,10 @@ export function useNotifications(): UseNotificationsReturn {
           setIsRegistered(true);
           console.log("[Notifications] Device registered with backend");
         } catch (backendError) {
-          console.error("[Notifications] Failed to register with backend:", backendError);
+          console.error(
+            "[Notifications] Failed to register with backend:",
+            backendError,
+          );
           setError("Failed to register device with backend");
           // Don't throw - local notifications still work
         }
@@ -134,20 +141,25 @@ export function useNotifications(): UseNotificationsReturn {
     setupNotifications();
 
     // Setup listeners
-    notificationListener.current = Notifications.addNotificationReceivedListener((receivedNotification) => {
-      console.log("[Notifications] Notification received:", receivedNotification);
-      setNotification(receivedNotification);
-    });
+    notificationListener.current =
+      Notifications.addNotificationReceivedListener((receivedNotification) => {
+        console.log(
+          "[Notifications] Notification received:",
+          receivedNotification,
+        );
+        setNotification(receivedNotification);
+      });
 
-    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
-      console.log("[Notifications] Notification tapped:", response);
-      // Handle notification tap - navigate to relevant screen, etc.
-      const data = response.notification.request.content.data;
-      if (data) {
-        console.log("[Notifications] Notification data:", data);
-        // TODO: Add navigation logic based on notification data
-      }
-    });
+    responseListener.current =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        console.log("[Notifications] Notification tapped:", response);
+        // Handle notification tap - navigate to relevant screen, etc.
+        const data = response.notification.request.content.data;
+        if (data) {
+          console.log("[Notifications] Notification data:", data);
+          // TODO: Add navigation logic based on notification data
+        }
+      });
 
     return () => {
       isMounted = false;

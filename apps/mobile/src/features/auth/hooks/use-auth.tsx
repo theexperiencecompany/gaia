@@ -1,6 +1,18 @@
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import type { UserInfo } from "@/features/auth/types";
-import { getAuthToken, getUserInfo, removeAuthToken, removeUserInfo } from "@/features/auth/utils/auth-storage";
+import {
+  getAuthToken,
+  getUserInfo,
+  removeAuthToken,
+  removeUserInfo,
+} from "@/features/auth/utils/auth-storage";
 import { unregisterDeviceOnLogout } from "@/features/notifications";
 
 interface AuthContextType {
@@ -74,7 +86,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
-  return <AuthContext.Provider value={{ isAuthenticated, isLoading, user, signOut, refreshAuth }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{ isAuthenticated, isLoading, user, signOut, refreshAuth }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 /**

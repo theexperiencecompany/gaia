@@ -13,7 +13,13 @@ import Animated, {
 } from "react-native-reanimated";
 import { ChatInput } from "@/components/ui/chat-input";
 import { Text } from "@/components/ui/text";
-import { ChatLayout, ChatMessage, type Message, useChat, useChatContext } from "@/features/chat";
+import {
+  ChatLayout,
+  ChatMessage,
+  type Message,
+  useChat,
+  useChatContext,
+} from "@/features/chat";
 import { getRelevantThinkingMessage } from "@/features/chat/utils/playfulThinking";
 import { useNotifications } from "@/features/notifications";
 
@@ -21,17 +27,34 @@ function EmptyState() {
   return (
     <View className="flex-1 items-center justify-center px-6">
       <Text variant={"h2"}>What can I help you with?</Text>
-      <Text className="text-xs">Start a conversation by typing a message below</Text>
+      <Text className="text-xs">
+        Start a conversation by typing a message below
+      </Text>
     </View>
   );
 }
 
-function ChatContent({ activeChatId, onFollowUpAction }: { activeChatId: string | null; onFollowUpAction?: (action: string) => void }) {
-  const { messages, isTyping, progress, flatListRef, sendMessage, scrollToBottom } = useChat(activeChatId);
+function ChatContent({
+  activeChatId,
+  onFollowUpAction,
+}: {
+  activeChatId: string | null;
+  onFollowUpAction?: (action: string) => void;
+}) {
+  const {
+    messages,
+    isTyping,
+    progress,
+    flatListRef,
+    sendMessage,
+    scrollToBottom,
+  } = useChat(activeChatId);
 
   const [inputValue, setInputValue] = useState("");
   const [lastUserMessage, setLastUserMessage] = useState("");
-  const [thinkingMessage, setThinkingMessage] = useState(() => getRelevantThinkingMessage(""));
+  const [thinkingMessage, setThinkingMessage] = useState(() =>
+    getRelevantThinkingMessage(""),
+  );
 
   const keyboard = useAnimatedKeyboard();
 
@@ -46,7 +69,7 @@ function ChatContent({ activeChatId, onFollowUpAction }: { activeChatId: string 
         () => {
           setThinkingMessage(getRelevantThinkingMessage(lastUserMessage));
         },
-        2000 + Math.random() * 1000
+        2000 + Math.random() * 1000,
       );
       return () => clearInterval(interval);
     }
@@ -61,10 +84,13 @@ function ChatContent({ activeChatId, onFollowUpAction }: { activeChatId: string 
   useAnimatedReaction(
     () => keyboard.height.value,
     (currentHeight, previousHeight) => {
-      if (currentHeight > 0 && (previousHeight === null || currentHeight > previousHeight)) {
+      if (
+        currentHeight > 0 &&
+        (previousHeight === null || currentHeight > previousHeight)
+      ) {
         runOnJS(scrollToBottom)();
       }
-    }
+    },
   );
 
   const handleFollowUpAction = useCallback(
@@ -72,7 +98,7 @@ function ChatContent({ activeChatId, onFollowUpAction }: { activeChatId: string 
       setInputValue(action);
       onFollowUpAction?.(action);
     },
-    [onFollowUpAction]
+    [onFollowUpAction],
   );
 
   const handleSend = useCallback(
@@ -81,13 +107,14 @@ function ChatContent({ activeChatId, onFollowUpAction }: { activeChatId: string 
       sendMessage(text);
       setInputValue("");
     },
-    [sendMessage]
+    [sendMessage],
   );
 
   const renderMessage = useCallback(
     ({ item, index }: { item: Message; index: number }) => {
       const isLastMessage = index === messages.length - 1;
-      const isEmptyAiMessage = !item.isUser && (!item.text || item.text.trim() === "");
+      const isEmptyAiMessage =
+        !item.isUser && (!item.text || item.text.trim() === "");
       const showLoading = isLastMessage && isEmptyAiMessage && isTyping;
 
       return (
@@ -99,7 +126,7 @@ function ChatContent({ activeChatId, onFollowUpAction }: { activeChatId: string 
         />
       );
     },
-    [handleFollowUpAction, messages.length, isTyping, displayMessage]
+    [handleFollowUpAction, messages.length, isTyping, displayMessage],
   );
 
   const showEmptyState = messages.length === 0 && !isTyping && !activeChatId;
@@ -116,7 +143,11 @@ function ChatContent({ activeChatId, onFollowUpAction }: { activeChatId: string 
           data={messages}
           renderItem={renderMessage}
           keyExtractor={(item) => item.id}
-          extraData={[messages[messages.length - 1]?.text, isTyping, displayMessage]}
+          extraData={[
+            messages[messages.length - 1]?.text,
+            isTyping,
+            displayMessage,
+          ]}
           contentContainerStyle={{
             paddingTop: 16,
             paddingBottom: 90,
@@ -132,8 +163,15 @@ function ChatContent({ activeChatId, onFollowUpAction }: { activeChatId: string 
         />
       )}
 
-      <Animated.View className="absolute left-0 right-0 px-2 pb-5 bg-surface rounded-t-4xl" style={animatedInputStyle}>
-        <ChatInput onSend={handleSend} value={inputValue} onChangeText={setInputValue} />
+      <Animated.View
+        className="absolute left-0 right-0 px-2 pb-5 bg-surface rounded-t-4xl"
+        style={animatedInputStyle}
+      >
+        <ChatInput
+          onSend={handleSend}
+          value={inputValue}
+          onChangeText={setInputValue}
+        />
       </Animated.View>
     </View>
   );
@@ -143,7 +181,8 @@ export default function ChatScreen() {
   const { activeChatId } = useChatContext();
 
   // Setup push notifications
-  const { expoPushToken, notification, error, isRegistered } = useNotifications();
+  const { expoPushToken, notification, error, isRegistered } =
+    useNotifications();
 
   const [_isReady, setIsReady] = useState(false);
   const screenOpacity = useSharedValue(0);
@@ -193,15 +232,25 @@ export default function ChatScreen() {
       background={
         !activeChatId ? (
           <>
-            <Image source={require("@/assets/background/chat.jpg")} style={{ width: "100%", height: "100%", opacity: 0.65 }} resizeMode="cover" />
+            <Image
+              source={require("@/assets/background/chat.jpg")}
+              style={{ width: "100%", height: "100%", opacity: 0.65 }}
+              resizeMode="cover"
+            />
             <LinearGradient
-              colors={["rgba(0,0,0,0.3)", "rgba(255,255,255,0.1)", "rgba(0,0,0,0.0)", "rgba(0,0,0,0.75)"]}
+              colors={[
+                "rgba(0,0,0,0.3)",
+                "rgba(255,255,255,0.1)",
+                "rgba(0,0,0,0.0)",
+                "rgba(0,0,0,0.75)",
+              ]}
               locations={[0, 0.2, 0.45, 1]}
               style={{ position: "absolute", width: "100%", height: "100%" }}
             />
           </>
         ) : undefined
-      }>
+      }
+    >
       <Animated.View className="flex-1" style={animatedScreenStyle}>
         <ChatContent activeChatId={activeChatId} />
       </Animated.View>

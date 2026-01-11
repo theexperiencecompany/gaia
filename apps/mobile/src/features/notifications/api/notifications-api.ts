@@ -15,8 +15,13 @@ export const notificationsApi = {
   /**
    * Register a device push notification token with the backend
    */
-  registerDeviceToken: async (payload: RegisterDeviceTokenPayload): Promise<RegisterDeviceTokenResponse> => {
-    return apiService.post<RegisterDeviceTokenResponse>("/notifications/register-device", payload);
+  registerDeviceToken: async (
+    payload: RegisterDeviceTokenPayload,
+  ): Promise<RegisterDeviceTokenResponse> => {
+    return apiService.post<RegisterDeviceTokenResponse>(
+      "/notifications/register-device",
+      payload,
+    );
   },
 
   /**
@@ -27,5 +32,4 @@ export const notificationsApi = {
       token,
     });
   },
-
 };
