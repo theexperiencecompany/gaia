@@ -68,6 +68,23 @@ class DeviceTokenService:
             logger.error(f"Failed to register device token: {e}")
             return False
 
+    async def get_user_device_count(self, user_id: str) -> int:
+        """Get the number of devices registered for a user."""
+        try:
+            return await self.collection.count_documents({"user_id": user_id})
+        except Exception as e:
+            logger.error(f"Failed to get device count: {e}")
+            return 0
+
+    async def verify_token_ownership(self, token: str, user_id: str) -> bool:
+        """Verify that a token belongs to the specified user."""
+        try:
+            doc = await self.collection.find_one({"token": token, "user_id": user_id})
+            return doc is not None
+        except Exception as e:
+            logger.error(f"Failed to verify token ownership: {e}")
+            return False
+
     async def unregister_device_token(self, token: str) -> bool:
         """
         Unregister a device token (mark as inactive or delete)

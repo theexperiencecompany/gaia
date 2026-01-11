@@ -3,6 +3,7 @@ from typing import Optional
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.loggers import notification_logger as logger
+from app.constants.notifications import EXPO_TOKEN_PATTERN, MAX_DEVICES_PER_USER
 from app.models.device_token_models import (
     DeviceTokenRequest,
     DeviceTokenResponse,
@@ -220,8 +221,27 @@ async def register_device_token(
             status_code=401, detail="User not authenticated or user_id not found"
         )
 
+    # Validate token format
+    if not EXPO_TOKEN_PATTERN.match(request.token):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid push token format. Expected ExponentPushToken[...]",
+        )
+
     try:
         device_token_service = get_device_token_service()
+
+        # Check device limit
+        device_count = await device_token_service.get_user_device_count(user_id)
+        if device_count >= MAX_DEVICES_PER_USER:
+            # Check if this token already exists (update is OK)
+            if not await device_token_service.verify_token_ownership(
+                request.token, user_id
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Maximum {MAX_DEVICES_PER_USER} devices allowed per user",
+                )
 
         success = await device_token_service.register_device_token(
             user_id=user_id,
@@ -265,6 +285,12 @@ async def unregister_device_token(
     try:
         device_token_service = get_device_token_service()
 
+        # Verify token belongs to user before unregistering
+        if not await device_token_service.verify_token_ownership(token, user_id):
+            raise HTTPException(
+                status_code=403, detail="Token does not belong to this user"
+            )
+
         success = await device_token_service.unregister_device_token(token)
 
         if success:
@@ -275,6 +301,8 @@ async def unregister_device_token(
         else:
             return DeviceTokenResponse(success=False, message="Device token not found")
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to unregister device token: {e}")
         raise HTTPException(status_code=500, detail=str(e))
