@@ -57,11 +57,22 @@ class SubAgentFactory:
         store, tool_registry = await asyncio.gather(
             get_tools_store(), get_tool_registry()
         )
-        tool_dict = tool_registry.get_tool_dict()
+
+        # Build scoped tool_dict containing only tools for this subagent's tool_space
+        # This ensures subagents can only access their own integration's tools
+        scoped_tool_dict: dict = {}
+        initial_tool_ids: list[str] = []
+
+        # Get category by tool_space (handles dynamic category names like mcp_{integration}_{user_id})
+        category = tool_registry.get_category_by_space(tool_space)
+        if category is not None:
+            for t in category.tools:
+                scoped_tool_dict[t.name] = t.tool
+                initial_tool_ids.append(t.name)
 
         common_kwargs = {
             "llm": llm,
-            "tool_registry": tool_dict,
+            "tool_registry": scoped_tool_dict,  # Use scoped dict instead of global
             "agent_name": name,
             "pre_model_hooks": [
                 trim_messages_node,
@@ -72,18 +83,7 @@ class SubAgentFactory:
         }
 
         if use_direct_tools:
-            initial_tool_ids: list[str] = []
-            category = tool_registry.get_category(tool_space)
-            if category is not None:
-                initial_tool_ids.extend([t.name for t in category.tools])
-
-            try:
-                initial_tool_ids.extend([search_memory.name])
-            except Exception as e:
-                logger.warning(
-                    f"Failed to add memory/list tools to subagent: {e}. Continuing without them."
-                )
-
+            # Direct binding: tools are already extracted above
             common_kwargs.update(
                 {
                     "initial_tool_ids": initial_tool_ids,
@@ -91,6 +91,7 @@ class SubAgentFactory:
                 }
             )
         else:
+            # Use retrieve_tools with scoped tool_space (no subagent nesting)
             common_kwargs.update(
                 {
                     "retrieve_tools_coroutine": get_retrieve_tools_function(

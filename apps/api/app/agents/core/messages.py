@@ -28,6 +28,7 @@ async def construct_langchain_messages(
     user_dict: Optional[dict] = None,
     query: Optional[str] = None,
     selected_tool: Optional[str] = None,
+    tool_category: Optional[str] = None,
     selected_workflow: Optional[SelectedWorkflowData] = None,
     selected_calendar_event: Optional[SelectedCalendarEventData] = None,
     reply_to_message: Optional[ReplyToMessageData] = None,
@@ -95,7 +96,7 @@ async def construct_langchain_messages(
         if selected_workflow
         else format_calendar_event_context(selected_calendar_event, user_content)
         if selected_calendar_event
-        else format_tool_selection_message(selected_tool, user_content)
+        else format_tool_selection_message(selected_tool, user_content, tool_category)
         if selected_tool
         else user_content
     )

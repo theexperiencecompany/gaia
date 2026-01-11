@@ -39,8 +39,9 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
     }
   };
 
-  // Check if integration is available (has loginEndpoint)
-  const isAvailable = !!integration?.loginEndpoint;
+  // Check if integration is available
+  const isAvailable =
+    integration?.source === "custom" || integration?.available;
   const isConnected = integration?.status === "connected";
 
   return (
@@ -52,10 +53,12 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
           </div>
           <div>
             <div className="text-sm font-medium text-zinc-200">
-              {tools.length} {category.replace("_", " ")} tools locked
+              {tools.length} {integration?.name || category.replace("_", " ")}{" "}
+              tools locked
             </div>
             <div className="text-xs text-zinc-500">
-              Requires {requiredIntegration.name} connection
+              Requires {integration?.name || requiredIntegration.name}{" "}
+              connection
             </div>
           </div>
         </div>
@@ -65,13 +68,17 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
             size="sm"
             color="primary"
             variant="flat"
-            startContent={getToolCategoryIcon(requiredIntegration.id, {
-              size: 16,
-              width: 16,
-              height: 16,
-              showBackground: false,
-              className: "h-4 w-4 object-contain",
-            })}
+            startContent={getToolCategoryIcon(
+              requiredIntegration.id,
+              {
+                size: 16,
+                width: 16,
+                height: 16,
+                showBackground: false,
+                className: "h-4 w-4 object-contain",
+              },
+              integration?.iconUrl,
+            )}
             onPress={handleConnect}
           >
             Connect

@@ -28,8 +28,15 @@ async def get_current_user(request: Request):
         logger.error("User marked as authenticated but no user data found")
         raise HTTPException(status_code=401, detail="Unauthorized: User data missing")
 
-    # Return user info from request state
     return request.state.user
+
+
+async def get_user_id(user: dict = Depends(get_current_user)) -> str:
+    """Extract user_id from authenticated user or raise 400."""
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID not found")
+    return str(user_id)
 
 
 async def get_current_user_ws(websocket: WebSocket):

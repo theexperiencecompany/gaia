@@ -23,5 +23,5 @@ async def get_weather(
     # Send weather data to frontend via writer
     writer({"weather_data": weather_data, "location": location})
 
-    # Return simple confirmation message
-    return "Weather data sent to frontend. Do not write anything else. Just send the weather data."
+    # Return the weather data with instructions for helpful insights
+    return f"Weather data for {location}: {weather_data}\n\nThe raw weather card is visible to the user. Focus on providing helpful insights and suggestions based on these conditions (e.g., what to wear, activities to consider/avoid, health precautions, travel tips). Don't just repeat the numbers - tell them what this weather means for their day."

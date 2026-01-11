@@ -55,7 +55,7 @@ export const OnboardingIntegrationButtons: React.FC<
     (int) =>
       int.id !== "gmail" &&
       int.id !== "google_calendar" &&
-      int.loginEndpoint &&
+      int.available &&
       !int.isSpecial,
   );
 

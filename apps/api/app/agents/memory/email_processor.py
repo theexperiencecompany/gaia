@@ -46,6 +46,7 @@ from app.agents.memory.profile_extractor import (
     validate_username,
 )
 from app.config.loggers import memory_logger as logger
+from app.constants.email import BATCH_SIZE, EMAIL_QUERY, MAX_RESULTS
 from app.db.mongodb.collections import users_collection
 from app.services.mail.mail_service import search_messages
 from app.services.memory_service import memory_service
@@ -53,11 +54,6 @@ from app.services.post_onboarding_service import (
     emit_progress,
     process_post_onboarding_personalization,
 )
-
-# Constants
-EMAIL_QUERY = "in:inbox"
-MAX_RESULTS = 100
-BATCH_SIZE = 50
 
 
 async def _search_platform_emails_parallel(user_id: str) -> Dict[str, List[Dict]]:

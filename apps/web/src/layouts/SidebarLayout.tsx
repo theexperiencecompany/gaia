@@ -75,7 +75,6 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
               />
             </Button>
           </Link>
-          <CustomSidebarTrigger />
         </div>
       </SidebarHeader>
 

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { type FC, useEffect, useState } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
-import { ChatBotIcon, Mail01Icon, StarFilledIcon } from "@/icons";
+import { ChatBotIcon, Mail01Icon, StarIcon } from "@/icons";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
 const ICON_WIDTH = "20";
@@ -54,7 +54,7 @@ export const ChatTab: FC<ChatTabProps> = ({
       return <ChatBotIcon {...iconProps} />;
     }
 
-    if (starred) return <StarFilledIcon className={ICON_SIZE} {...iconProps} />;
+    if (starred) return <StarIcon className={ICON_SIZE} {...iconProps} />;
 
     return undefined;
   };
@@ -71,7 +71,7 @@ export const ChatTab: FC<ChatTabProps> = ({
             ? "text-white font-normal"
             : isActive
               ? "text-zinc-300"
-              : "text-zinc-500 hover:text-zinc-300"
+              : "text-zinc-400 hover:text-zinc-300"
         }`}
         size="sm"
         as={Link}

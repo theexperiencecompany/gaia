@@ -12,19 +12,14 @@ const CopyButton: React.FC<CopyButtonProps> = ({ copied, onPress }) => (
   <Button
     className="text-xs text-foreground hover:text-gray-300"
     size="sm"
+    isIconOnly
     variant="light"
     onPress={onPress}
   >
     {copied ? (
-      <div className="flex flex-row items-center gap-1">
-        <TaskDone01Icon color="foreground" width={21} />
-        <p>Copied!</p>
-      </div>
+      <TaskDone01Icon color="foreground" width={21} />
     ) : (
-      <div className="flex flex-row items-center gap-1">
-        <Task01Icon color="foreground" width={21} />
-        <p>Copy</p>
-      </div>
+      <Task01Icon color="foreground" width={21} />
     )}
   </Button>
 );

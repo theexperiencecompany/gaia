@@ -2,8 +2,12 @@ from typing import Any, Dict, List, Optional
 
 from app.config.settings import settings
 from app.constants.llm import (
+    DEFAULT_GEMINI_FREE_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
+    DEFAULT_GROK_MODEL_NAME,
     DEFAULT_MODEL_NAME,
+    GEMINI_FREE_FALLBACK_MODELS,
+    OPENROUTER_BASE_URL,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from langchain_core.language_models.chat_models import (
@@ -17,10 +21,12 @@ from typing_extensions import TypedDict
 PROVIDER_MODELS = {
     "openai": DEFAULT_MODEL_NAME,
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
+    "openrouter": DEFAULT_GROK_MODEL_NAME,
 }
 PROVIDER_PRIORITY = {
     1: "openai",
     2: "gemini",
+    3: "openrouter",
 }
 
 
@@ -67,7 +73,42 @@ def init_gemini_llm():
     )
 
 
-def init_llm(preferred_provider: Optional[str] = None, fallback_enabled: bool = True):
+@lazy_provider(
+    name="openrouter_llm",
+    required_keys=[settings.OPENROUTER_API_KEY],
+    strategy=MissingKeyStrategy.WARN,
+    warning_message="OpenRouter API key not configured. Models provided via OpenRouter (Grok, etc.) will not work.",
+)
+def init_openrouter_llm():
+    """Initialize OpenRouter LLM for Grok and other models with reasoning support."""
+    return ChatOpenAI(
+        model=PROVIDER_MODELS["openrouter"],
+        temperature=0.1,
+        streaming=True,
+        stream_usage=True,
+        api_key=settings.OPENROUTER_API_KEY,
+        base_url=OPENROUTER_BASE_URL,
+        default_headers={
+            "HTTP-Referer": settings.FRONTEND_URL,
+            "X-Title": "GAIA",
+        },
+        extra_body={
+            "reasoning": {
+                "effort": "medium",  # Enable reasoning for thinking models (Grok, Claude 3.7+, DeepSeek R1)
+            }
+        },
+    ).configurable_fields(
+        model_name=ConfigurableField(
+            id="model", name="Model", description="Which model to use"
+        ),
+    )
+
+
+def init_llm(
+    preferred_provider: Optional[str] = None,
+    fallback_enabled: bool = True,
+    use_free: bool = False,
+):
     """
     Initialize LLM with configurable alternatives based on provider priority.
 
@@ -76,6 +117,9 @@ def init_llm(preferred_provider: Optional[str] = None, fallback_enabled: bool = 
                                           If None, uses default priority order.
         fallback_enabled (bool): Whether to enable fallback to other providers
                                if preferred provider is not available.
+        use_free (bool): If True, uses Gemini 2.0 Flash (free) via OpenRouter with
+                        automatic fallbacks. Useful for auxiliary tasks like
+                        follow-up actions and description generation.
 
     Returns:
         Configured LLM instance with alternatives
@@ -84,6 +128,26 @@ def init_llm(preferred_provider: Optional[str] = None, fallback_enabled: bool = 
         RuntimeError: If no LLM providers are properly configured
         ValueError: If preferred_provider is not a valid provider name
     """
+    # Use free model via OpenRouter for cost-effective auxiliary tasks
+    if use_free:
+        if not settings.OPENROUTER_API_KEY:
+            raise RuntimeError(
+                "OpenRouter API key not configured. Free LLM requires OPENROUTER_API_KEY."
+            )
+        return ChatOpenAI(
+            model=DEFAULT_GEMINI_FREE_MODEL_NAME,
+            temperature=0.1,
+            streaming=False,
+            api_key=settings.OPENROUTER_API_KEY,
+            base_url=OPENROUTER_BASE_URL,
+            default_headers={
+                "HTTP-Referer": settings.FRONTEND_URL,
+                "X-Title": "GAIA",
+            },
+            extra_body={
+                "models": GEMINI_FREE_FALLBACK_MODELS,
+            },
+        )
 
     # Validate preferred provider if specified
     if preferred_provider and preferred_provider not in PROVIDER_MODELS:
@@ -128,6 +192,7 @@ def _get_available_providers() -> Dict[str, Any]:
     provider_instance_mapping = {
         "openai": "openai_llm",
         "gemini": "gemini_llm",
+        "openrouter": "openrouter_llm",
     }
 
     available = {}
@@ -215,3 +280,4 @@ def register_llm_providers():
     """Register LLM providers in the lazy loader."""
     init_openai_llm()
     init_gemini_llm()
+    init_openrouter_llm()

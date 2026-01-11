@@ -150,12 +150,6 @@ class LazyLoader(Generic[T]):
                     MissingKeyStrategy.WARN_ONCE,
                 ]:
                     self._log_warning(message)
-            else:
-                if not self.auto_initialize:
-                    loader_type = "async" if self.is_async else "sync"
-                    logger.info(
-                        f"Provider '{self.provider_name}' ({loader_type}) is ready for lazy initialization"
-                    )
             return
 
         # Missing values found - handle according to strategy
@@ -175,12 +169,6 @@ class LazyLoader(Generic[T]):
             self._log_warning(f"Registration warning: {message}")
             if self.strategy == MissingKeyStrategy.WARN_ONCE:
                 self._warned_indices.update(missing_indices)
-        elif not self.auto_initialize:
-            # Only log info about readiness if not auto-initializing
-            loader_type = "async" if self.is_async else "sync"
-            logger.info(
-                f"Provider '{self.provider_name}' ({loader_type}) registered but will initialize on first access"
-            )
 
     def get(self) -> Optional[T]:
         """Get the provider instance synchronously. Only works for sync loader functions."""

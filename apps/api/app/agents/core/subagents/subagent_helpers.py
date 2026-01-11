@@ -42,6 +42,12 @@ async def build_subagent_system_prompt(
     integration = get_integration_by_id(integration_id)
 
     if not integration:
+        # Handle custom MCPs - use universal prompt
+        if integration_id.startswith("custom_"):
+            from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
+
+            return base_system_prompt or CUSTOM_MCP_SUBAGENT_PROMPT
+
         logger.warning(f"Integration {integration_id} not found")
         return base_system_prompt or ""
 

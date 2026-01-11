@@ -6,7 +6,7 @@ icon: "key"
 
 ### TL;DR
 
-- Backend single source: `backend/app/config/settings.py`.
+- Backend single source: `apps/api/app/config/settings.py`.
 - Dev: make new fields Optional; Prod: make required if mandatory.
 - Use `settings` in code; for external clients, add a lazy provider.
 - Web: only add `NEXT_PUBLIC_*` when strictly needed; validated via `apps/web/src/lib/api/client.ts`.
@@ -14,7 +14,7 @@ icon: "key"
 ### Backend: add the field
 
 ```python
-# backend/app/config/settings.py
+# apps/api/app/config/settings.py
 class DevelopmentSettings(CommonSettings):
   MY_API_KEY: Optional[str] = None
 
@@ -25,7 +25,7 @@ class ProductionSettings(CommonSettings):
 (Optional) group in validator for warnings:
 
 ```python
-# backend/app/config/settings_validator.py
+# apps/api/app/config/settings_validator.py
 # register group and log warnings if missing (implementation already present)
 ```
 

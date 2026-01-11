@@ -54,9 +54,6 @@ from app.utils.todo_vector_utils import (
 from bson import ObjectId
 from pymongo import ReturnDocument
 
-# Special constants
-INBOX_PROJECT_ID = "inbox"
-
 
 async def _get_workflow_categories_for_todos(
     todos: list[dict], user_id: str
@@ -515,6 +512,14 @@ class TodoService:
             for subtask in update_dict["subtasks"]:
                 if not subtask.get("id"):
                     subtask["id"] = str(uuid.uuid4())
+
+        # Track completion timestamp
+        if "completed" in update_dict:
+            if update_dict["completed"]:
+                update_dict["completed_at"] = datetime.now(timezone.utc)
+            else:
+                # Clear completed_at when unmarking as complete
+                update_dict["completed_at"] = None
 
         update_dict["updated_at"] = datetime.now(timezone.utc)
 

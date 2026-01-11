@@ -53,6 +53,7 @@ const MermaidTabs: React.FC<MermaidTabsProps> = ({
       disabledKeys={isLoading ? ["editor"] : []}
       selectedKey={activeTab}
       variant="underlined"
+      classNames={{ tab: "font-sans" }}
       onSelectionChange={(key) => onTabChange(key as string)}
     >
       <Tab key="preview" className="p-0" title="Flowchart">

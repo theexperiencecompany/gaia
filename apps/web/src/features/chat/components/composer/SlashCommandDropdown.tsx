@@ -11,6 +11,7 @@ import type { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { Cancel01Icon, GridIcon, SearchIcon } from "@/icons";
 import { posthog } from "@/lib/posthog";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
@@ -42,6 +43,7 @@ interface VirtualizedItemProps {
   onSelect: (match: SlashCommandMatch) => void;
   onClose: () => void;
   measureElement: (element: HTMLElement | null) => void;
+  categoryDisplayMap: Record<string, { displayName: string; iconUrl?: string }>;
 }
 
 const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
@@ -54,6 +56,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
   onSelect,
   onClose,
   measureElement,
+  categoryDisplayMap,
 }) => {
   const baseStyle = {
     transform: `translateY(${virtualRow.start}px)`,
@@ -102,7 +105,11 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
           <div className="flex items-center gap-2 p-2">
             {/* Icon */}
             <div className="flex-shrink-0">
-              {getToolCategoryIcon(match.tool.category)}
+              {getToolCategoryIcon(
+                match.tool.category,
+                {},
+                categoryDisplayMap[match.tool.category]?.iconUrl,
+              )}
             </div>
 
             {/* Content */}
@@ -113,7 +120,10 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
                 </span>
                 {selectedCategory === "all" && (
                   <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
-                    {formatToolName(match.tool.category)}
+                    {formatToolName(
+                      categoryDisplayMap[match.tool.category]?.displayName ||
+                        match.tool.category,
+                    )}
                   </span>
                 )}
               </div>
@@ -215,6 +225,9 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   const [internalSelectedCategory, setInternalSelectedCategory] =
     useState<string>("all");
   const selectedCategory = externalSelectedCategory ?? internalSelectedCategory;
+
+  // Get integrations to look up custom names/icons
+  const { integrations } = useIntegrations();
 
   // Focus the dropdown when it becomes visible (only when opened via button)
   useEffect(() => {
@@ -337,6 +350,29 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     );
     return ["all", ...uniqueCategories.sort()];
   }, [matches, externalCategories]);
+
+  // Build a map of category ID -> { displayName, iconUrl } for efficient lookup
+  const categoryDisplayMap = useMemo(() => {
+    const map: Record<string, { displayName: string; iconUrl?: string }> = {};
+    matches.forEach((match) => {
+      if (!map[match.tool.category]) {
+        // First try to find matching integration if tool requires one (which custom MCPs do)
+        const integrationId =
+          match.tool.required_integration || match.tool.category;
+        const integration = integrations?.find((i) => i.id === integrationId);
+
+        map[match.tool.category] = {
+          displayName:
+            integration?.name ||
+            match.tool.integration_name ||
+            match.tool.category_display_name ||
+            match.tool.category,
+          iconUrl: integration?.iconUrl || match.tool.icon_url,
+        };
+      }
+    });
+    return map;
+  }, [matches, integrations]);
 
   // Filter matches based on selected category and search query
   const filteredMatches = useMemo(() => {
@@ -591,10 +627,19 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                         className="text-gray-400"
                       />
                     ) : (
-                      getToolCategoryIcon(category)
+                      getToolCategoryIcon(
+                        category,
+                        {},
+                        categoryDisplayMap[category]?.iconUrl,
+                      )
                     )}
                     <span>
-                      {category === "all" ? "All" : formatToolName(category)}
+                      {category === "all"
+                        ? "All"
+                        : formatToolName(
+                            categoryDisplayMap[category]?.displayName ||
+                              category,
+                          )}
                     </span>
                     <CategoryIntegrationStatus category={category} />
                   </button>
@@ -633,6 +678,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                       onSelect={onSelect}
                       onClose={onClose}
                       measureElement={rowVirtualizer.measureElement}
+                      categoryDisplayMap={categoryDisplayMap}
                     />
                   );
                 })}

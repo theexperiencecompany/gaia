@@ -1,6 +1,7 @@
 import { Chip } from "@heroui/chip";
 import type React from "react";
 
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { SquareLock01Icon } from "@/icons";
 
 import { useToolsWithIntegrations } from "../../hooks/useToolsWithIntegrations";
@@ -13,6 +14,7 @@ export const CategoryIntegrationStatus: React.FC<
   CategoryIntegrationStatusProps
 > = ({ category }) => {
   const { getToolsForCategory } = useToolsWithIntegrations();
+  const { integrations } = useIntegrations();
 
   if (category === "all") return null;
 
@@ -22,8 +24,24 @@ export const CategoryIntegrationStatus: React.FC<
 
   if (totalCount === 0) return null;
 
+  // Check if any tool requires an integration and get its status
+  const toolWithIntegration = categoryTools.find(
+    (tool) => tool.integration?.requiredIntegration,
+  );
+  const integration = integrations?.find(
+    (i) => i.id === toolWithIntegration?.integration?.requiredIntegration,
+  );
+
+  // Show green dot if connected
+  if (integration?.status === "connected")
+    return <span className="h-1.5 w-1.5 rounded-full bg-green-500" />;
+
+  // Show orange dot if created (added but not connected)
+  if (integration?.status === "created")
+    return <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />;
+
+  // Show lock if tools are locked (integration not connected)
   if (lockedCount !== 0)
-    // All tools are locked (integration not connected)
     return (
       <Chip
         size="sm"
@@ -35,4 +53,6 @@ export const CategoryIntegrationStatus: React.FC<
         <SquareLock01Icon className="h-3 w-3" />
       </Chip>
     );
+
+  return null;
 };

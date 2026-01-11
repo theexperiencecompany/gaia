@@ -28,7 +28,7 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
         <div className="flex items-center gap-2">
           {/* Icon */}
           <div className="flex-shrink-0 blur-[2px] brightness-50 transition group-hover:blur-[0px] group-hover:brightness-100">
-            {getToolCategoryIcon(tool.category)}
+            {getToolCategoryIcon(tool.category, {}, tool.integration?.iconUrl)}
           </div>
 
           {/* Content */}
@@ -45,7 +45,9 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
                   className="text-zinc-500"
                 />
                 <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
-                  {formatToolName(tool.category)}
+                  {formatToolName(
+                    tool.integration?.integrationName || tool.category,
+                  )}
                 </span>
               </div>
             </div>

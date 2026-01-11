@@ -13,9 +13,15 @@ from app.models.chat_models import (
     tool_fields,
 )
 from app.services.conversation_service import update_messages
+from app.agents.tools.core.registry import get_tool_registry
 
 
-async def format_tool_progress(tool_call: ToolCall) -> Optional[dict]:
+async def format_tool_progress(
+    tool_call: ToolCall,
+    icon_url: Optional[str] = None,
+    integration_id: Optional[str] = None,
+    integration_name: Optional[str] = None,
+) -> Optional[dict]:
     """Format tool execution progress data for streaming UI updates.
 
     Transforms a LangChain ToolCall object into a structured progress update
@@ -24,26 +30,74 @@ async def format_tool_progress(tool_call: ToolCall) -> Optional[dict]:
 
     Args:
         tool_call: LangChain ToolCall object containing tool execution details
+        icon_url: Optional icon URL for custom integrations
+        integration_id: Optional integration ID to use as category (for custom MCPs)
+        integration_name: Optional friendly name for display (e.g., 'Researcher')
 
     Returns:
         Dictionary with progress information including formatted message,
-        tool name, and category, or None if tool name is missing
+        tool name, category, and show_category flag, or None if tool name is missing
     """
-    from app.agents.tools.core.registry import get_tool_registry
 
     tool_registry = await get_tool_registry()
     tool_name_raw = tool_call.get("name")
     if not tool_name_raw:
         return None
 
-    tool_name = tool_name_raw.replace("_", " ").title()
-    tool_category = tool_registry.get_category_of_tool(tool_name_raw)
+    # Tools that emit their own progress messages - skip generic emission
+    if tool_name_raw == "handoff":
+        return None
+
+    # Special tools with custom display names and hidden categories
+    # Format: (category, display_name) - these tools don't show category text
+    special_tools = {
+        "retrieve_tools": ("retrieve_tools", "Retrieving tools"),
+        "call_executor": ("executor", "Delegating to executor"),
+    }
+
+    if tool_name_raw in special_tools:
+        tool_category, tool_display_name = special_tools[tool_name_raw]
+        show_category = False
+    else:
+        # Use provided integration_id for custom MCPs, otherwise look up from registry
+        if integration_id:
+            tool_category = integration_id
+        else:
+            tool_category = tool_registry.get_category_of_tool(tool_name_raw)
+            # Extract integration name from MCP categories
+            # Category format: mcp_{integration_id} or mcp_{integration_id}_{user_id}
+            # Examples: "mcp_perplexity", "mcp_custom_scholar_6947dd82_user123"
+            if tool_category and tool_category.startswith("mcp_"):
+                # Strip "mcp_" prefix
+                without_prefix = tool_category[4:]
+                # Remove user ID suffix if present (pattern: _user_*)
+                # User IDs are typically at the end after the last underscore
+                # For custom integrations, the ID is like "custom_scholar_6947dd82"
+                # So we need to detect if the last part looks like a user ID
+                parts = without_prefix.rsplit("_", 1)
+                if len(parts) == 2 and len(parts[-1]) > 20:
+                    # Last part is likely a user ID (UUIDs are long)
+                    tool_category = parts[0]
+                else:
+                    tool_category = without_prefix
+
+        tool_display_name = tool_name_raw.replace("_", " ").title()
+        show_category = True
+
+    # Get tool_call_id and args from the tool call
+    tool_call_id = tool_call.get("id")
+    tool_args = tool_call.get("args", {})
 
     return {
         "progress": {
-            "message": f"Executing {tool_name}...",
+            "message": tool_display_name,
             "tool_name": tool_name_raw,
             "tool_category": tool_category,
+            "show_category": show_category,
+            "tool_call_id": tool_call_id,
+            "inputs": tool_args if tool_args else None,
+            "icon_url": icon_url,
+            "integration_name": integration_name,
         }
     }
 
