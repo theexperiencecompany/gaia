@@ -85,24 +85,33 @@ class DeviceTokenService:
             logger.error(f"Failed to verify token ownership: {e}")
             return False
 
-    async def unregister_device_token(self, token: str) -> bool:
+    async def unregister_device_token(self, token: str, user_id: str) -> bool:
         """
         Unregister a device token (mark as inactive or delete)
 
         Args:
             token: Expo push token to unregister
+            user_id: User ID for authorization
 
         Returns:
             True if successful, False otherwise
         """
         try:
-            result = await self.collection.delete_one({"token": token})
+            # Delete only if token belongs to user
+            result = await self.collection.delete_one(
+                {"token": token, "user_id": user_id}
+            )
+
+            # Mask token for logging (show first 20 and last 4 chars)
+            masked_token = f"{token[:20]}...{token[-4:]}" if len(token) > 24 else "***"
 
             if result.deleted_count > 0:
-                logger.info(f"Unregistered device token: {token}")
+                logger.info(
+                    f"Unregistered device token for user {user_id}: {masked_token}"
+                )
                 return True
             else:
-                logger.warning(f"Device token not found: {token}")
+                logger.warning(f"Device token not found or not owned by user {user_id}")
                 return False
 
         except Exception as e:

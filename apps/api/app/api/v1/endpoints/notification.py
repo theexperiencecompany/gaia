@@ -206,7 +206,7 @@ async def bulk_actions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post(".notifications/register-device", response_model=DeviceTokenResponse)
+@router.post("/notifications/register-device", response_model=DeviceTokenResponse)
 async def register_device_token(
     request: DeviceTokenRequest = Body(...),
     current_user: dict = Depends(get_current_user),
@@ -285,13 +285,8 @@ async def unregister_device_token(
     try:
         device_token_service = get_device_token_service()
 
-        # Verify token belongs to user before unregistering
-        if not await device_token_service.verify_token_ownership(token, user_id):
-            raise HTTPException(
-                status_code=403, detail="Token does not belong to this user"
-            )
-
-        success = await device_token_service.unregister_device_token(token)
+        # Unregister token (service verifies ownership via user_id filter)
+        success = await device_token_service.unregister_device_token(token, user_id)
 
         if success:
             logger.info(f"Device token unregistered for user {user_id}")

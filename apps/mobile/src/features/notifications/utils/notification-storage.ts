@@ -41,16 +41,35 @@ export async function unregisterDeviceOnLogout(): Promise<void> {
     if (token) {
       console.log("[Notifications] Unregistering device token on logout");
 
-      // Unregister from backend
-      try {
-        await notificationsApi.unregisterDeviceToken(token);
-        console.log("[Notifications] Device token unregistered from backend");
-      } catch (error) {
+      // Unregister from backend with retry logic
+      const MAX_RETRIES = 3;
+      let lastError: unknown = null;
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          await notificationsApi.unregisterDeviceToken(token);
+          console.log("[Notifications] Device token unregistered from backend");
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+          console.warn(
+            `[Notifications] Unregister attempt ${attempt}/${MAX_RETRIES} failed:`,
+            error
+          );
+          if (attempt < MAX_RETRIES) {
+            await new Promise((r) => setTimeout(r, 500 * attempt)); // Backoff
+          }
+        }
+      }
+
+      if (lastError) {
+        // CRITICAL: Token remains in DB - user may still receive notifications
         console.error(
-          "[Notifications] Failed to unregister from backend:",
-          error,
+          "[Notifications] CRITICAL: Failed to unregister device after retries. Token may persist:",
+          token
         );
-        // Continue even if backend call fails
+        // Continue with logout - don't block user
       }
 
       // Clear from local storage

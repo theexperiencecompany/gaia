@@ -21,7 +21,6 @@ import {
   useChatContext,
 } from "@/features/chat";
 import { getRelevantThinkingMessage } from "@/features/chat/utils/playfulThinking";
-import { useNotifications } from "@/features/notifications";
 
 function EmptyState() {
   return (
@@ -53,7 +52,7 @@ function ChatContent({
   const [inputValue, setInputValue] = useState("");
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [thinkingMessage, setThinkingMessage] = useState(() =>
-    getRelevantThinkingMessage(""),
+    getRelevantThinkingMessage("")
   );
 
   const keyboard = useAnimatedKeyboard();
@@ -69,7 +68,7 @@ function ChatContent({
         () => {
           setThinkingMessage(getRelevantThinkingMessage(lastUserMessage));
         },
-        2000 + Math.random() * 1000,
+        2000 + Math.random() * 1000
       );
       return () => clearInterval(interval);
     }
@@ -90,7 +89,7 @@ function ChatContent({
       ) {
         runOnJS(scrollToBottom)();
       }
-    },
+    }
   );
 
   const handleFollowUpAction = useCallback(
@@ -98,7 +97,7 @@ function ChatContent({
       setInputValue(action);
       onFollowUpAction?.(action);
     },
-    [onFollowUpAction],
+    [onFollowUpAction]
   );
 
   const handleSend = useCallback(
@@ -107,7 +106,7 @@ function ChatContent({
       sendMessage(text);
       setInputValue("");
     },
-    [sendMessage],
+    [sendMessage]
   );
 
   const renderMessage = useCallback(
@@ -126,7 +125,7 @@ function ChatContent({
         />
       );
     },
-    [handleFollowUpAction, messages.length, isTyping, displayMessage],
+    [handleFollowUpAction, messages.length, isTyping, displayMessage]
   );
 
   const showEmptyState = messages.length === 0 && !isTyping && !activeChatId;
@@ -180,37 +179,8 @@ function ChatContent({
 export default function ChatScreen() {
   const { activeChatId } = useChatContext();
 
-  // Setup push notifications
-  const { expoPushToken, notification, error, isRegistered } =
-    useNotifications();
-
   const [_isReady, setIsReady] = useState(false);
   const screenOpacity = useSharedValue(0);
-
-  // Log notification events
-  useEffect(() => {
-    if (expoPushToken) {
-      console.log("[Chat] Push token ready:", expoPushToken);
-    }
-  }, [expoPushToken]);
-
-  useEffect(() => {
-    if (notification) {
-      console.log("[Chat] Notification received:", notification);
-    }
-  }, [notification]);
-
-  useEffect(() => {
-    if (error) {
-      console.warn("[Chat] Notification error:", error);
-    }
-  }, [error]);
-
-  useEffect(() => {
-    if (isRegistered) {
-      console.log("[Chat] Device registered for push notifications");
-    }
-  }, [isRegistered]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

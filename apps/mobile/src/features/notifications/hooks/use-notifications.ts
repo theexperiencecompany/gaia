@@ -59,7 +59,6 @@ export function useNotifications(): UseNotificationsReturn {
           const errorMsg = "Push notifications require a physical device";
           setError(errorMsg);
           setIsLoading(false);
-          console.warn("[Notifications]", errorMsg);
           return;
         }
 
@@ -77,7 +76,6 @@ export function useNotifications(): UseNotificationsReturn {
           const errorMsg = "Permission not granted for push notifications";
           setError(errorMsg);
           setIsLoading(false);
-          console.warn("[Notifications]", errorMsg);
           return;
         }
 
@@ -90,7 +88,6 @@ export function useNotifications(): UseNotificationsReturn {
           const errorMsg = "Project ID not found in app config";
           setError(errorMsg);
           setIsLoading(false);
-          console.error("[Notifications]", errorMsg);
           return;
         }
 
@@ -103,7 +100,6 @@ export function useNotifications(): UseNotificationsReturn {
         if (!isMounted) return;
 
         setExpoPushToken(token);
-        console.log("[Notifications] Expo Push Token:", token);
 
         // Store token in SecureStore for logout cleanup
         await SecureStore.setItemAsync("expo_push_token", token);
@@ -116,18 +112,14 @@ export function useNotifications(): UseNotificationsReturn {
             device_id: Device.deviceName || undefined,
           });
           setIsRegistered(true);
-          console.log("[Notifications] Device registered with backend");
+          setError(null); // Clear any previous errors
         } catch (backendError) {
-          console.error(
-            "[Notifications] Failed to register with backend:",
-            backendError,
-          );
-          setError("Failed to register device with backend");
-          // Don't throw - local notifications still work
+          setIsRegistered(false); // Explicitly mark as not registered
+          setError("Failed to register device for push notifications");
+          // Local notifications still work, but remote push won't
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
-        console.error("[Notifications] Setup error:", errorMsg);
         if (isMounted) {
           setError(errorMsg);
         }
@@ -143,20 +135,14 @@ export function useNotifications(): UseNotificationsReturn {
     // Setup listeners
     notificationListener.current =
       Notifications.addNotificationReceivedListener((receivedNotification) => {
-        console.log(
-          "[Notifications] Notification received:",
-          receivedNotification,
-        );
         setNotification(receivedNotification);
       });
 
     responseListener.current =
       Notifications.addNotificationResponseReceivedListener((response) => {
-        console.log("[Notifications] Notification tapped:", response);
         // Handle notification tap - navigate to relevant screen, etc.
         const data = response.notification.request.content.data;
         if (data) {
-          console.log("[Notifications] Notification data:", data);
           // TODO: Add navigation logic based on notification data
         }
       });
