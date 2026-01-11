@@ -128,7 +128,6 @@ def get_retrieve_tools_function(
         available_tool_names = tool_registry.get_tool_names()
 
         # Get user_id from explicit arg OR config
-        user_id = user_id
         if not user_id and config:
             user_id = config.get("configurable", {}).get("user_id")
             # Deep debugging for missing user_id
@@ -231,9 +230,10 @@ def get_retrieve_tools_function(
 
         all_results = []
         for result in results:
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.warning(f"Search error: {result}")
                 continue
+            # result is now known to be list[SearchItem]
             for item in result:
                 tool_key = str(item.key)
 

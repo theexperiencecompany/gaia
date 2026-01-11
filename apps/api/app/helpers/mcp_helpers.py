@@ -7,7 +7,7 @@ Contains helper functions for MCP operations:
 - Cache invalidation utilities
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Sequence
 
 from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import Field, create_model
@@ -46,7 +46,7 @@ def create_stub_tools_from_cache(
     client: "MCPClient",
     integration_id: str,
     cached_tools: list[dict],
-) -> list[BaseTool]:
+) -> Sequence[BaseTool]:
     """
     Create stub BaseTool objects from cached tool metadata.
 
@@ -92,7 +92,7 @@ def create_stub_tools_from_cache(
             )
             properties = args_schema.get("properties", {})
             required_fields = args_schema.get("required", [])
-            fields = {}
+            fields: dict[str, Any] = {}
 
             for field_name, field_info in properties.items():
                 field_type, default_val, is_optional = extract_type_from_field(
@@ -102,7 +102,7 @@ def create_stub_tools_from_cache(
                 is_required = field_name in required_fields
 
                 if is_required:
-                    field_default = ...
+                    field_default: Any = ...
                 elif default_val is not None:
                     field_default = default_val
                 else:

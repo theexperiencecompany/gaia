@@ -6,7 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 from app.config.loggers import chat_logger as logger
 from app.config.settings import settings
-from app.db.redis import ONE_HOUR_TTL, get_cache, set_cache
+from app.constants.cache import ONE_HOUR_TTL
+from app.db.redis import get_cache, set_cache
 
 http_async_client = httpx.AsyncClient()
 

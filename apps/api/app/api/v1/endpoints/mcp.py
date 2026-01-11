@@ -47,7 +47,7 @@ async def test_mcp_connection(
     if not resolved or not resolved.mcp_config:
         raise HTTPException(status_code=404, detail="Integration not found")
 
-    server_url = resolved.server_url
+    server_url = resolved.mcp_config.server_url
 
     # Probe the server
     probe_result = await client.probe_connection(server_url)

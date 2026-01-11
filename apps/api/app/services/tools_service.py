@@ -149,8 +149,8 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
         if not custom_tools:
             continue
 
-        for tool in custom_tools:
-            tool_name = tool["name"]
+        for tool_dict in custom_tools:
+            tool_name = tool_dict["name"]
             # Skip duplicate tool names
             if tool_name in seen_tool_names:
                 logger.debug(

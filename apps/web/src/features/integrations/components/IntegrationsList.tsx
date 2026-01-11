@@ -2,7 +2,6 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import type React from "react";
 import { useMemo } from "react";
-import { Separator } from "@/components";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationsStore } from "@/stores/integrationsStore";
 import {

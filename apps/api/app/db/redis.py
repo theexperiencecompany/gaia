@@ -28,9 +28,7 @@ from app.config.loggers import redis_logger as logger
 from app.config.settings import settings
 from app.constants.cache import (
     DEFAULT_CACHE_TTL,
-    ONE_HOUR_TTL,
     ONE_YEAR_TTL,
-    STATS_CACHE_TTL,
 )
 from pydantic import TypeAdapter
 from pydantic.type_adapter import TypeAdapter as TypeAdapterType

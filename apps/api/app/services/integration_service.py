@@ -287,7 +287,7 @@ async def add_user_integration(
     user_integration = UserIntegration(
         user_id=user_id,
         integration_id=integration_id,
-        status=status,
+        status="connected" if status == "connected" else "created",
         created_at=datetime.now(UTC),
         connected_at=connected_at,
     )
@@ -351,7 +351,7 @@ async def update_user_integration_status(
     Returns:
         True if updated or created
     """
-    update_data = {
+    update_data: Dict[str, Any] = {
         "status": status,
         "user_id": user_id,
         "integration_id": integration_id,
@@ -434,6 +434,8 @@ async def create_custom_integration(
         is_public=request.is_public,
         created_by=user_id,
         icon_url=icon_url,
+        display_priority=0,
+        is_featured=False,
         mcp_config=MCPConfig(
             server_url=request.server_url,
             requires_auth=request.requires_auth,
@@ -482,7 +484,7 @@ async def update_custom_integration(
         return None
 
     # Build update
-    update_data = {}
+    update_data: Dict[str, Any] = {}
     if request.name is not None:
         update_data["name"] = request.name
     if request.description is not None:

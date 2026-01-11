@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from app.config.loggers import todos_logger
+from app.constants.cache import STATS_CACHE_TTL
 from app.db.mongodb.collections import (
     projects_collection,
     todos_collection,
@@ -11,7 +12,6 @@ from app.db.mongodb.collections import (
 )
 from app.db.redis import (
     CACHE_TTL,
-    STATS_CACHE_TTL,
     delete_cache,
     delete_cache_by_pattern,
     get_cache,

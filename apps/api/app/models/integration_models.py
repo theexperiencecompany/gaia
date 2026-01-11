@@ -8,10 +8,13 @@ This module defines Pydantic models for:
 """
 
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, cast
 
 from app.models.oauth_models import MCPConfig
 from pydantic import BaseModel, Field
+
+# Type alias for auth_type
+AuthType = Literal["none", "oauth", "bearer"]
 
 
 class IntegrationTool(BaseModel):
@@ -211,7 +214,7 @@ class IntegrationResponse(BaseModel):
             is_featured=oauth_int.is_featured,
             display_priority=oauth_int.display_priority,
             requires_auth=requires_auth,
-            auth_type=auth_type,
+            auth_type=cast(AuthType, auth_type) if auth_type else None,
             tools=[],  # Platform tools are loaded live, not stored
         )
 

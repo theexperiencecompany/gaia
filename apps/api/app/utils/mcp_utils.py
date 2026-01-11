@@ -9,9 +9,10 @@ import base64
 import hashlib
 import secrets
 from functools import wraps
-from typing import Any, Optional
+from typing import Any, Union
 
 from langchain_core.tools import BaseTool
+from pydantic import BaseModel
 
 from app.config.loggers import langchain_logger as logger
 
@@ -95,7 +96,7 @@ def extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
     python_type = type_map.get(json_type, Any)
 
     if is_optional and default_val is None:
-        python_type = Optional[python_type]
+        python_type = Union[python_type, None]  # type: ignore[assignment]
 
     return python_type, default_val, is_optional
 
@@ -107,7 +108,11 @@ def serialize_args_schema(tool: BaseTool) -> dict | None:
         return None
 
     try:
-        schema = tool.args_schema.model_json_schema()
+        args_schema = tool.args_schema
+        if not isinstance(args_schema, type) or not issubclass(args_schema, BaseModel):
+            logger.debug(f"Tool {tool.name} args_schema is not a BaseModel")
+            return None
+        schema = args_schema.model_json_schema()
         result = {
             "properties": schema.get("properties", {}),
             "required": schema.get("required", []),

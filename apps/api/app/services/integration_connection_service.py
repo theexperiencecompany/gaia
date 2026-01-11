@@ -1,6 +1,7 @@
 """Integration connection service - handles connect/disconnect logic."""
 
 from functools import lru_cache
+from typing import Literal
 
 from mcp_use.exceptions import OAuthAuthenticationError
 
@@ -38,9 +39,12 @@ def build_integrations_config() -> IntegrationsConfigResponse:
         if integration.managed_by == "internal":
             continue
 
-        auth_type = None
+        # Cast to Literal type for mypy
+        auth_type_literal: Literal["none", "oauth", "bearer"] | None = None
         if integration.mcp_config:
-            auth_type = "oauth" if integration.mcp_config.requires_auth else "none"
+            auth_type_literal = (
+                "oauth" if integration.mcp_config.requires_auth else "none"
+            )
 
         integration_configs.append(
             IntegrationConfigItem(
@@ -55,7 +59,7 @@ def build_integrations_config() -> IntegrationsConfigResponse:
                 included_integrations=integration.included_integrations,
                 is_featured=integration.is_featured,
                 managed_by=integration.managed_by,
-                auth_type=auth_type,
+                auth_type=auth_type_literal,
             )
         )
     return IntegrationsConfigResponse(integrations=integration_configs)
@@ -238,6 +242,8 @@ async def disconnect_integration(
             if resolved.platform_integration
             else None
         )
+        if not provider:
+            raise ValueError(f"Provider not configured for {integration_id}")
         await composio_service.delete_connected_account(
             user_id=user_id, provider=provider
         )
@@ -248,6 +254,8 @@ async def disconnect_integration(
             if resolved.platform_integration
             else None
         )
+        if not provider:
+            raise ValueError(f"Provider not configured for {integration_id}")
         await token_repository.revoke_token(user_id=user_id, provider=provider)
 
     elif resolved.managed_by == "mcp":

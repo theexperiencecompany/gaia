@@ -321,7 +321,7 @@ def create_agent(
         for tool_call in tool_calls:
             # Emit tool_inputs immediately since we have complete args
             # This fixes the race condition where args may be incomplete during streaming
-            if writer and tool_call.get("args"):
+            if writer is not None and tool_call.get("args"):
                 writer(
                     {
                         "tool_inputs": {
@@ -379,7 +379,7 @@ def create_agent(
         for tool_call in tool_calls:
             # Emit tool_inputs immediately since we have complete args
             # This fixes the race condition where args may be incomplete during streaming
-            if writer and tool_call.get("args"):
+            if writer is not None and tool_call.get("args"):
                 writer(
                     {
                         "tool_inputs": {
