@@ -15,7 +15,7 @@ from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 
 from app.config.loggers import langchain_logger as logger
-from app.helpers.mcp_helpers import create_stub_tools_from_cache
+
 from app.models.oauth_models import MCPConfig
 from app.services.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -577,8 +577,8 @@ class MCPClient:
         """
         Get tools from all connected MCP integrations for this user.
 
-        Uses MongoDB as single source of truth for cached tool metadata.
-        Creates stub tools that connect on-demand when executed.
+        Always connects to get real tools with proper schemas.
+        Cached tools are returned from memory if already connected.
 
         Returns dict mapping integration_id -> list of tools.
         """
@@ -603,26 +603,16 @@ class MCPClient:
         connected_ids = list(set(auth_connected) | set(unauth_connected))
         all_tools: dict[str, list[BaseTool]] = {}
 
-        # Get global tool store (MongoDB - single source of truth)
-        global_store = get_mcp_tools_store()
-
         for integration_id in connected_ids:
             try:
-                # Check if already connected in memory (live tools)
+                # Check if already connected in memory (live tools with schemas)
                 if integration_id in self._tools:
                     all_tools[integration_id] = self._tools[integration_id]
                     continue
 
-                # Use MongoDB cached tools to create stubs (works for both auth and unauth)
-                cached = await global_store.get_tools(integration_id)
-                if cached:
-                    stub_tools = create_stub_tools_from_cache(
-                        self, integration_id, cached
-                    )
-                    all_tools[integration_id] = stub_tools
-                    continue
-
-                # No cached tools - connect to fetch them
+                # Connect to get real tools with proper schemas
+                # This is required because stubs without args_schema cause LLM
+                # to use wrong parameter names (e.g., "name" instead of "query")
                 tools = await self.connect(integration_id)
                 if tools:
                     all_tools[integration_id] = tools

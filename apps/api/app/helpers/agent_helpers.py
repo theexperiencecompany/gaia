@@ -377,9 +377,9 @@ async def execute_graph_streaming(
                 tool_output_data = {
                     "tool_output": {
                         "tool_call_id": tc_id,
-                        "output": chunk.content[:1000]
+                        "output": chunk.content[:3000]
                         if isinstance(chunk.content, str)
-                        else str(chunk.content)[:1000],
+                        else str(chunk.content)[:3000],
                     }
                 }
                 yield format_sse_data(tool_output_data)

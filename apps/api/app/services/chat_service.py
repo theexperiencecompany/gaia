@@ -224,6 +224,8 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
                         "show_category": progress.get("show_category", True),
                         "tool_call_id": progress.get("tool_call_id"),
                         "inputs": progress.get("inputs"),
+                        "icon_url": progress.get("icon_url"),
+                        "integration_name": progress.get("integration_name"),
                     },
                     "timestamp": timestamp,
                 }

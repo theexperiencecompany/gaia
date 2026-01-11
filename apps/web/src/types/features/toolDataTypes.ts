@@ -18,6 +18,10 @@ export interface ToolProgressData {
   inputs?: Record<string, unknown>;
   /** Tool output result */
   output?: string;
+  /** Icon URL for custom integrations */
+  icon_url?: string;
+  /** Friendly name of the integration (e.g., 'Researcher') */
+  integration_name?: string;
 }
 
 /**

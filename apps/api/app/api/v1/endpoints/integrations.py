@@ -3,7 +3,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from mcp_use.exceptions import OAuthAuthenticationError
+from mcp_use.client.exceptions import OAuthAuthenticationError
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.loggers import auth_logger as logger

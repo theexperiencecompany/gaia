@@ -193,6 +193,8 @@ export const useChatStream = () => {
           show_category: progressData.show_category,
           tool_call_id: progressData.tool_call_id,
           inputs: progressData.inputs,
+          icon_url: progressData.icon_url,
+          integration_name: progressData.integration_name,
         } as ToolDataEntry["data"],
         timestamp: new Date().toISOString(),
       };

@@ -1,12 +1,13 @@
 "use client";
 
 import { Accordion, AccordionItem } from "@heroui/accordion";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { ChevronDown, ToolsIcon } from "@/icons";
 
 interface ToolCallsSectionProps {
@@ -18,6 +19,37 @@ export default function ToolCallsSection({
 }: ToolCallsSectionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedCalls, setExpandedCalls] = useState<Set<number>>(new Set());
+  const { integrations } = useIntegrations();
+
+  // Create a lookup map for custom integrations by id
+  const integrationLookup = useMemo(() => {
+    const lookup = new Map<string, { iconUrl?: string; name?: string }>();
+    for (const int of integrations) {
+      if (int.id) {
+        lookup.set(int.id, {
+          iconUrl: int.iconUrl,
+          name: int.name,
+        });
+      }
+    }
+    return lookup;
+  }, [integrations]);
+
+  // Helper to get icon_url with fallback to integrations lookup
+  const getIconUrl = (call: ToolCallEntry): string | undefined => {
+    if (call.icon_url) return call.icon_url;
+    // Fallback: look up from integrations if tool_category is a custom integration
+    const integration = integrationLookup.get(call.tool_category);
+    return integration?.iconUrl;
+  };
+
+  // Helper to get integration_name with fallback to integrations lookup
+  const getIntegrationName = (call: ToolCallEntry): string | undefined => {
+    if (call.integration_name) return call.integration_name;
+    // Fallback: look up from integrations if tool_category is a custom integration
+    const integration = integrationLookup.get(call.tool_category);
+    return integration?.name;
+  };
 
   const toggleCallExpansion = (index: number) => {
     setExpandedCalls((prev) => {
@@ -52,7 +84,7 @@ export default function ToolCallsSection({
               width: 21,
               height: 21,
             },
-            call.icon_url,
+            getIconUrl(call),
           ) || (
             <div className="p-1 bg-zinc-800 rounded-lg text-zinc-400 backdrop-blur">
               <ToolsIcon width={21} height={21} />
@@ -143,7 +175,7 @@ export default function ToolCallsSection({
                           width: 21,
                           height: 21,
                         },
-                        call.icon_url,
+                        getIconUrl(call),
                       ) || (
                         <div className="p-1 bg-zinc-800 rounded-lg">
                           <ToolsIcon width={21} height={21} />
@@ -176,15 +208,16 @@ export default function ToolCallsSection({
                     </button>
                     {hasCategoryText && (
                       <p className="text-[11px] text-default-400 capitalize">
-                        {call.tool_category
-                          .replace(/_/g, " ")
-                          .split(" ")
-                          .map(
-                            (word) =>
-                              word.charAt(0).toUpperCase() +
-                              word.slice(1).toLowerCase(),
-                          )
-                          .join(" ")}
+                        {getIntegrationName(call) ||
+                          call.tool_category
+                            .replace(/_/g, " ")
+                            .split(" ")
+                            .map(
+                              (word) =>
+                                word.charAt(0).toUpperCase() +
+                                word.slice(1).toLowerCase(),
+                            )
+                            .join(" ")}
                       </p>
                     )}
 

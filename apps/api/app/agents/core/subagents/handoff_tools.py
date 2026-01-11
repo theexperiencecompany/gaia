@@ -120,6 +120,14 @@ async def _get_subagent_by_id(subagent_id: str):
     )
 
     if custom:
+        # Debug: Log raw MongoDB document
+        logger.info(
+            f"_get_subagent_by_id found custom MCP: "
+            f"integration_id={custom.get('integration_id')}, "
+            f"name={custom.get('name')}, "
+            f"icon_url={custom.get('icon_url')}, "
+            f"all_keys={list(custom.keys())}"
+        )
         # Return a dict that mimics the integration structure
         return {
             "id": custom.get("integration_id"),
@@ -127,7 +135,30 @@ async def _get_subagent_by_id(subagent_id: str):
             "source": "custom",
             "managed_by": "mcp",
             "mcp_config": custom.get("mcp_config"),
+            "icon_url": custom.get("icon_url"),
             "subagent_config": None,  # Custom MCPs don't have static subagent config
+        }
+
+    # Fallback: Try IntegrationResolver which checks multiple sources
+    # This handles cases where integration is in user_integrations but not integrations
+    from app.services.integration_resolver import IntegrationResolver
+
+    resolved = await IntegrationResolver.resolve(search_id)
+    if resolved and resolved.source == "custom" and resolved.custom_doc:
+        doc = resolved.custom_doc
+        logger.info(
+            f"_get_subagent_by_id found via IntegrationResolver: "
+            f"integration_id={doc.get('integration_id')}, "
+            f"name={doc.get('name')}"
+        )
+        return {
+            "id": doc.get("integration_id"),
+            "name": doc.get("name"),
+            "source": "custom",
+            "managed_by": "mcp",
+            "mcp_config": doc.get("mcp_config"),
+            "icon_url": doc.get("icon_url"),
+            "subagent_config": None,
         }
 
     return None
@@ -227,6 +258,13 @@ async def handoff(
         is_custom = (
             isinstance(integration, dict) and integration.get("source") == "custom"
         )
+
+        # Debug log integration data for custom MCPs
+        if is_custom:
+            logger.info(
+                f"Custom MCP integration data: id={integration.get('id')}, "
+                f"name={integration.get('name')}, icon_url={integration.get('icon_url')}"
+            )
 
         if is_custom:
             # Custom MCP - create subagent on-the-fly
@@ -334,13 +372,26 @@ async def handoff(
         writer = get_stream_writer()
 
         # Emit structured progress with integration ID for frontend icon display
+        # Use integration_name for display, otherwise fallback to agent_name
+        if is_custom:
+            display_name = integration.get("name", int_id)
+            handoff_icon_url = integration.get("icon_url")
+        else:
+            display_name = (
+                integration.name
+                if hasattr(integration, "name")
+                else agent_name.replace("_", " ").title()
+            )
+            handoff_icon_url = None
+
         writer(
             {
                 "progress": {
-                    "message": f"Handing off to {agent_name.replace('_', ' ').title()}",
+                    "message": f"Handing off to {display_name}",
                     "tool_name": "handoff",
                     "tool_category": "handoff",
                     "show_category": False,
+                    "icon_url": handoff_icon_url,
                 }
             }
         )
@@ -387,7 +438,21 @@ async def handoff(
                         for tool_call in chunk.tool_calls:
                             tc_id = tool_call.get("id")
                             if tc_id and tc_id not in pending_tool_calls:
-                                progress_data = await format_tool_progress(tool_call)
+                                # Pass icon_url, integration_id, and name for custom MCPs
+                                if is_custom:
+                                    custom_icon_url = integration.get("icon_url")
+                                    custom_int_id = int_id
+                                    custom_name = integration.get("name")
+                                else:
+                                    custom_icon_url = None
+                                    custom_int_id = None
+                                    custom_name = None
+                                progress_data = await format_tool_progress(
+                                    tool_call,
+                                    icon_url=custom_icon_url,
+                                    integration_id=custom_int_id,
+                                    integration_name=custom_name,
+                                )
                                 if progress_data:
                                     writer(progress_data)
                                 pending_tool_calls[tc_id] = {
@@ -430,9 +495,9 @@ async def handoff(
                         {
                             "tool_output": {
                                 "tool_call_id": tc_id,
-                                "output": chunk.content[:1000]
+                                "output": chunk.content[:3000]
                                 if isinstance(chunk.content, str)
-                                else str(chunk.content)[:1000],
+                                else str(chunk.content)[:3000],
                             }
                         }
                     )

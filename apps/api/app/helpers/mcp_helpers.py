@@ -66,7 +66,9 @@ def create_stub_tools_from_cache(
             tools = await mcp_client.ensure_connected(int_id)
             real_tool = next((t for t in tools if t.name == tool_name), None)
             if real_tool:
-                return await real_tool.ainvoke(filtered_kwargs)
+                # Call _arun directly to bypass schema re-validation.
+                # The stub has already validated input via its own schema.
+                return await real_tool._arun(**filtered_kwargs)
             raise ValueError(f"Tool {tool_name} not found after connecting")
 
         return _stub_execute
