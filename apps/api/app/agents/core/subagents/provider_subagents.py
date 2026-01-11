@@ -105,17 +105,26 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
     """
     Create a subagent for auth-required MCP integrations with user-specific tokens.
 
-    This is used for MCP integrations that require OAuth authentication.
+    This is used for:
+    - MCP integrations (platform) that require OAuth authentication
+    - Custom MCP integrations created by users
+
     Uses cached tools when available to avoid reconnecting to MCP server.
 
     Args:
-        integration_id: The integration ID from oauth_config
+        integration_id: The integration ID from oauth_config or custom_* ID
         user_id: The user's ID for token lookup
 
     Returns:
         Compiled subagent graph, or None if creation fails
     """
     integration = get_integration_by_id(integration_id)
+
+    # Handle custom MCPs from MongoDB (not in OAUTH_INTEGRATIONS)
+    if not integration and integration_id.startswith("custom_"):
+        return await _create_custom_mcp_subagent(integration_id, user_id)
+
+    # Platform integration validation
     if not integration or not integration.subagent_config:
         logger.error(f"{integration_id} integration or subagent config not found")
         return None
@@ -184,6 +193,89 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
     )
 
     logger.info(f"User-specific subagent {config.agent_name} created successfully")
+    return graph
+
+
+async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
+    """
+    Create a subagent graph for a custom MCP integration from MongoDB.
+
+    Custom MCPs don't have static SubAgentConfig in OAUTH_INTEGRATIONS.
+    They use the universal prompt and have all their tools loaded directly.
+
+    Args:
+        integration_id: The custom integration ID (starts with 'custom_')
+        user_id: The user's ID for token lookup and tool loading
+
+    Returns:
+        Compiled subagent graph, or None if creation fails
+    """
+    from app.db.mongodb.collections import integrations_collection
+
+    # Fetch custom integration from MongoDB
+    custom_doc = await integrations_collection.find_one(
+        {"integration_id": integration_id}
+    )
+    if not custom_doc:
+        logger.error(f"Custom integration {integration_id} not found in MongoDB")
+        return None
+
+    tool_registry = await get_tool_registry()
+
+    # Use user-specific category name to avoid conflicts
+    category_name = f"mcp_{integration_id}_{user_id}"
+
+    if category_name not in tool_registry._categories:
+        mcp_client = await get_mcp_client(user_id=user_id)
+
+        # get_all_connected_tools uses cached tools when available
+        all_tools = await mcp_client.get_all_connected_tools()
+
+        if not isinstance(all_tools, dict):
+            logger.error(
+                f"get_all_connected_tools returned {type(all_tools).__name__} instead of dict"
+            )
+            all_tools = {}
+
+        tools = all_tools.get(integration_id)
+
+        if not tools:
+            # Try direct connect as fallback
+            try:
+                tools = await mcp_client.connect(integration_id)
+            except Exception as e:
+                logger.error(f"Failed to get MCP tools for {integration_id}: {e}")
+                return None
+
+        if not tools:
+            logger.error(f"No tools available for {integration_id}")
+            return None
+
+        # Use integration_id as both space and category for custom MCPs
+        tool_registry._add_category(
+            name=category_name,
+            tools=tools,
+            space=integration_id,
+            integration_name=integration_id,
+        )
+        await tool_registry._index_category_tools(category_name)
+        logger.info(f"Registered {len(tools)} custom MCP tools for {integration_id}")
+
+    llm = init_llm()
+    agent_name = f"custom_mcp_{integration_id}"
+
+    logger.info(f"Creating custom MCP subagent {agent_name} for user {user_id}")
+
+    graph = await SubAgentFactory.create_provider_subagent(
+        provider=integration_id,
+        llm=llm,
+        tool_space=integration_id,
+        name=agent_name,
+        use_direct_tools=True,  # Custom MCPs use direct tools
+        disable_retrieve_tools=True,  # No nested retrieval needed
+    )
+
+    logger.info(f"Custom MCP subagent {agent_name} created successfully")
     return graph
 
 

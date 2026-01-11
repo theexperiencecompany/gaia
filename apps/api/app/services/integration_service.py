@@ -324,6 +324,8 @@ async def remove_user_integration(user_id: str, integration_id: str) -> bool:
 
     if result.deleted_count > 0:
         logger.info(f"User {user_id} removed integration {integration_id}")
+        # Note: ChromaDB subagent cleanup for custom integrations is handled
+        # in delete_custom_integration() which is called separately
         return True
 
     return False

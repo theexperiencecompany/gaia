@@ -144,7 +144,7 @@ li {
 .imessage-from-them::after {
   left: -26px;
   width: 26px;
-  background-color: #1a1a1a;
+  background-color: var(--color-primary-bg);
   border-bottom-right-radius: 10px;
 }
 
@@ -165,7 +165,7 @@ li {
 .imessage-from-me::after {
   right: -26px;
   width: 26px;
-  background-color: #18181b;
+  background-color: var(--color-primary-bg);
   border-bottom-left-radius: 10px;
 }
 

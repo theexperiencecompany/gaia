@@ -19,6 +19,8 @@ from app.helpers.mcp_helpers import (
 )
 from app.services.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_client import get_mcp_client
+from app.agents.core.subagents.handoff_tools import index_custom_mcp_as_subagent
+from app.core.lazy_loader import providers
 
 router = APIRouter()
 
@@ -154,6 +156,25 @@ async def mcp_oauth_callback(
             logger.warning(f"Failed to cache tools for {integration_id}: {tool_err}")
 
         await invalidate_mcp_status_cache(str(user_id))
+
+        # Index custom MCPs as subagents for discovery via retrieve_tools
+        if integration_id.startswith("custom_"):
+            try:
+                store = await providers.aget("chroma_tools_store")
+                if store:
+                    resolved = await IntegrationResolver.resolve(integration_id)
+                    if resolved and resolved.custom_doc:
+                        await index_custom_mcp_as_subagent(
+                            store=store,
+                            integration_id=integration_id,
+                            name=resolved.custom_doc.get("name", integration_id),
+                            description=resolved.custom_doc.get("description", ""),
+                        )
+                        logger.info(f"Indexed custom MCP {integration_id} as subagent")
+            except Exception as subagent_err:
+                logger.warning(
+                    f"Failed to index custom MCP as subagent: {subagent_err}"
+                )
 
         frontend_url = get_frontend_url()
         return RedirectResponse(

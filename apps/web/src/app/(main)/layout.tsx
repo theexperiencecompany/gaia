@@ -198,7 +198,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
               className="flex shrink-0 items-center justify-between p-2"
               onClick={closeOnTouch}
             >
-              {!currentOpen && <HeaderSidebarTrigger />}
+              <HeaderSidebarTrigger />
               <HeaderManager />
             </header>
             <main className="flex flex-1 flex-col overflow-hidden">

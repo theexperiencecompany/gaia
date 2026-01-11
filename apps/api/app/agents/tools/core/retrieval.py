@@ -186,12 +186,20 @@ def get_retrieve_tools_function(
                 raw_connected = user_namespaces - {"general", "subagents"}
 
                 # Filter to only integrations that have subagent configurations
+                # OR are custom MCPs (which are always subagent-capable when connected)
                 connected_integrations = {
                     integration_id
                     for integration_id in raw_connected
-                    if (integ := get_integration_by_id(integration_id))
-                    and integ.subagent_config
-                    and integ.subagent_config.has_subagent
+                    if (
+                        # Platform integrations with subagent config
+                        (
+                            (integ := get_integration_by_id(integration_id))
+                            and integ.subagent_config
+                            and integ.subagent_config.has_subagent
+                        )
+                        # Custom MCPs are always subagent-capable when indexed
+                        or integration_id.startswith("custom_")
+                    )
                 }
 
                 logger.info(f"User {user_id} namespaces: {user_namespaces}")

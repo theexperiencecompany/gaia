@@ -10,7 +10,7 @@ All metadata comes from oauth_config.py OAUTH_INTEGRATIONS.
 """
 
 from datetime import datetime
-from typing import Annotated, List, Optional, TypedDict
+from typing import Annotated, Optional, TypedDict
 
 from langchain_core.messages import (
     AIMessageChunk,
@@ -27,7 +27,11 @@ from app.agents.core.subagents.subagent_helpers import (
     create_subagent_system_message,
 )
 from app.config.loggers import common_logger as logger
-from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.config.oauth_config import (
+    OAUTH_INTEGRATIONS,
+    get_integration_by_id,
+    get_subagent_integrations,
+)
 from app.core.lazy_loader import providers
 from app.helpers.agent_helpers import build_agent_config
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -81,15 +85,6 @@ async def check_integration_connection(
         return None
 
 
-def _get_subagent_integrations() -> List:
-    """Get all integrations that have subagent configurations."""
-    return [
-        integration
-        for integration in OAUTH_INTEGRATIONS
-        if integration.subagent_config and integration.subagent_config.has_subagent
-    ]
-
-
 async def _get_subagent_by_id(subagent_id: str):
     """
     Get subagent integration by ID or short_name.
@@ -136,44 +131,6 @@ async def _get_subagent_by_id(subagent_id: str):
         }
 
     return None
-
-
-async def index_subagents_to_store(store: BaseStore) -> None:
-    """Index all subagents into the store for semantic search with rich descriptions."""
-    subagent_integrations = _get_subagent_integrations()
-
-    put_ops = []
-    for integration in subagent_integrations:
-        cfg = integration.subagent_config
-        # Create comprehensive description with provider name mentioned multiple times
-        # for better semantic matching
-        provider_name = integration.name
-        short_name = integration.short_name or integration.id
-
-        description = (
-            f"{provider_name} ({short_name}). "
-            f"Domain: {cfg.domain}. "
-            f"Use cases: {cfg.use_cases}. "
-            f"Capabilities: {cfg.capabilities}. "
-            f"Examples: {cfg.example_queries if hasattr(cfg, 'example_queries') and cfg.example_queries else 'manage, create, update, fetch, send'}"
-        )
-
-        put_ops.append(
-            PutOp(
-                namespace=SUBAGENTS_NAMESPACE,
-                key=integration.id,
-                value={
-                    "id": integration.id,
-                    "name": integration.name,
-                    "description": description,
-                },
-                index=["description"],
-            )
-        )
-
-    if put_ops:
-        await store.abatch(put_ops)
-        logger.info(f"Indexed {len(put_ops)} subagents to store")
 
 
 async def index_custom_mcp_as_subagent(
@@ -259,7 +216,7 @@ async def handoff(
         integration = await _get_subagent_by_id(clean_id)
 
         if not integration:
-            available = [i.id for i in _get_subagent_integrations()][:5]
+            available = [i.id for i in get_subagent_integrations()][:5]
             return (
                 f"Subagent '{subagent_id}' not found. "
                 f"Use retrieve_tools to find available subagents. "
