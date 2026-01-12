@@ -303,6 +303,12 @@ const iconConfigs: Record<string, IconConfig> = {
     iconColor: "text-white",
     isImage: true,
   },
+  figma: {
+    icon: "/images/icons/figma.svg",
+    bgColor: "bg-zinc-800",
+    iconColor: "text-white",
+    isImage: true,
+  },
   integrations: {
     isImage: false,
     icon: ConnectIcon,

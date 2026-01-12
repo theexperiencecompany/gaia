@@ -56,7 +56,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   }, [tools, integration.id, integration.includedIntegrations]);
 
   const handleConnect = async () => {
-    if (!isAvailable || isConnected || isConnecting) return;
+    if (isConnected || isConnecting) return;
 
     setIsConnecting(true);
     try {
@@ -157,15 +157,13 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             color="#00bbff"
             className="font-medium text-black!"
             onClick={handleConnect}
-            disabled={!isAvailable || isConnecting}
+            disabled={isConnecting}
           >
             {isConnecting
               ? "Connecting..."
               : showRetry
                 ? "Retry Connection"
-                : isAvailable
-                  ? "Connect"
-                  : ""}
+                : "Connect"}
           </RaisedButton>
         ) : (
           onDisconnect && (

@@ -424,6 +424,16 @@ async def create_custom_integration(
     if existing:
         raise ValueError(f"Integration with ID '{integration_id}' already exists")
 
+    # Clean up orphaned user_integration if exists (from failed previous creation)
+    orphaned = await user_integrations_collection.find_one(
+        {"integration_id": integration_id, "user_id": user_id}
+    )
+    if orphaned:
+        logger.warning(f"Cleaning up orphaned user_integration for {integration_id}")
+        await user_integrations_collection.delete_one(
+            {"integration_id": integration_id, "user_id": user_id}
+        )
+
     integration = Integration(
         integration_id=integration_id,
         name=request.name,
@@ -543,12 +553,10 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
         }
     )
 
-    if result.deleted_count > 0:
-        # Remove all user_integration references
-        await user_integrations_collection.delete_many(
-            {"integration_id": integration_id}
-        )
+    # Always clean up user_integrations (prevents orphaned records)
+    await user_integrations_collection.delete_many({"integration_id": integration_id})
 
+    if result.deleted_count > 0:
         # Clean up MCP credentials from PostgreSQL (prevents orphaned records)
         try:
             from sqlalchemy import delete

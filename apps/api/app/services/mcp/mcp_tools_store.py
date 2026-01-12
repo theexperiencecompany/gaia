@@ -38,6 +38,7 @@ class MCPToolsStore:
             tools: List of dicts with 'name' and 'description' keys
         """
         if not tools:
+            logger.warning(f"[{integration_id}] Empty tools list - skipping store")
             return
 
         try:
@@ -46,25 +47,32 @@ class MCPToolsStore:
                 for t in tools
             ]
 
-            result = await integrations_collection.update_one(
-                {"integration_id": integration_id},
-                {
-                    "$set": {"tools": formatted_tools},
-                    "$setOnInsert": {
-                        "integration_id": integration_id,
-                        "source": "platform",
-                    },
-                },
-                upsert=True,
+            logger.info(
+                f"[{integration_id}] Updating {len(formatted_tools)} tools in integrations collection"
             )
 
-            if result.modified_count > 0 or result.upserted_id:
-                await delete_cache(MCP_TOOLS_CACHE_KEY)
-                logger.info(
-                    f"Stored {len(tools)} global tools for MCP integration {integration_id}"
+            result = await integrations_collection.update_one(
+                {"integration_id": integration_id},
+                {"$set": {"tools": formatted_tools}},
+                upsert=False,  # Don't create incomplete documents
+            )
+
+            if result.matched_count == 0:
+                logger.warning(
+                    f"[{integration_id}] No integration document found - tools not stored"
                 )
+            else:
+                logger.info(
+                    f"[{integration_id}] MongoDB update result: "
+                    f"matched={result.matched_count}, modified={result.modified_count}"
+                )
+
+            # Always invalidate cache after store attempt
+            await delete_cache(MCP_TOOLS_CACHE_KEY)
+
         except Exception as e:
-            logger.error(f"Error storing tools for {integration_id}: {e}")
+            logger.error(f"[{integration_id}] Error storing tools: {e}", exc_info=True)
+            raise  # Propagate error to caller
 
     async def get_tools(self, integration_id: str) -> Optional[list[dict]]:
         """Get stored tools for an MCP integration.

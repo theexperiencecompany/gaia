@@ -2,16 +2,17 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from mcp_use.client.exceptions import OAuthAuthenticationError
-
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
     CreateCustomIntegrationRequest as CreateCustomIntegrationRequestModel,
+)
+from app.models.integration_models import (
     UpdateCustomIntegrationRequest as UpdateCustomIntegrationRequestModel,
+)
+from app.models.integration_models import (
     UserIntegrationsListResponse as UserIntegrationsListResponseModel,
 )
 from app.schemas.integrations.requests import (
@@ -53,6 +54,8 @@ from app.services.integration_service import (
 )
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.oauth_service import get_all_integrations_status
+from fastapi import APIRouter, Depends, HTTPException
+from mcp_use.client.exceptions import OAuthAuthenticationError
 
 router = APIRouter()
 

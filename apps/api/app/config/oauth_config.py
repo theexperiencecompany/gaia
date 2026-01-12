@@ -226,6 +226,8 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         mcp_config=MCPConfig(
             server_url="https://mcp.notion.com/sse",
             requires_auth=True,
+            client_id_env="NOTION_MCP_CLIENT_ID",
+            client_secret_env="NOTION_MCP_CLIENT_SECRET",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -236,6 +238,25 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating pages, building databases, updating content, organizing workspaces, managing properties, searching content, and structuring knowledge bases",
             use_cases="creating pages, managing databases, organizing knowledge, or any Notion workspace operation",
             system_prompt=NOTION_AGENT_SYSTEM_PROMPT,
+        ),
+    ),
+    # Figma MCP (OAuth with pre-registered client - DCR not supported)
+    OAuthIntegration(
+        id="figma",
+        name="Figma",
+        description="Access design files, components, and collaborate on design projects with AI assistance.",
+        category="design",
+        provider="figma",
+        scopes=[],
+        available=True,
+        is_featured=True,
+        short_name="figma",
+        managed_by="mcp",
+        mcp_config=MCPConfig(
+            server_url="https://mcp.figma.com/sse",
+            requires_auth=True,
+            client_id_env="FIGMA_MCP_CLIENT_ID",
+            client_secret_env="FIGMA_MCP_CLIENT_SECRET",
         ),
     ),
     # OLD Composio Notion (commented out - using MCP now)

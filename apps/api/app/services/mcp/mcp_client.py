@@ -32,6 +32,12 @@ from app.utils.mcp_utils import (
 )
 
 
+class DCRNotSupportedException(Exception):
+    """Raised when Dynamic Client Registration is not supported by the server."""
+
+    pass
+
+
 class MCPClient:
     """
     MCP client wrapper implementing MCP OAuth 2.1 spec.
@@ -278,6 +284,8 @@ class MCPClient:
             self._clients[integration_id] = client
             self._tools[integration_id] = tools
 
+            logger.info(f"[{integration_id}] Connected to MCP, got {len(tools)} tools")
+
             # Build tool metadata for MongoDB (name and description only)
             tool_metadata = [
                 {
@@ -287,9 +295,15 @@ class MCPClient:
                 for t in tools
             ]
 
+            logger.info(
+                f"[{integration_id}] Storing {len(tool_metadata)} tools to MongoDB"
+            )
+
             # Store tool names/descriptions globally in MongoDB for frontend visibility
             global_store = get_mcp_tools_store()
             await global_store.store_tools(integration_id, tool_metadata)
+
+            logger.info(f"[{integration_id}] store_tools() completed successfully")
 
             # For custom integrations: index tools in ChromaDB
             if is_custom:
@@ -325,6 +339,33 @@ class MCPClient:
                 f"Failed to index tools in ChromaDB for {integration_id}: {e}"
             )
 
+    def _resolve_client_credentials(
+        self, mcp_config: MCPConfig
+    ) -> tuple[Optional[str], Optional[str]]:
+        """
+        Resolve OAuth client credentials from MCPConfig.
+
+        Supports two patterns:
+        1. Direct values: client_id and client_secret set directly
+        2. Environment variables: client_id_env and client_secret_env reference settings
+
+        Returns:
+            Tuple of (client_id, client_secret), either may be None
+        """
+        import os
+
+        client_id = mcp_config.client_id
+        client_secret = mcp_config.client_secret
+
+        # Resolve from environment variables if direct values not set
+        if not client_id and mcp_config.client_id_env:
+            client_id = os.getenv(mcp_config.client_id_env)
+
+        if not client_secret and mcp_config.client_secret_env:
+            client_secret = os.getenv(mcp_config.client_secret_env)
+
+        return client_id, client_secret
+
     async def build_oauth_auth_url(
         self,
         integration_id: str,
@@ -351,7 +392,7 @@ class MCPClient:
         oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
 
         # Get or register client credentials
-        client_id = mcp_config.client_id
+        client_id, client_secret = self._resolve_client_credentials(mcp_config)
 
         if not client_id:
             # Try stored DCR client
@@ -422,6 +463,10 @@ class MCPClient:
     ) -> Optional[str]:
         """
         Perform Dynamic Client Registration (RFC 7591) on the authorization server.
+
+        Raises:
+            DCRNotSupportedException: If server returns 403/404/405 (DCR not supported)
+            ValueError: For other registration failures
         """
         try:
             async with httpx.AsyncClient() as client:
@@ -477,7 +522,7 @@ class MCPClient:
         if not token_endpoint:
             raise ValueError(f"No token_endpoint for {integration_id}")
 
-        # Get client credentials
+        # Get client credentials - check DCR first, then resolve from config/env
         client_id = None
         client_secret = None
 
@@ -486,10 +531,12 @@ class MCPClient:
             client_id = dcr_data.get("client_id")
             client_secret = dcr_data.get("client_secret")
 
-        if not client_id:
-            client_id = mcp_config.client_id
-        if not client_secret:
-            client_secret = mcp_config.client_secret
+        if not client_id or not client_secret:
+            resolved_id, resolved_secret = self._resolve_client_credentials(mcp_config)
+            if not client_id:
+                client_id = resolved_id
+            if not client_secret:
+                client_secret = resolved_secret
 
         # Get resource for token binding (RFC 8707)
         resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))

@@ -79,15 +79,15 @@ export const integrationsApi = {
       },
     )) as {
       status: "connected" | "redirect" | "error";
-      integration_id: string;
+      integrationId: string;
       message?: string;
-      tools_count?: number;
-      redirect_url?: string;
+      toolsCount?: number;
+      redirectUrl?: string;
       error?: string;
     };
 
-    if (response.status === "redirect" && response.redirect_url) {
-      window.location.href = response.redirect_url;
+    if (response.status === "redirect" && response.redirectUrl) {
+      window.location.href = response.redirectUrl;
       return { status: "redirecting" };
     }
 
@@ -97,7 +97,7 @@ export const integrationsApi = {
 
     return {
       status: response.status,
-      toolsCount: response.tools_count,
+      toolsCount: response.toolsCount ?? undefined,
     };
   },
 

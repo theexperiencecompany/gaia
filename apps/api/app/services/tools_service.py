@@ -10,7 +10,10 @@ from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
-from app.db.mongodb.collections import integrations_collection
+from app.db.mongodb.collections import (
+    integrations_collection,
+    user_integrations_collection,
+)
 
 
 # Build a lookup map for integration names
@@ -85,13 +88,25 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
         if not user_id:
             return []
         try:
+            # Step 1: Get connected integration_ids from user_integrations
+            # (status is stored in user_integrations, not integrations)
+            user_connected = await user_integrations_collection.find(
+                {"user_id": user_id, "status": "connected"},
+                {"integration_id": 1},
+            ).to_list(None)
+
+            if not user_connected:
+                return []
+
+            connected_ids = [doc["integration_id"] for doc in user_connected]
+
+            # Step 2: Fetch custom integrations by their IDs
             return await integrations_collection.find(
-                {"source": "custom", "created_by": user_id, "status": "connected"},
                 {
-                    "integration_id": 1,
-                    "name": 1,
-                    "icon_url": 1,
-                },  # Projection for efficiency
+                    "integration_id": {"$in": connected_ids},
+                    "source": "custom",
+                },
+                {"integration_id": 1, "name": 1, "icon_url": 1},
             ).to_list(None)
         except Exception as e:
             logger.warning(f"Failed to fetch custom integrations: {e}")

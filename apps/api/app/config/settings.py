@@ -235,6 +235,8 @@ class ProductionSettings(CommonSettings):
     VERCEL_MCP_CLIENT_ID: str
     NOTION_MCP_CLIENT_ID: str
     NOTION_MCP_CLIENT_SECRET: str
+    FIGMA_MCP_CLIENT_ID: str
+    FIGMA_MCP_CLIENT_SECRET: str
 
     # ----------------------------------------------
     # Opik Evaluation Config
@@ -361,6 +363,8 @@ class DevelopmentSettings(CommonSettings):
     VERCEL_MCP_CLIENT_ID: Optional[str] = None
     NOTION_MCP_CLIENT_ID: Optional[str] = None
     NOTION_MCP_CLIENT_SECRET: Optional[str] = None
+    FIGMA_MCP_CLIENT_ID: Optional[str] = None
+    FIGMA_MCP_CLIENT_SECRET: Optional[str] = None
 
     # ----------------------------------------------
     # Opik Evaluation Config

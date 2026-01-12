@@ -86,17 +86,26 @@ async def test_mcp_connection(
         integration_id, requires_auth=True, auth_type=auth_type
     )
 
-    auth_url = await client.build_oauth_auth_url(
-        integration_id=integration_id,
-        redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
-        redirect_path="/integrations",
-    )
-    return JSONResponse(
-        content={
-            "status": "requires_oauth",
-            "oauth_url": auth_url,
-        }
-    )
+    try:
+        auth_url = await client.build_oauth_auth_url(
+            integration_id=integration_id,
+            redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
+            redirect_path="/integrations",
+        )
+        return JSONResponse(
+            content={
+                "status": "requires_oauth",
+                "oauth_url": auth_url,
+            }
+        )
+    except Exception as e:
+        logger.error(f"OAuth URL build failed for {integration_id}: {e}")
+        return JSONResponse(
+            content={
+                "status": "failed",
+                "error": str(e),
+            }
+        )
 
 
 @router.get("/oauth/callback")
