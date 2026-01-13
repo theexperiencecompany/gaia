@@ -45,7 +45,7 @@ def extract_headings_from_document(
             # Check for markdown style headings (e.g. "# Heading")
             import re
 
-            match = re.match(r"^(#+)\s+(.+)$", full_text)
+            match = re.match(r"^(#+)\s+(.+?)$", full_text)
             if match:
                 level = len(match.group(1))
                 # Update text to use content without hash marks
