@@ -109,7 +109,7 @@ const SplitTextBlur = ({
               WebkitBackgroundClip: "inherit",
               WebkitTextFillColor: "inherit",
               backgroundClip: "inherit",
-              paddingBottom: "7px",
+              padding: "7px 0",
             }}
             className="font-serif"
           >

@@ -532,8 +532,8 @@ export function LandingDownloadSection() {
               className="object-cover object-center scale-115"
             />
           </div>
-          <div className="flex flex-1 flex-col items-center gap-4 p-6 text-center pt-4">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-1 flex-col items-center gap-4 p-6 text-center pt-6.5">
+            <div className="flex items-center gap-4">
               <Chip variant="flat" color="warning" size="sm">
                 Coming Soon
               </Chip>

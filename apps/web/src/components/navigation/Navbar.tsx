@@ -4,7 +4,6 @@ import AnimatedNumber from "animated-number-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-
 import MobileMenu from "@/components/navigation/MobileMenu";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { appConfig } from "@/config/appConfig";
@@ -18,9 +17,9 @@ import {
   StarFilledIcon,
 } from "@/icons";
 import { posthog } from "@/lib";
-
 import { Github } from "../shared";
 import { LogoWithContextMenu } from "../shared/LogoWithContextMenu";
+import { Button } from "../ui";
 import { RaisedButton } from "../ui/raised-button";
 import { NavbarMenu } from "./NavbarMenu";
 
@@ -213,11 +212,7 @@ export default function Navbar() {
                   });
                 }}
               >
-                <RaisedButton
-                  size={"sm"}
-                  className="group rounded-xl border-0!"
-                  color="#1c1c1c"
-                >
+                <Button className="group rounded-xl border-0! bg-black/60 hover:bg-black/40 text-white">
                   <div className="flex items-center">
                     <Github className="mr-1 size-4 fill-white" />
                     <span className="ml-1 lg:hidden">Star</span>
@@ -234,7 +229,7 @@ export default function Navbar() {
                       />
                     </span>
                   </div>
-                </RaisedButton>
+                </Button>
               </a>
               <Link href={user.email ? "/c" : "/signup"}>
                 <RaisedButton
