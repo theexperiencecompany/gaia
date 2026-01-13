@@ -11,6 +11,7 @@ interface ChatContextValue {
   activeChatId: string | null;
   setActiveChatId: (chatId: string | null) => void;
   createNewChat: () => string;
+  clearActiveMessages: () => void;
 }
 
 const ChatContext = createContext<ChatContextValue | undefined>(undefined);
@@ -32,9 +33,28 @@ export function ChatProvider({ children }: ChatProviderProps) {
     return newChatId;
   }, []);
 
+  const clearActiveMessages = useCallback(() => {
+    const store = useChatStore.getState();
+    const currentChatId = store.activeChatId;
+    if (currentChatId) {
+      store.clearMessages(currentChatId);
+    }
+    store.setStreamingState({
+      isTyping: false,
+      isStreaming: false,
+      conversationId: null,
+      progress: null,
+    });
+  }, []);
+
   const value = useMemo(
-    () => ({ activeChatId, setActiveChatId, createNewChat }),
-    [activeChatId, setActiveChatId, createNewChat],
+    () => ({
+      activeChatId,
+      setActiveChatId,
+      createNewChat,
+      clearActiveMessages,
+    }),
+    [activeChatId, setActiveChatId, createNewChat, clearActiveMessages],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

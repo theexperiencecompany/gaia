@@ -1,63 +1,68 @@
-import { useRouter } from "expo-router";
+import { FlashList } from "@shopify/flash-list";
+import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useState } from "react";
-import {
-  FlatList,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
-  Text,
-  View,
-} from "react-native";
-import DrawerLayout, {
-  DrawerPosition,
-  DrawerType,
-} from "react-native-gesture-handler/ReanimatedDrawerLayout";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Image, Keyboard, Pressable, View } from "react-native";
+import Animated, {
+  Easing,
+  runOnJS,
+  useAnimatedKeyboard,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { ChatInput } from "@/components/ui/chat-input";
+import { Text } from "@/components/ui/text";
 import {
-  ChatHeader,
+  ChatLayout,
   ChatMessage,
   type Message,
-  SIDEBAR_WIDTH,
-  SidebarContent,
   useChat,
   useChatContext,
-  useSidebar,
 } from "@/features/chat";
 import { getRelevantThinkingMessage } from "@/features/chat/utils/playfulThinking";
 
-export default function IndexScreen() {
-  const router = useRouter();
-  const { setActiveChatId, createNewChat } = useChatContext();
-  const { drawerRef, closeSidebar, toggleSidebar } = useSidebar();
+function EmptyState() {
+  return (
+    <View className="flex-1 items-center justify-center px-6">
+      <Text variant={"h2"}>What can I help you with?</Text>
+      <Text className="text-xs">
+        Start a conversation by typing a message below
+      </Text>
+    </View>
+  );
+}
 
-  // Use null for new chats - backend will create conversation ID in first SSE event
+function ChatContent({
+  activeChatId,
+  onFollowUpAction,
+}: {
+  activeChatId: string | null;
+  onFollowUpAction?: (action: string) => void;
+}) {
   const {
     messages,
     isTyping,
     progress,
-    conversationId,
     flatListRef,
     sendMessage,
     scrollToBottom,
-  } = useChat(null);
+  } = useChat(activeChatId);
 
+  const [inputValue, setInputValue] = useState("");
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [thinkingMessage, setThinkingMessage] = useState(() =>
     getRelevantThinkingMessage(""),
   );
 
-  // Update active chat ID when conversation is created by backend
-  useEffect(() => {
-    if (conversationId) {
-      setActiveChatId(conversationId);
-    }
-  }, [conversationId, setActiveChatId]);
+  const keyboard = useAnimatedKeyboard();
 
-  // Rotate playful thinking messages when typing but no tool progress
+  const animatedInputStyle = useAnimatedStyle(() => ({
+    bottom: keyboard.height.value,
+  }));
+
   useEffect(() => {
     if (isTyping && !progress) {
-      // Set initial message immediately
       setThinkingMessage(getRelevantThinkingMessage(lastUserMessage));
       const interval = setInterval(
         () => {
@@ -69,32 +74,39 @@ export default function IndexScreen() {
     }
   }, [isTyping, progress, lastUserMessage]);
 
-  // Get the display message for loading state - use progress when available, otherwise use thinking message
   const displayMessage = progress || thinkingMessage;
 
   useEffect(() => {
     scrollToBottom();
   }, [messages.length, scrollToBottom]);
 
-  const handleSelectChat = (chatId: string) => {
-    setActiveChatId(chatId);
-    closeSidebar();
-    router.push(`/(chat)/${chatId}`);
-  };
+  useAnimatedReaction(
+    () => keyboard.height.value,
+    (currentHeight, previousHeight) => {
+      if (
+        currentHeight > 0 &&
+        (previousHeight === null || currentHeight > previousHeight)
+      ) {
+        runOnJS(scrollToBottom)();
+      }
+    },
+  );
 
-  const handleNewChat = () => {
-    createNewChat();
-    closeSidebar();
-    router.replace("/");
-  };
+  const handleFollowUpAction = useCallback(
+    (action: string) => {
+      setInputValue(action);
+      onFollowUpAction?.(action);
+    },
+    [onFollowUpAction],
+  );
 
-  const handleSendMessage = async (text: string) => {
-    setLastUserMessage(text);
-    await sendMessage(text);
-  };
-
-  const renderDrawerContent = () => (
-    <SidebarContent onSelectChat={handleSelectChat} onNewChat={handleNewChat} />
+  const handleSend = useCallback(
+    (text: string) => {
+      setLastUserMessage(text);
+      sendMessage(text);
+      setInputValue("");
+    },
+    [sendMessage],
   );
 
   const renderMessage = useCallback(
@@ -107,84 +119,111 @@ export default function IndexScreen() {
       return (
         <ChatMessage
           message={item}
+          onFollowUpAction={handleFollowUpAction}
           isLoading={showLoading}
           loadingMessage={showLoading ? displayMessage : undefined}
         />
       );
     },
-    [messages.length, isTyping, displayMessage],
+    [handleFollowUpAction, messages.length, isTyping, displayMessage],
   );
 
+  const showEmptyState = messages.length === 0 && !isTyping && !activeChatId;
+
   return (
-    <View className="flex-1">
-      <DrawerLayout
-        ref={drawerRef}
-        drawerWidth={SIDEBAR_WIDTH}
-        drawerPosition={DrawerPosition.LEFT}
-        drawerType={DrawerType.FRONT}
-        overlayColor="rgba(0, 0, 0, 0.7)"
-        renderNavigationView={renderDrawerContent}
+    <View style={{ flex: 1 }}>
+      {showEmptyState ? (
+        <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
+          <EmptyState />
+        </Pressable>
+      ) : (
+        <FlashList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={(item) => item.id}
+          extraData={[
+            messages[messages.length - 1]?.text,
+            isTyping,
+            displayMessage,
+          ]}
+          contentContainerStyle={{
+            paddingTop: 16,
+            paddingBottom: 90,
+          }}
+          showsVerticalScrollIndicator={true}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onLoad={() => {
+            if (messages.length > 0) {
+              flatListRef.current?.scrollToEnd({ animated: false });
+            }
+          }}
+        />
+      )}
+
+      <Animated.View
+        className="absolute left-0 right-0 px-2 pb-5 bg-surface rounded-t-4xl"
+        style={animatedInputStyle}
       >
-        <KeyboardAvoidingView
-          className="flex-1"
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-        >
-          <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-            <ChatHeader
-              onMenuPress={toggleSidebar}
-              onNewChatPress={handleNewChat}
-              onSearchPress={() => console.log("Search pressed")}
-            />
-
-            <View className="flex-1">
-              {messages.length === 0 && !isTyping ? (
-                <View className="flex-1 items-center justify-center px-6">
-                  <Text className="text-2xl font-semibold text-foreground mb-2">
-                    What can I help you with?
-                  </Text>
-                  <Text className="text-default-500 text-center">
-                    Start a conversation by typing a message below
-                  </Text>
-                </View>
-              ) : (
-                <FlatList
-                  ref={flatListRef}
-                  data={messages}
-                  renderItem={renderMessage}
-                  keyExtractor={(item) => item.id}
-                  extraData={[
-                    messages[messages.length - 1]?.text,
-                    isTyping,
-                    displayMessage,
-                  ]}
-                  contentContainerStyle={{
-                    flexGrow: 1,
-                    paddingTop: 16,
-                    paddingBottom: 32,
-                  }}
-                  showsVerticalScrollIndicator={true}
-                  keyboardShouldPersistTaps="handled"
-                  initialNumToRender={20}
-                  maxToRenderPerBatch={10}
-                  windowSize={10}
-                  keyboardDismissMode="on-drag"
-                  onScrollBeginDrag={Keyboard.dismiss}
-                  onContentSizeChange={() => {
-                    if (messages.length > 0) {
-                      flatListRef.current?.scrollToEnd({ animated: false });
-                    }
-                  }}
-                />
-              )}
-            </View>
-
-            <View className="px-2 pb-2 bg-surface rounded-t-4xl">
-              <ChatInput onSend={handleSendMessage} />
-            </View>
-          </SafeAreaView>
-        </KeyboardAvoidingView>
-      </DrawerLayout>
+        <ChatInput
+          onSend={handleSend}
+          value={inputValue}
+          onChangeText={setInputValue}
+        />
+      </Animated.View>
     </View>
+  );
+}
+
+export default function ChatScreen() {
+  const { activeChatId } = useChatContext();
+
+  const [_isReady, setIsReady] = useState(false);
+  const screenOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsReady(true);
+      screenOpacity.value = withTiming(1, {
+        duration: 400,
+        easing: Easing.out(Easing.ease),
+      });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [screenOpacity]);
+
+  const animatedScreenStyle = useAnimatedStyle(() => ({
+    opacity: screenOpacity.value,
+  }));
+
+  return (
+    <ChatLayout
+      background={
+        !activeChatId ? (
+          <>
+            <Image
+              source={require("@/assets/background/chat.jpg")}
+              style={{ width: "100%", height: "100%", opacity: 0.65 }}
+              resizeMode="cover"
+            />
+            <LinearGradient
+              colors={[
+                "rgba(0,0,0,0.3)",
+                "rgba(255,255,255,0.1)",
+                "rgba(0,0,0,0.0)",
+                "rgba(0,0,0,0.75)",
+              ]}
+              locations={[0, 0.2, 0.45, 1]}
+              style={{ position: "absolute", width: "100%", height: "100%" }}
+            />
+          </>
+        ) : undefined
+      }
+    >
+      <Animated.View className="flex-1" style={animatedScreenStyle}>
+        <ChatContent activeChatId={activeChatId} />
+      </Animated.View>
+    </ChatLayout>
   );
 }

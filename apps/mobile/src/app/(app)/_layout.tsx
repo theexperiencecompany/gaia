@@ -1,9 +1,15 @@
 import { Redirect, Stack } from "expo-router";
 import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "@/features/auth";
+import { SidebarProvider } from "@/features/chat";
+import { useNotifications } from "@/features/notifications";
 
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth();
+
+  // Setup push notifications at app level (after auth)
+  // This ensures notifications work regardless of which screen is active
+  useNotifications();
 
   if (isLoading) {
     return (
@@ -18,17 +24,20 @@ export default function AppLayout() {
   }
 
   return (
-    <View className="flex-1 bg-background">
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: "transparent" },
-        }}
-      >
-        <Stack.Screen name="index" options={{ animation: "none" }} />
-        <Stack.Screen name="(chat)/[id]" options={{ animation: "none" }} />
-        <Stack.Screen name="test/index" options={{ animation: "none" }} />
-      </Stack>
-    </View>
+    <SidebarProvider>
+      <View className="flex-1 bg-background">
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: "#0a0a0a" },
+            animation: "none",
+            animationDuration: 0,
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="test/index" />
+        </Stack>
+      </View>
+    </SidebarProvider>
   );
 }

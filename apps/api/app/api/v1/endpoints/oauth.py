@@ -1,12 +1,13 @@
 from typing import Optional
 
 import httpx
+import secrets
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
-from app.db.redis import delete_cache
+from app.db.redis import delete_cache, redis_cache
 from app.services.calendar_service import initialize_calendar_preferences
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth_service import handle_oauth_connection, store_user_info
@@ -14,6 +15,7 @@ from app.services.oauth_state_service import validate_and_consume_oauth_state
 from app.utils.oauth_utils import fetch_user_info_from_google, get_tokens_from_code
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import RedirectResponse
+from app.constants.general import MOBILE_REDIRECT_TTL
 from workos import WorkOSClient
 
 router = APIRouter()
@@ -41,28 +43,71 @@ async def login_workos():
     return RedirectResponse(url=authorization_url)
 
 
+
+async def _store_mobile_redirect(state: str, redirect_uri: str) -> None:
+    """Store mobile redirect URI in Redis with TTL."""
+    await redis_cache.client.setex(f"mobile_redirect:{state}", MOBILE_REDIRECT_TTL, redirect_uri)
+
+
+async def _get_and_delete_mobile_redirect(state: str) -> str | None:
+    """Get and delete mobile redirect URI from Redis (consume once)."""
+    key = f"mobile_redirect:{state}"
+    uri = await redis_cache.client.get(key)
+    if uri:
+        await redis_cache.client.delete(key)
+    return uri
+
+
 @router.get("/login/workos/mobile")
-async def login_workos_mobile():
-    """Start WorkOS SSO flow for mobile apps (Expo)."""
+async def login_workos_mobile(redirect_uri: Optional[str] = None):
+    """
+    Start WorkOS SSO flow for mobile apps (Expo).
+    
+    Args:
+        redirect_uri: The deep link URI to redirect back to (from Linking.createURL)
+    """
+    # Generate a unique state to track this auth flow
+    state = secrets.token_urlsafe(32)
+    
+    # Store the mobile app's redirect URI
+    # Default to gaiamobile:// scheme if not provided
+    mobile_callback = redirect_uri or "gaiamobile://auth/callback"
+    await _store_mobile_redirect(state, mobile_callback)
+    
+    logger.info(f"Mobile OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}...")
+    
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
-        redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
+        redirect_uri=f"{settings.HOST}/api/v1/oauth/workos/mobile/callback",
+        state=state,
     )
     return {"url": authorization_url}
 
 
 @router.get("/workos/mobile/callback")
-async def workos_mobile_callback(code: Optional[str] = None) -> RedirectResponse:
+async def workos_mobile_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+) -> RedirectResponse:
     """
     Handle WorkOS SSO callback for mobile (Expo) apps.
     Returns a deep link redirect to the mobile app with the auth token.
     """
+    # Get the stored redirect URI for this auth flow
+    mobile_redirect: str | None = None
+    if state:
+        mobile_redirect = await _get_and_delete_mobile_redirect(state)
+    
+    if not mobile_redirect:
+        mobile_redirect = "gaiamobile://auth/callback"
+        logger.warning(f"No stored redirect URI for state, using default: {mobile_redirect}")
+    
+    logger.info(f"Mobile OAuth callback, redirecting to: {mobile_redirect}")
+    
     try:
         if not code:
             logger.error("No authorization code received from WorkOS (mobile)")
-            return RedirectResponse(
-                url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=missing_code"
-            )
+            return RedirectResponse(url=f"{mobile_redirect}?error=missing_code")
 
         auth_response = workos.user_management.authenticate_with_code(
             code=code,
@@ -83,13 +128,11 @@ async def workos_mobile_callback(code: Optional[str] = None) -> RedirectResponse
         await store_user_info(name, email, picture_url)
 
         token = auth_response.sealed_session or auth_response.access_token
-        return RedirectResponse(url=f"gaiamobile://auth/callback?token={token}")
+        return RedirectResponse(url=f"{mobile_redirect}?token={token}")
 
     except HTTPException as e:
         logger.error(f"HTTP error during WorkOS mobile auth: {e.detail}")
-        return RedirectResponse(
-            url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error={e.detail}"
-        )
+        return RedirectResponse(url=f"{mobile_redirect}?error={e.detail}")
 
     except Exception as e:
         logger.error(f"Unexpected error during WorkOS mobile callback: {str(e)}")

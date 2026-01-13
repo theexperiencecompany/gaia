@@ -1,37 +1,70 @@
-# Mobile mise.toml for GAIA
-# Minimal setup for React Native/Expo app
-
 [tools]
 node = "22"
+
+[tasks.setup]
+description = "Install dependencies and setup Expo environment"
+run = "pnpm install"
+
+[tasks.deps]
+description = "Install dependencies"
+run = "pnpm install"
 
 [tasks.dev]
 description = "Start Expo development server"
 run = "pnpm start"
 
 [tasks.android]
-description = "Run on Android"
+description = "Run on Android device/emulator"
 run = "pnpm android"
 
 [tasks.ios]
-description = "Run on iOS"
+description = "Run on iOS device/simulator"
 run = "pnpm ios"
 
 [tasks.web]
 description = "Run on Web"
 run = "pnpm web"
 
-[tasks.deps]
-description = "Install dependencies"
-run = "pnpm install"
+[tasks.prebuild]
+description = "Generate native code (run after adding native dependencies)"
+run = "npx expo prebuild"
+
+[tasks."prebuild:clean"]
+description = "Clean and regenerate native code"
+run = "npx expo prebuild --clean"
+
+[tasks."eas:build"]
+description = "Build with EAS Build (cloud)"
+run = "eas build"
+
+[tasks."eas:build:android"]
+description = "Build Android with EAS"
+run = "eas build --platform android"
+
+[tasks."eas:build:ios"]
+description = "Build iOS with EAS"
+run = "eas build --platform ios"
+
+[tasks."eas:submit"]
+description = "Submit to app stores"
+run = "eas submit"
 
 [tasks.lint]
-description = "Run linter"
+description = "Run linter (Biome)"
 run = "pnpm lint"
+
+[tasks."lint:fix"]
+description = "Run linter with auto-fix"
+run = "pnpm lint:fix"
 
 [tasks.clean]
 description = "Clean build artifacts"
-run = "rm -rf .expo node_modules"
+run = "rm -rf .expo node_modules android ios"
 
 [tasks."clean:cache"]
-description = "Clear Expo cache"
-run = "pnpm start -c"
+description = "Clear Expo cache and restart"
+run = "npx expo start -c"
+
+[tasks."clean:metro"]
+description = "Clear Metro bundler cache"
+run = "npx expo start --clear"

@@ -6,13 +6,9 @@ interface AuthFooterProps {
 }
 
 export function AuthFooter({ showSignUpDisclaimer = false }: AuthFooterProps) {
-  const handleTermsPress = () => {
-    console.log("Navigate to Terms of Service");
-  };
+  const handleTermsPress = () => {};
 
-  const handlePrivacyPress = () => {
-    console.log("Navigate to Privacy Policy");
-  };
+  const handlePrivacyPress = () => {};
 
   return (
     <View className="items-center justify-center mt-6">
