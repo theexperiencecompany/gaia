@@ -192,15 +192,18 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
         composio = get_composio_service()
 
+        # Get config from trigger_data
+        trigger_data = config.get("trigger_data", {})
+
         # Parse comma-separated IDs
-        spreadsheet_ids_str = config.get("spreadsheet_ids", "")
+        spreadsheet_ids_str = trigger_data.get("spreadsheet_ids", "")
         spreadsheet_ids = (
             [s.strip() for s in spreadsheet_ids_str.split(",") if s.strip()]
             if spreadsheet_ids_str
             else []
         )
 
-        sheet_names_str = config.get("sheet_names", "")
+        sheet_names_str = trigger_data.get("sheet_names", "")
         sheet_names = (
             [s.strip() for s in sheet_names_str.split(",") if s.strip()]
             if sheet_names_str
@@ -276,29 +279,6 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         except Exception as e:
             logger.error(f"Failed to register trigger {composio_slug}: {e}")
             return None
-
-    async def unregister(self, user_id: str, trigger_ids: List[str]) -> bool:
-        """Unregister Google Sheets triggers."""
-        if not trigger_ids:
-            return True
-
-        success = True
-        composio = get_composio_service()
-
-        for trigger_id in trigger_ids:
-            try:
-                await asyncio.to_thread(
-                    composio.composio.triggers.disable,
-                    trigger_id=trigger_id,
-                )
-                logger.info(f"Unregistered Google Sheets trigger: {trigger_id}")
-            except Exception as e:
-                logger.error(
-                    f"Failed to unregister Google Sheets trigger {trigger_id}: {e}"
-                )
-                success = False
-
-        return success
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]

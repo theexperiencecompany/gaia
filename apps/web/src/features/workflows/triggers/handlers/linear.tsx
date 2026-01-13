@@ -17,12 +17,17 @@ import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
 // =============================================================================
-// LINEAR SETTINGS COMPONENT
+// TYPE DEFINITIONS
 // =============================================================================
 
-interface LinearConfig extends TriggerConfig {
+interface LinearTriggerData {
+  trigger_name: string;
   team_id?: string;
-  trigger_slug?: string;
+}
+
+interface LinearConfig extends TriggerConfig {
+  trigger_name?: string;
+  trigger_data?: LinearTriggerData;
 }
 
 interface OptionItem {
@@ -30,21 +35,26 @@ interface OptionItem {
   label: string;
 }
 
+// =============================================================================
+// LINEAR SETTINGS COMPONENT
+// =============================================================================
+
 function LinearSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
   const { integrations, connectIntegration } = useIntegrations();
   const config = triggerConfig as LinearConfig;
+  const triggerData = config.trigger_data;
   const integrationId = "linear";
 
   const isConnected =
     integrations.find((i) => i.id === integrationId)?.status === "connected";
 
   const [useManualInput, setUseManualInput] = useState(false);
-  const triggerSlug = (config.trigger_slug || config.type) ?? "";
+  const triggerSlug = config.trigger_name || "";
 
-  // Fetch teams (assuming endpoint supports 'team' field)
+  // Fetch teams
   const { data: teamsData, isLoading } = useTriggerOptions(
     integrationId,
     triggerSlug,
@@ -53,6 +63,19 @@ function LinearSettings({
   );
 
   const teamOptions = (teamsData || []) as OptionItem[];
+
+  const updateTriggerData = (updates: Partial<LinearTriggerData>) => {
+    const currentTriggerData = triggerData || {
+      trigger_name: config.trigger_name || "",
+    };
+    onConfigChange({
+      ...config,
+      trigger_data: {
+        ...currentTriggerData,
+        ...updates,
+      },
+    });
+  };
 
   if (!isConnected) {
     return (
@@ -90,11 +113,11 @@ function LinearSettings({
         <Select
           label="Team"
           placeholder="Select a team"
-          selectedKeys={config.team_id ? [config.team_id] : []}
+          selectedKeys={triggerData?.team_id ? [triggerData.team_id] : []}
           onSelectionChange={(keys) => {
             const key = Array.from(keys)[0];
             if (key) {
-              onConfigChange({ ...config, team_id: String(key) });
+              updateTriggerData({ team_id: String(key) });
             }
           }}
           isLoading={isLoading}
@@ -119,8 +142,8 @@ function LinearSettings({
         <Input
           label="Team ID"
           placeholder="Available in Linear URL"
-          value={config.team_id || ""}
-          onValueChange={(val) => onConfigChange({ ...config, team_id: val })}
+          value={triggerData?.team_id || ""}
+          onValueChange={(val) => updateTriggerData({ team_id: val })}
           className="w-full max-w-xl"
           description={
             teamOptions.length > 0 ? (
@@ -147,18 +170,25 @@ export const linearTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["linear_issue_created", "linear_comment_added"],
 
   createDefaultConfig: (slug: string): TriggerConfig => ({
-    type: slug,
+    type: "app",
     enabled: true,
-    team_id: "",
+    trigger_name: slug,
+    trigger_data: {
+      trigger_name: slug,
+      team_id: "",
+    },
   }),
 
   SettingsComponent: LinearSettings,
 
-  getDisplayInfo: (config) => ({
-    label:
-      config.type === "linear_issue_created"
-        ? "on new issue"
-        : "on new comment",
-    integrationId: "linear",
-  }),
+  getDisplayInfo: (config) => {
+    const triggerName = (config as LinearConfig).trigger_name || config.type;
+    return {
+      label:
+        triggerName === "linear_issue_created"
+          ? "on new issue"
+          : "on new comment",
+      integrationId: "linear",
+    };
+  },
 };

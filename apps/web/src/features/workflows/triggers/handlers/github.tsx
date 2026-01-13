@@ -16,15 +16,24 @@ import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
 // =============================================================================
-// GITHUB SETTINGS COMPONENT
+// TYPE DEFINITIONS
 // =============================================================================
 
-interface GitHubConfig extends TriggerConfig {
+interface GitHubTriggerData {
+  trigger_name: string;
   owner?: string;
   repo?: string;
-  repos?: string[]; // Multi-select support
-  trigger_slug?: string;
+  repos?: string[];
 }
+
+interface GitHubConfig extends TriggerConfig {
+  trigger_name?: string;
+  trigger_data?: GitHubTriggerData;
+}
+
+// =============================================================================
+// GITHUB SETTINGS COMPONENT
+// =============================================================================
 
 interface RepoOption {
   value: string;
@@ -38,8 +47,8 @@ function GitHubSettings({
   onConfigChange,
 }: TriggerSettingsProps) {
   const { integrations, connectIntegration } = useIntegrations();
-  // Config fields
   const config = triggerConfig as GitHubConfig;
+  const triggerData = config.trigger_data;
   const integrationId = "github";
 
   const isConnected =
@@ -48,7 +57,7 @@ function GitHubSettings({
   const [useManualInput, setUseManualInput] = useState(false);
   const [tagInput, setTagInput] = useState("");
 
-  const triggerSlug = (config.trigger_slug || config.type) ?? "";
+  const triggerSlug = config.trigger_name || "";
 
   // Infinite Query for pagination
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
@@ -62,15 +71,24 @@ function GitHubSettings({
   // Flatten pages
   const repoOptions = (data?.pages.flat() || []) as RepoOption[];
 
-  const handleSelectionChange = (keys: "all" | Set<React.Key>) => {
-    // keys is a Set of strings
-    const selectedKeys = keys === "all" ? [] : Array.from(keys).map(String);
-
-    // Update config with array of repos
+  const updateTriggerData = (updates: Partial<GitHubTriggerData>) => {
+    const currentTriggerData = triggerData || {
+      trigger_name: config.trigger_name || "",
+    };
     onConfigChange({
       ...config,
+      trigger_data: {
+        ...currentTriggerData,
+        ...updates,
+      },
+    });
+  };
+
+  const handleSelectionChange = (keys: "all" | Set<React.Key>) => {
+    const selectedKeys = keys === "all" ? [] : Array.from(keys).map(String);
+
+    updateTriggerData({
       repos: selectedKeys,
-      // Backward compatibility: set first repo as 'repo' and its owner
       repo: selectedKeys[0] || "",
       owner: selectedKeys[0] ? selectedKeys[0].split("/")[0] : "",
     });
@@ -80,42 +98,31 @@ function GitHubSettings({
     const trimmed = tagInput.trim();
     if (!trimmed) return;
 
-    // Comprehensive validation for owner/repo format
-    // Must be: owner/repo where both parts are valid GitHub identifiers
-
-    // Check for exactly one slash and no leading/trailing slashes
     if (trimmed.startsWith("/") || trimmed.endsWith("/")) {
-      // Invalid: starts or ends with slash
       return;
     }
 
     const parts = trimmed.split("/");
     if (parts.length !== 2) {
-      // Invalid: must have exactly one slash
       return;
     }
 
     const [owner, repo] = parts;
 
-    // Both owner and repo must be non-empty
     if (!owner || !repo) {
       return;
     }
 
-    // GitHub username/repo validation: alphanumeric, hyphens, underscores
-    // Cannot start with hyphen
     const githubNameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-_]*[a-zA-Z0-9])?$/;
 
     if (!githubNameRegex.test(owner) || !githubNameRegex.test(repo)) {
-      // Invalid characters or format
       return;
     }
 
-    const currentRepos = config.repos || [];
+    const currentRepos = triggerData?.repos || [];
     if (!currentRepos.includes(trimmed)) {
       const updatedRepos = [...currentRepos, trimmed];
-      onConfigChange({
-        ...config,
+      updateTriggerData({
         repos: updatedRepos,
         repo: updatedRepos[0] || "",
         owner: updatedRepos[0] ? updatedRepos[0].split("/")[0] : "",
@@ -125,10 +132,9 @@ function GitHubSettings({
   };
 
   const handleRemoveTag = (repoToRemove: string) => {
-    const currentRepos = config.repos || [];
+    const currentRepos = triggerData?.repos || [];
     const updatedRepos = currentRepos.filter((r) => r !== repoToRemove);
-    onConfigChange({
-      ...config,
+    updateTriggerData({
       repos: updatedRepos,
       repo: updatedRepos[0] || "",
       owner: updatedRepos[0] ? updatedRepos[0].split("/")[0] : "",
@@ -142,11 +148,10 @@ function GitHubSettings({
     } else if (
       e.key === "Backspace" &&
       !tagInput &&
-      config.repos &&
-      config.repos.length > 0
+      triggerData?.repos &&
+      triggerData.repos.length > 0
     ) {
-      // Remove last tag on backspace if input is empty
-      handleRemoveTag(config.repos[config.repos.length - 1]);
+      handleRemoveTag(triggerData.repos[triggerData.repos.length - 1]);
     }
   };
 
@@ -176,13 +181,11 @@ function GitHubSettings({
     );
   }
 
-  // Determine current selected keys
-  // Prefer `repos` array if present, else fallback to `repo` string wrapped in array
   const currentSelectedKeys =
-    config.repos && config.repos.length > 0
-      ? config.repos
-      : config.repo
-        ? [config.repo]
+    triggerData?.repos && triggerData.repos.length > 0
+      ? triggerData.repos
+      : triggerData?.repo
+        ? [triggerData.repo]
         : [];
 
   return (
@@ -257,7 +260,6 @@ function GitHubSettings({
               </SelectItem>
             )}
           </Select>
-          {/* Load more button if not using scroll listener effectively inside Select */}
           {hasNextPage && !isLoading && (
             <Button
               size="sm"
@@ -281,7 +283,7 @@ function GitHubSettings({
             </label>
             <div className="relative group max-w-xl">
               <div className="flex flex-wrap gap-2 p-3 border-2 border-zinc-700/50 rounded-lg bg-gradient-to-br from-zinc-900 to-zinc-900/80 min-h-[52px] transition-all duration-200 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20 hover:border-zinc-600/50">
-                {config.repos?.map((repo) => (
+                {triggerData?.repos?.map((repo) => (
                   <span
                     key={repo}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gradient-to-br from-zinc-800 to-zinc-800/80 text-zinc-100 rounded-md border border-zinc-700/50 shadow-sm hover:shadow-md hover:border-zinc-600 transition-all duration-200 group/tag"
@@ -318,7 +320,7 @@ function GitHubSettings({
                   onKeyDown={handleTagInputKeyDown}
                   onBlur={handleAddTag}
                   placeholder={
-                    config.repos && config.repos.length > 0
+                    triggerData?.repos && triggerData.repos.length > 0
                       ? "Add another..."
                       : "e.g., octocat/hello-world"
                   }
@@ -366,15 +368,20 @@ export const githubTriggerHandler: RegisteredHandler = {
   ],
 
   createDefaultConfig: (slug: string): TriggerConfig => ({
-    type: slug,
+    type: "app",
     enabled: true,
-    owner: "",
-    repo: "",
+    trigger_name: slug,
+    trigger_data: {
+      trigger_name: slug,
+      owner: "",
+      repo: "",
+    },
   }),
 
   SettingsComponent: GitHubSettings,
 
   getDisplayInfo: (config) => {
+    const triggerSlug = (config as GitHubConfig).trigger_name || config.type;
     const map = {
       github_commit_event: "on new commit",
       github_pr_event: "on PR update",
@@ -382,7 +389,7 @@ export const githubTriggerHandler: RegisteredHandler = {
       github_issue_added: "on new issue",
     };
     return {
-      label: map[config.type as keyof typeof map] || "on github event",
+      label: map[triggerSlug as keyof typeof map] || "on github event",
       integrationId: "github",
     };
   },

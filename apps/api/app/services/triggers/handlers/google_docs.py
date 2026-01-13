@@ -75,29 +75,6 @@ class GoogleDocsTriggerHandler(TriggerHandler):
             logger.error(f"Failed to register Google Docs trigger {trigger_name}: {e}")
             return []
 
-    async def unregister(self, user_id: str, trigger_ids: List[str]) -> bool:
-        """Unregister Google Docs triggers."""
-        if not trigger_ids:
-            return True
-
-        success = True
-        composio = get_composio_service()
-
-        for trigger_id in trigger_ids:
-            try:
-                await asyncio.to_thread(
-                    composio.composio.triggers.disable,
-                    trigger_id=trigger_id,
-                )
-                logger.info(f"Unregistered Google Docs trigger: {trigger_id}")
-            except Exception as e:
-                logger.error(
-                    f"Failed to unregister Google Docs trigger {trigger_id}: {e}"
-                )
-                success = False
-
-        return success
-
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
     ) -> List[Workflow]:

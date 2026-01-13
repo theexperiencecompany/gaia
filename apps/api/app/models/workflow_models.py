@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 import pytz
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config.loggers import general_logger as logger
 from app.models.scheduler_models import BaseScheduledTask
@@ -63,8 +63,18 @@ class TriggerConfig(BaseModel):
     Provider-specific data is stored in `trigger_data` field.
     """
 
+    # Allow extra fields to be stored (e.g., calendar_ids from frontend)
+    model_config = ConfigDict(extra="allow")
+
     type: TriggerType = Field(description="Type of trigger")
     enabled: bool = Field(default=True, description="Whether the trigger is enabled")
+
+    # Specific trigger slug (e.g., "calendar_event_created", "github_commit_event")
+    # Used by frontend to identify which trigger is selected
+    trigger_name: Optional[str] = Field(
+        default=None,
+        description="Specific trigger slug for identification",
+    )
 
     # Type-safe provider config using discriminated union
     trigger_data: Optional[TriggerConfigData] = Field(

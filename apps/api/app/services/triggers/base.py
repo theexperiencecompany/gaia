@@ -4,10 +4,13 @@ Abstract base class for trigger handlers.
 All provider-specific trigger handlers must extend this class.
 """
 
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Set
 
+from app.config.loggers import general_logger as logger
 from app.models.workflow_models import Workflow
+from app.services.composio.composio_service import get_composio_service
 
 
 class TriggerHandler(ABC):
@@ -56,9 +59,11 @@ class TriggerHandler(ABC):
         """
         pass
 
-    @abstractmethod
     async def unregister(self, user_id: str, trigger_ids: List[str]) -> bool:
         """Unregister triggers when workflow is deleted/deactivated.
+
+        Default implementation uses Composio triggers.delete API.
+        Override if provider needs custom logic.
 
         Args:
             user_id: The user ID
@@ -67,7 +72,24 @@ class TriggerHandler(ABC):
         Returns:
             True if all triggers were unregistered successfully
         """
-        pass
+        if not trigger_ids:
+            return True
+
+        success = True
+        composio = get_composio_service()
+
+        for trigger_id in trigger_ids:
+            try:
+                await asyncio.to_thread(
+                    composio.composio.triggers.delete,
+                    trigger_id=trigger_id,
+                )
+                logger.debug(f"Deleted trigger: {trigger_id}")
+            except Exception as e:
+                logger.error(f"Failed to delete trigger {trigger_id}: {e}")
+                success = False
+
+        return success
 
     @abstractmethod
     async def find_workflows(

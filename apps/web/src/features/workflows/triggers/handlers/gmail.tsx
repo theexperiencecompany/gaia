@@ -15,9 +15,13 @@ import type { TriggerConfig } from "../types";
 export const gmailTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["gmail_new_message", "email"],
 
-  createDefaultConfig: (): TriggerConfig => ({
+  createDefaultConfig: (slug: string): TriggerConfig => ({
     type: "email",
     enabled: true,
+    trigger_name: slug,
+    trigger_data: {
+      trigger_name: slug,
+    },
   }),
 
   // No custom settings component needed - Gmail triggers are simple

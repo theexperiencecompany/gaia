@@ -5,7 +5,7 @@ import {
 } from "@heroui/autocomplete";
 import Fuse from "fuse.js";
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { TriggerSchema } from "@/features/workflows/triggers";
@@ -40,6 +40,13 @@ export function TriggerAutocomplete({
   const selectedSchema = triggerSchemas?.find(
     (s) => s.slug === selectedTrigger,
   );
+
+  // Sync filterValue with selected trigger name when editing
+  useEffect(() => {
+    if (selectedSchema && !filterValue) {
+      setFilterValue(selectedSchema.name);
+    }
+  }, [selectedSchema, filterValue]);
 
   // Create Fuse instance for fuzzy search
   const fuse = useMemo(() => {

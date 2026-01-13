@@ -11,13 +11,18 @@ import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
 // =============================================================================
-// GOOGLE SHEETS SETTINGS COMPONENT
+// TYPE DEFINITIONS
 // =============================================================================
 
-interface GoogleSheetsConfig extends TriggerConfig {
+interface GoogleSheetsTriggerData {
+  trigger_name: string;
   spreadsheet_ids?: string;
   sheet_names?: string;
-  trigger_slug?: string;
+}
+
+interface GoogleSheetsConfig extends TriggerConfig {
+  trigger_name?: string;
+  trigger_data?: GoogleSheetsTriggerData;
 }
 
 interface OptionItem {
@@ -30,23 +35,27 @@ interface GroupedOption {
   options: OptionItem[];
 }
 
+// =============================================================================
+// GOOGLE SHEETS SETTINGS COMPONENT
+// =============================================================================
+
 export function GoogleSheetsSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
   const { integrations, connectIntegration } = useIntegrations();
   const config = triggerConfig as GoogleSheetsConfig;
+  const triggerData = config.trigger_data;
   const integrationId = "googlesheets";
 
   const isConnected =
     integrations.find((i) => i.id === integrationId)?.status === "connected";
 
   const [spreadsheetIds, setSpreadsheetIds] = useState<Set<string>>(
-    new Set(config.spreadsheet_ids?.split(",").filter(Boolean) || []),
+    new Set(triggerData?.spreadsheet_ids?.split(",").filter(Boolean) || []),
   );
-  // Store full unique keys (spreadsheet_id::sheet_name) instead of just names
   const [sheetKeys, setSheetKeys] = useState<Set<string>>(
-    new Set(config.sheet_names?.split(",").filter(Boolean) || []),
+    new Set(triggerData?.sheet_names?.split(",").filter(Boolean) || []),
   );
   const [searchQuery, _setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -54,7 +63,7 @@ export function GoogleSheetsSettings({
     string[]
   >(Array.from(spreadsheetIds));
 
-  const triggerSlug = (config.trigger_slug || config.type) ?? "";
+  const triggerSlug = config.trigger_name || "";
 
   // Debounce search query
   useEffect(() => {
@@ -95,6 +104,19 @@ export function GoogleSheetsSettings({
       : undefined,
   );
 
+  const updateTriggerData = (updates: Partial<GoogleSheetsTriggerData>) => {
+    const currentTriggerData = triggerData || {
+      trigger_name: config.trigger_name || "",
+    };
+    onConfigChange({
+      ...config,
+      trigger_data: {
+        ...currentTriggerData,
+        ...updates,
+      },
+    });
+  };
+
   useEffect(() => {
     // Extract just the sheet names from unique keys for backend
     const sheetNames = Array.from(sheetKeys).map((key) => {
@@ -102,8 +124,7 @@ export function GoogleSheetsSettings({
       return parts.length > 1 ? parts[1] : key;
     });
 
-    onConfigChange({
-      ...config,
+    updateTriggerData({
       spreadsheet_ids: Array.from(spreadsheetIds).join(","),
       sheet_names: sheetNames.join(","),
     });
@@ -232,17 +253,25 @@ export const googleSheetsTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["google_sheets_new_row", "google_sheets_new_sheet"],
 
   createDefaultConfig: (slug: string): TriggerConfig => ({
-    type: slug,
+    type: "app",
     enabled: true,
-    spreadsheet_ids: "",
-    sheet_names: "",
+    trigger_name: slug,
+    trigger_data: {
+      trigger_name: slug,
+      spreadsheet_ids: "",
+      sheet_names: "",
+    },
   }),
 
   SettingsComponent: GoogleSheetsSettings,
 
-  getDisplayInfo: (config) => ({
-    label:
-      config.type === "google_sheets_new_row" ? "on new row" : "on new sheet",
-    integrationId: "google_sheets",
-  }),
+  getDisplayInfo: (config) => {
+    const triggerName =
+      (config as GoogleSheetsConfig).trigger_name || config.type;
+    return {
+      label:
+        triggerName === "google_sheets_new_row" ? "on new row" : "on new sheet",
+      integrationId: "google_sheets",
+    };
+  },
 };

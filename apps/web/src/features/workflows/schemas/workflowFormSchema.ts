@@ -93,6 +93,16 @@ export const getDefaultFormValues = (): WorkflowFormData => ({
 export const workflowToFormData = (workflow: Workflow): WorkflowFormData => {
   const triggerType = workflow.trigger_config.type;
 
+  // For integration triggers, try multiple locations for the specific trigger slug:
+  // 1. trigger_name at top level (new format)
+  // 2. trigger_data.trigger_name (properly structured format)
+  // 3. type field itself (old format, where type contained the specific slug)
+  const triggerName = (workflow.trigger_config as { trigger_name?: string })
+    .trigger_name;
+  const triggerDataName = (
+    workflow.trigger_config as { trigger_data?: { trigger_name?: string } }
+  ).trigger_data?.trigger_name;
+
   // Determine which tab should be active
   // Built-in triggers: schedule, manual -> their respective tabs
   // Everything else (gmail, calendar, slack, etc.) -> trigger tab
@@ -102,9 +112,13 @@ export const workflowToFormData = (workflow: Workflow): WorkflowFormData => {
     ? (triggerType as "schedule" | "manual")
     : "trigger";
 
-  // For integration triggers, selectedTrigger is the trigger type
-  // This works generically for any trigger: email, calendar_event_created, slack_new_message, etc.
-  const selectedTrigger = isBuiltInTrigger ? "" : triggerType;
+  // For integration triggers, selectedTrigger is the specific trigger slug.
+  // Priority: trigger_name > trigger_data.trigger_name > type (for old format)
+  // Note: For category-based types (calendar, email, app), we need the slug, not the category
+  const isCategory = ["calendar", "email", "app"].includes(triggerType);
+  const selectedTrigger = isBuiltInTrigger
+    ? ""
+    : triggerName || triggerDataName || (isCategory ? "" : triggerType);
 
   return {
     title: workflow.title,

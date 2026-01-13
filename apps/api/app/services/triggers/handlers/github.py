@@ -123,11 +123,14 @@ class GitHubTriggerHandler(TriggerHandler):
             return []
 
         composio = get_composio_service()
+
+        # Get config from trigger_data
+        trigger_data = config.get("trigger_data", {})
         trigger_config: Dict[str, Any] = {}
 
-        if "owner" in config and "repo" in config:
-            trigger_config["owner"] = config["owner"]
-            trigger_config["repo"] = config["repo"]
+        if "owner" in trigger_data and "repo" in trigger_data:
+            trigger_config["owner"] = trigger_data["owner"]
+            trigger_config["repo"] = trigger_data["repo"]
 
         try:
             result = await asyncio.to_thread(
@@ -148,27 +151,6 @@ class GitHubTriggerHandler(TriggerHandler):
         except Exception as e:
             logger.error(f"Failed to register GitHub trigger {trigger_name}: {e}")
             return []
-
-    async def unregister(self, user_id: str, trigger_ids: List[str]) -> bool:
-        """Unregister GitHub triggers."""
-        if not trigger_ids:
-            return True
-
-        success = True
-        composio = get_composio_service()
-
-        for trigger_id in trigger_ids:
-            try:
-                await asyncio.to_thread(
-                    composio.composio.triggers.disable,
-                    trigger_id=trigger_id,
-                )
-                logger.info(f"Unregistered GitHub trigger: {trigger_id}")
-            except Exception as e:
-                logger.error(f"Failed to unregister GitHub trigger {trigger_id}: {e}")
-                success = False
-
-        return success
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]

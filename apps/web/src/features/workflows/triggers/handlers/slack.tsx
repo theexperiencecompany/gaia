@@ -15,38 +15,69 @@ import { useTriggerOptions } from "../hooks/useTriggerOptions";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
+
+interface SlackTriggerData {
+  trigger_name: string;
+  channel_ids?: string;
+  exclude_bot_messages?: boolean;
+  exclude_direct_messages?: boolean;
+  exclude_group_messages?: boolean;
+  exclude_mpim_messages?: boolean;
+  exclude_thread_replies?: boolean;
+}
+
+interface SlackConfig extends TriggerConfig {
+  trigger_name?: string;
+  trigger_data?: SlackTriggerData;
+}
+
+// =============================================================================
+// SLACK SETTINGS COMPONENT
+// =============================================================================
+
 function SlackSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {
   const { integrations, connectIntegration } = useIntegrations();
-  const config = triggerConfig as TriggerConfig & {
-    channel_ids?: string;
-    exclude_bot_messages?: boolean;
-    exclude_direct_messages?: boolean;
-    exclude_group_messages?: boolean;
-    exclude_mpim_messages?: boolean;
-    exclude_thread_replies?: boolean;
-  };
+  const config = triggerConfig as SlackConfig;
+  const triggerData = config.trigger_data;
 
   const integrationId = "slack";
   const isConnected =
     integrations.find((i) => i.id === integrationId)?.status === "connected";
 
-  const isMessageTrigger = config.type === "slack_new_message";
+  const triggerName = config.trigger_name || config.type;
+  const isMessageTrigger = triggerName === "slack_new_message";
 
   // Fetch channel options for message trigger
   const { data: channelOptions, isLoading: isLoadingChannels } =
     useTriggerOptions(
       "slack",
-      config.type,
+      triggerName || "",
       "channel_ids",
       isMessageTrigger && isConnected,
     );
 
+  const updateTriggerData = (updates: Partial<SlackTriggerData>) => {
+    const currentTriggerData = triggerData || {
+      trigger_name: config.trigger_name || "",
+    };
+    onConfigChange({
+      ...config,
+      trigger_data: {
+        ...currentTriggerData,
+        ...updates,
+      },
+    });
+  };
+
   // Get current selected values
-  const selectedValues = config.channel_ids
-    ? config.channel_ids
+  const selectedValues = triggerData?.channel_ids
+    ? triggerData.channel_ids
         .split(",")
         .map((id) => id.trim())
         .filter(Boolean)
@@ -70,7 +101,7 @@ function SlackSettings({
   }
 
   // For channel_created, no config needed - just show a simple confirmation
-  if (config.type === "slack_channel_created") {
+  if (triggerName === "slack_channel_created") {
     return (
       <p className="text-sm text-zinc-500">
         This trigger will fire when a new channel is created. No additional
@@ -87,8 +118,7 @@ function SlackSettings({
           options: channelOptions || [],
           selectedValues: selectedValues,
           onSelectionChange: (selectedIds: string[]) => {
-            onConfigChange({
-              ...config,
+            updateTriggerData({
               channel_ids: selectedIds.join(","),
             });
           },
@@ -105,8 +135,7 @@ function SlackSettings({
         tagInputProps={{
           values: selectedValues,
           onChange: (selectedIds: string[]) => {
-            onConfigChange({
-              ...config,
+            updateTriggerData({
               channel_ids: selectedIds.join(","),
             });
           },
@@ -122,41 +151,41 @@ function SlackSettings({
         </p>
         <div className="flex flex-col gap-2">
           <Checkbox
-            isSelected={config.exclude_bot_messages || false}
+            isSelected={triggerData?.exclude_bot_messages || false}
             onValueChange={(val) =>
-              onConfigChange({ ...config, exclude_bot_messages: val })
+              updateTriggerData({ exclude_bot_messages: val })
             }
           >
             Exclude bot messages
           </Checkbox>
           <Checkbox
-            isSelected={config.exclude_direct_messages || false}
+            isSelected={triggerData?.exclude_direct_messages || false}
             onValueChange={(val) =>
-              onConfigChange({ ...config, exclude_direct_messages: val })
+              updateTriggerData({ exclude_direct_messages: val })
             }
           >
             Exclude direct messages (1:1)
           </Checkbox>
           <Checkbox
-            isSelected={config.exclude_group_messages || false}
+            isSelected={triggerData?.exclude_group_messages || false}
             onValueChange={(val) =>
-              onConfigChange({ ...config, exclude_group_messages: val })
+              updateTriggerData({ exclude_group_messages: val })
             }
           >
             Exclude private groups
           </Checkbox>
           <Checkbox
-            isSelected={config.exclude_mpim_messages || false}
+            isSelected={triggerData?.exclude_mpim_messages || false}
             onValueChange={(val) =>
-              onConfigChange({ ...config, exclude_mpim_messages: val })
+              updateTriggerData({ exclude_mpim_messages: val })
             }
           >
             Exclude group DMs
           </Checkbox>
           <Checkbox
-            isSelected={config.exclude_thread_replies || false}
+            isSelected={triggerData?.exclude_thread_replies || false}
             onValueChange={(val) =>
-              onConfigChange({ ...config, exclude_thread_replies: val })
+              updateTriggerData({ exclude_thread_replies: val })
             }
           >
             Exclude thread replies
@@ -174,26 +203,38 @@ function SlackSettings({
 export const slackTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["slack_new_message", "slack_channel_created"],
 
-  createDefaultConfig: (slug: string): TriggerConfig => ({
-    type: slug,
-    enabled: true,
-    ...(slug === "slack_new_message" && {
-      channel_ids: "",
-      exclude_bot_messages: false,
-      exclude_direct_messages: false,
-      exclude_group_messages: false,
-      exclude_mpim_messages: false,
-      exclude_thread_replies: false,
-    }),
-  }),
+  createDefaultConfig: (slug: string): TriggerConfig => {
+    const baseTriggerData: SlackTriggerData = {
+      trigger_name: slug,
+    };
+
+    if (slug === "slack_new_message") {
+      baseTriggerData.channel_ids = "";
+      baseTriggerData.exclude_bot_messages = false;
+      baseTriggerData.exclude_direct_messages = false;
+      baseTriggerData.exclude_group_messages = false;
+      baseTriggerData.exclude_mpim_messages = false;
+      baseTriggerData.exclude_thread_replies = false;
+    }
+
+    return {
+      type: "app",
+      enabled: true,
+      trigger_name: slug,
+      trigger_data: baseTriggerData,
+    };
+  },
 
   SettingsComponent: SlackSettings,
 
-  getDisplayInfo: (config) => ({
-    label:
-      config.type === "slack_channel_created"
-        ? "on channel created"
-        : "on new message",
-    integrationId: "slack",
-  }),
+  getDisplayInfo: (config) => {
+    const triggerName = (config as SlackConfig).trigger_name || config.type;
+    return {
+      label:
+        triggerName === "slack_channel_created"
+          ? "on channel created"
+          : "on new message",
+      integrationId: "slack",
+    };
+  },
 };

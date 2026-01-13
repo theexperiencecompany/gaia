@@ -96,7 +96,7 @@ class TriggerService:
         try:
             return await handler.register(user_id, workflow_id, trigger_name, config)
         except Exception as e:
-            logger.error(f"Error registering triggers: {e}")
+            logger.error(f"Error registering triggers: {e}", exc_info=True)
             return []
 
     @staticmethod

@@ -62,75 +62,55 @@ class CalendarTriggerHandler(TriggerHandler):
         Handles multi-calendar registration - creates one Composio trigger
         per calendar ID for proper event matching.
         """
-        calendar_ids = config.get("calendar_ids", ["primary"])
-        registered_ids: List[str] = []
+        trigger_data = config.get("trigger_data", {})
+        calendar_ids = trigger_data.get("calendar_ids", ["primary"])
 
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
             logger.error(f"Unknown calendar trigger: {trigger_name}")
             return []
 
-        # Expand "all" to actual calendar list
         if calendar_ids == ["all"]:
             calendar_ids = await self._fetch_user_calendars(user_id)
 
         composio = get_composio_service()
 
-        for calendar_id in calendar_ids:
+        async def register_one(calendar_id: str) -> str | None:
             try:
                 trigger_config: Dict[str, Any] = {"calendar_id": calendar_id}
-
-                # Add additional config for event_starting_soon
                 if trigger_name == "calendar_event_starting_soon":
-                    if "minutes_before_start" in config:
-                        trigger_config["countdown_window_minutes"] = (
-                            config["minutes_before_start"] * 60
-                        )
-                    if "include_all_day" in config:
-                        trigger_config["include_all_day"] = config["include_all_day"]
+                    minutes_before = trigger_data.get("minutes_before_start")
+                    if minutes_before is not None:
+                        trigger_config["countdown_window_minutes"] = minutes_before * 60
+                    include_all_day = trigger_data.get("include_all_day")
+                    if include_all_day is not None:
+                        trigger_config["include_all_day"] = include_all_day
 
-                # Use Composio triggers API directly
                 result = await asyncio.to_thread(
                     composio.composio.triggers.create,
                     user_id=user_id,
                     slug=composio_slug,
                     trigger_config=trigger_config,
                 )
-
                 if result and hasattr(result, "trigger_id"):
-                    registered_ids.append(result.trigger_id)
                     logger.info(
-                        f"Registered {composio_slug} for calendar {calendar_id}: "
-                        f"{result.trigger_id}"
+                        f"Registered {composio_slug} for calendar {calendar_id}: {result.trigger_id}"
                     )
-
+                    return result.trigger_id
+                else:
+                    logger.warning(
+                        f"No trigger_id in result for calendar {calendar_id}"
+                    )
+                    return None
             except Exception as e:
-                logger.error(f"Failed to register trigger for {calendar_id}: {e}")
-                # Continue with other calendars
-
-        return registered_ids
-
-    async def unregister(self, user_id: str, trigger_ids: List[str]) -> bool:
-        """Unregister calendar triggers."""
-        if not trigger_ids:
-            return True
-
-        success = True
-        composio = get_composio_service()
-
-        for trigger_id in trigger_ids:
-            try:
-                # Use Composio triggers API to disable
-                await asyncio.to_thread(
-                    composio.composio.triggers.disable,
-                    trigger_id=trigger_id,
+                logger.error(
+                    f"Failed to register trigger for {calendar_id}: {e}",
+                    exc_info=True,
                 )
-                logger.info(f"Unregistered calendar trigger: {trigger_id}")
-            except Exception as e:
-                logger.error(f"Failed to unregister trigger {trigger_id}: {e}")
-                success = False
+                return None
 
-        return success
+        results = await asyncio.gather(*(register_one(cid) for cid in calendar_ids))
+        return [rid for rid in results if rid]
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]

@@ -42,10 +42,6 @@ class GmailTriggerHandler(TriggerHandler):
         logger.info(f"Gmail trigger enabled for workflow {workflow_id}")
         return []  # No explicit trigger IDs for Gmail
 
-    async def unregister(self, user_id: str, trigger_ids: List[str]) -> bool:
-        """Gmail triggers don't need unregistration."""
-        return True
-
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
     ) -> List[Workflow]:

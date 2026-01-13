@@ -18,16 +18,23 @@ import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
 // =============================================================================
-// NOTION SETTINGS COMPONENT
+// TYPE DEFINITIONS
 // =============================================================================
 
-interface NotionConfig extends TriggerConfig {
-  database_id?: string; // Backward compatibility
-  page_id?: string; // Backward compatibility
-  database_ids?: string[]; // Multi-select support
-  page_ids?: string[]; // Multi-select support
-  trigger_slug?: string;
+interface NotionTriggerData {
+  trigger_name: string;
+  database_ids?: string[];
+  page_ids?: string[];
 }
+
+interface NotionConfig extends TriggerConfig {
+  trigger_name?: string;
+  trigger_data?: NotionTriggerData;
+}
+
+// =============================================================================
+// NOTION SETTINGS COMPONENT
+// =============================================================================
 
 function NotionSettings({
   triggerConfig,
@@ -35,15 +42,16 @@ function NotionSettings({
 }: TriggerSettingsProps) {
   const { integrations, connectIntegration } = useIntegrations();
   const config = triggerConfig as NotionConfig;
+  const triggerData = config.trigger_data;
   const integrationId = "notion";
 
   const isConnected =
     integrations.find((i) => i.id === integrationId)?.status === "connected";
 
-  const triggerSlug = (config.trigger_slug || config.type) ?? "";
+  const triggerSlug = config.trigger_name || "";
 
-  const isDbTrigger = config.type === "notion_new_page_in_db";
-  const isPageTrigger = config.type === "notion_page_updated";
+  const isDbTrigger = triggerSlug === "notion_new_page_in_db";
+  const isPageTrigger = triggerSlug === "notion_page_updated";
 
   // Fetch databases for database trigger
   const {
@@ -69,12 +77,24 @@ function NotionSettings({
     isConnected && isPageTrigger && !!triggerSlug,
   );
 
-  // Show loading if either loading or fetching
   const showDbLoading = isLoadingDb || isFetchingDb;
   const showPageLoading = isLoadingPage || isFetchingPage;
 
   const dbOptions = (dbData || []) as OptionItem[];
   const pageOptions = (pageData || []) as OptionItem[];
+
+  const updateTriggerData = (updates: Partial<NotionTriggerData>) => {
+    const currentTriggerData = triggerData || {
+      trigger_name: config.trigger_name || "",
+    };
+    onConfigChange({
+      ...config,
+      trigger_data: {
+        ...currentTriggerData,
+        ...updates,
+      },
+    });
+  };
 
   if (!isConnected) {
     return (
@@ -87,20 +107,10 @@ function NotionSettings({
   }
 
   // Get current selected values for databases
-  const selectedDbValues =
-    config.database_ids && config.database_ids.length > 0
-      ? config.database_ids
-      : config.database_id
-        ? [config.database_id]
-        : [];
+  const selectedDbValues = triggerData?.database_ids || [];
 
   // Get current selected values for pages
-  const selectedPageValues =
-    config.page_ids && config.page_ids.length > 0
-      ? config.page_ids
-      : config.page_id
-        ? [config.page_id]
-        : [];
+  const selectedPageValues = triggerData?.page_ids || [];
 
   return (
     <div className="space-y-3">
@@ -111,10 +121,8 @@ function NotionSettings({
             options: dbOptions,
             selectedValues: selectedDbValues,
             onSelectionChange: (selectedIds: string[]) => {
-              onConfigChange({
-                ...config,
+              updateTriggerData({
                 database_ids: selectedIds,
-                database_id: selectedIds[0] || "", // Backward compatibility
               });
             },
             isLoading: showDbLoading,
@@ -129,10 +137,8 @@ function NotionSettings({
           tagInputProps={{
             values: selectedDbValues,
             onChange: (selectedIds: string[]) => {
-              onConfigChange({
-                ...config,
+              updateTriggerData({
                 database_ids: selectedIds,
-                database_id: selectedIds[0] || "",
               });
             },
             placeholder: "Add another...",
@@ -148,10 +154,8 @@ function NotionSettings({
             options: pageOptions,
             selectedValues: selectedPageValues,
             onSelectionChange: (selectedIds: string[]) => {
-              onConfigChange({
-                ...config,
+              updateTriggerData({
                 page_ids: selectedIds,
-                page_id: selectedIds[0] || "", // Backward compatibility
               });
             },
             isLoading: showPageLoading,
@@ -166,10 +170,8 @@ function NotionSettings({
           tagInputProps={{
             values: selectedPageValues,
             onChange: (selectedIds: string[]) => {
-              onConfigChange({
-                ...config,
+              updateTriggerData({
                 page_ids: selectedIds,
-                page_id: selectedIds[0] || "",
               });
             },
             placeholder: "Add another...",
@@ -193,22 +195,33 @@ export const notionTriggerHandler: RegisteredHandler = {
   ],
 
   createDefaultConfig: (slug: string): TriggerConfig => {
-    const config: NotionConfig = {
-      type: slug,
-      enabled: true,
+    const triggerData: NotionTriggerData = {
+      trigger_name: slug,
     };
-    if (slug === "notion_new_page_in_db") config.database_ids = [];
-    if (slug === "notion_page_updated") config.page_ids = [];
-    return config;
+
+    if (slug === "notion_new_page_in_db") {
+      triggerData.database_ids = [];
+    }
+    if (slug === "notion_page_updated") {
+      triggerData.page_ids = [];
+    }
+
+    return {
+      type: "app",
+      enabled: true,
+      trigger_name: slug,
+      trigger_data: triggerData,
+    };
   },
 
   SettingsComponent: NotionSettings,
 
   getDisplayInfo: (config) => {
+    const triggerName = (config as NotionConfig).trigger_name || config.type;
     let label = "on notion event";
-    if (config.type === "notion_new_page_in_db") label = "on new page in db";
-    if (config.type === "notion_page_updated") label = "on page updated";
-    if (config.type === "notion_all_page_events") label = "on any page event";
+    if (triggerName === "notion_new_page_in_db") label = "on new page in db";
+    if (triggerName === "notion_page_updated") label = "on page updated";
+    if (triggerName === "notion_all_page_events") label = "on any page event";
 
     return {
       label,

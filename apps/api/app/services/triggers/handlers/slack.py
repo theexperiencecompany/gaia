@@ -79,10 +79,13 @@ class SlackTriggerHandler(TriggerHandler):
 
         trigger_ids: List[str] = []
 
+        # Get config from trigger_data
+        trigger_data = config.get("trigger_data", {})
+
         # Base config (channel_id if provided)
         base_config: Dict[str, Any] = {}
-        if "channel_id" in config and config["channel_id"]:
-            base_config["channel_id"] = config["channel_id"]
+        if "channel_id" in trigger_data and trigger_data["channel_id"]:
+            base_config["channel_id"] = trigger_data["channel_id"]
 
         # Always register main message trigger for regular channel messages
         regular_msg_ids = await self._register_single_trigger(
@@ -92,7 +95,7 @@ class SlackTriggerHandler(TriggerHandler):
 
         # Register additional triggers for message types NOT excluded
         for exclude_key, composio_slug in self.EXCLUSION_TO_TRIGGER.items():
-            if not config.get(exclude_key, False):  # NOT excluded
+            if not trigger_data.get(exclude_key, False):  # NOT excluded
                 additional_ids = await self._register_single_trigger(
                     user_id, composio_slug, base_config
                 )
@@ -122,27 +125,6 @@ class SlackTriggerHandler(TriggerHandler):
             logger.error(f"Failed to register {composio_slug}: {e}")
 
         return []
-
-    async def unregister(self, user_id: str, trigger_ids: List[str]) -> bool:
-        """Unregister all Slack triggers for a workflow."""
-        if not trigger_ids:
-            return True
-
-        success = True
-        composio = get_composio_service()
-
-        for trigger_id in trigger_ids:
-            try:
-                await asyncio.to_thread(
-                    composio.composio.triggers.disable,
-                    trigger_id=trigger_id,
-                )
-                logger.info(f"Unregistered Slack trigger: {trigger_id}")
-            except Exception as e:
-                logger.error(f"Failed to unregister Slack trigger {trigger_id}: {e}")
-                success = False
-
-        return success
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
@@ -185,8 +167,11 @@ class SlackTriggerHandler(TriggerHandler):
                     else:
                         config_dict = dict(trigger_config)
 
+                    # Get trigger_data
+                    trigger_data = config_dict.get("trigger_data", {})
+
                     # Filter by channel_ids if specified
-                    channel_ids_str = config_dict.get("channel_ids", "")
+                    channel_ids_str = trigger_data.get("channel_ids", "")
                     if channel_ids_str:
                         # Parse comma-separated channel IDs
                         selected_channels = [

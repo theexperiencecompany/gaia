@@ -36,6 +36,57 @@ from .validators import WorkflowValidator
 class WorkflowService:
     """Service class for workflow operations."""
 
+    # Trigger types that require Composio registration
+    INTEGRATION_TRIGGER_TYPES = {"calendar", "email", "app"}
+
+    @staticmethod
+    async def _register_integration_triggers(
+        workflow_id: str,
+        user_id: str,
+        trigger_config: Any,
+    ) -> List[str]:
+        """Register Composio triggers for integration-based workflows.
+
+        Delegates to TriggerService which handles provider-specific logic.
+        Returns list of registered trigger IDs.
+        """
+        trigger_type = trigger_config.type
+
+        # Only handle integration triggers
+        if trigger_type not in WorkflowService.INTEGRATION_TRIGGER_TYPES:
+            return []
+
+        # Get trigger_name: check top-level first, then trigger_data, then fallback to type
+        trigger_name = getattr(trigger_config, "trigger_name", None) or (
+            getattr(trigger_config.trigger_data, "trigger_name", None)
+            if getattr(trigger_config, "trigger_data", None)
+            else None
+        )
+
+        if not trigger_name:
+            logger.warning(
+                f"No trigger_name found in config for workflow {workflow_id}"
+            )
+            return []
+
+        # Pass the full config dump - handlers are responsible for extracting what they need
+        config = (
+            trigger_config.model_dump() if hasattr(trigger_config, "model_dump") else {}
+        )
+
+        trigger_ids = await TriggerService.register_triggers(
+            user_id=user_id,
+            workflow_id=workflow_id,
+            trigger_name=trigger_name,
+            config=config,
+        )
+
+        if trigger_ids:
+            logger.info(
+                f"Registered {len(trigger_ids)} triggers for workflow {workflow_id}"
+            )
+        return trigger_ids
+
     @staticmethod
     async def create_workflow(
         request: CreateWorkflowRequest,
@@ -121,6 +172,20 @@ class WorkflowService:
                     user_id,
                     trigger_config.next_run,
                     repeat=trigger_config.cron_expression,  # Enable recurring if cron exists
+                )
+
+            # Register integration triggers (calendar, email, app, etc.)
+            trigger_ids = await WorkflowService._register_integration_triggers(
+                workflow_id=workflow.id,
+                user_id=user_id,
+                trigger_config=trigger_config,
+            )
+
+            # Store trigger IDs if any were registered
+            if trigger_ids:
+                await workflows_collection.update_one(
+                    {"_id": workflow.id},
+                    {"$set": {"trigger_config.composio_trigger_ids": trigger_ids}},
                 )
 
             # Generate steps only if not provided
@@ -284,10 +349,48 @@ class WorkflowService:
                             workflow_id
                         )
 
+                # Handle trigger re-registration for integration triggers
+                # Always delete and recreate triggers since Composio triggers can't be updated
+                old_trigger_type = old_config.type
+                new_trigger_type = new_trigger_config.type
+                is_integration_trigger = (
+                    new_trigger_type in WorkflowService.INTEGRATION_TRIGGER_TYPES
+                )
+                registered_trigger_ids = None
+
+                if is_integration_trigger and current_workflow.activated:
+                    old_trigger_name = getattr(
+                        old_config, "trigger_name", old_trigger_type
+                    )
+                    old_trigger_ids = (
+                        getattr(old_config, "composio_trigger_ids", None) or []
+                    )
+
+                    # Delete old triggers
+                    if old_trigger_ids:
+                        await TriggerService.unregister_triggers(
+                            user_id, old_trigger_name, old_trigger_ids
+                        )
+
+                    # Register new triggers
+                    registered_trigger_ids = (
+                        await WorkflowService._register_integration_triggers(
+                            workflow_id=workflow_id,
+                            user_id=user_id,
+                            trigger_config=new_trigger_config,
+                        )
+                    )
+
                 # Convert TriggerConfig back to dict for MongoDB storage
                 update_fields["trigger_config"] = new_trigger_config.model_dump(
                     mode="json"
                 )
+
+                # Add new trigger IDs if triggers were registered
+                if registered_trigger_ids is not None:
+                    update_fields["trigger_config"]["composio_trigger_ids"] = (
+                        registered_trigger_ids
+                    )
 
             update_data.update(update_fields)
 
@@ -325,17 +428,25 @@ class WorkflowService:
 
             # Unregister Composio triggers if any
             if workflow:
-                trigger_type = workflow.trigger_config.type
+                trigger_config = workflow.trigger_config
                 trigger_ids = (
-                    getattr(workflow.trigger_config, "composio_trigger_ids", None) or []
+                    getattr(trigger_config, "composio_trigger_ids", None) or []
                 )
-                if trigger_ids and trigger_type:
-                    await TriggerService.unregister_triggers(
-                        user_id, trigger_type, trigger_ids
+                if trigger_ids:
+                    # Get trigger_name for handler lookup (not trigger_type)
+                    trigger_name = getattr(trigger_config, "trigger_name", None) or (
+                        getattr(trigger_config.trigger_data, "trigger_name", None)
+                        if getattr(trigger_config, "trigger_data", None)
+                        else None
                     )
-                    logger.info(
-                        f"Unregistered {len(trigger_ids)} Composio triggers for deleted workflow {workflow_id}"
-                    )
+                    if trigger_name:
+                        await TriggerService.unregister_triggers(
+                            user_id, trigger_name, trigger_ids
+                        )
+                    else:
+                        logger.warning(
+                            f"No trigger_name found for workflow {workflow_id}, cannot unregister triggers"
+                        )
 
             result = await workflows_collection.delete_one(
                 {"_id": workflow_id, "user_id": user_id}
@@ -436,29 +547,27 @@ class WorkflowService:
                 return None
 
             # 1. Register Composio triggers FIRST (Fail-safe)
-            trigger_type = workflow.trigger_config.type
-            trigger_ids = []
+            trigger_config = workflow.trigger_config
+            trigger_type = trigger_config.type
 
-            if trigger_type in [
-                "calendar_event_created",
-                "calendar_event_starting_soon",
-            ]:
-                trigger_data = workflow.trigger_config.trigger_data
-                if trigger_data:
-                    config = (
-                        trigger_data.model_dump()
-                        if hasattr(trigger_data, "model_dump")
-                        else {}
-                    )
-                    trigger_ids = await TriggerService.register_triggers(
-                        user_id=user_id,
-                        workflow_id=workflow_id,
-                        trigger_name=trigger_type,
-                        config=config,
-                    )
-                    logger.info(
-                        f"Registered {len(trigger_ids)} Composio triggers for workflow {workflow_id}"
-                    )
+            # Use the shared method for integration trigger registration
+            trigger_ids = await WorkflowService._register_integration_triggers(
+                workflow_id=workflow_id,
+                user_id=user_id,
+                trigger_config=trigger_config,
+            )
+
+            if trigger_ids:
+                logger.info(
+                    f"Registered {len(trigger_ids)} Composio triggers for workflow {workflow_id}"
+                )
+
+            # Get trigger_name for potential rollback
+            trigger_name = getattr(trigger_config, "trigger_name", None) or (
+                getattr(trigger_config.trigger_data, "trigger_name", None)
+                if getattr(trigger_config, "trigger_data", None)
+                else None
+            )
 
             # 2. Update status and store triggers
             update_data: dict[str, Any] = {
@@ -474,9 +583,9 @@ class WorkflowService:
 
             if result.matched_count == 0:
                 # Rollback triggers if DB update fails
-                if trigger_ids:
+                if trigger_ids and trigger_name:
                     await TriggerService.unregister_triggers(
-                        user_id, trigger_type, trigger_ids
+                        user_id, trigger_name, trigger_ids
                     )
                 return None
 
@@ -507,10 +616,6 @@ class WorkflowService:
             logger.error(f"Error activating workflow {workflow_id}: {str(e)}")
             raise
 
-        except Exception as e:
-            logger.error(f"Error activating workflow {workflow_id}: {str(e)}")
-            raise
-
     @staticmethod
     async def deactivate_workflow(
         workflow_id: str, user_id: str, user_timezone: Optional[str] = None
@@ -525,17 +630,26 @@ class WorkflowService:
             await workflow_scheduler.cancel_scheduled_workflow_execution(workflow_id)
 
             # Unregister Composio triggers if any
-            trigger_type = workflow.trigger_config.type
-            trigger_ids = (
-                getattr(workflow.trigger_config, "composio_trigger_ids", None) or []
-            )
-            if trigger_ids and trigger_type:
-                await TriggerService.unregister_triggers(
-                    user_id, trigger_type, trigger_ids
+            trigger_config = workflow.trigger_config
+            trigger_ids = getattr(trigger_config, "composio_trigger_ids", None) or []
+            if trigger_ids:
+                # Get trigger_name for handler lookup (not trigger_type)
+                trigger_name = getattr(trigger_config, "trigger_name", None) or (
+                    getattr(trigger_config.trigger_data, "trigger_name", None)
+                    if getattr(trigger_config, "trigger_data", None)
+                    else None
                 )
-                logger.info(
-                    f"Unregistered {len(trigger_ids)} Composio triggers for workflow {workflow_id}"
-                )
+                if trigger_name:
+                    await TriggerService.unregister_triggers(
+                        user_id, trigger_name, trigger_ids
+                    )
+                    logger.info(
+                        f"Unregistered {len(trigger_ids)} Composio triggers for workflow {workflow_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"No trigger_name found for workflow {workflow_id}, cannot unregister triggers"
+                    )
 
             # Update trigger to disabled and clear trigger IDs
             update_data: dict[str, Any] = {

@@ -19,6 +19,22 @@ import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
 // =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
+
+interface CalendarTriggerData {
+  trigger_name: string;
+  calendar_ids: string[];
+  minutes_before_start?: number;
+  include_all_day?: boolean;
+}
+
+interface CalendarConfig extends TriggerConfig {
+  trigger_name?: string;
+  trigger_data?: CalendarTriggerData;
+}
+
+// =============================================================================
 // CALENDAR SETTINGS COMPONENT
 // =============================================================================
 
@@ -32,18 +48,29 @@ function CalendarSettings({
     new Set(["primary"]),
   );
 
-  // Type-safe access to calendar config fields
-  const config = triggerConfig as TriggerConfig & {
-    calendar_ids?: string[];
-    minutes_before_start?: number;
-    include_all_day?: boolean;
+  const config = triggerConfig as CalendarConfig;
+  const triggerData = config.trigger_data;
+
+  // Helper to update trigger_data only
+  const updateTriggerData = (updates: Partial<CalendarTriggerData>) => {
+    const currentTriggerData = triggerData || {
+      trigger_name: config.trigger_name || "",
+      calendar_ids: ["primary"],
+    };
+    onConfigChange({
+      ...triggerConfig,
+      trigger_data: {
+        ...currentTriggerData,
+        ...updates,
+      },
+    });
   };
 
-  // Initialize selected calendars from trigger config
+  // Initialize selected calendars from trigger_data
   useEffect(() => {
-    if (calendars.length > 0 && config.calendar_ids) {
-      const calIds = config.calendar_ids;
-      if (calIds && Array.isArray(calIds)) {
+    const calIds = triggerData?.calendar_ids;
+    if (calendars.length > 0 && calIds) {
+      if (Array.isArray(calIds)) {
         const mappedIds = new Set<string>();
         calIds.forEach((id) => {
           if (id === "primary") {
@@ -64,14 +91,12 @@ function CalendarSettings({
         setSelectedCalendars(mappedIds);
       }
     }
-  }, [config.calendar_ids, calendars]);
+  }, [triggerData?.calendar_ids, calendars]);
 
   const handleCalendarChange = (keys: Set<string>) => {
     const calendarIds = Array.from(keys).filter((k) => k !== "all");
     setSelectedCalendars(keys);
-
-    onConfigChange({
-      ...triggerConfig,
+    updateTriggerData({
       calendar_ids: calendarIds.length > 0 ? calendarIds : ["primary"],
     });
   };
@@ -98,17 +123,11 @@ function CalendarSettings({
   };
 
   const handleMinutesChange = (value: number) => {
-    onConfigChange({
-      ...triggerConfig,
-      minutes_before_start: value,
-    });
+    updateTriggerData({ minutes_before_start: value });
   };
 
   const handleAllDayChange = (checked: boolean) => {
-    onConfigChange({
-      ...triggerConfig,
-      include_all_day: checked,
-    });
+    updateTriggerData({ include_all_day: checked });
   };
 
   const calendarItems = [
@@ -120,7 +139,7 @@ function CalendarSettings({
   ];
 
   const isEventStartingSoon =
-    triggerConfig.type === "calendar_event_starting_soon";
+    config.trigger_name === "calendar_event_starting_soon";
 
   return (
     <div className="space-y-3">
@@ -156,7 +175,7 @@ function CalendarSettings({
               input:
                 "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
             }}
-            value={String(config.minutes_before_start || 10)}
+            value={String(triggerData?.minutes_before_start || 10)}
             onChange={(e) => {
               const val = parseInt(e.target.value, 10);
               if (!Number.isNaN(val) && val >= 1 && val <= 1440) {
@@ -166,7 +185,7 @@ function CalendarSettings({
             description="How many minutes before event start (1-1440)"
           />
           <Switch
-            isSelected={config.include_all_day ?? false}
+            isSelected={triggerData?.include_all_day ?? false}
             onValueChange={handleAllDayChange}
             size="sm"
           >
@@ -186,34 +205,34 @@ export const calendarTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["calendar_event_created", "calendar_event_starting_soon"],
 
   createDefaultConfig: (slug: string): TriggerConfig => {
-    const baseConfig = {
-      enabled: true,
+    const baseTriggerData: CalendarTriggerData = {
       trigger_name: slug,
       calendar_ids: ["primary"],
     };
 
     if (slug === "calendar_event_starting_soon") {
-      return {
-        ...baseConfig,
-        type: "calendar_event_starting_soon",
-        minutes_before_start: 10,
-        include_all_day: false,
-      } as TriggerConfig;
+      baseTriggerData.minutes_before_start = 10;
+      baseTriggerData.include_all_day = false;
     }
 
     return {
-      ...baseConfig,
-      type: "calendar_event_created",
+      type: "calendar",
+      enabled: true,
+      trigger_name: slug,
+      trigger_data: baseTriggerData,
     } as TriggerConfig;
   },
 
   SettingsComponent: CalendarSettings,
 
-  getDisplayInfo: (config) => ({
-    label:
-      config.type === "calendar_event_starting_soon"
-        ? "event starting soon"
-        : "on new calendar event",
-    integrationId: "google_calendar",
-  }),
+  getDisplayInfo: (config) => {
+    const triggerName = (config as CalendarConfig).trigger_name;
+    return {
+      label:
+        triggerName === "calendar_event_starting_soon"
+          ? "event starting soon"
+          : "on new calendar event",
+      integrationId: "google_calendar",
+    };
+  },
 };

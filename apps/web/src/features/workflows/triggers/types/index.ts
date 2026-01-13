@@ -37,27 +37,21 @@ export interface TriggerConfig {
 
 /**
  * All possible trigger type literals.
- * This is informational - actual validation happens on backend.
+ * These MUST match the backend TriggerType enum values.
  */
 export type TriggerType =
-  | "email"
-  | "calendar_event_created"
-  | "calendar_event_starting_soon"
-  | "schedule"
   | "manual"
+  | "schedule"
+  | "email"
+  | "calendar"
+  | "app"
   | string; // Allow any string for new triggers
 
 /**
  * Type guard to check if a string is a known trigger type.
  */
 export const isKnownTriggerType = (type: string): type is TriggerType => {
-  return [
-    "email",
-    "calendar_event_created",
-    "calendar_event_starting_soon",
-    "schedule",
-    "manual",
-  ].includes(type);
+  return ["manual", "schedule", "email", "calendar", "app"].includes(type);
 };
 
 // =============================================================================
@@ -68,10 +62,7 @@ export const isKnownTriggerType = (type: string): type is TriggerType => {
  * Check if trigger is a calendar type (for calendar handler).
  */
 export const isCalendarTrigger = (config: TriggerConfig): boolean => {
-  return (
-    config.type === "calendar_event_created" ||
-    config.type === "calendar_event_starting_soon"
-  );
+  return config.type === "calendar";
 };
 
 /**

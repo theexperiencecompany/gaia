@@ -159,12 +159,12 @@ class NotionTriggerHandler(TriggerHandler):
         composio = get_composio_service()
         trigger_ids = []
 
+        # Get config from trigger_data
+        trigger_data = config.get("trigger_data", {})
+
         # Handle multi-select support for databases and pages
         if trigger_name == "notion_new_page_in_db":
-            # Support both singular and plural for backward compatibility
-            database_ids = config.get("database_ids", [])
-            if not database_ids and "database_id" in config:
-                database_ids = [config["database_id"]]
+            database_ids = trigger_data.get("database_ids", [])
 
             if not database_ids:
                 logger.warning("No database IDs provided for notion_new_page_in_db")
@@ -190,10 +190,7 @@ class NotionTriggerHandler(TriggerHandler):
                     )
 
         elif trigger_name == "notion_page_updated":
-            # Support both singular and plural for backward compatibility
-            page_ids = config.get("page_ids", [])
-            if not page_ids and "page_id" in config:
-                page_ids = [config["page_id"]]
+            page_ids = trigger_data.get("page_ids", [])
 
             if not page_ids:
                 logger.warning("No page IDs provided for notion_page_updated")
@@ -233,27 +230,6 @@ class NotionTriggerHandler(TriggerHandler):
                 logger.error(f"Failed to register Notion trigger {trigger_name}: {e}")
 
         return trigger_ids
-
-    async def unregister(self, user_id: str, trigger_ids: List[str]) -> bool:
-        """Unregister Notion triggers."""
-        if not trigger_ids:
-            return True
-
-        success = True
-        composio = get_composio_service()
-
-        for trigger_id in trigger_ids:
-            try:
-                await asyncio.to_thread(
-                    composio.composio.triggers.disable,
-                    trigger_id=trigger_id,
-                )
-                logger.info(f"Unregistered Notion trigger: {trigger_id}")
-            except Exception as e:
-                logger.error(f"Failed to unregister Notion trigger {trigger_id}: {e}")
-                success = False
-
-        return success
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
