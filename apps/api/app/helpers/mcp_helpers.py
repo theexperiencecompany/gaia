@@ -58,18 +58,81 @@ def create_stub_tools_from_cache(
         """Factory to create stub executor with proper closure."""
 
         async def _stub_execute(**kwargs):
+            import asyncio
+
             filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
             logger.debug(
                 f"Stub {tool_name}: raw args={kwargs}, filtered={filtered_kwargs}"
             )
 
-            tools = await mcp_client.ensure_connected(int_id)
-            real_tool = next((t for t in tools if t.name == tool_name), None)
-            if real_tool:
-                # Call _arun directly to bypass schema re-validation.
-                # The stub has already validated input via its own schema.
-                return await real_tool._arun(**filtered_kwargs)
-            raise ValueError(f"Tool {tool_name} not found after connecting")
+            # Proactively refresh token if expiring soon
+            try:
+                await mcp_client.ensure_token_valid(int_id)
+            except Exception as e:
+                logger.warning(f"Token refresh check failed for {int_id}: {e}")
+
+            # Retry configuration for transient errors
+            max_retries = 3
+            retry_delays = [1, 2, 4]  # seconds
+            last_error = None
+
+            for attempt in range(max_retries):
+                try:
+                    tools = await mcp_client.ensure_connected(int_id)
+                    real_tool = next((t for t in tools if t.name == tool_name), None)
+                    if real_tool:
+                        # Call _arun directly to bypass schema re-validation
+                        return await real_tool._arun(**filtered_kwargs)
+                    raise ValueError(f"Tool {tool_name} not found after connecting")
+
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e).lower()
+
+                    # Check for 401/unauthorized - try token refresh and retry once
+                    if "401" in str(e) or "unauthorized" in error_str:
+                        logger.info(f"Got 401 for {int_id}, attempting token refresh")
+                        if await mcp_client.try_token_refresh(int_id):
+                            # Force reconnect with new token
+                            try:
+                                await mcp_client.disconnect(int_id)
+                                tools = await mcp_client.connect(int_id)
+                                real_tool = next(
+                                    (t for t in tools if t.name == tool_name), None
+                                )
+                                if real_tool:
+                                    return await real_tool._arun(**filtered_kwargs)
+                            except Exception as retry_error:
+                                raise Exception(
+                                    f"Tool invocation failed after token refresh: {retry_error}"
+                                ) from retry_error
+                        raise  # No refresh token or refresh failed
+
+                    # Check for connection errors - retry with backoff
+                    if any(
+                        x in error_str
+                        for x in ["connection", "timeout", "refused", "reset"]
+                    ):
+                        if attempt < max_retries - 1:
+                            logger.info(
+                                f"Connection error for {int_id} (attempt {attempt + 1}), "
+                                f"retrying in {retry_delays[attempt]}s"
+                            )
+                            await asyncio.sleep(retry_delays[attempt])
+                            # Force reconnect on retry
+                            try:
+                                await mcp_client.disconnect(int_id)
+                            except Exception:
+                                pass
+                            continue
+
+                    # Non-retryable error
+                    raise
+
+            # All retries exhausted
+            raise ConnectionError(
+                f"MCP {int_id} unreachable after {max_retries} attempts: {last_error}"
+            )
 
         return _stub_execute
 

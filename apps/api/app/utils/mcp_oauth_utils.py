@@ -15,6 +15,10 @@ import httpx
 
 from app.config.loggers import langchain_logger as logger
 
+# MCP Protocol Version header value per MCP spec
+# This should be included in discovery requests for protocol version negotiation
+MCP_PROTOCOL_VERSION = "2025-03-26"
+
 
 async def extract_auth_challenge(server_url: str) -> dict:
     """
@@ -26,9 +30,11 @@ async def extract_auth_challenge(server_url: str) -> dict:
 
     Returns dict with extracted fields (empty dict if no 401 or parse fails).
     """
+    # Include MCP protocol version header per MCP spec
+    headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(server_url, timeout=10)
+            response = await client.get(server_url, headers=headers, timeout=10)
 
             if response.status_code == 401:
                 www_auth = response.headers.get("WWW-Authenticate", "")
@@ -80,10 +86,12 @@ async def find_protected_resource_metadata(server_url: str) -> Optional[str]:
         candidates.append(f"{origin}/.well-known/oauth-protected-resource{path}")
     candidates.append(f"{origin}/.well-known/oauth-protected-resource")
 
+    # Include MCP protocol version header per MCP spec
+    headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
     async with httpx.AsyncClient() as client:
         for url in candidates:
             try:
-                response = await client.get(url, timeout=10)
+                response = await client.get(url, headers=headers, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
                     if "authorization_servers" in data or "resource" in data:
@@ -101,8 +109,10 @@ async def fetch_protected_resource_metadata(prm_url: str) -> dict:
 
     Returns dict with 'authorization_servers', 'scopes_supported', etc.
     """
+    # Include MCP protocol version header per MCP spec
+    headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
     async with httpx.AsyncClient() as client:
-        response = await client.get(prm_url, timeout=10)
+        response = await client.get(prm_url, headers=headers, timeout=10)
         response.raise_for_status()
         return response.json()
 
@@ -116,6 +126,11 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> dict:
     - Root: https://auth.example.com/.well-known/oauth-authorization-server
 
     Tries multiple discovery patterns and both OAuth and OIDC endpoints.
+
+    Per MCP spec, if metadata discovery fails, falls back to default URLs:
+    - {base}/authorize
+    - {base}/token
+    - {base}/register
     """
     parsed = urlparse(auth_server_url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
@@ -130,18 +145,32 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> dict:
     candidate_urls.append(f"{origin}/.well-known/oauth-authorization-server")
     candidate_urls.append(f"{origin}/.well-known/openid-configuration")
 
-    last_error = None
+    # Include MCP protocol version header per MCP spec
+    headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
     async with httpx.AsyncClient() as client:
         for url in candidate_urls:
             try:
-                response = await client.get(url, timeout=10)
+                response = await client.get(url, headers=headers, timeout=10)
                 if response.status_code == 200:
                     logger.debug(f"Found auth server metadata at {url}")
                     return response.json()
             except Exception as e:
                 logger.debug(f"Auth metadata not found at {url}: {e}")
-                last_error = e
 
-    error_msg = f"Failed to fetch auth server metadata for {auth_server_url}"
-    logger.error(error_msg)
-    raise Exception(error_msg) from last_error
+    # MCP Spec Fallback: If metadata discovery fails, use default URL pattern
+    # Per MCP Authorization spec: "MCP servers that do not support the OAuth 2.0
+    # Authorization Server Metadata protocol MUST support fallback URLs."
+    logger.info(
+        f"Metadata discovery failed for {auth_server_url}, using MCP spec fallback URLs"
+    )
+
+    # Use the full base URL (origin + path) for fallback endpoints
+    # This ensures path-based servers (e.g., /api/v1) get correct fallback URLs
+    base = f"{origin}{path}" if path else origin
+    return {
+        "authorization_endpoint": f"{base}/authorize",
+        "token_endpoint": f"{base}/token",
+        "registration_endpoint": f"{base}/register",
+        "issuer": base,
+        "fallback": True,  # Flag indicating these are fallback URLs, not discovered
+    }

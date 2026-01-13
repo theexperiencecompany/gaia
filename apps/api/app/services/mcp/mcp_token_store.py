@@ -22,7 +22,7 @@ from app.constants.mcp import (
     OAUTH_STATE_TTL,
 )
 from app.db.postgresql import get_db_session
-from app.db.redis import delete_cache, get_cache, set_cache
+from app.db.redis import get_and_delete_cache, get_cache, set_cache
 from app.models.oauth_models import MCPCredential
 
 
@@ -69,11 +69,34 @@ class MCPTokenStore:
         return None
 
     async def get_oauth_token(self, integration_id: str) -> Optional[str]:
-        """Get decrypted OAuth access token."""
+        """Get decrypted OAuth access token if not expired."""
         cred = await self.get_credential(integration_id)
         if cred and cred.access_token and cred.status == "connected":
+            # Check if token is expired
+            if cred.token_expires_at and cred.token_expires_at < datetime.utcnow():
+                logger.warning(f"OAuth token expired for {integration_id}")
+                return None
             return self._decrypt(cred.access_token)
         return None
+
+    async def get_refresh_token(self, integration_id: str) -> Optional[str]:
+        """Get decrypted refresh token."""
+        cred = await self.get_credential(integration_id)
+        if cred and cred.refresh_token:
+            return self._decrypt(cred.refresh_token)
+        return None
+
+    async def is_token_expiring_soon(
+        self, integration_id: str, threshold_seconds: int = 300
+    ) -> bool:
+        """Check if token expires within threshold (default 5 minutes)."""
+        cred = await self.get_credential(integration_id)
+        if cred and cred.token_expires_at:
+            from datetime import timedelta
+
+            expiry_threshold = datetime.utcnow() + timedelta(seconds=threshold_seconds)
+            return cred.token_expires_at < expiry_threshold
+        return False
 
     async def store_bearer_token(self, integration_id: str, token: str) -> None:
         """Store encrypted bearer token."""
@@ -115,7 +138,6 @@ class MCPTokenStore:
         access_token: str,
         refresh_token: Optional[str] = None,
         expires_at: Optional[datetime] = None,
-        client_registration: Optional[dict] = None,
     ) -> None:
         """Store encrypted OAuth tokens."""
         encrypted_access = self._encrypt(access_token)
@@ -136,11 +158,7 @@ class MCPTokenStore:
                 cred.access_token = encrypted_access
                 cred.refresh_token = encrypted_refresh
                 cred.token_expires_at = expires_at
-                cred.status = "connected"
-                cred.connected_at = now
-                cred.error_message = None
-                if client_registration:
-                    cred.client_registration = json.dumps(client_registration)
+                # Note: status is managed in MongoDB user_integrations, not here
                 session.add(cred)
             else:
                 cred = MCPCredential(
@@ -150,20 +168,19 @@ class MCPTokenStore:
                     access_token=encrypted_access,
                     refresh_token=encrypted_refresh,
                     token_expires_at=expires_at,
-                    status="connected",
-                    connected_at=now,
-                    client_registration=json.dumps(client_registration)
-                    if client_registration
-                    else None,
+                    # Note: status managed in MongoDB user_integrations
+                    status="active",  # Informational only
                 )
                 session.add(cred)
             await session.commit()
             logger.info(f"Stored OAuth tokens for {integration_id}")
 
     async def store_unauthenticated(self, integration_id: str) -> None:
-        """Store connection for unauthenticated MCP (just marks as connected)."""
-        now = datetime.utcnow()
+        """Store connection for unauthenticated MCP.
 
+        Creates a credential record to track that this integration exists.
+        Connection status is managed in MongoDB user_integrations, not here.
+        """
         async with get_db_session() as session:
             # Query within this session
             result = await session.execute(
@@ -174,22 +191,19 @@ class MCPTokenStore:
             )
             cred = result.scalar_one_or_none()
 
-            if cred:
-                cred.status = "connected"
-                cred.connected_at = now
-                cred.error_message = None
-                session.add(cred)
-            else:
+            if not cred:
+                # Only create if doesn't exist - no status updates needed
                 cred = MCPCredential(
                     user_id=self.user_id,
                     integration_id=integration_id,
                     auth_type="none",
-                    status="connected",
-                    connected_at=now,
+                    status="active",  # Informational only
                 )
                 session.add(cred)
-            await session.commit()
-            logger.info(f"Stored unauthenticated connection for {integration_id}")
+                await session.commit()
+                logger.info(
+                    f"Created credential record for unauthenticated {integration_id}"
+                )
 
     async def create_oauth_state(self, integration_id: str, code_verifier: str) -> str:
         """
@@ -197,6 +211,9 @@ class MCPTokenStore:
 
         Stores state and PKCE code_verifier in Redis with TTL.
         Returns the state token to include in OAuth URL.
+
+        Note: Connection status is managed in MongoDB user_integrations.
+        PostgreSQL only stores the PKCE state for the OAuth flow.
         """
         state = secrets.token_urlsafe(32)
 
@@ -204,29 +221,6 @@ class MCPTokenStore:
         cache_key = f"{OAUTH_STATE_PREFIX}:{self.user_id}:{integration_id}"
         state_data = json.dumps({"state": state, "code_verifier": code_verifier})
         await set_cache(cache_key, state_data, ttl=OAUTH_STATE_TTL)
-
-        # Also mark the credential as pending
-        async with get_db_session() as session:
-            result = await session.execute(
-                select(MCPCredential).where(
-                    MCPCredential.user_id == self.user_id,
-                    MCPCredential.integration_id == integration_id,
-                )
-            )
-            cred = result.scalar_one_or_none()
-
-            if cred:
-                cred.status = "pending"
-                session.add(cred)
-            else:
-                cred = MCPCredential(
-                    user_id=self.user_id,
-                    integration_id=integration_id,
-                    auth_type="oauth",
-                    status="pending",
-                )
-                session.add(cred)
-            await session.commit()
 
         return state
 
@@ -236,17 +230,22 @@ class MCPTokenStore:
         """
         Verify OAuth state matches stored state.
 
-        Retrieves from Redis and deletes after verification (one-time use).
+        Uses atomic get-and-delete to prevent replay attacks (Issue 5.2 fix).
         Returns (is_valid, code_verifier) tuple.
         """
         cache_key = f"{OAUTH_STATE_PREFIX}:{self.user_id}:{integration_id}"
-        stored_data = await get_cache(cache_key)
+        # Atomic get-and-delete prevents race condition where two callbacks
+        # could both validate before either deletes the state
+        stored_data = await get_and_delete_cache(cache_key)
 
         if not stored_data:
             return False, None
 
         try:
-            data = json.loads(stored_data)
+            if isinstance(stored_data, dict):
+                data = stored_data
+            else:
+                data = json.loads(stored_data)
             stored_state = data.get("state")
             code_verifier = data.get("code_verifier")
         except (json.JSONDecodeError, TypeError):
@@ -255,8 +254,6 @@ class MCPTokenStore:
             code_verifier = None
 
         if stored_state and stored_state == state:
-            # Delete after successful verification (one-time use)
-            await delete_cache(cache_key)
             return True, code_verifier
         return False, None
 
@@ -281,7 +278,12 @@ class MCPTokenStore:
         status: str,
         error: Optional[str] = None,
     ) -> None:
-        """Update integration connection status."""
+        """Update PostgreSQL credential status (informational only).
+
+        NOTE: Connection status is managed in MongoDB user_integrations.
+        This method only updates the PostgreSQL status field for debugging/auditing.
+        Use update_user_integration_status() to change the canonical connection status.
+        """
         async with get_db_session() as session:
             result = await session.execute(
                 select(MCPCredential).where(
@@ -296,18 +298,26 @@ class MCPTokenStore:
                 session.add(cred)
                 await session.commit()
 
-    async def is_connected(self, integration_id: str) -> bool:
-        """Check if integration is connected."""
-        cred = await self.get_credential(integration_id)
-        return cred is not None and cred.status == "connected"
+    async def has_credentials(self, integration_id: str) -> bool:
+        """Check if we have stored tokens/credentials for this integration.
 
-    async def get_connected_integrations(self) -> list[str]:
-        """Get all connected MCP integration IDs for this user."""
+        Note: This checks for token existence, NOT connection status.
+        Connection status is managed in MongoDB user_integrations.
+        """
+        cred = await self.get_credential(integration_id)
+        return cred is not None and cred.access_token is not None
+
+    async def get_integrations_with_credentials(self) -> list[str]:
+        """Get all MCP integration IDs that have stored credentials.
+
+        Note: This returns integrations with tokens, NOT necessarily connected.
+        Connection status is managed in MongoDB user_integrations.
+        """
         async with get_db_session() as session:
             result = await session.execute(
                 select(MCPCredential.integration_id).where(
                     MCPCredential.user_id == self.user_id,
-                    MCPCredential.status == "connected",
+                    MCPCredential.access_token.isnot(None),
                 )
             )
             return [row[0] for row in result.fetchall()]
@@ -349,7 +359,19 @@ class MCPTokenStore:
             logger.info(f"Stored DCR client for {integration_id}")
 
     async def store_oauth_discovery(self, integration_id: str, discovery: dict) -> None:
-        """Cache OAuth discovery data in Redis."""
+        """
+        Cache OAuth discovery data in Redis.
+
+        NOTE: This cache is GLOBAL per integration, not per-user. The key is:
+        `mcp_oauth_discovery:{integration_id}` (no user_id component).
+
+        This is intentional because OAuth discovery data (authorization_endpoint,
+        token_endpoint, registration_endpoint, etc.) is the same for all users
+        connecting to the same MCP server. User-specific data like DCR client_id
+        is stored separately in PostgreSQL per user.
+
+        TTL: 24 hours (OAuth metadata changes infrequently)
+        """
         cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
         await set_cache(cache_key, json.dumps(discovery), ttl=OAUTH_DISCOVERY_TTL)
         logger.info(f"Cached OAuth discovery for {integration_id}")
@@ -364,53 +386,3 @@ class MCPTokenStore:
             except json.JSONDecodeError:
                 return None
         return None
-
-    async def store_cached_tools(self, integration_id: str, tools: list[dict]) -> None:
-        """
-        Store cached tool metadata for an integration.
-
-        Tool metadata includes name and description for each tool.
-        This allows tool discovery without reconnecting to the MCP server.
-        """
-        async with get_db_session() as session:
-            result = await session.execute(
-                select(MCPCredential).where(
-                    MCPCredential.user_id == self.user_id,
-                    MCPCredential.integration_id == integration_id,
-                )
-            )
-            cred = result.scalar_one_or_none()
-
-            if cred:
-                cred.cached_tools = json.dumps(tools)
-                session.add(cred)
-                await session.commit()
-                logger.info(f"Cached {len(tools)} tools for {integration_id}")
-
-    async def get_cached_tools(self, integration_id: str) -> Optional[list[dict]]:
-        """
-        Get cached tool metadata for an integration.
-
-        Returns list of tool dicts with 'name' and 'description' keys,
-        or None if no cached tools.
-        """
-        try:
-            cred = await self.get_credential(integration_id)
-            if cred and cred.cached_tools:
-                try:
-                    return json.loads(cred.cached_tools)
-                except json.JSONDecodeError:
-                    return None
-            return None
-        except AttributeError as e:
-            # Column might not exist in database yet
-            logger.warning(f"cached_tools column may not exist: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Error getting cached tools for {integration_id}: {e}")
-            return None
-
-    async def has_cached_tools(self, integration_id: str) -> bool:
-        """Check if there are cached tools for this integration."""
-        cred = await self.get_credential(integration_id)
-        return cred is not None and cred.cached_tools is not None

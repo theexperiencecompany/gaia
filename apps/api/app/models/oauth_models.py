@@ -64,9 +64,7 @@ class MCPCredential(Base):
     client_registration: Mapped[str | None] = mapped_column(
         Text, nullable=True
     )  # DCR JSON
-    cached_tools: Mapped[str | None] = mapped_column(
-        Text, nullable=True
-    )  # JSON array of tool metadata (name, description)
+    # Note: Tool caching is handled by MongoDB mcp_tools_store, not this column
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     connected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

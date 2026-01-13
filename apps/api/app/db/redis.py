@@ -267,6 +267,33 @@ async def delete_cache(key: str):
     await redis_cache.delete(key)
 
 
+async def get_and_delete_cache(key: str) -> Any | None:
+    """
+    Atomically get and delete a cached value using Redis GETDEL.
+
+    Used for one-time use tokens like OAuth state to prevent replay attacks.
+    This is atomic - if two requests come in, only one will get the value.
+
+    Args:
+        key: Cache key to get and delete
+
+    Returns:
+        Cached value (deserialized from JSON) or None if not found
+    """
+    if not redis_cache.redis:
+        logger.warning("Redis is not initialized. Skipping get_and_delete operation.")
+        return None
+
+    try:
+        value = await redis_cache.redis.getdel(key)
+        if value:
+            return deserialize_any(value)
+        return None
+    except Exception as e:
+        logger.error(f"Error in get_and_delete for key {key}: {e}")
+        return None
+
+
 async def delete_cache_by_pattern(pattern: str):
     """
     Delete multiple cache keys matching a pattern.

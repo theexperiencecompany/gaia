@@ -15,7 +15,6 @@ from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 
 from app.config.loggers import langchain_logger as logger
-
 from app.models.oauth_models import MCPConfig
 from app.services.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -132,10 +131,18 @@ class MCPClient:
             logger.warning(f"Failed to update auth status for {integration_id}: {e}")
 
     async def _discover_oauth_config(
-        self, integration_id: str, mcp_config: MCPConfig
+        self,
+        integration_id: str,
+        mcp_config: MCPConfig,
+        challenge_data: Optional[dict] = None,
     ) -> dict:
         """
         Full MCP OAuth discovery flow per specification.
+
+        Args:
+            integration_id: The integration identifier
+            mcp_config: MCP configuration with server URL
+            challenge_data: Optional pre-fetched WWW-Authenticate challenge (avoids re-probe)
 
         Returns dict with all OAuth endpoints and metadata.
         """
@@ -150,8 +157,9 @@ class MCPClient:
 
         server_url = mcp_config.server_url.rstrip("/")
 
-        # Phase 1: Probe server for WWW-Authenticate challenge
-        challenge = await extract_auth_challenge(server_url)
+        # Phase 1: Use provided challenge or probe server for WWW-Authenticate
+        # If challenge_data was passed (from prior probe), use it to avoid duplicate HTTP call
+        challenge = challenge_data or await extract_auth_challenge(server_url)
         initial_scope = challenge.get("scope")
 
         # Phase 2: Try RFC 9728 Protected Resource Metadata discovery
@@ -235,18 +243,23 @@ class MCPClient:
 
         # Check for stored OAuth token if auth is required
         if mcp_config.requires_auth:
+            # Check if token is expiring soon and try to refresh
+            if await self.token_store.is_token_expiring_soon(integration_id):
+                logger.info(
+                    f"Token expiring soon for {integration_id}, attempting refresh"
+                )
+                await self._try_refresh_token(integration_id, mcp_config)
+
             stored_token = await self.token_store.get_oauth_token(integration_id)
             if stored_token:
-                # mcp-use HttpConnector handles auth as follows:
-                # - If string: adds "Bearer {token}" to Authorization header
-                # - So pass raw token WITHOUT Bearer prefix
+                # Pass raw token directly - mcp-use adds Bearer prefix automatically
                 raw_token = stored_token
                 if stored_token.lower().startswith("bearer "):
-                    raw_token = stored_token[7:]  # Remove "Bearer " prefix
+                    raw_token = stored_token[7:]
                 server_config["auth"] = raw_token
             else:
                 logger.warning(
-                    f"No stored OAuth token found for {integration_id} - connection may fail"
+                    f"No valid OAuth token for {integration_id} - connection may fail"
                 )
 
         return {"mcpServers": {integration_id: server_config}}
@@ -257,7 +270,7 @@ class MCPClient:
 
         For unauthenticated MCPs: Connects directly.
         For OAuth MCPs: Uses stored credentials from completed OAuth flow.
-        Supports both platform integrations (from code) and custom integrations (from MongoDB).
+        Supports platform integrations (from code) and custom integrations.
         """
         # Resolve integration from platform config or MongoDB
         resolved = await IntegrationResolver.resolve(integration_id)
@@ -286,6 +299,10 @@ class MCPClient:
 
             logger.info(f"[{integration_id}] Connected to MCP, got {len(tools)} tools")
 
+            # For unauthenticated MCPs, record connection in PostgreSQL (Issue 4.1 fix)
+            if not mcp_config.requires_auth:
+                await self.token_store.store_unauthenticated(integration_id)
+
             # Build tool metadata for MongoDB (name and description only)
             tool_metadata = [
                 {
@@ -307,28 +324,54 @@ class MCPClient:
 
             # For custom integrations: index tools in ChromaDB
             if is_custom:
+                custom_name = (
+                    resolved.custom_doc.get("name") if resolved.custom_doc else None
+                )
+                custom_desc = (
+                    resolved.custom_doc.get("description")
+                    if resolved.custom_doc
+                    else None
+                )
                 await self._handle_custom_integration_connect(
-                    integration_id, mcp_config.server_url, tools
+                    integration_id,
+                    mcp_config.server_url,
+                    tools,
+                    name=custom_name,
+                    description=custom_desc,
                 )
 
-            # Update user integration status to connected (import here to avoid circular dependency)
+            # Update user integration status to connected
+            # Import here to avoid circular dependency
             from app.services.integration_service import update_user_integration_status
 
-            await update_user_integration_status(
-                self.user_id, integration_id, "connected"
-            )
+            try:
+                await update_user_integration_status(
+                    self.user_id, integration_id, "connected"
+                )
+            except Exception as status_err:
+                # Best-effort: log but don't fail if MongoDB update fails
+                logger.warning(
+                    f"MongoDB status update failed for {integration_id}: {status_err}"
+                )
 
             return tools
 
         except Exception as e:
             logger.error(f"Failed to connect to MCP {integration_id}: {e}")
-            await self.token_store.update_status(integration_id, "failed", str(e))
+            # Note: Status is managed in MongoDB user_integrations, not PostgreSQL
+            # PostgreSQL mcp_credentials only stores auth tokens
             raise
 
     async def _handle_custom_integration_connect(
-        self, integration_id: str, server_url: str, tools: list[BaseTool]
+        self,
+        integration_id: str,
+        server_url: str,
+        tools: list[BaseTool],
+        name: str | None = None,
+        description: str | None = None,
     ) -> None:
-        """Index tools in ChromaDB for semantic discovery."""
+        """Handle custom integration: index tools and register as subagent."""
+        # Index tools in ChromaDB for semantic discovery
         try:
             from app.db.chroma.chroma_tools_store import index_tools_to_store
 
@@ -338,6 +381,123 @@ class MCPClient:
             logger.warning(
                 f"Failed to index tools in ChromaDB for {integration_id}: {e}"
             )
+
+        # Index as subagent for discovery via retrieve_tools
+        try:
+            from app.agents.core.subagents.handoff_tools import (
+                index_custom_mcp_as_subagent,
+            )
+            from app.core.lazy_loader import providers
+
+            store = await providers.aget("chroma_tools_store")
+            if store:
+                resolved_name = name
+                resolved_description = description
+
+                if resolved_name is None:
+                    from app.services.integration_resolver import IntegrationResolver
+
+                    resolved = await IntegrationResolver.resolve(integration_id)
+                    if resolved and resolved.custom_doc:
+                        resolved_name = resolved.custom_doc.get("name", integration_id)
+                        resolved_description = resolved.custom_doc.get(
+                            "description", ""
+                        )
+
+                if resolved_name:
+                    await index_custom_mcp_as_subagent(
+                        store=store,
+                        integration_id=integration_id,
+                        name=resolved_name,
+                        description=resolved_description or "",
+                    )
+                    logger.info(f"Indexed custom MCP {integration_id} as subagent")
+        except Exception as e:
+            logger.warning(f"Failed to index custom MCP as subagent: {e}")
+
+    async def _try_refresh_token(
+        self, integration_id: str, mcp_config: MCPConfig
+    ) -> bool:
+        """
+        Attempt to refresh OAuth token using stored refresh_token.
+
+        Returns True if refresh succeeded, False otherwise.
+        """
+        refresh_token = await self.token_store.get_refresh_token(integration_id)
+        if not refresh_token:
+            logger.debug(f"No refresh token for {integration_id}")
+            return False
+
+        try:
+            # Get OAuth discovery for token endpoint
+            oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
+            token_endpoint = oauth_config.get("token_endpoint")
+            if not token_endpoint:
+                return False
+
+            # Get client credentials
+            client_id, client_secret = self._resolve_client_credentials(mcp_config)
+            if not client_id:
+                dcr_data = await self.token_store.get_dcr_client(integration_id)
+                if dcr_data:
+                    client_id = dcr_data.get("client_id")
+                    client_secret = dcr_data.get("client_secret")
+
+            if not client_id:
+                return False
+
+            # RFC 8707: resource parameter required for token binding
+            resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))
+
+            async with httpx.AsyncClient() as client:
+                token_data = {
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                    "resource": resource,
+                }
+
+                headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+                if client_secret:
+                    credentials = f"{client_id}:{client_secret}"
+                    encoded = base64.b64encode(credentials.encode()).decode()
+                    headers["Authorization"] = f"Basic {encoded}"
+                else:
+                    token_data["client_id"] = client_id
+
+                response = await client.post(
+                    token_endpoint, data=token_data, headers=headers, timeout=30
+                )
+
+                if response.status_code != 200:
+                    logger.warning(f"Token refresh failed for {integration_id}")
+                    return False
+
+                tokens = response.json()
+
+                # Calculate new expiry
+                expires_at = None
+                if tokens.get("expires_in"):
+                    from datetime import datetime, timedelta
+
+                    expires_at = datetime.utcnow() + timedelta(
+                        seconds=tokens["expires_in"]
+                    )
+
+                # Store refreshed tokens
+                await self.token_store.store_oauth_tokens(
+                    integration_id=integration_id,
+                    access_token=tokens.get("access_token", ""),
+                    refresh_token=tokens.get("refresh_token", refresh_token),
+                    expires_at=expires_at,
+                )
+
+                logger.info(f"Successfully refreshed token for {integration_id}")
+                return True
+
+        except Exception as e:
+            logger.warning(f"Token refresh failed for {integration_id}: {e}")
+            return False
 
     def _resolve_client_credentials(
         self, mcp_config: MCPConfig
@@ -371,6 +531,7 @@ class MCPClient:
         integration_id: str,
         redirect_uri: str,
         redirect_path: str = "/integrations",
+        challenge_data: Optional[dict] = None,
     ) -> str:
         """
         Build OAuth authorization URL using MCP spec discovery.
@@ -380,7 +541,11 @@ class MCPClient:
         3. Uses DCR on auth server if no client_id configured
         4. Returns authorization URL for browser redirect
 
-        Supports both platform integrations (from code) and custom integrations (from MongoDB).
+        Supports platform integrations (from code) and custom integrations.
+
+        Args:
+            challenge_data: Optional pre-fetched WWW-Authenticate challenge from probe
+                           to avoid duplicate discovery HTTP calls.
         """
         # Resolve integration from platform config or MongoDB
         resolved = await IntegrationResolver.resolve(integration_id)
@@ -388,8 +553,10 @@ class MCPClient:
             raise ValueError(f"Integration {integration_id} not found")
 
         mcp_config = resolved.mcp_config
-        # Full MCP OAuth discovery
-        oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
+        # Full MCP OAuth discovery - pass challenge_data to avoid re-probe
+        oauth_config = await self._discover_oauth_config(
+            integration_id, mcp_config, challenge_data=challenge_data
+        )
 
         # Get or register client credentials
         client_id, client_secret = self._resolve_client_credentials(mcp_config)
@@ -469,6 +636,8 @@ class MCPClient:
             ValueError: For other registration failures
         """
         try:
+            from app.utils.mcp_oauth_utils import MCP_PROTOCOL_VERSION
+
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     registration_endpoint,
@@ -479,8 +648,17 @@ class MCPClient:
                         "response_types": ["code"],
                         "token_endpoint_auth_method": "none",
                     },
+                    headers={"MCP-Protocol-Version": MCP_PROTOCOL_VERSION},
                     timeout=30,
                 )
+
+                # Check for DCR not supported (403/404/405)
+                if response.status_code in (403, 404, 405):
+                    raise DCRNotSupportedException(
+                        f"DCR not supported at {registration_endpoint} "
+                        f"(status {response.status_code}). Pre-registration required."
+                    )
+
                 response.raise_for_status()
                 dcr_data = response.json()
                 await self.token_store.store_dcr_client(integration_id, dcr_data)
@@ -488,6 +666,8 @@ class MCPClient:
                     f"DCR successful for {integration_id} at {registration_endpoint}"
                 )
                 return dcr_data.get("client_id")
+        except DCRNotSupportedException:
+            raise  # Re-raise without wrapping
         except Exception as e:
             logger.error(
                 f"DCR failed for {integration_id} at {registration_endpoint}: {e}"
@@ -574,27 +754,48 @@ class MCPClient:
             response.raise_for_status()
             tokens = response.json()
 
+        # Validate token response per OAuth 2.1 spec (Issue 3.2 fix)
+        access_token = tokens.get("access_token")
+        if not access_token:
+            raise ValueError("Token response missing access_token")
+
+        token_type = tokens.get("token_type", "")
+        if token_type.lower() != "bearer":
+            logger.warning(
+                f"Unexpected token_type '{token_type}' for {integration_id}, expected 'Bearer'"
+            )
+
+        # Calculate expiry time if provided
+        expires_at = None
+        if tokens.get("expires_in"):
+            from datetime import datetime, timedelta
+
+            expires_at = datetime.utcnow() + timedelta(seconds=tokens["expires_in"])
+
         # Store tokens
         await self.token_store.store_oauth_tokens(
             integration_id=integration_id,
-            access_token=tokens.get("access_token", ""),
+            access_token=access_token,
             refresh_token=tokens.get("refresh_token"),
+            expires_at=expires_at,
         )
 
+        # Connect using the newly obtained tokens
+        # If connection fails, clean up stored tokens to prevent stuck state
         try:
             return await self.connect(integration_id)
         except Exception as e:
-            logger.warning(
-                f"MCP connection after OAuth failed for {integration_id}: {e}"
+            logger.error(
+                f"Connection failed after token storage for {integration_id}: {e}. "
+                "Rolling back tokens to prevent stuck state."
             )
-            return []
+            # Delete the tokens we just stored since connection failed
+            await self.token_store.delete_credentials(integration_id)
+            raise
 
     async def disconnect(self, integration_id: str) -> None:
         """Disconnect from an MCP server."""
-        resolved = await IntegrationResolver.resolve(integration_id)
-        if resolved and resolved.mcp_config and not resolved.requires_auth:
-            return
-
+        # Always clean up in-memory state
         if integration_id in self._clients:
             try:
                 await self._clients[integration_id].close_all_sessions()
@@ -605,7 +806,18 @@ class MCPClient:
         if integration_id in self._tools:
             del self._tools[integration_id]
 
+        # Clear OAuth discovery cache (Issue 4.2 fix)
+        from app.constants.mcp import OAUTH_DISCOVERY_PREFIX
+        from app.db.redis import delete_cache
+
+        try:
+            await delete_cache(f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}")
+        except Exception as e:
+            logger.warning(f"Failed to clear OAuth discovery cache: {e}")
+
+        # Delete credentials from PostgreSQL (for both authenticated and unauthenticated MCPs)
         await self.token_store.delete_credentials(integration_id)
+
         logger.info(f"Disconnected MCP {integration_id}")
 
     async def get_tools(self, integration_id: str) -> list[BaseTool]:
@@ -617,8 +829,17 @@ class MCPClient:
         return integration_id in self._clients
 
     async def is_connected_db(self, integration_id: str) -> bool:
-        """Check if an integration is connected (in database)."""
-        return await self.token_store.is_connected(integration_id)
+        """Check if integration is connected (in MongoDB user_integrations)."""
+        from app.db.mongodb.collections import user_integrations_collection
+
+        doc = await user_integrations_collection.find_one(
+            {
+                "user_id": self.user_id,
+                "integration_id": integration_id,
+                "status": "connected",
+            }
+        )
+        return doc is not None
 
     async def get_all_connected_tools(self) -> dict[str, list[BaseTool]]:
         """
@@ -627,27 +848,25 @@ class MCPClient:
         Always connects to get real tools with proper schemas.
         Cached tools are returned from memory if already connected.
 
+        Data Source:
+        - MongoDB user_integrations (single source of truth for connection status)
+
         Returns dict mapping integration_id -> list of tools.
         """
-        # Get authenticated MCP connections from PostgreSQL
-        auth_connected = await self.token_store.get_connected_integrations()
+        # Get all connected integrations from MongoDB (single source of truth)
+        from app.services.integration_service import get_user_connected_integrations
 
-        # Get unauthenticated MCP connections from MongoDB user_integrations
-        unauth_connected: list[str] = []
+        connected_ids: list[str] = []
         try:
-            from app.services.integration_service import get_user_connected_integrations
-
             user_integrations = await get_user_connected_integrations(self.user_id)
-            for ui in user_integrations:
-                integration_id = ui.get("integration_id")
-                # Skip if already in auth_connected (avoid duplicates)
-                if integration_id and integration_id not in auth_connected:
-                    unauth_connected.append(integration_id)
+            connected_ids = [
+                ui.get("integration_id")
+                for ui in user_integrations
+                if ui.get("integration_id")
+            ]
         except Exception as e:
-            logger.warning(f"Failed to get unauth MCPs from user_integrations: {e}")
+            logger.warning(f"Failed to get connected MCPs from user_integrations: {e}")
 
-        # Combine both sources
-        connected_ids = list(set(auth_connected) | set(unauth_connected))
         all_tools: dict[str, list[BaseTool]] = {}
 
         for integration_id in connected_ids:
@@ -674,19 +893,57 @@ class MCPClient:
         Ensure connection to an MCP server, reconnecting if needed.
 
         Uses stored tokens to reconnect if not already connected in memory.
+        Connection status checked against MongoDB user_integrations.
         """
         # Already connected in memory
         if integration_id in self._tools:
             return self._tools[integration_id]
 
-        # Check if we have stored credentials
-        if await self.token_store.is_connected(integration_id):
+        # Check if connected in MongoDB (single source of truth)
+        if await self.is_connected_db(integration_id):
             return await self.connect(integration_id)
 
         # Not connected at all
         raise ValueError(
             f"MCP {integration_id} not connected. User needs to complete OAuth flow."
         )
+
+    async def ensure_token_valid(self, integration_id: str) -> None:
+        """Proactively refresh token if expiring soon.
+
+        Called before tool invocation to prevent 401 errors.
+        This is a no-op for unauthenticated integrations.
+        """
+        # Check if we have credentials for this integration
+        if not await self.token_store.has_credentials(integration_id):
+            return  # No auth required or no stored credentials
+
+        # Check if token is expiring soon
+        if await self.token_store.is_token_expiring_soon(integration_id):
+            logger.info(
+                f"Token expiring soon for {integration_id}, proactively refreshing"
+            )
+            resolved = await IntegrationResolver.resolve(integration_id)
+            if resolved and resolved.mcp_config:
+                refreshed = await self._try_refresh_token(
+                    integration_id, resolved.mcp_config
+                )
+                if not refreshed:
+                    logger.warning(
+                        f"Proactive token refresh failed for {integration_id}"
+                    )
+
+    async def try_token_refresh(self, integration_id: str) -> bool:
+        """Attempt to refresh OAuth token.
+
+        Public wrapper for token refresh - used by stub executor on 401 errors.
+
+        Returns True if refresh succeeded, False otherwise.
+        """
+        resolved = await IntegrationResolver.resolve(integration_id)
+        if resolved and resolved.mcp_config and resolved.mcp_config.requires_auth:
+            return await self._try_refresh_token(integration_id, resolved.mcp_config)
+        return False
 
 
 async def get_mcp_client(user_id: str) -> MCPClient:

@@ -5,6 +5,8 @@ Handles MCP OAuth callbacks and connection testing.
 Connection/disconnection is handled by the unified /integrations endpoints.
 """
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, RedirectResponse
 
@@ -19,8 +21,6 @@ from app.helpers.mcp_helpers import (
 )
 from app.services.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_client import get_mcp_client
-from app.agents.core.subagents.handoff_tools import index_custom_mcp_as_subagent
-from app.core.lazy_loader import providers
 
 router = APIRouter()
 
@@ -110,11 +110,16 @@ async def test_mcp_connection(
 
 @router.get("/oauth/callback")
 async def mcp_oauth_callback(
-    code: str = Query(...),
     state: str = Query(...),
+    code: Optional[str] = Query(None),  # Optional - may be missing if error
+    error: Optional[str] = Query(None),  # OAuth error code
+    error_description: Optional[str] = Query(None),  # OAuth error description
     user: dict = Depends(get_current_user),
 ):
-    """Handle OAuth callback from MCP server."""
+    """Handle OAuth callback from MCP server.
+
+    Handles both success (with code) and error responses from OAuth server.
+    """
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
@@ -134,56 +139,71 @@ async def mcp_oauth_callback(
             url=f"{frontend_url}/integrations?status=failed&error=invalid_state"
         )
 
+    frontend_url = get_frontend_url()
+
+    # Handle OAuth error response from authorization server
+    if error:
+        logger.warning(
+            f"OAuth error for {integration_id}: {error} - {error_description or 'no description'}"
+        )
+        # Map common OAuth errors to user-friendly codes
+        error_code = error
+        if error == "access_denied":
+            error_code = "access_denied"  # User declined
+        elif error == "server_error":
+            error_code = "oauth_server_error"
+        elif error not in [
+            "access_denied",
+            "invalid_request",
+            "unauthorized_client",
+            "unsupported_response_type",
+            "invalid_scope",
+            "server_error",
+            "temporarily_unavailable",
+        ]:
+            error_code = "authorization_failed"  # Generic fallback
+
+        return RedirectResponse(
+            url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error={error_code}"
+        )
+
+    # Validate code is present (required for success case)
+    if not code:
+        logger.error(f"OAuth callback missing code for {integration_id}")
+        return RedirectResponse(
+            url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error=missing_code"
+        )
+
     client = await get_mcp_client(user_id=str(user_id))
 
     try:
-        await client.handle_oauth_callback(
+        tools = await client.handle_oauth_callback(
             integration_id=integration_id,
             code=code,
             state=state_token,
             redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
         )
 
-        try:
-            tools = await client.connect(integration_id)
-            if tools:
-                logger.info(
-                    f"Connected and cached {len(tools)} tools for {integration_id} after OAuth"
-                )
+        # handle_oauth_callback() already calls connect() internally
+        # and returns tools, so we don't need to call connect() again
+        if tools:
+            logger.info(
+                f"Connected with {len(tools)} tools for {integration_id} after OAuth"
+            )
 
-                tool_registry = await get_tool_registry()
-                await tool_registry.load_user_mcp_tools(str(user_id))
-                logger.info(f"Indexed MCP tools from {integration_id} to ChromaDB")
+            tool_registry = await get_tool_registry()
+            await tool_registry.load_user_mcp_tools(str(user_id))
+            logger.info(f"Indexed MCP tools from {integration_id} to ChromaDB")
 
-                try:
-                    # Cache key is api:get_available_tools:<hash> (namespace="api")
-                    await delete_cache("api:get_available_tools:*")
-                    logger.info("Invalidated tools list cache after MCP connection")
-                except Exception as cache_err:
-                    logger.warning(f"Failed to invalidate tools cache: {cache_err}")
-        except Exception as tool_err:
-            logger.warning(f"Failed to cache tools for {integration_id}: {tool_err}")
+            try:
+                await delete_cache("api:get_available_tools:*")
+                logger.info("Invalidated tools list cache after MCP connection")
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate tools cache: {cache_err}")
 
         await invalidate_mcp_status_cache(str(user_id))
 
-        # Index custom MCPs as subagents for discovery via retrieve_tools
-        if integration_id.startswith("custom_"):
-            try:
-                store = await providers.aget("chroma_tools_store")
-                if store:
-                    resolved = await IntegrationResolver.resolve(integration_id)
-                    if resolved and resolved.custom_doc:
-                        await index_custom_mcp_as_subagent(
-                            store=store,
-                            integration_id=integration_id,
-                            name=resolved.custom_doc.get("name", integration_id),
-                            description=resolved.custom_doc.get("description", ""),
-                        )
-                        logger.info(f"Indexed custom MCP {integration_id} as subagent")
-            except Exception as subagent_err:
-                logger.warning(
-                    f"Failed to index custom MCP as subagent: {subagent_err}"
-                )
+        # Subagent indexing handled in MCPClient._handle_custom_integration_connect
 
         frontend_url = get_frontend_url()
         return RedirectResponse(
@@ -193,6 +213,14 @@ async def mcp_oauth_callback(
     except Exception as e:
         logger.error(f"OAuth callback failed for {integration_id}: {e}")
         frontend_url = get_frontend_url()
+        # Sanitize error - use generic codes instead of raw exception messages
+        error_code = "connection_failed"
+        if "state" in str(e).lower():
+            error_code = "invalid_state"
+        elif "token" in str(e).lower():
+            error_code = "token_exchange_failed"
+        elif "discovery" in str(e).lower():
+            error_code = "discovery_failed"
         return RedirectResponse(
-            url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error={str(e)}"
+            url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error={error_code}"
         )

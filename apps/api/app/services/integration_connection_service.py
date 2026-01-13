@@ -26,8 +26,6 @@ from app.services.integration_service import (
 )
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.oauth_state_service import create_oauth_state
-from app.agents.core.subagents.handoff_tools import index_custom_mcp_as_subagent
-from app.core.lazy_loader import providers
 from app.utils.oauth_utils import build_google_oauth_url
 
 
@@ -72,20 +70,29 @@ async def connect_mcp_integration(
     redirect_path: str,
     server_url: str | None = None,
     is_platform: bool = False,
+    probe_result: dict | None = None,
 ) -> ConnectIntegrationResponse:
-    """Handle MCP integration connection."""
+    """Handle MCP integration connection.
+
+    Args:
+        probe_result: Optional pre-fetched probe result to avoid redundant probing.
+                      If provided, skips internal probe_connection() call.
+    """
     mcp_client = await get_mcp_client(user_id=user_id)
 
-    if server_url and not requires_auth:
+    # Use provided probe_result or perform probe if needed
+    if server_url and not requires_auth and probe_result is None:
         probe_result = await mcp_client.probe_connection(server_url)
-        if probe_result.get("requires_auth"):
-            logger.info(f"Probe detected OAuth for {integration_id}")
-            requires_auth = True
-            # Update MongoDB with discovered auth requirements
-            auth_type = probe_result.get("auth_type", "oauth")
-            await mcp_client.update_integration_auth_status(
-                integration_id, requires_auth=True, auth_type=auth_type
-            )
+
+    # Check if probe detected auth requirement
+    if probe_result and not requires_auth and probe_result.get("requires_auth"):
+        logger.info(f"Probe detected OAuth for {integration_id}")
+        requires_auth = True
+        # Update MongoDB with discovered auth requirements
+        auth_type = probe_result.get("auth_type", "oauth")
+        await mcp_client.update_integration_auth_status(
+            integration_id, requires_auth=True, auth_type=auth_type
+        )
 
     if requires_auth:
         if not is_platform:
@@ -95,6 +102,7 @@ async def connect_mcp_integration(
             integration_id=integration_id,
             redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
             redirect_path=redirect_path,
+            challenge_data=probe_result,  # Pass probe result to avoid re-discovery
         )
 
         return ConnectIntegrationResponse(
@@ -116,6 +124,7 @@ async def connect_mcp_integration(
             integration_id=integration_id,
             redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
             redirect_path=redirect_path,
+            # No probe_result here - connection failed, need fresh discovery
         )
         return ConnectIntegrationResponse(
             status="redirect",
@@ -128,22 +137,7 @@ async def connect_mcp_integration(
 
     await invalidate_mcp_status_cache(user_id)
 
-    # Index custom MCPs as subagents for discovery via retrieve_tools
-    if integration_id.startswith("custom_"):
-        try:
-            store = await providers.aget("chroma_tools_store")
-            if store:
-                resolved = await IntegrationResolver.resolve(integration_id)
-                if resolved and resolved.custom_doc:
-                    await index_custom_mcp_as_subagent(
-                        store=store,
-                        integration_id=integration_id,
-                        name=resolved.custom_doc.get("name", integration_id),
-                        description=resolved.custom_doc.get("description", ""),
-                    )
-                    logger.info(f"Indexed custom MCP {integration_id} as subagent")
-        except Exception as e:
-            logger.warning(f"Failed to index custom MCP as subagent: {e}")
+    # Subagent indexing handled in MCPClient._handle_custom_integration_connect
 
     return ConnectIntegrationResponse(
         status="connected",
