@@ -81,7 +81,7 @@ export default function RightSide({
     return (
       <div className="flex items-center gap-2">
         Send Message
-        <Kbd className="text-zinc-400" keys={["enter"]}></Kbd>
+        <Kbd className="text-foreground-400" keys={["enter"]}></Kbd>
       </div>
     );
   };
@@ -94,6 +94,12 @@ export default function RightSide({
     }
   };
 
+
+  const isAvailable = hasText ||
+                  hasSelectedTool ||
+                  hasSelectedWorkflow ||
+                  hasFiles ||
+                  hasSelectedCalendarEvent ;
   return (
     <div className="ml-2 flex items-center gap-2">
       {/* <Tooltip content="Voice Mode" placement="left" color="primary" showArrow>
@@ -106,7 +112,7 @@ export default function RightSide({
           type="button"
           onPress={() => setvoiceModeActive()}
         >
-          <AudioWaveIcon className="text-zinc-400" />
+          <AudioWaveIcon className="text-foreground-400" />
         </Button>
       </Tooltip> */}
 
@@ -119,15 +125,11 @@ export default function RightSide({
         <Button
           isIconOnly
           aria-label={isLoading ? "Stop generation" : "Send message"}
-          className={`h-9 min-h-9 w-9 max-w-9 min-w-9 ${isLoading ? "cursor-pointer" : ""}`}
+          className={`h-9 min-h-9 w-9 max-w-9 min-w-9 ${isAvailable ? "bg-primary" : "bg-surface-200 dark:bg-surface-300"} ${isLoading ? "cursor-pointer bg-surface-200 dark:bg-surface-300" : ""}`}
           color={
             isLoading
               ? "default"
-              : hasText ||
-                  hasSelectedTool ||
-                  hasSelectedWorkflow ||
-                  hasFiles ||
-                  hasSelectedCalendarEvent
+              : isAvailable
                 ? "primary"
                 : "default"
           }
@@ -138,21 +140,20 @@ export default function RightSide({
         >
           {isLoading ? (
             <StopIcon
-              color="lightgray"
+              className="text-foreground-600"
               width={20}
               height={20}
-              fill="lightgray"
             />
           ) : (
             <ArrowUp02Icon
-              color={
+              className={
                 hasText ||
                 hasSelectedTool ||
                 hasSelectedWorkflow ||
                 hasFiles ||
                 hasSelectedCalendarEvent
-                  ? "black"
-                  : "gray"
+                  ? "text-surface-50"
+                  : "text-foreground-600"
               }
             />
           )}

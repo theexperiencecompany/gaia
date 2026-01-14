@@ -44,7 +44,7 @@ export function ActionItemsIndicator({
         ) : null;
       })}
       {categories.length > 3 && (
-        <div className="z-[0] flex size-4 items-center justify-center rounded text-xs text-zinc-500">
+        <div className="z-[0] flex size-4 items-center justify-center rounded text-xs text-foreground-500">
           +{categories.length - 3}
         </div>
       )}

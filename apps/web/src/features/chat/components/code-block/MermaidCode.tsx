@@ -67,7 +67,7 @@ const MermaidCode: React.FC<MermaidCodeProps> = ({
       {...syntaxHighlighterProps}
       showLineNumbers
       PreTag="div"
-      className="m-0 overflow-x-auto rounded-b-xl bg-zinc-900! p-0 text-[10px]!"
+      className="m-0 overflow-x-auto rounded-b-xl bg-surface-100! p-0 text-[10px]!"
       language="mermaid"
       style={theme}
       customStyle={{} as CSSProperties}

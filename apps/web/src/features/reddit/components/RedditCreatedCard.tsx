@@ -32,7 +32,7 @@ export default function RedditCreatedCard({
   ];
 
   const content = (
-    <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-3 text-white">
+    <div className="w-full max-w-2xl rounded-3xl bg-surface-200 p-3 text-foreground">
       <ScrollShadow className="max-h-[400px] divide-y divide-gray-700">
         {allItems.map((item) => (
           <div key={item.data.id} className="space-y-3 p-3">

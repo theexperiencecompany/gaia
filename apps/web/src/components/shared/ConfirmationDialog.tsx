@@ -81,7 +81,7 @@ export function ConfirmationDialog({
                   onCancel();
                   onClose();
                 }}
-                className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                className="bg-surface-200 text-foreground-300 hover:bg-surface-700"
                 endContent={<Kbd keys={["escape"]} />}
               >
                 {cancelText}

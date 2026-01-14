@@ -11,6 +11,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import { useKeyboardShortcuts } from "@/components/providers/KeyboardShortcutsProvider";
+import { useTheme } from "@/components/providers/ThemeProvider";
 import {
   type ConfirmAction,
   ConfirmActionDialog,
@@ -31,6 +32,7 @@ import {
   BubbleChatQuestionIcon,
   CircleArrowUp02Icon,
   CloudDownloadIcon,
+  ComputerIcon,
   CustomerService01Icon,
   Github,
   GitPullRequestIcon,
@@ -38,8 +40,10 @@ import {
   Layers01Icon,
   Logout02Icon,
   MapsIcon,
+  MoonIcon,
   QuillWrite01Icon,
   Settings01Icon,
+  Sun03Icon as SunIcon,
 } from "@/icons";
 import { settingsPageItems, socialMediaItems } from "../config/settingsConfig";
 import { useNestedMenu } from "../hooks/useNestedMenu";
@@ -51,6 +55,7 @@ interface MenuItem {
   key: string;
   label: string;
   icon?: React.ComponentType<{ className?: string; color?: string }>;
+  iconElement?: React.ReactNode;
   href?: string;
   action?: () => void;
   color?: "danger" | "default";
@@ -87,11 +92,38 @@ export default function SettingsMenu({
   const resourcesMenu = useNestedMenu();
   const supportMenu = useNestedMenu();
   const downloadMenu = useNestedMenu();
+  const themeMenu = useNestedMenu();
+
+  const { theme, setTheme, resolvedTheme } = useTheme();
 
   const { currentPlatform, desktopPlatforms } = usePlatformDetection();
   const { openShortcutsModal } = useKeyboardShortcuts();
 
   const iconClasses = "w-[18px] h-[18px]";
+
+  const themeMenuItems = [
+    {
+      key: "light",
+      label: "Light",
+      iconElement: <SunIcon className={iconClasses} />,
+      action: () => setTheme("light"),
+      isActive: theme === "light",
+    },
+    {
+      key: "dark",
+      label: "Dark",
+      iconElement: <MoonIcon className={iconClasses} />,
+      action: () => setTheme("dark"),
+      isActive: theme === "dark",
+    },
+    {
+      key: "system",
+      label: "System",
+      iconElement: <ComputerIcon className={iconClasses} />,
+      action: () => setTheme("system"),
+      isActive: theme === "system",
+    },
+  ];
 
   const resourcesMenuItems = [
     {
@@ -233,6 +265,19 @@ export default function SettingsMenu({
           icon: KeyboardIcon,
           action: openShortcutsModal,
         },
+        {
+          key: "theme",
+          label: `Theme: ${theme === "system" ? "System" : theme === "dark" ? "Dark" : "Light"}`,
+          iconElement:
+            theme === "system" ? (
+              <ComputerIcon className={iconClasses} />
+            ) : resolvedTheme === "dark" ? (
+              <MoonIcon className={iconClasses} />
+            ) : (
+              <SunIcon className={iconClasses} />
+            ),
+          hasSubmenu: true,
+        },
       ],
     },
     {
@@ -283,7 +328,7 @@ export default function SettingsMenu({
     <>
       <Dropdown
         placement="right"
-        className="bg-secondary-bg text-foreground dark shadow-xl"
+        className="bg-secondary-bg text-foreground shadow-xl"
         offset={21}
         onOpenChange={onOpenChange}
       >
@@ -294,21 +339,23 @@ export default function SettingsMenu({
               key={section.title || `section-${index}`}
               title={section.title}
               showDivider={section.showDivider}
-              classNames={{ divider: "bg-zinc-800/60" }}
+              classNames={{ divider: "bg-surface-200/60" }}
             >
               {section.items.map((item: MenuItem) => {
                 const Icon = item.icon;
                 const iconColor =
                   item.iconColor || socialMediaColorMap[item.key];
 
-                // Handle nested menus (Download, Resources, and Support)
+                // Handle nested menus (Download, Resources, Support, and Theme)
                 if (item.hasSubmenu) {
                   const menu =
                     item.key === "download"
                       ? downloadMenu
                       : item.key === "resources"
                         ? resourcesMenu
-                        : supportMenu;
+                        : item.key === "theme"
+                          ? themeMenu
+                          : supportMenu;
 
                   return (
                     <DropdownItem
@@ -317,10 +364,13 @@ export default function SettingsMenu({
                       variant="flat"
                       onMouseEnter={menu.handleMouseEnter}
                       onMouseLeave={menu.handleMouseLeave}
-                      className="text-zinc-400 transition hover:text-white"
-                      startContent={Icon && <Icon className={iconClasses} />}
+                      className="text-foreground-500 transition hover:text-foreground-900"
+                      startContent={
+                        item.iconElement ||
+                        (Icon && <Icon className={iconClasses} />)
+                      }
                       endContent={
-                        <ArrowRight01Icon className="h-4 w-4 text-zinc-500" />
+                        <ArrowRight01Icon className="h-4 w-4 text-foreground-500" />
                       }
                     >
                       {item.label}
@@ -340,7 +390,7 @@ export default function SettingsMenu({
                         ? "text-danger"
                         : iconColor
                           ? "transition"
-                          : "text-zinc-400 transition hover:text-white"
+                          : "text-foreground-500 transition hover:text-foreground-900"
                     }
                     style={iconColor ? { color: iconColor } : undefined}
                     startContent={
@@ -378,6 +428,14 @@ export default function SettingsMenu({
         onOpenChange={downloadMenu.setIsOpen}
         itemRef={downloadMenu.itemRef}
         menuItems={downloadMenuItems}
+        iconClasses={iconClasses}
+      />
+
+      <NestedMenuTooltip
+        isOpen={themeMenu.isOpen}
+        onOpenChange={themeMenu.setIsOpen}
+        itemRef={themeMenu.itemRef}
+        menuItems={themeMenuItems}
         iconClasses={iconClasses}
       />
 

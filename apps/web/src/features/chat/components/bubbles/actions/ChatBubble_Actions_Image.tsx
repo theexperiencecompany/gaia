@@ -76,7 +76,7 @@ export default function ChatBubble_Actions_Image({
           className={`w-fit ${
             fullWidth
               ? "px-3 py-2"
-              : "bg-transparent p-0 text-zinc-500 data-[hover=true]:bg-transparent"
+              : "bg-transparent p-0 text-foreground-500 data-[hover=true]:bg-transparent"
           } h-fit rounded-lg`}
           color="primary"
           isIconOnly={!fullWidth}

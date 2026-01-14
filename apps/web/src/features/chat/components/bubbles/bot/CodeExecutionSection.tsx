@@ -54,7 +54,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
   );
 
   return (
-    <div className="w-full max-w-[30vw] rounded-3xl rounded-l-none bg-zinc-800 px-3 py-4">
+    <div className="w-full max-w-[30vw] rounded-3xl rounded-l-none bg-surface-200 px-3 py-4">
       <Accordion
         selectionMode="multiple"
         defaultExpandedKeys={["output", "charts"]}
@@ -66,7 +66,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           aria-label="Executed Code"
           title="Executed Code"
           classNames={{
-            trigger: "text-sm font-medium text-gray-300 hover:text-white",
+            trigger: "text-sm font-medium text-gray-300 hover:text-foreground-50",
             content: "pt-0",
           }}
         >
@@ -83,7 +83,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           aria-label="Output"
           title="Output"
           classNames={{
-            trigger: "text-sm font-medium text-gray-300 hover:text-white",
+            trigger: "text-sm font-medium text-gray-300 hover:text-foreground-50",
             content: "pt-0",
           }}
         >
@@ -103,7 +103,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
             aria-label="Charts"
             title="Charts"
             classNames={{
-              trigger: "text-sm font-medium text-gray-300 hover:text-white",
+              trigger: "text-sm font-medium text-gray-300 hover:text-foreground-50",
               content: "pt-0",
             }}
           >

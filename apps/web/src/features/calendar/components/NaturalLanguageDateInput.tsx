@@ -115,7 +115,7 @@ export const NaturalLanguageDateInput: React.FC<
 
   return (
     <div className={`space-y-2 ${className}`}>
-      <label className="text-xs text-zinc-500" htmlFor={baseId}>
+      <label className="text-xs text-foreground-500" htmlFor={baseId}>
         {label}
       </label>
       <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
@@ -126,14 +126,14 @@ export const NaturalLanguageDateInput: React.FC<
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder={placeholder}
             classNames={{
-              input: "text-zinc-200 placeholder:text-zinc-600 pr-10",
+              input: "text-foreground-200 placeholder:text-foreground-600 pr-10",
               inputWrapper:
-                "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+                "bg-surface-200/30 hover:bg-surface-200/50 data-[hover=true]:bg-surface-200/50 shadow-none",
             }}
             endContent={
               <PopoverTrigger asChild>
                 <button
-                  className="flex items-center justify-center text-zinc-500 transition-colors hover:text-zinc-300"
+                  className="flex items-center justify-center text-foreground-500 transition-colors hover:text-foreground-300"
                   aria-label="Toggle calendar picker"
                   type="button"
                 >
@@ -143,13 +143,13 @@ export const NaturalLanguageDateInput: React.FC<
             }
           />
         </div>
-        <PopoverContent className="w-auto overflow-hidden rounded-2xl border-0 bg-zinc-800 p-0 shadow-xl">
+        <PopoverContent className="w-auto overflow-hidden rounded-2xl border-0 bg-surface-200 p-0 shadow-xl">
           <div className="p-3">
             <Calendar
               mode="single"
               selected={selectedDate}
               onSelect={handleDaySelect}
-              className="bg-zinc-800"
+              className="bg-surface-200"
             />
           </div>
           {!isAllDay && (
@@ -166,7 +166,7 @@ export const NaturalLanguageDateInput: React.FC<
                           "w-full rounded-lg px-3 py-1.5 text-sm transition-colors",
                           h === selectedHour
                             ? "bg-primary text-primary-foreground"
-                            : "text-zinc-300 hover:bg-zinc-700",
+                            : "text-foreground-300 hover:bg-surface-700",
                         )}
                       >
                         {h.toString().padStart(2, "0")}
@@ -185,7 +185,7 @@ export const NaturalLanguageDateInput: React.FC<
                           "w-full rounded-lg px-3 py-1.5 text-sm transition-colors",
                           m === selectedMinute
                             ? "bg-primary text-primary-foreground"
-                            : "text-zinc-300 hover:bg-zinc-700",
+                            : "text-foreground-300 hover:bg-surface-700",
                         )}
                       >
                         {m.toString().padStart(2, "0")}
@@ -208,7 +208,7 @@ export const NaturalLanguageDateInput: React.FC<
         </PopoverContent>
       </Popover>
       {value && (
-        <div className="px-1 text-xs text-zinc-500">
+        <div className="px-1 text-xs text-foreground-500">
           {formatDateDisplay(value)}
         </div>
       )}
@@ -299,7 +299,7 @@ export const NaturalLanguageDateRangeInput: React.FC<
 
   return (
     <div className={`space-y-2 ${className}`}>
-      <label className="text-sm font-medium text-zinc-400" htmlFor={baseId}>
+      <label className="text-sm font-medium text-foreground-400" htmlFor={baseId}>
         {label}
       </label>
       <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
@@ -310,14 +310,14 @@ export const NaturalLanguageDateRangeInput: React.FC<
             onChange={(e) => handleInputChange(e.target.value)}
             placeholder={placeholder}
             classNames={{
-              input: "text-zinc-200 placeholder:text-zinc-600 pr-10",
+              input: "text-foreground-200 placeholder:text-foreground-600 pr-10",
               inputWrapper:
-                "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+                "bg-surface-200/30 hover:bg-surface-200/50 data-[hover=true]:bg-surface-200/50 shadow-none",
             }}
             endContent={
               <PopoverTrigger asChild>
                 <button
-                  className="flex items-center justify-center text-zinc-500 transition-colors hover:text-zinc-300"
+                  className="flex items-center justify-center text-foreground-500 transition-colors hover:text-foreground-300"
                   aria-label="Toggle calendar picker"
                   type="button"
                 >
@@ -327,18 +327,18 @@ export const NaturalLanguageDateRangeInput: React.FC<
             }
           />
         </div>
-        <PopoverContent className="w-auto overflow-hidden rounded-2xl border-0 bg-zinc-800 p-1 shadow-xl">
+        <PopoverContent className="w-auto overflow-hidden rounded-2xl border-0 bg-surface-200 p-1 shadow-xl">
           <Calendar
             mode="range"
             selected={range}
             onSelect={handleRangeSelect}
             numberOfMonths={2}
-            className="bg-zinc-800"
+            className="bg-surface-200"
           />
         </PopoverContent>
       </Popover>
       {(startValue || endValue) && (
-        <div className="px-1 text-xs text-zinc-500">
+        <div className="px-1 text-xs text-foreground-500">
           {startValue && formatDateDisplay(startValue)}
           {startValue && endValue && " → "}
           {endValue && startValue !== endValue && formatDateDisplay(endValue)}

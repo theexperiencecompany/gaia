@@ -56,8 +56,8 @@ const iconAliases: Record<string, string> = {
 const iconConfigs: Record<string, IconConfig> = {
   gmail: {
     icon: "/images/icons/gmail.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zin`c-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   todos: {
@@ -77,14 +77,14 @@ const iconConfigs: Record<string, IconConfig> = {
   },
   google_docs: {
     icon: "/images/icons/google_docs.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   googlesheets: {
     icon: "/images/icons/googlesheets.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   development: {
@@ -94,8 +94,8 @@ const iconConfigs: Record<string, IconConfig> = {
   },
   search: {
     icon: "/images/icons/google.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   memory: {
@@ -110,8 +110,8 @@ const iconConfigs: Record<string, IconConfig> = {
   },
   weather: {
     icon: "/images/icons/weather.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   goal_tracking: {
@@ -121,20 +121,20 @@ const iconConfigs: Record<string, IconConfig> = {
   },
   notion: {
     icon: "/images/icons/notion.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   twitter: {
     icon: "/images/icons/twitter.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   linkedin: {
     icon: "/images/icons/linkedin.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   notifications: {
@@ -160,160 +160,160 @@ const iconConfigs: Record<string, IconConfig> = {
   // Integration icons
   google_calendar: {
     icon: "/images/icons/googlecalendar.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   github: {
     icon: "/images/icons/github.png",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   reddit: {
     icon: "/images/icons/reddit.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   airtable: {
     icon: "/images/icons/airtable.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   linear: {
     icon: "/images/icons/linear.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   slack: {
     icon: "/images/icons/slack.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   hubspot: {
     icon: "/images/icons/hubspot.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   googletasks: {
     icon: "/images/icons/googletasks.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   todoist: {
     icon: "/images/icons/todoist.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   microsoft_teams: {
     icon: "/images/icons/microsoft_teams.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   googlemeet: {
     icon: "/images/icons/googlemeet.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   zoom: {
     icon: "/images/icons/zoom.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   google_maps: {
     icon: "/images/icons/google_maps.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   asana: {
     icon: "/images/icons/asana.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   trello: {
     icon: "/images/icons/trello.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   instagram: {
     icon: "/images/icons/instagram.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   clickup: {
     icon: "/images/icons/clickup.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   deepwiki: {
     icon: "/images/icons/deepwiki.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
 
   context7: {
     icon: "/images/icons/context7.png",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   hackernews: {
     icon: "/images/icons/hackernews.png",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   instacart: {
     icon: "/images/icons/instacart.png",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   yelp: {
     icon: "/images/icons/yelp.png",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
     isImage: true,
   },
   vercel: {
     icon: "/images/icons/vercel.svg",
-    bgColor: "bg-zinc-800",
+    bgColor: "bg-surface-200",
     iconColor: "text-white",
     isImage: true,
   },
   perplexity: {
     icon: "/images/icons/perplexity.png",
-    bgColor: "bg-zinc-800",
+    bgColor: "bg-surface-200",
     iconColor: "text-white",
     isImage: true,
   },
   figma: {
     icon: "/images/icons/figma.svg",
-    bgColor: "bg-zinc-800",
+    bgColor: "bg-surface-200",
     iconColor: "text-white",
     isImage: true,
   },
   integrations: {
     isImage: false,
     icon: ConnectIcon,
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
+    bgColor: "bg-surface-300",
+    iconColor: "text-foreground-200",
   },
   // Special categories for agent tool calls
   handoff: {
@@ -333,8 +333,8 @@ const iconConfigs: Record<string, IconConfig> = {
   },
   unknown: {
     icon: ToolsIcon,
-    bgColor: "bg-zinc-500/20 backdrop-blur",
-    iconColor: "text-zinc-400",
+    bgColor: "bg-surface-500/20 backdrop-blur",
+    iconColor: "text-foreground-400",
   },
 };
 
@@ -416,7 +416,7 @@ export const getToolCategoryIcon = (
         />
       );
       return showBackground ? (
-        <div className="rounded-lg p-1 bg-zinc-700">{iconElement}</div>
+        <div className="rounded-lg p-1 bg-surface-300">{iconElement}</div>
       ) : (
         iconElement
       );

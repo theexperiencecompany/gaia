@@ -11,8 +11,8 @@ export function ContentSection({
 }) {
   return (
     <div className={`flex flex-col gap-3 ${cn(className)}`}>
-      {title && <h3 className="text-4xl font-medium text-zinc-100">{title}</h3>}
-      <div className="text-lg font-light text-zinc-400">{description} </div>
+      {title && <h3 className="text-4xl font-medium text-foreground-900">{title}</h3>}
+      <div className="text-lg font-light text-foreground-500">{description} </div>
     </div>
   );
 }

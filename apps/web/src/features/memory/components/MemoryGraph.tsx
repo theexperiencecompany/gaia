@@ -471,9 +471,9 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
             className="pointer-events-none absolute z-10"
             style={{ left: tooltip.x, top: tooltip.y }}
           >
-            <Card className="border border-zinc-600 bg-zinc-800 shadow-lg">
+            <Card className="border border-border-surface-600 bg-surface-200 shadow-lg">
               <CardBody className="p-2">
-                <div className="text-xs text-zinc-100">{tooltip.content}</div>
+                <div className="text-xs text-foreground-100">{tooltip.content}</div>
               </CardBody>
             </Card>
           </div>
@@ -481,7 +481,7 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
 
         {legendItems.length > 0 && (
           <div className="absolute top-4 right-4 z-10">
-            <Card className="border border-zinc-600 bg-zinc-800/90 backdrop-blur-sm">
+            <Card className="border border-border-surface-600 bg-surface-200/90 backdrop-blur-sm">
               <CardBody className="p-3">
                 <div className="max-h-100 space-y-1 overflow-y-auto">
                   {legendItems.map((item) => (
@@ -493,7 +493,7 @@ const MemoryGraph = forwardRef<MemoryGraphHandle, MemoryGraphProps>(
                         className="h-3 w-3 rounded-full"
                         style={{ backgroundColor: item.color }}
                       />
-                      <span className="text-xs text-zinc-300">{item.type}</span>
+                      <span className="text-xs text-foreground-300">{item.type}</span>
                     </div>
                   ))}
                 </div>

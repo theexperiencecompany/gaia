@@ -59,7 +59,7 @@ export function NestedMenuTooltip({
                 key={item.key}
                 variant="light"
                 size="sm"
-                className="justify-start text-sm text-zinc-400 transition hover:text-white"
+                className="justify-start text-sm text-foreground-500 transition hover:text-foreground-900"
                 onPress={() => {
                   item.action();
                   onOpenChange(false);

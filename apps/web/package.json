@@ -22,7 +22,15 @@
     "lint": "npm run check",
     "lint:fix": "npm run fix",
     "format": "biome format --write .",
-    "generate-barrels": "barrelsby --delete --directory ./src --location branch --exclude \"(src/app|src/features)\""
+    "generate-barrels": "barrelsby --delete --directory ./src --location branch --exclude \"(src/app|src/features)\"",
+    "color-audit": "node scripts/detect-hardcoded-colors.mjs",
+    "color-audit:verbose": "node scripts/detect-hardcoded-colors.mjs --verbose",
+    "color-audit:save": "node scripts/detect-hardcoded-colors.mjs --save",
+    "contrast-test": "node scripts/test-contrast-ratios.mjs",
+    "contrast-test:verbose": "node scripts/test-contrast-ratios.mjs --verbose",
+    "color-replace": "node scripts/replace-hardcoded-colors.mjs",
+    "color-replace:dry": "node scripts/replace-hardcoded-colors.mjs --dry-run",
+    "color-replace:verbose": "node scripts/replace-hardcoded-colors.mjs --verbose"
   },
   "dependencies": {
     "@heroui/accordion": "2.2.13",

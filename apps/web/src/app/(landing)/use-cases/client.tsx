@@ -26,7 +26,7 @@ export default function UseCasesPageClient({
           <h1 className="mb-1 font-serif text-8xl font-normal">
             See what's Possible
           </h1>
-          <p className="mx-auto max-w-3xl text-lg text-zinc-300/80">
+          <p className="mx-auto max-w-3xl text-lg text-foreground-300/80">
             Practical use cases showing how GAIA works for you
           </p>
         </div>
@@ -36,7 +36,7 @@ export default function UseCasesPageClient({
             <h1 className="mb-1 font-serif text-6xl font-normal">
               Published by The Community
             </h1>
-            <p className="mx-auto max-w-3xl text-lg text-zinc-300/80">
+            <p className="mx-auto max-w-3xl text-lg text-foreground-300/80">
               Discover what others are building with GAIA
             </p>
           </div>

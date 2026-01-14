@@ -595,7 +595,7 @@ export default function WorkflowModal({
 
         {selectedTriggerOption && (
           <div className="mt-4 max-w-xl space-y-4">
-            <p className="px-1 text-xs text-zinc-500">
+            <p className="px-1 text-xs text-foreground-500">
               {selectedTriggerOption.description}
             </p>
           </div>
@@ -606,7 +606,7 @@ export default function WorkflowModal({
 
   const renderManualTab = () => (
     <div className="w-full">
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-foreground-500">
         This workflow will be triggered manually when you run it.
       </p>
     </div>
@@ -795,16 +795,16 @@ export default function WorkflowModal({
                   {/* Trigger/Schedule Configuration */}
                   <div className="space-y-3">
                     <div className="flex items-start gap-3">
-                      <div className="mt-2.5 flex min-w-26 items-center justify-between gap-1.5 text-sm font-medium text-zinc-400">
+                      <div className="mt-2.5 flex min-w-26 items-center justify-between gap-1.5 text-sm font-medium text-foreground-400">
                         <span className="text-nowrap">When to Run</span>
                         <Tooltip
                           content={
                             <div className="px-1 py-2">
                               <p className="text-sm font-medium">When to Run</p>
-                              <p className="mt-1 text-xs text-zinc-400">
+                              <p className="mt-1 text-xs text-foreground-400">
                                 Choose how your workflow will be activated:
                               </p>
-                              <ul className="mt-2 space-y-1 text-xs text-zinc-400">
+                              <ul className="mt-2 space-y-1 text-xs text-foreground-400">
                                 <li>
                                   • <span className="font-medium">Manual:</span>{" "}
                                   Run the workflow manually when you need it
@@ -825,7 +825,7 @@ export default function WorkflowModal({
                           placement="top"
                           delay={500}
                         >
-                          <InformationCircleIcon className="h-3.5 w-3.5 cursor-help text-zinc-500 hover:text-zinc-300" />
+                          <InformationCircleIcon className="h-3.5 w-3.5 cursor-help text-foreground-500 hover:text-foreground-300" />
                         </Tooltip>
                       </div>
                       <div className="w-full">
@@ -885,7 +885,7 @@ export default function WorkflowModal({
                   </div>
 
                   {/* Separator */}
-                  <div className="border-t border-zinc-800" />
+                  <div className="border-t border-surface-200" />
 
                   {/* Description Section */}
                   <div className="space-y-4">
@@ -913,7 +913,7 @@ export default function WorkflowModal({
                 </div>
 
                 {/* Form Footer */}
-                <div className="mt-8 border-t border-zinc-800 pt-6 pb-3">
+                <div className="mt-8 border-t border-surface-200 pt-6 pb-3">
                   {/* All controls in one row */}
                   <div className="flex items-center justify-between">
                     {/* Left side: Switch and Run Workflow */}
@@ -1001,7 +1001,7 @@ export default function WorkflowModal({
 
               {/* Right side - Workflow Steps */}
               {mode === "edit" && (
-                <div className="flex min-h-0 w-96 flex-col space-y-4 rounded-2xl bg-zinc-950/30 p-6">
+                <div className="flex min-h-0 w-96 flex-col space-y-4 rounded-2xl bg-surface-50/30 p-6">
                   {/* Show regeneration error state */}
                   {regenerationError && (
                     <div className="space-y-4">
@@ -1013,7 +1013,7 @@ export default function WorkflowModal({
                           <h3 className="text-lg font-medium text-danger">
                             Generation Failed
                           </h3>
-                          <p className="mb-4 text-sm text-zinc-400">
+                          <p className="mb-4 text-sm text-foreground-400">
                             {regenerationError}
                           </p>
                           <Button
@@ -1039,7 +1039,7 @@ export default function WorkflowModal({
                         <>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <h4 className="font-medium text-zinc-200">
+                              <h4 className="font-medium text-foreground-200">
                                 Workflow Steps
                               </h4>
                               <Chip
@@ -1115,10 +1115,10 @@ export default function WorkflowModal({
                         <div className="space-y-4">
                           <div className="flex items-center justify-between">
                             <div>
-                              <h4 className="font-medium text-zinc-200">
+                              <h4 className="font-medium text-foreground-200">
                                 Workflow Steps
                               </h4>
-                              <p className="text-xs text-zinc-500">
+                              <p className="text-xs text-foreground-500">
                                 No steps generated yet
                               </p>
                             </div>
@@ -1137,10 +1137,10 @@ export default function WorkflowModal({
                             </div>
                           </div>
                           <div className="flex flex-col items-center justify-center py-8 text-center">
-                            <div className="mb-4 rounded-full bg-zinc-800/50 p-3">
-                              <RedoIcon className="h-6 w-6 text-zinc-500" />
+                            <div className="mb-4 rounded-full bg-surface-200/50 p-3">
+                              <RedoIcon className="h-6 w-6 text-foreground-500" />
                             </div>
-                            <p className="text-sm text-zinc-400">
+                            <p className="text-sm text-foreground-400">
                               Click "Generate Steps" to create your first
                               workflow plan
                             </p>
@@ -1159,7 +1159,7 @@ export default function WorkflowModal({
                 <h3 className="text-lg font-medium text-danger">
                   {mode === "create" ? "Creation" : "Update"} Failed
                 </h3>
-                <p className="text-sm text-zinc-400">
+                <p className="text-sm text-foreground-400">
                   {creationError ||
                     `Something went wrong while ${mode === "create" ? "creating" : "updating"} the workflow`}
                 </p>
@@ -1181,7 +1181,7 @@ export default function WorkflowModal({
               <CustomSpinner variant="logo" />
               <div className="text-center">
                 <h3 className="text-lg font-medium">Creating Workflow</h3>
-                <p className="text-sm text-zinc-400">
+                <p className="text-sm text-foreground-400">
                   Setting up your workflow and generating steps...
                 </p>
               </div>
@@ -1194,12 +1194,12 @@ export default function WorkflowModal({
                   <h3 className="text-lg font-medium text-success">
                     Workflow {mode === "create" ? "Created" : "Updated"}!
                   </h3>
-                  <p className="text-sm text-zinc-400">
+                  <p className="text-sm text-foreground-400">
                     "{currentWorkflow?.title || "Untitled Workflow"}" is ready
                     to use
                   </p>
                   {currentWorkflow && (
-                    <p className="mt-2 text-xs text-zinc-500">
+                    <p className="mt-2 text-xs text-foreground-500">
                       {currentWorkflow?.steps?.length || 0} steps generated
                     </p>
                   )}
@@ -1218,7 +1218,7 @@ export default function WorkflowModal({
               {/* Generated Steps Preview */}
               {currentWorkflow?.steps && currentWorkflow.steps.length > 0 && (
                 <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-zinc-300">
+                  <h4 className="text-sm font-medium text-foreground-300">
                     Generated Steps:
                   </h4>
                   <div className="max-h-48 overflow-y-auto">

@@ -187,7 +187,7 @@ export default function ChatsList() {
               <AccordionTrigger
                 className={cn(
                   accordionItemStyles.trigger,
-                  "hover:text-zinc-500",
+                  "hover:text-foreground-500",
                 )}
               >
                 Created by GAIA
@@ -226,7 +226,7 @@ export default function ChatsList() {
               <AccordionTrigger
                 className={cn(
                   accordionItemStyles.trigger,
-                  "hover:text-zinc-500",
+                  "hover:text-foreground-500",
                 )}
               >
                 Starred Chats
@@ -257,7 +257,7 @@ export default function ChatsList() {
               <AccordionTrigger
                 className={cn(
                   accordionItemStyles.trigger,
-                  "hover:text-zinc-500",
+                  "hover:text-foreground-500",
                 )}
               >
                 {timeFrame}

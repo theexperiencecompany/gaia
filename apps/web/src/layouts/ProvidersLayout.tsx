@@ -4,6 +4,7 @@ import { type ReactNode, Suspense } from "react";
 
 import { ElectronRouteGuard } from "@/components/electron";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
+import { useTheme } from "@/components/providers/ThemeProvider";
 import { Toaster } from "@/components/ui/sonner";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
@@ -17,6 +18,7 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
   const { addNotification, updateNotification } = useNotifications({
     limit: 100,
   });
+  const { resolvedTheme } = useTheme();
 
   // Initialize global WebSocket connection
   useWebSocketConnection();
@@ -36,7 +38,7 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
         </Suspense>
         <GlobalInterceptor />
         {/* <HydrationManager /> */}
-        <Toaster closeButton richColors position="top-right" theme="dark" />
+        <Toaster closeButton richColors position="top-right" theme={resolvedTheme} />
         <ElectronRouteGuard>
           <KeyboardShortcutsProvider>
             {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}

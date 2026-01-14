@@ -14,7 +14,7 @@ export default function WorkflowsHeader() {
         <Link href="/use-cases">
           <Button
             variant="light"
-            className="text-zinc-400"
+            className="text-foreground-400"
             endContent={<LinkSquare02Icon width={16} height={16} />}
           >
             Browse Use Cases

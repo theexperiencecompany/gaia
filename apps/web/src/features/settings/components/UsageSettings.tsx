@@ -65,7 +65,7 @@ export default function UsageSettings() {
       {/* Header with Period Selection */}
       <SettingsCard>
         <div className="mb-6 flex items-center justify-between">
-          <p className="text-lg font-medium text-zinc-300">Usage</p>
+          <p className="text-lg font-medium text-foreground-300">Usage</p>
           <div className="flex items-center space-x-3">
             <Chip
               size="sm"
@@ -124,7 +124,7 @@ export default function UsageSettings() {
               return (
                 <Card
                   key={key}
-                  className="border-none bg-zinc-800/60 shadow-none"
+                  className="border-none bg-surface-200/60 shadow-none"
                 >
                   <CardBody className="p-3">
                     <div className="flex items-center justify-between">

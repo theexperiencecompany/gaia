@@ -185,7 +185,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
         <LoginModal />
 
         <div
-          className="relative flex min-h-screen w-full dark"
+          className="relative flex min-h-screen w-full"
           style={{ touchAction: "pan-y" }}
           ref={dragRef}
         >

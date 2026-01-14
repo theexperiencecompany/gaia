@@ -18,7 +18,7 @@ export default function DefaultHeader() {
             size="icon"
             variant={"ghost"}
           >
-            <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+            <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-foreground-400 transition-all group-hover:text-primary" />
           </Button>
         </Link>
         <NotificationCenter />

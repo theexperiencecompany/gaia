@@ -29,10 +29,10 @@ function GoalCardContainer({
   const baseClasses = "transition-colors";
 
   const variantClasses = {
-    default: "rounded-xl bg-zinc-900 p-4",
-    create: "w-full max-w-3xl overflow-hidden rounded-3xl bg-zinc-800",
+    default: "rounded-xl bg-surface-100 p-4",
+    create: "w-full max-w-3xl overflow-hidden rounded-3xl bg-surface-200",
     compact:
-      "flex cursor-pointer items-center justify-between rounded-xl bg-zinc-900 p-4 hover:bg-zinc-800",
+      "flex cursor-pointer items-center justify-between rounded-xl bg-surface-100 p-4 hover:bg-surface-200",
   };
 
   return (
@@ -67,7 +67,7 @@ function GoalCardHeader({
     return (
       <div className="flex items-center gap-2 px-6 py-4">
         {icon}
-        <span className="text-base font-semibold text-zinc-100">
+        <span className="text-base font-semibold text-foreground-100">
           {subtitle || title}
         </span>
       </div>
@@ -79,7 +79,7 @@ function GoalCardHeader({
       <div className="flex w-full items-center justify-between">
         <div className="flex items-center gap-3">
           {icon}
-          <span className="text-sm font-medium text-zinc-100">{title}</span>
+          <span className="text-sm font-medium text-foreground-100">{title}</span>
         </div>
         {progress !== undefined && (
           <div className={`text-sm font-medium ${getProgressColor(progress)}`}>
@@ -94,16 +94,16 @@ function GoalCardHeader({
   return (
     <div className="flex items-start justify-between gap-2">
       <div className="flex-1">
-        <h3 className="text-base font-semibold text-zinc-100">{title}</h3>
+        <h3 className="text-base font-semibold text-foreground-100">{title}</h3>
       </div>
       {showExpandToggle && (
         <button
           type="button"
           onClick={onToggleExpand}
-          className="rounded-lg p-2 transition-colors hover:bg-zinc-800"
+          className="rounded-lg p-2 transition-colors hover:bg-surface-200"
         >
           <ArrowRight01Icon
-            className={`h-4 w-4 text-zinc-500 transition-transform ${
+            className={`h-4 w-4 text-foreground-500 transition-transform ${
               isExpanded ? "rotate-90" : ""
             }`}
           />
@@ -136,14 +136,14 @@ function GoalCardContent({
       <div className="space-y-4 p-6">
         {title && (
           <div>
-            <h3 className="mb-1 text-lg font-semibold text-zinc-100">
+            <h3 className="mb-1 text-lg font-semibold text-foreground-100">
               {title}
             </h3>
           </div>
         )}
         {description && (
           <div>
-            <p className="text-sm leading-relaxed text-zinc-400">
+            <p className="text-sm leading-relaxed text-foreground-400">
               {description}
             </p>
           </div>
@@ -163,12 +163,12 @@ function GoalCardContent({
       {showProgress && (
         <div className="mt-3 mb-4">
           <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="font-medium text-zinc-400">Progress</span>
+            <span className="font-medium text-foreground-400">Progress</span>
             <span className={`font-semibold ${getProgressColor(progress)}`}>
               {progress}%
             </span>
           </div>
-          <div className="h-2 w-full rounded-full bg-zinc-700">
+          <div className="h-2 w-full rounded-full bg-surface-300">
             <div
               className={`h-2 rounded-full transition-all duration-300 ${
                 progress >= 90
@@ -192,10 +192,10 @@ function GoalCardContent({
 
       {/* Expanded Content */}
       {isExpanded && expandedContent && (
-        <div className="space-y-4 border-t border-zinc-700 pt-4">
+        <div className="space-y-4 border-t border-surface-300 pt-4">
           {description && (
             <div>
-              <p className="text-sm leading-relaxed text-zinc-400">
+              <p className="text-sm leading-relaxed text-foreground-400">
                 {description}
               </p>
             </div>
@@ -246,7 +246,7 @@ function GoalCardActions({
         <button
           type="button"
           onClick={onViewTasks}
-          className="flex-1 rounded-lg bg-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-600"
+          className="flex-1 rounded-lg bg-surface-300 px-4 py-2.5 text-sm font-medium text-foreground-300 transition-colors hover:bg-surface-400"
         >
           View Tasks
         </button>
@@ -314,14 +314,14 @@ export function GoalCard({
       )}
 
       {goal.created_at && (
-        <span className="flex items-center gap-1 rounded-full bg-zinc-800 px-3 py-1 text-xs font-medium text-zinc-400">
+        <span className="flex items-center gap-1 rounded-full bg-surface-200 px-3 py-1 text-xs font-medium text-foreground-400">
           <CalendarIcon className="h-3 w-3" />
           {formatDate(goal.created_at)}
         </span>
       )}
 
       {goal.todo_project_id && (
-        <span className="flex items-center gap-1 rounded-full bg-zinc-800 px-3 py-1 text-xs font-medium text-zinc-400">
+        <span className="flex items-center gap-1 rounded-full bg-surface-200 px-3 py-1 text-xs font-medium text-foreground-400">
           <Award01Icon className="h-3 w-3" />
           Linked to Todos
         </span>
@@ -332,7 +332,7 @@ export function GoalCard({
   // Expanded content for default variant
   const expandedContent = hasRoadmap && roadmapTasks.length > 0 && (
     <div>
-      <p className="mb-3 text-sm font-medium text-zinc-300">Roadmap Tasks</p>
+      <p className="mb-3 text-sm font-medium text-foreground-300">Roadmap Tasks</p>
       <div className="space-y-2">
         {roadmapTasks.map((node) => (
           <div key={node.id} className="flex items-center gap-3 py-1">
@@ -340,7 +340,7 @@ export function GoalCard({
               className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
                 node.data.isComplete
                   ? "border-green-500 bg-green-500"
-                  : "border-zinc-600"
+                  : "border-surface-400"
               }`}
             >
               {node.data.isComplete && (
@@ -350,8 +350,8 @@ export function GoalCard({
             <span
               className={`text-sm ${
                 node.data.isComplete
-                  ? "text-zinc-500 line-through"
-                  : "text-zinc-300"
+                  ? "text-foreground-500 line-through"
+                  : "text-foreground-300"
               }`}
             >
               {node.data.title || node.data.label || "Untitled Task"}

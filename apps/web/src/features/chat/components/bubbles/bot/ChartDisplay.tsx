@@ -130,8 +130,8 @@ const InteractiveChart: React.FC<{ chart: ChartData }> = ({ chart }) => {
         );
       default:
         return (
-          <div className="flex h-64 w-full items-center justify-center rounded-lg bg-zinc-900">
-            <p className="text-sm text-zinc-500">Unsupported chart type</p>
+          <div className="flex h-64 w-full items-center justify-center rounded-lg bg-surface-100">
+            <p className="text-sm text-foreground-500">Unsupported chart type</p>
           </div>
         );
     }
@@ -148,7 +148,7 @@ const StaticChartItem: React.FC<{
 }> = ({ chart, onFullscreen, onDownload }) => (
   <div className="group relative space-y-2 rounded-lg p-3 transition-colors">
     {chart.title && (
-      <h3 className="text-sm font-medium text-zinc-200">{chart.title}</h3>
+      <h3 className="text-sm font-medium text-foreground-200">{chart.title}</h3>
     )}
 
     <div className="relative">
@@ -166,7 +166,7 @@ const StaticChartItem: React.FC<{
         <button
           type="button"
           onClick={onFullscreen}
-          className="rounded-lg bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
+          className="rounded-lg bg-surface-50/50 p-1.5 text-foreground-50 backdrop-blur-sm transition-colors hover:bg-surface-50/70"
           title="View fullscreen"
         >
           <MaximizeScreenIcon className="h-3.5 w-3.5" />
@@ -174,7 +174,7 @@ const StaticChartItem: React.FC<{
         <button
           type="button"
           onClick={onDownload}
-          className="rounded-lg bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
+          className="rounded-lg bg-surface-50/50 p-1.5 text-foreground-50 backdrop-blur-sm transition-colors hover:bg-surface-50/70"
           title="Download"
         >
           <Download01Icon className="h-3.5 w-3.5" />
@@ -189,9 +189,9 @@ const DynamicChartItem: React.FC<{
   chart: ChartData;
   onFullscreen: () => void;
 }> = ({ chart, onFullscreen }) => (
-  <div className="group relative m-1 mb-5 space-y-2 rounded-lg p-3 outline-1 outline-zinc-600 backdrop-blur-sm transition-colors">
+  <div className="group relative m-1 mb-5 space-y-2 rounded-lg p-3 outline-1 outline-surface-400 backdrop-blur-sm transition-colors">
     {chart.title && (
-      <h3 className="text-sm font-medium text-zinc-200">{chart.title}</h3>
+      <h3 className="text-sm font-medium text-foreground-200">{chart.title}</h3>
     )}
 
     <div className="relative">
@@ -202,7 +202,7 @@ const DynamicChartItem: React.FC<{
         <button
           type="button"
           onClick={onFullscreen}
-          className="rounded-lg bg-black/50 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
+          className="rounded-lg bg-surface-50/50 p-1.5 text-foreground-50 backdrop-blur-sm transition-colors hover:bg-surface-50/70"
           title="View fullscreen"
         >
           <MaximizeScreenIcon className="h-3.5 w-3.5" />
@@ -211,7 +211,7 @@ const DynamicChartItem: React.FC<{
     </div>
 
     {chart.description && (
-      <p className="line-clamp-2 text-xs text-zinc-400">{chart.description}</p>
+      <p className="line-clamp-2 text-xs text-foreground-400">{chart.description}</p>
     )}
   </div>
 );
@@ -222,23 +222,23 @@ const ChartModal: React.FC<{
   onClose: () => void;
   onDownload: (chart: ChartData) => void;
 }> = ({ chart, onClose, onDownload }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-    <div className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-2xl bg-zinc-900 shadow-2xl">
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-50/80 p-4 backdrop-blur-sm">
+    <div className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-2xl bg-surface-100 shadow-2xl">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+      <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4">
         <div>
-          <h3 className="font-medium text-zinc-100">
+          <h3 className="font-medium text-foreground-900">
             {chart.title || chart.text}
           </h3>
           {chart.description && (
-            <p className="mt-1 text-sm text-zinc-400">{chart.description}</p>
+            <p className="mt-1 text-sm text-foreground-400">{chart.description}</p>
           )}
         </div>
         <div className="flex gap-2">
           <button
             type="button"
             onClick={() => onDownload(chart)}
-            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+            className="rounded-lg p-2 text-foreground-400 transition-colors hover:bg-surface-200 hover:text-foreground-300"
             title="Download"
           >
             <Download01Icon className="h-4 w-4" />
@@ -246,7 +246,7 @@ const ChartModal: React.FC<{
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+            className="rounded-lg p-2 text-foreground-400 transition-colors hover:bg-surface-200 hover:text-foreground-300"
             title="Close"
           >
             <Cancel01Icon className="h-4 w-4" />

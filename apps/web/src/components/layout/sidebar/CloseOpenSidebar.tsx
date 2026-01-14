@@ -26,12 +26,12 @@ function CloseOpenSidebarBtn({
     >
       {isMobileScreen ? (
         <Menu02Icon
-          className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary"
+          className="min-h-[20px] min-w-[20px] text-foreground-400 transition-all group-hover:text-primary"
           height="24"
         />
       ) : (
         <SidebarLeftIcon
-          className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary"
+          className="min-h-[20px] min-w-[20px] text-foreground-400 transition-all group-hover:text-primary"
           height="24"
         />
       )}

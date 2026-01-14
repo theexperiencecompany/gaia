@@ -46,7 +46,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
   };
 
   return (
-    <div className="group w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-800 text-white transition-all hover:border-orange-600/50 hover:shadow-lg hover:shadow-orange-600/10">
+    <div className="group w-full max-w-2xl overflow-hidden rounded-2xl border border-surface-300 bg-surface-200 text-foreground transition-all hover:border-orange-600/50 hover:shadow-lg hover:shadow-orange-600/10">
       <div className="space-y-3 p-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">

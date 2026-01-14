@@ -35,7 +35,7 @@ export default function SelectedWorkflowIndicator({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="relative m-3 w-80 rounded-3xl border-2 border-zinc-700"
+      className="relative m-3 w-80 rounded-3xl border-2 border-surface-300"
     >
       <UnifiedWorkflowCard
         title={workflow.title}
@@ -56,7 +56,7 @@ export default function SelectedWorkflowIndicator({
             size="sm"
             variant="light"
             onPress={onRemove}
-            className="text-zinc-400 hover:text-zinc-200"
+            className="text-foreground-400 hover:text-foreground-200"
           >
             <Cancel01Icon className="h-4 w-4" />
           </Button>

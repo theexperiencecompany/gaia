@@ -206,7 +206,7 @@ export default function ContactSupportModal({
                   className={`cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all duration-200 ${
                     dragActive
                       ? "scale-[1.02] border-primary bg-blue-50 shadow-lg"
-                      : "hover:bg-zinc-750 border-zinc-700 bg-zinc-800 hover:border-primary"
+                      : "hover:bg-surface-300 border-border-surface-700 bg-surface-200 hover:border-primary"
                   }`}
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
@@ -225,7 +225,7 @@ export default function ContactSupportModal({
 
                   <div className="flex flex-col items-center space-y-2">
                     <div
-                      className={`rounded-full p-4 ${dragActive ? "bg-blue-100" : "bg-zinc-700"} transition-colors`}
+                      className={`rounded-full p-4 ${dragActive ? "bg-blue-100" : "bg-surface-700"} transition-colors`}
                     >
                       <Upload01Icon
                         className={`h-8 w-8 ${dragActive ? "text-blue-600" : "text-gray-400"} transition-colors`}
@@ -234,28 +234,28 @@ export default function ContactSupportModal({
 
                     <div className="space-y-1">
                       <p
-                        className={`font-medium ${dragActive ? "text-blue-600" : "text-zinc-200"} transition-colors`}
+                        className={`font-medium ${dragActive ? "text-blue-600" : "text-foreground-200"} transition-colors`}
                       >
                         {dragActive
                           ? "Drop your images here"
                           : "Upload Images (Optional)"}
                       </p>
-                      <p className="text-sm text-zinc-400">
+                      <p className="text-sm text-foreground-400">
                         {dragActive
                           ? "Release to upload"
                           : "Click here or drag & drop your images"}
                       </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-zinc-400">
-                      <span className="rounded-full bg-zinc-700 px-3 py-1">
+                    <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-foreground-400">
+                      <span className="rounded-full bg-surface-700 px-3 py-1">
                         Max {FORM_VALIDATION.MAX_ATTACHMENTS} images
                       </span>
-                      <span className="rounded-full bg-zinc-700 px-3 py-1">
+                      <span className="rounded-full bg-surface-700 px-3 py-1">
                         Up to {FORM_VALIDATION.MAX_FILE_SIZE / (1024 * 1024)}MB
                         each
                       </span>
-                      <span className="rounded-full bg-zinc-700 px-3 py-1">
+                      <span className="rounded-full bg-surface-700 px-3 py-1">
                         JPG, PNG, WebP
                       </span>
                     </div>
@@ -265,7 +265,7 @@ export default function ContactSupportModal({
                 {/* File List */}
                 {formData.attachments.length > 0 && (
                   <div className="space-y-3">
-                    <p className="text-sm font-medium text-zinc-300">
+                    <p className="text-sm font-medium text-foreground-300">
                       Attached Images ({formData.attachments.length}/
                       {FORM_VALIDATION.MAX_ATTACHMENTS})
                     </p>
@@ -273,7 +273,7 @@ export default function ContactSupportModal({
                       {formData.attachments.map((file, index) => (
                         <div
                           key={file.name + file.size}
-                          className="group relative overflow-hidden rounded-xl bg-zinc-800"
+                          className="group relative overflow-hidden rounded-xl bg-surface-200"
                         >
                           <div className="aspect-square">
                             <Image
@@ -290,7 +290,7 @@ export default function ContactSupportModal({
                               <p className="truncate text-xs font-medium text-white">
                                 {file.name}
                               </p>
-                              <p className="text-xs text-zinc-300">
+                              <p className="text-xs text-foreground-300">
                                 {formatFileSize(file.size)}
                               </p>
                             </div>

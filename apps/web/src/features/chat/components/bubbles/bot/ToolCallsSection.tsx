@@ -86,7 +86,7 @@ export default function ToolCallsSection({
             },
             getIconUrl(call),
           ) || (
-            <div className="p-1 bg-zinc-800 rounded-lg text-zinc-400 backdrop-blur">
+            <div className="p-1 bg-surface-200 rounded-lg text-foreground-400 backdrop-blur">
               <ToolsIcon width={21} height={21} />
             </div>
           );
@@ -110,7 +110,7 @@ export default function ToolCallsSection({
           ) : null;
         })}
         {uniqueIcons.length > SHOWICONS && (
-          <div className="z-0 flex size-7 min-h-7 min-w-7 items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-foreground-500 font-normal">
+          <div className="z-0 flex size-7 min-h-7 min-w-7 items-center justify-center rounded-lg bg-surface-300/60 text-xs text-foreground-500 font-normal">
             +{uniqueIcons.length - SHOWICONS}
           </div>
         )}
@@ -138,7 +138,7 @@ export default function ToolCallsSection({
         <AccordionItem
           key="tools"
           title={
-            <div className="flex items-center gap-2 hover:text-white text-zinc-500">
+            <div className="flex items-center gap-2 hover:text-foreground-50 text-foreground-500">
               {renderStackedIcons()}
               <span className="text-xs font-medium transition-all duration-200">
                 Used {tool_calls_data.length} tool
@@ -177,7 +177,7 @@ export default function ToolCallsSection({
                         },
                         getIconUrl(call),
                       ) || (
-                        <div className="p-1 bg-zinc-800 rounded-lg">
+                        <div className="p-1 bg-surface-200 rounded-lg">
                           <ToolsIcon width={21} height={21} />
                         </div>
                       )}
@@ -194,13 +194,13 @@ export default function ToolCallsSection({
                       onClick={() => hasDetails && toggleCallExpansion(index)}
                     >
                       <p
-                        className={`text-xs text-zinc-400 font-medium ${hasDetails ? "group-hover/parent:text-white " : ""}`}
+                        className={`text-xs text-foreground-400 font-medium ${hasDetails ? "group-hover/parent:text-foreground-50 " : ""}`}
                       >
                         {call.message || formatToolName(call.tool_name)}
                       </p>
                       {hasDetails && (
                         <ChevronDown
-                          className={`text-zinc-500 transition-transform ${isCallExpanded ? "rotate-180" : ""}`}
+                          className={`text-foreground-500 transition-transform ${isCallExpanded ? "rotate-180" : ""}`}
                           width={14}
                           height={14}
                         />
@@ -222,10 +222,10 @@ export default function ToolCallsSection({
                     )}
 
                     {isCallExpanded && hasDetails && (
-                      <div className="mt-2 space-y-2 text-[11px] bg-zinc-800/50 rounded-xl p-3 mb-3 w-fit ">
+                      <div className="mt-2 space-y-2 text-[11px] bg-surface-200/50 rounded-xl p-3 mb-3 w-fit ">
                         {call.inputs && Object.keys(call.inputs).length > 0 && (
                           <div className="flex flex-col">
-                            <span className="text-zinc-500 font-medium mb-1">
+                            <span className="text-foreground-500 font-medium mb-1">
                               Input
                             </span>
                             <CompactMarkdown content={call.inputs} />
@@ -233,7 +233,7 @@ export default function ToolCallsSection({
                         )}
                         {call.output && (
                           <div className="flex flex-col">
-                            <span className="text-zinc-500 font-medium mb-1">
+                            <span className="text-foreground-500 font-medium mb-1">
                               Output
                             </span>
                             <CompactMarkdown content={call.output} />

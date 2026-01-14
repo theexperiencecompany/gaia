@@ -39,7 +39,7 @@ export default function GoalsHeader() {
             onClick={() => setOpenDialog(true)}
             data-keyboard-shortcut="create-goal"
           >
-            <Target02Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+            <Target02Icon className="min-h-[20px] min-w-[20px] text-foreground-400 transition-all group-hover:text-primary" />
           </SidebarHeaderButton>
           <NotificationCenter />
         </div>

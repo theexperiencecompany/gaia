@@ -112,7 +112,7 @@ export default function ChatBubbleUser({
           className={`flex flex-col items-end justify-end gap-1 pb-3 transition-all ${disableActions ? "hidden" : "opacity-0 group-hover:opacity-100"}`}
         >
           {date && (
-            <span className="flex flex-col text-xs text-zinc-400 select-text">
+            <span className="flex flex-col text-xs text-foreground-400 select-text">
               {parseDate(date)}
             </span>
           )}
@@ -129,7 +129,7 @@ export default function ChatBubbleUser({
       </div>
       <div className="min-w-10">
         <Avatar
-          className={`relative rounded-full bg-black ${disableActions ? "bottom-0" : "bottom-18"}`}
+          className={`relative rounded-full bg-surface-50 ${disableActions ? "bottom-0" : "bottom-18"}`}
         >
           <AvatarImage src={user?.profilePicture} alt="User Avatar" />
           <AvatarFallback>

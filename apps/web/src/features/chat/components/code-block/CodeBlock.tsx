@@ -107,7 +107,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
 
   if (isMermaid) {
     return (
-      <div className="relative my-3 flex w-[40vw] max-w-[30vw] flex-col gap-0 overflow-x-visible rounded-t-[10px]! bg-zinc-900 pb-0!">
+      <div className="relative my-3 flex w-[40vw] max-w-[30vw] flex-col gap-0 overflow-x-visible rounded-t-[10px]! bg-surface-100 pb-0!">
         <MermaidTabs
           activeTab={activeTab}
           onTabChange={(key) => {
@@ -149,7 +149,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
         </StandardCodeBlock>
       ) : (
         <code
-          className={`${className} rounded-md bg-zinc-900 px-2 py-1 text-sm text-zinc-400`}
+          className={`${className} rounded-md bg-surface-100 px-2 py-1 text-sm text-foreground-400`}
           {...props}
         >
           {children}

@@ -52,8 +52,8 @@ export default function Pins() {
                 </div>
               ) : (
                 <div className="flex h-[90vh] flex-col items-center justify-center text-center">
-                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-zinc-800">
-                    <PinIcon className="h-8 w-8 text-zinc-500" />
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-200">
+                    <PinIcon className="h-8 w-8 text-foreground-500" />
                   </div>
                   <div>
                     <h3 className="text-lg font-medium text-white">
@@ -61,7 +61,7 @@ export default function Pins() {
                         ? "No pins match your search"
                         : "No pinned messages yet"}
                     </h3>
-                    <p className="mt-1 text-sm text-zinc-400">
+                    <p className="mt-1 text-sm text-foreground-400">
                       {searchQuery.trim().length > 0
                         ? "Try adjusting your search terms or clear the filter"
                         : "PinIcon important messages during conversations to find them easily later"}

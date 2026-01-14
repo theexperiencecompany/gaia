@@ -20,12 +20,12 @@ export function SettingsOption({
       className={`flex items-center justify-between ${className} mx-auto max-w-3xl`}
     >
       <div className="flex items-center space-x-3">
-        <div className="flex items-center justify-center rounded-xl bg-zinc-800 p-2">
+        <div className="flex items-center justify-center rounded-xl bg-surface-200 p-2">
           {icon}
         </div>
         <div>
-          <h3 className="text-base font-medium text-white">{title}</h3>
-          <p className="text-xs text-zinc-500">{description}</p>
+          <h3 className="text-base font-medium text-foreground-900">{title}</h3>
+          <p className="text-xs text-foreground-500">{description}</p>
         </div>
       </div>
       {action}

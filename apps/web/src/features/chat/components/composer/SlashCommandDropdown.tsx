@@ -90,7 +90,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
       >
         <div
           className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${
-            isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"
+            isSelected ? "bg-surface-300/40" : "hover:bg-white/5"
           }`}
           onClick={() => {
             posthog.capture("chat:slash_command_selected", {
@@ -119,7 +119,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
                   {formatToolName(match.tool.name)}
                 </span>
                 {selectedCategory === "all" && (
-                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
+                  <span className="rounded-full bg-surface-200 px-2 py-0.5 text-xs text-foreground-400 outline-1 outline-surface-300">
                     {formatToolName(
                       categoryDisplayMap[match.tool.category]?.displayName ||
                         match.tool.category,
@@ -558,7 +558,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
             duration: 0.2,
             ease: [0.19, 1, 0.22, 1],
           }}
-          className="slash-command-dropdown fixed z-200 overflow-hidden rounded-3xl border-1 border-zinc-800 bg-zinc-900/70 outline-0! backdrop-blur-xl"
+          className="slash-command-dropdown fixed z-200 overflow-hidden rounded-3xl border-1 border-surface-200 bg-surface-100/70 outline-0! backdrop-blur-xl"
           style={{
             ...(position.top !== undefined && { top: 0, height: position.top }),
             ...(position.bottom !== undefined && {
@@ -584,6 +584,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                   placeholder="Search tools..."
                   value={searchQuery}
                   radius="full"
+                  classNames={{inputWrapper:"shadow-none!"}}
                   startContent={<SearchIcon size={16} />}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -616,8 +617,8 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                     }}
                     className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${
                       selectedCategory === category
-                        ? "bg-zinc-700/40 text-white"
-                        : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"
+                        ? "bg-surface-300/40 text-white"
+                        : "text-foreground-400 hover:bg-white/10 hover:text-foreground-300"
                     }`}
                   >
                     {category === "all" ? (

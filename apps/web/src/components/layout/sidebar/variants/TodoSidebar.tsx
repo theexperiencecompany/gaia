@@ -72,8 +72,8 @@ function SidebarSection({
             }
             className={`justify-start px-2 text-start text-sm ${
               activeItem === item.href
-                ? "bg-zinc-800 text-zinc-300"
-                : "text-zinc-500 hover:text-zinc-300"
+                ? "bg-surface-200 text-foreground-900"
+                : "text-foreground-500 hover:text-foreground-900"
             }`}
             variant="light"
             radius="sm"

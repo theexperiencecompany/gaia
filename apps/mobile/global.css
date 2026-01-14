@@ -4,30 +4,71 @@
 
 @layer base {
   :root {
-    --background: 0 0% 10%;
-    --foreground: 0 0% 100%;
-    --card: 0 0% 15%;
-    --card-foreground: 0 0% 100%;
-    --popover: 0 0% 15%;
-    --popover-foreground: 0 0% 100%;
-    --primary: 196 100% 50%;
+    /* Light mode colors - exact zinc scale mapping */
+    --background: 0 0% 100%;           /* White - page background */
+    --foreground: 240 5.9% 10%;        /* zinc-950 - primary text */
+
+    /* Surface scale - preserves all zinc shades (light mode) */
+    --surface-50: 240 4.8% 95.9%;      /* zinc-50 */
+    --surface-100: 240 4.8% 95.9%;     /* zinc-100 */
+    --surface-200: 240 5.9% 90%;       /* zinc-200 */
+    --surface-300: 240 4.9% 83.9%;     /* zinc-300 */
+    --surface-400: 240 5% 64.9%;       /* zinc-400 */
+    --surface-500: 240 3.8% 46.1%;     /* zinc-500 */
+    --surface-600: 240 5.2% 33.9%;     /* zinc-600 */
+    --surface-700: 240 5.3% 26.1%;     /* zinc-700 */
+    --surface-800: 240 3.7% 15.9%;     /* zinc-800 */
+    --surface-900: 240 5.9% 10%;       /* zinc-900 */
+    --surface-950: 240 10% 3.9%;       /* zinc-950 */
+
+    /* Legacy surface levels (for backwards compatibility) */
+    --surface-0: 0 0% 100%;            /* White */
+    --surface-1: 240 4.8% 95.9%;       /* zinc-50 */
+    --surface-2: 240 5.9% 90%;         /* zinc-200 */
+    --surface-3: 240 4.9% 83.9%;       /* zinc-300 */
+
+    /* Text scale - preserves all zinc text shades (light mode) */
+    --text-50: 240 4.8% 95.9%;         /* zinc-50 - lightest text */
+    --text-100: 240 4.8% 95.9%;        /* zinc-100 */
+    --text-200: 240 5.9% 90%;          /* zinc-200 */
+    --text-300: 240 4.9% 83.9%;        /* zinc-300 */
+    --text-400: 240 5% 64.9%;          /* zinc-400 - muted text */
+    --text-500: 240 3.8% 46.1%;        /* zinc-500 - placeholder */
+    --text-600: 240 5.2% 33.9%;        /* zinc-600 */
+    --text-700: 240 5.3% 26.1%;        /* zinc-700 */
+    --text-800: 240 3.7% 15.9%;        /* zinc-800 */
+    --text-900: 240 5.9% 10%;          /* zinc-900 - darkest text */
+
+    /* Border scale - preserves all zinc border shades (light mode) */
+    --border-300: 240 4.9% 83.9%;      /* zinc-300 */
+    --border-400: 240 5% 64.9%;        /* zinc-400 */
+    --border-500: 240 3.8% 46.1%;      /* zinc-500 */
+    --border-600: 240 5.2% 33.9%;      /* zinc-600 */
+    --border-700: 240 5.3% 26.1%;      /* zinc-700 */
+    --border-800: 240 3.7% 15.9%;      /* zinc-800 */
+    --border-900: 240 5.9% 10%;        /* zinc-900 */
+
+    /* Semantic colors */
+    --card: 0 0% 100%;
+    --card-foreground: 240 5.9% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 5.9% 10%;
+    --primary: 196 100% 50%;           /* #00bbff */
     --primary-foreground: 0 0% 0%;
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 56%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
     --accent: 196 100% 50%;
     --accent-foreground: 0 0% 0%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 16%;
-    --input: 0 0% 15%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
     --ring: 196 100% 50%;
-    --surface-0: 0 0% 4%;
-    --surface-1: 0 0% 8%;
-    --surface-2: 0 0% 13%;
-    --surface-3: 0 0% 20%;
     --radius: 0.75rem;
+
+    /* Chart colors */
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
@@ -36,29 +77,70 @@
   }
 
   .dark {
-    --background: 0 0% 10%;
-    --foreground: 0 0% 100%;
-    --card: 0 0% 15%;
-    --card-foreground: 0 0% 100%;
-    --popover: 0 0% 15%;
-    --popover-foreground: 0 0% 100%;
-    --primary: 196 100% 50%;
+    /* Dark mode colors - exact zinc scale mapping (inverted) */
+    --background: 240 10% 3.9%;        /* zinc-950 - page background */
+    --foreground: 240 4.8% 95.9%;      /* zinc-50 - primary text */
+
+    /* Surface scale - inverted zinc shades (dark mode) */
+    --surface-50: 240 10% 3.9%;        /* zinc-950 */
+    --surface-100: 240 5.9% 10%;       /* zinc-900 */
+    --surface-200: 240 3.7% 15.9%;     /* zinc-800 */
+    --surface-300: 240 5.3% 26.1%;     /* zinc-700 */
+    --surface-400: 240 5.2% 33.9%;     /* zinc-600 */
+    --surface-500: 240 3.8% 46.1%;     /* zinc-500 */
+    --surface-600: 240 5% 64.9%;       /* zinc-400 */
+    --surface-700: 240 4.9% 83.9%;     /* zinc-300 */
+    --surface-800: 240 5.9% 90%;       /* zinc-200 */
+    --surface-900: 240 4.8% 95.9%;     /* zinc-100 */
+    --surface-950: 240 4.8% 95.9%;     /* zinc-50 */
+
+    /* Legacy surface levels (for backwards compatibility) */
+    --surface-0: 0 0% 4%;              /* Near black */
+    --surface-1: 0 0% 8%;              /* Dark surface */
+    --surface-2: 0 0% 13%;             /* Medium dark */
+    --surface-3: 0 0% 20%;             /* Lighter dark */
+
+    /* Text scale - inverted zinc text shades (dark mode) */
+    --text-50: 240 10% 3.9%;           /* zinc-950 - darkest text */
+    --text-100: 240 5.9% 10%;          /* zinc-900 */
+    --text-200: 240 3.7% 15.9%;        /* zinc-800 */
+    --text-300: 240 5.3% 26.1%;        /* zinc-700 */
+    --text-400: 240 5.2% 33.9%;        /* zinc-600 - muted text */
+    --text-500: 240 3.8% 46.1%;        /* zinc-500 - placeholder */
+    --text-600: 240 5% 64.9%;          /* zinc-400 */
+    --text-700: 240 4.9% 83.9%;        /* zinc-300 */
+    --text-800: 240 5.9% 90%;          /* zinc-200 */
+    --text-900: 240 4.8% 95.9%;        /* zinc-50 - lightest text */
+
+    /* Border scale - inverted zinc border shades (dark mode) */
+    --border-300: 240 5.3% 26.1%;      /* zinc-700 */
+    --border-400: 240 5.2% 33.9%;      /* zinc-600 */
+    --border-500: 240 3.8% 46.1%;      /* zinc-500 */
+    --border-600: 240 5% 64.9%;        /* zinc-400 */
+    --border-700: 240 4.9% 83.9%;      /* zinc-300 */
+    --border-800: 240 5.9% 90%;        /* zinc-200 */
+    --border-900: 240 4.8% 95.9%;      /* zinc-100 */
+
+    /* Semantic colors */
+    --card: 240 10% 3.9%;
+    --card-foreground: 240 4.8% 95.9%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 240 4.8% 95.9%;
+    --primary: 196 100% 50%;           /* #00bbff */
     --primary-foreground: 0 0% 0%;
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 56%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 240 4.8% 95.9%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 215.4 16.3% 56.9%;
     --accent: 196 100% 50%;
     --accent-foreground: 0 0% 0%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 16%;
-    --input: 0 0% 15%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
     --ring: 196 100% 50%;
-    --surface-0: 0 0% 4%;
-    --surface-1: 0 0% 8%;
-    --surface-2: 0 0% 13%;
-    --surface-3: 0 0% 20%;
+
+    /* Chart colors */
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;

@@ -10,7 +10,7 @@ export default function MemorySettings() {
         title="Memory Management"
         className="flex h-full flex-col"
       >
-        <p className="mb-6 text-sm text-zinc-400">
+        <p className="mb-6 text-sm text-foreground-400">
           Manage the information GAIA remembers from your conversations
         </p>
         <MemoryManagement />

@@ -51,7 +51,7 @@ function AISummary({
 }) {
   if (isLoading) {
     return (
-      <div className="mb-3 flex w-fit flex-col rounded-xl bg-zinc-800 p-2 shadow-md outline outline-zinc-700">
+      <div className="mb-3 flex w-fit flex-col rounded-xl bg-surface-200 p-2 shadow-md outline outline-zinc-700">
         <div className="relative flex items-center gap-3 text-sm font-medium text-white">
           <Chip
             classNames={{
@@ -75,7 +75,7 @@ function AISummary({
   if (!analysis) return null;
 
   return (
-    <div className="mb-3 flex w-fit flex-col rounded-xl bg-zinc-800 p-2 shadow-md outline outline-zinc-700">
+    <div className="mb-3 flex w-fit flex-col rounded-xl bg-surface-200 p-2 shadow-md outline outline-zinc-700">
       <div className="relative flex items-center gap-3 text-sm font-medium text-white">
         <Chip
           classNames={{
@@ -307,7 +307,7 @@ export default function ViewEmail({
             { "--initial-transform": "calc(100% + 8px)" } as React.CSSProperties
           }
         >
-          <div className="relative flex h-full w-full grow flex-col overflow-y-auto rounded-l-2xl bg-zinc-900 p-6 pt-4">
+          <div className="relative flex h-full w-full grow flex-col overflow-y-auto rounded-l-2xl bg-surface-100 p-6 pt-4">
             <div className="mb-2 flex w-full justify-end">
               <Tooltip content="Close" color="foreground">
                 <div className="cursor-pointer">
@@ -389,7 +389,7 @@ export default function ViewEmail({
                     return (
                       <div
                         key={message.id}
-                        className={`rounded-lg p-4 ${isCurrentEmail ? "bg-zinc-800" : "bg-zinc-900"} border-l-2 ${isCurrentEmail ? "border-primary" : "border-zinc-700"}`}
+                        className={`rounded-lg p-4 ${isCurrentEmail ? "bg-surface-200" : "bg-surface-100"} border-l-2 ${isCurrentEmail ? "border-primary" : "border-border-surface-700"}`}
                       >
                         <div className="mb-2 flex items-start justify-between">
                           <User
@@ -462,7 +462,7 @@ export default function ViewEmail({
 
               {/* ArrowTurnBackwardIcon editor */}
               {showReplyEditor && replyTo && (
-                <div className="mt-4 border-t-2 border-zinc-700 pt-4">
+                <div className="mt-4 border-t-2 border-border-surface-700 pt-4">
                   <div className="mb-2 flex items-center justify-between">
                     <div className="text-sm">
                       <span className="font-medium">
@@ -484,7 +484,7 @@ export default function ViewEmail({
                     </Button>
                   </div>
 
-                  <div className="rounded-lg border border-zinc-700 bg-zinc-800">
+                  <div className="rounded-lg border border-border-surface-700 bg-surface-200">
                     {/* <MenuBar editor={editor} /> */}
                     <div className="max-h-[250px] min-h-[150px] overflow-y-auto px-4 py-2">
                       <EditorContent editor={editor} />

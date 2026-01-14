@@ -90,7 +90,7 @@ export default function OpenSource() {
       id="opensource-section"
       className="flex flex-col items-center justify-center gap-10 px-4 sm:px-6 lg:px-8"
     >
-      <div className="flex w-full max-w-7xl flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-zinc-900 to-zinc-950 p-6 outline-1 outline-zinc-900 sm:rounded-3xl sm:p-8 lg:rounded-4xl lg:p-10">
+      <div className="flex w-full max-w-7xl flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-surface-100 to-surface-50 p-6 outline-1 outline-surface-100 sm:rounded-3xl sm:p-8 lg:rounded-4xl lg:p-10">
         <LargeHeader
           headingText="Open-Source & Self-Hostable"
           subHeadingText="GAIA is fully open source. Self-host it on your own infrastructure, or explore the community-driven codebase on GitHub!"
@@ -115,19 +115,19 @@ export default function OpenSource() {
 
         {/* Contributors Section */}
         <div className="flex flex-col items-center gap-3 pt-4 sm:gap-4 sm:pt-6">
-          <h3 className="text-center text-base font-medium text-zinc-300 sm:text-lg">
+          <h3 className="text-center text-base font-medium text-foreground-700 sm:text-lg">
             Built by the community
           </h3>
           {isLoading ? (
             <div className="flex items-center gap-2">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-zinc-600 border-t-white sm:h-8 sm:w-8"></div>
-              <span className="text-sm text-zinc-400 sm:text-base">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-surface-400 border-t-foreground-900 sm:h-8 sm:w-8"></div>
+              <span className="text-sm text-foreground-400 sm:text-base">
                 Loading contributors...
               </span>
             </div>
           ) : isError ? (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-zinc-400 sm:text-base">
+              <span className="text-sm text-foreground-400 sm:text-base">
                 Failed to load contributors
               </span>
             </div>
@@ -136,7 +136,7 @@ export default function OpenSource() {
               fallback={
                 <div className="flex items-center gap-2">
                   <Spinner />
-                  <span className="text-sm text-zinc-400 sm:text-base">
+                  <span className="text-sm text-foreground-400 sm:text-base">
                     Loading contributors...
                   </span>
                 </div>

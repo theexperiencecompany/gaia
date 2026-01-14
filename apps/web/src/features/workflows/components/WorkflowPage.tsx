@@ -190,10 +190,10 @@ export default function WorkflowPage() {
 
     if (items.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl bg-zinc-800 border-dashed border-2 border-zinc-700 py-16">
+        <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl bg-surface-100 border-dashed border-2 border-surface-300 py-16">
           <div className="text-center">
-            <h3 className="text-lg font-medium text-zinc-300">{emptyTitle}</h3>
-            <p className="mt-2 text-sm text-zinc-500">{emptyDescription}</p>
+            <h3 className="text-lg font-medium text-foreground-900">{emptyTitle}</h3>
+            <p className="mt-2 text-sm text-foreground-500">{emptyDescription}</p>
           </div>
           {emptyAction}
         </div>
@@ -217,9 +217,9 @@ export default function WorkflowPage() {
       <div className="flex flex-col space-y-1">
         <div className="flex items-center gap-2">
           {icon && <span> {React.cloneElement(icon)}</span>}
-          <h2 className="text-2xl font-medium text-zinc-100">{title}</h2>
+          <h2 className="text-2xl font-medium text-foreground-900">{title}</h2>
         </div>
-        <p className="font-light text-zinc-500">{description}</p>
+        <p className="font-light text-foreground-500">{description}</p>
       </div>
       {children}
     </div>

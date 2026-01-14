@@ -1,6 +1,6 @@
 ::selection {
-  background: #00364b;
-  color: #0bf;
+  background: hsl(var(--primary) / 0.2);
+  color: hsl(var(--primary));
 }
 
 /* :not(body),
@@ -37,12 +37,12 @@ li {
 }
 
 .bg-custom-gradient {
-  background: linear-gradient(0deg, #0000 31%, #0bf3 100%);
+  background: linear-gradient(0deg, transparent 31%, hsl(var(--primary) / 0.2) 100%);
 }
 
 .chat_bubble {
   border-radius: 25px 25px 25px 0;
-  color: #fff;
+  color: hsl(var(--text-900));
   display: flex;
   flex-direction: column;
   height: fit-content;
@@ -69,22 +69,22 @@ li {
 }
 
 .chat_bubble span a {
-  color: #09f;
+  color: hsl(var(--primary));
   text-decoration: underline;
 }
 
 .chat_bubble.user {
-  background-color: #00bbff;
+  background-color: hsl(var(--primary));
   border-bottom-left-radius: 25px;
   border-bottom-right-radius: 0;
-  color: #000;
+  color: hsl(var(--primary-foreground));
   display: flex;
   flex-direction: column;
 }
 
 .chat_bubble::selection {
-  background: #fff;
-  color: #0bf;
+  background: hsl(var(--surface-950));
+  color: hsl(var(--primary));
 }
 
 .chat_bubble_container {
@@ -130,42 +130,43 @@ li {
 
 /* Bot messages (from-them style) */
 .imessage-from-them {
-  background: #27272a;
+  background: hsl(var(--surface-200));
+  color: hsl(var(--foreground));
   align-self: flex-start;
 }
 
 .imessage-from-them::before {
   left: -7px;
   width: 20px;
-  background-color: #27272a;
+  background-color: hsl(var(--surface-200));
   border-bottom-right-radius: 16px;
 }
 
 .imessage-from-them::after {
   left: -26px;
   width: 26px;
-  background-color: var(--color-primary-bg);
+  background-color: var(--primary-bg);
   border-bottom-right-radius: 10px;
 }
 
 /* User messages (from-me style) */
 .imessage-from-me {
-  color: black;
-  background: #00bbff;
+  color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary));
   align-self: flex-end;
 }
 
 .imessage-from-me::before {
   right: -7px;
   width: 20px;
-  background-color: #00bbff;
+  background-color: hsl(var(--primary));
   border-bottom-left-radius: 16px 14px;
 }
 
 .imessage-from-me::after {
   right: -26px;
   width: 26px;
-  background-color: var(--color-primary-bg);
+  background-color: hsl(var(--background));
   border-bottom-left-radius: 10px;
 }
 
@@ -191,9 +192,9 @@ li {
   -webkit-backdrop-filter: blur(16px) saturate(180%);
   align-items: center;
   backdrop-filter: blur(16px) saturate(180%);
-  background: rgba(32, 32, 32, 0.234);
+  background: hsl(var(--surface-100) / 0.234);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 24px hsl(var(--surface-50) / 0.2);
   display: flex;
   justify-content: center;
   padding: 0.5rem 1rem;
@@ -204,7 +205,7 @@ li {
 }
 
 .navbar:hover {
-  background-color: #18181b;
+  background-color: hsl(var(--surface-100));
   border-radius: 8px 8px 0 0;
 }
 
@@ -249,7 +250,7 @@ li {
 }
 
 .sidebar:hover div::-webkit-scrollbar-thumb {
-  background: #5e5e5e;
+  background: hsl(var(--surface-500));
 }
 
 .tiptap {
@@ -352,12 +353,12 @@ li {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-zinc-700);
+  background: hsl(var(--surface-300));
   border-radius: 100px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-zinc-500);
+  background: hsl(var(--surface-500));
   border-radius: 100px;
 }
 

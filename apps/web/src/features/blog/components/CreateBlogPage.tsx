@@ -210,7 +210,7 @@ Happy writing! 🚀`,
             </p>
             <p className="text-sm text-foreground-500">
               Please set the{" "}
-              <code className="rounded bg-zinc-100 px-2 py-1 dark:bg-zinc-800">
+              <code className="rounded bg-surface-900 px-2 py-1 dark:bg-surface-200">
                 NEXT_PUBLIC_BLOG_BEARER_TOKEN
               </code>{" "}
               environment variable.

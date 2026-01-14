@@ -37,7 +37,7 @@ function formatNumber(num: number): string {
 
 export default function RedditCommentCard({
   comments,
-  backgroundColor = "bg-zinc-800",
+  backgroundColor = "bg-surface-200",
   maxHeight = "max-h-[500px]",
   isCollapsible = true,
 }: RedditCommentCardProps) {
@@ -47,13 +47,13 @@ export default function RedditCommentCard({
 
   const content = (
     <div
-      className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
+      className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-foreground`}
     >
       <ScrollShadow className={`${maxHeight} space-y-3`}>
         {comments.map((comment) => (
           <div
             key={comment.id}
-            className="rounded-xl border border-zinc-700 bg-zinc-900/50 p-3 transition-colors hover:border-zinc-600"
+            className="rounded-xl border border-surface-300 bg-surface-100/50 p-3 transition-colors hover:border-surface-400"
           >
             <div className="space-y-2">
               {/* Author & Meta */}

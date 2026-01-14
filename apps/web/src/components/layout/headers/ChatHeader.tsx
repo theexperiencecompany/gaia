@@ -39,14 +39,14 @@ export default function ChatHeader() {
             </div>
           }
         >
-          <SearchIcon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-400 group-hover:text-primary" />
+          <SearchIcon className="max-h-5 min-h-5 max-w-5 min-w-5 text-foreground-400 group-hover:text-primary" />
         </SidebarHeaderButton>
         <Link href={"/pins"}>
           <SidebarHeaderButton
             aria-label="Pinned Messages"
             tooltip="Pinned Messages"
           >
-            <PinIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+            <PinIcon className="min-h-[20px] min-w-[20px] text-foreground-400 transition-all group-hover:text-primary" />
           </SidebarHeaderButton>
         </Link>
         <Link href={"/c"}>
@@ -54,7 +54,7 @@ export default function ChatHeader() {
             aria-label="Create new chat"
             tooltip="Create new chat"
           >
-            <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+            <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-foreground-400 transition-all group-hover:text-primary" />
           </SidebarHeaderButton>
         </Link>
         <NotificationCenter />

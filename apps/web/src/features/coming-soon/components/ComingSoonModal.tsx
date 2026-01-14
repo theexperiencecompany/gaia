@@ -60,7 +60,7 @@ export default function ComingSoonModal({
 
   return (
     <Modal
-      className="text-foreground dark"
+      className="text-foreground"
       isOpen={isOpen}
       onOpenChange={setOpen}
     >

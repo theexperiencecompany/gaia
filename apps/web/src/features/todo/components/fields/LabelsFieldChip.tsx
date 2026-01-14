@@ -49,7 +49,7 @@ export default function LabelsFieldChip({
     >
       {({ onClose }) => (
         <div className="p-1">
-          <div className="border-0 bg-zinc-900 p-3">
+          <div className="border-0 bg-surface-100 p-3">
             {/* Add new label */}
             <div className="mb-1">
               <div className="flex gap-2">
@@ -68,9 +68,9 @@ export default function LabelsFieldChip({
                     size="sm"
                     aria-label="Add new label"
                     classNames={{
-                      input: "text-sm text-zinc-200 placeholder:text-zinc-500",
+                      input: "text-sm text-foreground-200 placeholder:text-foreground-500",
                       inputWrapper:
-                        "border-0 bg-zinc-800 hover:bg-zinc-700 focus:bg-zinc-700 data-[focus=true]:bg-zinc-700",
+                        "border-0 bg-surface-200 hover:bg-surface-300 focus:bg-surface-300 data-[focus=true]:bg-surface-300",
                     }}
                   />
                 </div>
@@ -86,8 +86,8 @@ export default function LabelsFieldChip({
                   }}
                   className={`h-8 min-w-8 border-0 p-0 ${
                     !newLabel.trim() || value.includes(newLabel.trim())
-                      ? "bg-zinc-800 text-zinc-600 hover:bg-zinc-700"
-                      : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                      ? "bg-surface-200 text-foreground-600 hover:bg-surface-300"
+                      : "bg-surface-200 text-foreground-200 hover:bg-surface-300"
                   }`}
                 >
                   <PlusSignIcon size={14} />
@@ -101,7 +101,7 @@ export default function LabelsFieldChip({
                 {value.map((label) => (
                   <div
                     key={label}
-                    className="flex items-center gap-1 rounded-md bg-zinc-800 px-2 py-1 text-sm text-zinc-400 hover:bg-zinc-700"
+                    className="flex items-center gap-1 rounded-md bg-surface-200 px-2 py-1 text-sm text-foreground-400 hover:bg-surface-300"
                   >
                     <Tag01Icon size={12} />
                     {label}
@@ -109,7 +109,7 @@ export default function LabelsFieldChip({
                       variant="light"
                       size="sm"
                       onPress={() => handleRemoveLabel(label)}
-                      className="h-4 w-4 min-w-4 border-0 p-0 text-zinc-400 hover:text-zinc-200"
+                      className="h-4 w-4 min-w-4 border-0 p-0 text-foreground-400 hover:text-foreground-200"
                     >
                       <Cancel01Icon size={10} />
                     </Button>
@@ -122,13 +122,13 @@ export default function LabelsFieldChip({
           {/* Quick actions */}
           {value.length > 0 && (
             <>
-              <div className="my-1 h-px bg-zinc-700" />
+              <div className="my-1 h-px bg-surface-300" />
               <div
                 onClick={() => {
                   onChange([]);
                   onClose();
                 }}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
+                className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-red-400 transition-colors hover:bg-surface-200"
               >
                 <Cancel01Icon size={14} />
                 Clear all labels
@@ -138,9 +138,9 @@ export default function LabelsFieldChip({
 
           {/* Hint */}
           <div className="mt-1 px-3 py-2">
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-foreground-500">
               Type{" "}
-              <span className="rounded bg-zinc-800 px-1 font-mono">#label</span>{" "}
+              <span className="rounded bg-surface-200 px-1 font-mono">#label</span>{" "}
               in title/description to add labels
             </p>
           </div>

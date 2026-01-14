@@ -32,7 +32,7 @@ export function SidebarPromo({ price }: SidebarPromoProps) {
       className={`flex flex-col justify-center transition-all duration-200 group/pricingsidebar ${
         isCollapsed
           ? "w-full px-1 mb-2 mt-1"
-          : "mb-2 h-fit w-fit rounded-2xl bg-zinc-800 p-4 pt-1"
+          : "mb-2 h-fit w-fit rounded-2xl bg-surface-200 p-4 pt-1"
       }`}
     >
       {!isCollapsed && (
@@ -44,13 +44,13 @@ export function SidebarPromo({ price }: SidebarPromoProps) {
               variant="light"
               size="sm"
               radius="full"
-              className="p-0! text-zinc-400 hover:text-white relative left-3 group-hover/pricingsidebar:opacity-100 opacity-0 transition"
+              className="p-0! text-foreground-400 hover:text-foreground-900 relative left-3 group-hover/pricingsidebar:opacity-100 opacity-0 transition"
               onPress={() => handleCollapse()}
             >
               <CancelIcon width={15} height={15} />
             </Button>
           </div>
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-foreground-400">
             Unlock near-unlimited usage and priority support for ${price} a
             month
           </p>

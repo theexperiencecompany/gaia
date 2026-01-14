@@ -53,9 +53,9 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
     output && (output.stdout || output.stderr || output.results?.length);
 
   return (
-    <div className="w-full overflow-hidden rounded-2xl bg-zinc-800">
+    <div className="w-full overflow-hidden rounded-2xl bg-surface-200">
       {/* Header */}
-      <div className="p flex items-center justify-between bg-zinc-900 px-4 py-2">
+      <div className="p flex items-center justify-between bg-surface-100 px-4 py-2">
         <div className="flex items-center gap-2">
           {getStatusIcon()}
           <span className="text-sm font-medium text-gray-200">
@@ -68,7 +68,7 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
       </div>
 
       {/* Content */}
-      <div className="bg-zinc-900 p-3 pt-0">
+      <div className="bg-surface-100 p-3 pt-0">
         {status === "executing" && !output ? (
           <div className="flex items-center gap-3 py-4 text-gray-400">
             <div className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />

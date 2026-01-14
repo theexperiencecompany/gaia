@@ -272,7 +272,7 @@ export default function UnifiedWorkflowCard({
           ) : null;
         })}
         {categories.length > 3 && (
-          <div className="z-0 flex size-[34px] min-h-[34px] min-w-[34px] items-center justify-center rounded-lg bg-zinc-700/60 text-sm text-foreground-500">
+          <div className="z-0 flex size-[34px] min-h-[34px] min-w-[34px] items-center justify-center rounded-lg bg-surface-300/60 text-sm text-foreground-500">
             +{categories.length - 3}
           </div>
         )}
@@ -284,12 +284,12 @@ export default function UnifiedWorkflowCard({
 
   const cardContent = (
     <div
-      className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${
+      className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl ${
         useBlurEffect
-          ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg"
-          : "bg-zinc-800 outline-zinc-800/70"
+          ? "dark:bg-surface-200/40 backdrop-blur-lg bg-surface-100/40"
+          : "dark:bg-surface-200 bg-surface-100"
       } p-4 transition-all select-none ${
-        isClickable ? "cursor-pointer hover:bg-zinc-700/50" : ""
+        isClickable ? "cursor-pointer hover:bg-surface-300/70" : ""
       }`}
       onClick={handleCardClick}
     >
@@ -303,7 +303,7 @@ export default function UnifiedWorkflowCard({
       <div>
         <h3 className="line-clamp-2 text-lg font-medium">{title}</h3>
         {!showDescriptionAsTooltip && (
-          <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-zinc-500">
+          <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-foreground-500">
             {description}
           </div>
         )}
@@ -329,11 +329,11 @@ export default function UnifiedWorkflowCard({
             )}
 
             {showExecutions && totalExecutions > 0 && (
-              <div className="flex items-center gap-1 text-xs text-zinc-500">
+              <div className="flex items-center gap-1 text-xs text-foreground-500">
                 <PlayIcon
                   width={15}
                   height={15}
-                  className="w-4 text-zinc-500"
+                  className="w-4 text-foreground-500"
                 />
                 <span className="text-nowrap">
                   {formatRunCount(totalExecutions)}
@@ -368,7 +368,7 @@ export default function UnifiedWorkflowCard({
       className="max-w-xs"
       showArrow
       classNames={{
-        content: "bg-zinc-800 p-4 rounded-3xl",
+        content: "bg-surface-200 p-4 rounded-3xl",
       }}
       delay={0}
       closeDelay={0}

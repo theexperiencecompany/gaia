@@ -71,11 +71,11 @@ export default function SelectedCalendarEventIndicator({
         />
         <div className="relative z-1 flex min-w-0 flex-1 items-center gap-2 pl-1">
           <div className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-light text-zinc-200">
+            <span className="truncate text-sm font-light text-foreground-200">
               {event.summary}
             </span>
             <div className="flex items-center gap-1.5">
-              <span className="truncate text-xs text-zinc-400">
+              <span className="truncate text-xs text-foreground-400">
                 {timeDisplay}
               </span>
             </div>
@@ -86,7 +86,7 @@ export default function SelectedCalendarEventIndicator({
             onClick={onRemove}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
-            className="relative z-1 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+            className="relative z-1 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-foreground-400 transition-colors hover:bg-surface-400 hover:text-foreground-200"
           >
             <Cancel01Icon size={15} />
           </motion.button>

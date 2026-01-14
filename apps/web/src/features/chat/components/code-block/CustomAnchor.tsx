@@ -82,7 +82,7 @@ const CustomAnchor = memo(
     return (
       <Tooltip
         showArrow
-        className="relative max-w-[280px] border border-zinc-800 bg-zinc-900 p-3 text-white shadow-sm rounded-2xl"
+        className="relative max-w-[280px] border border-surface-200 bg-surface-100 p-3 text-foreground-50 shadow-sm rounded-2xl"
         content={
           isLoading ? (
             <div className="flex justify-center p-5">
@@ -143,7 +143,7 @@ const CustomAnchor = memo(
 
               {/* Title */}
               {metadata.title && (
-                <div className="truncate text-sm font-medium text-white">
+                <div className="truncate text-sm font-medium text-foreground-50">
                   {metadata.title}
                 </div>
               )}
@@ -178,7 +178,7 @@ const CustomAnchor = memo(
         <a
           ref={elementRef}
           href={href}
-          className="inline-flex cursor-pointer items-center gap-1 rounded-sm bg-primary/20 px-1 text-sm font-medium text-primary transition-all hover:text-white hover:underline"
+          className="inline-flex cursor-pointer items-center gap-1 rounded-sm bg-primary/20 px-1 text-sm font-medium text-primary transition-all hover:text-foreground-50 hover:underline"
           rel="noopener noreferrer"
           target="_blank"
           onMouseEnter={handleMouseEnter}

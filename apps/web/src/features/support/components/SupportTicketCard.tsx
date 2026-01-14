@@ -230,7 +230,7 @@ export default function SupportTicketCard({
   return (
     <>
       {/* Main Support Ticket Card */}
-      <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-zinc-800">
+      <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-surface-200">
         {/* Header with type indicator */}
         <div className="flex items-center justify-between px-6 py-1">
           <div className="flex flex-row items-center gap-2 pt-3 pb-2">
@@ -244,7 +244,7 @@ export default function SupportTicketCard({
         <div className="flex flex-col gap-1 px-6">
           {/* Title with Edit Button */}
           <div className="flex items-center justify-between">
-            <div className="flex-1 text-lg font-semibold text-zinc-100">
+            <div className="flex-1 text-lg font-semibold text-foreground-100">
               {editData.title}
             </div>
             <Button
@@ -252,13 +252,13 @@ export default function SupportTicketCard({
               size="sm"
               variant="light"
               onPress={handleEditClick}
-              className="h-8 w-8 text-zinc-500 hover:text-zinc-200"
+              className="h-8 w-8 text-foreground-500 hover:text-foreground-200"
             >
               <PencilEdit01Icon color="currentColor" width={16} height={16} />
             </Button>
           </div>
 
-          <Separator className="my-1.5 bg-zinc-700" />
+          <Separator className="my-1.5 bg-surface-700" />
 
           {/* User Info */}
           {(editData.user_name || editData.user_email) && (
@@ -274,12 +274,12 @@ export default function SupportTicketCard({
                   )}
                 </span>
               </div>
-              <Separator className="my-1.5 bg-zinc-700" />
+              <Separator className="my-1.5 bg-surface-700" />
             </>
           )}
 
           {/* Description */}
-          <ScrollShadow className="relative z-[1] overflow-y-auto pb-5 text-sm leading-relaxed whitespace-pre-line text-zinc-200">
+          <ScrollShadow className="relative z-[1] overflow-y-auto pb-5 text-sm leading-relaxed whitespace-pre-line text-foreground-200">
             {editData.description}
           </ScrollShadow>
         </div>

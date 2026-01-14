@@ -68,11 +68,11 @@ export function NotificationCenter({
               aria-label="Notifications"
               tooltip="Notifications"
             >
-              <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+              <NotificationIcon className="min-h-[20px] min-w-[20px] text-foreground-400 transition-all group-hover:text-primary" />
             </SidebarHeaderButton>
             {unreadCount > 0 && (
               <div className="absolute -right-1 bottom-3 flex h-full items-center justify-center">
-                <div className="flex aspect-square h-4 w-4 items-center justify-center rounded-full bg-primary text-xs font-medium text-zinc-950">
+                <div className="flex aspect-square h-4 w-4 items-center justify-center rounded-full bg-primary text-xs font-medium text-foreground-900">
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </div>
               </div>
@@ -80,7 +80,7 @@ export function NotificationCenter({
           </div>
         </PopoverTrigger>
 
-        <PopoverContent className="mr-4 w-96 rounded-2xl border-1 border-zinc-700 bg-zinc-800 p-0 shadow-xl">
+        <PopoverContent className="mr-4 w-96 rounded-2xl border-1 border-border-surface-700 bg-surface-200 p-0 shadow-xl">
           <Tabs
             selectedKey={activeTab}
             onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}
@@ -115,17 +115,17 @@ export function NotificationCenter({
           >
             {loading ? (
               <div className="flex items-center justify-center p-8">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-50" />
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-border-surface-700 border-t-zinc-50" />
               </div>
             ) : filteredNotifications.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-                <NotificationIcon className="mb-4 h-10 w-10 text-zinc-600" />
-                <p className="font-medium text-zinc-300">
+                <NotificationIcon className="mb-4 h-10 w-10 text-foreground-600" />
+                <p className="font-medium text-foreground-300">
                   {activeTab === "unread"
                     ? "No unread notifications"
                     : "No notifications yet"}
                 </p>
-                <p className="mt-1 text-sm text-zinc-400">
+                <p className="mt-1 text-sm text-foreground-400">
                   {activeTab === "unread"
                     ? "All caught up!"
                     : "Notifications will appear here when you receive them"}

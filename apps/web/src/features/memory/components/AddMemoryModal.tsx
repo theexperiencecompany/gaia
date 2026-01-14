@@ -93,7 +93,7 @@ export default function AddMemoryForm({
   if (!isOpen) return null;
 
   return (
-    <div className="relative mb-4 rounded-2xl border border-zinc-700 p-4">
+    <div className="relative mb-4 rounded-2xl border border-border-surface-700 p-4">
       <div className="mb-2 flex items-center justify-between">
         <Button
           isIconOnly
@@ -124,9 +124,9 @@ export default function AddMemoryForm({
           }
           isInvalid={content.length > MAX_MEMORY_LENGTH}
           classNames={{
-            input: "bg-zinc-800 text-sm",
-            inputWrapper: "bg-zinc-800 focus:bg-zinc-700/50",
-            description: "text-zinc-400 text-xs",
+            input: "bg-surface-200 text-sm",
+            inputWrapper: "bg-surface-200 focus:bg-surface-700/50",
+            description: "text-foreground-400 text-xs",
           }}
           autoFocus
         />

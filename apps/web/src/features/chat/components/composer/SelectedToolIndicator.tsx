@@ -58,14 +58,14 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
             stiffness: 300,
             duration: 0.2,
           }}
-          className="mx-3 mt-2 mb-1 flex w-fit items-center gap-2 rounded-xl bg-zinc-700 px-2 py-1"
+          className="mx-3 mt-2 mb-1 flex w-fit items-center gap-2 rounded-xl bg-surface-300 px-2 py-1"
         >
           <div>
             {getToolCategoryIcon(toolCategory || "general", {
               size: 17,
             })}
           </div>
-          <span className="text-sm font-light text-zinc-200">
+          <span className="text-sm font-light text-foreground-200">
             {formatToolName(toolName)}
           </span>
           {onRemove && (
@@ -73,7 +73,7 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
               onClick={onRemove}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
-              className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
+              className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-foreground-400 transition-colors hover:bg-surface-400 hover:text-foreground-200"
             >
               <Cancel01Icon size={15} />
             </motion.button>

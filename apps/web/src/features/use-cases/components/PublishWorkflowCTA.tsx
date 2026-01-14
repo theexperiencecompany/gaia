@@ -3,7 +3,7 @@ import { RaisedButton } from "@/components/ui/raised-button";
 
 export default function PublishWorkflowCTA() {
   return (
-    <div className="mx-auto mt-20 max-w-7xl rounded-4xl bg-black p-6 py-20 text-center relative overflow-hidden outline-zinc-900 outline-2">
+    <div className="mx-auto mt-20 max-w-7xl rounded-4xl bg-background p-6 py-20 text-center relative overflow-hidden outline-surface-300 outline-1">
       <Image
         fill
         src={"/images/wallpapers/blueprint.png"}
@@ -14,7 +14,7 @@ export default function PublishWorkflowCTA() {
         <h3 className="font-serif text-6xl font-normal text-foreground relative z-[1]">
           Publish Your Own Workflow
         </h3>
-        <p className="text-zinc-400 relative z-[1]">
+        <p className="text-foreground-600 relative z-[1]">
           Build and share your automation ideas with the GAIA community
         </p>
         <a

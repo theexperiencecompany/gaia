@@ -54,7 +54,7 @@ const ListItem = React.forwardRef<
         <Component
           ref={ref}
           className={cn(
-            "group relative flex h-full min-h-18 w-full flex-col justify-center overflow-hidden rounded-2xl bg-zinc-800/0 p-3.5 leading-none no-underline transition-all duration-150 select-none hover:bg-zinc-800 hover:text-zinc-100 focus:bg-zinc-800 focus:text-zinc-100",
+            "group relative flex h-full min-h-18 w-full flex-col justify-center overflow-hidden rounded-2xl bg-surface-200/0 p-3.5 leading-none no-underline transition-all duration-150 select-none hover:bg-surface-200/60 hover:text-foreground-900 focus:bg-surface-200 focus:text-foreground-900",
             className,
           )}
           {...linkProps}
@@ -79,18 +79,23 @@ const ListItem = React.forwardRef<
           >
             {icon && (
               <span
-                className={`relative flex min-h-10 min-w-10 items-center justify-center rounded-xl ${backgroundImage ? "bg-white/5 backdrop-blur group-hover:bg-white/10" : "bg-zinc-800/80 group-hover:bg-zinc-700/80"} p-2 text-primary transition group-hover:text-zinc-300`}
+                className={`relative flex min-h-10 min-w-10 items-center justify-center rounded-xl ${backgroundImage ? "bg-surface-950/5 backdrop-blur group-hover:bg-surface-950/10" : "bg-surface-200/80 group-hover:bg-surface-300/80"} p-2 text-primary transition group-hover:text-foreground-800`}
               >
                 {icon}
               </span>
             )}
-            <div className="flex h-full flex-col justify-start gap-1 leading-none font-normal text-zinc-100">
+            <div
+              className={cn(
+                "flex h-full flex-col justify-start gap-1 leading-none font-normal",
+                backgroundImage ? "text-white" : "text-foreground-900"
+              )}
+            >
               {title}
 
               {children && (
                 <p
                   className={cn(
-                    "line-clamp-2 text-sm leading-tight font-light text-zinc-400",
+                    "line-clamp-2 text-sm leading-tight font-light text-foreground-600",
                     backgroundImage && "relative z-[2]",
                   )}
                 >
@@ -138,7 +143,7 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
         ease: [0.19, 1, 0.15, 1.01],
       }}
       className={cn(
-        "absolute top-full left-0 z-40 w-full origin-top overflow-hidden rounded-b-2xl border-1 border-y-0 border-white/5 bg-gradient-to-b from-zinc-900 to-zinc-900/30 backdrop-blur-xl outline-none",
+        "absolute top-full left-0 z-40 w-full origin-top overflow-hidden rounded-b-2xl border-1 border-y-0 border-surface-950/5 bg-gradient-to-b from-surface-100 to-surface-100/30 backdrop-blur-xl outline-none",
       )}
     >
       <div className="p-6 pt-2">

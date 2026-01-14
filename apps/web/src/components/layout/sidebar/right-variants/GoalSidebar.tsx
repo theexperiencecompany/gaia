@@ -27,7 +27,7 @@ export const GoalSidebar: React.FC<GoalSidebarProps> = ({
           <div className="space-y-3">
             <h1
               className={`text-2xl leading-tight font-medium transition-colors ${
-                node.isComplete ? "text-zinc-500 line-through" : "text-zinc-100"
+                node.isComplete ? "text-foreground-500 line-through" : "text-foreground-900"
               }`}
             >
               {node.label || node.title}
@@ -37,7 +37,7 @@ export const GoalSidebar: React.FC<GoalSidebarProps> = ({
             {node.details && node.details.length > 0 && (
               <p
                 className={`text-sm leading-relaxed ${
-                  node.isComplete ? "text-zinc-600" : "text-zinc-400"
+                  node.isComplete ? "text-foreground-600" : "text-foreground-400"
                 }`}
               >
                 {node.details.join(", ")}
@@ -59,7 +59,7 @@ export const GoalSidebar: React.FC<GoalSidebarProps> = ({
                 }
                 variant="flat"
               >
-                <span className="pl-1 text-sm text-white">
+                <span className="pl-1 text-sm">
                   {node.estimatedTime}
                 </span>
               </Chip>
@@ -85,16 +85,16 @@ export const GoalSidebar: React.FC<GoalSidebarProps> = ({
 
           {/* Resources Section */}
           {node.resources && node.resources.length > 0 && (
-            <div className="rounded-xl bg-zinc-800/40 p-5">
-              <div className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-200">
+            <div className="rounded-xl bg-surface-200/40 p-5">
+              <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground-800">
                 <Book01Icon width={18} />
                 Resources
               </div>
-              <ul className="space-y-2 text-sm text-zinc-400">
+              <ul className="space-y-2 text-sm text-foreground-400">
                 {node.resources.map((resource) => (
                   <li key={resource}>
                     <a
-                      className="underline decoration-zinc-600 underline-offset-4 transition-colors hover:text-primary hover:decoration-primary"
+                      className="underline decoration-foreground-600 underline-offset-4 transition-colors hover:text-primary hover:decoration-primary"
                       href={`https://www.google.com/search?q=${resource.replace(
                         / /g,
                         "+",
@@ -113,7 +113,7 @@ export const GoalSidebar: React.FC<GoalSidebarProps> = ({
       </SidebarContent>
 
       <SidebarFooter className="px-6 py-6">
-        <div className="text-center text-xs text-zinc-600">
+        <div className="text-center text-xs text-foreground-600">
           {node.type && <div className="capitalize">Type: {node.type}</div>}
         </div>
       </SidebarFooter>

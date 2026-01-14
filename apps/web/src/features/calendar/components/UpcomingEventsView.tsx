@@ -111,7 +111,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
   return (
     <BaseCardView
       title="Upcoming events"
-      icon={<CalendarUpload01Icon className="h-6 w-6 text-zinc-500" />}
+      icon={<CalendarUpload01Icon className="h-6 w-6 text-foreground-500" />}
       isEmpty={!hasEvents}
       emptyMessage="No upcoming events"
       errorMessage="Failed to load upcoming events"
@@ -147,7 +147,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
                   return (
                     <div
                       key={event.id}
-                      className="relative flex cursor-pointer items-start gap-2 rounded-lg p-2 pl-5 transition-colors hover:bg-zinc-700/30"
+                      className="relative flex cursor-pointer items-start gap-2 rounded-lg p-2 pl-5 transition-colors hover:bg-surface-700/30"
                       onClick={() => onEventClick?.(event)}
                       style={{
                         backgroundColor: `${getEventColor(event, calendars)}10`,
@@ -168,14 +168,14 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
                       <div className="min-w-0 flex-1">
                         {/* Title */}
                         <div
-                          className={`text-base leading-tight font-medium ${isPassed ? "text-zinc-500" : "text-white"}`}
+                          className={`text-base leading-tight font-medium ${isPassed ? "text-foreground-500" : "text-foreground-900"}`}
                         >
                           {event.summary}
                         </div>
 
                         {/* Time */}
                         <div
-                          className={`mt-0.5 text-xs ${isPassed ? "text-zinc-600" : "text-zinc-400"}`}
+                          className={`mt-0.5 text-xs ${isPassed ? "text-foreground-600" : "text-foreground-400"}`}
                         >
                           {event.start.dateTime && event.end.dateTime
                             ? formatTime(

@@ -38,27 +38,27 @@ export const NotificationItem = ({
   const isUnread = notification.status === NotificationStatus.DELIVERED;
 
   return (
-    <div className={`w-full rounded-2xl bg-zinc-900 p-4`}>
+    <div className={`w-full rounded-2xl bg-surface-100 p-4`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h4 className="max-w-[250px] truncate text-sm font-medium text-zinc-100">
+            <h4 className="max-w-[250px] truncate text-sm font-medium text-foreground-100">
               {content.title}
             </h4>
             {isUnread && (
               <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
             )}
           </div>
-          <p className="my-1 line-clamp-2 text-left text-sm font-light wrap-break-word text-zinc-400">
+          <p className="my-1 line-clamp-2 text-left text-sm font-light wrap-break-word text-foreground-400">
             {content.body}
           </p>
-          <div className="mt-1 flex items-center gap-2 text-xs text-zinc-600">
+          <div className="mt-1 flex items-center gap-2 text-xs text-foreground-600">
             <span className="capitalize">
               {formatDistanceToNow(new Date(notification.created_at), {
                 addSuffix: true,
               })}
             </span>
-            <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 capitalize">
+            <span className="rounded-full bg-surface-200 px-2 py-0.5 text-xs text-foreground-400 capitalize">
               {notification.metadata?.reminder_id ? "reminder" : "system"}
             </span>
           </div>
@@ -97,7 +97,7 @@ export const NotificationItem = ({
                   key={action.id}
                   variant={action.style === "primary" ? "solid" : "flat"}
                   size="sm"
-                  className={`h-7 bg-zinc-800/50 text-xs text-zinc-200 hover:bg-zinc-800/70 ${
+                  className={`h-7 bg-surface-200/50 text-xs text-foreground-200 hover:bg-surface-200/70 ${
                     isExecuted ? "cursor-not-allowed opacity-50" : ""
                   }`}
                   disabled={isDisabled}

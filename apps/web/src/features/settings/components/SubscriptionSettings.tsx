@@ -46,12 +46,12 @@ export function SubscriptionSettings() {
         title="Subscription"
       >
         <div className="flex flex-col items-start gap-4 sm:flex-row">
-          <div className="relative w-full flex-1 overflow-hidden rounded-2xl bg-zinc-800/40 p-6 backdrop-blur-xl">
+          <div className="relative w-full flex-1 overflow-hidden rounded-2xl bg-surface-200/40 p-6 backdrop-blur-xl">
             <div className="flex h-full w-full flex-col gap-4">
               {/* Header */}
               <div className="flex flex-row items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl font-semibold text-white">
+                  <span className="text-2xl font-semibold text-foreground-900">
                     Free
                   </span>
                   <Chip
@@ -67,10 +67,10 @@ export function SubscriptionSettings() {
               {/* Price Section */}
               <div className="flex flex-col gap-2">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-5xl font-bold text-white">$0</span>
-                  <span className="text-2xl text-zinc-400">USD</span>
+                  <span className="text-5xl font-bold text-foreground-900">$0</span>
+                  <span className="text-2xl text-foreground-400">USD</span>
                 </div>
-                <span className="min-h-5 text-sm font-normal text-zinc-400">
+                <span className="min-h-5 text-sm font-normal text-foreground-400">
                   Forever free
                 </span>
               </div>
@@ -78,12 +78,12 @@ export function SubscriptionSettings() {
               {/* Plan Information */}
               <div className="mt-2 flex-1 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-zinc-400">Status</span>
-                  <span className="font-sm text-sm text-white">Active</span>
+                  <span className="text-sm text-foreground-400">Status</span>
+                  <span className="font-sm text-sm text-foreground-900">Active</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-zinc-400">Billing</span>
-                  <span className="font-sm text-sm text-white">None</span>
+                  <span className="text-sm text-foreground-400">Billing</span>
+                  <span className="font-sm text-sm text-foreground-900">None</span>
                 </div>
               </div>
 
@@ -99,7 +99,7 @@ export function SubscriptionSettings() {
               </div>
             </div>
           </div>
-          <div className="relative h-76 w-full flex-1 overflow-hidden rounded-2xl bg-zinc-800/40 p-0 backdrop-blur-xl">
+          <div className="relative h-76 w-full flex-1 overflow-hidden rounded-2xl bg-surface-200/40 p-0 backdrop-blur-xl">
             <Image
               fill
               src="/images/wallpapers/field.webp"
@@ -153,12 +153,12 @@ export function SubscriptionSettings() {
       icon={<CreditCardIcon className="h-5 w-5 text-blue-400" />}
       title="Subscription"
     >
-      <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-800/40 p-6 backdrop-blur-xl">
+      <div className="relative w-full overflow-hidden rounded-2xl bg-surface-200/40 p-6 backdrop-blur-xl">
         <div className="flex h-full flex-col gap-4">
           {/* Header */}
           <div className="flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-semibold text-white">
+              <span className="text-2xl font-semibold text-foreground-900">
                 {plan.name}
               </span>
               <Chip
@@ -175,12 +175,12 @@ export function SubscriptionSettings() {
           {/* Price Section */}
           <div className="flex flex-col gap-0">
             <div className="flex items-baseline gap-2">
-              <span className="text-5xl font-bold text-white">
+              <span className="text-5xl font-bold text-foreground-900">
                 {priceFormatted}
               </span>
-              <span className="text-2xl text-zinc-400">USD</span>
+              <span className="text-2xl text-foreground-400">USD</span>
             </div>
-            <span className="min-h-5 text-sm font-normal text-zinc-400">
+            <span className="min-h-5 text-sm font-normal text-foreground-400">
               / per {plan.duration}
             </span>
           </div>
@@ -188,14 +188,14 @@ export function SubscriptionSettings() {
           {/* Plan Information */}
           <div className="mt-2 flex-1 space-y-3">
             {plan.description && (
-              <div className="mb-3 text-sm text-zinc-300">
+              <div className="mb-3 text-sm text-foreground-300">
                 {plan.description}
               </div>
             )}
 
             <div className="flex items-center justify-between">
-              <span className="text-sm text-zinc-400">Billing Cycle</span>
-              <span className="font-medium text-white capitalize">
+              <span className="text-sm text-foreground-400">Billing Cycle</span>
+              <span className="font-medium text-foreground-900 capitalize">
                 {plan.duration}
               </span>
             </div>
@@ -203,8 +203,8 @@ export function SubscriptionSettings() {
             {subscriptionStatus.days_remaining !== undefined &&
               subscriptionStatus.days_remaining !== null && (
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-zinc-400">Days Remaining</span>
-                  <span className="font-medium text-white">
+                  <span className="text-sm text-foreground-400">Days Remaining</span>
+                  <span className="font-medium text-foreground-900">
                     {subscriptionStatus.days_remaining} days
                   </span>
                 </div>

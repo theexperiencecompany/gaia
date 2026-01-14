@@ -51,17 +51,17 @@ export function MarkdownPreview({ content, title }: MarkdownPreviewProps) {
                 </p>
               ),
               code: ({ children }) => (
-                <code className="rounded bg-zinc-100 px-1 py-0.5 font-mono text-xs text-foreground dark:bg-zinc-800">
+                <code className="rounded bg-surface-900 px-1 py-0.5 font-mono text-xs text-foreground dark:bg-surface-200">
                   {children}
                 </code>
               ),
               pre: ({ children }) => (
-                <pre className="mb-2 overflow-x-auto rounded border bg-zinc-100 p-2 text-xs dark:bg-zinc-800">
+                <pre className="mb-2 overflow-x-auto rounded border bg-surface-900 p-2 text-xs dark:bg-surface-200">
                   {children}
                 </pre>
               ),
               blockquote: ({ children }) => (
-                <blockquote className="mb-2 border-l-2 border-zinc-300 pl-2 text-sm text-foreground-600 italic dark:border-zinc-600">
+                <blockquote className="mb-2 border-l-2 border-surface-700 pl-2 text-sm text-foreground-600 italic dark:border-surface-400">
                   {children}
                 </blockquote>
               ),

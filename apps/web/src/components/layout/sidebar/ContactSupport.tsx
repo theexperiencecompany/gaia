@@ -17,7 +17,7 @@ export default function ContactSupport() {
           <Button
             variant="flat"
             fullWidth
-            className="text-left flex justify-center text-zinc-300 h-7"
+            className="text-left flex justify-center text-foreground-700 h-7"
             radius="full"
             size="sm"
             startContent={<BubbleChatQuestionIcon width={17} height={17} />}

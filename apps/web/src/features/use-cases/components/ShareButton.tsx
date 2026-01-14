@@ -29,7 +29,7 @@ export default function ShareButton({ slug }: ShareButtonProps) {
   return (
     <Button
       variant="flat"
-      className="font-light text-zinc-400"
+      className="font-light text-foreground-400"
       startContent={
         copied ? (
           <Tick02Icon width={18} height={18} />

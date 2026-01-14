@@ -18,7 +18,7 @@ const DummyIntegrationsCard: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(true);
 
   return (
-    <div className="mx-2 mb-3 border-b-1 border-zinc-800">
+    <div className="mx-2 mb-3 border-b-1 border-border-surface-800">
       <Accordion
         variant="light"
         isCompact
@@ -42,7 +42,7 @@ const DummyIntegrationsCard: React.FC = () => {
                   <span className="text-xs font-normal text-foreground-500">
                     Integrations
                   </span>
-                  <span className="text-xs font-light text-zinc-400">
+                  <span className="text-xs font-light text-foreground-400">
                     {dummyIntegrations.length}/{dummyIntegrations.length}
                   </span>
                 </div>
@@ -71,7 +71,7 @@ const DummyIntegrationsCard: React.FC = () => {
 
                   {/* Name */}
                   <div className="min-w-0 flex-1">
-                    <span className="block truncate text-xs text-zinc-300">
+                    <span className="block truncate text-xs text-foreground-300">
                       {integration.name}
                     </span>
                   </div>
@@ -595,7 +595,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
             stiffness: 300,
             duration: 0.15,
           }}
-          className="relative z-[200] mx-auto flex h-[50vh] w-full flex-col overflow-hidden rounded-3xl border-1 border-zinc-700 bg-zinc-900/60 shadow-2xl backdrop-blur-2xl"
+          className="relative z-[200] mx-auto flex h-[50vh] w-full flex-col overflow-hidden rounded-3xl border-1 border-border-surface-700 bg-surface-100/60 shadow-2xl backdrop-blur-2xl"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header section - Only show when opened via button */}
@@ -644,8 +644,8 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                     }}
                     className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${
                       selectedCategory === category
-                        ? "bg-zinc-700 text-white"
-                        : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"
+                        ? "bg-surface-700 text-white"
+                        : "text-foreground-400 hover:bg-white/10 hover:text-foreground-300"
                     }`}
                   >
                     {category === "all" ? (
@@ -677,7 +677,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
               {filteredTools.map((tool) => (
                 <div
                   key={tool.name}
-                  className="relative mx-2 mb-1 cursor-pointer rounded-xl border border-transparent transition-all duration-150 hover:border-zinc-600 hover:bg-white/5"
+                  className="relative mx-2 mb-1 cursor-pointer rounded-xl border border-transparent transition-all duration-150 hover:border-border-surface-600 hover:bg-white/5"
                   onClick={() => handleToolClick(tool.name)}
                 >
                   <div className="flex items-center gap-3 p-3">
@@ -692,7 +692,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                         </span>
                         <div className="flex items-center gap-2">
                           {selectedCategory === "all" && (
-                            <span className="rounded-full bg-zinc-600 px-2 py-0.5 text-xs text-zinc-200 capitalize">
+                            <span className="rounded-full bg-surface-600 px-2 py-0.5 text-xs text-foreground-200 capitalize">
                               {tool.category.replace("_", " ")}
                             </span>
                           )}

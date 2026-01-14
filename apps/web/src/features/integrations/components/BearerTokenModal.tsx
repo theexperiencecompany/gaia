@@ -65,7 +65,7 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
       <ModalContent>
         <ModalHeader className="flex flex-col gap-1">
           <h2 className="text-xl font-semibold">Connect {integrationName}</h2>
-          <p className="text-sm font-normal text-zinc-400">
+          <p className="text-sm font-normal text-foreground-400">
             Enter your API key or bearer token to connect
           </p>
         </ModalHeader>

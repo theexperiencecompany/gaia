@@ -26,26 +26,26 @@ const TestimonialCard = ({
     <figure
       className={cn(
         "relative h-full w-100 overflow-hidden rounded-3xl transition-all",
-        "bg-zinc-900 hover:bg-zinc-800",
+        "bg-surface-100 hover:bg-surface-200",
         "p-4",
       )}
     >
       <div className="flex flex-row items-center gap-2">
         <Image
-          className="aspect-square rounded-full bg-white"
+          className="aspect-square rounded-full bg-surface-200"
           width="35"
           height="35"
           alt={`${name} avatar`}
           src={img}
         />
         <div className="flex flex-col">
-          <figcaption className="text-sm font-normal text-white sm:text-base">
+          <figcaption className="text-sm font-normal text-foreground-900 sm:text-base">
             {name}
           </figcaption>
-          <p className="text-xs text-zinc-500 sm:text-sm">{role}</p>
+          <p className="text-xs text-foreground-500 sm:text-sm">{role}</p>
         </div>
       </div>
-      <blockquote className="mt-2 max-h-26 overflow-y-auto text-sm leading-relaxed text-zinc-300">
+      <blockquote className="mt-2 max-h-26 overflow-y-auto text-sm leading-relaxed text-foreground-700">
         {body}
       </blockquote>
     </figure>

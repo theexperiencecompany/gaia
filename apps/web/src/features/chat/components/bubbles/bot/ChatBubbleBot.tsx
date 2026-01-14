@@ -131,7 +131,7 @@ export default function ChatBubbleBot(
               }}
             >
               {date && !disableActions && (
-                <span className="text-opacity-40 flex flex-col p-1 py-2 text-xs text-nowrap text-zinc-400 select-text">
+                <span className="text-opacity-40 flex flex-col p-1 py-2 text-xs text-nowrap text-foreground-400 select-text">
                   {parseDate(date)}
                 </span>
               )}

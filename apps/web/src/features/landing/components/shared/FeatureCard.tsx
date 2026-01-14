@@ -30,7 +30,7 @@ export function FeatureCard({
 }: FeatureCardProps) {
   return (
     <div
-      className={`${className} flex h-full w-full ${reverse ? "flex-col-reverse" : "flex-col"} bg-zinc-900 ${small ? "rounded-2xl p-4" : "rounded-3xl p-6"}`}
+      className={`${className} flex h-full w-full ${reverse ? "flex-col-reverse" : "flex-col"} bg-surface-100 ${small ? "rounded-2xl p-4" : "rounded-3xl p-6"}`}
     >
       {imageSrc && (
         <div
@@ -47,19 +47,19 @@ export function FeatureCard({
       <div className="flex flex-col gap-1">
         {icon && (
           <div className="mb-2">
-            <div className={`${small ? "text-2xl" : "text-4xl"} text-white`}>
+            <div className={`${small ? "text-2xl" : "text-4xl"} text-foreground-900`}>
               {icon}
             </div>
           </div>
         )}
         {childrenBeforeHeading && <div>{childrenBeforeHeading}</div>}
         <div
-          className={`font-medium text-white ${small ? "text-xl" : "text-3xl"}`}
+          className={`font-medium text-foreground-900 ${small ? "text-xl" : "text-3xl"}`}
         >
           {title}
         </div>
         {description && (
-          <div className={`text-zinc-400 ${small ? "text-sm" : "text-medium"}`}>
+          <div className={`text-foreground-400 ${small ? "text-sm" : "text-medium"}`}>
             {description}
           </div>
         )}

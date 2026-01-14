@@ -71,7 +71,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
                   <h2 className="text-xl font-semibold text-white">
                     {category}
                   </h2>
-                  <span className="rounded-full bg-zinc-800 p-1 px-1.5 aspect-square flex items-center justify-center text-sm text-zinc-400 size-7">
+                  <span className="rounded-full bg-surface-200 p-1 px-1.5 aspect-square flex items-center justify-center text-sm text-foreground-400 size-7">
                     {categoryTools.length}
                   </span>
                 </div>
@@ -90,7 +90,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
           })}
         </div>
 
-        <div className="border-t border-zinc-800 pt-12 text-center">
+        <div className="border-t border-border-surface-800 pt-12 text-center">
           <p className="text-sm text-foreground-500">
             Thank you to all the maintainers, contributors, and communities
             behind these amazing projects.

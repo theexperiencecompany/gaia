@@ -48,17 +48,17 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
       <em className="text-foreground-600 italic">{children}</em>
     ),
     code: ({ children }) => (
-      <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-sm text-foreground dark:bg-zinc-800">
+      <code className="rounded bg-surface-900 px-1.5 py-0.5 font-mono text-sm text-foreground dark:bg-surface-200">
         {children}
       </code>
     ),
     pre: ({ children }) => (
-      <pre className="mb-4 overflow-x-auto rounded-lg border bg-zinc-100 p-4 dark:bg-zinc-800">
+      <pre className="mb-4 overflow-x-auto rounded-lg border bg-surface-900 p-4 dark:bg-surface-200">
         {children}
       </pre>
     ),
     blockquote: ({ children }) => (
-      <blockquote className="mb-4 border-l-4 border-zinc-300 pl-4 text-foreground-600 italic dark:border-zinc-600">
+      <blockquote className="mb-4 border-l-4 border-surface-700 pl-4 text-foreground-600 italic dark:border-surface-400">
         {children}
       </blockquote>
     ),
@@ -83,21 +83,21 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
         />
       </>
     ),
-    hr: () => <hr className="my-8 border-zinc-300 dark:border-zinc-600" />,
+    hr: () => <hr className="my-8 border-surface-700 dark:border-surface-400" />,
     table: ({ children }) => (
       <div className="mb-4 overflow-x-auto">
-        <table className="min-w-full border-collapse border border-zinc-300 dark:border-zinc-600">
+        <table className="min-w-full border-collapse border border-surface-700 dark:border-surface-400">
           {children}
         </table>
       </div>
     ),
     th: ({ children }) => (
-      <th className="border border-zinc-300 bg-zinc-100 px-4 py-2 text-left font-semibold dark:border-zinc-600 dark:bg-zinc-800">
+      <th className="border border-surface-700 bg-surface-900 px-4 py-2 text-left font-semibold dark:border-surface-400 dark:bg-surface-200">
         {children}
       </th>
     ),
     td: ({ children }) => (
-      <td className="border border-zinc-300 px-4 py-2 dark:border-zinc-600">
+      <td className="border border-surface-700 px-4 py-2 dark:border-surface-400">
         {children}
       </td>
     ),

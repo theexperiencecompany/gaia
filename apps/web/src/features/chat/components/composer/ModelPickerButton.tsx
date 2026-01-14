@@ -79,7 +79,7 @@ const ModelPickerButton: React.FC = () => {
   }, [models, currentModel]);
 
   const headingClasses =
-    "flex w-full sticky top-0 pt-4 z-20 py-2 px-2 bg-zinc-800  text-zinc-200 text-xs font-medium capitalize";
+    "flex w-full sticky top-0 pt-4 z-20 py-2 px-2 bg-surface-200 text-foreground-500 text-xs font-medium capitalize";
 
   // Don't render the button if models are still loading or not available
   if (isLoading || !models || models.length === 0) {
@@ -101,13 +101,13 @@ const ModelPickerButton: React.FC = () => {
       className="w-fit! max-w-none!"
       popoverProps={{
         classNames: {
-          content: "min-w-[300px] max-w-none bg-zinc-800",
+          content: "min-w-[300px] max-w-none bg-surface-200",
         },
       }}
       classNames={{
         trigger:
-          "cursor-pointer bg-transparent transition hover:bg-zinc-800 !min-w-fit !w-auto !max-w-none whitespace-nowrap pl-3 pr-8",
-        value: "text-zinc-400! text-xs font-medium whitespace-nowrap !w-auto ",
+          "cursor-pointer bg-transparent transition hover:bg-surface-200 !min-w-fit !w-auto !max-w-none whitespace-nowrap pl-3 pr-8 shadow-none!",
+        value: "text-foreground-400! text-xs font-medium whitespace-nowrap !w-auto ",
         base: "!max-w-none !w-auto",
         innerWrapper: "!w-auto !max-w-none",
         mainWrapper: "!w-auto !max-w-none",
@@ -115,17 +115,6 @@ const ModelPickerButton: React.FC = () => {
       scrollShadowProps={{
         isEnabled: false,
       }}
-      startContent={
-        currentModel?.logo_url && (
-          <Image
-            src={currentModel.logo_url}
-            alt={currentModel.name}
-            height={40}
-            width={40}
-            className={`h-4 w-4 object-contain`}
-          />
-        )
-      }
       renderValue={(items) => {
         if (!items.length) return "Model";
         const item = items[0];
@@ -149,8 +138,8 @@ const ModelPickerButton: React.FC = () => {
                 key={model.model_id}
                 textValue={`${model.name}${model.is_default ? " (Default)" : ""}`}
                 classNames={{
-                  title: "text-zinc-200",
-                  description: "text-zinc-400 mt-1",
+                  title: "text-foreground-900",
+                  description: "text-foreground-500 mt-1",
                 }}
                 startContent={
                   <div className="flex items-center gap-2">

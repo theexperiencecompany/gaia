@@ -49,7 +49,7 @@ export default function GoalSection({
   // Error State
   if (error) {
     return (
-      <div className="mt-3 w-fit min-w-[300px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mt-3 w-fit min-w-[300px] rounded-2xl rounded-bl-none bg-surface-200 p-4">
         <div className="flex items-center gap-2">
           <CheckmarkCircle02Icon className="h-4 w-4 text-red-500" />
           <p className="text-sm text-red-400">{error}</p>
@@ -61,53 +61,53 @@ export default function GoalSection({
   // Statistics View
   if (action === "stats" && stats) {
     return (
-      <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-surface-200 p-4">
         <div className="mb-3 flex items-center gap-2 text-sm">
           <ChartIcon className="h-4 w-4 text-primary" />
           Goal Progress Overview
         </div>
         <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-xl bg-zinc-900 p-3 text-center">
-            <p className="text-xl font-semibold text-zinc-100">
+          <div className="rounded-xl bg-surface-100 p-3 text-center">
+            <p className="text-xl font-semibold text-foreground-100">
               {stats.total_goals}
             </p>
-            <p className="text-xs text-zinc-500">Total Goals</p>
+            <p className="text-xs text-foreground-500">Total Goals</p>
           </div>
-          <div className="rounded-xl bg-zinc-900 p-3 text-center">
+          <div className="rounded-xl bg-surface-100 p-3 text-center">
             <p className="text-xl font-semibold text-primary">
               {stats.goals_with_roadmaps}
             </p>
-            <p className="text-xs text-zinc-500">With Roadmaps</p>
+            <p className="text-xs text-foreground-500">With Roadmaps</p>
           </div>
-          <div className="rounded-xl bg-zinc-900 p-3 text-center">
+          <div className="rounded-xl bg-surface-100 p-3 text-center">
             <p className="text-xl font-semibold text-green-500">
               {stats.overall_completion_rate}%
             </p>
-            <p className="text-xs text-zinc-500">Complete</p>
+            <p className="text-xs text-foreground-500">Complete</p>
           </div>
-          <div className="rounded-xl bg-zinc-900 p-3 text-center">
+          <div className="rounded-xl bg-surface-100 p-3 text-center">
             <p className="text-xl font-semibold text-blue-500">
               {stats.total_tasks}
             </p>
-            <p className="text-xs text-zinc-500">Total Tasks</p>
+            <p className="text-xs text-foreground-500">Total Tasks</p>
           </div>
-          <div className="rounded-xl bg-zinc-900 p-3 text-center">
+          <div className="rounded-xl bg-surface-100 p-3 text-center">
             <p className="text-xl font-semibold text-green-500">
               {stats.completed_tasks}
             </p>
-            <p className="text-xs text-zinc-500">Done Tasks</p>
+            <p className="text-xs text-foreground-500">Done Tasks</p>
           </div>
-          <div className="rounded-xl bg-zinc-900 p-3 text-center">
+          <div className="rounded-xl bg-surface-100 p-3 text-center">
             <p className="text-xl font-semibold text-orange-500">
               {stats.active_goals_count}
             </p>
-            <p className="text-xs text-zinc-500">Active</p>
+            <p className="text-xs text-foreground-500">Active</p>
           </div>
         </div>
 
         {stats.active_goals && stats.active_goals.length > 0 && (
           <div className="mt-4">
-            <p className="mb-2 text-xs font-medium text-zinc-500">
+            <p className="mb-2 text-xs font-medium text-foreground-500">
               Top Active Goals
             </p>
             <div className="space-y-2">
@@ -149,7 +149,7 @@ export default function GoalSection({
     };
 
     return (
-      <div className="mt-3 w-fit rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mt-3 w-fit rounded-2xl rounded-bl-none bg-surface-200 p-4">
         <div className="flex items-center gap-2">
           {icons[action as keyof typeof icons] || (
             <Timer02Icon className="h-4 w-4 text-blue-500" />
@@ -163,10 +163,10 @@ export default function GoalSection({
   // Roadmap needed message
   if (action === "roadmap_needed" && message) {
     return (
-      <div className="mt-3 w-fit min-w-[350px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mt-3 w-fit min-w-[350px] rounded-2xl rounded-bl-none bg-surface-200 p-4">
         <div className="mb-3 flex items-center gap-2">
           <UserGroupIcon className="h-4 w-4 text-primary" />
-          <p className="text-sm text-zinc-300">{message}</p>
+          <p className="text-sm text-foreground-300">{message}</p>
         </div>
         <button
           type="button"
@@ -197,7 +197,7 @@ export default function GoalSection({
   // Goals List View
   if (goals && goals.length > 0) {
     return (
-      <div className="mt-3 w-fit min-w-[450px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mt-3 w-fit min-w-[450px] rounded-2xl rounded-bl-none bg-surface-200 p-4">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm">
             <Target02Icon className="h-4 w-4 text-primary" />
@@ -209,7 +209,7 @@ export default function GoalSection({
                   ? "Updated Progress"
                   : "Your Goals"}
           </div>
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-foreground-500">
             {goals.length} {goals.length === 1 ? "goal" : "goals"}
           </span>
         </div>
@@ -228,7 +228,7 @@ export default function GoalSection({
             />
           ))}
         </div>
-        {message && <p className="mt-3 text-xs text-zinc-500">{message}</p>}
+        {message && <p className="mt-3 text-xs text-foreground-500">{message}</p>}
       </div>
     );
   }
@@ -236,10 +236,10 @@ export default function GoalSection({
   // Empty State
   if (action === "list" && (!goals || goals.length === 0)) {
     return (
-      <div className="mt-3 w-fit min-w-[300px] rounded-2xl rounded-bl-none bg-zinc-800 p-6 text-center">
-        <Target02Icon className="mx-auto h-8 w-8 text-zinc-600" />
-        <p className="mt-2 text-sm text-zinc-300">No goals found</p>
-        {message && <p className="mt-1 text-xs text-zinc-500">{message}</p>}
+      <div className="mt-3 w-fit min-w-[300px] rounded-2xl rounded-bl-none bg-surface-200 p-6 text-center">
+        <Target02Icon className="mx-auto h-8 w-8 text-foreground-600" />
+        <p className="mt-2 text-sm text-foreground-300">No goals found</p>
+        {message && <p className="mt-1 text-xs text-foreground-500">{message}</p>}
       </div>
     );
   }
@@ -265,7 +265,7 @@ export default function GoalSection({
     const IconComponent = icon;
 
     return (
-      <div className="mt-3 w-fit rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mt-3 w-fit rounded-2xl rounded-bl-none bg-surface-200 p-4">
         <div className="flex items-center gap-2">
           <IconComponent className={`h-4 w-4 ${iconColor}`} />
           <p className="text-sm">{message}</p>

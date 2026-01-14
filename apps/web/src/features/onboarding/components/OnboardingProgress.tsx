@@ -25,7 +25,7 @@ export const OnboardingProgress = ({
           <motion.div
             // biome-ignore lint/suspicious/noArrayIndexKey: Simply mapping progress data
             key={baseId + index}
-            className="relative h-0.5 flex-1 overflow-hidden rounded-full bg-zinc-800"
+            className="relative h-0.5 flex-1 overflow-hidden rounded-full bg-surface-200"
             initial={{ opacity: 0, scaleX: 0.8 }}
             animate={{ opacity: 1, scaleX: 1 }}
             transition={{

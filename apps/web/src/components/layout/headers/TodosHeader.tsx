@@ -66,7 +66,7 @@ export default function TodosHeader() {
 
   return (
     <div className="flex w-full items-center justify-between">
-      <div className="flex items-center gap-2 pl-2 text-zinc-500">
+      <div className="flex items-center gap-2 pl-2 text-foreground-900">
         <Link href={"/todos"} className="flex items-center gap-2">
           <CheckmarkCircle02Icon width={20} height={20} />
           <span>Todos</span>
@@ -74,19 +74,19 @@ export default function TodosHeader() {
         {pageTitle !== "Inbox" && (
           <>
             <ArrowRight01Icon width={18} height={17} />
-            <span className="text-zinc-300">{pageTitle}</span>
+            <span className="text-foreground-500">{pageTitle}</span>
           </>
         )}
 
         <ArrowRight01Icon width={18} height={17} />
-        <span className="text-sm text-zinc-400">
+        <span className="text-sm text-foreground-400">
           {taskCount} {taskCount === 1 ? "task" : "tasks"}
         </span>
       </div>
 
       <div className="relative flex items-center">
         <Tooltip content="Create new todo">
-          <div className="group/btn [&_svg]:!h-5 [&_svg]:!w-5 [&_svg]:!text-zinc-400 hover:[&_svg]:!text-primary">
+          <div className="group/btn [&_svg]:!h-5 [&_svg]:!w-5 [&_svg]:!text-foreground-400 hover:[&_svg]:!text-primary">
             <TodoModal
               mode="add"
               buttonText=""

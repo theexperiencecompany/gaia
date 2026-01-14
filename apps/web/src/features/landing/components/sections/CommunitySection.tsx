@@ -11,10 +11,10 @@ export default function CommunitySection() {
       <div className="mx-auto grid w-full max-w-4xl grid-cols-1 items-center gap-8 md:grid-cols-2">
         {/* Left Column - Title & Description */}
         <div className="flex flex-col gap-3">
-          <h2 className="text-3xl font-medium text-white sm:text-4xl">
+          <h2 className="text-3xl font-medium text-foreground-900 sm:text-4xl">
             Join the Community
           </h2>
-          <p className="max-w-md text-zinc-400">
+          <p className="max-w-md text-foreground-500">
             Connect with thousands of users, get help, share feedback, and stay
             updated on the latest features.
           </p>

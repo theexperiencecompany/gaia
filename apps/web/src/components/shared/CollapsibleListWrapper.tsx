@@ -46,7 +46,7 @@ export default function CollapsibleListWrapper({
           aria-label={`${label} List`}
           indicator={null}
           title={
-            <div className="flex items-center gap-2 text-sm font-normal text-zinc-400 transition hover:text-white">
+            <div className="flex items-center gap-2 text-sm font-normal text-foreground-400 transition hover:text-foreground-900">
               {icon}
               <div>
                 {isExpanded ? "Hide" : "Show"} {getCountLabel()}

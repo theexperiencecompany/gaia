@@ -28,7 +28,7 @@ export function CompactMarkdown({ content }: CompactMarkdownProps) {
         : JSON.stringify(data, null, 2);
 
     return (
-      <pre className="bg-zinc-900/50 rounded-xl p-3 max-h-60 overflow-y-auto text-xs text-zinc-400 whitespace-pre-wrap break-words w-fit max-w-200">
+      <pre className="bg-surface-100/50 rounded-xl p-3 max-h-60 overflow-y-auto text-xs text-foreground-400 whitespace-pre-wrap break-words w-fit max-w-200">
         {displayText}
       </pre>
     );
@@ -39,7 +39,7 @@ export function CompactMarkdown({ content }: CompactMarkdownProps) {
   const textContent = String(data);
 
   return (
-    <div className="bg-zinc-900/50 rounded-xl p-3 max-h-60 overflow-y-auto text-xs text-zinc-400 leading-relaxed w-fit max-w-200">
+    <div className="bg-surface-100/50 rounded-xl p-3 max-h-60 overflow-y-auto text-xs text-foreground-400 leading-relaxed w-fit max-w-200">
       <ReactMarkdown
         components={{
           p: ({ children }: { children: ReactNode }) => (
@@ -60,12 +60,12 @@ export function CompactMarkdown({ content }: CompactMarkdownProps) {
           ),
           em: ({ children }: { children: ReactNode }) => <em>{children}</em>,
           code: ({ children }: { children: ReactNode }) => (
-            <code className="bg-zinc-800 px-1 py-0.5 rounded text-[11px]">
+            <code className="bg-surface-200 px-1 py-0.5 rounded text-[11px]">
               {children}
             </code>
           ),
           pre: ({ children }: { children: ReactNode }) => (
-            <pre className="bg-zinc-800 rounded p-2 my-1 overflow-x-auto text-[11px] whitespace-pre-wrap">
+            <pre className="bg-surface-200 rounded p-2 my-1 overflow-x-auto text-[11px] whitespace-pre-wrap">
               {children}
             </pre>
           ),

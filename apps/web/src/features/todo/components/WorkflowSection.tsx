@@ -153,8 +153,8 @@ export default function WorkflowSection({
       {/* Consistent header for all states */}
       <div className="flex w-full items-center justify-between">
         <div className="flex items-center gap-1 w-full">
-          <ZapIcon width={16} height={16} className="text-zinc-400" />
-          <h3 className="text-sm font-normal text-zinc-400">
+          <ZapIcon width={16} height={16} className="text-foreground-400" />
+          <h3 className="text-sm font-normal text-foreground-400">
             Suggested Workflow
           </h3>
           {isGenerating && (
@@ -178,7 +178,7 @@ export default function WorkflowSection({
                 isDisabled={isGenerating}
               >
                 <UndoIcon
-                  className={`h-4 w-4 text-zinc-400 ${isGenerating ? "animate-spin" : ""}`}
+                  className={`h-4 w-4 text-foreground-400 ${isGenerating ? "animate-spin" : ""}`}
                 />
               </Button>
             </Tooltip>
@@ -203,7 +203,7 @@ export default function WorkflowSection({
         className={
           hideBg
             ? "border-0! bg-transparent! shadow-0! outline-0!"
-            : "border-zinc-700 bg-zinc-800"
+            : "border-surface-300 bg-surface-200"
         }
       >
         <div>
@@ -211,10 +211,10 @@ export default function WorkflowSection({
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex items-start gap-3">
-                  <Skeleton className="mt-1 h-6 w-6 rounded-full bg-zinc-600" />
+                  <Skeleton className="mt-1 h-6 w-6 rounded-full bg-surface-400" />
                   <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-40 bg-zinc-600" />
-                    <Skeleton className="h-3 w-32 bg-zinc-600" />
+                    <Skeleton className="h-4 w-40 bg-surface-400" />
+                    <Skeleton className="h-3 w-32 bg-surface-400" />
                   </div>
                 </div>
               ))}
@@ -223,8 +223,8 @@ export default function WorkflowSection({
             <WorkflowSteps steps={workflow.steps} />
           ) : (
             <div className="space-y-4 py-4 text-center">
-              <div className="text-zinc-400">
-                <SparklesIcon className="mx-auto mb-2 h-8 w-8 text-zinc-500" />
+              <div className="text-foreground-400">
+                <SparklesIcon className="mx-auto mb-2 h-8 w-8 text-foreground-500" />
                 {error ? (
                   <p className="text-sm text-red-400">
                     Generation failed. Try again?
@@ -242,7 +242,7 @@ export default function WorkflowSection({
               >
                 {error ? "Retry" : "Generate Workflow"}
               </Button>
-              <p className="mx-auto max-w-sm text-xs text-zinc-500">
+              <p className="mx-auto max-w-sm text-xs text-foreground-500">
                 AI will create a step-by-step workflow to help complete this
                 todo
               </p>

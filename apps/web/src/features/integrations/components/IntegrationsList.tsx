@@ -29,7 +29,7 @@ const IntegrationRow: React.FC<{
 
   return (
     <div
-      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-all duration-200"
+      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-surface-200/0 px-4 py-3 hover:bg-surface-200 transition-all duration-200"
       onClick={handleClick}
     >
       <div className="shrink-0">
@@ -47,7 +47,7 @@ const IntegrationRow: React.FC<{
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="font-medium">{integration.name}</div>
-        <div className="truncate text-sm font-light text-zinc-400">
+        <div className="truncate text-sm font-light text-foreground-500">
           {integration.description}
         </div>
       </div>
@@ -208,7 +208,7 @@ export const IntegrationsList: React.FC<{
       {/* No Results State */}
       {!hasResults && (searchQuery || selectedCategory !== "all") && (
         <div className="py-16 text-center space-y-2">
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-foreground-400">
             {searchQuery
               ? `No integrations found for "${searchQuery}"`
               : `No ${getCategoryLabel(selectedCategory).toLowerCase()} integrations found`}
@@ -226,8 +226,8 @@ export const IntegrationsList: React.FC<{
 
       {!hasResults && !searchQuery && integrations.length === 0 && (
         <div className="py-16 text-center">
-          <p className="text-sm text-zinc-400">No integrations available</p>
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="text-sm text-foreground-400">No integrations available</p>
+          <p className="mt-1 text-xs text-foreground-500">
             Check back later for new integrations
           </p>
         </div>

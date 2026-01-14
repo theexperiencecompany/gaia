@@ -18,5 +18,5 @@ export default function Spinner({
       />
     );
 
-  return <RedoIcon className="animate-spin text-[24px] text-zinc-700" />;
+  return <RedoIcon className="animate-spin text-[24px] text-foreground-300" />;
 }

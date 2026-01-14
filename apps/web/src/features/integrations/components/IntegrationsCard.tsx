@@ -38,7 +38,7 @@ const IntegrationItem: React.FC<{
 
   return (
     <div
-      className={`flex min-h-12 cursor-pointer flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
+      className={`flex min-h-12 cursor-pointer flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-surface-200/40 ${paddingClass} transition hover:bg-surface-300`}
       onClick={handleClick}
     >
       <div className="flex items-center gap-3">
@@ -58,7 +58,7 @@ const IntegrationItem: React.FC<{
         {size !== "small" ? (
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <div className="text-sm font-medium">{integration.name}</div>
-            <div className="truncate text-xs font-light text-zinc-400">
+            <div className="truncate text-xs font-light text-foreground-400">
               {integration.description}
             </div>
           </div>
@@ -140,7 +140,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     error: 3,
   };
   return (
-    <div className="mx-2 mb-3 border-b-1 border-zinc-800">
+    <div className="mx-2 mb-3 border-b-1 border-surface-200">
       <Accordion
         variant="light"
         isCompact
@@ -163,7 +163,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
                   <span className="text-xs font-normal text-foreground-500">
                     Integrations
                   </span>
-                  <span className="text-xs font-light text-zinc-400">
+                  <span className="text-xs font-light text-foreground-400">
                     {connectedCount}/{integrations.length}
                   </span>
                 </div>

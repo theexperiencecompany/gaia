@@ -14,11 +14,11 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
 
   return (
     <div
-      className={`relative min-w-full cursor-pointer rounded-lg px-2 text-left transition hover:bg-zinc-800`}
+      className={`relative min-w-full cursor-pointer rounded-lg px-2 text-left transition hover:bg-surface-200`}
       onClick={() => onSelect(calendar.id)}
     >
       <Chip
-        className={`${selected ? "text-zinc-300" : "text-zinc-600"} `}
+        className={`${selected ? "text-foreground-300" : "text-foreground-600"} `}
         variant="faded"
         startContent={
           <div

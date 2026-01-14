@@ -220,16 +220,16 @@ export default function CalendarEventSection({
   };
 
   return (
-    <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
+    <div className="w-full max-w-md rounded-3xl bg-surface-200 p-4 text-white">
       <ScrollShadow className="mt-2 max-h-[400px] space-y-3">
         {Object.entries(eventsByDate).map(([dateString, events]) => (
           <div key={dateString} className="space-y-3">
             <div className="relative flex items-center">
-              <div className="flex-1 border-t border-zinc-700" />
-              <span className="px-3 text-xs text-zinc-500">
+              <div className="flex-1 border-t border-surface-300" />
+              <span className="px-3 text-xs text-foreground-500">
                 {formatDateWithRelative(dateString)}
               </span>
-              <div className="flex-1 border-t border-zinc-700" />
+              <div className="flex-1 border-t border-surface-300" />
             </div>
 
             <div className="space-y-2">
@@ -240,7 +240,7 @@ export default function CalendarEventSection({
                   return (
                     <div
                       key={`same-${sameDayEvent.id}`}
-                      className="relative flex items-start gap-2 rounded-lg p-3 pl-5 transition-colors hover:bg-zinc-700/50"
+                      className="relative flex items-start gap-2 rounded-lg p-3 pl-5 transition-colors hover:bg-surface-300/50"
                       style={{ backgroundColor: `${eventColor}20` }}
                     >
                       <div className="absolute top-0 left-1 flex h-full items-center">
@@ -253,11 +253,11 @@ export default function CalendarEventSection({
                         <div className="text-base leading-tight text-white">
                           {sameDayEvent.summary}
                         </div>
-                        <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
+                        <div className="mt-1 flex items-center gap-2 text-xs text-foreground-400">
                           <span>{getDisplayTime(sameDayEvent)}</span>
                           {sameDayEvent.calendarTitle && (
                             <>
-                              <span className="text-zinc-500">•</span>
+                              <span className="text-foreground-500">•</span>
                               <span>{sameDayEvent.calendarTitle}</span>
                             </>
                           )}

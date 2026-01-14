@@ -186,22 +186,22 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
   const containerHeight = maxRow * 29;
 
   return (
-    <div className="sticky top-[37px] z-[12] flex min-w-fit flex-shrink-0 border-b border-zinc-800 bg-primary-bg">
+    <div className="sticky top-[37px] z-[12] flex min-w-fit flex-shrink-0 border-b border-border-surface-800 bg-primary-bg">
       {/* Time Label Column */}
       <div
-        className="sticky left-0 z-[11] w-20 flex-shrink-0 cursor-pointer border-r border-zinc-800 bg-primary-bg transition-colors hover:bg-zinc-800/50"
+        className="sticky left-0 z-[11] w-20 flex-shrink-0 cursor-pointer border-r border-border-surface-800 bg-primary-bg transition-colors hover:bg-surface-200/50"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex h-full items-center justify-end gap-1 py-3 pr-3">
-          <span className="text-xs font-medium text-zinc-400 select-none">
+          <span className="text-xs font-medium text-foreground-400 select-none">
             All-day
           </span>
           {hasAnyAllDayEvents && (
             <span>
               {isExpanded ? (
-                <UnfoldLessIcon className="h-3 w-3 text-zinc-400" />
+                <UnfoldLessIcon className="h-3 w-3 text-foreground-400" />
               ) : (
-                <UnfoldMoreIcon className="h-3 w-3 text-zinc-400" />
+                <UnfoldMoreIcon className="h-3 w-3 text-foreground-400" />
               )}
             </span>
           )}
@@ -229,7 +229,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
                 {columnVirtualizer.getVirtualItems().map((virtualColumn) => (
                   <div
                     key={`border-${virtualColumn.index}`}
-                    className="absolute top-0 h-full flex-shrink-0 border-r border-zinc-800"
+                    className="absolute top-0 h-full flex-shrink-0 border-r border-border-surface-800"
                     style={{
                       width: `${virtualColumn.size}px`,
                       transform: `translateX(${virtualColumn.start}px)`,
@@ -314,7 +314,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
               {columnVirtualizer.getVirtualItems().map((virtualColumn) => (
                 <div
                   key={`border-${virtualColumn.index}`}
-                  className="absolute top-0 h-full flex-shrink-0 border-r border-zinc-800"
+                  className="absolute top-0 h-full flex-shrink-0 border-r border-border-surface-800"
                   style={{
                     width: `${virtualColumn.size}px`,
                     transform: `translateX(${virtualColumn.start}px)`,
@@ -336,7 +336,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
             return (
               <div
                 key={virtualColumn.key}
-                className="absolute top-0 left-0 flex flex-shrink-0 items-center justify-center border-r border-zinc-800 px-2 py-2 text-xs text-zinc-400"
+                className="absolute top-0 left-0 flex flex-shrink-0 items-center justify-center border-r border-border-surface-800 px-2 py-2 text-xs text-foreground-400"
                 style={{
                   width: `${virtualColumn.size}px`,
                   transform: `translateX(${virtualColumn.start}px)`,
@@ -358,7 +358,7 @@ export const AllDayEventsSection: React.FC<AllDayEventsSectionProps> = ({
             {columnVirtualizer.getVirtualItems().map((virtualColumn) => (
               <div
                 key={`border-${virtualColumn.index}`}
-                className="absolute top-0 h-full flex-shrink-0 border-r border-zinc-800"
+                className="absolute top-0 h-full flex-shrink-0 border-r border-border-surface-800"
                 style={{
                   width: `${virtualColumn.size}px`,
                   transform: `translateX(${virtualColumn.start}px)`,

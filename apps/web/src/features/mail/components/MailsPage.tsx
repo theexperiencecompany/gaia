@@ -265,7 +265,7 @@ export default function MailsPage() {
                 />
                 {formatTime(email.time)}
               </div>
-              <div className="absolute right-0 flex h-fit w-fit items-center gap-1 rounded-lg bg-zinc-900 p-2 text-sm text-zinc-300 opacity-0 group-hover:opacity-100">
+              <div className="absolute right-0 flex h-fit w-fit items-center gap-1 rounded-lg bg-surface-100 p-2 text-sm text-foreground-300 opacity-0 group-hover:opacity-100">
                 {[
                   {
                     icon: StarIcon,
@@ -337,7 +337,7 @@ export default function MailsPage() {
     <div className="relative h-full w-full">
       {/* Selection toolbar */}
       {selectedEmails.size > 0 && (
-        <div className="absolute top-0 right-0 left-0 z-10 flex items-center justify-between rounded-md bg-zinc-900 px-1 py-1 text-white backdrop-blur-xl">
+        <div className="absolute top-0 right-0 left-0 z-10 flex items-center justify-between rounded-md bg-surface-100 px-1 py-1 text-white backdrop-blur-xl">
           <div className="flex items-center gap-2">
             <Button
               size="sm"

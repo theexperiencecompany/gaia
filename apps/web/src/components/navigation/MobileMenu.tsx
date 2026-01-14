@@ -38,7 +38,7 @@ export default function MobileMenu() {
           <Menu01Icon color="foreground" />
         </div>
       </SheetTrigger>
-      <SheetContent className="max-w-[250px] overflow-y-auto! border-none bg-zinc-900 text-foreground dark">
+      <SheetContent className="max-w-[250px] overflow-y-auto! border-none bg-surface-100 text-foreground">
         <SheetHeader>
           <SheetTitle>
             <VisuallyHidden.Root>Menu</VisuallyHidden.Root>
@@ -67,7 +67,7 @@ export default function MobileMenu() {
 
             {/* Product Section */}
             <div className="mt-6 flex flex-col gap-2">
-              <p className="mb-2 text-xs tracking-wide text-zinc-400 uppercase">
+              <p className="mb-2 text-xs tracking-wide text-foreground-400 uppercase">
                 Product
               </p>
               {product.map((link) => {
@@ -97,7 +97,7 @@ export default function MobileMenu() {
 
             {/* Resources Section */}
             <div className="mt-6 flex flex-col gap-2">
-              <p className="mb-2 text-xs tracking-wide text-zinc-400 uppercase">
+              <p className="mb-2 text-xs tracking-wide text-foreground-400 uppercase">
                 Resources
               </p>
               {resources.map((link) => {
@@ -127,7 +127,7 @@ export default function MobileMenu() {
 
             {/* Company Section */}
             <div className="mt-6 flex flex-col gap-2">
-              <p className="mb-2 text-xs tracking-wide text-zinc-400 uppercase">
+              <p className="mb-2 text-xs tracking-wide text-foreground-400 uppercase">
                 Company
               </p>
               {company.map((link) => (
@@ -153,7 +153,7 @@ export default function MobileMenu() {
 
             {/* Connect Section */}
             <div className="mt-6 flex flex-col gap-2">
-              <p className="mb-2 text-xs tracking-wide text-zinc-400 uppercase">
+              <p className="mb-2 text-xs tracking-wide text-foreground-400 uppercase">
                 Connect
               </p>
               {connect.map((link) => (

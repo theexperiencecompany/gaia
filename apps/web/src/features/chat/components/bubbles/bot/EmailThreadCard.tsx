@@ -77,7 +77,7 @@ function EmailBodyRenderer({
   return (
     <div className="relative w-full overflow-auto shadow-md">
       {loading && (
-        <div className="absolute inset-0 z-10 flex h-full w-full items-start justify-center bg-black/90 p-10 backdrop-blur-3xl">
+        <div className="absolute inset-0 z-10 flex h-full w-full items-start justify-center bg-surface-50/90 p-10 backdrop-blur-3xl">
           <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-white"></div>
         </div>
       )}
@@ -96,7 +96,7 @@ export default function EmailThreadCard({
 }) {
   return (
     <div
-      className={`mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-all duration-300`}
+      className={`mx-auto w-full rounded-2xl bg-surface-200 p-3 py-0 text-white transition-all duration-300`}
     >
       <Accordion variant="light" defaultExpandedKeys={["email-thread"]}>
         <AccordionItem

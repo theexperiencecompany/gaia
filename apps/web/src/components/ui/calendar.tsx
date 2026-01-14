@@ -25,7 +25,7 @@ function Calendar({
         nav: "flex items-center gap-1",
         nav_button: cn(
           buttonVariants({ variant: "ghost" }),
-          "size-7 bg-transparent p-0 opacity-50 hover:opacity-100 hover:bg-zinc-700",
+          "size-7 bg-transparent p-0 opacity-50 hover:opacity-100 hover:bg-surface-300",
         ),
         nav_button_previous: "absolute left-1",
         nav_button_next: "absolute right-1",
@@ -43,7 +43,7 @@ function Calendar({
         day: cn(
           buttonVariants({ variant: "ghost" }),
           "size-8 p-0 font-normal cursor-pointer transition-colors",
-          "hover:bg-zinc-700 hover:text-zinc-100",
+          "hover:bg-surface-300 hover:text-foreground-900",
           "aria-disabled:cursor-not-allowed aria-disabled:opacity-50",
           props.mode === "single" && "aria-selected:rounded-md",
         ),

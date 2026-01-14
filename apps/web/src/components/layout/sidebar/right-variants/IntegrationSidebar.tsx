@@ -41,8 +41,29 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
 
-  // Get tools that belong to this integration or its included integrations
+  // Get tools that belong to this integration
+  // Priority: Use embedded tools from integration response (source of truth from MongoDB)
+  // Fallback: Use global tools registry for platform integrations without embedded tools
   const integrationTools = React.useMemo(() => {
+    // If integration has embedded tools (stored in MongoDB integrations.tools), use them directly
+    // This is the source of truth for custom integrations and any integration with stored tools
+    if (integration.tools?.length) {
+      return integration.tools.map((t) => ({
+        name: t.name,
+        category: integration.category || "custom",
+        integration: {
+          toolName: t.name,
+          category: integration.category || "custom",
+          requiredIntegration: integration.id.toLowerCase(),
+          integrationName: integration.name,
+          iconUrl: integration.iconUrl,
+          isRequired: true,
+        },
+        isLocked: false, // Connected integration tools are never locked
+      }));
+    }
+
+    // Fallback to global tools registry for platform integrations without embedded tools
     const integrationIds = [
       integration.id,
       ...(integration.includedIntegrations || []),
@@ -53,7 +74,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         tool.integration?.requiredIntegration.toLowerCase() || "",
       ),
     );
-  }, [tools, integration.id, integration.includedIntegrations]);
+  }, [tools, integration]);
 
   const handleConnect = async () => {
     if (isConnected || isConnecting) return;
@@ -127,13 +148,13 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               variant="flat"
               color="default"
               radius="sm"
-              className="mb-2 text-xs text-zinc-400 font-light relative right-1"
+              className="mb-2 text-xs text-foreground-400 font-light relative right-1"
             >
               Created by You
             </Chip>
           )}
           <div className="flex w-full items-center justify-between">
-            <h1 className="text-2xl font-semibold text-zinc-100">
+            <h1 className="text-2xl font-semibold text-foreground-900">
               {integration.name}
             </h1>
 
@@ -146,7 +167,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             </div>
           </div>
 
-          <p className="text-sm leading-relaxed font-light text-zinc-400">
+          <p className="text-sm leading-relaxed font-light text-foreground-400">
             {integration.description}
           </p>
         </div>
@@ -197,7 +218,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           </Button>
         )}
         {integrationTools.length > 0 && (
-          <h2 className="mb-1 mt-3 text-xs font-medium text-zinc-400 -ml-1">
+          <h2 className="mb-1 mt-3 text-xs font-medium text-foreground-400 -ml-1">
             Available Tools ({integrationTools.length})
           </h2>
         )}
@@ -212,7 +233,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   variant="bordered"
                   color="default"
                   radius="full"
-                  className="font-light border-1 text-zinc-300"
+                  className="font-light border-surface-400 text-foreground-700"
                 >
                   {category
                     ? formatToolName(tool.name)

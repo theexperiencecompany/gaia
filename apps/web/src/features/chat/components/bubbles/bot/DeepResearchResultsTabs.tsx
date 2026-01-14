@@ -36,7 +36,7 @@ export default function DeepResearchResultsTabs({
           aria-label="Deep Research Results"
           indicator={null}
           title={
-            <div className="h-full w-fit rounded-lg bg-white/10 p-1 px-3 text-sm font-medium transition-all hover:bg-white/20">
+            <div className="h-full w-fit rounded-lg bg-surface-950/10 p-1 px-3 text-sm font-medium transition-all hover:bg-surface-950/20">
               {isExpanded
                 ? "Hide Deep research Results"
                 : "Show Deep research Results"}
@@ -112,14 +112,14 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
       {results.map((result) => (
         <div
           key={result.url}
-          className="rounded-2xl bg-zinc-800 p-4 shadow-md transition-all hover:shadow-lg"
+          className="rounded-2xl bg-surface-200 p-4 shadow-md transition-all hover:shadow-lg"
         >
           <h2 className="truncate text-sm font-medium text-primary">
             <a
               href={result.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-white"
+              className="hover:text-foreground-50"
             >
               {result.title}
             </a>
@@ -153,8 +153,8 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
                 rel="noopener noreferrer"
                 className="group relative block"
               >
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition group-hover:opacity-100">
-                  <ArrowUpRight03Icon className="h-8 w-8 text-white" />
+                <div className="absolute inset-0 flex items-center justify-center bg-surface-50/50 opacity-0 transition group-hover:opacity-100">
+                  <ArrowUpRight03Icon className="h-8 w-8 text-foreground-50" />
                 </div>
               </a>
             </div>
@@ -180,7 +180,7 @@ function EnhancedWebResults({ results }: EnhancedWebResultsProps) {
                     </svg>
                   </span>
                 </summary>
-                <div className="mt-2 max-h-60 overflow-auto rounded-md bg-zinc-900 p-3 text-sm leading-relaxed text-foreground-400">
+                <div className="mt-2 max-h-60 overflow-auto rounded-md bg-surface-100 p-3 text-sm leading-relaxed text-foreground-400">
                   <p className="whitespace-pre-line">{result.full_content}</p>
                 </div>
               </details>
@@ -202,7 +202,7 @@ interface SearchMetadataProps {
 
 function SearchMetadata({ metadata }: SearchMetadataProps) {
   return (
-    <div className="rounded-lg bg-zinc-800 p-4">
+    <div className="rounded-lg bg-surface-200 p-4">
       <h3 className="text-md mb-2 font-medium text-primary">
         Search Statistics
       </h3>

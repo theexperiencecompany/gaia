@@ -21,9 +21,9 @@ export const NotificationCard = ({
   onAction,
 }: NotificationCardProps) => {
   return (
-    <Card className="w-full rounded-2xl border-none bg-zinc-800 p-4">
+    <Card className="w-full rounded-2xl border-none bg-surface-200 p-4">
       <div className="flex items-start gap-3">
-        <div className="mt-1 flex-shrink-0 text-zinc-400">
+        <div className="mt-1 flex-shrink-0 text-foreground-400">
           {getNotificationIcon(notification.source)}
         </div>
 
@@ -33,11 +33,11 @@ export const NotificationCard = ({
               <h3 className="mb-1 text-medium text-white">
                 {notification.title}
               </h3>
-              <p className="text-sm whitespace-pre-line text-zinc-300">
+              <p className="text-sm whitespace-pre-line text-foreground-300">
                 {notification.description}
               </p>
             </div>
-            <span className="flex-shrink-0 text-xs text-zinc-400">
+            <span className="flex-shrink-0 text-xs text-foreground-400">
               {notification.timestamp}
             </span>
           </div>
@@ -57,7 +57,7 @@ export const NotificationCard = ({
                   variant={notification.actions.primary.variant || "default"}
                   className={
                     notification.actions.primary.variant === "secondary"
-                      ? "bg-zinc-700 text-white hover:bg-zinc-600"
+                      ? "bg-surface-700 text-white hover:bg-surface-600"
                       : ""
                   }
                 >
@@ -75,7 +75,7 @@ export const NotificationCard = ({
                     )
                   }
                   variant="secondary"
-                  className="bg-zinc-700 text-white hover:bg-zinc-600"
+                  className="bg-surface-700 text-white hover:bg-surface-600"
                 >
                   {notification.actions.secondary.label}
                   {notification.actions.secondary.label === "Snooze" && (
@@ -93,7 +93,7 @@ export const NotificationCard = ({
                 size="sm"
                 variant="ghost"
                 onClick={() => onAction(notification, "mark as read")}
-                className="text-zinc-400 hover:text-white"
+                className="text-foreground-400 hover:text-white"
               >
                 Mark as Read
               </Button>

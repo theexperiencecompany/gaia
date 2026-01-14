@@ -39,7 +39,7 @@ function formatNumber(num: number): string {
 
 export default function RedditSearchCard({
   posts,
-  backgroundColor = "bg-zinc-800",
+  backgroundColor = "bg-surface-200",
   maxHeight = "max-h-[400px]",
   isCollapsible = true,
 }: RedditSearchCardProps) {
@@ -47,12 +47,12 @@ export default function RedditSearchCard({
 
   const content = (
     <div
-      className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
+      className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-foreground`}
     >
       <ScrollShadow className={`${maxHeight} divide-y divide-gray-700`}>
         {posts.map((post) => (
           <div
-            className="group w-full cursor-pointer p-3 transition-colors hover:bg-zinc-700"
+            className="group w-full cursor-pointer p-3 transition-colors hover:bg-surface-300"
             key={post.id}
           >
             <Link

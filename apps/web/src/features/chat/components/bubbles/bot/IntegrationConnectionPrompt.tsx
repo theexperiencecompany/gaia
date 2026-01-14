@@ -35,7 +35,7 @@ export default function IntegrationConnectionPrompt({
   };
 
   const content = (
-    <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-4 text-white">
+    <div className="w-full max-w-2xl rounded-3xl bg-surface-200 p-4 text-white">
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-3">
           <div className="shrink-0 pt-0.5">
@@ -61,7 +61,7 @@ export default function IntegrationConnectionPrompt({
               )}
             </div>
 
-            <p className="text-xs font-light text-zinc-400">
+            <p className="text-xs font-light text-foreground-400">
               {integration.description}
             </p>
           </div>

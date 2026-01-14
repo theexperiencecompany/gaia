@@ -17,17 +17,17 @@ export default function UserContainer() {
   return (
     <SettingsMenu onOpenChange={setIsOpen}>
       <Button
-        className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 bg-transparent px-2 py-6! hover:bg-zinc-800"
+        className="group/triggerbtn pointer-events-auto relative flex w-full flex-row justify-between gap-3 bg-transparent px-2 py-6! hover:bg-surface-200"
         endContent={
           isOpen ? (
             <ChevronsDownUp
-              className="text-zinc-500 transition"
+              className="text-foreground-500 transition"
               width={20}
               height={20}
             />
           ) : (
             <ChevronsUpDown
-              className="text-zinc-500 transition"
+              className="text-foreground-500 transition"
               width={20}
               height={20}
             />
@@ -35,7 +35,7 @@ export default function UserContainer() {
         }
       >
         <div className="flex items-center gap-3">
-          <Avatar className="size-7 rounded-full bg-black">
+          <Avatar className="size-7 rounded-full bg-surface-50">
             <AvatarImage src={user?.profilePicture} alt="User Avatar" />
             <AvatarFallback>
               <Image

@@ -60,16 +60,16 @@ export function GoalCard({
 
   return (
     <>
-      <div className="group bg-opacity-50 flex w-full flex-col rounded-2xl bg-zinc-800 p-4">
+      <div className="group bg-opacity-50 flex w-full flex-col rounded-2xl bg-surface-200 p-4">
         <div className="relative flex w-full items-center gap-2">
           <span className="w-[90%] truncate">
             {goal?.roadmap?.title || goal.title}
           </span>
 
-          <div className="absolute -right-2 dark opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="absolute -right-2 opacity-0 transition-opacity group-hover:opacity-100">
             <Dropdown
               classNames={{
-                content: "bg-zinc-900",
+                content: "bg-surface-100",
               }}
             >
               <DropdownTrigger>
@@ -77,7 +77,7 @@ export function GoalCard({
                   <MoreVerticalIcon />
                 </Button>
               </DropdownTrigger>
-              <DropdownMenu aria-label="Static Actions" className="dark">
+              <DropdownMenu aria-label="Static Actions">
                 <DropdownItem
                   key="delete"
                   className="text-danger"
@@ -99,7 +99,7 @@ export function GoalCard({
             />
 
             <div
-              className={`absolute top-0 left-0 h-3 w-full rounded-full bg-zinc-900`}
+              className={`absolute top-0 left-0 h-3 w-full rounded-full bg-surface-100`}
             />
           </div>
           <span className="text-xs">{goal?.progress || 0}%</span>
@@ -133,7 +133,7 @@ export function GoalCard({
             <Chip
               size="sm"
               variant="flat"
-              className="text-zinc-400 px-1"
+              className="text-foreground-400 px-1"
               radius="sm"
               startContent={
                 <CheckmarkCircle02Icon
@@ -148,7 +148,7 @@ export function GoalCard({
           )}
 
           <Tooltip content="Created on" size="sm" showArrow placement="bottom">
-            <div className="flex cursor-default items-center gap-1 text-xs text-zinc-500">
+            <div className="flex cursor-default items-center gap-1 text-xs text-foreground-500">
               <Calendar03Icon width={16} />
               {parseDate2(goal?.created_at || new Date().toISOString())}
             </div>

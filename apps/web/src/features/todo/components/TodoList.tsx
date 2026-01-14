@@ -39,7 +39,7 @@ export default function TodoList({
 
   return (
     <div className="flex w-full justify-center">
-      <div className="w-full space-y-1 py-4 divide-y divide-zinc-800">
+      <div className="w-full space-y-1 py-4 divide-y divide-surface-200">
         {sortedTodos.map((todo) => (
           <TodoItem
             key={todo.id}

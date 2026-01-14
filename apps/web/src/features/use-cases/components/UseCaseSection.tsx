@@ -232,7 +232,6 @@ export default function UseCaseSection({
           >
             <Chip
               variant={selectedCategory === category ? "solid" : "flat"}
-              color={selectedCategory === category ? "primary" : "default"}
               className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
               size="lg"
               startContent={
@@ -272,7 +271,7 @@ export default function UseCaseSection({
               size="sm"
               variant="flat"
               onPress={() => setShowUseCases(false)}
-              className="text-zinc-300 "
+              className="text-foreground-300 "
             >
               <ChevronUp />
             </Button>

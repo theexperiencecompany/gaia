@@ -60,7 +60,7 @@ function formatTime(time: string | null): string {
 
 export default function EmailListCard({
   emails,
-  backgroundColor = "bg-zinc-800",
+  backgroundColor = "bg-surface-200",
   maxHeight = "max-h-[300px]",
   isCollapsible = true,
 }: EmailListProps) {
@@ -81,7 +81,7 @@ export default function EmailListCard({
         className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
       >
         {/* Email List */}
-        <ScrollShadow className={`${maxHeight} divide-y divide-zinc-800`}>
+        <ScrollShadow className={`${maxHeight} divide-y divide-border-surface-800`}>
           {!!emails &&
             emails.length > 0 &&
             emails.map((email) => (
@@ -95,7 +95,7 @@ export default function EmailListCard({
                 disableAnimation
               >
                 <div
-                  className="group flex cursor-pointer items-center gap-4 p-3 transition-colors hover:bg-zinc-700"
+                  className="group flex cursor-pointer items-center gap-4 p-3 transition-colors hover:bg-surface-700"
                   onClick={() => handleEmailClick(email)}
                 >
                   <div className="w-40 flex-shrink-0">

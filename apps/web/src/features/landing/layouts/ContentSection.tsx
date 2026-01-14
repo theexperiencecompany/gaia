@@ -26,7 +26,7 @@ export default function ContentSection({
   return (
     <div
       className={cn(
-        "flex w-full flex-col items-center justify-start rounded-3xl bg-zinc-900 p-6 transition-all hover:outline-primary sm:h-full sm:min-h-fit sm:gap-7",
+        "flex w-full flex-col items-center justify-start rounded-3xl bg-surface-100 p-6 transition-all hover:outline-primary sm:h-full sm:min-h-fit sm:gap-7",
         className,
       )}
     >
@@ -35,17 +35,17 @@ export default function ContentSection({
           <div className="mb-1 flex flex-col items-start gap-1">
             <div className="flex items-center gap-3">
               {icon}
-              <h2 className="text-2xl font-semibold text-white">{heading}</h2>
+              <h2 className="text-2xl font-semibold text-foreground-900">{heading}</h2>
             </div>
-            <p className="text-md mb-2 text-gray-400">{subheading}</p>
+            <p className="text-md mb-2 text-foreground-500">{subheading}</p>
             {extraHeading}
           </div>
         ) : (
           <div className="flex flex-col items-start gap-3">
             {icon}
             <div>
-              <h2 className="text-3xl font-semibold text-white">{heading}</h2>
-              <p className="text-md text-gray-400">{subheading}</p>
+              <h2 className="text-3xl font-semibold text-foreground-900">{heading}</h2>
+              <p className="text-md text-foreground-500">{subheading}</p>
             </div>
             {extraHeading}
           </div>

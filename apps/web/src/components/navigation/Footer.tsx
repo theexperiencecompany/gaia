@@ -4,6 +4,7 @@ import React from "react";
 import type { SiteNavigationElement, WebPage, WithContext } from "schema-dts";
 
 import JsonLd from "@/components/seo/JsonLd";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { appConfig, connect, footerSections } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { siteConfig } from "@/lib/seo";
@@ -85,7 +86,7 @@ export default function Footer() {
                   style={{ colorScheme: "normal" }}
                 />
               </div>
-              <div className="mt-2 flex flex-col items-start px-2 text-xl font-medium text-white sm:px-3 sm:text-2xl">
+              <div className="mt-2 flex flex-col items-start px-2 text-xl font-medium text-foreground-50 sm:px-3 sm:text-2xl">
                 {/* <Link href={"/"}>
                   <Image
                     src="/images/logos/text_w_logo_white.webp"
@@ -148,7 +149,7 @@ export default function Footer() {
             ))}
           </div>
         </div>
-        <div className="mx-auto mt-6 flex w-full max-w-5xl flex-col items-center justify-between gap-4 border-t-1 border-zinc-800 px-2 py-6 pb-3 text-xs font-light text-zinc-600 sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10">
+        <div className="mx-auto mt-6 flex w-full max-w-5xl flex-col items-center justify-between gap-4 border-t-1 border-surface-200 px-2 py-6 pb-3 text-xs font-light text-foreground-600 sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10">
           <div className="order-2 flex items-center gap-3 sm:order-1">
             {connect.map((link) => (
               <Link
@@ -181,7 +182,7 @@ export default function Footer() {
             >
               Terms of Use
             </Link>
-            <div className="h-4 border-l border-zinc-800" />
+            <div className="h-4 border-l border-surface-200" />
 
             <Link
               href={"/privacy"}
@@ -189,6 +190,9 @@ export default function Footer() {
             >
               Privacy Policy
             </Link>
+            <div className="h-4 border-l border-surface-200" />
+            
+            <ThemeToggle variant="icon" className="h-8 w-8 text-foreground-500 hover:text-foreground-900" />
           </div>
         </div>
       </div>

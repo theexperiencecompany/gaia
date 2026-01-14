@@ -85,7 +85,7 @@ export default function ProfilePage() {
             />
           </Suspense>
         ) : (
-          <div className="text-center text-zinc-400">
+          <div className="text-center text-foreground-400">
             <p>Card not found</p>
           </div>
         )}

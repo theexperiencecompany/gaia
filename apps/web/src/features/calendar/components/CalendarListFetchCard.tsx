@@ -12,7 +12,7 @@ export default function CalendarListFetchCard({
 }: CalendarListFetchProps) {
   if (!!calendars && calendars.length > 0)
     return (
-      <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-3 text-white">
+      <div className="w-full max-w-2xl rounded-3xl bg-surface-200 p-3 text-white">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-1">
           <div className="flex items-center gap-2">
@@ -32,7 +32,7 @@ export default function CalendarListFetchCard({
               .map((calendar) => (
                 <div
                   key={calendar.id}
-                  className="group flex items-center gap-3 p-3 transition-colors hover:bg-zinc-700"
+                  className="group flex items-center gap-3 p-3 transition-colors hover:bg-surface-700"
                 >
                   {/* Color dot - centered vertically */}
                   <div

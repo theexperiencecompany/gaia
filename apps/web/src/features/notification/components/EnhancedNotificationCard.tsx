@@ -90,7 +90,7 @@ export const EnhancedNotificationCard = ({
   return (
     <div
       className={`group relative w-full rounded-2xl transition-all ${
-        isUnread ? "bg-zinc-800/70" : "bg-zinc-800/30"
+        isUnread ? "bg-surface-200/70" : "bg-surface-200/30"
       }`}
     >
       <div className="px-4 py-3.5">
@@ -100,7 +100,7 @@ export const EnhancedNotificationCard = ({
             {/* Title with unread indicator */}
             <div className="flex items-center gap-2">
               <h3
-                className={`${isUnread ? "text-white" : "text-zinc-500"} text-[15px] leading-tight font-semibold`}
+                className={`${isUnread ? "text-white" : "text-foreground-500"} text-[15px] leading-tight font-semibold`}
               >
                 {notification.content.title}
               </h3>
@@ -111,7 +111,7 @@ export const EnhancedNotificationCard = ({
 
             {/* Description */}
             <p
-              className={`mb-0 text-[13px] ${isUnread ? "text-zinc-400" : "text-zinc-600"}`}
+              className={`mb-0 text-[13px] ${isUnread ? "text-foreground-400" : "text-foreground-600"}`}
             >
               {notification.content.body}
             </p>
@@ -127,7 +127,7 @@ export const EnhancedNotificationCard = ({
                   variant="light"
                   isIconOnly
                 >
-                  <CheckmarkBadge01Icon className="h-4 w-4 text-zinc-500" />
+                  <CheckmarkBadge01Icon className="h-4 w-4 text-foreground-500" />
                 </HeroButton>
               </Tooltip>
             )}
@@ -159,7 +159,7 @@ export const EnhancedNotificationCard = ({
                           ? "bg-primary/10 text-primary hover:bg-primary/20"
                           : action.style === "danger"
                             ? "bg-red-500/10 text-red-500 hover:bg-red-500/20"
-                            : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"
+                            : "bg-surface-200/50 text-foreground-400 hover:bg-surface-200 hover:text-foreground-300"
                       } ${showLoading ? "opacity-50" : ""} ${
                         isExecuted ? "cursor-not-allowed opacity-60" : ""
                       }`}
@@ -185,7 +185,7 @@ export const EnhancedNotificationCard = ({
               </div>
             )}
 
-          <span className="inline-block text-[11px] text-zinc-600">
+          <span className="inline-block text-[11px] text-foreground-600">
             {formattedDate}
           </span>
         </div>

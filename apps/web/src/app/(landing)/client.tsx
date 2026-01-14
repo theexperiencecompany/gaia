@@ -41,7 +41,7 @@ export default function LandingPageClient() {
         <div className="relative">
           <TiredBoringAssistants />
 
-          <div
+          {/* <div
             className="absolute top-140 z-0 h-[120vh] w-screen blur-lg"
             style={{
               backgroundImage: `
@@ -49,7 +49,7 @@ export default function LandingPageClient() {
               `,
               opacity: 0.6,
             }}
-          />
+          /> */}
         </div>
 
         <ProductivityOS />

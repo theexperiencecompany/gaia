@@ -78,10 +78,10 @@ export default function OnboardingStepsCard() {
   console.log("[OnboardingStepsCard] Showing card for phase:", phase);
 
   return (
-    <div className="flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-2 shadow-xl backdrop-blur-sm overflow-hidden!">
+    <div className="flex flex-col justify-center gap-3 rounded-2xl bg-surface-200/90 p-2 shadow-xl backdrop-blur-sm overflow-hidden!">
       {/* <div className="flex items-center justify-start">
-        <h3 className="text-xs font-semibold text-zinc-100">Getting Started</h3>
-        <span className="text-xs text-zinc-500">0/5</span>
+        <h3 className="text-xs font-semibold text-foreground-100">Getting Started</h3>
+        <span className="text-xs text-foreground-500">0/5</span>
       </div> */}
 
       <Accordion defaultExpandedKeys={["1"]}>
@@ -91,10 +91,10 @@ export default function OnboardingStepsCard() {
           classNames={{ trigger: "cursor-pointer", content: "overflow-hidden" }}
           title={
             <div className="flex items-center justify-start gap-2 font-normal">
-              <h3 className="text-xs font-semibold text-zinc-100">
+              <h3 className="text-xs font-semibold text-foreground-100">
                 First Steps
               </h3>
-              <span className="text-xs text-zinc-500">0/5</span>
+              <span className="text-xs text-foreground-500">0/5</span>
             </div>
           }
           isCompact
@@ -104,22 +104,22 @@ export default function OnboardingStepsCard() {
               <div key={step.id} className="relative flex w-full items-center">
                 {/* Vertical connecting line */}
                 {index !== steps.length - 1 && (
-                  <div className="absolute top-6 left-[18px] h-[calc(100%+4px)] w-[2px] border-l-1 border-dashed border-zinc-500" />
+                  <div className="absolute top-6 left-[18px] h-[calc(100%+4px)] w-[2px] border-l-1 border-dashed border-surface-500" />
                 )}
 
-                <div className="flex w-full items-center gap-2 rounded-xl hover:bg-zinc-700/50">
+                <div className="flex w-full items-center gap-2 rounded-xl hover:bg-surface-300/50">
                   <Checkbox
                     isSelected={step.completed}
                     lineThrough
                     className="m-0! w-full! border-dotted!"
                     classNames={{
-                      wrapper: ` ${step.completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-800 "}`,
+                      wrapper: ` ${step.completed ? "" : "border-surface-500 border-dashed! border-1 before:border-0! bg-surface-200 "}`,
                       label: "w-[30vw]",
                     }}
                     radius="full"
                   >
                     <div className="flex w-full items-center justify-between">
-                      <span className="text-sm text-zinc-300">
+                      <span className="text-sm text-foreground-300">
                         {step.label}
                       </span>
                       <span></span>

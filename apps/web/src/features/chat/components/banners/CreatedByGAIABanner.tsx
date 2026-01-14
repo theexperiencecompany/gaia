@@ -16,7 +16,7 @@ export default function CreatedByGAIABanner({
 
   return (
     <div className="mx-auto mb-6 max-w-4xl">
-      <div className="rounded-3xl border-1 border-zinc-800 bg-zinc-800/20 p-10">
+      <div className="rounded-3xl border-1 border-surface-200 bg-surface-200/20 p-10">
         <div className="flex flex-col items-center justify-center">
           <Image
             alt="GAIA Logo"

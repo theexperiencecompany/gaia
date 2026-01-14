@@ -62,7 +62,7 @@ function DownloadSectionLayout({
       <div className="grid grid-cols-1 items-center gap-8 md:grid-cols-2">
         {/* Image */}
         <div
-          className={`relative aspect-video w-full overflow-hidden rounded-4xl bg-zinc-900 ${
+          className={`relative aspect-video w-full overflow-hidden rounded-4xl bg-surface-100 ${
             imagePosition === "right" ? "md:order-2" : ""
           }`}
         >
@@ -80,8 +80,8 @@ function DownloadSectionLayout({
         >
           {chip && chip}
           <div className="flex flex-col gap-2">
-            <h2 className="text-4xl font-medium text-white">{title}</h2>
-            <p className="text-sm text-zinc-400">{description}</p>
+            <h2 className="text-4xl font-medium text-foreground-900">{title}</h2>
+            <p className="text-sm text-foreground-400">{description}</p>
           </div>
 
           {actions}
@@ -125,7 +125,7 @@ function MacDownloadButton({ isPrimary = false }: { isPrimary?: boolean }) {
                 src="/images/icons/apple.svg"
                 alt="Apple"
                 fill
-                className="object-contain"
+                className="object-contain icon-theme-aware"
               />
             </div>
           }
@@ -178,7 +178,7 @@ function MacDownloadButton({ isPrimary = false }: { isPrimary?: boolean }) {
               src="/images/icons/apple.svg"
               alt="Apple"
               fill
-              className="object-contain"
+              className="object-contain icon-theme-aware"
             />
           </div>
         }
@@ -343,12 +343,12 @@ function DesktopSection() {
         </div>
       }
       extraContent={
-        <div className="flex items-center gap-4 text-sm text-zinc-500">
+        <div className="flex items-center gap-4 text-sm text-foreground-500">
           <Link
             href={GITHUB_RELEASES_BASE}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 transition hover:text-zinc-300"
+            className="flex items-center gap-1 transition hover:text-foreground-300"
           >
             All releases
             <ArrowRight02Icon className="h-4 w-4" />
@@ -386,7 +386,7 @@ function MobileSection() {
                   src="/images/icons/apple.svg"
                   alt="iOS"
                   fill
-                  className="object-contain"
+                  className="object-contain icon-theme-aware"
                 />
               </div>
             }
@@ -489,7 +489,7 @@ export function LandingDownloadSection() {
   return (
     <section className="relative z-10 mx-auto w-full max-w-6xl py-16">
       <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-        <div className="flex flex-col overflow-hidden rounded-3xl bg-zinc-900/50 backdrop-blur-sm">
+        <div className="flex flex-col overflow-hidden rounded-3xl bg-surface-100/50 backdrop-blur-sm">
           <div className="relative aspect-video w-full overflow-hidden">
             <ProgressiveImage
               webpSrc="/images/screenshots/desktop_dock.webp"
@@ -500,8 +500,8 @@ export function LandingDownloadSection() {
           </div>
           <div className="flex flex-1 flex-col items-center gap-4 p-6 text-center">
             <div>
-              <h3 className="mb-1 text-xl font-medium text-white">Desktop</h3>
-              <p className="text-sm text-zinc-400">
+              <h3 className="mb-1 text-xl font-medium text-foreground-900">Desktop</h3>
+              <p className="text-sm text-foreground-400">
                 Experience GAIA on desktop with enhanced features
               </p>
             </div>
@@ -511,7 +511,7 @@ export function LandingDownloadSection() {
                 href={GITHUB_RELEASES_BASE}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center gap-1 text-sm text-zinc-500 transition hover:text-zinc-300"
+                className="flex items-center justify-center gap-1 text-sm text-foreground-500 transition hover:text-foreground-300"
               >
                 All platforms
                 <ArrowRight02Icon className="h-3 w-3" />
@@ -521,7 +521,7 @@ export function LandingDownloadSection() {
         </div>
 
         {/* Mobile Card */}
-        <div className="flex flex-col overflow-hidden rounded-3xl bg-zinc-900/50 backdrop-blur-sm">
+        <div className="flex flex-col overflow-hidden rounded-3xl bg-surface-100/50 backdrop-blur-sm">
           <div className="relative aspect-video w-full overflow-hidden">
             <ProgressiveImage
               webpSrc="/images/screenshots/phone_dock.webp"
@@ -535,9 +535,9 @@ export function LandingDownloadSection() {
               <Chip variant="flat" color="warning" size="sm">
                 Coming Soon
               </Chip>
-              <h3 className="text-xl font-medium text-white">Mobile</h3>
+              <h3 className="text-xl font-medium text-foreground-900">Mobile</h3>
             </div>
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-foreground-400">
               iOS and Android apps in development
             </p>
             <div className="flex gap-2">
@@ -551,7 +551,7 @@ export function LandingDownloadSection() {
                       src="/images/icons/apple.svg"
                       alt="iOS"
                       fill
-                      className="object-contain"
+                      className="object-contain icon-theme-aware"
                     />
                   </div>
                 }
@@ -587,10 +587,10 @@ export default function DownloadPage() {
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center">
       <section className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-4 px-6 pb-8 pt-24 sm:pt-32">
-        <h1 className="text-4xl font-medium text-white sm:text-5xl">
+        <h1 className="text-4xl font-medium text-foreground-900 sm:text-5xl">
           Download GAIA
         </h1>
-        <p className="max-w-xl text-center text-lg text-zinc-400">
+        <p className="max-w-xl text-center text-lg text-foreground-400">
           Available on all your devices. Choose your platform below.
         </p>
       </section>

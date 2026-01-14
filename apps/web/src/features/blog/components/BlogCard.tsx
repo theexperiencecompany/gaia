@@ -17,7 +17,7 @@ export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
   return (
     <Link href={`/blog/${blog.slug}`} className="block">
       <div
-        className={`group flex h-full flex-col overflow-hidden rounded-2xl bg-zinc-900/70 p-6 outline-1 outline-zinc-800 transition-all hover:bg-zinc-900 ${isLarge ? "p-1" : "p-0"} `}
+        className={`group flex h-full flex-col overflow-hidden rounded-2xl bg-surface-100/70 p-6 outline-1 outline-surface-200 transition-all hover:bg-surface-100 ${isLarge ? "p-1" : "p-0"} `}
       >
         {blog.image && (
           <div className="relative mb-6 aspect-video">
@@ -50,14 +50,14 @@ export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
                   author={author}
                   avatarClassName={
                     isLarge
-                      ? "h-8 w-8 cursor-help border-2 border-zinc-700"
-                      : "h-6 w-6 cursor-help border-2 border-zinc-700"
+                      ? "h-8 w-8 cursor-help border-2 border-surface-300"
+                      : "h-6 w-6 cursor-help border-2 border-surface-300"
                   }
                 />
               ),
             )}
             {!isLarge && blog.authors.length > 3 && (
-              <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-zinc-700 bg-zinc-700 text-xs text-zinc-300">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-surface-300 bg-surface-300 text-xs text-foreground-300">
                 +{blog.authors.length - 3}
               </div>
             )}
@@ -76,7 +76,7 @@ export function BlogCard({ blog, variant = "large" }: BlogCardProps) {
             </span>
           </div>
           <h3
-            className={`font-medium text-white transition-colors ${
+            className={`font-medium text-foreground-900 transition-colors ${
               isLarge ? "text-lg" : "line-clamp-2 text-sm"
             }`}
           >
