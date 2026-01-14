@@ -260,23 +260,54 @@ async def create_custom_mcp_integration(
 ) -> CreateCustomIntegrationResponse:
     """Create a custom MCP integration."""
     import asyncio
+    import time
 
+    from app.db.mongodb.collections import integrations_collection
     from app.utils.favicon_utils import fetch_favicon_from_url
 
     try:
+        t_start = time.perf_counter()
+
+        # EARLY VALIDATION: Check for duplicate name BEFORE slow network ops
+        # This prevents users from waiting 50+ seconds only to get a duplicate error
+        potential_id = f"custom_{request.name.lower().replace(' ', '_')}_{user_id}"
+        existing = await integrations_collection.find_one(
+            {"integration_id": potential_id}
+        )
+        if existing:
+            raise ValueError(
+                f"You already have an integration named '{request.name}'. "
+                "Please choose a different name."
+            )
+
+        t0 = time.perf_counter()
         mcp_client = await get_mcp_client(user_id=user_id)
+        logger.info(
+            f"[TIMING] get_mcp_client: {(time.perf_counter() - t0) * 1000:.0f}ms"
+        )
 
         # Parallel: Favicon fetch + MCP probe
+        t1 = time.perf_counter()
         favicon_result, probe_result = await asyncio.gather(
             fetch_favicon_from_url(request.server_url),
             mcp_client.probe_connection(request.server_url),
             return_exceptions=True,
         )
+        logger.info(
+            f"[TIMING] parallel fetch (favicon + probe): {(time.perf_counter() - t1) * 1000:.0f}ms"
+        )
+
+        # Log individual results for debugging
+        if isinstance(favicon_result, Exception):
+            logger.debug(f"[TIMING] favicon fetch failed: {favicon_result}")
+        if isinstance(probe_result, Exception):
+            logger.debug(f"[TIMING] probe failed: {probe_result}")
 
         icon_url = None
         if favicon_result and not isinstance(favicon_result, Exception):
             icon_url = favicon_result
 
+        t2 = time.perf_counter()
         integration = await create_custom_integration(
             user_id,
             CreateCustomIntegrationRequestModel(
@@ -289,6 +320,12 @@ async def create_custom_mcp_integration(
                 is_public=request.is_public,
             ),
             icon_url,
+        )
+        logger.info(
+            f"[TIMING] create_custom_integration: {(time.perf_counter() - t2) * 1000:.0f}ms"
+        )
+        logger.info(
+            f"[TIMING] total before connect: {(time.perf_counter() - t_start) * 1000:.0f}ms"
         )
 
         # Helper to build OAuth URL and return appropriate connection result

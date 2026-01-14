@@ -6,6 +6,7 @@ See: https://modelcontextprotocol.io/specification/2025-11-25/basic/authorizatio
 """
 
 import base64
+import re
 import urllib.parse
 from typing import Optional
 
@@ -35,6 +36,20 @@ class DCRNotSupportedException(Exception):
     """Raised when Dynamic Client Registration is not supported by the server."""
 
     pass
+
+
+class StepUpAuthRequired(Exception):
+    """Raised when additional scopes are required (403 insufficient_scope).
+
+    Per MCP spec, this triggers re-authorization with additional scopes.
+    """
+
+    def __init__(self, integration_id: str, required_scopes: list[str]):
+        self.integration_id = integration_id
+        self.required_scopes = required_scopes
+        super().__init__(
+            f"Step-up authorization required for {integration_id}: {required_scopes}"
+        )
 
 
 class MCPClient:
@@ -193,6 +208,12 @@ class MCPClient:
                 "token_endpoint": auth_metadata.get("token_endpoint"),
                 "registration_endpoint": auth_metadata.get("registration_endpoint"),
                 "issuer": auth_metadata.get("issuer"),
+                "code_challenge_methods_supported": auth_metadata.get(
+                    "code_challenge_methods_supported", []
+                ),
+                "client_id_metadata_document_supported": auth_metadata.get(
+                    "client_id_metadata_document_supported", False
+                ),
                 "discovery_method": "rfc9728_prm",
             }
 
@@ -216,6 +237,12 @@ class MCPClient:
                 "token_endpoint": auth_metadata.get("token_endpoint"),
                 "registration_endpoint": auth_metadata.get("registration_endpoint"),
                 "issuer": auth_metadata.get("issuer"),
+                "code_challenge_methods_supported": auth_metadata.get(
+                    "code_challenge_methods_supported", []
+                ),
+                "client_id_metadata_document_supported": auth_metadata.get(
+                    "client_id_metadata_document_supported", False
+                ),
                 "discovery_method": "direct_oauth",
             }
 
@@ -235,7 +262,12 @@ class MCPClient:
         integration_id: str,
         mcp_config: MCPConfig,
     ) -> dict:
-        """Build mcp-use config dict."""
+        """Build mcp-use config dict.
+
+        When auth is a string token, mcp-use uses BearerAuth directly
+        without OAuth discovery. This is the proper way to pass
+        already-obtained tokens to mcp-use.
+        """
         server_config: dict = {"url": mcp_config.server_url}
 
         if mcp_config.transport:
@@ -252,15 +284,27 @@ class MCPClient:
 
             stored_token = await self.token_store.get_oauth_token(integration_id)
             if stored_token:
-                # Pass raw token directly - mcp-use adds Bearer prefix automatically
+                # Strip Bearer prefix if present - mcp-use adds it automatically
                 raw_token = stored_token
                 if stored_token.lower().startswith("bearer "):
                     raw_token = stored_token[7:]
+
+                # Primary: Pass token via auth config
                 server_config["auth"] = raw_token
+
+                # Fallback: Also pass via headers for servers where mcp-use OAuth
+                # discovery fails (e.g., Smithery servers that don't expose
+                # .well-known/oauth-authorization-server endpoints)
+                server_config["headers"] = {"Authorization": f"Bearer {raw_token}"}
             else:
                 logger.warning(
                     f"No valid OAuth token for {integration_id} - connection may fail"
                 )
+        else:
+            # CRITICAL: Explicitly set auth to None to prevent mcp-use from
+            # defaulting to {} which triggers OAuth discovery and causes lag.
+            # When auth is None, HttpConnector skips OAuth initialization entirely.
+            server_config["auth"] = None
 
         return {"mcpServers": {integration_id: server_config}}
 
@@ -357,6 +401,22 @@ class MCPClient:
             return tools
 
         except Exception as e:
+            error_str = str(e).lower()
+
+            # Check for 403 insufficient_scope per MCP spec
+            # This indicates step-up authorization is needed
+            if "403" in str(e) and "insufficient_scope" in error_str:
+                # Try to extract required scopes from error message
+                # Format: scope="required_scope1 required_scope2"
+                scope_match = re.search(r'scope="([^"]+)"', str(e))
+                required_scopes = []
+                if scope_match:
+                    required_scopes = scope_match.group(1).split()
+                logger.info(
+                    f"Step-up auth required for {integration_id}, scopes: {required_scopes}"
+                )
+                raise StepUpAuthRequired(integration_id, required_scopes) from e
+
             logger.error(f"Failed to connect to MCP {integration_id}: {e}")
             # Note: Status is managed in MongoDB user_integrations, not PostgreSQL
             # PostgreSQL mcp_credentials only stores auth tokens
@@ -478,9 +538,9 @@ class MCPClient:
                 # Calculate new expiry
                 expires_at = None
                 if tokens.get("expires_in"):
-                    from datetime import datetime, timedelta
+                    from datetime import datetime, timedelta, timezone
 
-                    expires_at = datetime.utcnow() + timedelta(
+                    expires_at = datetime.now(timezone.utc) + timedelta(
                         seconds=tokens["expires_in"]
                     )
 
@@ -567,7 +627,7 @@ class MCPClient:
             if dcr_data:
                 client_id = dcr_data.get("client_id")
             elif oauth_config.get("registration_endpoint"):
-                # Perform DCR on the AUTHORIZATION SERVER (not MCP server)
+                # Dynamic Client Registration (DCR)
                 client_id = await self._register_client(
                     integration_id,
                     oauth_config["registration_endpoint"],
@@ -578,6 +638,16 @@ class MCPClient:
             raise ValueError(
                 f"Could not obtain client_id for {integration_id}. "
                 "DCR may not be supported - check if pre-registration is required."
+            )
+
+        # Verify PKCE support per MCP spec
+        # MCP clients MUST verify code_challenge_methods_supported contains S256
+        # If field is absent, assume PKCE is supported (per RFC 8414 Section 5)
+        pkce_methods = oauth_config.get("code_challenge_methods_supported", [])
+        if pkce_methods and "S256" not in pkce_methods:
+            raise ValueError(
+                f"Server {integration_id} does not support S256 PKCE method. "
+                f"Supported methods: {pkce_methods}. MCP requires S256."
             )
 
         # Generate PKCE pair (required for OAuth 2.1)
@@ -768,9 +838,11 @@ class MCPClient:
         # Calculate expiry time if provided
         expires_at = None
         if tokens.get("expires_in"):
-            from datetime import datetime, timedelta
+            from datetime import datetime, timedelta, timezone
 
-            expires_at = datetime.utcnow() + timedelta(seconds=tokens["expires_in"])
+            expires_at = datetime.now(timezone.utc) + timedelta(
+                seconds=tokens["expires_in"]
+            )
 
         # Store tokens
         await self.token_store.store_oauth_tokens(
@@ -785,8 +857,11 @@ class MCPClient:
         try:
             return await self.connect(integration_id)
         except Exception as e:
+            is_auth_error = "401" in str(e) or "authentication" in str(e).lower()
             logger.error(
                 f"Connection failed after token storage for {integration_id}: {e}. "
+                f"Auth error: {is_auth_error}. "
+                f"This may indicate mcp-use is ignoring our stored token. "
                 "Rolling back tokens to prevent stuck state."
             )
             # Delete the tokens we just stored since connection failed

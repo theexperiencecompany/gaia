@@ -48,31 +48,26 @@ class MCPToolsStore:
             ]
 
             logger.info(
-                f"[{integration_id}] Updating {len(formatted_tools)} tools in integrations collection"
+                f"[{integration_id}] Storing {len(formatted_tools)} tools in integrations collection"
             )
 
             result = await integrations_collection.update_one(
                 {"integration_id": integration_id},
-                {"$set": {"tools": formatted_tools}},
-                upsert=False,  # Don't create incomplete documents
+                {"$set": {"tools": formatted_tools, "integration_id": integration_id}},
+                upsert=True,
             )
 
-            if result.matched_count == 0:
-                logger.warning(
-                    f"[{integration_id}] No integration document found - tools not stored"
-                )
-            else:
-                logger.info(
-                    f"[{integration_id}] MongoDB update result: "
-                    f"matched={result.matched_count}, modified={result.modified_count}"
-                )
+            logger.info(
+                f"[{integration_id}] Tools stored: "
+                f"upserted={result.upserted_id is not None}, modified={result.modified_count}"
+            )
 
-            # Always invalidate cache after store attempt
+            # Invalidate cache
             await delete_cache(MCP_TOOLS_CACHE_KEY)
 
         except Exception as e:
             logger.error(f"[{integration_id}] Error storing tools: {e}", exc_info=True)
-            raise  # Propagate error to caller
+            raise
 
     async def get_tools(self, integration_id: str) -> Optional[list[dict]]:
         """Get stored tools for an MCP integration.

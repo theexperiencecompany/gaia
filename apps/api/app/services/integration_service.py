@@ -282,7 +282,7 @@ async def add_user_integration(
         status = initial_status
     else:
         status = "connected" if not integration.requires_auth else "created"
-    connected_at = datetime.utcnow() if status == "connected" else None
+    connected_at = datetime.now(UTC) if status == "connected" else None
 
     user_integration = UserIntegration(
         user_id=user_id,
@@ -416,13 +416,16 @@ async def create_custom_integration(
     Raises:
         ValueError: If integration with same ID already exists
     """
-    integration_id = f"custom_{request.name.lower().replace(' ', '_')}_{user_id[:8]}"
+    integration_id = f"custom_{request.name.lower().replace(' ', '_')}_{user_id}"
 
     existing = await integrations_collection.find_one(
         {"integration_id": integration_id}
     )
     if existing:
-        raise ValueError(f"Integration with ID '{integration_id}' already exists")
+        raise ValueError(
+            f"You already have an integration named '{request.name}'. "
+            "Please choose a different name."
+        )
 
     # Clean up orphaned user_integration if exists (from failed previous creation)
     orphaned = await user_integrations_collection.find_one(
@@ -513,7 +516,7 @@ async def update_custom_integration(
             current_config["auth_type"] = request.auth_type
         update_data["mcp_config"] = current_config
 
-    update_data["updated_at"] = datetime.utcnow()
+    update_data["updated_at"] = datetime.now(UTC)
 
     await integrations_collection.update_one(
         {"integration_id": integration_id},

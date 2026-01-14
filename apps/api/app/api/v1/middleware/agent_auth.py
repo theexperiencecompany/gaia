@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
 
@@ -22,11 +22,11 @@ def verify_agent_token(token: str):
 
 
 def create_agent_token(user_id: str, expires_minutes: int = AGENT_TOKEN_EXPIRY_MINUTES):
-    expire = datetime.utcnow() + timedelta(minutes=expires_minutes)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
     payload = {
         "sub": user_id,
         "role": "agent",
         "exp": expire,
-        "iat": datetime.utcnow(),
+        "iat": datetime.now(timezone.utc),
     }
     return jwt.encode(payload, AGENT_SECRET, algorithm=JWT_ALGORITHM)

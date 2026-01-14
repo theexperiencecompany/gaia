@@ -34,7 +34,7 @@ async def extract_auth_challenge(server_url: str) -> dict:
     headers = {"MCP-Protocol-Version": MCP_PROTOCOL_VERSION}
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(server_url, headers=headers, timeout=10)
+            response = await client.get(server_url, headers=headers, timeout=2)
 
             if response.status_code == 401:
                 www_auth = response.headers.get("WWW-Authenticate", "")

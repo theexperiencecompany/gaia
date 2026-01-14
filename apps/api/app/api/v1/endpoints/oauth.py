@@ -2,7 +2,7 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from workos import WorkOSClient
 
 from app.config.loggers import auth_logger as logger
@@ -11,6 +11,7 @@ from app.config.settings import settings
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
+from app.helpers.mcp_helpers import get_api_base_url
 from app.services.calendar_service import initialize_calendar_preferences
 from app.services.composio.composio_service import get_composio_service
 from app.services.integration_service import update_user_integration_status
@@ -24,6 +25,37 @@ http_async_client = httpx.AsyncClient()
 workos = WorkOSClient(
     api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
 )
+
+
+@router.get("/client-metadata.json")
+async def get_client_metadata():
+    """
+    OAuth Client ID Metadata Document per draft-ietf-oauth-client-id-metadata-document-00.
+
+    Authorization servers fetch this document when encountering a URL-formatted
+    client_id. This enables OAuth flows without pre-registration or DCR.
+
+    The document URL is used as the client_id value.
+    See: https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00
+    """
+    base_url = get_api_base_url()  # e.g., https://api.heygaia.com
+    metadata_url = f"{base_url}/api/v1/oauth/client-metadata.json"
+
+    return JSONResponse(
+        content={
+            # MUST match this document's URL exactly per spec Section 4.1
+            "client_id": metadata_url,
+            "client_name": "GAIA AI Assistant",
+            "client_uri": "https://heygaia.com",
+            "logo_uri": f"{base_url}/static/logo.png",
+            "redirect_uris": [f"{base_url}/api/v1/mcp/oauth/callback"],
+            "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"],
+            # MUST be "none" - no client secrets allowed per spec Section 4.1
+            "token_endpoint_auth_method": "none",
+        },
+        media_type="application/json",
+    )
 
 
 @router.get("/login/workos")

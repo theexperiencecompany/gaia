@@ -7,7 +7,7 @@ Follows same patterns as Composio for parity.
 
 import json
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from cryptography.fernet import Fernet
@@ -73,7 +73,9 @@ class MCPTokenStore:
         cred = await self.get_credential(integration_id)
         if cred and cred.access_token and cred.status == "connected":
             # Check if token is expired
-            if cred.token_expires_at and cred.token_expires_at < datetime.utcnow():
+            if cred.token_expires_at and cred.token_expires_at < datetime.now(
+                timezone.utc
+            ):
                 logger.warning(f"OAuth token expired for {integration_id}")
                 return None
             return self._decrypt(cred.access_token)
@@ -94,14 +96,17 @@ class MCPTokenStore:
         if cred and cred.token_expires_at:
             from datetime import timedelta
 
-            expiry_threshold = datetime.utcnow() + timedelta(seconds=threshold_seconds)
+            expiry_threshold = datetime.now(timezone.utc) + timedelta(
+                seconds=threshold_seconds
+            )
             return cred.token_expires_at < expiry_threshold
         return False
 
     async def store_bearer_token(self, integration_id: str, token: str) -> None:
         """Store encrypted bearer token."""
         encrypted = self._encrypt(token)
-        now = datetime.utcnow()
+        # Use naive UTC datetime for PostgreSQL TIMESTAMP WITHOUT TIME ZONE column
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         async with get_db_session() as session:
             # Query within this session
@@ -142,7 +147,8 @@ class MCPTokenStore:
         """Store encrypted OAuth tokens."""
         encrypted_access = self._encrypt(access_token)
         encrypted_refresh = self._encrypt(refresh_token) if refresh_token else None
-        now = datetime.utcnow()
+        # Use naive UTC datetime for PostgreSQL TIMESTAMP WITHOUT TIME ZONE column
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         async with get_db_session() as session:
             # Query within this session
@@ -158,7 +164,9 @@ class MCPTokenStore:
                 cred.access_token = encrypted_access
                 cred.refresh_token = encrypted_refresh
                 cred.token_expires_at = expires_at
-                # Note: status is managed in MongoDB user_integrations, not here
+                # Set status to connected so get_oauth_token() can retrieve it
+                cred.status = "connected"
+                cred.connected_at = now
                 session.add(cred)
             else:
                 cred = MCPCredential(
@@ -168,8 +176,8 @@ class MCPTokenStore:
                     access_token=encrypted_access,
                     refresh_token=encrypted_refresh,
                     token_expires_at=expires_at,
-                    # Note: status managed in MongoDB user_integrations
-                    status="active",  # Informational only
+                    status="connected",  # Required for get_oauth_token() to work
+                    connected_at=now,
                 )
                 session.add(cred)
             await session.commit()

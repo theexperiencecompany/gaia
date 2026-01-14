@@ -7,7 +7,7 @@ This module defines Pydantic models for:
 - API request/response schemas
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Literal, Optional, cast
 
 from app.models.oauth_models import MCPConfig
@@ -77,7 +77,7 @@ class Integration(BaseModel):
     is_featured: bool = Field(False, description="Show in featured section")
 
     # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: Optional[datetime] = None
 
     class Config:
@@ -98,7 +98,7 @@ class UserIntegration(BaseModel):
         "created",
         description="'created' = added but not authenticated, 'connected' = ready to use",
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     connected_at: Optional[datetime] = Field(
         None, description="When OAuth/auth was completed"
     )
