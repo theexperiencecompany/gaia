@@ -33,7 +33,7 @@ export interface GroupedConversations {
   today: Conversation[];
   yesterday: Conversation[];
   lastWeek: Conversation[];
-  older: Conversation[];
+  previousChats: Conversation[];
 }
 
 export interface Suggestion {

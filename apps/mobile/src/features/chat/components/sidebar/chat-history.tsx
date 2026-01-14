@@ -103,7 +103,7 @@ export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
     today: true,
     yesterday: true,
     lastWeek: true,
-    older: true,
+    previousChats: true,
   });
 
   const toggleSection = (section: string) => {
@@ -186,12 +186,12 @@ export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
         onToggle={() => toggleSection("lastWeek")}
       />
       <Section
-        title="Older"
-        items={groupedChats.older}
+        title="Previous Chats"
+        items={groupedChats.previousChats}
         activeChatId={activeChatId}
         onSelectChat={handleSelectChat}
-        isExpanded={expandedSections.older}
-        onToggle={() => toggleSection("older")}
+        isExpanded={expandedSections.previousChats}
+        onToggle={() => toggleSection("previousChats")}
       />
     </ScrollView>
   );

@@ -19,6 +19,7 @@ from app.db.mongodb.collections import (
     blog_collection,
     calendars_collection,
     conversations_collection,
+    device_tokens_collection,
     files_collection,
     goals_collection,
     mail_collection,
@@ -68,6 +69,7 @@ async def create_all_indexes():
             create_payment_indexes(),
             create_usage_indexes(),
             create_ai_models_indexes(),
+            create_device_token_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -90,6 +92,7 @@ async def create_all_indexes():
             "payments",
             "usage",
             "ai_models",
+            "device_tokens",
         ]
 
         index_results = {}
@@ -586,6 +589,23 @@ async def create_ai_models_indexes():
 
     except Exception as e:
         logger.error(f"Error creating AI models indexes: {str(e)}")
+        raise
+
+
+async def create_device_token_indexes():
+    """Create indexes for device_tokens collection for push notifications."""
+    try:
+        await asyncio.gather(
+            # Primary lookup by user
+            device_tokens_collection.create_index("user_id"),
+            # Unique token constraint
+            device_tokens_collection.create_index("token", unique=True),
+            # For active token queries
+            device_tokens_collection.create_index([("user_id", 1), ("is_active", 1)]),
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating device token indexes: {str(e)}")
         raise
 
 

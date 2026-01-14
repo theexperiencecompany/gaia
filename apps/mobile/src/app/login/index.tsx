@@ -78,7 +78,7 @@ export default function LoginScreen() {
             <View className="items-center mb-8">
               <View className="w-18 h-18 rounded-full bg-accent/15 items-center justify-center mb-4">
                 <Image
-                  source={require("@/assets/logo/logo.webp")}
+                  source={require("@shared/assets/logo/logo.webp")}
                   className="w-12 h-12"
                   resizeMode="contain"
                 />

@@ -1,8 +1,7 @@
 import { PressableFeedback } from "heroui-native";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import {
-  ArrowDown01Icon,
-  Edit01Icon,
+  BubbleChatAddIcon,
   HugeiconsIcon,
   Menu01Icon,
   Search01Icon,
@@ -23,31 +22,24 @@ export function ChatHeader({
   onSearchPress,
 }: ChatHeaderProps) {
   return (
-    <View className="flex-row items-center justify-between px-6 py-4 border-b border-border/10 bg-surface-1">
+    <View className="flex-row items-center justify-between px-6 py-4 border-b border-border/10 bg-transparent">
       <PressableFeedback onPress={onMenuPress}>
         <View className="p-1">
           <HugeiconsIcon icon={Menu01Icon} size={24} color="#ffffff" />
         </View>
       </PressableFeedback>
 
-      <View className="flex-row items-center gap-2 px-3 py-1.5">
-        <Text className="text-sm text-foreground font-bold tracking-tight">
-          {"GAIA Free"}
-        </Text>
-        <HugeiconsIcon icon={ArrowDown01Icon} size={14} color="#666666" />
-      </View>
-
-      <View className="flex-row gap-1">
+      <View className="flex-row gap-2">
         {onSearchPress && (
           <PressableFeedback onPress={onSearchPress}>
             <View className="p-1">
-              <HugeiconsIcon icon={Search01Icon} size={20} color="#ffffff" />
+              <HugeiconsIcon icon={Search01Icon} size={18} color="#bbbbbb" />
             </View>
           </PressableFeedback>
         )}
         <PressableFeedback onPress={onNewChatPress}>
           <View className="p-1">
-            <HugeiconsIcon icon={Edit01Icon} size={18} color="#bbbbbb" />
+            <HugeiconsIcon icon={BubbleChatAddIcon} size={18} color="#bbbbbb" />
           </View>
         </PressableFeedback>
       </View>

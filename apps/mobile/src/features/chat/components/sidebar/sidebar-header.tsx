@@ -15,7 +15,7 @@ export function SidebarHeader({ onNewChat }: SidebarHeaderProps) {
     <View className="px-4 py-4 pt-6">
       <View className="flex-row items-center gap-3 mb-6 px-1">
         <Image
-          source={require("@/assets/logo/logo.webp")}
+          source={require("@shared/assets/logo/logo.webp")}
           className="w-7 h-7"
           resizeMode="contain"
         />

@@ -14,7 +14,7 @@ import {
 import { Text } from "@/components/ui/text";
 import { cn } from "@/lib/utils";
 
-const GaiaLogo = require("@/../assets/logo/gaia.png");
+const GaiaLogo = require("@shared/assets/logo/gaia.png");
 
 const messageBubbleVariants = cva("px-4 py-2.5 max-w-[100%]", {
   variants: {
@@ -92,7 +92,7 @@ function PulsingDots() {
           width: 6,
           height: 6,
           borderRadius: 3,
-          backgroundColor: "#007AFF",
+          backgroundColor: "#00bbff",
         }}
       />
       <Animated.View
@@ -101,7 +101,7 @@ function PulsingDots() {
           width: 6,
           height: 6,
           borderRadius: 3,
-          backgroundColor: "#007AFF",
+          backgroundColor: "#00bbff",
         }}
       />
       <Animated.View
@@ -110,7 +110,7 @@ function PulsingDots() {
           width: 6,
           height: 6,
           borderRadius: 3,
-          backgroundColor: "#007AFF",
+          backgroundColor: "#00bbff",
         }}
       />
     </View>
@@ -138,7 +138,7 @@ function MessageBubble({
   return (
     <View
       className={cn(
-        "flex-row gap-2",
+        "flex-row items-start gap-2",
         variant === "sent" ? "self-end" : "self-start",
       )}
     >
@@ -192,25 +192,31 @@ function MessageBubble({
             ))}
         </View>
 
-        {variant === "received" && !isLoading && grouped === "last" && (
-          <View className="flex-row items-center gap-3 mt-1.5 px-1">
-            <Pressable className="p-1 active:opacity-60">
-              <HugeiconsIcon icon={Copy01Icon} size={16} color="#8e8e93" />
-            </Pressable>
-            <Pressable className="p-1 active:opacity-60">
-              <HugeiconsIcon icon={ThumbsUpIcon} size={16} color="#8e8e93" />
-            </Pressable>
-            <Pressable className="p-1 active:opacity-60">
-              <HugeiconsIcon icon={ThumbsDownIcon} size={16} color="#8e8e93" />
-            </Pressable>
-            <Pressable className="p-1 active:opacity-60">
-              <HugeiconsIcon icon={Pin02Icon} size={16} color="#8e8e93" />
-            </Pressable>
-            <Pressable className="p-1 active:opacity-60">
-              <HugeiconsIcon icon={Message01Icon} size={16} color="#8e8e93" />
-            </Pressable>
-          </View>
-        )}
+        {variant === "received" &&
+          !isLoading &&
+          (grouped === "last" || grouped === "none") && (
+            <View className="flex-row items-center gap-3 mt-1.5 px-1">
+              <Pressable className="p-1 active:opacity-60">
+                <HugeiconsIcon icon={Copy01Icon} size={16} color="#8e8e93" />
+              </Pressable>
+              <Pressable className="p-1 active:opacity-60">
+                <HugeiconsIcon icon={ThumbsUpIcon} size={16} color="#8e8e93" />
+              </Pressable>
+              <Pressable className="p-1 active:opacity-60">
+                <HugeiconsIcon
+                  icon={ThumbsDownIcon}
+                  size={16}
+                  color="#8e8e93"
+                />
+              </Pressable>
+              <Pressable className="p-1 active:opacity-60">
+                <HugeiconsIcon icon={Pin02Icon} size={16} color="#8e8e93" />
+              </Pressable>
+              <Pressable className="p-1 active:opacity-60">
+                <HugeiconsIcon icon={Message01Icon} size={16} color="#8e8e93" />
+              </Pressable>
+            </View>
+          )}
       </View>
     </View>
   );

@@ -1,13 +1,10 @@
+import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
-import { Platform } from "react-native";
-
-const OAUTH_BASE_URL = __DEV__
-  ? Platform.OS === "android"
-    ? "http://10.0.2.2:8000"
-    : "http://192.168.1.126:8000"
-  : "https://api.heygaia.io";
+import { API_ORIGIN as OAUTH_BASE_URL } from "../../../lib/constants";
 
 WebBrowser.maybeCompleteAuthSession();
+
+const redirectUri = Linking.createURL("auth/callback");
 
 export interface LoginUrlResponse {
   url: string;
@@ -20,10 +17,10 @@ export interface UserInfoResponse {
   user_id?: string;
 }
 
-export async function getLoginUrl(): Promise<string> {
+export async function getLoginUrl(callbackUri: string): Promise<string> {
   try {
     const response = await fetch(
-      `${OAUTH_BASE_URL}/api/v1/oauth/login/workos/mobile`,
+      `${OAUTH_BASE_URL}/api/v1/oauth/login/workos/mobile?redirect_uri=${encodeURIComponent(callbackUri)}`,
     );
 
     if (!response.ok) {
@@ -40,12 +37,8 @@ export async function getLoginUrl(): Promise<string> {
 
 export async function startOAuthFlow(): Promise<string> {
   try {
-    const authUrl = await getLoginUrl();
-
-    const result = await WebBrowser.openAuthSessionAsync(
-      authUrl,
-      "gaiamobile://auth/callback",
-    );
+    const authUrl = await getLoginUrl(redirectUri);
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
 
     if (result.type === "success" && result.url) {
       const url = new URL(result.url);
@@ -93,9 +86,6 @@ export async function fetchUserInfo(token: string): Promise<UserInfoResponse> {
   }
 }
 
-/**
- * Logout from the server
- */
 export async function logout(token: string): Promise<void> {
   try {
     await fetch(`${OAUTH_BASE_URL}/api/v1/oauth/logout`, {

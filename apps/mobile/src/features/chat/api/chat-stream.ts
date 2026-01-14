@@ -7,6 +7,7 @@ export interface StreamCallbacks {
     conversationId: string,
     userMessageId: string,
     botMessageId: string,
+    description?: string | null,
   ) => void;
   onProgress?: (message: string, toolName?: string) => void;
   onFollowUpActions?: (actions: string[]) => void;
@@ -28,6 +29,7 @@ interface StreamEventData {
   type?: string;
   content?: string;
   conversation_id?: string;
+  conversation_description?: string | null;
   message_id?: string;
   response?: string;
   error?: string;
@@ -104,54 +106,38 @@ export async function fetchChatStream(
           return;
         }
 
-        // Log all parsed events for debugging
-        console.log(
-          "[chat-stream] Parsed event:",
-          JSON.stringify(parsed, null, 2),
-        );
-
-        // First event contains conversation_id and message IDs
         if (
           parsed.conversation_id &&
           parsed.bot_message_id &&
           parsed.user_message_id
         ) {
-          console.log(
-            "[chat-stream] Conversation created:",
-            parsed.conversation_id,
-          );
           callbacks.onConversationCreated?.(
             parsed.conversation_id,
             parsed.user_message_id,
             parsed.bot_message_id,
+            parsed.conversation_description,
           );
         }
 
-        // Progress updates (tool execution status)
         if (parsed.progress) {
-          console.log("[chat-stream] Progress:", parsed.progress);
           callbacks.onProgress?.(
             parsed.progress.message,
             parsed.progress.tool_name,
           );
         }
 
-        // Stream response chunks
         if (parsed.response) {
           callbacks.onChunk(parsed.response);
         }
 
-        // Follow up actions
         if (parsed.follow_up_actions && parsed.follow_up_actions.length > 0) {
           callbacks.onFollowUpActions?.(parsed.follow_up_actions);
         }
       },
       onError: (error) => {
-        console.log("[chat-stream] Error:", error);
         callbacks.onError?.(error);
       },
       onClose: () => {
-        console.log("[chat-stream] Connection closed");
         callbacks.onDone();
       },
     },

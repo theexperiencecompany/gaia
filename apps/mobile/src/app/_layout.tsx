@@ -11,6 +11,7 @@ import {
   RobotoMono_400Regular,
   RobotoMono_500Medium,
 } from "@expo-google-fonts/roboto-mono";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -22,6 +23,7 @@ import { Uniwind } from "uniwind";
 
 import { AuthProvider } from "@/features/auth";
 import { ChatProvider } from "@/features/chat";
+import { QueryProvider } from "@/lib/query-provider";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -47,25 +49,29 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <ChatProvider>
-        <GestureHandlerRootView style={{ flex: 1 }} className="bg:dark">
-          <HeroUINativeProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(app)" options={{ headerShown: false }} />
-              <Stack.Screen
-                name="login/index"
-                options={{ headerShown: false }}
-              />
-              <Stack.Screen
-                name="signup/index"
-                options={{ headerShown: false }}
-              />
-            </Stack>
-            <StatusBar style="auto" />
-          </HeroUINativeProvider>
-        </GestureHandlerRootView>
-      </ChatProvider>
-    </AuthProvider>
+    <QueryProvider>
+      <AuthProvider>
+        <ChatProvider>
+          <GestureHandlerRootView style={{ flex: 1 }} className="bg:dark">
+            <HeroUINativeProvider>
+              <BottomSheetModalProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(app)" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    name="login/index"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="signup/index"
+                    options={{ headerShown: false }}
+                  />
+                </Stack>
+                <StatusBar style="auto" />
+              </BottomSheetModalProvider>
+            </HeroUINativeProvider>
+          </GestureHandlerRootView>
+        </ChatProvider>
+      </AuthProvider>
+    </QueryProvider>
   );
 }

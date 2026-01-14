@@ -13,17 +13,13 @@ import {
   removeAuthToken,
   removeUserInfo,
 } from "@/features/auth/utils/auth-storage";
+import { unregisterDeviceOnLogout } from "@/features/notifications";
 
 interface AuthContextType {
-  /** Whether the user is authenticated */
   isAuthenticated: boolean;
-  /** Whether auth state is being loaded */
   isLoading: boolean;
-  /** Current user info if authenticated */
   user: UserInfo | null;
-  /** Clear auth state and storage (does NOT navigate - components should handle navigation) */
   signOut: () => Promise<void>;
-  /** Refresh auth state from storage */
   refreshAuth: () => Promise<void>;
 }
 
@@ -70,13 +66,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
-  /**
-   * Sign out the user - clears storage and state.
-   * NOTE: Navigation should be handled by the calling component,
-   * not by this hook. This keeps the hook decoupled from routing.
-   */
   const signOut = useCallback(async () => {
     try {
+      // Unregister device token from push notifications
+      await unregisterDeviceOnLogout();
+
+      // Clear auth data
       await removeAuthToken();
       await removeUserInfo();
       setIsAuthenticated(false);
@@ -95,10 +90,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   );
 }
 
-/**
- * Hook to access auth state and actions.
- * Must be used within an AuthProvider.
- */
 export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
   if (context === undefined) {

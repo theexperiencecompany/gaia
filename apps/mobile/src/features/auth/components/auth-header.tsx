@@ -9,7 +9,7 @@ export function AuthHeader({ title }: AuthHeaderProps) {
     <View className="items-center mb-8">
       <View className="w-17.5 h-17.5 rounded-full bg-accent-soft items-center justify-center mb-4">
         <Image
-          source={require("@/assets/logo/logo.webp")}
+          source={require("@shared/assets/logo/logo.webp")}
           className="w-12.5 h-12.5"
           resizeMode="contain"
         />
