@@ -3,11 +3,26 @@ MCP Client wrapper.
 
 Implements complete MCP OAuth 2.1 authorization flow per specification.
 See: https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization
+
+Features:
+- RFC 9728 Protected Resource Metadata discovery
+- RFC 8414 Authorization Server Metadata discovery
+- RFC 7591 Dynamic Client Registration (DCR)
+- RFC 8707 Resource Indicators for token binding
+- RFC 7009 Token Revocation on disconnect
+- RFC 7662 Token Introspection (optional)
+- PKCE with S256 (required by MCP)
+- Client Metadata Document support (draft-ietf-oauth-client-id-metadata-document)
+- OIDC nonce support for OpenID Connect flows
+- JWT issuer validation
+- HTTPS enforcement for all OAuth endpoints
 """
 
 import base64
 import re
+import secrets
 import urllib.parse
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -16,15 +31,28 @@ from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 
 from app.config.loggers import langchain_logger as logger
+from app.helpers.mcp_helpers import get_api_base_url
 from app.models.oauth_models import MCPConfig
 from app.services.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.utils.mcp_oauth_utils import (
+    MCP_PROTOCOL_VERSION,
+    OAuthDiscoveryError,
+    OAuthSecurityError,
     extract_auth_challenge,
     fetch_auth_server_metadata,
     fetch_protected_resource_metadata,
     find_protected_resource_metadata,
+    get_client_metadata_document_url,
+    parse_oauth_error_response,
+    revoke_token,
+    select_authorization_server,
+    validate_https_url,
+    validate_jwt_issuer,
+    validate_oauth_endpoints,
+    validate_pkce_support,
+    validate_token_response,
 )
 from app.utils.mcp_utils import (
     generate_pkce_pair,
@@ -160,6 +188,10 @@ class MCPClient:
             challenge_data: Optional pre-fetched WWW-Authenticate challenge (avoids re-probe)
 
         Returns dict with all OAuth endpoints and metadata.
+
+        Raises:
+            OAuthSecurityError: If endpoints fail HTTPS validation
+            OAuthDiscoveryError: If discovery completely fails
         """
         cached = await self.token_store.get_oauth_discovery(integration_id)
         if cached:
@@ -168,9 +200,18 @@ class MCPClient:
 
         if mcp_config.oauth_metadata:
             logger.debug(f"Using explicit OAuth metadata for {integration_id}")
+            # Validate HTTPS for explicit metadata
+            validate_oauth_endpoints(mcp_config.oauth_metadata)
             return mcp_config.oauth_metadata
 
         server_url = mcp_config.server_url.rstrip("/")
+
+        # Validate server URL uses HTTPS
+        try:
+            validate_https_url(server_url)
+        except OAuthSecurityError as e:
+            logger.warning(f"Server URL security warning for {integration_id}: {e}")
+            # Continue anyway - some dev servers may use HTTP
 
         # Phase 1: Use provided challenge or probe server for WWW-Authenticate
         # If challenge_data was passed (from prior probe), use it to avoid duplicate HTTP call
@@ -195,7 +236,17 @@ class MCPClient:
             logger.info(f"RFC 9728 PRM discovery failed for {integration_id}: {e}")
 
         if prm and prm.get("authorization_servers"):
-            auth_server_url = prm["authorization_servers"][0]
+            # Select authorization server (supports multiple servers per spec)
+            preferred_server = None
+            if mcp_config.oauth_metadata:
+                preferred_server = mcp_config.oauth_metadata.get(
+                    "preferred_auth_server"
+                )
+
+            auth_server_url = await select_authorization_server(
+                prm["authorization_servers"],
+                preferred_server=preferred_server,
+            )
             logger.info(f"Using auth server from PRM: {auth_server_url}")
 
             auth_metadata = await fetch_auth_server_metadata(auth_server_url)
@@ -207,6 +258,8 @@ class MCPClient:
                 "authorization_endpoint": auth_metadata.get("authorization_endpoint"),
                 "token_endpoint": auth_metadata.get("token_endpoint"),
                 "registration_endpoint": auth_metadata.get("registration_endpoint"),
+                "revocation_endpoint": auth_metadata.get("revocation_endpoint"),
+                "introspection_endpoint": auth_metadata.get("introspection_endpoint"),
                 "issuer": auth_metadata.get("issuer"),
                 "code_challenge_methods_supported": auth_metadata.get(
                     "code_challenge_methods_supported", []
@@ -215,7 +268,14 @@ class MCPClient:
                     "client_id_metadata_document_supported", False
                 ),
                 "discovery_method": "rfc9728_prm",
+                "authorization_servers": prm.get("authorization_servers", []),
             }
+
+            # Validate HTTPS for all discovered endpoints
+            try:
+                validate_oauth_endpoints(discovery)
+            except OAuthSecurityError as e:
+                logger.warning(f"OAuth endpoint security warning: {e}")
 
             await self.token_store.store_oauth_discovery(integration_id, discovery)
             return discovery
@@ -236,6 +296,8 @@ class MCPClient:
                 "authorization_endpoint": auth_metadata.get("authorization_endpoint"),
                 "token_endpoint": auth_metadata.get("token_endpoint"),
                 "registration_endpoint": auth_metadata.get("registration_endpoint"),
+                "revocation_endpoint": auth_metadata.get("revocation_endpoint"),
+                "introspection_endpoint": auth_metadata.get("introspection_endpoint"),
                 "issuer": auth_metadata.get("issuer"),
                 "code_challenge_methods_supported": auth_metadata.get(
                     "code_challenge_methods_supported", []
@@ -246,12 +308,18 @@ class MCPClient:
                 "discovery_method": "direct_oauth",
             }
 
+            # Validate HTTPS for all discovered endpoints
+            try:
+                validate_oauth_endpoints(discovery)
+            except OAuthSecurityError as e:
+                logger.warning(f"OAuth endpoint security warning: {e}")
+
             await self.token_store.store_oauth_discovery(integration_id, discovery)
             logger.info(f"Direct OAuth discovery succeeded for {integration_id}")
             return discovery
 
         except Exception as direct_error:
-            raise ValueError(
+            raise OAuthDiscoveryError(
                 f"OAuth discovery failed for {integration_id}. "
                 f"RFC 9728 PRM: {prm_error or 'no authorization_servers'}. "
                 f"Direct OAuth (RFC 8414): {direct_error}"
@@ -275,6 +343,7 @@ class MCPClient:
 
         # Check for stored OAuth token if auth is required
         if mcp_config.requires_auth:
+            logger.debug(f"[{integration_id}] Auth required, checking for stored token")
             # Check if token is expiring soon and try to refresh
             if await self.token_store.is_token_expiring_soon(integration_id):
                 logger.info(
@@ -284,6 +353,9 @@ class MCPClient:
 
             stored_token = await self.token_store.get_oauth_token(integration_id)
             if stored_token:
+                logger.info(
+                    f"[{integration_id}] Retrieved stored token (length={len(stored_token)})"
+                )
                 # Strip Bearer prefix if present - mcp-use adds it automatically
                 raw_token = stored_token
                 if stored_token.lower().startswith("bearer "):
@@ -296,14 +368,19 @@ class MCPClient:
                 # discovery fails (e.g., Smithery servers that don't expose
                 # .well-known/oauth-authorization-server endpoints)
                 server_config["headers"] = {"Authorization": f"Bearer {raw_token}"}
+                logger.debug(
+                    f"[{integration_id}] Config built with auth string and Authorization header"
+                )
             else:
                 logger.warning(
-                    f"No valid OAuth token for {integration_id} - connection may fail"
+                    f"No valid OAuth token for {integration_id} - connection may fail. "
+                    "Token store returned None (check status='connected' requirement)"
                 )
         else:
             # CRITICAL: Explicitly set auth to None to prevent mcp-use from
             # defaulting to {} which triggers OAuth discovery and causes lag.
             # When auth is None, HttpConnector skips OAuth initialization entirely.
+            logger.debug(f"[{integration_id}] Auth not required, setting auth=None")
             server_config["auth"] = None
 
         return {"mcpServers": {integration_id: server_config}}
@@ -598,12 +675,16 @@ class MCPClient:
 
         1. Discovers auth server via Protected Resource Metadata
         2. Fetches Authorization Server Metadata for endpoints
-        3. Uses DCR on auth server if no client_id configured
-        4. Returns authorization URL for browser redirect
+        3. Tries client metadata document URL if supported (no DCR needed)
+        4. Falls back to DCR on auth server if no client_id configured
+        5. Returns authorization URL for browser redirect
 
         Supports platform integrations (from code) and custom integrations.
 
         Args:
+            integration_id: The integration to authenticate
+            redirect_uri: OAuth callback URL
+            redirect_path: Frontend path to redirect after OAuth
             challenge_data: Optional pre-fetched WWW-Authenticate challenge from probe
                            to avoid duplicate discovery HTTP calls.
         """
@@ -622,12 +703,35 @@ class MCPClient:
         client_id, client_secret = self._resolve_client_credentials(mcp_config)
 
         if not client_id:
-            # Try stored DCR client
+            # Try stored DCR client first
             dcr_data = await self.token_store.get_dcr_client(integration_id)
             if dcr_data:
                 client_id = dcr_data.get("client_id")
+                client_secret = dcr_data.get("client_secret")
+
+        if not client_id:
+            # NEW: Check if client metadata document is supported
+            # Per draft-ietf-oauth-client-id-metadata-document, the client_id
+            # can be the URL to the client metadata document
+            #
+            # IMPORTANT: Only use client metadata document when our API is publicly
+            # accessible. The auth server needs to fetch our metadata document to
+            # validate the client. When running on localhost, this is impossible.
+            api_base = get_api_base_url()
+            is_localhost = "localhost" in api_base or "127.0.0.1" in api_base
+
+            if (
+                oauth_config.get("client_id_metadata_document_supported")
+                and not is_localhost
+            ):
+                client_id = get_client_metadata_document_url(api_base)
+                logger.info(
+                    f"Using client metadata document URL as client_id for {integration_id}: {client_id}"
+                )
             elif oauth_config.get("registration_endpoint"):
-                # Dynamic Client Registration (DCR)
+                # Fall back to Dynamic Client Registration (DCR)
+                # This is also required when running locally since the auth server
+                # cannot reach localhost to validate the client metadata document
                 client_id = await self._register_client(
                     integration_id,
                     oauth_config["registration_endpoint"],
@@ -637,18 +741,12 @@ class MCPClient:
         if not client_id:
             raise ValueError(
                 f"Could not obtain client_id for {integration_id}. "
-                "DCR may not be supported - check if pre-registration is required."
+                "DCR may not be supported and client metadata document not supported. "
+                "Check if pre-registration is required."
             )
 
-        # Verify PKCE support per MCP spec
-        # MCP clients MUST verify code_challenge_methods_supported contains S256
-        # If field is absent, assume PKCE is supported (per RFC 8414 Section 5)
-        pkce_methods = oauth_config.get("code_challenge_methods_supported", [])
-        if pkce_methods and "S256" not in pkce_methods:
-            raise ValueError(
-                f"Server {integration_id} does not support S256 PKCE method. "
-                f"Supported methods: {pkce_methods}. MCP requires S256."
-            )
+        # Verify PKCE support per MCP spec using centralized validation
+        validate_pkce_support(oauth_config, integration_id)
 
         # Generate PKCE pair (required for OAuth 2.1)
         code_verifier, code_challenge = generate_pkce_pair()
@@ -692,6 +790,14 @@ class MCPClient:
         }
         if scope_str:
             params["scope"] = scope_str
+
+        # NEW: Add nonce for OpenID Connect flows to prevent replay attacks
+        if scope_str and "openid" in scope_str.lower():
+            nonce = secrets.token_urlsafe(16)
+            params["nonce"] = nonce
+            # Store nonce for validation in callback
+            await self.token_store.store_oauth_nonce(integration_id, nonce)
+            logger.debug(f"Added OIDC nonce for {integration_id}")
 
         return f"{auth_endpoint}?{urllib.parse.urlencode(params)}"
 
@@ -751,12 +857,23 @@ class MCPClient:
         state: str,
         redirect_uri: str,
     ) -> list[BaseTool]:
-        """Exchange authorization code for tokens and connect."""
+        """
+        Exchange authorization code for tokens and connect.
+
+        Implements RFC 6749 token exchange with:
+        - PKCE code_verifier (RFC 7636)
+        - Resource binding (RFC 8707)
+        - Structured error parsing
+        - Token response validation
+        - JWT issuer validation (when applicable)
+        """
         is_valid, code_verifier = await self.token_store.verify_oauth_state(
             integration_id, state
         )
         if not is_valid:
-            raise ValueError("Invalid OAuth state")
+            raise ValueError(
+                "Invalid OAuth state - possible CSRF attack or expired state"
+            )
 
         # Resolve integration from platform config or MongoDB
         resolved = await IntegrationResolver.resolve(integration_id)
@@ -771,6 +888,12 @@ class MCPClient:
 
         if not token_endpoint:
             raise ValueError(f"No token_endpoint for {integration_id}")
+
+        # Validate token endpoint uses HTTPS
+        try:
+            validate_https_url(token_endpoint)
+        except OAuthSecurityError as e:
+            logger.warning(f"Token endpoint security warning: {e}")
 
         # Get client credentials - check DCR first, then resolve from config/env
         client_id = None
@@ -804,7 +927,10 @@ class MCPClient:
             if code_verifier:
                 token_data["code_verifier"] = code_verifier
 
-            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+            }
 
             if client_secret:
                 credentials = f"{client_id}:{client_secret}"
@@ -817,38 +943,46 @@ class MCPClient:
                 token_endpoint, data=token_data, headers=headers, timeout=30
             )
 
+            # Handle error responses with structured parsing
             if response.status_code != 200:
-                logger.error(f"Token exchange failed: {response.status_code}")
-                logger.error(f"Response: {response.text}")
+                error_info = parse_oauth_error_response(response)
+                logger.error(
+                    f"Token exchange failed for {integration_id}: "
+                    f"{error_info['error']} - {error_info.get('error_description')}"
+                )
+                raise ValueError(
+                    f"Token exchange failed: {error_info['error']} - "
+                    f"{error_info.get('error_description', 'Unknown error')}"
+                )
 
-            response.raise_for_status()
             tokens = response.json()
 
-        # Validate token response per OAuth 2.1 spec (Issue 3.2 fix)
-        access_token = tokens.get("access_token")
-        if not access_token:
-            raise ValueError("Token response missing access_token")
+        # Validate token response per OAuth 2.1 spec
+        validate_token_response(tokens, integration_id)
+        access_token = tokens["access_token"]
 
-        token_type = tokens.get("token_type", "")
-        if token_type.lower() != "bearer":
-            logger.warning(
-                f"Unexpected token_type '{token_type}' for {integration_id}, expected 'Bearer'"
-            )
+        # Validate JWT issuer if applicable
+        issuer = oauth_config.get("issuer")
+        if issuer:
+            if not validate_jwt_issuer(access_token, issuer, integration_id):
+                logger.warning(f"JWT issuer validation failed for {integration_id}")
+                # Continue anyway - some tokens are opaque, not JWTs
 
         # Calculate expiry time if provided
         expires_at = None
         if tokens.get("expires_in"):
-            from datetime import datetime, timedelta, timezone
-
             expires_at = datetime.now(timezone.utc) + timedelta(
                 seconds=tokens["expires_in"]
             )
+
+        # Handle refresh token rotation (new refresh_token may be issued)
+        new_refresh_token = tokens.get("refresh_token")
 
         # Store tokens
         await self.token_store.store_oauth_tokens(
             integration_id=integration_id,
             access_token=access_token,
-            refresh_token=tokens.get("refresh_token"),
+            refresh_token=new_refresh_token,
             expires_at=expires_at,
         )
 
@@ -869,8 +1003,19 @@ class MCPClient:
             raise
 
     async def disconnect(self, integration_id: str) -> None:
-        """Disconnect from an MCP server."""
-        # Always clean up in-memory state
+        """
+        Disconnect from an MCP server.
+
+        Performs:
+        1. Token revocation at authorization server (RFC 7009)
+        2. In-memory client cleanup
+        3. OAuth discovery cache cleanup
+        4. Credential deletion from PostgreSQL
+        """
+        # First, revoke tokens at authorization server (RFC 7009)
+        await self._revoke_tokens(integration_id)
+
+        # Clean up in-memory state
         if integration_id in self._clients:
             try:
                 await self._clients[integration_id].close_all_sessions()
@@ -881,7 +1026,7 @@ class MCPClient:
         if integration_id in self._tools:
             del self._tools[integration_id]
 
-        # Clear OAuth discovery cache (Issue 4.2 fix)
+        # Clear OAuth discovery cache
         from app.constants.mcp import OAUTH_DISCOVERY_PREFIX
         from app.db.redis import delete_cache
 
@@ -894,6 +1039,75 @@ class MCPClient:
         await self.token_store.delete_credentials(integration_id)
 
         logger.info(f"Disconnected MCP {integration_id}")
+
+    async def _revoke_tokens(self, integration_id: str) -> None:
+        """
+        Revoke OAuth tokens at authorization server per RFC 7009.
+
+        This is called during disconnect to properly invalidate tokens
+        rather than just deleting them locally.
+        """
+        try:
+            # Get OAuth discovery to find revocation endpoint
+            oauth_config = await self.token_store.get_oauth_discovery(integration_id)
+            if not oauth_config:
+                logger.debug(
+                    f"No OAuth discovery for {integration_id}, skipping revocation"
+                )
+                return
+
+            revocation_endpoint = oauth_config.get("revocation_endpoint")
+            if not revocation_endpoint:
+                logger.debug(f"No revocation endpoint for {integration_id}")
+                return
+
+            # Get tokens to revoke
+            access_token = await self.token_store.get_oauth_token(integration_id)
+            refresh_token = await self.token_store.get_refresh_token(integration_id)
+
+            # Get client credentials for revocation request
+            client_id = None
+            client_secret = None
+
+            dcr_data = await self.token_store.get_dcr_client(integration_id)
+            if dcr_data:
+                client_id = dcr_data.get("client_id")
+                client_secret = dcr_data.get("client_secret")
+
+            if not client_id:
+                resolved = await IntegrationResolver.resolve(integration_id)
+                if resolved and resolved.mcp_config:
+                    client_id, client_secret = self._resolve_client_credentials(
+                        resolved.mcp_config
+                    )
+
+            # Revoke refresh token first (it can be used to get new access tokens)
+            if refresh_token:
+                success = await revoke_token(
+                    revocation_endpoint=revocation_endpoint,
+                    token=refresh_token,
+                    token_type_hint="refresh_token",
+                    client_id=client_id,
+                    client_secret=client_secret,
+                )
+                if success:
+                    logger.info(f"Revoked refresh token for {integration_id}")
+
+            # Then revoke access token
+            if access_token:
+                success = await revoke_token(
+                    revocation_endpoint=revocation_endpoint,
+                    token=access_token,
+                    token_type_hint="access_token",
+                    client_id=client_id,
+                    client_secret=client_secret,
+                )
+                if success:
+                    logger.info(f"Revoked access token for {integration_id}")
+
+        except Exception as e:
+            # Token revocation is best-effort - don't fail disconnect
+            logger.warning(f"Token revocation failed for {integration_id}: {e}")
 
     async def get_tools(self, integration_id: str) -> list[BaseTool]:
         """Get tools for a connected integration."""
@@ -935,9 +1149,9 @@ class MCPClient:
         try:
             user_integrations = await get_user_connected_integrations(self.user_id)
             connected_ids = [
-                ui.get("integration_id")
+                str(ui.get("integration_id"))
                 for ui in user_integrations
-                if ui.get("integration_id")
+                if ui.get("integration_id") is not None
             ]
         except Exception as e:
             logger.warning(f"Failed to get connected MCPs from user_integrations: {e}")

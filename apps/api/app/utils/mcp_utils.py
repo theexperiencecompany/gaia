@@ -39,6 +39,7 @@ def wrap_tool_with_null_filter(tool: BaseTool) -> BaseTool:
         "Expected string, received null"
 
     This wrapper intercepts the _arun call and filters out None values.
+    It also handles errors from MCP servers gracefully.
     """
     original_arun = tool._arun
 
@@ -48,7 +49,27 @@ def wrap_tool_with_null_filter(tool: BaseTool) -> BaseTool:
         logger.debug(
             f"MCP tool '{tool.name}': original args={kwargs}, filtered={filtered_kwargs}"
         )
-        return await original_arun(**filtered_kwargs)
+        try:
+            result = await original_arun(**filtered_kwargs)
+
+            # Check if result contains an error message from MCP server
+            if isinstance(result, str) and "Error" in result:
+                logger.warning(f"MCP tool '{tool.name}' returned error: {result}")
+
+            return result
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"MCP tool '{tool.name}' failed: {error_msg}")
+
+            # Provide helpful error message for common MCP errors
+            if "Cannot read properties of undefined" in error_msg:
+                return f"The MCP server encountered an internal error while processing your request. This is typically a bug in the MCP server implementation. Error: {error_msg}"
+            elif "timeout" in error_msg.lower():
+                return f"The MCP server timed out. Please try again. Error: {error_msg}"
+            elif "401" in error_msg or "unauthorized" in error_msg.lower():
+                return f"Authentication required for this MCP tool. Please reconnect the integration. Error: {error_msg}"
+            else:
+                return f"MCP tool error: {error_msg}"
 
     tool._arun = filtered_arun  # type: ignore[method-assign]
     return tool

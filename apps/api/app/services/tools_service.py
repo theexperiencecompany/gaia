@@ -123,34 +123,9 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
         global_mcp_tools = {}
         custom_integrations = []
 
-    # Process global MCP tools
-    if global_mcp_tools:
-        for integration_id, tools in global_mcp_tools.items():
-            if integration_id in seen_integrations:
-                continue
-
-            for tool in tools:
-                tool_name = tool["name"]
-                # Skip duplicate tool names
-                if tool_name in seen_tool_names:
-                    logger.debug(
-                        f"Skipping duplicate tool from MCP {integration_id}: {tool_name}"
-                    )
-                    continue
-                seen_tool_names.add(tool_name)
-
-                tool_info = ToolInfo(
-                    name=tool_name,
-                    category=integration_id,
-                    integration_name=get_integration_name(integration_id),
-                    required_integration=integration_id,
-                )
-                tool_infos.append(tool_info)
-                categories.add(integration_id)
-
-            seen_integrations.add(integration_id)
-
-    # Process user's custom MCP tools (already fetched in parallel above)
+    # Process user's custom MCP tools FIRST (to get proper metadata like name, icon)
+    # This must happen before global MCP tools, otherwise custom integrations get
+    # overwritten with incomplete metadata (null integration_name, category_display_name)
     for custom in custom_integrations:
         integration_id = custom.get("integration_id")
         if integration_id in seen_integrations:
@@ -188,6 +163,34 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
 
         logger.info(f"Added {len(custom_tools)} tools from custom MCP {integration_id}")
         seen_integrations.add(integration_id)
+
+    # Process global MCP tools (platform integrations like Linear, Notion, etc.)
+    # Custom integrations are already processed above with proper metadata
+    if global_mcp_tools:
+        for integration_id, tools in global_mcp_tools.items():
+            if integration_id in seen_integrations:
+                continue
+
+            for tool in tools:
+                tool_name = tool["name"]
+                # Skip duplicate tool names
+                if tool_name in seen_tool_names:
+                    logger.debug(
+                        f"Skipping duplicate tool from MCP {integration_id}: {tool_name}"
+                    )
+                    continue
+                seen_tool_names.add(tool_name)
+
+                tool_info = ToolInfo(
+                    name=tool_name,
+                    category=integration_id,
+                    integration_name=get_integration_name(integration_id),
+                    required_integration=integration_id,
+                )
+                tool_infos.append(tool_info)
+                categories.add(integration_id)
+
+            seen_integrations.add(integration_id)
 
     return ToolsListResponse(
         tools=tool_infos,

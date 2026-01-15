@@ -361,7 +361,17 @@ async def create_custom_mcp_integration(
                 status="failed", error=probe_result["error"]
             )
         elif probe_result.get("requires_auth"):
-            # Probe detected OAuth requirement
+            # Probe detected OAuth requirement - update the stored integration
+            # This ensures mcp_config.requires_auth is correct when connecting later
+            await mcp_client.update_integration_auth_status(
+                integration.integration_id,
+                requires_auth=True,
+                auth_type=probe_result.get("auth_type", "oauth"),
+            )
+            logger.info(
+                f"[{integration.integration_id}] Probe detected OAuth, "
+                f"updated integration requires_auth=True"
+            )
             connection_result = await build_oauth_result()
         else:
             # Probe says no auth required - try to connect
@@ -373,7 +383,16 @@ async def create_custom_mcp_integration(
                 )
             except OAuthAuthenticationError:
                 # mcp-use detected OAuth requirement at runtime (probe missed it)
-                logger.info(f"OAuth required for {integration.integration_id}")
+                # Update the stored integration so future connects know auth is required
+                await mcp_client.update_integration_auth_status(
+                    integration.integration_id,
+                    requires_auth=True,
+                    auth_type="oauth",
+                )
+                logger.info(
+                    f"[{integration.integration_id}] mcp-use detected OAuth at runtime, "
+                    "updated integration requires_auth=True"
+                )
                 connection_result = await build_oauth_result()
             except Exception as conn_err:
                 logger.warning(f"Connect failed: {conn_err}")

@@ -22,7 +22,7 @@ from app.constants.mcp import (
     OAUTH_STATE_TTL,
 )
 from app.db.postgresql import get_db_session
-from app.db.redis import get_and_delete_cache, get_cache, set_cache
+from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
 from app.models.oauth_models import MCPCredential
 
 
@@ -71,15 +71,27 @@ class MCPTokenStore:
     async def get_oauth_token(self, integration_id: str) -> Optional[str]:
         """Get decrypted OAuth access token if not expired."""
         cred = await self.get_credential(integration_id)
-        if cred and cred.access_token and cred.status == "connected":
-            # Check if token is expired
-            if cred.token_expires_at and cred.token_expires_at < datetime.now(
-                timezone.utc
-            ):
-                logger.warning(f"OAuth token expired for {integration_id}")
-                return None
-            return self._decrypt(cred.access_token)
-        return None
+        if not cred:
+            logger.debug(f"[{integration_id}] No credential record found in DB")
+            return None
+
+        if not cred.access_token:
+            logger.debug(f"[{integration_id}] Credential exists but no access_token")
+            return None
+
+        if cred.status != "connected":
+            logger.debug(
+                f"[{integration_id}] Credential status is '{cred.status}', expected 'connected'"
+            )
+            return None
+
+        # Check if token is expired
+        if cred.token_expires_at and cred.token_expires_at < datetime.now(timezone.utc):
+            logger.warning(f"OAuth token expired for {integration_id}")
+            return None
+
+        logger.debug(f"[{integration_id}] Returning decrypted OAuth token")
+        return self._decrypt(cred.access_token)
 
     async def get_refresh_token(self, integration_id: str) -> Optional[str]:
         """Get decrypted refresh token."""
@@ -394,3 +406,91 @@ class MCPTokenStore:
             except json.JSONDecodeError:
                 return None
         return None
+
+    async def store_oauth_nonce(self, integration_id: str, nonce: str) -> None:
+        """
+        Store OIDC nonce for validation in callback.
+
+        Per OpenID Connect spec, the nonce is used to associate a client session
+        with an ID Token and to mitigate replay attacks.
+
+        TTL: Same as OAuth state (10 minutes)
+        """
+        cache_key = f"mcp_oauth_nonce:{self.user_id}:{integration_id}"
+        await set_cache(cache_key, nonce, ttl=OAUTH_STATE_TTL)
+        logger.debug(f"Stored OIDC nonce for {integration_id}")
+
+    async def get_and_delete_oauth_nonce(self, integration_id: str) -> Optional[str]:
+        """
+        Get and delete OIDC nonce (atomic operation).
+
+        Returns the nonce if found, None otherwise.
+        """
+        cache_key = f"mcp_oauth_nonce:{self.user_id}:{integration_id}"
+        return await get_and_delete_cache(cache_key)
+
+    async def introspect_token(
+        self,
+        integration_id: str,
+        client_id: Optional[str] = None,
+        client_secret: Optional[str] = None,
+    ) -> Optional[dict]:
+        """
+        Introspect token at authorization server per RFC 7662.
+
+        Returns introspection response with 'active' field, or None if failed.
+        """
+        from app.utils.mcp_oauth_utils import introspect_token as do_introspect
+
+        oauth_config = await self.get_oauth_discovery(integration_id)
+        if not oauth_config:
+            return None
+
+        introspection_endpoint = oauth_config.get("introspection_endpoint")
+        if not introspection_endpoint:
+            return None
+
+        access_token = await self.get_oauth_token(integration_id)
+        if not access_token:
+            return None
+
+        return await do_introspect(
+            introspection_endpoint=introspection_endpoint,
+            token=access_token,
+            token_type_hint="access_token",
+            client_id=client_id,
+            client_secret=client_secret,
+        )
+
+    async def delete_oauth_discovery(self, integration_id: str) -> bool:
+        """
+        Delete OAuth discovery cache for an integration.
+
+        Use this to force re-discovery of OAuth endpoints, for example
+        when the auth server configuration has changed.
+
+        Returns True if cache was deleted, False if not found.
+        """
+        cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
+        result = await delete_cache(cache_key)
+        if result:
+            logger.info(f"Deleted OAuth discovery cache for {integration_id}")
+        return result or False
+
+    async def cleanup_integration(self, integration_id: str) -> None:
+        """
+        Clean up all OAuth-related data for an integration.
+
+        This removes:
+        - OAuth discovery cache (Redis)
+        - Stored credentials (PostgreSQL)
+
+        Use when an integration is removed or when OAuth needs to be reset.
+        """
+        # Delete discovery cache
+        await self.delete_oauth_discovery(integration_id)
+
+        # Delete stored credentials
+        await self.delete_credentials(integration_id)
+
+        logger.info(f"Cleaned up all OAuth data for {integration_id}")
