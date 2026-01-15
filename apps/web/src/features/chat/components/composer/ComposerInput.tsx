@@ -23,6 +23,7 @@ interface SearchbarInputProps {
   onHeightChange: (height: number) => void;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   onSlashCommandSelect?: (toolName: string, toolCategory: string) => void;
+  onIntegrationClick?: (integrationId: string) => void;
 }
 
 export interface ComposerInputRef {
@@ -42,6 +43,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
       inputRef,
       hasMessages: _hasMessages,
       onSlashCommandSelect,
+      onIntegrationClick,
     },
     ref,
   ) => {
@@ -551,6 +553,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
               };
             });
           }}
+          onIntegrationClick={onIntegrationClick}
         />
       </>
     );

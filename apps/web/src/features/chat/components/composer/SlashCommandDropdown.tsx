@@ -44,6 +44,7 @@ interface VirtualizedItemProps {
   onClose: () => void;
   measureElement: (element: HTMLElement | null) => void;
   categoryDisplayMap: Record<string, { displayName: string; iconUrl?: string }>;
+  onIntegrationClick?: (integrationId: string) => void;
 }
 
 const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
@@ -57,6 +58,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
   onClose,
   measureElement,
   categoryDisplayMap,
+  onIntegrationClick,
 }) => {
   const baseStyle = {
     transform: `translateY(${virtualRow.start}px)`,
@@ -71,7 +73,11 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
         className="absolute top-0 left-0 w-full"
         style={baseStyle}
       >
-        <IntegrationsCard onClose={onClose} size="small" />
+        <IntegrationsCard
+          onClose={onClose}
+          size="small"
+          onIntegrationClick={onIntegrationClick}
+        />
       </div>
     );
   }
@@ -189,6 +195,7 @@ interface SlashCommandDropdownProps {
   onCategoryChange?: (category: string) => void;
   onNavigateUp?: () => void;
   onNavigateDown?: () => void;
+  onIntegrationClick?: (integrationId: string) => void;
 }
 
 const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
@@ -204,6 +211,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   onCategoryChange,
   onNavigateUp,
   onNavigateDown,
+  onIntegrationClick,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -679,6 +687,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                       onClose={onClose}
                       measureElement={rowVirtualizer.measureElement}
                       categoryDisplayMap={categoryDisplayMap}
+                      onIntegrationClick={onIntegrationClick}
                     />
                   );
                 })}

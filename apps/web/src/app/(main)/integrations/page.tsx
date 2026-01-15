@@ -111,7 +111,7 @@ export default function IntegrationsPage() {
   const [bearerIntegrationName, setBearerIntegrationName] =
     useState<string>("");
 
-  // Handle query params from backend redirects
+  // Handle query params from backend redirects (status, oauth_success, etc.)
   useEffect(() => {
     const status = searchParams.get("status");
     const integrationId = searchParams.get("id");
@@ -181,6 +181,22 @@ export default function IntegrationsPage() {
     },
     [openRightSidebar],
   );
+
+  // Handle standalone id param (from slash command dropdown navigation)
+  // Separated from the main useEffect to avoid using handleIntegrationClick before declaration
+  useEffect(() => {
+    const status = searchParams.get("status");
+    const integrationId = searchParams.get("id");
+    const oauthSuccess = searchParams.get("oauth_success");
+
+    // Only process if we have an id and no status/oauth params (to avoid double-processing)
+    if (integrationId && !status && !oauthSuccess) {
+      // Clear the URL param first to prevent re-triggering
+      router.replace("/integrations", { scroll: false });
+      // Open the sidebar for this integration
+      handleIntegrationClick(integrationId);
+    }
+  }, [searchParams, router, handleIntegrationClick]);
 
   // Handler for pressing Enter in search input
   const handleEnterSearch = useCallback(() => {

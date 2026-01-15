@@ -76,23 +76,18 @@ const IntegrationItem: React.FC<{
             <span className="h-2 w-2 rounded-full bg-warning mr-2" />
           )}
 
-          {/* Connect button - only show for integrations that require auth */}
-          {!(
-            integration.managedBy === "mcp" && integration.authType === "none"
-          ) &&
-            isAvailable &&
-            !isConnected &&
-            integration.status !== "created" && (
-              <Button
-                size="sm"
-                variant="flat"
-                color="primary"
-                className="text-xs text-primary"
-                onPress={handleConnectClick}
-              >
-                Connect
-              </Button>
-            )}
+          {/* Connect button */}
+          {isAvailable && !isConnected && integration.status !== "created" && (
+            <Button
+              size="sm"
+              variant="flat"
+              color="primary"
+              className="text-xs text-primary"
+              onPress={handleConnectClick}
+            >
+              Connect
+            </Button>
+          )}
         </div>
       </div>
     </div>
