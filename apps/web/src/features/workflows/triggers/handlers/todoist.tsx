@@ -1,8 +1,8 @@
 /**
- * Gmail Trigger Handler
+ * Todoist Trigger Handler
  *
- * Handles UI configuration for Gmail/email triggers.
- * This is a simple trigger with no additional configuration needed.
+ * Handles UI configuration for Todoist triggers.
+ * Simple trigger with no additional configuration needed.
  */
 
 import type { RegisteredHandler } from "../registry";
@@ -12,8 +12,8 @@ import type { TriggerConfig } from "../types";
 // HANDLER DEFINITION
 // =============================================================================
 
-export const gmailTriggerHandler: RegisteredHandler = {
-  triggerSlugs: ["gmail_new_message", "email"],
+export const todoistTriggerHandler: RegisteredHandler = {
+  triggerSlugs: ["todoist_new_task_created"],
 
   createDefaultConfig: (slug: string): TriggerConfig => ({
     type: "integration",
@@ -24,11 +24,11 @@ export const gmailTriggerHandler: RegisteredHandler = {
     },
   }),
 
-  // No custom settings component needed - Gmail triggers are simple
+  // No custom settings component needed - simple trigger
   SettingsComponent: undefined,
 
   getDisplayInfo: () => ({
-    label: "on new emails",
-    integrationId: "gmail",
+    label: "on new task",
+    integrationId: "todoist",
   }),
 };

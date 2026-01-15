@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Set
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import GmailNewMessagePayload
-from app.models.workflow_models import TriggerType, Workflow
+from app.models.trigger_configs import GmailNewMessageConfig
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.triggers.base import TriggerHandler
 
 
@@ -33,12 +34,23 @@ class GmailTriggerHandler(TriggerHandler):
         user_id: str,
         workflow_id: str,
         trigger_name: str,
-        config: Dict[str, Any],
+        trigger_config: TriggerConfig,
     ) -> List[str]:
         """Gmail triggers are automatically handled by Composio connection.
 
         No explicit registration needed - triggers fire on connected account.
         """
+        trigger_data = trigger_config.trigger_data
+
+        # Validate trigger_data type if provided
+        if trigger_data is not None and not isinstance(
+            trigger_data, GmailNewMessageConfig
+        ):
+            raise TypeError(
+                f"Expected GmailNewMessageConfig for trigger '{trigger_name}', "
+                f"but got {type(trigger_data).__name__}"
+            )
+
         logger.info(f"Gmail trigger enabled for workflow {workflow_id}")
         return []  # No explicit trigger IDs for Gmail
 
@@ -62,7 +74,8 @@ class GmailTriggerHandler(TriggerHandler):
             query = {
                 "user_id": user_id,
                 "activated": True,
-                "trigger_config.type": TriggerType.EMAIL,
+                "trigger_config.type": TriggerType.INTEGRATION,
+                "trigger_config.trigger_name": {"$in": self.SUPPORTED_TRIGGERS},
                 "trigger_config.enabled": True,
             }
 

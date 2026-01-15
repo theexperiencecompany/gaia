@@ -15,7 +15,13 @@ from app.models.composio_schemas import (
     GitHubPullRequestEventPayload,
     GitHubStarAddedEventPayload,
 )
-from app.models.workflow_models import TriggerType, Workflow
+from app.models.trigger_configs import (
+    GitHubCommitEventConfig,
+    GitHubIssueAddedConfig,
+    GitHubPrEventConfig,
+    GitHubStarAddedConfig,
+)
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from composio.types import ToolExecutionResponse
@@ -114,7 +120,7 @@ class GitHubTriggerHandler(TriggerHandler):
         user_id: str,
         workflow_id: str,
         trigger_name: str,
-        config: Dict[str, Any],
+        trigger_config: TriggerConfig,
     ) -> List[str]:
         """Register GitHub triggers."""
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
@@ -122,35 +128,86 @@ class GitHubTriggerHandler(TriggerHandler):
             logger.error(f"Unknown GitHub trigger: {trigger_name}")
             return []
 
-        composio = get_composio_service()
+        trigger_data = trigger_config.trigger_data
 
-        # Get config from trigger_data
-        trigger_data = config.get("trigger_data", {})
-        trigger_config: Dict[str, Any] = {}
-
-        if "owner" in trigger_data and "repo" in trigger_data:
-            trigger_config["owner"] = trigger_data["owner"]
-            trigger_config["repo"] = trigger_data["repo"]
-
-        try:
-            result = await asyncio.to_thread(
-                composio.composio.triggers.create,
-                user_id=user_id,
-                slug=composio_slug,
-                trigger_config=trigger_config,
-            )
-
-            if result and hasattr(result, "trigger_id"):
-                logger.info(
-                    f"Registered {composio_slug} for user {user_id}: {result.trigger_id}"
+        # Validate trigger_data type based on trigger_name
+        if trigger_name == "github_commit_event":
+            if not isinstance(trigger_data, GitHubCommitEventConfig):
+                raise TypeError(
+                    f"Expected GitHubCommitEventConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
                 )
-                return [result.trigger_id]
-
+        elif trigger_name == "github_pr_event":
+            if not isinstance(trigger_data, GitHubPrEventConfig):
+                raise TypeError(
+                    f"Expected GitHubPrEventConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+        elif trigger_name == "github_star_added":
+            if not isinstance(trigger_data, GitHubStarAddedConfig):
+                raise TypeError(
+                    f"Expected GitHubStarAddedConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+        elif trigger_name == "github_issue_added":
+            if not isinstance(trigger_data, GitHubIssueAddedConfig):
+                raise TypeError(
+                    f"Expected GitHubIssueAddedConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+        else:
+            logger.error(f"Unknown GitHub trigger: {trigger_name}")
             return []
 
-        except Exception as e:
-            logger.error(f"Failed to register GitHub trigger {trigger_name}: {e}")
-            return []
+        # Build list of registration tasks for parallel execution
+        async def register_single_repo(repo_full_name: str) -> Optional[str]:
+            """Register trigger for a single repo, returns trigger_id or None."""
+            owner = ""
+            repo = ""
+            if "/" in repo_full_name:
+                parts = repo_full_name.split("/")
+                if len(parts) == 2:
+                    owner = parts[0]
+                    repo = parts[1]
+
+            if not owner or not repo:
+                return None
+
+            composio_trigger_config = {"owner": owner, "repo": repo}
+            composio = get_composio_service()
+
+            try:
+                result = await asyncio.to_thread(
+                    composio.composio.triggers.create,
+                    user_id=user_id,
+                    slug=composio_slug,
+                    trigger_config=composio_trigger_config,
+                )
+
+                if result and hasattr(result, "trigger_id"):
+                    logger.info(
+                        f"Registered {composio_slug} for user {user_id} repo {repo_full_name}: {result.trigger_id}"
+                    )
+                    return result.trigger_id
+            except Exception as e:
+                logger.error(
+                    f"Failed to register GitHub trigger {trigger_name} for {repo_full_name}: {e}"
+                )
+            return None
+
+        # Execute all registrations in parallel
+        tasks = [register_single_repo(repo) for repo in trigger_data.repos]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Collect successful trigger IDs
+        trigger_ids = []
+        for result in results:
+            if isinstance(result, str):
+                trigger_ids.append(result)
+            elif isinstance(result, Exception):
+                logger.error(f"Trigger registration failed with exception: {result}")
+
+        return trigger_ids
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
@@ -172,7 +229,7 @@ class GitHubTriggerHandler(TriggerHandler):
 
             query = {
                 "activated": True,
-                "trigger_config.type": TriggerType.APP,
+                "trigger_config.type": TriggerType.INTEGRATION,
                 "trigger_config.enabled": True,
                 "trigger_config.composio_trigger_ids": trigger_id,
             }

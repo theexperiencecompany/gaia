@@ -15,7 +15,11 @@ from app.models.composio_schemas import (
     GoogleSheetsSearchSpreadsheetsData,
     GoogleSheetsSearchSpreadsheetsInput,
 )
-from app.models.workflow_models import TriggerType, Workflow
+from app.models.trigger_configs import (
+    GoogleSheetsNewRowConfig,
+    GoogleSheetsNewSheetConfig,
+)
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from composio.types import ToolExecutionResponse
@@ -73,7 +77,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                     return []
 
                 # Invoke tool with typed input
-                input_model = GoogleSheetsSearchSpreadsheetsInput(max_results=100)
+                input_model = GoogleSheetsSearchSpreadsheetsInput(maxResults=100)
                 result: ToolExecutionResponse = await asyncio.to_thread(
                     tool.invoke,
                     input_model.model_dump(exclude_none=True, by_alias=True),
@@ -182,7 +186,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         user_id: str,
         workflow_id: str,
         trigger_name: str,
-        config: Dict[str, Any],
+        trigger_config: TriggerConfig,
     ) -> List[str]:
         """Register Google Sheets triggers with multi-select support."""
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
@@ -191,19 +195,36 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
             return []
 
         composio = get_composio_service()
+        trigger_data = trigger_config.trigger_data
 
-        # Get config from trigger_data
-        trigger_data = config.get("trigger_data", {})
+        # Validate and narrow type based on trigger_name
+        if trigger_name == "google_sheets_new_row":
+            if not isinstance(trigger_data, GoogleSheetsNewRowConfig):
+                raise TypeError(
+                    f"Expected GoogleSheetsNewRowConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+            spreadsheet_ids_str = trigger_data.spreadsheet_ids
+            sheet_names_str = trigger_data.sheet_names
+        elif trigger_name == "google_sheets_new_sheet":
+            if not isinstance(trigger_data, GoogleSheetsNewSheetConfig):
+                raise TypeError(
+                    f"Expected GoogleSheetsNewSheetConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+            spreadsheet_ids_str = trigger_data.spreadsheet_ids
+            sheet_names_str = ""
+        else:
+            logger.error(f"Unknown trigger name: {trigger_name}")
+            return []
 
         # Parse comma-separated IDs
-        spreadsheet_ids_str = trigger_data.get("spreadsheet_ids", "")
         spreadsheet_ids = (
             [s.strip() for s in spreadsheet_ids_str.split(",") if s.strip()]
             if spreadsheet_ids_str
             else []
         )
 
-        sheet_names_str = trigger_data.get("sheet_names", "")
         sheet_names = (
             [s.strip() for s in sheet_names_str.split(",") if s.strip()]
             if sheet_names_str
@@ -213,7 +234,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         # Register triggers for each combination
         trigger_ids = []
         spreadsheets_to_monitor = (
-            spreadsheet_ids if spreadsheet_ids else [None]
+            spreadsheet_ids if spreadsheet_ids else [None]  # type: ignore
         )  # None = all
 
         for spreadsheet_id in spreadsheets_to_monitor:
@@ -228,41 +249,40 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
             if trigger_name == "google_sheets_new_row" and sheet_names:
                 # Register for each sheet
                 for sheet_name in sheet_names:
-                    trigger_config: Dict[str, Any] = {}
+                    composio_trigger_config: Dict[str, Any] = {}
                     if spreadsheet_id:
-                        trigger_config["spreadsheet_id"] = spreadsheet_id
+                        composio_trigger_config["spreadsheet_id"] = spreadsheet_id
                     if sheet_name:
-                        trigger_config["sheet_name"] = sheet_name
+                        composio_trigger_config["sheet_name"] = sheet_name
 
                     trigger_id = await self._register_single_trigger(
-                        composio, user_id, composio_slug, trigger_config
+                        composio, user_id, composio_slug, composio_trigger_config
                     )
                     if trigger_id:
                         trigger_ids.append(trigger_id)
             else:
                 # Register for spreadsheet only
-                trigger_config = (
+                composio_trigger_config = (
                     {"spreadsheet_id": spreadsheet_id} if spreadsheet_id else {}
                 )
-                trigger_id = await self._register_single_trigger(
-                    composio, user_id, composio_slug, trigger_config
+                trigger_id = self._register_single_trigger_sync(
+                    composio, user_id, composio_slug, composio_trigger_config
                 )
                 if trigger_id:
                     trigger_ids.append(trigger_id)
 
         return trigger_ids
 
-    async def _register_single_trigger(
+    def _register_single_trigger_sync(
         self,
         composio,
         user_id: str,
         composio_slug: str,
         trigger_config: Dict[str, Any],
     ) -> Optional[str]:
-        """Register a single trigger with Composio."""
+        """Register a single trigger with Composio synchronously."""
         try:
-            result = await asyncio.to_thread(
-                composio.composio.triggers.create,
+            result = composio.composio.triggers.create(
                 user_id=user_id,
                 slug=composio_slug,
                 trigger_config=trigger_config,
@@ -280,6 +300,33 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
             logger.error(f"Failed to register trigger {composio_slug}: {e}")
             return None
 
+    async def _register_single_trigger(
+        self,
+        composio,
+        user_id: str,
+        composio_slug: str,
+        trigger_config: Dict[str, Any],
+    ) -> Optional[str]:
+        """Register a single trigger with Composio asynchronously."""
+        try:
+            result = await asyncio.to_thread(
+                composio.composio.triggers.create,
+                user_id=user_id,
+                slug=composio_slug,
+                trigger_config=trigger_config,
+            )
+
+            if result and hasattr(result, "trigger_id"):
+                logger.info(
+                    f"Registered {composio_slug} for user {user_id}: {result.trigger_id}"
+                )
+                return result.trigger_id
+
+        except Exception as e:
+            logger.error(f"Failed to register trigger {composio_slug}: {e}")
+
+        return None
+
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
     ) -> List[Workflow]:
@@ -287,7 +334,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         try:
             query = {
                 "activated": True,
-                "trigger_config.type": TriggerType.APP,
+                "trigger_config.type": TriggerType.INTEGRATION,
                 "trigger_config.enabled": True,
                 "trigger_config.composio_trigger_ids": trigger_id,
             }

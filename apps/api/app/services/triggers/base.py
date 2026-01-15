@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Set
 
 from app.config.loggers import general_logger as logger
-from app.models.workflow_models import Workflow
+from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 
 
@@ -44,7 +44,7 @@ class TriggerHandler(ABC):
         user_id: str,
         workflow_id: str,
         trigger_name: str,
-        config: Dict[str, Any],
+        trigger_config: TriggerConfig,
     ) -> List[str]:
         """Register triggers for a workflow.
 
@@ -52,7 +52,7 @@ class TriggerHandler(ABC):
             user_id: The user ID
             workflow_id: The workflow ID
             trigger_name: The trigger name (e.g., 'calendar_event_created')
-            config: Provider-specific config from trigger_data
+            trigger_config: The complete TriggerConfig with typed trigger_data
 
         Returns:
             List of Composio trigger IDs that were registered

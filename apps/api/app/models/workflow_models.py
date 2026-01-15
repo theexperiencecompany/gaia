@@ -18,13 +18,16 @@ from app.utils.cron_utils import get_next_run_time
 
 
 class TriggerType(str, Enum):
-    """Type of workflow trigger."""
+    """Type of workflow trigger.
+
+    - MANUAL: Triggered by user action
+    - SCHEDULE: Triggered by cron schedule
+    - INTEGRATION: Triggered by external service (calendar, email, github, etc.)
+    """
 
     MANUAL = "manual"
     SCHEDULE = "schedule"
-    EMAIL = "email"
-    CALENDAR = "calendar"
-    APP = "app"
+    INTEGRATION = "integration"
 
 
 class WorkflowStep(BaseModel):

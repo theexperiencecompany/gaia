@@ -12,6 +12,7 @@
 
 import type { ComponentType } from "react";
 import {
+  asanaTriggerHandler,
   calendarTriggerHandler,
   githubTriggerHandler,
   gmailTriggerHandler,
@@ -22,6 +23,7 @@ import {
   notionTriggerHandler,
   scheduleTriggerHandler,
   slackTriggerHandler,
+  todoistTriggerHandler,
 } from "./handlers";
 import type { TriggerConfig, TriggerSchema } from "./types";
 
@@ -78,6 +80,7 @@ export interface RegisteredHandler {
  * 2. Add to this array
  */
 const handlers: RegisteredHandler[] = [
+  asanaTriggerHandler,
   calendarTriggerHandler,
   githubTriggerHandler,
   gmailTriggerHandler,
@@ -88,6 +91,7 @@ const handlers: RegisteredHandler[] = [
   notionTriggerHandler,
   scheduleTriggerHandler,
   slackTriggerHandler,
+  todoistTriggerHandler,
 ];
 
 /**

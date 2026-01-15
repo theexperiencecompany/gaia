@@ -48,6 +48,7 @@ import {
 import { useWorkflowModalStore } from "../stores/workflowModalStore";
 import { useWorkflowsStore } from "../stores/workflowsStore";
 import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
+import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
 import { ScheduleBuilder } from "./ScheduleBuilder";
 import WorkflowSteps from "./shared/WorkflowSteps";
 import { TriggerConfigForm } from "./TriggerConfigForm";
@@ -139,18 +140,46 @@ export default function WorkflowModal({
   // Platform detection for keyboard shortcuts
   const { modifierKeyName } = usePlatform();
 
-  // Check if save button should be disabled (used for hotkey)
+  // Check if save button should be disabled (used for hotkey and button)
   const isSaveDisabled = useCallback(() => {
-    return (
-      !formData.title.trim() ||
-      !formData.description.trim() ||
-      (formData.activeTab === "schedule" &&
-        formData.trigger_config.type === "schedule" &&
-        !formData.trigger_config.cron_expression) ||
-      (mode === "edit" && !hasFormChanges()) ||
-      isCreating
-    );
-  }, [formData, mode, isCreating]);
+    if (!formData.title.trim() || !formData.description.trim()) {
+      return true;
+    }
+
+    if (
+      formData.activeTab === "schedule" &&
+      formData.trigger_config.type === "schedule" &&
+      !formData.trigger_config.cron_expression
+    ) {
+      // Schedule tab requires cron expression
+      return true;
+    }
+
+    if (formData.activeTab === "trigger" && !formData.selectedTrigger) {
+      // Trigger tab requires a trigger to be selected
+      return true;
+    }
+
+    if (
+      isIntegrationTrigger(formData.trigger_config) &&
+      !hasValidTriggerName(formData.trigger_config)
+    ) {
+      // Integration triggers MUST have a valid trigger_name
+      return true;
+    }
+
+    if (mode === "edit" && !hasFormChanges()) {
+      // Edit mode requires changes
+      return true;
+    }
+
+    if (isCreating) {
+      // Block while creating
+      return true;
+    }
+
+    return false;
+  }, [formData, mode, isCreating, existingWorkflow]);
 
   // Keyboard shortcut: Escape to close modal
   useHotkeys(
@@ -934,14 +963,7 @@ export default function WorkflowModal({
                         color="primary"
                         onPress={() => handleSubmit(handleSave)()}
                         isLoading={isCreating}
-                        isDisabled={
-                          !formData.title.trim() ||
-                          !formData.description.trim() ||
-                          (formData.activeTab === "schedule" &&
-                            formData.trigger_config.type === "schedule" &&
-                            !formData.trigger_config.cron_expression) ||
-                          (mode === "edit" && !hasFormChanges())
-                        }
+                        isDisabled={isSaveDisabled()}
                         endContent={
                           !isCreating && (
                             <Kbd keys={[modifierKeyName, "enter"]} />

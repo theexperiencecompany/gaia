@@ -216,7 +216,7 @@ export const calendarTriggerHandler: RegisteredHandler = {
     }
 
     return {
-      type: "calendar",
+      type: "integration",
       enabled: true,
       trigger_name: slug,
       trigger_data: baseTriggerData,

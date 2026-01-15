@@ -45,7 +45,13 @@ export function getTriggerDisplayInfo(
   integration: Integration | null;
 } {
   const { trigger_config } = workflow;
-  const handler = getTriggerHandler(trigger_config.type);
+
+  // Try to get handler using trigger_name (specific slug) first, then fallback to type (generic)
+  const triggerSlug = (trigger_config.trigger_name ||
+    trigger_config.trigger_slug ||
+    trigger_config.type) as string;
+
+  const handler = getTriggerHandler(triggerSlug);
 
   // Get display info from handler
   let displayInfo: TriggerDisplayInfo;

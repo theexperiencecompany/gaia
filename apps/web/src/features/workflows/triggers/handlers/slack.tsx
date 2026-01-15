@@ -21,7 +21,7 @@ import type { TriggerConfig } from "../types";
 
 interface SlackTriggerData {
   trigger_name: string;
-  channel_ids?: string;
+  channel_ids?: string[];
   exclude_bot_messages?: boolean;
   exclude_direct_messages?: boolean;
   exclude_group_messages?: boolean;
@@ -76,12 +76,7 @@ function SlackSettings({
   };
 
   // Get current selected values
-  const selectedValues = triggerData?.channel_ids
-    ? triggerData.channel_ids
-        .split(",")
-        .map((id) => id.trim())
-        .filter(Boolean)
-    : [];
+  const selectedValues = triggerData?.channel_ids || [];
 
   if (!isConnected) {
     return (
@@ -119,7 +114,7 @@ function SlackSettings({
           selectedValues: selectedValues,
           onSelectionChange: (selectedIds: string[]) => {
             updateTriggerData({
-              channel_ids: selectedIds.join(","),
+              channel_ids: selectedIds,
             });
           },
           isLoading: isLoadingChannels,
@@ -136,7 +131,7 @@ function SlackSettings({
           values: selectedValues,
           onChange: (selectedIds: string[]) => {
             updateTriggerData({
-              channel_ids: selectedIds.join(","),
+              channel_ids: selectedIds,
             });
           },
           placeholder: "Add another...",
@@ -209,7 +204,7 @@ export const slackTriggerHandler: RegisteredHandler = {
     };
 
     if (slug === "slack_new_message") {
-      baseTriggerData.channel_ids = "";
+      baseTriggerData.channel_ids = [];
       baseTriggerData.exclude_bot_messages = false;
       baseTriggerData.exclude_direct_messages = false;
       baseTriggerData.exclude_group_messages = false;
@@ -218,7 +213,7 @@ export const slackTriggerHandler: RegisteredHandler = {
     }
 
     return {
-      type: "app",
+      type: "integration",
       enabled: true,
       trigger_name: slug,
       trigger_data: baseTriggerData,

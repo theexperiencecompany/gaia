@@ -7,7 +7,6 @@ Handles all calendar-specific trigger logic including:
 - Event-to-workflow matching
 """
 
-import asyncio
 from typing import Any, Dict, List, Set
 
 from app.config.loggers import general_logger as logger
@@ -16,7 +15,11 @@ from app.models.composio_schemas import (
     GoogleCalendarEventCreatedPayload,
     GoogleCalendarEventStartingSoonPayload,
 )
-from app.models.workflow_models import TriggerType, Workflow
+from app.models.trigger_configs import (
+    CalendarEventCreatedConfig,
+    CalendarEventStartingSoonConfig,
+)
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 
@@ -55,15 +58,33 @@ class CalendarTriggerHandler(TriggerHandler):
         user_id: str,
         workflow_id: str,
         trigger_name: str,
-        config: Dict[str, Any],
+        trigger_config: TriggerConfig,
     ) -> List[str]:
         """Register calendar triggers.
 
         Handles multi-calendar registration - creates one Composio trigger
         per calendar ID for proper event matching.
         """
-        trigger_data = config.get("trigger_data", {})
-        calendar_ids = trigger_data.get("calendar_ids", ["primary"])
+        trigger_data = trigger_config.trigger_data
+
+        # Validate trigger_data type based on trigger_name
+        if trigger_name == "calendar_event_created":
+            if not isinstance(trigger_data, CalendarEventCreatedConfig):
+                raise TypeError(
+                    f"Expected CalendarEventCreatedConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+            calendar_ids = trigger_data.calendar_ids
+        elif trigger_name == "calendar_event_starting_soon":
+            if not isinstance(trigger_data, CalendarEventStartingSoonConfig):
+                raise TypeError(
+                    f"Expected CalendarEventStartingSoonConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+            calendar_ids = trigger_data.calendar_ids
+        else:
+            logger.error(f"Unknown calendar trigger: {trigger_name}")
+            return []
 
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
@@ -73,44 +94,43 @@ class CalendarTriggerHandler(TriggerHandler):
         if calendar_ids == ["all"]:
             calendar_ids = await self._fetch_user_calendars(user_id)
 
-        composio = get_composio_service()
+        composio_service = get_composio_service()
 
-        async def register_one(calendar_id: str) -> str | None:
+        trigger_ids: List[str] = []
+
+        for calendar_id in calendar_ids:
             try:
-                trigger_config: Dict[str, Any] = {"calendar_id": calendar_id}
+                composio_trigger_config: Dict[str, Any] = {"calendarId": calendar_id}
                 if trigger_name == "calendar_event_starting_soon":
-                    minutes_before = trigger_data.get("minutes_before_start")
-                    if minutes_before is not None:
-                        trigger_config["countdown_window_minutes"] = minutes_before * 60
-                    include_all_day = trigger_data.get("include_all_day")
-                    if include_all_day is not None:
-                        trigger_config["include_all_day"] = include_all_day
+                    # trigger_data is already validated as CalendarEventStartingSoonConfig
+                    starting_soon_data = trigger_data  # type: CalendarEventStartingSoonConfig
+                    if starting_soon_data.minutes_before_start is not None:
+                        composio_trigger_config["countdown_window_minutes"] = (
+                            starting_soon_data.minutes_before_start * 60
+                        )
+                    if starting_soon_data.include_all_day is not None:
+                        composio_trigger_config["include_all_day"] = (
+                            starting_soon_data.include_all_day
+                        )
 
-                result = await asyncio.to_thread(
-                    composio.composio.triggers.create,
+                result = composio_service.composio.triggers.create(
                     user_id=user_id,
                     slug=composio_slug,
-                    trigger_config=trigger_config,
+                    trigger_config=composio_trigger_config,
                 )
+
                 if result and hasattr(result, "trigger_id"):
-                    logger.info(
-                        f"Registered {composio_slug} for calendar {calendar_id}: {result.trigger_id}"
-                    )
-                    return result.trigger_id
+                    trigger_id = result.trigger_id
+                    trigger_ids.append(trigger_id)
                 else:
-                    logger.warning(
-                        f"No trigger_id in result for calendar {calendar_id}"
-                    )
-                    return None
+                    logger.warning(f"No trigger_id in result for {calendar_id}")
+
             except Exception as e:
                 logger.error(
                     f"Failed to register trigger for {calendar_id}: {e}",
                     exc_info=True,
                 )
-                return None
-
-        results = await asyncio.gather(*(register_one(cid) for cid in calendar_ids))
-        return [rid for rid in results if rid]
+        return trigger_ids
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
@@ -119,7 +139,7 @@ class CalendarTriggerHandler(TriggerHandler):
         try:
             query = {
                 "activated": True,
-                "trigger_config.type": TriggerType.CALENDAR,
+                "trigger_config.type": TriggerType.INTEGRATION,
                 "trigger_config.enabled": True,
                 "trigger_config.composio_trigger_ids": trigger_id,
             }

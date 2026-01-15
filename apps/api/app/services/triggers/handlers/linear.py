@@ -12,13 +12,15 @@ from app.models.composio_schemas import (
     LinearGetAllTeamsData,
     LinearIssueCreatedPayload,
 )
-from app.models.workflow_models import TriggerType, Workflow
+from app.models.trigger_configs import (
+    LinearCommentAddedConfig,
+    LinearIssueCreatedConfig,
+    LinearIssueUpdatedConfig,
+)
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from composio.types import ToolExecutionResponse
-
-# The tool used is LINEAR_GET_ALL_LINEAR_TEAMS
-# We now use typed models from app.models.composio_schemas.linear_tools
 
 
 class LinearTriggerHandler(TriggerHandler):
@@ -26,16 +28,19 @@ class LinearTriggerHandler(TriggerHandler):
 
     SUPPORTED_TRIGGERS = [
         "linear_issue_created",
+        "linear_issue_updated",
         "linear_comment_added",
     ]
 
     SUPPORTED_EVENTS = {
         "LINEAR_ISSUE_CREATED_TRIGGER",
+        "LINEAR_ISSUE_UPDATED_TRIGGER",
         "LINEAR_COMMENT_EVENT_TRIGGER",
     }
 
     TRIGGER_TO_COMPOSIO = {
         "linear_issue_created": "LINEAR_ISSUE_CREATED_TRIGGER",
+        "linear_issue_updated": "LINEAR_ISSUE_UPDATED_TRIGGER",
         "linear_comment_added": "LINEAR_COMMENT_EVENT_TRIGGER",
     }
 
@@ -98,7 +103,7 @@ class LinearTriggerHandler(TriggerHandler):
         user_id: str,
         workflow_id: str,
         trigger_name: str,
-        config: Dict[str, Any],
+        trigger_config: TriggerConfig,
     ) -> List[str]:
         """Register Linear triggers."""
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
@@ -107,20 +112,41 @@ class LinearTriggerHandler(TriggerHandler):
             return []
 
         composio = get_composio_service()
+        trigger_data = trigger_config.trigger_data
 
-        # Get config from trigger_data
-        trigger_data = config.get("trigger_data", {})
-        trigger_config: Dict[str, Any] = {}
+        # Validate trigger_data type based on trigger_name
+        if trigger_name == "linear_issue_created":
+            if not isinstance(trigger_data, LinearIssueCreatedConfig):
+                raise TypeError(
+                    f"Expected LinearIssueCreatedConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+        elif trigger_name == "linear_issue_updated":
+            if not isinstance(trigger_data, LinearIssueUpdatedConfig):
+                raise TypeError(
+                    f"Expected LinearIssueUpdatedConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+        elif trigger_name == "linear_comment_added":
+            if not isinstance(trigger_data, LinearCommentAddedConfig):
+                raise TypeError(
+                    f"Expected LinearCommentAddedConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+        else:
+            logger.error(f"Unknown Linear trigger: {trigger_name}")
+            return []
 
-        if "team_id" in trigger_data:
-            trigger_config["team_id"] = trigger_data["team_id"]
+        composio_trigger_config: Dict[str, Any] = {}
+        if trigger_data.team_id:
+            composio_trigger_config["team_id"] = trigger_data.team_id
 
         try:
-            result = await asyncio.to_thread(
-                composio.composio.triggers.create,
+            # Direct synchronous call
+            result = composio.composio.triggers.create(
                 user_id=user_id,
                 slug=composio_slug,
-                trigger_config=trigger_config,
+                trigger_config=composio_trigger_config,
             )
 
             if result and hasattr(result, "trigger_id"):
@@ -142,7 +168,7 @@ class LinearTriggerHandler(TriggerHandler):
         try:
             query = {
                 "activated": True,
-                "trigger_config.type": TriggerType.APP,
+                "trigger_config.type": TriggerType.INTEGRATION,
                 "trigger_config.enabled": True,
                 "trigger_config.composio_trigger_ids": trigger_id,
             }

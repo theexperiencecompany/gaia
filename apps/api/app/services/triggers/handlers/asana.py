@@ -1,42 +1,26 @@
 """
-Google Docs trigger handler.
+Asana trigger handler.
 """
 
-import asyncio
 from typing import Any, Dict, List, Set
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
-from app.models.composio_schemas import GoogleDocsPageAddedPayload
-from app.models.trigger_configs import (
-    GoogleDocsDocumentDeletedConfig,
-    GoogleDocsDocumentUpdatedConfig,
-    GoogleDocsNewDocumentConfig,
-)
+from app.models.trigger_configs import AsanaTaskTriggerConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 
 
-class GoogleDocsTriggerHandler(TriggerHandler):
-    """Handler for Google Docs triggers."""
+class AsanaTriggerHandler(TriggerHandler):
+    """Handler for Asana triggers."""
 
-    SUPPORTED_TRIGGERS = [
-        "google_docs_new_document",
-        "google_docs_document_deleted",
-        "google_docs_document_updated",
-    ]
+    SUPPORTED_TRIGGERS = ["asana_task_trigger"]
 
-    SUPPORTED_EVENTS = {
-        "GOOGLEDOCS_PAGE_ADDED_TRIGGER",
-        "GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER",
-        "GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER",
-    }
+    SUPPORTED_EVENTS = {"ASANA_TASK_TRIGGER"}
 
     TRIGGER_TO_COMPOSIO = {
-        "google_docs_new_document": "GOOGLEDOCS_PAGE_ADDED_TRIGGER",
-        "google_docs_document_deleted": "GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER",
-        "google_docs_document_updated": "GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER",
+        "asana_task_trigger": "ASANA_TASK_TRIGGER",
     }
 
     @property
@@ -54,35 +38,32 @@ class GoogleDocsTriggerHandler(TriggerHandler):
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> List[str]:
-        """Register Google Docs triggers."""
+        """Register Asana triggers."""
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
-            logger.error(f"Unknown Google Docs trigger: {trigger_name}")
+            logger.error(f"Unknown Asana trigger: {trigger_name}")
             return []
 
+        composio = get_composio_service()
         trigger_data = trigger_config.trigger_data
 
-        # Validate trigger_data type if provided
-        valid_types = (
-            GoogleDocsNewDocumentConfig,
-            GoogleDocsDocumentDeletedConfig,
-            GoogleDocsDocumentUpdatedConfig,
-        )
-        if trigger_data is not None and not isinstance(trigger_data, valid_types):
+        # Validate trigger_data type
+        if not isinstance(trigger_data, AsanaTaskTriggerConfig):
             raise TypeError(
-                f"Expected one of {[t.__name__ for t in valid_types]} for trigger '{trigger_name}', "
-                f"but got {type(trigger_data).__name__}"
+                f"Expected AsanaTaskTriggerConfig for trigger '{trigger_name}', "
+                f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
             )
 
-        composio = get_composio_service()
+        # Build trigger config with optional filters
         composio_trigger_config: Dict[str, Any] = {}
-
-        # New Document Added trigger usually doesn't need config to monitor entire workspace
-        # If config is needed in future, map it here.
+        if trigger_data.project_id:
+            composio_trigger_config["project_id"] = trigger_data.project_id
+        if trigger_data.workspace_id:
+            composio_trigger_config["workspace_id"] = trigger_data.workspace_id
 
         try:
-            result = await asyncio.to_thread(
-                composio.composio.triggers.create,
+            # Direct synchronous call
+            result = composio.composio.triggers.create(
                 user_id=user_id,
                 slug=composio_slug,
                 trigger_config=composio_trigger_config,
@@ -97,13 +78,13 @@ class GoogleDocsTriggerHandler(TriggerHandler):
             return []
 
         except Exception as e:
-            logger.error(f"Failed to register Google Docs trigger {trigger_name}: {e}")
+            logger.error(f"Failed to register Asana trigger {trigger_name}: {e}")
             return []
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
     ) -> List[Workflow]:
-        """Find workflows matching a Google Docs trigger event."""
+        """Find workflows matching an Asana trigger event."""
         try:
             query = {
                 "activated": True,
@@ -111,12 +92,6 @@ class GoogleDocsTriggerHandler(TriggerHandler):
                 "trigger_config.enabled": True,
                 "trigger_config.composio_trigger_ids": trigger_id,
             }
-
-            # Optional: validate payload
-            try:
-                GoogleDocsPageAddedPayload.model_validate(data)
-            except Exception as e:
-                logger.debug(f"Google Docs payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
             workflows: List[Workflow] = []
@@ -139,4 +114,4 @@ class GoogleDocsTriggerHandler(TriggerHandler):
             return []
 
 
-google_docs_trigger_handler = GoogleDocsTriggerHandler()
+asana_trigger_handler = AsanaTriggerHandler()

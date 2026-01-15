@@ -207,7 +207,7 @@ export const notionTriggerHandler: RegisteredHandler = {
     }
 
     return {
-      type: "app",
+      type: "integration",
       enabled: true,
       trigger_name: slug,
       trigger_data: triggerData,

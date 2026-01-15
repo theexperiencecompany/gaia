@@ -40,11 +40,6 @@ export function TriggerConfigForm({
   const handleTriggerSelect = (trigger: string | null) => {
     if (!trigger) {
       onTriggerChange("");
-      // When cleared, we might want to reset config or keep it as is?
-      // Resetting to some default or leaving it.
-      // onTriggerChange usually expects a string based on props.
-      // User typed `selectedTrigger: string`.
-      // If we pass empty string, handler will be null.
       return;
     }
 
@@ -54,13 +49,15 @@ export function TriggerConfigForm({
     const schema = triggerSchemas?.find((s) => s.slug === trigger);
 
     const defaultConfig = createDefaultTriggerConfig(trigger);
+
     if (defaultConfig) {
       // Add integration_id and trigger_slug to config
-      onConfigChange({
+      const finalConfig = {
         ...defaultConfig,
         integration_id: schema?.integration_id,
         trigger_slug: schema?.slug,
-      });
+      };
+      onConfigChange(finalConfig);
     } else {
       onConfigChange({
         type: "manual",

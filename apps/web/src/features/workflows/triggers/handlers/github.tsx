@@ -15,14 +15,8 @@ import { useInfiniteTriggerOptions } from "../hooks/useInfiniteTriggerOptions";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
-// =============================================================================
-// TYPE DEFINITIONS
-// =============================================================================
-
 interface GitHubTriggerData {
   trigger_name: string;
-  owner?: string;
-  repo?: string;
   repos?: string[];
 }
 
@@ -30,10 +24,6 @@ interface GitHubConfig extends TriggerConfig {
   trigger_name?: string;
   trigger_data?: GitHubTriggerData;
 }
-
-// =============================================================================
-// GITHUB SETTINGS COMPONENT
-// =============================================================================
 
 interface RepoOption {
   value: string;
@@ -75,12 +65,16 @@ function GitHubSettings({
     const currentTriggerData = triggerData || {
       trigger_name: config.trigger_name || "",
     };
+
+    // Prepare new data
+    const newData = {
+      ...currentTriggerData,
+      ...updates,
+    };
+
     onConfigChange({
       ...config,
-      trigger_data: {
-        ...currentTriggerData,
-        ...updates,
-      },
+      trigger_data: newData,
     });
   };
 
@@ -89,8 +83,6 @@ function GitHubSettings({
 
     updateTriggerData({
       repos: selectedKeys,
-      repo: selectedKeys[0] || "",
-      owner: selectedKeys[0] ? selectedKeys[0].split("/")[0] : "",
     });
   };
 
@@ -122,10 +114,9 @@ function GitHubSettings({
     const currentRepos = triggerData?.repos || [];
     if (!currentRepos.includes(trimmed)) {
       const updatedRepos = [...currentRepos, trimmed];
+
       updateTriggerData({
         repos: updatedRepos,
-        repo: updatedRepos[0] || "",
-        owner: updatedRepos[0] ? updatedRepos[0].split("/")[0] : "",
       });
     }
     setTagInput("");
@@ -134,10 +125,9 @@ function GitHubSettings({
   const handleRemoveTag = (repoToRemove: string) => {
     const currentRepos = triggerData?.repos || [];
     const updatedRepos = currentRepos.filter((r) => r !== repoToRemove);
+
     updateTriggerData({
       repos: updatedRepos,
-      repo: updatedRepos[0] || "",
-      owner: updatedRepos[0] ? updatedRepos[0].split("/")[0] : "",
     });
   };
 
@@ -181,12 +171,7 @@ function GitHubSettings({
     );
   }
 
-  const currentSelectedKeys =
-    triggerData?.repos && triggerData.repos.length > 0
-      ? triggerData.repos
-      : triggerData?.repo
-        ? [triggerData.repo]
-        : [];
+  const currentSelectedKeys = triggerData?.repos || [];
 
   return (
     <div className="space-y-3">
@@ -355,10 +340,6 @@ function GitHubSettings({
   );
 }
 
-// =============================================================================
-// HANDLER DEFINITION
-// =============================================================================
-
 export const githubTriggerHandler: RegisteredHandler = {
   triggerSlugs: [
     "github_commit_event",
@@ -368,13 +349,12 @@ export const githubTriggerHandler: RegisteredHandler = {
   ],
 
   createDefaultConfig: (slug: string): TriggerConfig => ({
-    type: "app",
+    type: "integration",
     enabled: true,
     trigger_name: slug,
     trigger_data: {
       trigger_name: slug,
-      owner: "",
-      repo: "",
+      repos: [],
     },
   }),
 

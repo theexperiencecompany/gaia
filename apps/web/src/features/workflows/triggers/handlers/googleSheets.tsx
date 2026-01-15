@@ -54,8 +54,10 @@ export function GoogleSheetsSettings({
   const [spreadsheetIds, setSpreadsheetIds] = useState<Set<string>>(
     new Set(triggerData?.spreadsheet_ids?.split(",").filter(Boolean) || []),
   );
-  const [sheetKeys, setSheetKeys] = useState<Set<string>>(
-    new Set(triggerData?.sheet_names?.split(",").filter(Boolean) || []),
+  // Store just sheet names initially - will be converted to full keys when sheets load
+  const [sheetKeys, setSheetKeys] = useState<Set<string>>(new Set());
+  const [pendingSheetNames, setPendingSheetNames] = useState<string[]>(
+    triggerData?.sheet_names?.split(",").filter(Boolean) || [],
   );
   const [searchQuery, _setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -141,6 +143,54 @@ export function GoogleSheetsSettings({
     groupedSheetOptions.length > 0 &&
     "group" in groupedSheetOptions[0] &&
     groupedSheetOptions[0].group !== undefined;
+
+  // Reconstruct full sheet keys from pending sheet names when sheets data loads
+  // This handles the update view case where we only have sheet names stored
+  useEffect(() => {
+    if (pendingSheetNames.length === 0 || groupedSheetOptions.length === 0) {
+      return;
+    }
+
+    const reconstructedKeys = new Set<string>();
+
+    // Build a map of sheet name -> full keys for quick lookup
+    const sheetNameToKeys = new Map<string, string[]>();
+
+    if (hasGroupedSheets) {
+      for (const group of groupedSheetOptions as GroupedOption[]) {
+        for (const option of group.options) {
+          const parts = option.value.split("::");
+          const sheetName = parts.length > 1 ? parts[1] : option.value;
+          const existing = sheetNameToKeys.get(sheetName) || [];
+          existing.push(option.value);
+          sheetNameToKeys.set(sheetName, existing);
+        }
+      }
+    } else {
+      for (const option of groupedSheetOptions as OptionItem[]) {
+        const parts = option.value.split("::");
+        const sheetName = parts.length > 1 ? parts[1] : option.value;
+        const existing = sheetNameToKeys.get(sheetName) || [];
+        existing.push(option.value);
+        sheetNameToKeys.set(sheetName, existing);
+      }
+    }
+
+    // Match pending sheet names to full keys
+    for (const sheetName of pendingSheetNames) {
+      const matchingKeys = sheetNameToKeys.get(sheetName);
+      if (matchingKeys) {
+        for (const key of matchingKeys) {
+          reconstructedKeys.add(key);
+        }
+      }
+    }
+
+    if (reconstructedKeys.size > 0) {
+      setSheetKeys(reconstructedKeys);
+      setPendingSheetNames([]); // Clear pending after reconstruction
+    }
+  }, [groupedSheetOptions, pendingSheetNames, hasGroupedSheets]);
 
   if (!isConnected) {
     return (
@@ -253,7 +303,7 @@ export const googleSheetsTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["google_sheets_new_row", "google_sheets_new_sheet"],
 
   createDefaultConfig: (slug: string): TriggerConfig => ({
-    type: "app",
+    type: "integration",
     enabled: true,
     trigger_name: slug,
     trigger_data: {
