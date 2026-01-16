@@ -10,7 +10,8 @@ import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithInte
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { Integration } from "@/features/integrations/types";
-import { Unlink04Icon } from "@/icons";
+import { GlobalIcon, Share08Icon, Unlink04Icon, ViewOffSlashIcon } from "@/icons";
+import { toast } from "sonner";
 
 interface IntegrationSidebarProps {
   integration: Integration;
@@ -19,6 +20,8 @@ interface IntegrationSidebarProps {
   ) => Promise<{ status: string; toolsCount?: number }>;
   onDisconnect?: (integrationId: string) => void;
   onDelete?: (integrationId: string) => Promise<void>;
+  onPublish?: (integrationId: string) => Promise<void>;
+  onUnpublish?: (integrationId: string) => Promise<void>;
   category?: string;
 }
 
@@ -27,6 +30,8 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   onConnect,
   onDisconnect,
   onDelete,
+  onPublish,
+  onUnpublish,
   category,
 }) => {
   const isConnected = integration.status === "connected";
@@ -40,6 +45,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   // Get tools that belong to this integration or its included integrations
   const integrationTools = React.useMemo(() => {
@@ -101,6 +107,23 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         setIsDeleting(false);
         setShowDeleteDialog(false);
       }
+    }
+  };
+
+  const handlePublish = async () => {
+    if (isPublishing) return;
+
+    setIsPublishing(true);
+    try {
+      if (integration.isPublic && onUnpublish) {
+        await onUnpublish(integration.id);
+      } else if (!integration.isPublic && onPublish) {
+        await onPublish(integration.id);
+      }
+    } catch (error) {
+      // Error toast is handled in the hook
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -196,6 +219,45 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             Delete Integration
           </Button>
         )}
+
+        {/* Publish/Unpublish button for custom connected integrations */}
+        {integration.source === "custom" && isConnected && (
+          <Button
+            color={integration.isPublic ? "warning" : "primary"}
+            variant="flat"
+            fullWidth
+            onPress={handlePublish}
+            isLoading={isPublishing}
+            isDisabled={isPublishing}
+            startContent={
+              integration.isPublic ? (
+                <ViewOffSlashIcon width={18} height={18} />
+              ) : (
+                <GlobalIcon width={18} height={18} />
+              )
+            }
+          >
+            {integration.isPublic ? "Unpublish" : "Publish to Community"}
+          </Button>
+        )}
+
+        {/* Share button for public integrations */}
+        {integration.isPublic && integration.slug && (
+          <Button
+            variant="light"
+            fullWidth
+            onPress={() => {
+              navigator.clipboard.writeText(
+                `${window.location.origin}/integrations/${integration.slug}`
+              );
+              toast.success("Link copied to clipboard!");
+            }}
+            startContent={<Share08Icon width={18} height={18} />}
+          >
+            Share Integration
+          </Button>
+        )}
+
         {integrationTools.length > 0 && (
           <h2 className="mb-1 mt-3 text-xs font-medium text-zinc-400 -ml-1">
             Available Tools ({integrationTools.length})
