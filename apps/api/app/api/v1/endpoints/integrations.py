@@ -632,3 +632,390 @@ async def delete_custom_mcp_integration(
     except Exception as e:
         logger.error(f"Error deleting integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete integration")
+
+
+# ============================================================================
+# Public Integration Endpoints (2.4, 2.5, 2.6)
+# ============================================================================
+
+
+@router.get("/public/{slug}", response_model=PublicIntegrationDetailResponse)
+async def get_public_integration(slug: str) -> PublicIntegrationDetailResponse:
+    """
+    Get public integration details by slug.
+    No authentication required - used for public pages (SEO/sharing).
+    """
+    try:
+        # Find integration by slug
+        doc = await integrations_collection.find_one({"slug": slug, "is_public": True})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Integration not found")
+
+        # Extract MCP config details
+        mcp_config = doc.get("mcp_config", {})
+        tools = doc.get("tools", [])
+
+        return PublicIntegrationDetailResponse(
+            integration_id=doc["integration_id"],
+            name=doc["name"],
+            description=doc.get("description", ""),
+            category=doc.get("category", "custom"),
+            slug=doc.get("slug", ""),
+            icon_url=doc.get("icon_url"),
+            creator_name=doc.get("creator_name"),
+            creator_picture=doc.get("creator_picture"),
+            server_url=mcp_config.get("server_url") if mcp_config else None,
+            requires_auth=mcp_config.get("requires_auth", False)
+            if mcp_config
+            else False,
+            auth_type=mcp_config.get("auth_type") if mcp_config else None,
+            tools=[
+                IntegrationTool(
+                    name=t.get("name", ""), description=t.get("description")
+                )
+                for t in tools
+            ],
+            clone_count=doc.get("clone_count", 0),
+            published_at=doc.get("published_at"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching public integration {slug}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch integration")
+
+
+@router.post("/public/{slug}/clone", response_model=CloneIntegrationResponse)
+async def clone_integration(
+    slug: str,
+    user_id: str = Depends(get_user_id),
+) -> CloneIntegrationResponse:
+    """Clone a public integration to user's workspace."""
+    from app.db.mongodb.collections import user_integrations_collection
+
+    try:
+        # 1. Get public integration by slug
+        original_doc = await integrations_collection.find_one(
+            {"slug": slug, "is_public": True}
+        )
+        if not original_doc:
+            raise HTTPException(status_code=404, detail="Integration not found")
+
+        original_id = original_doc["integration_id"]
+
+        # 2. Check if user already cloned this integration
+        existing_clone = await integrations_collection.find_one(
+            {"cloned_from": original_id, "created_by": user_id}
+        )
+        if existing_clone:
+            raise HTTPException(
+                status_code=400,
+                detail="You have already cloned this integration",
+            )
+
+        # 3. Create new integration in user's account
+        # Generate unique ID based on name and user
+        base_name = original_doc["name"].lower().replace(" ", "_")
+        new_integration_id = f"custom_{base_name}_{user_id}"
+
+        # Check if ID exists (user may have an integration with same name)
+        existing_with_id = await integrations_collection.find_one(
+            {"integration_id": new_integration_id}
+        )
+        if existing_with_id:
+            # Add suffix to make unique
+            import time
+
+            new_integration_id = f"custom_{base_name}_{user_id}_{int(time.time())}"
+
+        # Copy relevant fields
+        mcp_config = original_doc.get("mcp_config", {})
+        new_doc = {
+            "integration_id": new_integration_id,
+            "name": original_doc["name"],
+            "description": original_doc.get("description", ""),
+            "category": original_doc.get("category", "custom"),
+            "managed_by": "mcp",
+            "source": "custom",
+            "is_public": False,  # Clone is private by default
+            "created_by": user_id,
+            "cloned_from": original_id,
+            "icon_url": original_doc.get("icon_url"),
+            "mcp_config": mcp_config,
+            "tools": original_doc.get("tools", []),
+            "display_priority": 0,
+            "is_featured": False,
+            "created_at": datetime.now(timezone.utc),
+        }
+
+        await integrations_collection.insert_one(new_doc)
+
+        # 4. Increment clone_count on original (atomic update)
+        await integrations_collection.update_one(
+            {"integration_id": original_id},
+            {"$inc": {"clone_count": 1}},
+        )
+
+        # 5. Auto-add to user's workspace with status="created"
+        user_integration_doc = {
+            "user_id": user_id,
+            "integration_id": new_integration_id,
+            "status": "created",
+            "created_at": datetime.now(timezone.utc),
+        }
+        await user_integrations_collection.insert_one(user_integration_doc)
+
+        logger.info(
+            f"User {user_id} cloned integration {original_id} as {new_integration_id}"
+        )
+
+        return CloneIntegrationResponse(
+            message="Integration cloned successfully",
+            integration_id=new_integration_id,
+            name=original_doc["name"],
+            connection_status="created",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error cloning integration {slug}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to clone integration")
+
+
+@router.get("/search", response_model=SearchIntegrationsResponse)
+async def search_integrations(q: str) -> SearchIntegrationsResponse:
+    """
+    Search public integrations using semantic search.
+    No authentication required.
+    """
+    from app.db.chroma.public_integrations_store import search_public_integrations
+
+    try:
+        if not q or not q.strip():
+            return SearchIntegrationsResponse(integrations=[], query=q)
+
+        # Use ChromaDB semantic search
+        results = await search_public_integrations(
+            query=q.strip(),
+            limit=20,
+        )
+
+        # If ChromaDB returns empty, return early
+        if not results:
+            return SearchIntegrationsResponse(integrations=[], query=q)
+
+        # Fetch full docs from MongoDB for additional fields (icon_url, slug)
+        integration_ids = [
+            r.get("integration_id") for r in results if r.get("integration_id")
+        ]
+
+        if integration_ids:
+            cursor = integrations_collection.find(
+                {"integration_id": {"$in": integration_ids}, "is_public": True}
+            )
+            docs = await cursor.to_list(length=20)
+            docs_map = {doc["integration_id"]: doc for doc in docs}
+        else:
+            docs_map = {}
+
+        # Format results with relevance scores
+        formatted = []
+        for r in results:
+            iid = r.get("integration_id")
+            doc = docs_map.get(iid, {}) if iid else {}
+
+            formatted.append(
+                SearchIntegrationItem(
+                    integration_id=iid or r.get("id", "unknown"),
+                    name=r.get("name", doc.get("name", "")),
+                    description=r.get("description", doc.get("description", "")),
+                    category=r.get("category", doc.get("category", "custom")),
+                    relevance_score=r.get("relevance_score", 0.0),
+                    clone_count=r.get("clone_count", doc.get("clone_count", 0)),
+                    tool_count=r.get("tool_count", len(doc.get("tools", []))),
+                    icon_url=doc.get("icon_url"),
+                    slug=doc.get("slug"),
+                )
+            )
+
+        return SearchIntegrationsResponse(integrations=formatted, query=q)
+
+    except Exception as e:
+        logger.error(f"Error searching integrations: {e}")
+        raise HTTPException(status_code=500, detail="Failed to search integrations")
+
+
+@router.post(
+    "/custom/{integration_id}/publish", response_model=PublishIntegrationResponse
+)
+async def publish_integration(
+    integration_id: str,
+    user_id: str = Depends(get_user_id),
+) -> PublishIntegrationResponse:
+    """Publish a custom integration to the community marketplace."""
+    try:
+        # Fetch the integration
+        integration = await integrations_collection.find_one(
+            {"integration_id": integration_id}
+        )
+        if not integration:
+            raise HTTPException(status_code=404, detail="Integration not found")
+
+        # Verify user owns this integration
+        if integration.get("created_by") != user_id:
+            raise HTTPException(
+                status_code=403, detail="You can only publish integrations you created"
+            )
+
+        # Verify it's a custom integration
+        if integration.get("source") != "custom":
+            raise HTTPException(
+                status_code=400, detail="Only custom integrations can be published"
+            )
+
+        # Verify integration has tools (is connected)
+        tools = integration.get("tools", [])
+        if not tools:
+            raise HTTPException(
+                status_code=400,
+                detail="Integration must be connected with tools before publishing",
+            )
+
+        # Check if already published
+        if integration.get("is_public"):
+            raise HTTPException(
+                status_code=400, detail="Integration is already published"
+            )
+
+        # Generate unique slug for public URL
+        async def check_slug_exists(slug: str) -> bool:
+            existing = await integrations_collection.find_one({"slug": slug})
+            return existing is not None
+
+        slug = await generate_unique_slug(
+            name=integration.get("name", "integration"),
+            user_id=user_id,
+            check_exists_func=check_slug_exists,
+        )
+
+        # Infer category using LLM
+        category = await infer_integration_category(
+            name=integration.get("name", ""),
+            description=integration.get("description", ""),
+            tools=tools,
+            server_url=integration.get("mcp_config", {}).get("server_url", ""),
+        )
+
+        # Fetch user info for creator metadata
+        user_doc = await users_collection.find_one({"user_id": user_id})
+        creator_name = user_doc.get("name", "Anonymous") if user_doc else "Anonymous"
+        creator_picture = user_doc.get("picture") if user_doc else None
+
+        # Update the integration with publish metadata
+        now = datetime.now(timezone.utc)
+        update_result = await integrations_collection.update_one(
+            {"integration_id": integration_id},
+            {
+                "$set": {
+                    "is_public": True,
+                    "published_at": now,
+                    "slug": slug,
+                    "category": category,
+                    "creator_name": creator_name,
+                    "creator_picture": creator_picture,
+                    "clone_count": integration.get("clone_count", 0),
+                }
+            },
+        )
+
+        if update_result.modified_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to update integration")
+
+        # Index in ChromaDB for semantic search
+        await index_public_integration(
+            integration_id=integration_id,
+            name=integration.get("name", ""),
+            description=integration.get("description", ""),
+            category=category,
+            created_by=user_id,
+            clone_count=integration.get("clone_count", 0),
+            published_at=now.isoformat(),
+            tool_count=len(tools),
+            tools=tools,
+        )
+
+        public_url = f"/integrations/{slug}"
+        logger.info(f"Published integration {integration_id} as {slug}")
+
+        return PublishIntegrationResponse(
+            message="Integration published successfully",
+            integration_id=integration_id,
+            slug=slug,
+            public_url=public_url,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error publishing integration {integration_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to publish integration")
+
+
+@router.post(
+    "/custom/{integration_id}/unpublish", response_model=UnpublishIntegrationResponse
+)
+async def unpublish_integration(
+    integration_id: str,
+    user_id: str = Depends(get_user_id),
+) -> UnpublishIntegrationResponse:
+    """Unpublish a custom integration from the community marketplace."""
+    try:
+        # Fetch the integration
+        integration = await integrations_collection.find_one(
+            {"integration_id": integration_id}
+        )
+        if not integration:
+            raise HTTPException(status_code=404, detail="Integration not found")
+
+        # Verify user owns this integration
+        if integration.get("created_by") != user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only unpublish integrations you created",
+            )
+
+        # Check if it's actually published
+        if not integration.get("is_public"):
+            raise HTTPException(
+                status_code=400, detail="Integration is not currently published"
+            )
+
+        # Update the integration to unpublish
+        update_result = await integrations_collection.update_one(
+            {"integration_id": integration_id},
+            {
+                "$set": {"is_public": False},
+                "$unset": {"published_at": "", "slug": ""},
+            },
+        )
+
+        if update_result.modified_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to update integration")
+
+        # Remove from ChromaDB index
+        await remove_public_integration(integration_id)
+
+        logger.info(f"Unpublished integration {integration_id}")
+
+        return UnpublishIntegrationResponse(
+            message="Integration unpublished successfully",
+            integration_id=integration_id,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error unpublishing integration {integration_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to unpublish integration")
