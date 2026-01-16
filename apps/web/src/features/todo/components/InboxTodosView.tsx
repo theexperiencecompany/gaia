@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { memo, useCallback, useMemo, useState } from "react";
 
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
@@ -13,6 +14,7 @@ interface InboxTodosViewProps {
 }
 
 const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
+  const router = useRouter();
   const [selectedTodo, setSelectedTodo] = useState<string | null>(null);
 
   // Stable filters object using useMemo
@@ -36,7 +38,8 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
 
   const handleTodoClick = useCallback((todo: Todo) => {
     setSelectedTodo(todo.id);
-  }, []);
+    router.push(`/todos?todo=${todo.id}`);
+  }, [router]);
 
   const handleRefresh = useCallback(() => {
     refresh();

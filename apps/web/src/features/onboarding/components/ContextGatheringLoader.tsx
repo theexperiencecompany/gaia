@@ -250,7 +250,7 @@ export default function ContextGatheringLoader({
       <div className="relative flex flex-col justify-center gap-3 rounded-2xl bg-surface-200/90 p-4 shadow-xl backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <Spinner size="sm" variant="simple" />
-          <p className="text-xs font-medium text-foreground-300">
+          <p className="text-xs font-medium text-foreground-500">
             Initializing your personalization...
           </p>
         </div>
@@ -291,8 +291,8 @@ export default function ContextGatheringLoader({
           />
 
           <div className="flex flex-col items-start">
-            <p className="font-medium text-foreground-100">Your GAIA is ready!</p>
-            <p className="text-xs text-foreground-400">
+            <p className="font-medium text-foreground-800">Your GAIA is ready!</p>
+            <p className="text-xs text-foreground-500">
               Let's explore what I can do for you
             </p>
           </div>
@@ -312,7 +312,7 @@ export default function ContextGatheringLoader({
             <Spinner size="sm" variant="simple" />
 
             <div className="flex-1">
-              <p className="text-xs font-medium text-foreground-300 transition-all duration-500">
+              <p className="text-xs font-medium text-foreground-600 transition-all duration-500">
                 {getLoadingMessage()}
               </p>
 

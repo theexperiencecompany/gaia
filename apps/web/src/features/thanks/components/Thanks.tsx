@@ -48,10 +48,10 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
           </div>
 
           <div className="space-y-4">
-            <h1 className="text-4xl font-bold tracking-tight text-foreground-900 md:text-5xl">
+            <h1 className="font-serif text-4xl font-bold tracking-tight text-foreground-900 md:text-5xl">
               Tools We Love
             </h1>
-            <p className="mx-auto max-w-2xl text-lg font-light leading-relaxed text-foreground-500">
+            <p className="mx-auto max-w-2xl text-lg font-light leading-relaxed text-foreground-600">
               GAIA is built on the shoulders of giants. This page exists to
               celebrate open-source culture and the incredible tools that make
               building great software possible. These projects inspire us daily,

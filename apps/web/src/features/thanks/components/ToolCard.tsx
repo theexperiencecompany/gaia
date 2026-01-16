@@ -5,6 +5,7 @@ import Image from "next/image";
 import { memo, useRef, useState } from "react";
 import tinycolor from "tinycolor2";
 
+import { useTheme } from "@/components/providers/ThemeProvider";
 import type { Tool } from "@/data/tools";
 import { GlobalIcon } from "@/icons";
 
@@ -26,7 +27,10 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
   const elementRef = useRef<HTMLAnchorElement>(null);
   const [faviconError, setFaviconError] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const [isDarkFavicon, setIsDarkFavicon] = useState(false);
+  const [faviconBrightness, setFaviconBrightness] = useState<number | null>(
+    null,
+  );
+  const { resolvedTheme } = useTheme();
 
   const checkImageBrightness = (imgElement: HTMLImageElement) => {
     try {
@@ -60,12 +64,19 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
         b: Math.round(b / pixelCount),
       });
 
-      setIsDarkFavicon(avgColor.getBrightness() < 30);
+      setFaviconBrightness(avgColor.getBrightness());
     } catch {
       // CORS or other errors - skip brightness check
-      setIsDarkFavicon(false);
+      setFaviconBrightness(null);
     }
   };
+
+  // In dark mode, invert dark icons. In light mode, invert light icons.
+  const shouldInvert =
+    faviconBrightness !== null &&
+    (resolvedTheme === "dark"
+      ? faviconBrightness < 30
+      : faviconBrightness > 220);
 
   const favicon = metadata?.favicon && !faviconError ? metadata.favicon : null;
   const websiteImage =
@@ -98,7 +109,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
                   height={20}
                   alt={`${tool.name} favicon`}
                   className={`h-5 w-5 rounded-sm ${
-                    isDarkFavicon ? "invert" : ""
+                    shouldInvert ? "invert" : ""
                   }`}
                   src={favicon}
                   onLoad={(e) => checkImageBrightness(e.currentTarget)}
@@ -110,7 +121,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
               <span className="font-semibold text-foreground-900">{tool.name}</span>
             </div>
 
-            <p className="text-sm leading-relaxed text-foreground-300">
+            <p className="text-sm leading-relaxed text-foreground-600">
               {tool.description}
             </p>
 
@@ -150,7 +161,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
               height={100}
               alt={`${tool.name} favicon`}
               className={`h-6 w-6 object-contain ${
-                isDarkFavicon ? "invert" : ""
+                shouldInvert ? "invert" : ""
               }`}
               src={favicon}
               onLoad={(e) => checkImageBrightness(e.currentTarget)}
@@ -160,7 +171,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
             <GlobalIcon className="h-5 w-5 text-foreground-500" />
           )}
         </div>
-        <span className="font-medium text-foreground-200 transition-colors group-hover:text-foreground-900">
+        <span className="font-medium text-foreground-700 transition-colors group-hover:text-foreground-900">
           {tool.name}
         </span>
       </a>

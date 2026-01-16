@@ -105,6 +105,7 @@ export default function SettingsMenu({
     {
       key: "light",
       label: "Light",
+      description: "Beta - feedback appreciated!",
       iconElement: <SunIcon className={iconClasses} />,
       action: () => setTheme("light"),
       isActive: theme === "light",
@@ -199,7 +200,7 @@ export default function SettingsMenu({
           src={platform.iconPath}
           alt={platform.displayName}
           fill
-          className="object-contain"
+          className={`object-contain ${platform.iconPath.includes("apple") ? "dark:invert-0 invert" : ""}`}
         />
       </div>
     ),

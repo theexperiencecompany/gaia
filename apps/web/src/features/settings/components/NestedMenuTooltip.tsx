@@ -8,6 +8,7 @@ interface MenuItem {
   iconElement?: ReactElement;
   key: string;
   label: string;
+  description?: string;
   icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   action: () => void;
 }
@@ -59,14 +60,21 @@ export function NestedMenuTooltip({
                 key={item.key}
                 variant="light"
                 size="sm"
-                className="justify-start text-sm text-foreground-500 transition hover:text-foreground-900"
+                className="justify-start text-sm text-foreground-500 transition hover:text-foreground-900 h-auto py-2"
                 onPress={() => {
                   item.action();
                   onOpenChange(false);
                 }}
                 startContent={iconContent}
               >
-                {item.label}
+                <div className="flex flex-col items-start">
+                  <span>{item.label}</span>
+                  {item.description && (
+                    <span className="text-xs text-foreground-400 font-normal">
+                      {item.description}
+                    </span>
+                  )}
+                </div>
               </Button>
             );
           })}

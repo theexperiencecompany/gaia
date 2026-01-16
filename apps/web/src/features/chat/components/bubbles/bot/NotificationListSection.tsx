@@ -1,4 +1,4 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Accordion, AccordionItem } from "@heroui/react";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";

@@ -617,8 +617,8 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                     }}
                     className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${
                       selectedCategory === category
-                        ? "bg-surface-300/40 text-white"
-                        : "text-foreground-400 hover:bg-white/10 hover:text-foreground-300"
+                        ? "bg-surface-300/40 text-foreground-900"
+                        : "text-foreground-500 hover:bg-surface-200/40 hover:text-foreground-700"
                     }`}
                   >
                     {category === "all" ? (

@@ -1,4 +1,6 @@
 import Image from "next/image";
+
+import { useIconColorDetection } from "@/features/chat/hooks/useIconColorDetection";
 import {
   AlarmClockIcon,
   Brain02Icon,
@@ -338,7 +340,7 @@ const iconConfigs: Record<string, IconConfig> = {
   },
 };
 
-// Component that auto-detects and inverts dark icons
+// Component that auto-detects and inverts dark/light icons based on theme
 const AutoInvertIcon: React.FC<{
   src: string;
   alt: string;
@@ -347,17 +349,16 @@ const AutoInvertIcon: React.FC<{
   height?: number;
   className?: string;
 }> = ({ src, alt, size, width, height, className }) => {
-  // const { shouldInvert } = useIconColorDetection(src);
+  const { shouldInvert } = useIconColorDetection(src);
 
   return (
     <Image
       alt={alt}
       width={width || size || 20}
       height={height || size || 20}
-      className={`${className} aspect-square object-contain`}
+      className={`${className} aspect-square object-contain ${shouldInvert ? "invert" : ""}`}
       src={src}
     />
-    //  ${shouldInvert ? "invert" : ""} commented out temporarily
   );
 };
 

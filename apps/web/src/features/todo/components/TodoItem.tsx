@@ -94,7 +94,7 @@ export default function TodoItem({
   return (
     <div
       className={`pointer-events-auto w-full cursor-pointer p-4 pl-5 mb-0 transition-all ${
-        isSelected ? "bg-primary/5 ring-2 ring-primary" : "hover:bg-content2/70"
+        isSelected ? "bg-primary/5 ring-2 ring-primary" : "hover:bg-surface-200/50"
       } ${todo.completed ? "opacity-30" : ""}`}
       onClick={() => {
         onClick?.(todo);

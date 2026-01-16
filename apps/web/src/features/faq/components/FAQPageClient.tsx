@@ -1,6 +1,6 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Accordion, AccordionItem } from "@heroui/react";
 import type { FAQItem } from "@/lib/faq";
 
 interface FAQPageClientProps {

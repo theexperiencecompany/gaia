@@ -151,7 +151,7 @@ export function PricingCard({
       <div className="relative z-[-1] mx-4 mb-4 flex flex-col gap-4 overflow-hidden rounded-3xl bg-surface-50/70 p-6 shadow-xl backdrop-blur-2xl">
         {/* Description/Subtitle */}
         {description && (
-          <p className="font-sm text-sm leading-relaxed text-foreground-200">
+          <p className="font-sm text-sm leading-relaxed text-foreground-500">
             {description}
           </p>
         )}
@@ -184,7 +184,7 @@ export function PricingCard({
           )}
 
           <RaisedButton
-            className={`w-full ${price === 0 ? "text-foreground-400!" : "text-primary-foreground!"} `}
+            className={`w-full ${price === 0 ? "text-foreground-900!" : "text-primary-foreground!"} `}
             color={price === 0 ? "#3b3b3b" : "#00bbff"}
             onClick={handleGetStarted}
             disabled={
@@ -218,7 +218,7 @@ export function PricingCard({
                 <FeatureIcon
                   height="16"
                   width="16"
-                  className="min-h-[20px] min-w-[22px] text-white"
+                  className="min-h-[20px] min-w-[22px] text-foreground-700"
                 />
                 {featureText}
               </div>

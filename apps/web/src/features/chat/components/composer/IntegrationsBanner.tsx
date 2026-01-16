@@ -36,10 +36,10 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
 
   return (
     <Button
-      className="absolute -top-8 z-0 flex h-fit w-full bg-transparent! shadow-none"
+      className="absolute -top-12 z-0 flex h-fit w-full bg-transparent! shadow-none"
       onClick={onToggleSlashCommand}
     >
-      <div className="flex w-[90%] items-center justify-between rounded-full bg-surface-200/40 pr-4 pl-6 py-2 pb-9 text-xs text-foreground-300 hover:bg-surface-200/70 hover:text-foreground-400 transition">
+      <div className="flex w-[90%] items-center justify-between rounded-full bg-surface-200/40 pr-4 pl-6 py-2 pb-8 text-xs text-foreground-300 hover:bg-surface-200/70 hover:text-foreground-400 transition">
         <span className="text-xs text-foreground-400 font-light">
           Connect your tools to GAIA
         </span>

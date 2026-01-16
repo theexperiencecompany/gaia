@@ -62,6 +62,7 @@ export default async function About() {
                 alt="The Experience Company Logo"
                 width={80}
                 height={80}
+                className="dark:invert-0 invert"
               />
             </div>
             <div className="prose prose-zinc dark:prose-invert max-w-2xl">

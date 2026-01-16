@@ -1,4 +1,4 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Accordion, AccordionItem } from "@heroui/react";
 import { Tab, Tabs } from "@heroui/tabs";
 import { useState } from "react";
 

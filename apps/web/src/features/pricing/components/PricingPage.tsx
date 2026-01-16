@@ -44,9 +44,9 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
       </div>
 
       <div className="relative z-[1] flex flex-col items-center gap-2">
-        <div className="flex w-full flex-col items-center justify-center gap-3 text-white">
+        <div className="flex w-full flex-col items-center justify-center gap-3 text-foreground-900">
           <h1 className="font-serif text-8xl font-normal">Level Up</h1>
-          <span className="text-xl font-light text-foreground-300">
+          <span className="text-xl font-light text-foreground-600">
             Choose the plan that matches your ambition
           </span>
         </div>

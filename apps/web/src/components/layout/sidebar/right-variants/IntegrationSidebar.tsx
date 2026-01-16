@@ -230,10 +230,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               {integrationTools.map((tool) => (
                 <Chip
                   key={tool.name}
-                  variant="bordered"
+                  variant="flat"
                   color="default"
                   radius="full"
-                  className="font-light border-surface-400 text-foreground-700"
+                  className="font-light text-foreground-700"
                 >
                   {category
                     ? formatToolName(tool.name)

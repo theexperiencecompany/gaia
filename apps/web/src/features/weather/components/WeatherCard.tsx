@@ -1,4 +1,4 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Accordion, AccordionItem } from "@heroui/react";
 import { Switch } from "@heroui/switch";
 import type React from "react";
 import { useMemo, useState } from "react";

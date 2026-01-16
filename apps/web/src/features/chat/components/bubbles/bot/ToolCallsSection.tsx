@@ -1,6 +1,6 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Accordion, AccordionItem } from "@heroui/react";
 import { useMemo, useState } from "react";
 
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
@@ -138,7 +138,7 @@ export default function ToolCallsSection({
         <AccordionItem
           key="tools"
           title={
-            <div className="flex items-center gap-2 hover:text-foreground-50 text-foreground-500">
+            <div className="flex items-center gap-2 hover:text-foreground-800 text-foreground-500">
               {renderStackedIcons()}
               <span className="text-xs font-medium transition-all duration-200">
                 Used {tool_calls_data.length} tool
@@ -194,7 +194,7 @@ export default function ToolCallsSection({
                       onClick={() => hasDetails && toggleCallExpansion(index)}
                     >
                       <p
-                        className={`text-xs text-foreground-400 font-medium ${hasDetails ? "group-hover/parent:text-foreground-50 " : ""}`}
+                        className={`text-xs text-foreground-400 font-medium ${hasDetails ? "group-hover/parent:text-foreground-800 " : ""}`}
                       >
                         {call.message || formatToolName(call.tool_name)}
                       </p>

@@ -52,7 +52,7 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
             <SquareLock01Icon className="h-4 w-4 text-red-400" />
           </div>
           <div>
-            <div className="text-sm font-medium text-foreground-200">
+            <div className="text-sm font-medium text-foreground-700">
               {tools.length} {integration?.name || category.replace("_", " ")}{" "}
               tools locked
             </div>

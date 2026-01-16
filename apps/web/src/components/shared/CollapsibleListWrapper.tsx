@@ -1,5 +1,6 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
-import type { Selection } from "@heroui/react";
+"use client";
+
+import { Accordion, AccordionItem } from "@heroui/react";
 import { type ReactNode, useState } from "react";
 
 interface CollapsibleListWrapperProps {
@@ -32,13 +33,11 @@ export default function CollapsibleListWrapper({
     return <div className="w-full">{children}</div>;
   }
 
-  const defaultKeys: Selection = defaultExpanded ? new Set(["1"]) : new Set([]);
-
   return (
     <div className="w-full">
       <Accordion
         className="w-full max-w-(--breakpoint-sm) px-0"
-        defaultExpandedKeys={defaultKeys}
+        defaultExpandedKeys={defaultExpanded ? ["1"] : []}
         itemClasses={{ trigger: "cursor-pointer" }}
       >
         <AccordionItem

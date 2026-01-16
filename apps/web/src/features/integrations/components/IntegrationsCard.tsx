@@ -1,4 +1,4 @@
-import { Accordion, AccordionItem } from "@heroui/accordion";
+import { Accordion, AccordionItem } from "@heroui/react";
 import { Button } from "@heroui/button";
 import type { Selection } from "@heroui/react";
 import type React from "react";

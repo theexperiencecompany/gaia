@@ -54,7 +54,7 @@ const GoalsView = memo(({ goals = [] }: GoalsViewProps) => {
           return (
             <div
               key={goal.id}
-              className="flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-surface-700/30"
+              className="flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-surface-200/50"
               onClick={() => handleGoalClick(goal.id)}
             >
               <div className="min-w-0 flex-1">
