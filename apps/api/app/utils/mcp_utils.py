@@ -9,7 +9,7 @@ import base64
 import hashlib
 import secrets
 from functools import wraps
-from typing import Any, Union
+from typing import Any, Literal, Union
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
@@ -39,7 +39,11 @@ def wrap_tool_with_null_filter(tool: BaseTool) -> BaseTool:
         "Expected string, received null"
 
     This wrapper intercepts the _arun call and filters out None values.
-    It also handles errors from MCP servers gracefully.
+
+    Error handling:
+    - Auth errors (401/unauthorized) are RE-RAISED so the orchestrator can handle
+      token refresh. This is critical for proper OAuth flow.
+    - Other errors are returned as user-friendly messages.
     """
     original_arun = tool._arun
 
@@ -61,13 +65,16 @@ def wrap_tool_with_null_filter(tool: BaseTool) -> BaseTool:
             error_msg = str(e)
             logger.error(f"MCP tool '{tool.name}' failed: {error_msg}")
 
+            # CRITICAL: Re-raise auth errors so orchestrator can handle token refresh.
+            # Previously these were swallowed, preventing automatic token refresh.
+            if "401" in error_msg or "unauthorized" in error_msg.lower():
+                raise
+
             # Provide helpful error message for common MCP errors
             if "Cannot read properties of undefined" in error_msg:
                 return f"The MCP server encountered an internal error while processing your request. This is typically a bug in the MCP server implementation. Error: {error_msg}"
             elif "timeout" in error_msg.lower():
                 return f"The MCP server timed out. Please try again. Error: {error_msg}"
-            elif "401" in error_msg or "unauthorized" in error_msg.lower():
-                return f"Authentication required for this MCP tool. Please reconnect the integration. Error: {error_msg}"
             else:
                 return f"MCP tool error: {error_msg}"
 
@@ -87,10 +94,22 @@ def extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
     MCP tools use JSON Schema with nullable types via anyOf:
     {"anyOf": [{"type": "number"}, {"type": "null"}], "default": 50}
 
+    Also handles enums by returning Literal types:
+    {"type": "string", "enum": ["low", "medium", "high"]}
+    -> Literal["low", "medium", "high"]
+
     Returns: (python_type, default_value, is_optional)
     """
     default_val = field_info.get("default")
     is_optional = False
+
+    # Check for enum first - this takes priority over type
+    enum_values = field_info.get("enum")
+    if enum_values and isinstance(enum_values, list) and len(enum_values) > 0:
+        # Create a Literal type from enum values
+        # Literal requires a tuple of values
+        python_type = Literal[tuple(enum_values)]  # type: ignore[valid-type]
+        return python_type, default_val, is_optional
 
     any_of = field_info.get("anyOf", [])
     if any_of:
@@ -99,6 +118,10 @@ def extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
         for option in any_of:
             if isinstance(option, dict) and option.get("type") != "null":
                 json_type = option.get("type", "string")
+                # Also check for enum in anyOf option
+                if option.get("enum"):
+                    python_type = Literal[tuple(option["enum"])]  # type: ignore[valid-type]
+                    return python_type, default_val, is_optional
                 break
     else:
         json_type = field_info.get("type", "string")

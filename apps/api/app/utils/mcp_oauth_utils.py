@@ -21,7 +21,7 @@ from app.config.loggers import langchain_logger as logger
 
 # MCP Protocol Version header value per MCP spec
 # This should be included in discovery requests for protocol version negotiation
-MCP_PROTOCOL_VERSION = "2025-03-26"
+MCP_PROTOCOL_VERSION = "2025-06-18"
 
 # Timeout constants for OAuth operations
 # TLS handshakes can take 2-5 seconds on slow connections, so we use generous timeouts

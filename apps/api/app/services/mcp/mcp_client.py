@@ -332,14 +332,29 @@ class MCPClient:
     ) -> dict:
         """Build mcp-use config dict.
 
-        When auth is a string token, mcp-use uses BearerAuth directly
-        without OAuth discovery. This is the proper way to pass
-        already-obtained tokens to mcp-use.
+        Transport selection:
+        - If mcp_config.transport is set, use that explicitly
+        - Otherwise, defaults to "streamable-http" per MCP spec 2025-06-18
+        - SSE transport is deprecated per MCP spec 2025-11-25
+
+        Auth handling:
+        - When auth is a string token, mcp-use uses BearerAuth directly
+          without OAuth discovery. This is the proper way to pass
+          already-obtained tokens to mcp-use.
         """
         server_config: dict = {"url": mcp_config.server_url}
 
+        # Transport: explicit config or let mcp_use auto-detect
+        # Per MCP spec 2025-06-18, streamable HTTP is preferred over deprecated SSE
         if mcp_config.transport:
             server_config["transport"] = mcp_config.transport
+            logger.debug(
+                f"[{integration_id}] Using explicit transport: {mcp_config.transport}"
+            )
+        else:
+            # Default to streamable-http per MCP spec 2025-06-18 (SSE is deprecated)
+            server_config["transport"] = "streamable-http"
+            logger.debug(f"[{integration_id}] Using default transport: streamable-http")
 
         # Check for stored OAuth token if auth is required
         if mcp_config.requires_auth:
@@ -463,7 +478,9 @@ class MCPClient:
 
             # Update user integration status to connected
             # Import here to avoid circular dependency
-            from app.services.integrations.integration_service import update_user_integration_status
+            from app.services.integrations.integration_service import (
+                update_user_integration_status,
+            )
 
             try:
                 await update_user_integration_status(
@@ -532,7 +549,9 @@ class MCPClient:
                 resolved_description = description
 
                 if resolved_name is None:
-                    from app.services.integrations.integration_resolver import IntegrationResolver
+                    from app.services.integrations.integration_resolver import (
+                        IntegrationResolver,
+                    )
 
                     resolved = await IntegrationResolver.resolve(integration_id)
                     if resolved and resolved.custom_doc:
@@ -1113,6 +1132,43 @@ class MCPClient:
         """Get tools for a connected integration."""
         return self._tools.get(integration_id, [])
 
+    async def health_check(self, integration_id: str) -> dict:
+        """
+        Check MCP connection health.
+
+        Performs a lightweight operation (list_tools) to verify the connection
+        is still active and responsive.
+
+        Args:
+            integration_id: The integration to health check
+
+        Returns:
+            {
+                "status": "healthy" | "unhealthy" | "disconnected",
+                "latency_ms": int,  # Round-trip time in milliseconds
+                "error": str,  # Only present if unhealthy
+            }
+        """
+        import time
+
+        if integration_id not in self._clients:
+            return {"status": "disconnected", "latency_ms": 0}
+
+        client = self._clients[integration_id]
+
+        try:
+            start = time.monotonic()
+            # Use list_tools as lightweight health check - it's fast and doesn't mutate state
+            session = client.get_session(integration_id)
+            await session.list_tools()
+            latency_ms = int((time.monotonic() - start) * 1000)
+
+            return {"status": "healthy", "latency_ms": latency_ms}
+
+        except Exception as e:
+            logger.warning(f"Health check failed for {integration_id}: {e}")
+            return {"status": "unhealthy", "latency_ms": 0, "error": str(e)}
+
     def is_connected(self, integration_id: str) -> bool:
         """Check if an integration is connected (in memory)."""
         return integration_id in self._clients
@@ -1143,7 +1199,9 @@ class MCPClient:
         Returns dict mapping integration_id -> list of tools.
         """
         # Get all connected integrations from MongoDB (single source of truth)
-        from app.services.integrations.integration_service import get_user_connected_integrations
+        from app.services.integrations.integration_service import (
+            get_user_connected_integrations,
+        )
 
         connected_ids: list[str] = []
         try:
