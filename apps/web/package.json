@@ -33,6 +33,7 @@
     "color-replace:verbose": "node scripts/replace-hardcoded-colors.mjs --verbose"
   },
   "dependencies": {
+    "geist": "^1.4.1",
     "@heroui/accordion": "2.2.13",
     "@heroui/autocomplete": "2.3.17",
     "@heroui/avatar": "2.2.12",

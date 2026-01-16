@@ -37,7 +37,11 @@ li {
 }
 
 .bg-custom-gradient {
-  background: linear-gradient(0deg, transparent 31%, hsl(var(--primary) / 0.2) 100%);
+  background: linear-gradient(
+    0deg,
+    transparent 31%,
+    hsl(var(--primary) / 0.2) 100%
+  );
 }
 
 .chat_bubble {

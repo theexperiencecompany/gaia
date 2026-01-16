@@ -24,7 +24,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   return (
     <div
       className={cn(
-        "prose dark:prose-invert fadein-style max-w-none text-white",
+        "prose dark:prose-invert fadein-style max-w-none text-foreground",
         className,
       )}
     >
