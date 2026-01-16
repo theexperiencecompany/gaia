@@ -116,3 +116,100 @@ class ConnectIntegrationResponse(CamelModel):
     tools_count: Optional[int] = None
     redirect_url: Optional[str] = None
     error: Optional[str] = None
+
+
+class PublishIntegrationResponse(SuccessResponse, CamelModel):
+    integration_id: str
+    slug: str
+    public_url: str
+
+
+class UnpublishIntegrationResponse(SuccessResponse, CamelModel):
+    integration_id: str
+
+
+class CommunityIntegrationCreator(CamelModel):
+    """Creator info for community integration display."""
+
+    name: Optional[str] = None
+    picture: Optional[str] = None
+
+
+class CommunityIntegrationItem(CamelModel):
+    """Integration item for community marketplace listing."""
+
+    integration_id: str
+    name: str
+    description: str
+    category: str
+    icon_url: Optional[str] = None
+    slug: Optional[str] = None
+    clone_count: int = 0
+    tool_count: int = 0
+    tools: List[IntegrationTool] = []
+    published_at: Optional[datetime] = None
+    creator: Optional[CommunityIntegrationCreator] = None
+
+
+class CommunityListResponse(BaseModel):
+    """Response for community marketplace listing."""
+
+    integrations: List[CommunityIntegrationItem] = []
+    total: int = 0
+    has_more: bool = False
+
+
+class PublicIntegrationDetailResponse(CamelModel):
+    """Full public integration details for public pages (SEO/sharing)."""
+
+    integration_id: str
+    name: str
+    description: str
+    category: str
+    slug: str
+    icon_url: Optional[str] = None
+
+    # Creator info
+    creator_name: Optional[str] = None
+    creator_picture: Optional[str] = None
+
+    # MCP config for public display
+    server_url: Optional[str] = None
+    requires_auth: bool = False
+    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
+
+    # Tools list
+    tools: List[IntegrationTool] = []
+
+    # Stats
+    clone_count: int = 0
+    published_at: Optional[datetime] = None
+
+
+class CloneIntegrationResponse(SuccessResponse, CamelModel):
+    """Response for cloning a public integration."""
+
+    integration_id: str
+    name: str
+    connection_status: Literal["created", "connected"]
+
+
+class SearchIntegrationItem(CamelModel):
+    """Integration item in search results."""
+
+    integration_id: str
+    name: str
+    description: str
+    category: str
+    relevance_score: float
+    clone_count: int = 0
+    tool_count: int = 0
+    icon_url: Optional[str] = None
+    slug: Optional[str] = None
+
+
+class SearchIntegrationsResponse(BaseModel):
+    """Response for semantic search of integrations."""
+
+    integrations: List[SearchIntegrationItem] = []
+    query: str

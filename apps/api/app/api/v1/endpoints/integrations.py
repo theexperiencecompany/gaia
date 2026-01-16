@@ -1,10 +1,16 @@
 """Integration API routes."""
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.db.chroma.public_integrations_store import (
+    index_public_integration,
+    remove_public_integration,
+)
+from app.db.mongodb.collections import integrations_collection, users_collection
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
     CreateCustomIntegrationRequest as CreateCustomIntegrationRequestModel,
@@ -23,6 +29,10 @@ from app.schemas.integrations.requests import (
 )
 from app.schemas.integrations.responses import (
     AddUserIntegrationResponse,
+    CloneIntegrationResponse,
+    CommunityIntegrationCreator,
+    CommunityIntegrationItem,
+    CommunityListResponse,
     ConnectIntegrationResponse,
     CreateCustomIntegrationResponse,
     CustomIntegrationConnectionResult,
@@ -31,9 +41,19 @@ from app.schemas.integrations.responses import (
     IntegrationsStatusResponse,
     IntegrationStatusItem,
     IntegrationSuccessResponse,
+    IntegrationTool,
     MarketplaceResponse,
+    PublicIntegrationDetailResponse,
+    PublishIntegrationResponse,
+    SearchIntegrationItem,
+    SearchIntegrationsResponse,
+    UnpublishIntegrationResponse,
     UserIntegrationsListResponse,
 )
+from app.services.integrations.category_inference_service import (
+    infer_integration_category,
+)
+from app.utils.string_utils import generate_unique_slug
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,
@@ -197,6 +217,151 @@ async def get_marketplace_integration(integration_id: str):
     if not integration:
         raise HTTPException(status_code=404, detail="Integration not found")
     return integration
+
+
+@router.get("/community", response_model=CommunityListResponse)
+async def list_community_integrations(
+    sort: str = "popular",  # popular | recent | name
+    category: str = "all",
+    limit: int = 20,
+    offset: int = 0,
+    search: Optional[str] = None,
+) -> CommunityListResponse:
+    """
+    List public integrations for the community marketplace.
+
+    Args:
+        sort: Sorting method - "popular" (clone_count), "recent" (published_at), "name"
+        category: Category filter or "all"
+        limit: Max results (default 20, max 100)
+        offset: Pagination offset
+        search: Optional search query (triggers semantic search via ChromaDB)
+
+    This is an UNAUTHENTICATED endpoint for browsing the marketplace.
+    """
+    from app.db.chroma.public_integrations_store import search_public_integrations
+
+    try:
+        # Clamp limit to max 100
+        limit = min(limit, 100)
+
+        # If search query provided, use ChromaDB semantic search
+        if search and search.strip():
+            # Use semantic search via ChromaDB
+            search_results = await search_public_integrations(
+                query=search.strip(),
+                limit=limit,
+                category=category if category != "all" else None,
+            )
+
+            # Fetch full integration docs from MongoDB for additional data
+            integration_ids = [
+                r.get("integration_id")
+                for r in search_results
+                if r.get("integration_id")
+            ]
+
+            if not integration_ids:
+                return CommunityListResponse(integrations=[], total=0, has_more=False)
+
+            # Fetch full documents from MongoDB
+            cursor = integrations_collection.find(
+                {"integration_id": {"$in": integration_ids}, "is_public": True}
+            )
+            docs = await cursor.to_list(length=limit)
+
+            # Create a map for ordering by search relevance
+            docs_map = {doc["integration_id"]: doc for doc in docs}
+            ordered_docs = [docs_map[iid] for iid in integration_ids if iid in docs_map]
+
+            integrations = _format_community_integrations(ordered_docs)
+
+            return CommunityListResponse(
+                integrations=integrations,
+                total=len(integrations),
+                has_more=False,  # Semantic search doesn't support pagination
+            )
+
+        # MongoDB query path (without search)
+        query = {"is_public": True}
+
+        # Apply category filter
+        if category and category != "all":
+            query["category"] = category
+
+        # Determine sort order
+        if sort == "popular":
+            sort_field = [("clone_count", -1), ("published_at", -1)]
+        elif sort == "recent":
+            sort_field = [("published_at", -1)]
+        elif sort == "name":
+            sort_field = [("name", 1)]
+        else:
+            sort_field = [("clone_count", -1), ("published_at", -1)]
+
+        # Get total count
+        total = await integrations_collection.count_documents(query)
+
+        # Fetch with pagination
+        cursor = (
+            integrations_collection.find(query)
+            .sort(sort_field)
+            .skip(offset)
+            .limit(limit)
+        )
+        docs = await cursor.to_list(length=limit)
+
+        integrations = _format_community_integrations(docs)
+
+        return CommunityListResponse(
+            integrations=integrations,
+            total=total,
+            has_more=(offset + len(docs)) < total,
+        )
+
+    except Exception as e:
+        logger.error(f"Error fetching community integrations: {e}")
+        raise HTTPException(
+            status_code=500, detail="Failed to fetch community integrations"
+        )
+
+
+def _format_community_integrations(docs: list) -> list[CommunityIntegrationItem]:
+    """Format MongoDB documents into CommunityIntegrationItem responses."""
+    result = []
+    for doc in docs:
+        tools = doc.get("tools", [])
+        tool_items = [
+            IntegrationTool(
+                name=t.get("name", ""),
+                description=t.get("description"),
+            )
+            for t in tools[:10]  # Limit to first 10 tools
+        ]
+
+        creator = None
+        if doc.get("creator_name") or doc.get("creator_picture"):
+            creator = CommunityIntegrationCreator(
+                name=doc.get("creator_name"),
+                picture=doc.get("creator_picture"),
+            )
+
+        result.append(
+            CommunityIntegrationItem(
+                integration_id=doc["integration_id"],
+                name=doc["name"],
+                description=doc.get("description", ""),
+                category=doc.get("category", "custom"),
+                icon_url=doc.get("icon_url"),
+                slug=doc.get("slug"),
+                clone_count=doc.get("clone_count", 0),
+                tool_count=len(tools),
+                tools=tool_items,
+                published_at=doc.get("published_at"),
+                creator=creator,
+            )
+        )
+    return result
 
 
 @router.get("/users/me/integrations", response_model=UserIntegrationsListResponse)
