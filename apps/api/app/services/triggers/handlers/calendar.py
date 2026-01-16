@@ -109,7 +109,11 @@ class CalendarTriggerHandler(TriggerHandler):
         for calendar_id in calendar_ids:
             config: Dict[str, Any] = {"calendarId": calendar_id}
             if trigger_name == "calendar_event_starting_soon":
-                starting_soon_data = trigger_data  # type: CalendarEventStartingSoonConfig
+                if not isinstance(trigger_data, CalendarEventStartingSoonConfig):
+                    # Should be covered by validation above, but for MyPy safety:
+                    raise TypeError("Expected CalendarEventStartingSoonConfig")
+
+                starting_soon_data = trigger_data
                 if starting_soon_data.minutes_before_start is not None:
                     config["countdown_window_minutes"] = (
                         starting_soon_data.minutes_before_start * 60

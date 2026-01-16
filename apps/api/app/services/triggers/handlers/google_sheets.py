@@ -78,7 +78,13 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                     return []
 
                 # Invoke tool with typed input
-                input_model = GoogleSheetsSearchSpreadsheetsInput(maxResults=100)
+                input_model = GoogleSheetsSearchSpreadsheetsInput(
+                    maxResults=100,
+                    createdAfter=None,
+                    includeTrashed=None,
+                    modifiedAfter=None,
+                    orderBy=None,
+                )
                 result: ToolExecutionResponse = await asyncio.to_thread(
                     tool.invoke,
                     input_model.model_dump(exclude_none=True, by_alias=True),

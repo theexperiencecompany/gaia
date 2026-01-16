@@ -5,7 +5,7 @@ Handles Notion-specific trigger logic.
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional, Set, TypedDict
+from typing import Any, Dict, List, Literal, Optional, Set, TypedDict
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
@@ -105,6 +105,7 @@ class NotionTriggerHandler(TriggerHandler):
                 return []
 
             # Determine fetch_type based on field_name
+            fetch_type: Literal["pages", "databases", "all"]
             if field_name == "database_id":
                 fetch_type = "databases"
             elif field_name == "page_id":

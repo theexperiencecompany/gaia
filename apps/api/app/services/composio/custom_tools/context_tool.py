@@ -634,7 +634,7 @@ def register_context_custom_tools(composio: Composio) -> List[str]:
         )
 
         # Build result
-        result = GatherContextData(
+        gather_result = GatherContextData(
             date=date_str,
             providers_queried=[
                 p
@@ -646,10 +646,10 @@ def register_context_custom_tools(composio: Composio) -> List[str]:
         ).model_dump()
 
         # Add performance metrics
-        result["_performance"] = {
+        gather_result["_performance"] = {
             "fetch_time_seconds": round(fetch_time, 2),
             "providers_attempted": len(providers),
-            "providers_succeeded": len(result["providers_queried"]),
+            "providers_succeeded": len(gather_result["providers_queried"]),
         }
 
         # Add LLM summary (async in event loop)
@@ -658,19 +658,19 @@ def register_context_custom_tools(composio: Composio) -> List[str]:
             summary = loop.run_until_complete(
                 _summarize_context_with_llm(date_str, context_results)
             )
-            result["summary"] = summary
+            gather_result["summary"] = summary
 
             total_time = time.time() - start_time
-            result["_performance"]["total_time_seconds"] = round(total_time, 2)
+            gather_result["_performance"]["total_time_seconds"] = round(total_time, 2)
             logger.info(f"Context + summary completed in {total_time:.2f}s")
         except Exception as e:
             logger.error(f"Failed to add summary: {e}")
-            result["summary"] = {
+            gather_result["summary"] = {
                 "overview": "Summary generation failed.",
                 "error": str(e),
             }
 
-        return result
+        return gather_result
 
     return ["GAIA_GATHER_CONTEXT"]
 

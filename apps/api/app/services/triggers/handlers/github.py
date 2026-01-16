@@ -86,9 +86,18 @@ class GitHubTriggerHandler(TriggerHandler):
             return []
 
         # Invoke tool with typed input
-        params = GitHubListRepositoriesInput(per_page=100, page=page).model_dump(
-            exclude_none=True
-        )
+        params = GitHubListRepositoriesInput(
+            per_page=100,
+            page=page,
+            before=None,
+            direction=None,
+            raw_response=False,
+            since=None,
+            sort=None,
+            type=None,
+            visibility=None,
+        ).model_dump(exclude_none=True)
+
         result: ToolExecutionResponse = await asyncio.to_thread(tool.invoke, params)
 
         # Check response status
