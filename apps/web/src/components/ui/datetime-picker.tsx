@@ -158,14 +158,14 @@ export function DateTimePicker({
         ) : (
           <div
             className={cn(
-              "flex h-9 w-full cursor-pointer items-center rounded-xl bg-zinc-800/30 ps-3 pe-1 text-sm font-normal hover:bg-zinc-800/50",
-              !displayValue && "text-zinc-500",
+              "flex h-9 w-full cursor-pointer items-center rounded-xl bg-surface-200/30 ps-3 pe-1 text-sm font-normal hover:bg-surface-200/50",
+              !displayValue && "text-foreground-500",
               (!clearable || !value) && "pe-3",
               disabled && "cursor-not-allowed opacity-50",
               classNames?.trigger,
             )}
           >
-            <div className="flex flex-grow items-center text-zinc-400">
+            <div className="flex flex-grow items-center text-foreground-400">
               <CalendarIcon className="mr-2 size-4" />
               {displayFormat}
             </div>
@@ -176,7 +176,7 @@ export function DateTimePicker({
                 size="sm"
                 role="button"
                 aria-label="Clear date"
-                className="ms-1 size-6 p-1 hover:bg-zinc-700"
+                className="ms-1 size-6 p-1 hover:bg-surface-300"
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
@@ -184,13 +184,13 @@ export function DateTimePicker({
                   setOpen(false);
                 }}
               >
-                <Cancel01Icon className="size-4 text-zinc-400" />
+                <Cancel01Icon className="size-4 text-foreground-400" />
               </Button>
             )}
           </div>
         )}
       </PopoverTrigger>
-      <PopoverContent className="w-auto rounded-2xl border-0 bg-zinc-800 p-0 shadow-xl">
+      <PopoverContent className="w-auto rounded-2xl border-0 bg-surface-200 p-0 shadow-xl">
         <div className="p-3">
           <DayPicker
             mode="single"
@@ -208,28 +208,28 @@ export function DateTimePicker({
               months: "flex flex-col sm:flex-row gap-2",
               month: "flex flex-col gap-4",
               caption: "flex justify-center pt-1 relative items-center w-full",
-              caption_label: "text-sm font-medium text-zinc-200",
+              caption_label: "text-sm font-medium text-foreground-800",
               nav: "flex items-center gap-1",
               nav_button: cn(
                 buttonVariants({ variant: "ghost" }),
-                "size-7 bg-transparent p-0 opacity-50 hover:opacity-100 hover:bg-zinc-700",
+                "size-7 bg-transparent p-0 opacity-50 hover:opacity-100 hover:bg-surface-300",
               ),
               nav_button_previous: "absolute left-1",
               nav_button_next: "absolute right-1",
               day: cn(
                 buttonVariants({ variant: "ghost" }),
                 "size-9 p-0 font-normal cursor-pointer transition-colors",
-                "hover:bg-zinc-700 hover:text-zinc-100",
-                "text-zinc-300",
+                "hover:bg-surface-300 hover:text-foreground-900",
+                "text-foreground-700",
               ),
             }}
             showOutsideDays={true}
             components={{
               IconLeft: ({ ...props }) => (
-                <ArrowLeft01Icon className="size-4 text-zinc-400" {...props} />
+                <ArrowLeft01Icon className="size-4 text-foreground-400" {...props} />
               ),
               IconRight: ({ ...props }) => (
-                <ArrowRight01Icon className="size-4 text-zinc-400" {...props} />
+                <ArrowRight01Icon className="size-4 text-foreground-400" {...props} />
               ),
             }}
             {...props}
@@ -249,8 +249,8 @@ export function DateTimePicker({
         )}
         <div className="flex items-center justify-between p-3 pt-2">
           {timezone && (
-            <div className="text-xs text-zinc-500">
-              <span className="font-medium text-zinc-400">{timezone}</span>
+            <div className="text-xs text-foreground-500">
+              <span className="font-medium text-foreground-400">{timezone}</span>
             </div>
           )}
           <Button

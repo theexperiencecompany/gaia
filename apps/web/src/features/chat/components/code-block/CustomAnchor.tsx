@@ -82,7 +82,7 @@ const CustomAnchor = memo(
     return (
       <Tooltip
         showArrow
-        className="relative max-w-[280px] border border-zinc-700 bg-zinc-900 p-3 text-white shadow-lg"
+        className="relative max-w-[280px] border border-surface-200 bg-surface-100 p-3 text-foreground-50 shadow-sm rounded-2xl"
         content={
           isLoading ? (
             <div className="flex justify-center p-5">
@@ -99,7 +99,7 @@ const CustomAnchor = memo(
               {!isStreaming &&
                 metadata.website_image &&
                 !failedUrls.has(metadata.website_image) && (
-                  <div className="relative aspect-video w-full overflow-hidden rounded-lg">
+                  <div className="relative aspect-video w-full overflow-hidden rounded-xl">
                     <Image
                       src={metadata.website_image}
                       alt="Website Image"
@@ -107,7 +107,7 @@ const CustomAnchor = memo(
                       width={280}
                       height={157}
                       objectFit="cover"
-                      className="rounded-lg"
+                      className="rounded-xl"
                       onError={() => handleImageError(metadata.website_image!)}
                     />
                   </div>
@@ -131,7 +131,7 @@ const CustomAnchor = memo(
                       onError={() => handleImageError(metadata.favicon!)}
                     />
                   ) : (
-                    <GlobalIcon className="h-5 w-5 text-gray-400" />
+                    <GlobalIcon className="h-5 w-5 text-foreground-400" />
                   )}
                   {metadata.website_name && (
                     <div className="truncate text-sm font-semibold">
@@ -143,14 +143,14 @@ const CustomAnchor = memo(
 
               {/* Title */}
               {metadata.title && (
-                <div className="truncate text-sm font-medium text-white">
+                <div className="truncate text-sm font-medium text-foreground-50">
                   {metadata.title}
                 </div>
               )}
 
               {/* Description */}
               {metadata.description && (
-                <div className="line-clamp-3 text-xs text-gray-400">
+                <div className="line-clamp-3 text-xs text-foreground-400">
                   {metadata.description}
                 </div>
               )}
@@ -167,8 +167,8 @@ const CustomAnchor = memo(
             </div>
           ) : (
             <div className="flex items-center gap-2 p-3">
-              <GlobalIcon className="h-4 w-4 text-gray-400" />
-              <span className="text-sm text-gray-400">
+              <GlobalIcon className="h-4 w-4 text-foreground-400" />
+              <span className="text-sm text-foreground-400">
                 No preview available
               </span>
             </div>
@@ -178,7 +178,7 @@ const CustomAnchor = memo(
         <a
           ref={elementRef}
           href={href}
-          className="inline-flex cursor-pointer items-center gap-1 rounded-sm bg-primary/20 px-1 text-sm font-medium text-primary transition-all hover:text-white hover:underline"
+          className="inline-flex cursor-pointer items-center gap-1 rounded-sm bg-primary/20 px-1 text-sm font-medium text-primary transition-all hover:text-foreground-50 hover:underline"
           rel="noopener noreferrer"
           target="_blank"
           onMouseEnter={handleMouseEnter}
@@ -190,7 +190,7 @@ const CustomAnchor = memo(
                 width={14}
                 height={14}
                 alt="Favicon"
-                className="h-3.5 w-3.5 flex-shrink-0 rounded-sm"
+                className="h-3.5 w-3.5 shrink-0 rounded-sm"
                 src={metadata.favicon}
                 onError={() => handleImageError(metadata.favicon!)}
               />

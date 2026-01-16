@@ -1,11 +1,15 @@
 "use client";
 
 import Fuse from "fuse.js";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useIntegrationsStore } from "@/stores/integrationsStore";
 import type { Integration } from "../types";
 
 export function useIntegrationSearch(integrations: Integration[]) {
-  const [searchQuery, setSearchQuery] = useState("");
+  const searchQuery = useIntegrationsStore((state) => state.searchQuery);
+  const selectedCategory = useIntegrationsStore(
+    (state) => state.selectedCategory,
+  );
 
   const fuse = useMemo(() => {
     return new Fuse(integrations, {
@@ -15,16 +19,26 @@ export function useIntegrationSearch(integrations: Integration[]) {
   }, [integrations]);
 
   const filteredIntegrations = useMemo(() => {
-    if (!searchQuery.trim()) return integrations;
-    return fuse.search(searchQuery).map((r) => r.item);
-  }, [searchQuery, fuse, integrations]);
+    let results = integrations;
 
-  const clearSearch = () => setSearchQuery("");
+    // Apply search filter
+    if (searchQuery.trim()) {
+      results = fuse.search(searchQuery).map((r) => r.item);
+    }
+
+    // Apply category filter
+    if (selectedCategory !== "all") {
+      if (selectedCategory === "created_by_you") {
+        results = results.filter((i) => i.createdBy);
+      } else {
+        results = results.filter((i) => i.category === selectedCategory);
+      }
+    }
+
+    return results;
+  }, [searchQuery, selectedCategory, fuse, integrations]);
 
   return {
-    searchQuery,
-    setSearchQuery,
-    clearSearch,
     filteredIntegrations,
   };
 }

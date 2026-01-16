@@ -77,7 +77,7 @@ export default function YouMightAlsoLike({
 
   return (
     <div className="mx-auto max-w-7xl">
-      <div className="my-20 border-[1px] border-t border-zinc-900" />
+      <div className="my-20 border-[1px] border-t border-border-surface-400" />
       <div className="mx-auto space-y-6">
         <h2 className="mx-auto text-center font-serif text-6xl font-normal text-foreground">
           You might also like

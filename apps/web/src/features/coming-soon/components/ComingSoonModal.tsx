@@ -60,7 +60,7 @@ export default function ComingSoonModal({
 
   return (
     <Modal
-      className="text-foreground dark"
+      className="text-foreground"
       isOpen={isOpen}
       onOpenChange={setOpen}
     >
@@ -97,7 +97,7 @@ export default function ComingSoonModal({
                 key={step.title}
                 aria-hidden="true"
                 className={`h-2 w-2 rounded-full ${
-                  index === currentStep ? "bg-primary" : "bg-gray-600"
+                  index === currentStep ? "bg-primary" : "bg-surface-600"
                 }`}
               />
             ))}

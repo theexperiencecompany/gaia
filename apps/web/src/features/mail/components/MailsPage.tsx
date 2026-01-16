@@ -138,7 +138,7 @@ export default function MailsPage() {
           <h3 className="text-lg font-medium text-white">
             Failed to load emails
           </h3>
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-sm text-foreground-400">
             Check your internet connection and try again
           </p>
         </div>
@@ -175,7 +175,7 @@ export default function MailsPage() {
           className="relative flex h-full w-full items-center px-4 text-sm text-foreground/70 backdrop-blur-xs sm:px-1"
         >
           {item.data as string}
-          <div className="absolute bottom-4 h-[1px] w-full border-none bg-white/20 outline-hidden sm:bottom-2"></div>
+          <div className="absolute bottom-4 h-[1px] w-full border-none bg-surface-50/20 outline-hidden sm:bottom-2"></div>
         </div>
       );
 
@@ -265,7 +265,7 @@ export default function MailsPage() {
                 />
                 {formatTime(email.time)}
               </div>
-              <div className="absolute right-0 flex h-fit w-fit items-center gap-1 rounded-lg bg-zinc-900 p-2 text-sm text-zinc-300 opacity-0 group-hover:opacity-100">
+              <div className="absolute right-0 flex h-fit w-fit items-center gap-1 rounded-lg bg-surface-100 p-2 text-sm text-foreground-300 opacity-0 group-hover:opacity-100">
                 {[
                   {
                     icon: StarIcon,
@@ -337,7 +337,7 @@ export default function MailsPage() {
     <div className="relative h-full w-full">
       {/* Selection toolbar */}
       {selectedEmails.size > 0 && (
-        <div className="absolute top-0 right-0 left-0 z-10 flex items-center justify-between rounded-md bg-zinc-900 px-1 py-1 text-white backdrop-blur-xl">
+        <div className="absolute top-0 right-0 left-0 z-10 flex items-center justify-between rounded-md bg-surface-100 px-1 py-1 text-white backdrop-blur-xl">
           <div className="flex items-center gap-2">
             <Button
               size="sm"

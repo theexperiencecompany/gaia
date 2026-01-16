@@ -26,13 +26,15 @@ from typing import Any, Optional
 import redis.asyncio as redis
 from app.config.loggers import redis_logger as logger
 from app.config.settings import settings
+from app.constants.cache import (
+    DEFAULT_CACHE_TTL,
+    ONE_YEAR_TTL,
+)
 from pydantic import TypeAdapter
 from pydantic.type_adapter import TypeAdapter as TypeAdapterType
 
-ONE_YEAR_TTL = 31_536_000
-ONE_HOUR_TTL = 3600
-CACHE_TTL = ONE_HOUR_TTL  # Default cache TTL for todos
-STATS_CACHE_TTL = 30 * 60  # 30 minutes for stats (increased from 5)
+# Re-export for backwards compatibility
+CACHE_TTL = DEFAULT_CACHE_TTL
 
 
 def serialize_any(data: Any, model: Optional[type] = None) -> str:
@@ -263,6 +265,33 @@ async def delete_cache(key: str):
         return
 
     await redis_cache.delete(key)
+
+
+async def get_and_delete_cache(key: str) -> Any | None:
+    """
+    Atomically get and delete a cached value using Redis GETDEL.
+
+    Used for one-time use tokens like OAuth state to prevent replay attacks.
+    This is atomic - if two requests come in, only one will get the value.
+
+    Args:
+        key: Cache key to get and delete
+
+    Returns:
+        Cached value (deserialized from JSON) or None if not found
+    """
+    if not redis_cache.redis:
+        logger.warning("Redis is not initialized. Skipping get_and_delete operation.")
+        return None
+
+    try:
+        value = await redis_cache.redis.getdel(key)
+        if value:
+            return deserialize_any(value)
+        return None
+    except Exception as e:
+        logger.error(f"Error in get_and_delete for key {key}: {e}")
+        return None
 
 
 async def delete_cache_by_pattern(pattern: str):

@@ -50,7 +50,7 @@ export default function BlogPostClient({
                   alt={blog.title}
                   width={1920}
                   height={1080}
-                  className="bg-zinc-900 object-cover sm:max-w-5xl"
+                  className="bg-surface-100 object-cover sm:max-w-5xl"
                 />
               )}
             </div>
@@ -64,13 +64,13 @@ export default function BlogPostClient({
               date={blog.date}
               className="mb-10"
             />
-            <div className="prose prose-lg dark:prose-invert max-w-2xl text-foreground-600">
+            <div className="prose prose-lg dark:prose-invert max-w-2xl text-foreground-900">
               <MarkdownWrapper content={blog.content} />
             </div>
             <BlogMetadata
               authors={blog.authors}
               date={blog.date}
-              className="my-10 w-full max-w-3xl border-t-1 border-gray-700 py-10"
+              className="my-10 w-full max-w-3xl border-t-1 border-surface-300 py-10"
             />
           </div>
         </div>

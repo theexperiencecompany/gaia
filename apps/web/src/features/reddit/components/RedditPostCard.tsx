@@ -46,7 +46,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
   };
 
   return (
-    <div className="group w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-800 text-white transition-all hover:border-orange-600/50 hover:shadow-lg hover:shadow-orange-600/10">
+    <div className="group w-full max-w-2xl overflow-hidden rounded-2xl border border-surface-300 bg-surface-200 text-foreground transition-all hover:border-orange-600/50 hover:shadow-lg hover:shadow-orange-600/10">
       <div className="space-y-3 p-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
@@ -56,10 +56,10 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
               <span className="font-semibold text-[#FF4500]">
                 {post.subreddit}
               </span>
-              <span className="text-gray-500">•</span>
-              <span className="text-gray-400">u/{post.author}</span>
-              <span className="text-gray-500">•</span>
-              <span className="text-gray-500">
+              <span className="text-foreground-500">•</span>
+              <span className="text-foreground-400">u/{post.author}</span>
+              <span className="text-foreground-500">•</span>
+              <span className="text-foreground-500">
                 {formatTime(post.created_utc)}
               </span>
             </div>
@@ -87,7 +87,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
 
         {/* Content Preview */}
         {post.selftext && (
-          <p className="line-clamp-3 text-sm leading-relaxed text-gray-300">
+          <p className="line-clamp-3 text-sm leading-relaxed text-foreground-300">
             {post.selftext}
           </p>
         )}
@@ -114,14 +114,14 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
               {formatNumber(post.score)}
             </span>
             {post.upvote_ratio && (
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-foreground-500">
                 ({Math.round(post.upvote_ratio * 100)}%)
               </span>
             )}
           </div>
 
           {/* Comments */}
-          <div className="flex items-center gap-1.5 text-sm text-gray-400">
+          <div className="flex items-center gap-1.5 text-sm text-foreground-400">
             <BubbleChatIcon className="h-4 w-4" />
             <span>{formatNumber(post.num_comments)}</span>
           </div>
@@ -130,7 +130,7 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
           <button
             type="button"
             onClick={handleOpenPost}
-            className="ml-auto text-xs text-gray-400 transition-colors hover:text-[#FF4500]"
+            className="ml-auto text-xs text-foreground-400 transition-colors hover:text-[#FF4500]"
           >
             View on Reddit →
           </button>

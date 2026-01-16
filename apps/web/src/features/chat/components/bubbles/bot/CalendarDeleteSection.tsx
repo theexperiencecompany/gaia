@@ -76,16 +76,16 @@ export function CalendarDeleteSection({
   });
 
   return (
-    <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
+    <div className="w-full max-w-md rounded-3xl bg-surface-200 p-4 text-white">
       <ScrollShadow className="mt-2 max-h-[400px] space-y-3">
         {Object.entries(eventsByDate).map(([dateString, events]) => (
           <div key={dateString} className="space-y-3">
             <div className="relative flex items-center">
-              <div className="flex-1 border-t border-zinc-700" />
-              <span className="px-3 text-xs text-zinc-500">
+              <div className="flex-1 border-t border-surface-300" />
+              <span className="px-3 text-xs text-foreground-500">
                 {formatDateWithRelative(dateString)}
               </span>
-              <div className="flex-1 border-t border-zinc-700" />
+              <div className="flex-1 border-t border-surface-300" />
             </div>
 
             <div className="space-y-2">

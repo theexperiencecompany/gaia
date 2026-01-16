@@ -20,9 +20,9 @@ export const DateStrip: React.FC<DateStripProps> = ({
   columnVirtualizer,
 }) => {
   return (
-    <div className="sticky top-0 z-[30] flex min-h-9 min-w-fit flex-shrink-0 border-b border-zinc-800 bg-primary-bg">
+    <div className="sticky top-0 z-[30] flex min-h-9 min-w-fit flex-shrink-0 border-b border-border-surface-800 bg-primary-bg">
       {/* Time Label Column */}
-      <div className="sticky left-0 z-[11] w-20 flex-shrink-0 border-r border-zinc-800 bg-primary-bg" />
+      <div className="sticky left-0 z-[11] w-20 flex-shrink-0 border-r border-border-surface-800 bg-primary-bg" />
 
       {/* Date Headers - Virtualized */}
       <div className="relative min-h-9 flex-1 overflow-hidden">
@@ -53,14 +53,14 @@ export const DateStrip: React.FC<DateStripProps> = ({
                 type="button"
                 key={virtualColumn.key}
                 onClick={() => onDateSelect?.(date)}
-                className={`absolute top-0 left-0 flex min-h-9 flex-shrink-0 cursor-pointer flex-row items-center justify-center gap-1 border-r border-zinc-800 py-1 font-light transition-all duration-200 ${
+                className={`absolute top-0 left-0 flex min-h-9 flex-shrink-0 cursor-pointer flex-row items-center justify-center gap-1 border-r border-border-surface-800 py-1 font-light transition-all duration-200 ${
                   isToday
-                    ? "hover:bg-zinc-700/40"
+                    ? "hover:bg-surface-700/40"
                     : isSelected
-                      ? "bg-zinc-800 text-white hover:bg-zinc-700/40"
+                      ? "bg-surface-200 text-white hover:bg-surface-700/40"
                       : isWeekend
-                        ? "hover:bg-zinc- bg-zinc-900 text-zinc-400"
-                        : "bg-primary-bg text-zinc-400 hover:bg-zinc-800"
+                        ? "hover:bg-surface-200 bg-surface-100 text-foreground-400"
+                        : "bg-primary-bg text-foreground-400 hover:bg-surface-200"
                 }`}
                 style={{
                   width: `${virtualColumn.size}px`,
@@ -73,7 +73,7 @@ export const DateStrip: React.FC<DateStripProps> = ({
                 </div>
                 <div
                   className={`rounded-lg text-sm font-medium ${
-                    isToday ? "bg-primary p-1 px-2 text-black" : ""
+                    isToday ? "bg-primary p-1 px-2 text-primary-foreground" : ""
                   }`}
                 >
                   {dayNumber}

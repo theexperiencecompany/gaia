@@ -247,7 +247,7 @@ export function useNotificationActions(
         return {
           ...baseProps,
           variant: "secondary" as const,
-          className: "bg-zinc-700 hover:bg-zinc-600 text-white",
+          className: "bg-surface-700 hover:bg-surface-600 text-white",
         };
       case "danger":
         return {

@@ -101,7 +101,7 @@ export default function ProductivityOS() {
         <Image
           width={1920}
           height={1080}
-          className="w-full rounded-3xl border-2 border-zinc-800 min-w-full"
+          className="w-full rounded-3xl border-2 border-border-surface-800 min-w-full"
           src={selected.src}
           alt={selected.name}
           priority

@@ -86,8 +86,8 @@ export default function AccountSection({
     <div className="flex w-full grid-cols-4 gap-10 space-y-4">
       <div className="col-span-3 w-full space-y-4">
         <div>
-          <h3 className="text-lg font-semibold text-white">Account Settings</h3>
-          <p className="text-sm text-zinc-400">Adjust your preferences</p>
+          <h3 className="text-lg font-semibold text-foreground-900">Account Settings</h3>
+          <p className="text-sm text-foreground-400">Adjust your preferences</p>
         </div>
 
         <SettingsCard>
@@ -98,7 +98,7 @@ export default function AccountSection({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isLoading}
-                className="relative mt-5 h-14 w-14 cursor-pointer overflow-hidden rounded-full bg-zinc-800 transition-all duration-200 hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-zinc-900"
+                className="relative mt-5 h-14 w-14 cursor-pointer overflow-hidden rounded-full bg-surface-200 transition-all duration-200 hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-surface-100"
               >
                 {user?.profilePicture ? (
                   <Image
@@ -110,7 +110,7 @@ export default function AccountSection({
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
-                    <UserCircle02Icon className="h-8 w-8 text-zinc-400" />
+                    <UserCircle02Icon className="h-8 w-8 text-foreground-400" />
                   </div>
                 )}
                 <div className="bg-opacity-50 absolute inset-0 flex items-center justify-center bg-black opacity-0 transition-opacity duration-200 group-hover:opacity-100">
@@ -164,10 +164,10 @@ export default function AccountSection({
                   <button
                     type="button"
                     onClick={() => setIsEditing(true)}
-                    className="group flex w-full items-center justify-between rounded-xl bg-zinc-800 px-3 py-2.5 text-sm text-white transition-colors duration-200 hover:bg-zinc-700"
+                    className="group flex w-full items-center justify-between rounded-xl bg-surface-200 px-3 py-2.5 text-sm text-foreground-900 transition-colors duration-200 hover:bg-surface-300"
                   >
                     <span>{user?.name || "Loading..."}</span>
-                    <PencilEdit02Icon className="h-4 w-4 text-zinc-400 transition-colors duration-200 group-hover:text-white" />
+                    <PencilEdit02Icon className="h-4 w-4 text-foreground-400 transition-colors duration-200 group-hover:text-foreground-900" />
                   </button>
                 )}
               </LabeledField>

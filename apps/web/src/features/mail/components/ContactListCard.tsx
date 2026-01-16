@@ -17,17 +17,17 @@ export default function ContactListCard({ contacts }: ContactListCardProps) {
       label="Contact"
       isCollapsible={true}
     >
-      <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-3 text-white">
+      <div className="w-full max-w-2xl rounded-3xl bg-surface-200 p-3 text-white">
         {/* Contact List */}
-        <ScrollShadow className="max-h-[400px] divide-y divide-zinc-700">
+        <ScrollShadow className="max-h-[400px] divide-y divide-border-surface-700">
           {contacts.map((contact) => (
             <div
               key={contact.email}
-              className="group flex cursor-default items-start gap-4 p-3 transition-colors hover:bg-zinc-700"
+              className="group flex cursor-default items-start gap-4 p-3 transition-colors hover:bg-surface-700"
             >
               {/* Name Column */}
               <div className="w-40 flex-shrink-0">
-                <span className="block truncate text-sm font-medium text-gray-300">
+                <span className="block truncate text-sm font-medium text-foreground-300">
                   {contact.name}
                 </span>
               </div>
@@ -35,13 +35,13 @@ export default function ContactListCard({ contacts }: ContactListCardProps) {
               {/* Details Column */}
               <div className="min-w-0 flex-1 space-y-1">
                 {contact.email && (
-                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <div className="flex items-center gap-2 text-sm text-foreground-400">
                     <Mail01Icon className="h-3.5 w-3.5 flex-shrink-0" />
                     <span className="truncate">{contact.email}</span>
                   </div>
                 )}
                 {contact.phone && (
-                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <div className="flex items-center gap-2 text-sm text-foreground-400">
                     <Call02Icon className="h-3.5 w-3.5 flex-shrink-0" />
                     <span>{contact.phone}</span>
                   </div>

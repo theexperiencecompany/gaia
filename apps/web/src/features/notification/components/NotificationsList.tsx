@@ -50,7 +50,7 @@ export const NotificationsList = ({
       <div className="mx-auto flex h-full w-full max-w-4xl items-center justify-center">
         <div className="flex flex-col items-center space-y-3">
           <Spinner size="lg" color="primary" />
-          <p className="text-sm text-zinc-500">Loading notifications...</p>
+          <p className="text-sm text-foreground-500">Loading notifications...</p>
         </div>
       </div>
     );
@@ -60,8 +60,8 @@ export const NotificationsList = ({
     return (
       <div className="mx-auto mt-10 flex h-full w-full max-w-4xl items-center justify-center">
         <div className="flex flex-col items-center space-y-4 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900/50 ring-1 ring-zinc-800">
-            <span className="text-3xl text-zinc-600">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-100/50 ring-1 ring-border-surface-800">
+            <span className="text-3xl text-foreground-600">
               <NotificationIcon />
             </span>
           </div>
@@ -69,7 +69,7 @@ export const NotificationsList = ({
             <h3 className="text-base font-semibold text-white">
               {emptyMessage}
             </h3>
-            <p className="text-sm text-zinc-500">{emptyDescription}</p>
+            <p className="text-sm text-foreground-500">{emptyDescription}</p>
           </div>
         </div>
       </div>
@@ -81,7 +81,7 @@ export const NotificationsList = ({
       {Object.entries(groupedNotifications).map(
         ([timeGroup, groupNotifications]) => (
           <div key={timeGroup} className="space-y-3">
-            <h3 className="px-0.5 text-xs font-semibold tracking-wider text-zinc-500 uppercase">
+            <h3 className="px-0.5 text-xs font-semibold tracking-wider text-foreground-500 uppercase">
               {timeGroup}
             </h3>
             <div className="space-y-2.5">

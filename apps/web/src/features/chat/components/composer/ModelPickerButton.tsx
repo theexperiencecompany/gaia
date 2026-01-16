@@ -35,19 +35,6 @@ const ModelPickerButton: React.FC = () => {
     }
   };
 
-  const getTierDisplayName = (tier: string) => {
-    return tier.charAt(0).toUpperCase() + tier.slice(1);
-  };
-
-  const getTierColor = (tier: string) => {
-    switch (tier.toLowerCase()) {
-      case "pro":
-        return "text-amber-400";
-      default:
-        return "text-zinc-400";
-    }
-  };
-
   // Find the default model from the models list
   const defaultModel = useMemo(() => {
     return models?.find((model) => model.is_default);
@@ -92,38 +79,35 @@ const ModelPickerButton: React.FC = () => {
   }, [models, currentModel]);
 
   const headingClasses =
-    "flex w-full sticky top-0 z-20 py-2 px-2 bg-zinc-800  text-zinc-200 text-xs font-medium capitalize";
+    "flex w-full sticky top-0 pt-4 z-20 py-2 px-2 bg-surface-200 text-foreground-500 text-xs font-medium capitalize";
 
   // Don't render the button if models are still loading or not available
   if (isLoading || !models || models.length === 0) {
     return null;
   }
 
+  const selectedModelId =
+    currentModel?.model_id || defaultModel?.model_id || "";
+
   return (
     <Select
       placeholder="Model"
-      selectedKeys={
-        currentModel?.model_id
-          ? new Set([currentModel.model_id])
-          : defaultModel?.model_id
-            ? new Set([defaultModel.model_id])
-            : new Set()
-      }
+      selectedKeys={selectedModelId ? new Set([selectedModelId]) : new Set()}
       onSelectionChange={handleSelectionChange}
       isDisabled={selectModelMutation.isPending}
       size="sm"
       variant={"flat"}
       aria-label="Select AI Model"
-      className="!w-fit !max-w-none"
+      className="w-fit! max-w-none!"
       popoverProps={{
         classNames: {
-          content: "min-w-[300px] max-w-none bg-zinc-800",
+          content: "min-w-[300px] max-w-none bg-surface-200",
         },
       }}
       classNames={{
         trigger:
-          "cursor-pointer bg-transparent transition hover:bg-zinc-800 !min-w-fit !w-auto !max-w-none whitespace-nowrap pl-3 pr-8",
-        value: "text-zinc-400! text-xs font-medium whitespace-nowrap !w-auto ",
+          "cursor-pointer bg-transparent transition hover:bg-surface-200 !min-w-fit !w-auto !max-w-none whitespace-nowrap pl-3 pr-8 shadow-none!",
+        value: "text-foreground-400! text-xs font-medium whitespace-nowrap !w-auto ",
         base: "!max-w-none !w-auto",
         innerWrapper: "!w-auto !max-w-none",
         mainWrapper: "!w-auto !max-w-none",
@@ -131,22 +115,10 @@ const ModelPickerButton: React.FC = () => {
       scrollShadowProps={{
         isEnabled: false,
       }}
-      startContent={
-        currentModel?.logo_url && (
-          <Image
-            src={currentModel.logo_url}
-            alt={currentModel.name}
-            height={40}
-            width={40}
-            className={`h-4 w-4 object-contain`}
-          />
-        )
-      }
       renderValue={(items) => {
         if (!items.length) return "Model";
         const item = items[0];
         const model = models?.find((m) => m.model_id === item.key);
-        // Remove text-nowrap to prevent truncation
         return <span>{model?.name || "Model"}</span>;
       }}
     >
@@ -158,47 +130,53 @@ const ModelPickerButton: React.FC = () => {
           }}
           title={provider}
         >
-          {providerModels?.map((model) => (
-            <SelectItem
-              key={model.model_id}
-              textValue={`${model.name}${model.is_default ? " (Default)" : ""}`}
-              classNames={{
-                title: "text-zinc-200",
-                description: "text-zinc-400 mt-1",
-              }}
-              startContent={
-                model.logo_url && (
-                  <Image
-                    src={model.logo_url}
-                    alt={model.name}
-                    height={40}
-                    width={40}
-                    className={`h-4 w-4 object-contain`}
-                  />
-                )
-              }
-              description={
-                <div className="flex items-center justify-between text-xs">
+          {providerModels?.map((model) => {
+            const isFree = model.lowest_tier.toLowerCase() === "free";
+
+            return (
+              <SelectItem
+                key={model.model_id}
+                textValue={`${model.name}${model.is_default ? " (Default)" : ""}`}
+                classNames={{
+                  title: "text-foreground-900",
+                  description: "text-foreground-500 mt-1",
+                }}
+                startContent={
                   <div className="flex items-center gap-2">
-                    {model.lowest_tier.toLowerCase() !== "free" && (
-                      <span className={getTierColor(model.lowest_tier)}>
-                        {getTierDisplayName(model.lowest_tier)}+ Plan
-                      </span>
+                    {model.logo_url && (
+                      <Image
+                        src={model.logo_url}
+                        alt={model.name}
+                        height={40}
+                        width={40}
+                        className="h-4 w-4 object-contain"
+                      />
+                    )}
+                  </div>
+                }
+              >
+                <div className="flex items-center justify-between gap-2 w-full">
+                  <span className="text-nowrap">{model.name}</span>
+                  <div className="flex items-center gap-1">
+                    {model.is_default && (
+                      <Chip size="sm" color="success" variant="flat">
+                        Default
+                      </Chip>
+                    )}
+                    {isFree ? (
+                      <Chip size="sm" color="default" variant="flat">
+                        Free
+                      </Chip>
+                    ) : (
+                      <Chip size="sm" color="warning" variant="flat">
+                        Pro
+                      </Chip>
                     )}
                   </div>
                 </div>
-              }
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span>{model.name}</span>
-                {model.is_default && (
-                  <Chip size="sm" color="success" variant="flat">
-                    Default
-                  </Chip>
-                )}
-              </div>
-            </SelectItem>
-          )) || []}
+              </SelectItem>
+            );
+          }) || []}
         </SelectSection>
       ))}
     </Select>

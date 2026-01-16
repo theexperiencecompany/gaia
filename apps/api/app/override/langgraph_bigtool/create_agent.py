@@ -37,6 +37,7 @@ from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.store.base import BaseStore
@@ -46,6 +47,40 @@ from langgraph_bigtool.graph import State
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.constants.general import NEW_MESSAGE_BREAKER
+
+
+class DynamicToolNode(ToolNode):
+    """
+    A ToolNode that supports dynamically added tools.
+
+    Wraps a tool_registry (DynamicToolDict) and looks up tools at execution time,
+    allowing tools added after graph compilation to be executed.
+
+    Also auto-emits structured progress messages with tool category for frontend
+    icon display.
+    """
+
+    def __init__(self, tool_registry: Mapping[str, BaseTool | Callable], **kwargs):
+        # Initialize with current tools
+        super().__init__(list(tool_registry.values()), **kwargs)
+        self._tool_registry = tool_registry
+
+    def _get_tool(self, name: str) -> BaseTool | Callable | None:
+        """Look up tool dynamically from registry."""
+        # First try the registry (includes dynamically added tools)
+        if name in self._tool_registry:
+            return self._tool_registry[name]
+        # Fall back to parent's tools_by_name
+        return self.tools_by_name.get(name)
+
+    async def _afunc(self, input, config, **kwargs):
+        """Override to inject dynamically added tools before execution."""
+        # Sync tools_by_name with current registry state before execution
+        for name in self._tool_registry:
+            if name not in self.tools_by_name:
+                self.tools_by_name[name] = self._tool_registry[name]
+
+        return await super()._afunc(input, config, **kwargs)
 
 
 class RetrieveToolsResult(TypedDict):
@@ -267,7 +302,8 @@ def create_agent(
         response.additional_kwargs = {"visible_to": {agent_name}}
         return {"messages": [response]}  # type: ignore[return-value]
 
-    tool_node = ToolNode(tool for tool in tool_registry.values())  # type: ignore[arg-type]
+    # Use DynamicToolNode to support tools added after graph compilation
+    tool_node = DynamicToolNode(tool_registry)  # type: ignore[arg-type]
 
     def select_tools(
         tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore
@@ -276,17 +312,45 @@ def create_agent(
             raise RuntimeError(
                 "retrieve_tools is disabled and select_tools should not be called"
             )
+
+        # Get stream writer to emit tool_inputs events
+        writer = get_stream_writer()
+
         selected_tools = {}
         response_tools = {}
         for tool_call in tool_calls:
+            # Emit tool_inputs immediately since we have complete args
+            # This fixes the race condition where args may be incomplete during streaming
+            if writer is not None and tool_call.get("args"):
+                writer(
+                    {
+                        "tool_inputs": {
+                            "tool_call_id": tool_call.get("id"),
+                            "inputs": tool_call.get("args"),
+                        }
+                    }
+                )
+
             kwargs = {**tool_call["args"]}
             if store_arg:
                 kwargs[store_arg] = store
-            result = retrieve_tools.invoke(kwargs)
+            # Pass config for user_id extraction and namespace filtering
+            # Explicitly pass user_id in kwargs if available in config
+            if config:
+                user_id = config.get("configurable", {}).get("user_id")
+                if user_id:
+                    kwargs["user_id"] = user_id
 
-            # Handle RetrieveToolsResult dict structure
-            tools_to_bind = result.get("tools_to_bind", [])
-            response = result.get("response", [])
+            result = retrieve_tools.invoke(kwargs, config=config)
+
+            # Handle both RetrieveToolsResult dict and plain list (from default langgraph_bigtool)
+            if isinstance(result, dict):
+                tools_to_bind = result.get("tools_to_bind", [])
+                response = result.get("response", [])
+            else:
+                # Default langgraph_bigtool returns list[str]
+                tools_to_bind = result if isinstance(result, list) else []
+                response = tools_to_bind
 
             # Filter out subagent: prefixed tools from binding
             filtered_bind = [
@@ -308,17 +372,43 @@ def create_agent(
             raise RuntimeError(
                 "retrieve_tools is disabled and aselect_tools should not be called"
             )
+
+        writer = get_stream_writer()
         selected_tools = {}
         response_tools = {}
         for tool_call in tool_calls:
+            # Emit tool_inputs immediately since we have complete args
+            # This fixes the race condition where args may be incomplete during streaming
+            if writer is not None and tool_call.get("args"):
+                writer(
+                    {
+                        "tool_inputs": {
+                            "tool_call_id": tool_call.get("id"),
+                            "inputs": tool_call.get("args"),
+                        }
+                    }
+                )
+
             kwargs = {**tool_call["args"]}
             if store_arg:
                 kwargs[store_arg] = store
-            result = await retrieve_tools.ainvoke(kwargs)
+            # Pass config for user_id extraction and namespace filtering
+            # Explicitly pass user_id in kwargs if available in config
+            if config:
+                user_id = config.get("configurable", {}).get("user_id")
+                if user_id:
+                    kwargs["user_id"] = user_id
 
-            # Handle RetrieveToolsResult dict structure
-            tools_to_bind = result.get("tools_to_bind", [])
-            response = result.get("response", [])
+            result = await retrieve_tools.ainvoke(kwargs, config=config)
+
+            # Handle both RetrieveToolsResult dict and plain list (from default langgraph_bigtool)
+            if isinstance(result, dict):
+                tools_to_bind = result.get("tools_to_bind", [])
+                response = result.get("response", [])
+            else:
+                # Default langgraph_bigtool returns list[str]
+                tools_to_bind = result if isinstance(result, list) else []
+                response = tools_to_bind
 
             # Filter out subagent: prefixed tools from binding
             filtered_bind = [
@@ -344,8 +434,10 @@ def create_agent(
                 if retrieve_tools is not None and call["name"] == retrieve_tools.name:
                     destinations.append(Send("select_tools", [call]))
                 else:
-                    tool_call = tool_node.inject_tool_args(call, state, store)  # type: ignore[arg-type]
-                    destinations.append(Send("tools", [tool_call]))
+                    # tool_call = tool_node._inject_tool_args(call, state, store)  # type: ignore[arg-type]
+                    # destinations.append(Send("tools", [tool_call]))
+                    # Tool args injection is now handled internally by ToolNode during execution
+                    destinations.append(Send("tools", [call]))
 
             return destinations
 

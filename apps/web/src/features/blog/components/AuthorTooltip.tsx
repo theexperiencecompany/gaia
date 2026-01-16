@@ -13,7 +13,7 @@ interface AuthorTooltipProps {
 export function AuthorTooltip({
   author,
   avatarSize = "sm",
-  avatarClassName = "h-8 w-8 cursor-help border-2 border-zinc-700",
+  avatarClassName = "h-8 w-8 cursor-help border-2 border-surface-300",
 }: AuthorTooltipProps) {
   return (
     <Tooltip

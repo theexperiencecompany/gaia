@@ -1,0 +1,388 @@
+"""
+MCP Token Store - PostgreSQL-based credential storage.
+
+Stores MCP credentials encrypted in PostgreSQL instead of filesystem.
+Follows same patterns as Composio for parity.
+"""
+
+import json
+import secrets
+from datetime import datetime
+from typing import Optional
+
+from cryptography.fernet import Fernet
+from sqlalchemy import select
+
+from app.config.loggers import langchain_logger as logger
+from app.config.settings import settings
+from app.constants.mcp import (
+    OAUTH_DISCOVERY_PREFIX,
+    OAUTH_DISCOVERY_TTL,
+    OAUTH_STATE_PREFIX,
+    OAUTH_STATE_TTL,
+)
+from app.db.postgresql import get_db_session
+from app.db.redis import get_and_delete_cache, get_cache, set_cache
+from app.models.oauth_models import MCPCredential
+
+
+class MCPTokenStore:
+    """PostgreSQL-based token storage for MCP credentials."""
+
+    def __init__(self, user_id: str):
+        self.user_id = user_id
+        self._cipher: Optional[Fernet] = None
+
+    def _get_cipher(self) -> Fernet:
+        """Get Fernet cipher from Infisical secret (lazy init)."""
+        if self._cipher is None:
+            key = getattr(settings, "MCP_ENCRYPTION_KEY", None)
+            if not key:
+                raise ValueError("MCP_ENCRYPTION_KEY not configured in Infisical")
+            self._cipher = Fernet(key.encode())
+        return self._cipher
+
+    def _encrypt(self, data: str) -> str:
+        """Encrypt sensitive data."""
+        return self._get_cipher().encrypt(data.encode()).decode()
+
+    def _decrypt(self, data: str) -> str:
+        """Decrypt sensitive data."""
+        return self._get_cipher().decrypt(data.encode()).decode()
+
+    async def get_credential(self, integration_id: str) -> Optional[MCPCredential]:
+        """Get stored credential for integration."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(MCPCredential).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.integration_id == integration_id,
+                )
+            )
+            return result.scalar_one_or_none()
+
+    async def get_bearer_token(self, integration_id: str) -> Optional[str]:
+        """Get decrypted bearer token."""
+        cred = await self.get_credential(integration_id)
+        if cred and cred.access_token and cred.status == "connected":
+            return self._decrypt(cred.access_token)
+        return None
+
+    async def get_oauth_token(self, integration_id: str) -> Optional[str]:
+        """Get decrypted OAuth access token if not expired."""
+        cred = await self.get_credential(integration_id)
+        if cred and cred.access_token and cred.status == "connected":
+            # Check if token is expired
+            if cred.token_expires_at and cred.token_expires_at < datetime.utcnow():
+                logger.warning(f"OAuth token expired for {integration_id}")
+                return None
+            return self._decrypt(cred.access_token)
+        return None
+
+    async def get_refresh_token(self, integration_id: str) -> Optional[str]:
+        """Get decrypted refresh token."""
+        cred = await self.get_credential(integration_id)
+        if cred and cred.refresh_token:
+            return self._decrypt(cred.refresh_token)
+        return None
+
+    async def is_token_expiring_soon(
+        self, integration_id: str, threshold_seconds: int = 300
+    ) -> bool:
+        """Check if token expires within threshold (default 5 minutes)."""
+        cred = await self.get_credential(integration_id)
+        if cred and cred.token_expires_at:
+            from datetime import timedelta
+
+            expiry_threshold = datetime.utcnow() + timedelta(seconds=threshold_seconds)
+            return cred.token_expires_at < expiry_threshold
+        return False
+
+    async def store_bearer_token(self, integration_id: str, token: str) -> None:
+        """Store encrypted bearer token."""
+        encrypted = self._encrypt(token)
+        now = datetime.utcnow()
+
+        async with get_db_session() as session:
+            # Query within this session
+            result = await session.execute(
+                select(MCPCredential).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.integration_id == integration_id,
+                )
+            )
+            cred = result.scalar_one_or_none()
+
+            if cred:
+                cred.access_token = encrypted
+                cred.status = "connected"
+                cred.connected_at = now
+                cred.error_message = None
+                session.add(cred)
+            else:
+                cred = MCPCredential(
+                    user_id=self.user_id,
+                    integration_id=integration_id,
+                    auth_type="bearer",
+                    access_token=encrypted,
+                    status="connected",
+                    connected_at=now,
+                )
+                session.add(cred)
+            await session.commit()
+            logger.info(f"Stored bearer token for {integration_id}")
+
+    async def store_oauth_tokens(
+        self,
+        integration_id: str,
+        access_token: str,
+        refresh_token: Optional[str] = None,
+        expires_at: Optional[datetime] = None,
+    ) -> None:
+        """Store encrypted OAuth tokens."""
+        encrypted_access = self._encrypt(access_token)
+        encrypted_refresh = self._encrypt(refresh_token) if refresh_token else None
+        now = datetime.utcnow()
+
+        async with get_db_session() as session:
+            # Query within this session
+            result = await session.execute(
+                select(MCPCredential).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.integration_id == integration_id,
+                )
+            )
+            cred = result.scalar_one_or_none()
+
+            if cred:
+                cred.access_token = encrypted_access
+                cred.refresh_token = encrypted_refresh
+                cred.token_expires_at = expires_at
+                # Note: status is managed in MongoDB user_integrations, not here
+                session.add(cred)
+            else:
+                cred = MCPCredential(
+                    user_id=self.user_id,
+                    integration_id=integration_id,
+                    auth_type="oauth",
+                    access_token=encrypted_access,
+                    refresh_token=encrypted_refresh,
+                    token_expires_at=expires_at,
+                    # Note: status managed in MongoDB user_integrations
+                    status="active",  # Informational only
+                )
+                session.add(cred)
+            await session.commit()
+            logger.info(f"Stored OAuth tokens for {integration_id}")
+
+    async def store_unauthenticated(self, integration_id: str) -> None:
+        """Store connection for unauthenticated MCP.
+
+        Creates a credential record to track that this integration exists.
+        Connection status is managed in MongoDB user_integrations, not here.
+        """
+        async with get_db_session() as session:
+            # Query within this session
+            result = await session.execute(
+                select(MCPCredential).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.integration_id == integration_id,
+                )
+            )
+            cred = result.scalar_one_or_none()
+
+            if not cred:
+                # Only create if doesn't exist - no status updates needed
+                cred = MCPCredential(
+                    user_id=self.user_id,
+                    integration_id=integration_id,
+                    auth_type="none",
+                    status="active",  # Informational only
+                )
+                session.add(cred)
+                await session.commit()
+                logger.info(
+                    f"Created credential record for unauthenticated {integration_id}"
+                )
+
+    async def create_oauth_state(self, integration_id: str, code_verifier: str) -> str:
+        """
+        Create OAuth state for CSRF protection.
+
+        Stores state and PKCE code_verifier in Redis with TTL.
+        Returns the state token to include in OAuth URL.
+
+        Note: Connection status is managed in MongoDB user_integrations.
+        PostgreSQL only stores the PKCE state for the OAuth flow.
+        """
+        state = secrets.token_urlsafe(32)
+
+        # Store state and code_verifier together in Redis
+        cache_key = f"{OAUTH_STATE_PREFIX}:{self.user_id}:{integration_id}"
+        state_data = json.dumps({"state": state, "code_verifier": code_verifier})
+        await set_cache(cache_key, state_data, ttl=OAUTH_STATE_TTL)
+
+        return state
+
+    async def verify_oauth_state(
+        self, integration_id: str, state: str
+    ) -> tuple[bool, Optional[str]]:
+        """
+        Verify OAuth state matches stored state.
+
+        Uses atomic get-and-delete to prevent replay attacks (Issue 5.2 fix).
+        Returns (is_valid, code_verifier) tuple.
+        """
+        cache_key = f"{OAUTH_STATE_PREFIX}:{self.user_id}:{integration_id}"
+        # Atomic get-and-delete prevents race condition where two callbacks
+        # could both validate before either deletes the state
+        stored_data = await get_and_delete_cache(cache_key)
+
+        if not stored_data:
+            return False, None
+
+        try:
+            if isinstance(stored_data, dict):
+                data = stored_data
+            else:
+                data = json.loads(stored_data)
+            stored_state = data.get("state")
+            code_verifier = data.get("code_verifier")
+        except (json.JSONDecodeError, TypeError):
+            # Legacy format - just state string (backwards compat)
+            stored_state = stored_data
+            code_verifier = None
+
+        if stored_state and stored_state == state:
+            return True, code_verifier
+        return False, None
+
+    async def delete_credentials(self, integration_id: str) -> None:
+        """Delete credentials for integration (disconnect)."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(MCPCredential).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.integration_id == integration_id,
+                )
+            )
+            cred = result.scalar_one_or_none()
+            if cred:
+                await session.delete(cred)
+                await session.commit()
+                logger.info(f"Deleted MCP credentials for {integration_id}")
+
+    async def update_status(
+        self,
+        integration_id: str,
+        status: str,
+        error: Optional[str] = None,
+    ) -> None:
+        """Update PostgreSQL credential status (informational only).
+
+        NOTE: Connection status is managed in MongoDB user_integrations.
+        This method only updates the PostgreSQL status field for debugging/auditing.
+        Use update_user_integration_status() to change the canonical connection status.
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(MCPCredential).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.integration_id == integration_id,
+                )
+            )
+            cred = result.scalar_one_or_none()
+            if cred:
+                cred.status = status
+                cred.error_message = error
+                session.add(cred)
+                await session.commit()
+
+    async def has_credentials(self, integration_id: str) -> bool:
+        """Check if we have stored tokens/credentials for this integration.
+
+        Note: This checks for token existence, NOT connection status.
+        Connection status is managed in MongoDB user_integrations.
+        """
+        cred = await self.get_credential(integration_id)
+        return cred is not None and cred.access_token is not None
+
+    async def get_integrations_with_credentials(self) -> list[str]:
+        """Get all MCP integration IDs that have stored credentials.
+
+        Note: This returns integrations with tokens, NOT necessarily connected.
+        Connection status is managed in MongoDB user_integrations.
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(MCPCredential.integration_id).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.access_token.isnot(None),
+                )
+            )
+            return [row[0] for row in result.fetchall()]
+
+    async def get_dcr_client(self, integration_id: str) -> Optional[dict]:
+        """Get stored DCR client registration."""
+        cred = await self.get_credential(integration_id)
+        if cred and cred.client_registration:
+            try:
+                return json.loads(cred.client_registration)
+            except json.JSONDecodeError:
+                return None
+        return None
+
+    async def store_dcr_client(self, integration_id: str, dcr_data: dict) -> None:
+        """Store DCR client registration from dynamic registration."""
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(MCPCredential).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.integration_id == integration_id,
+                )
+            )
+            cred = result.scalar_one_or_none()
+
+            if cred:
+                cred.client_registration = json.dumps(dcr_data)
+                session.add(cred)
+            else:
+                cred = MCPCredential(
+                    user_id=self.user_id,
+                    integration_id=integration_id,
+                    auth_type="oauth",
+                    status="pending",
+                    client_registration=json.dumps(dcr_data),
+                )
+                session.add(cred)
+            await session.commit()
+            logger.info(f"Stored DCR client for {integration_id}")
+
+    async def store_oauth_discovery(self, integration_id: str, discovery: dict) -> None:
+        """
+        Cache OAuth discovery data in Redis.
+
+        NOTE: This cache is GLOBAL per integration, not per-user. The key is:
+        `mcp_oauth_discovery:{integration_id}` (no user_id component).
+
+        This is intentional because OAuth discovery data (authorization_endpoint,
+        token_endpoint, registration_endpoint, etc.) is the same for all users
+        connecting to the same MCP server. User-specific data like DCR client_id
+        is stored separately in PostgreSQL per user.
+
+        TTL: 24 hours (OAuth metadata changes infrequently)
+        """
+        cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
+        await set_cache(cache_key, json.dumps(discovery), ttl=OAUTH_DISCOVERY_TTL)
+        logger.info(f"Cached OAuth discovery for {integration_id}")
+
+    async def get_oauth_discovery(self, integration_id: str) -> Optional[dict]:
+        """Get cached OAuth discovery data from Redis."""
+        cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
+        cached = await get_cache(cache_key)
+        if cached:
+            try:
+                return json.loads(cached)
+            except json.JSONDecodeError:
+                return None
+        return None

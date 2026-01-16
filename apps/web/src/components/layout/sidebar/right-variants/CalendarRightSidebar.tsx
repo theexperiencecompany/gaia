@@ -145,7 +145,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
               placeholder="Event title"
               classNames={{
                 input:
-                  "text-2xl  bg-transparent text-zinc-100 placeholder:text-zinc-700",
+                  "text-2xl  bg-transparent text-foreground-900 placeholder:text-foreground-300",
                 inputWrapper:
                   "bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent data-[hover=true]:bg-transparent border-red-500!",
               }}
@@ -160,9 +160,9 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
               minRows={6}
               maxRows={6}
               classNames={{
-                input: "bg-transparent text-zinc-200 placeholder:text-zinc-700",
+                input: "bg-transparent text-foreground-800 placeholder:text-foreground-300",
                 inputWrapper:
-                  "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+                  "bg-surface-200/30 hover:bg-surface-200/50 data-[hover=true]:bg-surface-200/50 shadow-none",
               }}
               variant="flat"
             />
@@ -175,7 +175,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
             size="sm"
             color="primary"
           >
-            <span className="text-sm text-zinc-500">All-day event</span>
+            <span className="text-sm text-foreground-500">All-day event</span>
           </Switch>
 
           {/* Date & Time Section */}
@@ -199,7 +199,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                   isAllDay={false}
                 />
 
-                {/* <div className="-mb-2 flex w-full justify-center text-zinc-500">
+                {/* <div className="-mb-2 flex w-full justify-center text-foreground-500">
                   <ArrowDown width={19} height={19} />
                 </div> */}
 
@@ -227,12 +227,12 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                 }}
                 classNames={{
                   trigger:
-                    "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-                  value: "text-zinc-200",
-                  popoverContent: "bg-zinc-900 border border-zinc-800",
-                  label: "text-zinc-400",
+                    "bg-surface-200/30 hover:bg-surface-200/50 data-[hover=true]:bg-surface-200/50 shadow-none",
+                  value: "text-foreground-800",
+                  popoverContent: "bg-surface-100 border border-surface-200",
+                  label: "text-foreground-400",
                 }}
-                startContent={<RepeatIcon className="size-4 text-zinc-500" />}
+                startContent={<RepeatIcon className="size-4 text-foreground-500" />}
               >
                 <SelectItem key="none" textValue="Does not repeat">
                   Does not repeat
@@ -259,7 +259,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
 
               {recurrenceType === "custom" && (
                 <div className="space-y-2">
-                  <div className="text-sm font-medium text-zinc-400">
+                  <div className="text-sm font-medium text-foreground-400">
                     Repeat on
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -288,7 +288,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                         className={`flex size-9 items-center justify-center rounded-full text-sm font-medium transition-colors ${
                           customRecurrenceDays.includes(day.value)
                             ? "bg-blue-600 text-white"
-                            : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700"
+                            : "bg-surface-200/50 text-foreground-400 hover:bg-surface-300"
                         }`}
                       >
                         {day.label}
@@ -314,10 +314,10 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                 isRequired
                 classNames={{
                   trigger:
-                    "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
-                  value: "text-zinc-200",
-                  popoverContent: "bg-zinc-900 border border-zinc-800",
-                  label: "text-zinc-400",
+                    "bg-surface-200/30 hover:bg-surface-200/50 data-[hover=true]:bg-surface-200/50 shadow-none",
+                  value: "text-foreground-800",
+                  popoverContent: "bg-surface-100 border border-surface-200",
+                  label: "text-foreground-400",
                 }}
                 startContent={
                   selectedCalendarId && (
@@ -355,10 +355,10 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
 
           {/* Recurrence Info (only for existing recurring events) */}
           {!isCreating && selectedEvent?.recurrence && (
-            <div className="rounded-lg border border-zinc-800/50 bg-zinc-800/20 p-3">
+            <div className="rounded-lg border border-surface-200/50 bg-surface-200/20 p-3">
               <div className="flex items-center gap-2 text-sm">
-                <RepeatIcon className="size-4 text-zinc-500" />
-                <span className="font-medium text-zinc-400">
+                <RepeatIcon className="size-4 text-foreground-500" />
+                <span className="font-medium text-foreground-400">
                   {formatRecurrence(selectedEvent.recurrence)}
                 </span>
               </div>
@@ -368,35 +368,35 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
           {/* Additional Details Accordion (only for existing events) */}
           {!isCreating && selectedEvent && (
             <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="details" className="border-zinc-800/50">
-                <AccordionTrigger className="text-sm font-medium text-zinc-400 hover:text-zinc-300">
+              <AccordionItem value="details" className="border-surface-200/50">
+                <AccordionTrigger className="text-sm font-medium text-foreground-400 hover:text-foreground-700">
                   Additional Details
                 </AccordionTrigger>
                 <AccordionContent>
-                  <div className="space-y-3 rounded-lg bg-zinc-800/20 p-4">
+                  <div className="space-y-3 rounded-lg bg-surface-200/20 p-4">
                     {selectedEvent.created && (
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-zinc-500">Created</span>
-                        <span className="text-zinc-400">
+                        <span className="text-foreground-500">Created</span>
+                        <span className="text-foreground-400">
                           {new Date(selectedEvent.created).toLocaleDateString()}
                         </span>
                       </div>
                     )}
                     {selectedEvent.updated && (
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-zinc-500">Updated</span>
-                        <span className="text-zinc-400">
+                        <span className="text-foreground-500">Updated</span>
+                        <span className="text-foreground-400">
                           {new Date(selectedEvent.updated).toLocaleDateString()}
                         </span>
                       </div>
                     )}
                     {selectedEvent.organizer?.email && (
                       <div className="flex items-start justify-between gap-3 text-sm">
-                        <div className="flex items-center gap-2 text-zinc-500">
+                        <div className="flex items-center gap-2 text-foreground-500">
                           <UserCircleIcon className="size-4" />
                           <span>Organizer</span>
                         </div>
-                        <span className="truncate text-right text-zinc-400">
+                        <span className="truncate text-right text-foreground-400">
                           {selectedEvent.organizer.email}
                         </span>
                       </div>
@@ -432,7 +432,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
             </Button>
           ) : (
             <>
-              <div className="flex-1 text-center text-sm text-zinc-500">
+              <div className="flex-1 text-center text-sm text-foreground-500">
                 {isSaving ? "Saving changes..." : "Changes saved"}
               </div>
               <button
@@ -451,7 +451,7 @@ export const EventSidebar: React.FC<EventSidebarProps> = ({
                   }
                 }}
                 disabled={isSaving}
-                className="cursor-pointer rounded-lg bg-zinc-800/50 p-2.5 text-red-400 transition-all hover:bg-red-500/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                className="cursor-pointer rounded-lg bg-surface-200/50 p-2.5 text-red-400 transition-all hover:bg-red-500/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Delete event"
               >
                 <Delete02Icon className="size-4" />

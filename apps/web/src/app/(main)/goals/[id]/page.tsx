@@ -40,12 +40,12 @@ const CustomNode = React.memo(
         <Handle position={Position.Top} type="target" />
 
         <div
-          className={`flex max-w-[250px] min-w-[250px] cursor-pointer flex-row items-center justify-center gap-1 rounded-lg bg-zinc-800 p-4 text-center text-white outline-[3px] outline-zinc-700 transition-all hover:outline-zinc-600`}
+          className={`flex max-w-[250px] min-w-[250px] cursor-pointer flex-row items-center justify-center gap-1 rounded-lg bg-surface-200 p-4 text-center text-foreground-900 outline-[3px] outline-surface-300 transition-all hover:outline-surface-400`}
           style={
             data.isComplete
               ? {
                   backgroundColor: "rgba(0, 187, 255, 0.2)",
-                  color: "rgb(161 161 170)",
+                  color: "hsl(var(--text-500))",
                   textDecoration: "line-through",
                   outlineColor: "rgba(0, 187, 255, 0.3)",
                 }

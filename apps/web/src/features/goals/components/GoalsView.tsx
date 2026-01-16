@@ -39,7 +39,7 @@ const GoalsView = memo(({ goals = [] }: GoalsViewProps) => {
   return (
     <BaseCardView
       title="Goals"
-      icon={<Target02Icon className="h-6 w-6 text-zinc-500" />}
+      icon={<Target02Icon className="h-6 w-6 text-foreground-500" />}
       isEmpty={isEmpty}
       emptyMessage="No goals created yet"
       errorMessage="Failed to load goals"
@@ -54,15 +54,15 @@ const GoalsView = memo(({ goals = [] }: GoalsViewProps) => {
           return (
             <div
               key={goal.id}
-              className="flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-zinc-700/30"
+              className="flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-surface-700/30"
               onClick={() => handleGoalClick(goal.id)}
             >
               <div className="min-w-0 flex-1">
-                <h4 className="text-base font-medium text-white">
+                <h4 className="text-base font-medium text-foreground-900">
                   {goal.title}
                 </h4>
                 {goal.description && (
-                  <p className="mt-1 text-xs text-zinc-400 line-clamp-2">
+                  <p className="mt-1 text-xs text-foreground-400 line-clamp-2">
                     {goal.description}
                   </p>
                 )}
@@ -75,9 +75,9 @@ const GoalsView = memo(({ goals = [] }: GoalsViewProps) => {
                         className="absolute top-0 left-0 z-[2] h-2 rounded-full bg-primary"
                         style={{ width: `${progress}%` }}
                       />
-                      <div className="absolute top-0 left-0 h-2 w-full rounded-full bg-zinc-900" />
+                      <div className="absolute top-0 left-0 h-2 w-full rounded-full bg-surface-100" />
                     </div>
-                    <span className="text-xs text-zinc-400 min-w-[2.5rem]">
+                    <span className="text-xs text-foreground-400 min-w-[2.5rem]">
                       {progress}%
                     </span>
                   </div>
@@ -115,7 +115,7 @@ const GoalsView = memo(({ goals = [] }: GoalsViewProps) => {
                     <Chip
                       size="sm"
                       variant="flat"
-                      className="text-zinc-400 px-1"
+                      className="text-foreground-400 px-1"
                       radius="sm"
                       startContent={
                         <CheckmarkCircle02Icon
@@ -134,7 +134,7 @@ const GoalsView = memo(({ goals = [] }: GoalsViewProps) => {
                     <Chip
                       size="sm"
                       variant="flat"
-                      className="text-zinc-400 px-1"
+                      className="text-foreground-400 px-1"
                       radius="sm"
                       startContent={
                         <Calendar03Icon

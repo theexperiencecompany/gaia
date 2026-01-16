@@ -9,6 +9,7 @@ import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { CancelIcon, ConnectIcon, Gmail, GoogleCalendarIcon } from "@/icons";
+import { useIntegrationsStore } from "@/stores/integrationsStore";
 
 interface OnboardingIntegrationButtonsProps {
   className?: string;
@@ -55,12 +56,16 @@ export const OnboardingIntegrationButtons: React.FC<
     (int) =>
       int.id !== "gmail" &&
       int.id !== "google_calendar" &&
-      int.loginEndpoint &&
+      int.available &&
       !int.isSpecial,
   );
 
-  const { searchQuery, setSearchQuery, clearSearch, filteredIntegrations } =
-    useIntegrationSearch(baseIntegrations);
+  const { filteredIntegrations } = useIntegrationSearch(baseIntegrations);
+
+  // Get search state from store
+  const searchQuery = useIntegrationsStore((state) => state.searchQuery);
+  const setSearchQuery = useIntegrationsStore((state) => state.setSearchQuery);
+  const clearSearch = useIntegrationsStore((state) => state.clearSearch);
 
   return (
     <div className={`mt-3 ml-1 flex w-fit flex-col gap-2 ${className}`}>
@@ -107,7 +112,7 @@ export const OnboardingIntegrationButtons: React.FC<
             <div className="flex w-full justify-between px-4 items-center gap-1">
               <div className="pt-4 pb-2 w-full gap-0.5">
                 <p className="text-sm font-semibold">More Integrations</p>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-foreground-500">
                   Connect additional services
                 </p>
               </div>
@@ -130,7 +135,7 @@ export const OnboardingIntegrationButtons: React.FC<
                 size="sm"
                 onPress={() => setIsPopoverOpen(false)}
               >
-                <CancelIcon className="text-zinc-300" width={15} height={15} />
+                <CancelIcon className="text-foreground-300" width={15} height={15} />
               </Button>
             </div>
 
@@ -138,7 +143,7 @@ export const OnboardingIntegrationButtons: React.FC<
               <div className="py-2 pl-2">
                 {filteredIntegrations.length === 0 ? (
                   <div className="px-4 py-8 text-center">
-                    <p className="text-sm text-zinc-500">
+                    <p className="text-sm text-foreground-500">
                       No additional integrations available
                     </p>
                   </div>
@@ -150,10 +155,10 @@ export const OnboardingIntegrationButtons: React.FC<
                     return (
                       <div
                         key={integration.id}
-                        className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-800/50"
+                        className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-surface-200/50"
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <div className="flex-shrink-0">
+                          <div className="shrink-0">
                             {getToolCategoryIcon(integration.id, {
                               size: 24,
                               width: 24,
@@ -167,7 +172,7 @@ export const OnboardingIntegrationButtons: React.FC<
                               {integration.name}
                             </p>
                             {integration.description && (
-                              <p className="truncate text-xs text-zinc-500">
+                              <p className="truncate text-xs text-foreground-500">
                                 {integration.description}
                               </p>
                             )}
@@ -182,7 +187,7 @@ export const OnboardingIntegrationButtons: React.FC<
                           onPress={() =>
                             handleIntegrationConnect(integration.id)
                           }
-                          className="flex-shrink-0"
+                          className="shrink-0"
                         >
                           {isConnected ? "Connected" : "Connect"}
                         </Button>
@@ -196,7 +201,7 @@ export const OnboardingIntegrationButtons: React.FC<
         </Popover>
       </div>
 
-      <p className="pl-1 text-xs text-zinc-500">
+      <p className="pl-1 text-xs text-foreground-500">
         You can always connect these later in settings
       </p>
     </div>

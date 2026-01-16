@@ -27,7 +27,7 @@ const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
 
   return (
     <div className="relative my-2 flex flex-col gap-0 rounded-xl">
-      <div className="sticky! top-0 mb-[-0.5em] flex items-center justify-between rounded-t-xl! rounded-b-none! bg-zinc-900 px-4 py-1 text-white">
+      <div className="sticky! top-0 mb-[-0.5em] flex items-center justify-between rounded-t-xl! rounded-b-none! bg-surface-100 px-4 py-1 text-foreground-50">
         <span className="monospace flex items-center gap-2 font-mono text-xs">
           <div className="text-base">
             {iconClass && <i className={`${iconClass} colored`} />}
@@ -40,7 +40,7 @@ const StandardCodeBlock: React.FC<StandardCodeBlockProps> = ({
             language={match ? match[1] : undefined}
           />
           <Button
-            className="text-xs text-zinc-400 hover:text-gray-300"
+            className="text-xs text-foreground-400 hover:text-foreground-300"
             size="sm"
             isIconOnly
             variant="light"

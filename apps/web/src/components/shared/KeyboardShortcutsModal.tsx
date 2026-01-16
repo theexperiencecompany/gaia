@@ -24,7 +24,7 @@ function ShortcutCategory({
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-medium text-zinc-400">{title}</h3>
+      <h3 className="text-sm font-medium text-foreground-400">{title}</h3>
       <div className="space-y-1">
         {shortcuts.map((shortcut) => (
           <div
@@ -33,9 +33,9 @@ function ShortcutCategory({
           >
             <div className="flex items-center gap-3">
               {shortcut.icon && (
-                <span className="text-zinc-400">{shortcut.icon}</span>
+                <span className="text-foreground-400">{shortcut.icon}</span>
               )}
-              <span className="text-sm font-light text-zinc-300">
+              <span className="text-sm font-light text-foreground-300">
                 {shortcut.description}
               </span>
             </div>
@@ -61,7 +61,7 @@ export default function KeyboardShortcutsModal({
       onOpenChange={onOpenChange}
       size="4xl"
       backdrop="blur"
-      className="rounded-2xl bg-zinc-900/90 backdrop-blur-3xl outline-0 border-0"
+      className="rounded-2xl bg-surface-100/90 backdrop-blur-3xl outline-0 border-0"
     >
       <ModalContent>
         <ModalHeader className="flex flex-col gap-1">

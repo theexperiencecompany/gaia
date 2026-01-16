@@ -104,12 +104,12 @@ export default function ComposerLeft({
           <Button
             size="icon"
             className={cn(
-              "group relative h-9 w-9 rounded-full border-none bg-zinc-700 p-0 hover:bg-zinc-600/90",
+              "group relative h-9 w-9 rounded-full border-none p-0 transition bg-surface-200 dark:bg-surface-300 hover:bg-surface-300 dark:hover:bg-surface-400 text-foreground-600",
               isLoading ? "cursor-wait!" : "",
             )}
             disabled={isLoading}
           >
-            <PlusSignIcon className="min-h-[23px] min-w-[23px] text-zinc-400!" />
+            <PlusSignIcon className="min-h-[23px] min-w-[23px] text-foreground-600!" />
             <span
               className={`absolute -top-0 -right-0 h-2 w-2 rounded-full bg-primary transition ${currentMode ? "opacity-100" : "opacity-0"}`}
               aria-hidden="true"
@@ -119,7 +119,7 @@ export default function ComposerLeft({
         <DropdownMenuContent
           align="end"
           side="top"
-          className="w-fit gap-2 rounded-xl border-none bg-zinc-900 p-1 text-white outline-2! outline-zinc-800!"
+          className="w-fit gap-2 rounded-xl border-none bg-surface-100 p-1 text-foreground-50 outline-2! outline-surface-200!"
         >
           {dropdownItems.map((item) => (
             <Tooltip
@@ -144,7 +144,7 @@ export default function ComposerLeft({
                   "cursor-pointer rounded-lg px-3 py-2",
                   currentMode === item.id
                     ? "bg-[#00bbff50] text-primary focus:bg-[#00bbff50] focus:text-primary"
-                    : "focus:bg-zinc-800 focus:text-white",
+                    : "focus:bg-surface-200 focus:text-foreground-50",
                 )}
               >
                 <div className="flex w-full items-center justify-between gap-3">
@@ -172,7 +172,7 @@ export default function ComposerLeft({
           content={
             <div className="flex items-center gap-2">
               Browse all tools
-              <Kbd className="text-zinc-400">Press /</Kbd>
+              <Kbd className="text-foreground-400">Press /</Kbd>
             </div>
           }
           placement="right"
@@ -181,7 +181,7 @@ export default function ComposerLeft({
           <Button
             size="icon"
             className={cn(
-              "group relative flex h-9 w-9 items-center justify-center rounded-full border-none bg-zinc-700 fill-zinc-400 p-0 text-zinc-400 hover:bg-zinc-600/90",
+              "group relative flex h-9 w-9 items-center justify-center rounded-full border-none fill-foreground-600 p-0 bg-surface-200 dark:bg-surface-300 hover:bg-surface-300 dark:hover:bg-surface-400 text-foreground-600",
               isLoading ? "cursor-wait!" : "",
               isSlashCommandDropdownOpen &&
                 "border-primary/50 bg-primary/20 text-primary hover:bg-primary/40",

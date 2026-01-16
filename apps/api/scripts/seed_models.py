@@ -86,9 +86,27 @@ def get_models_configuration() -> List[Dict[str, Any]]:
             "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
             "lowest_tier": PlanType.FREE.value,
             "is_active": True,
-            "is_default": True,  # Set as default for free users
+            "is_default": False,
             "pricing_per_1k_input_tokens": 0.00015,  # $0.15 per million tokens
             "pricing_per_1k_output_tokens": 0.0006,  # $0.60 per million tokens
+        },
+        {
+            "model_id": "gpt-5-mini",
+            "name": "GPT-5 Mini",
+            "model_provider": ModelProvider.OPENAI.value,
+            "inference_provider": ModelProvider.OPENAI.value,
+            "provider_model_name": "gpt-5-mini",
+            "description": "OpenAI's latest efficient model with improved reasoning and speed",
+            "logo_url": "/images/icons/chatgpt.webp",
+            "max_tokens": 128_000,
+            "supports_streaming": True,
+            "supports_function_calling": True,
+            "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
+            "lowest_tier": PlanType.FREE.value,
+            "is_active": True,
+            "is_default": False,
+            "pricing_per_1k_input_tokens": 0.00025,  # $0.25 per million tokens
+            "pricing_per_1k_output_tokens": 0.002,  # $2.00 per million tokens
         },
         # Google Gemini Models
         {
@@ -144,6 +162,44 @@ def get_models_configuration() -> List[Dict[str, Any]]:
             "is_default": False,
             "pricing_per_1k_input_tokens": 0.00125,  # $1.25 per million tokens
             "pricing_per_1k_output_tokens": 0.01,  # $10.00 per million tokens
+        },
+        # Grok Models (via OpenRouter)
+        {
+            "model_id": "x-ai/grok-4.1-fast",
+            "name": "Grok 4.1 Fast",
+            "model_provider": ModelProvider.GROK.value,
+            "inference_provider": ModelProvider.OPENROUTER.value,
+            "provider_model_name": "x-ai/grok-4.1-fast",
+            "description": "xAI's fast and efficient Grok model with strong reasoning capabilities",
+            "logo_url": "/images/icons/grok.webp",
+            "max_tokens": 128_000,
+            "supports_streaming": True,
+            "supports_function_calling": True,
+            "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
+            "lowest_tier": PlanType.FREE.value,
+            "is_active": True,
+            "is_default": True,
+            "pricing_per_1k_input_tokens": 0.0004,  # $0.40 per million tokens
+            "pricing_per_1k_output_tokens": 0.0010,  # $1.00 per million tokens
+        },
+        # OpenAI Open Source Models (via OpenRouter)
+        {
+            "model_id": "openai/gpt-oss-120b:free",
+            "name": "GPT-OSS 120B",
+            "model_provider": ModelProvider.OPENAI.value,
+            "inference_provider": ModelProvider.OPENROUTER.value,
+            "provider_model_name": "openai/gpt-oss-120b:free",
+            "description": "OpenAI's open-weight 117B MoE model optimized for reasoning and agentic use. Free tier.",
+            "logo_url": "/images/icons/chatgpt.webp",
+            "max_tokens": 131_000,
+            "supports_streaming": True,
+            "supports_function_calling": True,
+            "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
+            "lowest_tier": PlanType.FREE.value,
+            "is_active": True,
+            "is_default": False,
+            "pricing_per_1k_input_tokens": 0.0,  # Free
+            "pricing_per_1k_output_tokens": 0.0,  # Free
         },
     ]
 

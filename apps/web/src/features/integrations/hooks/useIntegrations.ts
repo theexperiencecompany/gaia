@@ -1,194 +1,248 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
+import { toast } from "sonner";
 
 import { integrationsApi } from "../api/integrationsApi";
-import type { Integration, IntegrationStatus } from "../types";
+import type {
+  CreateCustomIntegrationRequest,
+  CreateCustomIntegrationResponse,
+  Integration,
+  IntegrationStatus,
+} from "../types";
 
 export interface UseIntegrationsReturn {
+  // Data
   integrations: Integration[];
-  integrationStatuses: IntegrationStatus[];
   isLoading: boolean;
   error: Error | null;
-  connectIntegration: (integrationId: string) => Promise<void>;
-  disconnectIntegration: (integrationId: string) => Promise<void>;
-  refreshStatus: () => void;
+
+  // Helpers
   getIntegrationStatus: (
     integrationId: string,
   ) => IntegrationStatus | undefined;
-  getIntegrationsWithStatus: () => Integration[];
-  // New helper functions for unified integrations
-  getSpecialIntegrations: () => Integration[];
-  getRegularIntegrations: () => Integration[];
-  isUnifiedIntegrationConnected: (unifiedId: string) => boolean;
+
+  // Actions
+  connectIntegration: (
+    integrationId: string,
+  ) => Promise<{ status: string; toolsCount?: number }>;
+  disconnectIntegration: (integrationId: string) => Promise<void>;
+  createCustomIntegration: (
+    request: CreateCustomIntegrationRequest,
+  ) => Promise<CreateCustomIntegrationResponse>;
+  deleteCustomIntegration: (integrationId: string) => Promise<void>;
+
+  // Refresh
+  refetch: () => void;
 }
 
 type UseFetchIntegrationStatusParams = {
   refetchOnMount?: boolean | "always";
 };
 
+/**
+ * Helper hook to fetch integration status with refetch options.
+ * Used by pages that need to force-refresh status on mount.
+ */
 export const useFetchIntegrationStatus = ({
   refetchOnMount,
 }: UseFetchIntegrationStatusParams = {}) => {
   return useQuery({
     queryKey: ["integrations", "status"],
     queryFn: integrationsApi.getIntegrationStatus,
-    retry: 2,
     refetchOnMount: refetchOnMount,
-    staleTime: 0,
-    gcTime: 0,
   });
 };
 
 /**
- * Hook for managing integrations and their connection status
+ * Single hook for managing all integrations (platform + custom).
+ * No caching - always fetches fresh data.
  */
 export const useIntegrations = (): UseIntegrationsReturn => {
   const queryClient = useQueryClient();
 
-  // Query for integration configuration
+  // Query for platform integration configuration
   const { data: configData, isLoading: configLoading } = useQuery({
     queryKey: ["integrations", "config"],
     queryFn: integrationsApi.getIntegrationConfig,
-    // staleTime: 3 * 60 * 60 * 1000, // 3 hours - same as tools cache
-    // gcTime: 6 * 60 * 60 * 1000, // 6 hours - keep in cache longer
-    // retry: 2,
-    // refetchOnWindowFocus: false, // Don't refetch when user focuses window
   });
 
-  // Query for integration status
+  // Query for user's integrations (includes custom integrations with status)
   const {
-    data: statusData,
-    isLoading: statusLoading,
+    data: userIntegrationsData,
+    isLoading: userIntegrationsLoading,
     error,
-  } = useFetchIntegrationStatus();
+  } = useQuery({
+    queryKey: ["integrations", "user"],
+    queryFn: integrationsApi.getUserIntegrations,
+  });
 
-  const integrationConfigs = useMemo(
-    () => configData?.integrations || [],
-    [configData],
-  );
-  const integrationStatuses = useMemo(
-    () => statusData?.integrations || [],
-    [statusData],
-  );
+  // Query for platform integration status
+  const { data: statusData, isLoading: statusLoading } = useQuery({
+    queryKey: ["integrations", "status"],
+    queryFn: integrationsApi.getIntegrationStatus,
+  });
+
+  // Merge platform integrations with user's custom integrations
+  const integrations = useMemo(() => {
+    const platformConfigs = configData?.integrations || [];
+    const userIntegrations = userIntegrationsData?.integrations || [];
+    const statuses = statusData?.integrations || [];
+
+    // Build integration list from user's integrations (includes custom)
+    const userIntegrationsList: Integration[] = userIntegrations.map((ui) => ({
+      id: ui.integrationId,
+      name: ui.integration.name,
+      description: ui.integration.description,
+      category: ui.integration.category as Integration["category"],
+      status: ui.status as Integration["status"],
+      managedBy: ui.integration.managedBy,
+      source: ui.integration.source,
+      requiresAuth: ui.integration.requiresAuth,
+      authType: ui.integration.authType,
+      tools: ui.integration.tools,
+      iconUrl: ui.integration.iconUrl ?? undefined,
+      isPublic: ui.integration.isPublic ?? undefined,
+      createdBy: ui.integration.createdBy ?? undefined,
+    }));
+
+    // Get IDs of integrations user already has
+    const userIntegrationIds = new Set(
+      userIntegrations.map((ui) => ui.integrationId),
+    );
+
+    // Add platform integrations that user hasn't added yet
+    const availablePlatformIntegrations: Integration[] = platformConfigs
+      .filter((pi) => !userIntegrationIds.has(pi.id))
+      .map((pi) => {
+        const status = statuses.find((s) => s.integrationId === pi.id);
+        return {
+          ...pi,
+          source: "platform" as const,
+          status: status?.connected ? "connected" : ("not_connected" as const),
+        };
+      });
+
+    return [...userIntegrationsList, ...availablePlatformIntegrations];
+  }, [configData, userIntegrationsData, statusData]);
 
   // Get status for a specific integration
   const getIntegrationStatus = useCallback(
     (integrationId: string): IntegrationStatus | undefined => {
-      return integrationStatuses.find(
-        (status) => status.integrationId === integrationId,
+      return statusData?.integrations.find(
+        (s) => s.integrationId.toLowerCase() === integrationId.toLowerCase(),
       );
     },
-    [integrationStatuses],
+    [statusData],
   );
 
-  // Get integrations with their current status
-  const getIntegrationsWithStatus = useCallback((): Integration[] => {
-    return integrationConfigs
-      .map((integration) => {
-        const status = getIntegrationStatus(integration.id);
-        return {
-          ...integration,
-          status: (status?.connected
-            ? "connected"
-            : "not_connected") as Integration["status"],
-        };
-      })
-      .sort((a, b) => {
-        // Sort by display priority (higher first), then by name
-        const priorityDiff =
-          (b.displayPriority || 0) - (a.displayPriority || 0);
-        if (priorityDiff !== 0) return priorityDiff;
-        return a.name.localeCompare(b.name);
-      });
-  }, [integrationConfigs, getIntegrationStatus]);
-
-  // Connect an integration
+  // Connect integration
   const connectIntegration = useCallback(
-    async (integrationId: string): Promise<void> => {
+    async (
+      integrationId: string,
+    ): Promise<{ status: string; toolsCount?: number }> => {
+      const integration = integrations.find(
+        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
+      );
+      const integrationName = integration?.name || integrationId;
+
+      const toastId = toast.loading(`Connecting to ${integrationName}...`);
+
       try {
-        await integrationsApi.connectIntegration(integrationId);
-        // Refresh status after connection attempt
-        queryClient.invalidateQueries({ queryKey: ["integrations", "status"] });
+        const result = await integrationsApi.connectIntegration(integrationId);
+
+        if (result.status === "connected") {
+          toast.success(`Connected to ${integrationName}`, { id: toastId });
+          // Refetch all data
+          await Promise.all([
+            queryClient.refetchQueries({ queryKey: ["integrations"] }),
+            queryClient.refetchQueries({ queryKey: ["tools", "available"] }),
+          ]);
+        } else if (result.status === "redirecting") {
+          // OAuth redirect in progress - dismiss toast, browser will navigate
+          toast.dismiss(toastId);
+        } else {
+          // Handle unexpected status (e.g., failed, pending, etc.)
+          toast.error(`Connection failed: ${result.status}`, { id: toastId });
+        }
+
+        return result;
       } catch (error) {
-        console.error(`Failed to connect ${integrationId}:`, error);
+        toast.error(
+          `Failed to connect: ${error instanceof Error ? error.message : "Unknown error"}`,
+          { id: toastId },
+        );
         throw error;
       }
     },
-    [queryClient],
+    [queryClient, integrations],
   );
 
-  // Disconnect an integration
+  // Disconnect integration
   const disconnectIntegration = useCallback(
     async (integrationId: string): Promise<void> => {
       try {
         await integrationsApi.disconnectIntegration(integrationId);
-        // Refresh status after disconnection
-        queryClient.invalidateQueries({ queryKey: ["integrations", "status"] });
+        toast.success("Integration disconnected");
+        // Refetch all data
+        await queryClient.refetchQueries({ queryKey: ["integrations"] });
       } catch (error) {
-        console.error(`Failed to disconnect ${integrationId}:`, error);
+        toast.error(
+          `Failed to disconnect: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
         throw error;
       }
     },
     [queryClient],
   );
 
-  // Refresh integration status
-  const refreshStatus = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["integrations", "status"] });
+  // Create custom integration mutation
+  // Backend now auto-connects, so we need to refetch both integrations AND tools
+  const createMutation = useMutation({
+    mutationFn: integrationsApi.createCustomIntegration,
+    onSuccess: () => {
+      // Refetch integrations to update connection status
+      queryClient.refetchQueries({ queryKey: ["integrations"] });
+      // Refetch tools since backend auto-connects and discovers tools
+      queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+    },
+  });
+
+  const createCustomIntegration = useCallback(
+    async (request: CreateCustomIntegrationRequest) => {
+      return await createMutation.mutateAsync(request);
+    },
+    [createMutation],
+  );
+
+  // Delete custom integration mutation
+  const deleteMutation = useMutation({
+    mutationFn: integrationsApi.deleteCustomIntegration,
+    onSuccess: () => {
+      queryClient.refetchQueries({ queryKey: ["integrations"] });
+    },
+  });
+
+  const deleteCustomIntegration = useCallback(
+    async (integrationId: string) => {
+      await deleteMutation.mutateAsync(integrationId);
+    },
+    [deleteMutation],
+  );
+
+  // Simple refetch all
+  const refetch = useCallback(() => {
+    queryClient.refetchQueries({ queryKey: ["integrations"] });
   }, [queryClient]);
 
-  // Memoized integrations with status
-  const integrationsWithStatus = useMemo(
-    () => getIntegrationsWithStatus(),
-    [getIntegrationsWithStatus],
-  );
-
-  // Get special/unified integrations
-  const getSpecialIntegrations = useCallback((): Integration[] => {
-    return integrationsWithStatus.filter(
-      (integration) => integration.isSpecial,
-    );
-  }, [integrationsWithStatus]);
-
-  // Get regular integrations (non-special)
-  const getRegularIntegrations = useCallback((): Integration[] => {
-    return integrationsWithStatus.filter(
-      (integration) => !integration.isSpecial,
-    );
-  }, [integrationsWithStatus]);
-
-  // Check if a unified integration is connected (all its included integrations are connected)
-  const isUnifiedIntegrationConnected = useCallback(
-    (unifiedId: string): boolean => {
-      const unifiedIntegration = integrationsWithStatus.find(
-        (integration) => integration.id === unifiedId && integration.isSpecial,
-      );
-
-      if (!unifiedIntegration || !unifiedIntegration.includedIntegrations) {
-        return false;
-      }
-
-      // Check if all included integrations are connected
-      return unifiedIntegration.includedIntegrations.every((includedId) => {
-        const status = getIntegrationStatus(includedId);
-        return status?.connected === true;
-      });
-    },
-    [integrationsWithStatus, getIntegrationStatus],
-  );
-
   return {
-    integrations: integrationsWithStatus,
-    integrationStatuses,
-    isLoading: configLoading || statusLoading,
-    error,
+    integrations,
+    isLoading: configLoading || userIntegrationsLoading || statusLoading,
+    error: error as Error | null,
+    getIntegrationStatus,
     connectIntegration,
     disconnectIntegration,
-    refreshStatus,
-    getIntegrationStatus,
-    getIntegrationsWithStatus,
-    getSpecialIntegrations,
-    getRegularIntegrations,
-    isUnifiedIntegrationConnected,
+    createCustomIntegration,
+    deleteCustomIntegration,
+    refetch,
   };
 };

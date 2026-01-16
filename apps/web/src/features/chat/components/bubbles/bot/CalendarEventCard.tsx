@@ -66,7 +66,7 @@ export const EventCard = ({
         {label && (
           <div
             className={`mb-1 text-xs font-medium ${
-              isDotted ? "text-primary" : "text-zinc-500"
+              isDotted ? "text-primary" : "text-foreground-500"
             }`}
           >
             {label}

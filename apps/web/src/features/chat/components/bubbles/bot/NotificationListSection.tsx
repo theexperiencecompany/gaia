@@ -81,14 +81,14 @@ export default function NotificationListSection({
 
   if (localNotifications.length === 0) {
     return (
-      <div className="mx-auto mb-3 w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-all duration-300">
+      <div className="mx-auto mb-3 w-full rounded-2xl bg-surface-200 p-3 py-0 text-white transition-all duration-300">
         <Accordion variant="light" defaultExpandedKeys={["notifications"]}>
           <AccordionItem
             key="notifications"
             aria-label="Notifications"
             title={
               <div className="flex items-center gap-3">
-                <NotificationIcon className="h-5 w-5 text-zinc-400" />
+                <NotificationIcon className="h-5 w-5 text-foreground-400" />
                 <div className="flex flex-col">
                   <span className="text-sm font-medium">{title}</span>
                 </div>
@@ -96,11 +96,11 @@ export default function NotificationListSection({
             }
           >
             <div className="flex flex-col items-center justify-center p-8 text-center">
-              <NotificationIcon className="mb-4 h-10 w-10 text-zinc-600" />
-              <p className="font-medium text-zinc-300">
+              <NotificationIcon className="mb-4 h-10 w-10 text-foreground-600" />
+              <p className="font-medium text-foreground-300">
                 No notifications found
               </p>
-              <p className="mt-1 text-sm text-zinc-400">
+              <p className="mt-1 text-sm text-foreground-400">
                 You're all caught up! New notifications will appear here.
               </p>
             </div>
@@ -111,20 +111,20 @@ export default function NotificationListSection({
   }
 
   return (
-    <div className="mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-all duration-300">
+    <div className="mx-auto w-full rounded-2xl bg-surface-200 p-3 py-0 text-white transition-all duration-300">
       <Accordion variant="light" defaultExpandedKeys={["notifications"]}>
         <AccordionItem
           key="notifications"
           aria-label="Notifications"
           title={
             <div className="flex items-center gap-3">
-              <NotificationIcon className="h-5 w-5 text-zinc-400" />
+              <NotificationIcon className="h-5 w-5 text-foreground-400" />
               <div className="flex flex-col">
                 <span className="text-sm font-medium">{title}</span>
               </div>
               {localNotifications.length > 0 && (
                 <Chip
-                  className="bg-zinc-700 text-zinc-300"
+                  className="bg-surface-300 text-foreground-300"
                   size="sm"
                   variant="flat"
                 >
@@ -152,7 +152,7 @@ export default function NotificationListSection({
                   variant="flat"
                   onPress={handleMarkAllAsRead}
                   isLoading={isMarkingAllRead}
-                  className="text-zinc-300"
+                  className="text-foreground-300"
                 >
                   Mark all read
                 </Button>
@@ -174,8 +174,8 @@ export default function NotificationListSection({
 
             {/* Footer */}
             {unreadNotifications.length > 0 && (
-              <div className="border-t border-zinc-700 pt-3">
-                <div className="text-sm text-zinc-400">
+              <div className="border-t border-surface-300 pt-3">
+                <div className="text-sm text-foreground-400">
                   {unreadNotifications.length} unread notification
                   {unreadNotifications.length !== 1 ? "s" : ""}
                 </div>

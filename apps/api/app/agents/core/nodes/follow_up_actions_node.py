@@ -55,7 +55,7 @@ async def follow_up_actions_node(
         return state
 
     tool_registry = await get_tool_registry()
-    llm = init_llm()
+    llm = init_llm(use_free=True)
 
     try:
         messages = state.get("messages", [])

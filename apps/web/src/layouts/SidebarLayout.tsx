@@ -1,3 +1,5 @@
+"use client";
+
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
 import Image from "next/image";
@@ -18,6 +20,7 @@ import {
 } from "@/components/ui/sidebar";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { SidebarLeft01Icon, SidebarRight01Icon } from "@/icons";
+import { useTheme } from "@/components/providers/ThemeProvider";
 
 interface SidebarLayoutProps {
   children: ReactNode;
@@ -43,15 +46,20 @@ export const CustomSidebarTrigger = () => {
       }
     >
       {open ? (
-        <SidebarLeft01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-500 transition group-hover/btn:text-primary" />
+        <SidebarLeft01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-foreground-500 transition group-hover/btn:text-primary" />
       ) : (
-        <SidebarRight01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-zinc-500 transition group-hover/btn:text-primary" />
+        <SidebarRight01Icon className="max-h-5 min-h-5 max-w-5 min-w-5 text-foreground-500 transition group-hover/btn:text-primary" />
       )}
     </SidebarHeaderButton>
   );
 };
 
 export default function SidebarLayout({ children }: SidebarLayoutProps) {
+  const { resolvedTheme } = useTheme();
+  const logoSrc = resolvedTheme === "dark" 
+    ? "/images/logos/text_w_logo_white.webp"
+    : "/images/logos/text_w_logo_black.webp";
+
   return (
     <Sidebar
       variant="sidebar"
@@ -67,7 +75,7 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
               variant="light"
             >
               <Image
-                src="/images/logos/text_w_logo_white.webp"
+                src={logoSrc}
                 alt="GAIA Logo"
                 width={100}
                 height={30}
@@ -75,7 +83,6 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
               />
             </Button>
           </Link>
-          <CustomSidebarTrigger />
         </div>
       </SidebarHeader>
 

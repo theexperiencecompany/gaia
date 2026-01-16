@@ -10,13 +10,13 @@ import { useIntegrations } from "@/features/integrations";
 function IntegrationListSection() {
   const { integrations, connectIntegration } = useIntegrations();
 
-  // Separate connected and not connected integrations
-  const connectedIntegrations = integrations.filter(
-    (i) => i.status === "connected",
-  );
-  const notConnectedIntegrations = integrations.filter(
-    (i) => i.status !== "connected",
-  );
+  // Separate connected and not connected integrations, sorted alphabetically
+  const connectedIntegrations = integrations
+    .filter((i) => i.status === "connected")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const notConnectedIntegrations = integrations
+    .filter((i) => i.status !== "connected")
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const total_count = integrations.length;
   const connected_count = connectedIntegrations.length;
@@ -31,12 +31,14 @@ function IntegrationListSection() {
 
   const renderIntegration = (integration: (typeof integrations)[0]) => {
     const isConnected = integration.status === "connected";
-    const isAvailable = !!integration.loginEndpoint;
+    // Use backend's 'available' field for platform integrations
+    const isAvailable =
+      integration.source === "custom" || integration.available;
 
     return (
       <div
         key={integration.id}
-        className="group flex items-start gap-3 p-3 transition-colors hover:bg-zinc-700"
+        className="group flex items-start gap-3 p-3 transition-colors hover:bg-surface-700"
       >
         <div className="flex-shrink-0 pt-0.5">
           {getToolCategoryIcon(integration.id, {
@@ -58,11 +60,12 @@ function IntegrationListSection() {
               </Chip>
             )}
           </div>
-          <p className="mt-1 text-xs text-zinc-400">
+          <p className="mt-1 text-xs text-foreground-400">
             {integration.description}
           </p>
         </div>
 
+        {/* Show connect button for all available integrations */}
         {!isConnected && isAvailable && (
           <Button
             size="sm"
@@ -79,9 +82,9 @@ function IntegrationListSection() {
   };
 
   const content = (
-    <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-4 text-white">
+    <div className="w-full max-w-2xl rounded-3xl bg-surface-200 p-4 text-white">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-sm font-medium text-zinc-300">
+        <span className="text-sm font-medium text-foreground-300">
           {connected_count} of {total_count} connected
         </span>
       </div>
@@ -90,10 +93,10 @@ function IntegrationListSection() {
         {/* Connected Integrations Section */}
         {connectedIntegrations.length > 0 && (
           <div>
-            <h3 className="mb-2 text-xs font-semibold tracking-wider text-zinc-400 uppercase">
+            <h3 className="mb-2 text-xs font-semibold tracking-wider text-foreground-400 uppercase">
               Connected ({connectedIntegrations.length})
             </h3>
-            <ScrollShadow className="max-h-[200px] divide-y divide-zinc-700">
+            <ScrollShadow className="max-h-[200px] divide-y divide-border-surface-700">
               {connectedIntegrations.map(renderIntegration)}
             </ScrollShadow>
           </div>
@@ -102,10 +105,10 @@ function IntegrationListSection() {
         {/* Not Connected Integrations Section */}
         {notConnectedIntegrations.length > 0 && (
           <div>
-            <h3 className="mb-2 text-xs font-semibold tracking-wider text-zinc-400 uppercase">
+            <h3 className="mb-2 text-xs font-semibold tracking-wider text-foreground-400 uppercase">
               Available ({notConnectedIntegrations.length})
             </h3>
-            <ScrollShadow className="max-h-[300px] divide-y divide-zinc-700">
+            <ScrollShadow className="max-h-[300px] divide-y divide-border-surface-700">
               {notConnectedIntegrations.map(renderIntegration)}
             </ScrollShadow>
           </div>

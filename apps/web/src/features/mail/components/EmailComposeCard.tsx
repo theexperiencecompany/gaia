@@ -104,7 +104,7 @@ function EditEmailModal({
               variant="light"
               size="sm"
               onPress={onClose}
-              className="h-7 px-2 text-xs text-gray-300"
+              className="h-7 px-2 text-xs text-foreground-300"
             >
               Cancel
             </Button>
@@ -194,7 +194,7 @@ function RecipientSelectionModal({
             ))}
           </div>
 
-          <hr className="my-2 border-zinc-700" />
+          <hr className="my-2 border-border-surface-700" />
 
           <div className="flex gap-2">
             <Input
@@ -430,7 +430,7 @@ export default function EmailComposeCard({
   return (
     <>
       {/* Main Email Card - Redesigned UI */}
-      <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-zinc-800">
+      <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-surface-200">
         {/* Header with status chip */}
         <div className="flex items-center justify-between px-6 py-1">
           <div className="flex flex-row items-center gap-2 pt-3 pb-2">
@@ -446,9 +446,9 @@ export default function EmailComposeCard({
           </div>
         </div>
         <div className="flex flex-col gap-1 px-6">
-          <div className="flex items-center gap-2 text-sm text-zinc-400">
+          <div className="flex items-center gap-2 text-sm text-foreground-400">
             <span>To:</span>
-            <span className="flex w-full items-center justify-between font-medium text-zinc-200">
+            <span className="flex w-full items-center justify-between font-medium text-foreground-200">
               {selectedEmails.join(", ") || ""}
               <Button
                 size="sm"
@@ -459,7 +459,7 @@ export default function EmailComposeCard({
                   selectedEmails.length === 0 ? (
                     ""
                   ) : (
-                    <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+                    <PencilEdit01Icon className="h-5 w-5 text-foreground-500" />
                   )
                 }
               >
@@ -467,11 +467,11 @@ export default function EmailComposeCard({
               </Button>
             </span>
           </div>
-          <Separator className="my-1.5 bg-zinc-700" />
-          <div className="flex w-full items-center justify-between text-sm text-gray-400">
+          <Separator className="my-1.5 bg-surface-700" />
+          <div className="flex w-full items-center justify-between text-sm text-foreground-400">
             <div className="flex items-center gap-2">
               <span>Subject:</span>
-              <span className="font-medium text-gray-200">
+              <span className="font-medium text-foreground-200">
                 {editData.subject}
               </span>
             </div>
@@ -482,12 +482,12 @@ export default function EmailComposeCard({
               isIconOnly
               onPress={handleEditClick}
             >
-              <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+              <PencilEdit01Icon className="h-5 w-5 text-foreground-500" />
             </Button>
           </div>
-          <Separator className="my-1.5 bg-zinc-700" />
+          <Separator className="my-1.5 bg-surface-700" />
 
-          <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed whitespace-pre-line text-zinc-200">
+          <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed whitespace-pre-line text-foreground-200">
             <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
               <Button
                 variant="light"
@@ -495,7 +495,7 @@ export default function EmailComposeCard({
                 isIconOnly
                 onPress={handleEditClick}
               >
-                <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+                <PencilEdit01Icon className="h-5 w-5 text-foreground-500" />
               </Button>
             </div>
             {emailData.is_html ? (

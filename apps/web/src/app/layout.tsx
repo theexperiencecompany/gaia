@@ -6,6 +6,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import AnalyticsLayout from "@/layouts/AnalyticsLayout";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
 import {
@@ -130,7 +131,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${getAllFontVariables()} dark`}>
+    <html lang="en" className={`${getAllFontVariables()}`} suppressHydrationWarning>
       <SpeedInsights />
       <head>
         <link
@@ -153,12 +154,36 @@ export default function RootLayout({
           href="/images/wallpapers/g3.webp"
           fetchPriority="high"
         />
+        {/* Inline script to prevent flash of wrong theme */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var theme = localStorage.getItem('gaia-theme');
+                  if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches) || theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    document.documentElement.classList.add('dark');
+                  } else if (theme === 'light') {
+                    document.documentElement.classList.remove('dark');
+                    document.documentElement.classList.add('light');
+                  } else {
+                    document.documentElement.classList.add('dark');
+                  }
+                } catch (e) {
+                  document.documentElement.classList.add('dark');
+                }
+              })();
+            `,
+          }}
+        />
         {/* <link rel="preconnect" href="https://i.ytimg.com" /> */}
       </head>
-      <body className={`dark ${defaultFont.className}`}>
-        <main>
-          <ProvidersLayout>{children}</ProvidersLayout>
-        </main>
+      <body className={defaultFont.className}>
+        <ThemeProvider defaultTheme="system">
+          <main>
+            <ProvidersLayout>{children}</ProvidersLayout>
+          </main>
+        </ThemeProvider>
 
         {/* JSON-LD Schema - Organization */}
         <Script id="json-ld-organization" type="application/ld+json">

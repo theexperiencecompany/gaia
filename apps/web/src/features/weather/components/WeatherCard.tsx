@@ -19,8 +19,8 @@ import {
   CloudSnowIcon,
   DropletIcon,
   FastWindIcon,
+  Location01Icon,
   Moon02Icon,
-  PinIcon,
   Sun03Icon,
   SunriseIcon,
   SunsetIcon,
@@ -244,7 +244,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
               color="#D4D4D8"
             />
           ),
-          gradient: "bg-linear-to-br from-zinc-600/80 to-zinc-800/80",
+          gradient: "bg-linear-to-br from-surface-400/80 to-surface-200/80",
           colorCode: "#D4D4D8", // zinc-300
         };
       } else if (weatherId === 771) {
@@ -337,7 +337,10 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
       {/* Location Info */}
       <div className="mb-3 flex items-start justify-between gap-10">
         <div className="flex items-start">
-          <PinIcon className="relative top-1 mr-2 h-5 w-5" color={"white"} />
+          <Location01Icon
+            className="relative top-1 mr-2 h-5 w-5"
+            color={"white"}
+          />
           <div>
             <h2 className="flex items-center text-xl font-bold text-white">
               {weatherData.location.city}
@@ -356,7 +359,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 p-1 text-white hover:bg-white/20"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-50/10 p-1 text-white hover:bg-surface-50/20"
                 aria-label="Temperature settings"
               >
                 <ThermometerWarmIcon className="h-5 w-5" />
@@ -364,10 +367,10 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-40 border-zinc-700 bg-zinc-800 text-white"
+              className="w-40 border-surface-300 bg-surface-200 text-foreground"
             >
               <DropdownMenuLabel>Temperature Unit</DropdownMenuLabel>
-              <DropdownMenuSeparator className="bg-zinc-700" />
+              <DropdownMenuSeparator className="bg-surface-300" />
               <div className="px-2 py-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm">°F</span>
@@ -447,7 +450,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
                 return (
                   <div
                     key={dayTemp + nightTemp}
-                    className="flex items-center justify-start rounded-2xl bg-black/10 px-2 py-1 text-white"
+                    className="flex items-center justify-start rounded-xl bg-surface-50/15 px-2 py-1 text-white"
                   >
                     <div className="flex w-full flex-1 items-center justify-start gap-2">
                       <div className="flex items-center justify-center">

@@ -17,18 +17,35 @@ from app.services.tools_service import (
 router = APIRouter()
 
 
+def _tools_cache_key(*args, **kwargs) -> str:
+    """Generate cache key for tools endpoint using user_id from user dict."""
+    user = kwargs.get("user", {})
+    user_id = user.get("user_id", "anonymous")
+    return f"tools:user:{user_id}"
+
+
 @router.get("/tools", response_model=ToolsListResponse)
+@Cacheable(key_generator=_tools_cache_key, ttl=300, model=ToolsListResponse)  # 5 min
 async def list_available_tools(
     user: dict = Depends(get_current_user),
 ) -> ToolsListResponse:
     """
     Get a list of all available tools with their metadata.
 
+    Includes:
+    - Platform tools (always available)
+    - Global MCP tools (stored when any user first connects to an MCP integration)
+
+    Note: This endpoint returns global tool metadata for fast frontend visibility.
+    User-specific tool connections are validated separately via integration status.
+    Cached for 5 minutes per user to improve performance.
+
     Returns:
         ToolsListResponse: List of tools with descriptions, parameters, and categories
     """
     try:
-        return await get_available_tools()
+        user_id = user.get("user_id")
+        return await get_available_tools(user_id=user_id)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve tools: {str(e)}"

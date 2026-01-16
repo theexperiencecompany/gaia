@@ -48,7 +48,7 @@ const priorityRingColors = {
   [Priority.HIGH]: "border-red-500",
   [Priority.MEDIUM]: "border-yellow-500",
   [Priority.LOW]: "border-blue-500",
-  [Priority.NONE]: "border-zinc-500",
+  [Priority.NONE]: "border-foreground-500",
 } as const;
 
 export default function TodoItem({
@@ -108,7 +108,7 @@ export default function TodoItem({
             color={todo.completed ? "default" : priorityColors[todo.priority]}
             radius="full"
             classNames={{
-              wrapper: `mt-1 ${todo.completed ? "" : `${priorityRingColors[todo.priority]} border-dashed! border-1 before:border-0! bg-zinc-900`}`,
+              wrapper: `mt-1 ${todo.completed ? "" : `${priorityRingColors[todo.priority]} border-dashed! border-1 before:border-0! bg-surface-100`}`,
               label: "w-[30vw]",
             }}
           />
@@ -118,13 +118,13 @@ export default function TodoItem({
           <div>
             <h4
               className={`text-base font-medium ${
-                todo.completed ? "text-zinc-500 line-through" : ""
+                todo.completed ? "text-foreground-500 line-through" : ""
               }`}
             >
               {todo.title}
             </h4>
             {todo.description && (
-              <p className="mt-1 text-xs text-zinc-500">{todo.description}</p>
+              <p className="mt-1 text-xs text-foreground-500">{todo.description}</p>
             )}
           </div>
 
@@ -134,7 +134,7 @@ export default function TodoItem({
             <div className="mt-2 flex flex-wrap items-center gap-1">
               {todo.due_date && (
                 <Chip
-                  className="flex items-center text-zinc-400 px-1"
+                  className="flex items-center text-foreground-400 px-1"
                   size="sm"
                   radius="sm"
                   color={isToday ? "success" : isOverdue ? "danger" : "default"}
@@ -155,7 +155,7 @@ export default function TodoItem({
                 <Chip
                   size="sm"
                   variant="flat"
-                  className=" text-zinc-400 px-1"
+                  className=" text-foreground-400 px-1"
                   radius="sm"
                   style={{
                     color: projects?.find((p) => p.id === todo.project_id)
@@ -175,7 +175,7 @@ export default function TodoItem({
                     key={label}
                     size="sm"
                     variant="flat"
-                    className="flex items-center text-zinc-400 px-1"
+                    className="flex items-center text-foreground-400 px-1"
                     radius="sm"
                     startContent={
                       <Tag01Icon width={17} height={17} className="mx-1" />
@@ -199,7 +199,7 @@ export default function TodoItem({
                           ? "text-yellow-400 bg-yellow-400/10"
                           : todo.priority === Priority.LOW
                             ? "text-blue-400 bg-blue-400/10"
-                            : "text-zinc-500"
+                            : "text-foreground-500"
                     }`}
                     startContent={
                       <Flag02Icon width={15} height={15} className="mx-1" />
@@ -216,7 +216,7 @@ export default function TodoItem({
                 <Chip
                   size="sm"
                   variant="flat"
-                  className=" text-zinc-400 px-1"
+                  className=" text-foreground-400 px-1"
                   radius="sm"
                   startContent={
                     <CheckmarkCircle02Icon
@@ -261,7 +261,7 @@ export default function TodoItem({
               ) : null;
             })}
             {todo.workflow_categories.length > 3 && (
-              <div className="z-0 flex size-[28px] min-h-[28px] min-w-[28px] items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-foreground-500">
+              <div className="z-0 flex size-[28px] min-h-[28px] min-w-[28px] items-center justify-center rounded-lg bg-surface-300/60 text-xs text-foreground-500">
                 +{todo.workflow_categories.length - 3}
               </div>
             )}
@@ -272,7 +272,7 @@ export default function TodoItem({
           onClick={(e) => e.stopPropagation()}
           className="flex h-full min-h-full justify-center items-center self-center"
         >
-          <ChevronRight width={20} height={20} className="text-zinc-400" />
+          <ChevronRight width={20} height={20} className="text-foreground-400" />
         </div>
       </div>
     </div>

@@ -16,7 +16,7 @@ export default function GetStartedButton({
     <div className="relative z-[2] flex flex-col items-center gap-4 group">
       <Link href={"/signup"}>
         <RaisedButton
-          className="rounded-xl px-4 text-black! before:rounded-xl hover:scale-110 group shadow-black"
+          className="rounded-xl px-4 text-primary-foreground! before:rounded-xl hover:scale-110 group shadow-black"
           color="#00bbff"
           onClick={() => {
             posthog.capture("cta:get_started_clicked", {
@@ -37,7 +37,7 @@ export default function GetStartedButton({
       </Link>
 
       {small_text && (
-        <div className="text-xs font-light text-black">
+        <div className="text-xs font-light text-foreground-500">
           No credit card required. Free forever plan included.
         </div>
       )}

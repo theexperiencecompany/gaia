@@ -4,8 +4,8 @@ import { Chip } from "@heroui/chip";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations";
+import type { IntegrationConnectionData } from "@/features/integrations/types";
 import { AlertCircleIcon } from "@/icons";
-import type { IntegrationConnectionData } from "@/types/features/integrationTypes";
 
 interface IntegrationConnectionPromptProps {
   integration_connection_required: IntegrationConnectionData;
@@ -24,7 +24,7 @@ export default function IntegrationConnectionPrompt({
   }
 
   const isConnected = integration.status === "connected";
-  const isAvailable = !!integration.loginEndpoint;
+  const isAvailable = integration.source === "custom" || integration.available;
 
   const handleConnect = async () => {
     try {
@@ -35,7 +35,7 @@ export default function IntegrationConnectionPrompt({
   };
 
   const content = (
-    <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-4 text-white">
+    <div className="w-full max-w-2xl rounded-3xl bg-surface-200 p-4 text-white">
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-3">
           <div className="shrink-0 pt-0.5">
@@ -61,7 +61,7 @@ export default function IntegrationConnectionPrompt({
               )}
             </div>
 
-            <p className="text-xs font-light text-zinc-400">
+            <p className="text-xs font-light text-foreground-400">
               {integration.description}
             </p>
           </div>

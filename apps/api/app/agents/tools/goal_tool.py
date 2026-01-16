@@ -2,6 +2,7 @@ import json
 from typing import Annotated, Any, Dict, Optional
 
 from app.config.loggers import chat_logger as logger
+from app.constants.cache import DEFAULT_CACHE_TTL
 from app.db.mongodb.collections import goals_collection
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.decorators import with_doc, with_rate_limiting
@@ -627,9 +628,8 @@ async def get_goal_statistics(config: RunnableConfig) -> Dict[str, Any]:
             "active_goals_count": len(active_goals),
         }
 
-        # Cache the computed statistics (cache for 1 hour to balance freshness with performance)
-        cache_ttl = 3600  # 1 hour in seconds
-        await set_cache(cache_key_stats, json.dumps(stats), cache_ttl)
+        # Cache the computed statistics (1 hour to balance freshness with performance)
+        await set_cache(cache_key_stats, json.dumps(stats), DEFAULT_CACHE_TTL)
         logger.info(f"Goal statistics computed and cached for user {user_id}")
 
         # Stream the stats to frontend

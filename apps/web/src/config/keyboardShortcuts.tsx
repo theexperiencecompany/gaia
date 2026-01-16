@@ -104,6 +104,13 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
     category: "create",
     icon: <Calendar03Icon width={16} height={16} />,
   },
+  {
+    id: "create_integration",
+    keys: "c",
+    description: "New Integration (on Integrations page)",
+    category: "create",
+    icon: <ConnectIcon width={16} height={16} />,
+  },
 
   // Navigation shortcuts (G -> X sequences)
   {
@@ -210,7 +217,7 @@ export function ShortcutKeysDisplay({
           <Kbd className={kbdClass}>{key}</Kbd>
           {i < displayKeys.length - 1 && (
             <span
-              className={`text-zinc-400 ${size === "sm" ? "text-xs" : "text-sm"}`}
+              className={`text-foreground-400 ${size === "sm" ? "text-xs" : "text-sm"}`}
             >
               then
             </span>

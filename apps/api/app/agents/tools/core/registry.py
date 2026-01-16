@@ -1,6 +1,7 @@
 import asyncio
+from collections.abc import Mapping
 from functools import cache
-from typing import Dict, List, Optional
+from typing import Dict, Iterator, List, Optional
 
 from app.agents.tools import (
     calendar_tool,
@@ -24,6 +25,69 @@ from app.agents.tools import (
 from app.config.loggers import langchain_logger as logger
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from langchain_core.tools import BaseTool
+
+
+class DynamicToolDict(Mapping[str, BaseTool]):
+    """
+    A dict-like wrapper that provides live access to the tool registry.
+
+    This allows tools added to the registry after graph compilation
+    to be accessible to the agent.
+    """
+
+    def __init__(self, registry: "ToolRegistry"):
+        self._registry = registry
+        self._extra_tools: Dict[str, BaseTool] = {}
+
+    def __getitem__(self, key: str) -> BaseTool:
+        # Check extra tools first (like handoff)
+        if key in self._extra_tools:
+            return self._extra_tools[key]
+        # Then check registry
+        tool_dict = self._registry._get_tool_dict_internal()
+        if key in tool_dict:
+            return tool_dict[key]
+        raise KeyError(key)
+
+    def __iter__(self) -> Iterator[str]:
+        seen = set()
+        for key in self._extra_tools:
+            if key not in seen:
+                seen.add(key)
+                yield key
+        for key in self._registry._get_tool_dict_internal():
+            if key not in seen:
+                seen.add(key)
+                yield key
+
+    def __len__(self) -> int:
+        return len(
+            set(self._extra_tools.keys())
+            | set(self._registry._get_tool_dict_internal().keys())
+        )
+
+    def __contains__(self, key: object) -> bool:
+        return (
+            key in self._extra_tools or key in self._registry._get_tool_dict_internal()
+        )
+
+    def update(self, other: Dict[str, BaseTool]) -> None:
+        """Add extra tools (like handoff) that aren't in the registry."""
+        self._extra_tools.update(other)
+
+    def values(self):
+        """Return all tool values for ToolNode initialization."""
+        all_tools = dict(self._registry._get_tool_dict_internal())
+        all_tools.update(self._extra_tools)
+        return all_tools.values()
+
+    def keys(self):
+        return list(self)
+
+    def items(self):
+        all_tools = dict(self._registry._get_tool_dict_internal())
+        all_tools.update(self._extra_tools)
+        return all_tools.items()
 
 
 class Tool:
@@ -140,9 +204,26 @@ class ToolRegistry:
 
         self._add_category("notifications", tools=[*notification_tool.tools])
         self._add_category(
-            "productivity", tools=[*todo_tool.tools, *reminder_tool.tools]
+            "todos",
+            tools=[*todo_tool.tools],
+            is_delegated=True,
+            integration_name="todos",
+            space="todos",
         )
-        self._add_category("goal_tracking", tools=goal_tool.tools)
+        self._add_category(
+            "reminders",
+            tools=[*reminder_tool.tools],
+            is_delegated=True,
+            integration_name="reminders",
+            space="reminders",
+        )
+        self._add_category(
+            "goal_tracking",
+            tools=goal_tool.tools,
+            is_delegated=True,
+            integration_name="goals",
+            space="goals",
+        )
         self._add_category("support", tools=[support_tool.create_support_ticket])
         self._add_category("memory", tools=memory_tools.tools)
         self._add_category("integrations", tools=integration_tool.tools)
@@ -168,6 +249,33 @@ class ToolRegistry:
             require_integration=True,
             integration_name="google_docs",
         )
+
+    async def register_mcp_tools(self, server_name: str = "deepwiki"):
+        """
+        Register MCP server tools.
+        Connects to an MCP server and adds its tools to the registry.
+        """
+        if server_name in self._categories:
+            return self._categories[server_name]
+
+        try:
+            from app.services.mcp.mcp_client import get_mcp_client
+
+            # Use system user for unauthenticated MCP connections at startup
+            mcp_client = await get_mcp_client(user_id="_system")
+            tools = await mcp_client.connect(server_name)
+
+            if tools:
+                self._add_category(
+                    name=f"mcp_{server_name}",
+                    tools=tools,
+                    space="mcp",
+                )
+                await self._index_category_tools(f"mcp_{server_name}")
+                logger.info(f"Registered {len(tools)} MCP tools from {server_name}")
+                return self._categories[f"mcp_{server_name}"]
+        except Exception as e:
+            logger.error(f"Failed to register MCP tools from {server_name}: {e}")
 
     async def register_provider_tools(
         self,
@@ -251,6 +359,21 @@ class ToolRegistry:
         # Load all providers in parallel
         await asyncio.gather(*[load_provider(i) for i in integrations_to_load])
 
+    async def load_all_mcp_tools(self):
+        """
+        Load all tools from MCP-managed integrations.
+
+        NOTE: MCP tools are now user-specific. Unauthenticated MCPs require
+        explicit user connection just like authenticated ones. All MCP tools
+        are loaded per-user via load_user_mcp_tools() at agent runtime.
+
+        This method is kept for backward compatibility but is now a no-op.
+        """
+        logger.info(
+            "MCP tools are now user-specific - skipping global startup load. "
+            "Tools loaded per-user via load_user_mcp_tools()"
+        )
+
     async def _index_category_tools(self, category_name: str):
         """Index tools from a category into ChromaDB store."""
         from app.db.chroma.chroma_tools_store import index_tools_to_store
@@ -266,6 +389,17 @@ class ToolRegistry:
         """Get a specific category by name."""
         return self._categories.get(name)
 
+    def get_category_by_space(self, space: str) -> Optional[ToolCategory]:
+        """Get a category by its tool space value.
+
+        Searches all categories and returns the first one where category.space matches.
+        This handles dynamic category names like mcp_{integration}_{user_id}.
+        """
+        for category in self._categories.values():
+            if category.space == space:
+                return category
+        return None
+
     def get_all_category_objects(
         self, ignore_categories: List[str] = []
     ) -> Dict[str, ToolCategory]:
@@ -276,6 +410,106 @@ class ToolRegistry:
             if name not in ignore_categories
         }
 
+    async def load_user_mcp_tools(self, user_id: str) -> Dict[str, List[BaseTool]]:
+        """
+        Load all connected MCP tools for a specific user.
+
+        Connects to each MCP server the user has authenticated with,
+        retrieves tools, and adds them to the registry.
+
+        Category naming: mcp_{integration_id} (without user_id)
+        User association is tracked via _user_mcp_categories.
+
+        Returns dict mapping integration_id -> list of tools loaded.
+        """
+        from app.config.oauth_config import get_integration_by_id
+        from app.services.mcp.mcp_client import get_mcp_client
+
+        mcp_client = await get_mcp_client(user_id=user_id)
+        all_tools = await mcp_client.get_all_connected_tools()
+
+        loaded: Dict[str, List[BaseTool]] = {}
+
+        # Track which MCP categories this user has access to
+        if not hasattr(self, "_user_mcp_categories"):
+            self._user_mcp_categories: Dict[str, set[str]] = {}
+        if user_id not in self._user_mcp_categories:
+            self._user_mcp_categories[user_id] = set()
+
+        for integration_id, tools in all_tools.items():
+            if not tools:
+                continue
+
+            # Category name: mcp_{integration_id} (no user_id suffix)
+            category_name = f"mcp_{integration_id}"
+
+            # Track this category for the user
+            self._user_mcp_categories[user_id].add(category_name)
+
+            # Skip if already loaded (category already exists)
+            if category_name in self._categories:
+                loaded[integration_id] = tools
+                continue
+
+            # Get space from integration config
+            integration = get_integration_by_id(integration_id)
+            space = "mcp"
+            has_subagent = False
+            if integration and integration.subagent_config:
+                space = integration.subagent_config.tool_space
+                has_subagent = integration.subagent_config.has_subagent
+
+            self._add_category(
+                name=category_name,
+                tools=tools,
+                space=space,
+                integration_name=integration_id,
+                is_delegated=has_subagent,
+            )
+            await self._index_category_tools(category_name)
+            loaded[integration_id] = tools
+            logger.info(
+                f"Loaded {len(tools)} MCP tools from {integration_id} for user {user_id}"
+            )
+
+        return loaded
+
+    def get_user_mcp_tool_dict(self, user_id: str) -> Dict[str, BaseTool]:
+        """
+        Get tool dict for user's MCP tools only.
+
+        Returns mapping of tool name -> tool instance for user-specific MCP tools.
+        """
+        tools: Dict[str, BaseTool] = {}
+
+        # Get categories this user has access to
+        user_categories = getattr(self, "_user_mcp_categories", {}).get(user_id, set())
+
+        for category_name in user_categories:
+            category = self._categories.get(category_name)
+            if category:
+                for tool in category.tools:
+                    tools[tool.name] = tool.tool
+
+        return tools
+
+    def get_mcp_category_for_integration(self, integration_id: str) -> Optional[str]:
+        """
+        Get the MCP category name for a given integration ID.
+
+        This provides consistent lookup for MCP tools by integration.
+
+        Args:
+            integration_id: The integration ID (e.g., "linear", "notion")
+
+        Returns:
+            Category name (e.g., "mcp_linear") or None if not found
+        """
+        category_name = f"mcp_{integration_id}"
+        if category_name in self._categories:
+            return category_name
+        return None
+
     @cache
     def get_category_of_tool(self, tool_name: str) -> str:
         """Get the category of a specific tool by name."""
@@ -283,6 +517,25 @@ class ToolRegistry:
             for tool in category.tools:
                 if tool.name == tool_name:
                     return category.name
+        return "unknown"
+
+    def get_icon_category_of_tool(self, tool_name: str) -> str:
+        """Get the best category identifier for icon display.
+
+        For MCP and Composio tools, returns the integration_name (e.g., 'notion')
+        which matches frontend icon configs. For other tools, returns the category name.
+
+        Args:
+            tool_name: Name of the tool to look up
+
+        Returns:
+            Integration name or category name for icon lookup, or 'unknown' if not found
+        """
+        for category in self._categories.values():
+            for tool in category.tools:
+                if tool.name == tool_name:
+                    # Prefer integration_name for icon lookup (matches toolIcons.tsx)
+                    return category.integration_name or category.name
         return "unknown"
 
     def get_all_tools_for_search(self, include_delegated: bool = True) -> List[Tool]:
@@ -311,13 +564,18 @@ class ToolRegistry:
             core_tools.extend(category.get_core_tools())
         return core_tools
 
-    def get_tool_dict(self) -> Dict[str, BaseTool]:
-        """Get a dictionary mapping tool names to tool instances for agent binding.
-
-        This excludes delegated tools that should only be available via sub-agents.
-        """
+    def _get_tool_dict_internal(self) -> Dict[str, BaseTool]:
+        """Internal method to get current tool dict (used by DynamicToolDict)."""
         all_tools = self.get_all_tools_for_search()
         return {tool.name: tool.tool for tool in all_tools}
+
+    def get_tool_dict(self) -> DynamicToolDict:
+        """Get a dynamic dictionary mapping tool names to tool instances for agent binding.
+
+        Returns a DynamicToolDict that provides live access to tools,
+        allowing tools added after graph compilation to be accessible.
+        """
+        return DynamicToolDict(self)
 
     def get_tool_names(self) -> List[str]:
         """Get list of all tool names including delegated ones."""

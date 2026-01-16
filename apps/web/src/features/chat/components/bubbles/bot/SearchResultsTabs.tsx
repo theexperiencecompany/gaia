@@ -136,7 +136,7 @@ function ImageItem({
   return (
     <motion.div
       onClick={onImageClick}
-      className={`group cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-all duration-200 ${
+      className={`group cursor-pointer overflow-hidden rounded-2xl shadow-surface-50 transition-all duration-200 ${
         (index + 1) % 2 === 0
           ? "-rotate-7 hover:-rotate-0"
           : "rotate-7 hover:rotate-0"
@@ -171,7 +171,7 @@ function ImageItem({
         alt={`Search result image ${index + 1}`}
         width={700}
         height={700}
-        className={`aspect-square h-full bg-zinc-800 object-cover transition ${
+        className={`aspect-square h-full bg-surface-200 object-cover transition ${
           isLoading ? "opacity-0" : "opacity-100"
         }`}
         onLoad={handleLoad}
@@ -195,7 +195,7 @@ function SourcesButton({ web }: SourcesButtonProps) {
               {web.slice(0, 4).map((result) => (
                 <div
                   key={result.url + result.title}
-                  className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-700"
+                  className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-surface-100 bg-surface-300"
                 >
                   <Image
                     src={`https://www.google.com/s2/favicons?domain=${new URL(result.url).hostname}&sz=64`}
@@ -211,7 +211,7 @@ function SourcesButton({ web }: SourcesButtonProps) {
                 </div>
               ))}
             </div>
-            <span className="font-medium text-zinc-300">Search Results</span>
+            <span className="font-medium text-foreground-300">Search Results</span>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="bg-transparent p-0! shadow-none">
@@ -232,7 +232,7 @@ function NewsResults({ news }: NewsResultsProps) {
       {news.map((article) => (
         <div
           key={article.url + article.title}
-          className="max-w-(--breakpoint-sm) overflow-hidden rounded-lg bg-zinc-800 p-4 shadow-md transition-all hover:shadow-lg"
+          className="max-w-(--breakpoint-sm) overflow-hidden rounded-lg bg-surface-200 p-4 shadow-md transition-all hover:shadow-lg"
         >
           <div className="flex flex-row items-center gap-2 text-primary transition-all hover:text-white">
             <NewsIcon
@@ -264,10 +264,10 @@ interface WebResultsProps {
 
 function WebResults({ web }: WebResultsProps) {
   return (
-    <div className="max-h-80 w-full max-w-lg overflow-y-auto rounded-2xl bg-zinc-800/70 backdrop-blur-2xl">
+    <div className="max-h-80 w-full max-w-lg overflow-y-auto rounded-2xl bg-surface-200/70 backdrop-blur-2xl">
       {web.map((result) => (
         <div
-          className="w-full border-b-1 border-b-zinc-700 p-4 pb-3 transition-all hover:bg-white/5"
+          className="w-full border-b-1 border-b-surface-300 p-4 pb-3 transition-all hover:bg-surface-950/5"
           key={result.url + result.title}
         >
           <a

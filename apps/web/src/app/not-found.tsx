@@ -15,14 +15,14 @@ export default function PageNotFound() {
   return (
     <>
       <Navbar />
-      <div className="flex h-screen w-screen flex-col items-center justify-center gap-4 bg-gradient-to-b from-zinc-900 to-black">
-        <div className="absolute z-0 mx-auto w-full text-center text-[40vw] font-bold text-zinc-900/40">
+      <div className="flex h-screen w-screen flex-col items-center justify-center gap-4 bg-gradient-to-b from-surface-100 to-surface-50">
+        <div className="absolute z-0 mx-auto w-full text-center text-[40vw] font-bold text-surface-100/40">
           404
         </div>
         <span className="relative z-[1] text-6xl font-medium">
           Page Not Found
         </span>
-        <span className="relative z-[1] text-sm font-light text-zinc-400">
+        <span className="relative z-[1] text-sm font-light text-foreground-400">
           This page could not be found
         </span>
 

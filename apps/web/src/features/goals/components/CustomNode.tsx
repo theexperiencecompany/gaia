@@ -30,7 +30,7 @@ const CustomNode: React.FC<CustomNodeProps> = React.memo(
           } ${
             data.isComplete
               ? "bg-[#00bbff73] line-through outline-[#00bbff30]"
-              : "bg-zinc-800"
+              : "bg-surface-200"
           } flex max-w-[250px] min-w-[250px] flex-row items-center justify-center gap-1 rounded-lg p-4 text-center text-white outline outline-[3px] transition-all`}
           onClick={() => {
             setCurrentlySelectedNodeId(data.id);

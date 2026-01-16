@@ -79,15 +79,15 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
 
   return (
     <div className="w-full max-w-4xl mt-10">
-      <div className="mb-2 flex w-full items-end justify-between px-1 text-zinc-400">
+      <div className="mb-2 flex w-full items-end justify-between px-1 text-foreground-400">
         <span className="text-sm font-light">Suggestions</span>
         <Button isIconOnly size="sm" variant="light" onPress={handleShuffle}>
-          <UndoIcon width={16} height={16} className="text-zinc-400" />
+          <UndoIcon width={16} height={16} className="text-foreground-400" />
         </Button>
       </div>
 
       {currentSuggestions.length === 0 && (
-        <div className="text-sm text-zinc-400 flex items-center justify-center py-8">
+        <div className="text-sm text-foreground-400 flex items-center justify-center py-8">
           No Suggestions found
         </div>
       )}

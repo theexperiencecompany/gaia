@@ -55,7 +55,7 @@ const priorityConfig = {
     color: "default" as const,
     icon: null,
     bgColor: "",
-    textColor: "text-gray-500",
+    textColor: "text-foreground-500",
   },
 };
 
@@ -138,47 +138,47 @@ export default function TodoSection({
   // Statistics View
   if (action === "stats" && stats) {
     return (
-      <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-surface-200 p-4">
         <div className="mb-3 text-sm">Task Overview</div>
         <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-xl bg-zinc-900 p-3 text-center">
-            <p className="text-xl font-semibold text-zinc-100">{stats.total}</p>
-            <p className="text-xs text-zinc-500">Total</p>
+          <div className="rounded-xl bg-surface-100 p-3 text-center">
+            <p className="text-xl font-semibold text-foreground-900">{stats.total}</p>
+            <p className="text-xs text-foreground-500">Total</p>
           </div>
-          <div className="rounded-xl bg-zinc-900 p-3 text-center">
+          <div className="rounded-xl bg-surface-100 p-3 text-center">
             <p className="text-xl font-semibold text-green-500">
               {stats.completed}
             </p>
-            <p className="text-xs text-zinc-500">Done</p>
+            <p className="text-xs text-foreground-500">Done</p>
           </div>
-          <div className="rounded-xl bg-zinc-900 p-3 text-center">
+          <div className="rounded-xl bg-surface-100 p-3 text-center">
             <p className="text-xl font-semibold text-yellow-500">
               {stats.pending}
             </p>
-            <p className="text-xs text-zinc-500">Pending</p>
+            <p className="text-xs text-foreground-500">Pending</p>
           </div>
           {stats.overdue > 0 && (
-            <div className="rounded-xl bg-zinc-900 p-3 text-center">
+            <div className="rounded-xl bg-surface-100 p-3 text-center">
               <p className="text-xl font-semibold text-red-500">
                 {stats.overdue}
               </p>
-              <p className="text-xs text-zinc-500">Overdue</p>
+              <p className="text-xs text-foreground-500">Overdue</p>
             </div>
           )}
           {stats.today > 0 && (
-            <div className="rounded-xl bg-zinc-900 p-3 text-center">
+            <div className="rounded-xl bg-surface-100 p-3 text-center">
               <p className="text-xl font-semibold text-blue-500">
                 {stats.today}
               </p>
-              <p className="text-xs text-zinc-500">Today</p>
+              <p className="text-xs text-foreground-500">Today</p>
             </div>
           )}
           {stats.upcoming > 0 && (
-            <div className="rounded-xl bg-zinc-900 p-3 text-center">
+            <div className="rounded-xl bg-surface-100 p-3 text-center">
               <p className="text-xl font-semibold text-purple-500">
                 {stats.upcoming}
               </p>
-              <p className="text-xs text-zinc-500">Soon</p>
+              <p className="text-xs text-foreground-500">Soon</p>
             </div>
           )}
         </div>
@@ -189,13 +189,13 @@ export default function TodoSection({
   // Projects View
   if (projects && projects.length > 0 && !todos) {
     return (
-      <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mt-3 w-fit min-w-[400px] rounded-2xl rounded-bl-none bg-surface-200 p-4">
         <div className="mb-3 text-sm">Your Projects</div>
         <div className="space-y-2">
           {projects.map((project) => (
             <div
               key={project.id}
-              className="flex cursor-pointer items-center justify-between rounded-xl bg-zinc-900 p-3 hover:bg-zinc-900/70"
+              className="flex cursor-pointer items-center justify-between rounded-xl bg-surface-100 p-3 hover:bg-surface-100/70"
               onClick={() => router.push(`/todos/project/${project.id}`)}
             >
               <div className="flex items-center gap-3">
@@ -205,11 +205,11 @@ export default function TodoSection({
                     style={{ backgroundColor: project.color }}
                   />
                 )}
-                <span className="text-sm font-medium text-zinc-100">
+                <span className="text-sm font-medium text-foreground-900">
                   {project.name}
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-zinc-500">
+              <div className="flex items-center gap-2 text-xs text-foreground-500">
                 {project.todo_count !== undefined && (
                   <span>{project.todo_count} tasks</span>
                 )}
@@ -227,7 +227,7 @@ export default function TodoSection({
   // Todos List View
   if (todos && todos.length > 0) {
     return (
-      <div className="mt-3 w-fit min-w-[450px] rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mt-3 w-fit min-w-[450px] rounded-2xl rounded-bl-none bg-surface-200 p-4">
         <div className="mb-3 flex items-center justify-between">
           <div className="text-sm">
             {action === "search"
@@ -238,7 +238,7 @@ export default function TodoSection({
                   ? "Updated Tasks"
                   : "Tasks"}
           </div>
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-foreground-500">
             {todos.length} {todos.length === 1 ? "task" : "tasks"}
           </span>
         </div>
@@ -253,7 +253,7 @@ export default function TodoSection({
             return (
               <div
                 key={todo.id}
-                className="cursor-pointer rounded-xl bg-zinc-900 p-3 transition-colors hover:bg-zinc-900/70"
+                className="cursor-pointer rounded-xl bg-surface-100 p-3 transition-colors hover:bg-surface-100/70"
                 onClick={() => router.push(`/todos?todoId=${todo.id}`)}
               >
                 {/* todo Header */}
@@ -263,7 +263,7 @@ export default function TodoSection({
                     className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
                       todo.completed
                         ? "border-success bg-success"
-                        : "border-zinc-600 hover:border-zinc-500"
+                        : "border-surface-400 hover:border-surface-500"
                     }`}
                     onClick={(e) => e.stopPropagation()}
                   >
@@ -277,8 +277,8 @@ export default function TodoSection({
                       <h4
                         className={`text-sm font-medium ${
                           todo.completed
-                            ? "text-zinc-500 line-through"
-                            : "text-zinc-100"
+                            ? "text-foreground-500 line-through"
+                            : "text-foreground-900"
                         }`}
                       >
                         {todo.title}
@@ -290,10 +290,10 @@ export default function TodoSection({
                             e.stopPropagation();
                             toggleTodoExpansion(todo.id);
                           }}
-                          className="rounded p-1 hover:bg-zinc-900/70"
+                          className="rounded p-1 hover:bg-surface-100/70"
                         >
                           <ArrowRight01Icon
-                            className={`h-4 w-4 text-zinc-500 transition-transform ${
+                            className={`h-4 w-4 text-foreground-500 transition-transform ${
                               isExpanded ? "rotate-90" : ""
                             }`}
                           />
@@ -317,7 +317,7 @@ export default function TodoSection({
                           className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
                             isOverdue(todo.due_date)
                               ? "bg-red-500/10 text-red-500"
-                              : "bg-zinc-800 text-zinc-400"
+                              : "bg-surface-200 text-foreground-400"
                           }`}
                         >
                           <CalendarIcon className="h-3 w-3" />
@@ -326,7 +326,7 @@ export default function TodoSection({
                       )}
 
                       {todo.project && (
-                        <span className="flex items-center gap-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+                        <span className="flex items-center gap-1 rounded-full bg-surface-200 px-2 py-0.5 text-xs text-foreground-400">
                           {todo.project.color ? (
                             <div
                               className="h-2 w-2 rounded-full"
@@ -344,7 +344,7 @@ export default function TodoSection({
                       {todo.labels.map((label) => (
                         <span
                           key={label}
-                          className="flex items-center gap-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400"
+                          className="flex items-center gap-1 rounded-full bg-surface-200 px-2 py-0.5 text-xs text-foreground-400"
                         >
                           <GridIcon className="h-3 w-3" />
                           {label}
@@ -352,7 +352,7 @@ export default function TodoSection({
                       ))}
 
                       {todo.subtasks && todo.subtasks.length > 0 && (
-                        <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+                        <span className="rounded-full bg-surface-200 px-2 py-0.5 text-xs text-foreground-400">
                           {todo.subtasks.filter((s) => s.completed).length}/
                           {todo.subtasks.length} subtasks
                         </span>
@@ -363,14 +363,14 @@ export default function TodoSection({
                     {isExpanded && (
                       <div className="mt-3 space-y-3">
                         {todo.description && (
-                          <p className="text-sm text-zinc-400">
+                          <p className="text-sm text-foreground-400">
                             {todo.description}
                           </p>
                         )}
 
                         {todo.subtasks && todo.subtasks.length > 0 && (
                           <div className="space-y-1">
-                            <p className="text-xs font-medium text-zinc-500">
+                            <p className="text-xs font-medium text-foreground-500">
                               Subtasks
                             </p>
                             {todo.subtasks.map((subtask) => (
@@ -383,7 +383,7 @@ export default function TodoSection({
                                   className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
                                     subtask.completed
                                       ? "border-success bg-success"
-                                      : "border-zinc-600"
+                                      : "border-surface-400"
                                   }`}
                                 >
                                   {subtask.completed && (
@@ -393,8 +393,8 @@ export default function TodoSection({
                                 <span
                                   className={`text-xs ${
                                     subtask.completed
-                                      ? "text-zinc-500 line-through"
-                                      : "text-zinc-300"
+                                      ? "text-foreground-500 line-through"
+                                      : "text-foreground-300"
                                   }`}
                                 >
                                   {subtask.title}
@@ -407,7 +407,7 @@ export default function TodoSection({
                         {/* Workflow Section */}
                         {todo.workflow && (
                           <div className="space-y-2">
-                            <p className="text-xs font-medium text-zinc-500">
+                            <p className="text-xs font-medium text-foreground-500">
                               Workflow ({todo.workflow.steps.length} steps)
                             </p>
                             <Button
@@ -432,7 +432,7 @@ export default function TodoSection({
             );
           })}
         </div>
-        {message && <p className="mt-3 text-xs text-zinc-500">{message}</p>}
+        {message && <p className="mt-3 text-xs text-foreground-500">{message}</p>}
       </div>
     );
   }
@@ -440,10 +440,10 @@ export default function TodoSection({
   // Empty State
   if (action === "list" && (!todos || todos.length === 0)) {
     return (
-      <div className="mt-3 w-fit min-w-[300px] rounded-2xl rounded-bl-none bg-zinc-800 p-6 text-center">
-        <CheckmarkCircle02Icon className="mx-auto h-8 w-8 text-zinc-600" />
-        <p className="mt-2 text-sm text-zinc-300">No tasks found</p>
-        {message && <p className="mt-1 text-xs text-zinc-500">{message}</p>}
+      <div className="mt-3 w-fit min-w-[300px] rounded-2xl rounded-bl-none bg-surface-200 p-6 text-center">
+        <CheckmarkCircle02Icon className="mx-auto h-8 w-8 text-foreground-600" />
+        <p className="mt-2 text-sm text-foreground-300">No tasks found</p>
+        {message && <p className="mt-1 text-xs text-foreground-500">{message}</p>}
       </div>
     );
   }
@@ -454,7 +454,7 @@ export default function TodoSection({
     const iconColor = isDeleteAction ? "text-red-500" : "text-green-500";
 
     return (
-      <div className="mt-3 w-fit rounded-2xl rounded-bl-none bg-zinc-800 p-4">
+      <div className="mt-3 w-fit rounded-2xl rounded-bl-none bg-surface-200 p-4">
         <div className="flex items-center gap-2">
           <CheckmarkCircle02Icon className={`h-4 w-4 ${iconColor}`} />
           <p className="text-sm">{message}</p>

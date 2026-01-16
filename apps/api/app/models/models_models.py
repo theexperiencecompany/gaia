@@ -10,6 +10,8 @@ class ModelProvider(str, Enum):
 
     OPENAI = "openai"
     GEMINI = "gemini"
+    GROK = "grok"
+    OPENROUTER = "openrouter"
 
 
 class PlanType(str, Enum):

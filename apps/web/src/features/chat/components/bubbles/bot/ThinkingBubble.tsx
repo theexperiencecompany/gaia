@@ -18,7 +18,7 @@ export default function ThinkingBubble({
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="group flex w-fit cursor-pointer items-center gap-2 text-sm text-zinc-500 transition-colors hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+        className="group flex w-fit cursor-pointer items-center gap-2 text-sm text-foreground-500 transition-colors hover:text-foreground-300 dark:text-foreground-400 dark:hover:text-foreground-200"
         aria-label={
           isExpanded ? "Hide thinking process" : "Show thinking process"
         }
@@ -33,8 +33,8 @@ export default function ThinkingBubble({
       </button>
 
       {isExpanded && (
-        <div className="rounded-lg bg-zinc-100/80 px-4 py-3 dark:bg-zinc-800/80">
-          <div className="text-sm leading-relaxed whitespace-pre-wrap text-zinc-700 dark:text-zinc-300">
+        <div className="rounded-lg bg-surface-900/80 px-4 py-3 dark:bg-surface-200/80">
+          <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground-300 dark:text-foreground-300">
             {thinkingContent}
           </div>
         </div>

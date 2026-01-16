@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from bson import ObjectId
+from fastapi import HTTPException
+
 from app.config.loggers import app_logger as logger
 from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
@@ -14,13 +17,12 @@ from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
 from app.services.composio.composio_service import get_composio_service
+from app.services.integration_service import update_user_integration_status
 from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
 )
 from app.utils.email_utils import add_contact_to_resend, send_welcome_email
 from app.utils.redis_utils import RedisPoolManager
-from bson import ObjectId
-from fastapi import HTTPException
 
 
 async def store_user_info(name: str, email: str, picture_url: Optional[str]):
@@ -100,9 +102,10 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
     """
     Get status for ALL integrations for a user. This is the ONLY cached function.
 
-    This function retrieves the connection status for all available integrations
-    and caches the entire result. All other status check functions should use this
-    cached data rather than making separate API calls.
+    Strategy:
+    1. Query MongoDB user_integrations first (canonical source for user connections)
+    2. For platform integrations not in user_integrations, check external services
+       (supports legacy users who connected before user_integrations existed)
 
     Args:
         user_id: The user ID to check status for
@@ -111,20 +114,41 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
         dict[str, bool]: Mapping of integration_id -> connection status for ALL integrations
     """
     result = {}
+
+    # Step 1: Get all user_integrations from MongoDB (canonical source)
+    from app.db.mongodb.collections import user_integrations_collection
+
+    user_ints = await user_integrations_collection.find({"user_id": user_id}).to_list(
+        100
+    )
+    mongo_status = {
+        doc["integration_id"]: doc.get("status") == "connected" for doc in user_ints
+    }
+
+    # Track which platform integrations need external verification
     composio_providers = []
     composio_id_to_provider = {}
 
-    # Group integrations by type
     for integration in OAUTH_INTEGRATIONS:
         if not integration.available:
             result[integration.id] = False
             continue
 
-        if integration.managed_by == "composio":
+        # If user has this integration in MongoDB, use that status
+        if integration.id in mongo_status:
+            result[integration.id] = mongo_status[integration.id]
+            continue
+
+        # Not in MongoDB - check external services (legacy support)
+        if integration.managed_by == "mcp":
+            # All MCPs (auth or not) use MongoDB user_integrations as source of truth
+            # If not in mongo_status, they're not connected
+            result[integration.id] = False
+        elif integration.managed_by == "composio":
             composio_providers.append(integration.provider)
             composio_id_to_provider[integration.id] = integration.provider
         elif integration.managed_by == "self":
-            # Check self-managed integrations individually
+            # Check self-managed integrations (Google) via PostgreSQL tokens
             try:
                 token = await token_repository.get_token(
                     user_id, integration.provider, renew_if_expired=True
@@ -138,7 +162,7 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
                 logger.debug(f"Token not found for {integration.provider}: {e}")
                 result[integration.id] = False
 
-    # Batch check all Composio integrations
+    # Step 2: Batch check Composio integrations not in MongoDB
     if composio_providers:
         try:
             composio_service = get_composio_service()
@@ -151,6 +175,11 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
             logger.error(f"Error batch checking Composio integrations: {e}")
             for integration_id in composio_id_to_provider.keys():
                 result[integration_id] = False
+
+    # Include custom integrations from MongoDB that are connected
+    for integration_id, is_connected in mongo_status.items():
+        if integration_id not in result:
+            result[integration_id] = is_connected
 
     return result
 
@@ -294,6 +323,15 @@ async def handle_oauth_connection(
         logger.info(f"OAuth status cache invalidated for user {user_id}")
     except Exception as e:
         logger.warning(f"Failed to invalidate OAuth status cache: {e}")
+
+    # Update user_integrations status in MongoDB
+    try:
+        await update_user_integration_status(
+            user_id, integration_config.id, "connected"
+        )
+        logger.info(f"Updated user_integrations status for {integration_config.id}")
+    except Exception as e:
+        logger.warning(f"Failed to update user_integrations status: {e}")
 
     if integration_config.metadata_config:
         background_tasks.add_task(

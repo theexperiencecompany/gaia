@@ -56,7 +56,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
       <div className="flex flex-shrink-0 items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           {icon}
-          <h3 className="font-medium text-zinc-300">{title}</h3>
+          <h3 className="font-medium text-foreground-900">{title}</h3>
           {onRefresh && isConnected && (
             <Tooltip content="Refresh" showArrow placement="bottom">
               <Button
@@ -65,7 +65,7 @@ const BaseCardView: React.FC<BaseCardViewProps> = ({
                 variant="light"
                 onPress={onRefresh}
                 isDisabled={isFetching}
-                className="min-w-0 text-zinc-400 transition-all duration-200 hover:bg-zinc-800"
+                className="min-w-0 text-foreground-400 transition-all duration-200 hover:bg-surface-200"
               >
                 <RedoIcon
                   className={`h-4 w-4 transition-transform duration-500 ${isFetching ? "animate-spin" : "hover:rotate-180"}`}

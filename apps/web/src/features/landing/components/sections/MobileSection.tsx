@@ -7,7 +7,7 @@ import { Call02Icon, ChatBotIcon, VoiceIcon } from "@/icons";
 export default function MobileSection() {
   return (
     <div className="flex w-screen flex-col items-center justify-center">
-      <div className="relative z-1 flex max-h-[430px] w-screen max-w-fit flex-col items-start justify-center space-y-5 overflow-hidden rounded-3xl bg-zinc-950 pl-12 sm:flex-row">
+      <div className="relative z-1 flex max-h-[430px] w-screen max-w-fit flex-col items-start justify-center space-y-5 overflow-hidden rounded-3xl bg-surface-50 pl-12 sm:flex-row">
         <div className="flex flex-col">
           <SectionHeading
             heading="Move beyond Siri and Google Assistant"
@@ -20,14 +20,14 @@ export default function MobileSection() {
           <div className="relative z-1 flex w-full flex-col gap-2 px-6 py-8 pt-0 sm:pt-8">
             <div className="flex flex-row gap-2">
               <ChatBotIcon className="text-primary" />
-              <span className="text-zinc-300">
+              <span className="text-foreground-300">
                 Set GAIA as your default AI assistant
               </span>
             </div>
 
             <div className="flex flex-row gap-2">
               <VoiceIcon className="text-primary" />
-              <span className="text-zinc-300">
+              <span className="text-foreground-300">
                 Activate with
                 <span className="ml-2 rounded-md bg-primary/20 px-2 py-1 text-primary">
                   Hey GAIA
@@ -36,7 +36,7 @@ export default function MobileSection() {
             </div>
             <div className="flex flex-row gap-2">
               <Call02Icon className="text-primary" />
-              <span className="text-zinc-300">Automate phone calls</span>
+              <span className="text-foreground-300">Automate phone calls</span>
             </div>
           </div>
 
@@ -51,6 +51,7 @@ export default function MobileSection() {
                   alt="Apple Icon"
                   width={30}
                   height={30}
+                  className="icon-theme-aware"
                 />
 
                 <div className="flex flex-col items-start pr-3">

@@ -141,7 +141,7 @@ export function PaymentStatusSteps({
 
   return (
     <div
-      className={`rounded-lg border border-gray-200 bg-white p-4 ${className}`}
+      className={`rounded-lg border border-surface-700 bg-surface-950 p-4 ${className}`}
     >
       <div className="flex items-center justify-between">
         {steps.map((step, index) => {
@@ -152,10 +152,10 @@ export function PaymentStatusSteps({
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
                     step.isCompleted
-                      ? "bg-green-500 text-white"
+                      ? "bg-green-500 text-foreground-50"
                       : step.isActive
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-200 text-gray-500"
+                        ? "bg-blue-500 text-foreground-50"
+                        : "bg-surface-800 text-foreground-500"
                   }`}
                 >
                   {step.isActive && !step.isCompleted ? (
@@ -170,7 +170,7 @@ export function PaymentStatusSteps({
                       ? "text-green-600"
                       : step.isActive
                         ? "text-blue-600"
-                        : "text-gray-500"
+                        : "text-foreground-500"
                   }`}
                 >
                   {step.label}
@@ -179,7 +179,7 @@ export function PaymentStatusSteps({
               {index < steps.length - 1 && (
                 <div
                   className={`mx-2 h-0.5 flex-1 ${
-                    step.isCompleted ? "bg-green-500" : "bg-gray-200"
+                    step.isCompleted ? "bg-green-500" : "bg-surface-200"
                   }`}
                 />
               )}

@@ -89,7 +89,7 @@ export const AiSearchModal: React.FC<AiSearchModalProps> = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="border-none bg-zinc-900 outline-hidden"
+        className="border-none bg-surface-100 outline-hidden"
         aria-description="Dialog box to search the internet for email suggestions."
       >
         <DialogHeader>
@@ -165,7 +165,7 @@ export const AiSearchModal: React.FC<AiSearchModalProps> = ({
         )}
 
         {/* Disclaimer */}
-        <div className="mt-3 text-xs text-gray-400">
+        <div className="mt-3 text-xs text-foreground-400">
           Disclaimer: Email suggestions are sourced from publicly available
           internet data and may not be 100% accurate.
         </div>

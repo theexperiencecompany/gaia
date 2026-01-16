@@ -20,6 +20,7 @@ import {
   StarFilledIcon,
 } from "@/icons";
 import { posthog } from "@/lib";
+import { useTheme } from "@/components/providers/ThemeProvider";
 
 import { Github } from "../shared";
 import { RaisedButton } from "../ui/raised-button";
@@ -32,8 +33,14 @@ export default function Navbar() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [isScrolled, setIsScrolled] = useState(false);
   const { data: repoData } = useGitHubStars("theexperiencecompany/gaia");
+  const { resolvedTheme } = useTheme();
 
   const user = useUser();
+
+  // Theme-aware logo
+  const logoSrc = resolvedTheme === "dark" 
+    ? "/images/logos/text_w_logo_white.webp"
+    : "/images/logos/text_w_logo_black.webp";
 
   // Handle scroll to change navbar appearance
   useEffect(() => {
@@ -49,11 +56,12 @@ export default function Navbar() {
   // Define navbar items - can be single links or dropdown menus
   const navbarItems = [
     { type: "dropdown", label: "Product", menu: "product" },
-    { type: "dropdown", label: "Resources", menu: "resources" },
     { type: "link", label: "Pricing", href: "/pricing" },
-    { type: "link", label: "Download", href: "/download" },
-    { type: "dropdown", label: "Company", menu: "company" },
-    { type: "dropdown", label: "Socials", menu: "socials" },
+    { type: "link", label: "Manifesto", href: "/manifesto" },
+    { type: "dropdown", label: "Resources", menu: "resources" },
+    // { type: "link", label: "Download", href: "/download" },
+    // { type: "dropdown", label: "Company", menu: "company" },
+    // { type: "dropdown", label: "Socials", menu: "socials" },
   ] as const;
 
   // Function to control backdrop blur
@@ -108,15 +116,15 @@ export default function Navbar() {
         <div
           className={`navbar_content flex h-14 w-full items-center justify-between px-3 transition-all duration-300 ${
             activeDropdown
-              ? "rounded-t-2xl bg-zinc-900"
+              ? "rounded-t-2xl bg-surface-100"
               : isScrolled
-                ? "rounded-2xl bg-zinc-900/30 backdrop-blur-md"
+                ? "rounded-2xl bg-surface-100/30 backdrop-blur-md"
                 : "rounded-2xl border-transparent bg-transparent"
           }`}
         >
           <Button as={Link} href={"/"} variant="light" className="px-2">
             <Image
-              src="/images/logos/text_w_logo_white.webp"
+              src={logoSrc}
               alt="GAIA Logo"
               width={100}
               height={30}
@@ -134,7 +142,7 @@ export default function Navbar() {
                   className={`text-sm font-medium ${
                     pathname === href
                       ? "text-primary"
-                      : "text-zinc-300 hover:text-zinc-100"
+                      : "text-foreground-300 hover:text-foreground-900"
                   }`}
                   href={href}
                   startContent={icon}
@@ -154,10 +162,10 @@ export default function Navbar() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm transition-colors hover:bg-zinc-800/40 ${
+                    className={`relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm transition-colors hover:bg-surface-200/40 ${
                       pathname === item.href
                         ? "text-primary"
-                        : "text-zinc-300 hover:text-zinc-100"
+                        : "text-foreground-700 hover:text-foreground-900"
                     }`}
                     onMouseEnter={() => {
                       setHoveredItem(item.label.toLowerCase());
@@ -177,7 +185,7 @@ export default function Navbar() {
                   <button
                     type="button"
                     key={item.menu}
-                    className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-zinc-200 capitalize transition-colors hover:text-zinc-100"
+                    className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-foreground-700 capitalize transition-colors hover:text-foreground-900"
                     onMouseEnter={() => {
                       handleMouseEnter(item.menu);
                       posthog.capture("navigation:navbar_dropdown_opened", {
@@ -186,7 +194,7 @@ export default function Navbar() {
                     }}
                   >
                     {hoveredItem === item.menu && (
-                      <div className="absolute inset-0 h-full w-full rounded-xl bg-zinc-800 font-medium! transition-all duration-300 ease-out" />
+                      <div className="absolute inset-0 h-full w-full rounded-xl bg-surface-200 font-medium! transition-all duration-300 ease-out" />
                     )}
                     <div className="relative z-10 flex items-center gap-2">
                       <span>

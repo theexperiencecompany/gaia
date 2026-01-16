@@ -6,6 +6,7 @@ import SelectedCalendarEventIndicator from "@/features/chat/components/composer/
 import SelectedReplyIndicator from "@/features/chat/components/composer/SelectedReplyIndicator";
 import SelectedToolIndicator from "@/features/chat/components/composer/SelectedToolIndicator";
 import SelectedWorkflowIndicator from "@/features/chat/components/composer/SelectedWorkflowIndicator";
+import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
 import { parseDate } from "@/utils/date/dateUtils";
 
@@ -34,6 +35,23 @@ export default function ChatBubbleUser({
   const user = useUser();
 
   if (!hasContent) return null;
+
+  // Calculate emoji state
+  const isEmojiOnly = isOnlyEmojis(text);
+  const emojiCount = isEmojiOnly ? getEmojiCount(text) : 0;
+
+  // Determine styles based on emoji count
+  let bubbleClassName = "imessage-bubble imessage-from-me";
+  let textClassName =
+    "flex max-w-[30vw] text-wrap whitespace-pre-wrap select-text";
+
+  if (isEmojiOnly) {
+    if (emojiCount === 1) {
+      bubbleClassName = "select-none"; // No bubble background
+      textClassName += " text-5xl leading-none";
+    } else if (emojiCount === 2) textClassName += " text-4xl";
+    else if (emojiCount === 3) textClassName += " text-3xl";
+  }
 
   return (
     <div className="flex w-full items-end justify-end gap-3">
@@ -85,12 +103,8 @@ export default function ChatBubbleUser({
         )}
 
         {text?.trim() && (
-          <div className="imessage-bubble imessage-from-me">
-            {!!text && (
-              <div className="flex max-w-[30vw] text-wrap whitespace-pre-wrap select-text">
-                {text}
-              </div>
-            )}
+          <div className={bubbleClassName}>
+            {!!text && <div className={textClassName}>{text}</div>}
           </div>
         )}
 
@@ -98,7 +112,7 @@ export default function ChatBubbleUser({
           className={`flex flex-col items-end justify-end gap-1 pb-3 transition-all ${disableActions ? "hidden" : "opacity-0 group-hover:opacity-100"}`}
         >
           {date && (
-            <span className="flex flex-col text-xs text-zinc-400 select-text">
+            <span className="flex flex-col text-xs text-foreground-400 select-text">
               {parseDate(date)}
             </span>
           )}
@@ -115,7 +129,7 @@ export default function ChatBubbleUser({
       </div>
       <div className="min-w-10">
         <Avatar
-          className={`relative rounded-full bg-black ${disableActions ? "bottom-0" : "bottom-18"}`}
+          className={`relative rounded-full bg-surface-50 ${disableActions ? "bottom-0" : "bottom-18"}`}
         >
           <AvatarImage src={user?.profilePicture} alt="User Avatar" />
           <AvatarFallback>

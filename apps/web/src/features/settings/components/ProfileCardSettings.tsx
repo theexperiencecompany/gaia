@@ -72,8 +72,8 @@ export default function ProfileCardSettings() {
     <div className="w-full space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-white">Your GAIA Card</h3>
-          <p className="text-sm text-zinc-400">A tiny window into you</p>
+          <h3 className="text-lg font-semibold text-foreground-900">Your GAIA Card</h3>
+          <p className="text-sm text-foreground-400">A tiny window into you</p>
         </div>
         <ButtonGroup>
           <Tooltip content="Copy profile link">

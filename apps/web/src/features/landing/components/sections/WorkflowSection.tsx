@@ -50,7 +50,7 @@ export default function WorkflowSection() {
             {triggers.map((trigger, index) => (
               <div
                 key={index}
-                className={`flex w-full items-center gap-2 rounded-xl bg-zinc-800 p-2 sm:gap-3 sm:rounded-2xl sm:p-3`}
+                className={`flex w-full items-center gap-2 rounded-xl bg-surface-200 p-2 sm:gap-3 sm:rounded-2xl sm:p-3`}
               >
                 <Image
                   src={trigger.icon}
@@ -63,7 +63,7 @@ export default function WorkflowSection() {
                   <span className="text-sm font-medium text-white sm:text-base">
                     {trigger.title}
                   </span>
-                  <span className="text-xs text-zinc-300 sm:text-sm">
+                  <span className="text-xs text-foreground-300 sm:text-sm">
                     {trigger.description}
                   </span>
                 </div>

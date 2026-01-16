@@ -87,8 +87,8 @@ export function PricingCards({
   if (!plans || plans.length === 0) {
     return (
       <div className="grid w-screen max-w-(--breakpoint-sm) grid-cols-2 gap-3">
-        <div className="col-span-2 flex flex-col items-center justify-center rounded-2xl border border-gray-500/20 bg-gray-500/10 p-8">
-          <p className="text-center text-gray-400">
+        <div className="col-span-2 flex flex-col items-center justify-center rounded-2xl border border-foreground-500/20 bg-surface-500/10 p-8">
+          <p className="text-center text-foreground-400">
             No pricing plans available at the moment.
           </p>
         </div>

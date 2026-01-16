@@ -76,8 +76,8 @@ export default function CalendarHeader() {
           className="w-34"
           // className="max-w-fit min-w-24"
           classNames={{
-            trigger: "bg-zinc-800 text-xs! cursor-pointer",
-            value: "text-zinc-300",
+            trigger: "bg-surface-200 text-xs! cursor-pointer",
+            value: "text-foreground-300",
           }}
           renderValue={(items) => {
             const item = items[0];
@@ -106,11 +106,11 @@ export default function CalendarHeader() {
             variant="light"
             onPress={goToPreviousDay}
           >
-            <ArrowLeft01Icon className="h-5 w-5 text-zinc-400" />
+            <ArrowLeft01Icon className="h-5 w-5 text-foreground-400" />
           </Button>
 
           <Button isIconOnly size="sm" variant="light" onPress={goToNextDay}>
-            <ArrowRight01Icon className="h-5 w-5 text-zinc-400" />
+            <ArrowRight01Icon className="h-5 w-5 text-foreground-400" />
           </Button>
           <Button variant="flat" onPress={goToToday} size="sm" className="ml-">
             Today
@@ -123,7 +123,7 @@ export default function CalendarHeader() {
             tooltip="Create new calendar event"
             onClick={createEventAction}
           >
-            <CalendarAdd01Icon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+            <CalendarAdd01Icon className="min-h-[20px] min-w-[20px] text-foreground-400 transition-all group-hover:text-primary" />
           </SidebarHeaderButton>
         )}
       </div>

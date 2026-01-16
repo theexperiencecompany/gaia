@@ -33,18 +33,18 @@ export const getFileIcon = (fileType: string, fileName: string) => {
 
   // Image files
   if (fileType.startsWith("image/"))
-    return <Image02Icon className="h-6 w-6 text-zinc-800" />;
+    return <Image02Icon className="h-6 w-6 text-foreground-800" />;
 
   // Document files
   if (fileType === "application/pdf" || extension === "pdf")
-    return <Pdf02Icon className="h-6 w-6 text-zinc-800" />;
+    return <Pdf02Icon className="h-6 w-6 text-foreground-800" />;
 
   if (
     ["doc", "docx", "odt", "rtf"].includes(extension) ||
     fileType.includes("wordprocessing") ||
     fileType.includes("msword")
   )
-    return <File01Icon className="h-6 w-6 text-zinc-800" />;
+    return <File01Icon className="h-6 w-6 text-foreground-800" />;
 
   // Spreadsheet files
   if (
@@ -52,11 +52,11 @@ export const getFileIcon = (fileType: string, fileName: string) => {
     fileType.includes("spreadsheet") ||
     fileType.includes("excel")
   )
-    return <File01Icon className="h-6 w-6 text-zinc-800" />;
+    return <File01Icon className="h-6 w-6 text-foreground-800" />;
 
   // Code/text files
   if (["txt", "md"].includes(extension) || fileType === "text/plain")
-    return <File01Icon className="h-6 w-6 text-zinc-800" />;
+    return <File01Icon className="h-6 w-6 text-foreground-800" />;
 
   if (
     [
@@ -77,7 +77,7 @@ export const getFileIcon = (fileType: string, fileName: string) => {
     return <CodeIcon className="h-6 w-6 text-yellow-400" />;
 
   if (["json", "xml", "yaml", "yml"].includes(extension))
-    return <File01Icon className="h-6 w-6 text-zinc-400" />;
+    return <File01Icon className="h-6 w-6 text-foreground-400" />;
 
   // Media files
   if (
@@ -101,7 +101,7 @@ export const getFileIcon = (fileType: string, fileName: string) => {
     return <File01Icon className="h-6 w-6 text-amber-400" />;
 
   // Default fallback
-  return <File01Icon className="h-6 w-6 text-zinc-400" />;
+  return <File01Icon className="h-6 w-6 text-foreground-400" />;
 };
 
 export const getFileExtension = (fileName: string) => {
@@ -153,10 +153,10 @@ const FilePreview: React.FC<FilePreviewProps> = ({ files, onRemove }) => {
               file.type.startsWith("image/")
                 ? "h-14 max-h-14 min-h-14 w-14 max-w-14 min-w-14 justify-center"
                 : "max-w-[220px] min-w-[180px] p-2 pr-8"
-            } items-center rounded-xl bg-zinc-700 transition-all hover:bg-zinc-900`}
+            } items-center rounded-xl bg-surface-300 transition-all hover:bg-surface-100`}
           >
             {file.isUploading && (
-              <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/30">
+              <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-surface-50/30">
                 <Spinner />
               </div>
             )}
@@ -193,7 +193,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ files, onRemove }) => {
                       : file.name}
                   </p>
                   <div className="flex items-center">
-                    <span className="text-xs text-zinc-400">
+                    <span className="text-xs text-foreground-400">
                       {getFormattedFileType(file.type, file.name)}
                     </span>
                   </div>

@@ -337,10 +337,10 @@ export default function FileUpload({
 
           {/* Main upload area */}
           <div
-            className={`flex h-64 w-full cursor-pointer flex-col items-center ${files.length > 0 ? "justify-start" : "justify-center"} rounded-xl border-2 border-dashed bg-zinc-950/50 ${
+            className={`flex h-64 w-full cursor-pointer flex-col items-center ${files.length > 0 ? "justify-start" : "justify-center"} rounded-xl border-2 border-dashed bg-surface-50/50 ${
               isDragging
                 ? "scale-105 border-primary bg-primary/10"
-                : "border-zinc-700 hover:border-primary"
+                : "border-surface-300 hover:border-primary"
             } p-6 transition-all duration-200 ease-in-out`}
             onClick={openFileSelector}
             onDrop={onDrop}
@@ -351,14 +351,14 @@ export default function FileUpload({
             {files.length === 0 ? (
               <>
                 <Upload01Icon
-                  className={`mb-4 h-10 w-10 ${isDragging ? "text-primary" : "text-zinc-500"}`}
+                  className={`mb-4 h-10 w-10 ${isDragging ? "text-primary" : "text-foreground-500"}`}
                 />
-                <p className="mb-2 text-sm font-medium text-white">
+                <p className="mb-2 text-sm font-medium text-foreground-50">
                   {isDragging
                     ? "Drop files to upload"
                     : "Click to upload or drag and drop"}
                 </p>
-                <p className="text-center text-xs text-zinc-500">
+                <p className="text-center text-xs text-foreground-500">
                   Images, PDF, TXT, DOC, DOCX (max{" "}
                   {MAX_FILE_SIZE / (1024 * 1024)}MB per file, {MAX_FILES} files
                   max)
@@ -367,17 +367,17 @@ export default function FileUpload({
             ) : isUploading ? (
               <>
                 <Loading02Icon className="mb-4 h-10 w-10 animate-spin text-primary" />
-                <p className="mb-2 text-sm font-medium text-white">
+                <p className="mb-2 text-sm font-medium text-foreground-50">
                   Uploading files...
                 </p>
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-foreground-500">
                   Please wait while your files are being uploaded
                 </p>
               </>
             ) : (
               <div className="w-full">
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-white">
+                  <h3 className="text-sm font-medium text-foreground-50">
                     Selected Files ({files.length}/{MAX_FILES})
                   </h3>
                   <div className="flex gap-2">
@@ -410,7 +410,7 @@ export default function FileUpload({
                     <div
                       key={fileWithPreview.previewUrl}
                       className={`relative flex items-center rounded-xl p-3 ${
-                        fileWithPreview.error ? "bg-red-500/10" : "bg-zinc-800"
+                        fileWithPreview.error ? "bg-red-500/10" : "bg-surface-200"
                       }`}
                     >
                       <Button
@@ -435,14 +435,14 @@ export default function FileUpload({
                           />
                         </div>
                       ) : (
-                        <div className="mr-3 flex h-12 w-12 items-center justify-center rounded-lg bg-zinc-700">
-                          <File01Icon className="h-6 w-6 text-zinc-400" />
+                        <div className="mr-3 flex h-12 w-12 items-center justify-center rounded-lg bg-surface-300">
+                          <File01Icon className="h-6 w-6 text-foreground-400" />
                         </div>
                       )}
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center">
-                          <p className="max-w-[200px] truncate text-sm font-medium text-white">
+                          <p className="max-w-[200px] truncate text-sm font-medium text-foreground-50">
                             {fileWithPreview.file.name}
                           </p>
                           {fileWithPreview.error && (
@@ -458,7 +458,7 @@ export default function FileUpload({
                             {fileWithPreview.error}
                           </p>
                         ) : (
-                          <p className="text-xs text-zinc-400">
+                          <p className="text-xs text-foreground-400">
                             {(fileWithPreview.file.size / 1024 / 1024).toFixed(
                               2,
                             )}{" "}
@@ -470,7 +470,7 @@ export default function FileUpload({
                           fileWithPreview.progress > 0 &&
                           !fileWithPreview.error && (
                             <div className="mt-1 w-full">
-                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
+                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-300">
                                 <div
                                   className="h-full bg-primary transition-all duration-300 ease-in-out"
                                   style={{

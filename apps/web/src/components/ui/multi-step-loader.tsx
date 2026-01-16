@@ -32,12 +32,12 @@ const LoaderCore = ({
           >
             <div>
               {index > value && (
-                <CheckmarkCircle02Icon className="text-gray-600" />
+                <CheckmarkCircle02Icon className="text-foreground-600" />
               )}
               {index <= value && (
                 <CheckmarkCircle02Icon
                   className={cn(
-                    "text-gray-600",
+                    "text-foreground-600",
                     value === index && "text-green-500 opacity-100",
                   )}
                 />
@@ -45,7 +45,7 @@ const LoaderCore = ({
             </div>
             <span
               className={cn(
-                "text-gray-600",
+                "text-foreground-600",
                 value === index && "text-green-500 opacity-100",
               )}
             >

@@ -127,7 +127,7 @@ export function PricingCard({
 
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-3xl bg-white/10 backdrop-blur-sm ${className}`}
+      className={`relative w-full overflow-hidden rounded-3xl bg-surface-950/10 backdrop-blur-sm ${className}`}
     >
       {/* Outer Card - Title Section (z-index: 1) */}
       <div className="relative z-[1] flex flex-col gap-2 border-none! p-6 pb-4">
@@ -148,10 +148,10 @@ export function PricingCard({
       </div>
 
       {/* Inner Nested Card - Price & Button (z-index: -1) */}
-      <div className="relative z-[-1] mx-4 mb-4 flex flex-col gap-4 overflow-hidden rounded-3xl bg-black/70 p-6 shadow-xl backdrop-blur-2xl">
+      <div className="relative z-[-1] mx-4 mb-4 flex flex-col gap-4 overflow-hidden rounded-3xl bg-surface-50/70 p-6 shadow-xl backdrop-blur-2xl">
         {/* Description/Subtitle */}
         {description && (
-          <p className="font-sm text-sm leading-relaxed text-zinc-200">
+          <p className="font-sm text-sm leading-relaxed text-foreground-200">
             {description}
           </p>
         )}
@@ -170,7 +170,7 @@ export function PricingCard({
             )}
           </div>
 
-          <span className="text-opacity-70 min-h-5 text-sm font-normal text-zinc-400">
+          <span className="text-opacity-70 min-h-5 text-sm font-normal text-foreground-400">
             {price > 0 && (durationIsMonth ? "/ per month" : "/ per year")}
           </span>
         </div>
@@ -184,7 +184,7 @@ export function PricingCard({
           )}
 
           <RaisedButton
-            className={`w-full ${price === 0 ? "text-zinc-400!" : "text-black!"} `}
+            className={`w-full ${price === 0 ? "text-foreground-400!" : "text-primary-foreground!"} `}
             color={price === 0 ? "#3b3b3b" : "#00bbff"}
             onClick={handleGetStarted}
             disabled={

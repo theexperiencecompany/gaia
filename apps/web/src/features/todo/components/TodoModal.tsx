@@ -303,7 +303,7 @@ export default function TodoModal({
                     placeholder="Title"
                     classNames={{
                       input:
-                        "text-2xl font-semibold bg-transparent border-0 text-zinc-100 placeholder:text-zinc-500",
+                        "text-2xl font-semibold bg-transparent border-0 text-foreground-100 placeholder:text-foreground-500",
                       inputWrapper:
                         "border-0 bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
                     }}
@@ -332,7 +332,7 @@ export default function TodoModal({
                     variant="underlined"
                     classNames={{
                       input:
-                        "bg-transparent border-0 text-zinc-200 placeholder:text-zinc-500",
+                        "bg-transparent border-0 text-foreground-200 placeholder:text-foreground-500",
                       inputWrapper:
                         "border-0 bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
                     }}

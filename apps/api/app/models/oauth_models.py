@@ -10,7 +10,7 @@ from typing import Dict, List, Literal, Optional
 
 from app.db.postgresql import Base
 from pydantic import BaseModel
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -44,6 +44,41 @@ class OAuthToken(Base):
     #     UniqueConstraint("access_token", name="uq_oauth_tokens_access_token"),
     #     {"sqlite_autoincrement": True},
     # )
+
+
+class MCPCredential(Base):
+    """User's MCP integration connection state and encrypted credentials."""
+
+    __tablename__ = "mcp_credentials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    integration_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    auth_type: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # none, oauth, bearer
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    access_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # Encrypted
+    refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # Encrypted
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    client_registration: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # DCR JSON
+    # Note: Tool caching is handled by MongoDB mcp_tools_store, not this column
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "integration_id", name="uq_mcp_creds_user_integration"
+        ),
+    )
 
 
 class OAuthScope(BaseModel):
@@ -105,6 +140,39 @@ class ProviderMetadataConfig(BaseModel):
     )
 
 
+class MCPConfig(BaseModel):
+    """Configuration for MCP (Model Context Protocol) integration.
+
+    Per the MCP specification, most configuration is auto-discoverable:
+    - OAuth endpoints via /.well-known/oauth-authorization-server
+    - Dynamic Client Registration (DCR) when no client_id is provided
+    - Transport type auto-negotiated (streamable_http with SSE fallback)
+
+    Only server_url is required. Everything else is optional overrides.
+    """
+
+    server_url: str
+    # Whether this MCP requires authentication (triggers OAuth flow)
+    # If True: OAuth discovery + DCR flow is used
+    # If False: Direct connection without authentication
+    requires_auth: bool = False
+    # Authentication type hint (from MCPConfigDoc for custom integrations)
+    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
+    # Optional: Override transport (auto-detected by default)
+    transport: Optional[str] = None
+    # Optional: Pre-registered OAuth client credentials
+    # If not provided and requires_auth=True, DCR is used automatically
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
+    # Optional: Environment variable names for secrets (resolved at runtime)
+    client_id_env: Optional[str] = None
+    client_secret_env: Optional[str] = None
+    # Optional: OAuth scopes to request
+    oauth_scopes: Optional[List[str]] = None
+    # Optional: Override OAuth endpoints (discovered via .well-known by default)
+    oauth_metadata: Optional[Dict[str, str]] = None
+
+
 class OAuthIntegration(BaseModel):
     """OAuth integration configuration."""
 
@@ -123,9 +191,11 @@ class OAuthIntegration(BaseModel):
     is_featured: bool = False  # Featured integrations displayed at the top
     # Short name for slash command dropdowns and quick access
     short_name: Optional[str] = None  # e.g., "gmail", "calendar", "drive", "docs"
-    managed_by: Literal["self", "composio"]
+    managed_by: Literal["self", "composio", "mcp", "internal"]
     # Composio-specific configuration
     composio_config: Optional[ComposioConfig] = None
+    # MCP-specific configuration
+    mcp_config: Optional[MCPConfig] = None
     associated_triggers: List[
         TriggerConfig
     ] = []  # Triggers associated with this integration
@@ -144,8 +214,10 @@ class IntegrationConfigResponse(BaseModel):
     category: str
     provider: str
     available: bool
-    loginEndpoint: Optional[str]
     isSpecial: bool
     displayPriority: int
     includedIntegrations: List[str]
     isFeatured: bool
+    managedBy: Literal["self", "composio", "mcp", "internal"]
+    authType: Optional[Literal["none", "oauth", "bearer"]] = None
+    source: Literal["platform"] = "platform"

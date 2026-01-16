@@ -48,7 +48,7 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
   return (
     <BaseCardView
       title="Inbox Todos"
-      icon={<CheckmarkCircle02Icon className="h-6 w-6 text-zinc-500" />}
+      icon={<CheckmarkCircle02Icon className="h-6 w-6 text-foreground-500" />}
       isFetching={loading}
       isEmpty={isEmpty}
       emptyMessage="No todos in your inbox"
@@ -58,7 +58,7 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
     >
       {loading ? (
         <div className="flex h-full items-center justify-center">
-          <Loading02Icon className="h-8 w-8 animate-spin text-zinc-500" />
+          <Loading02Icon className="h-8 w-8 animate-spin text-foreground-500" />
         </div>
       ) : (
         <div className="space-y-0">

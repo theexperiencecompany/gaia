@@ -176,7 +176,7 @@ export default function UseCaseDetailClient({
                     name={creatorName}
                     size="sm"
                     fallback={
-                      <UserCircle02Icon className="h-8 w-8 text-zinc-300" />
+                      <UserCircle02Icon className="h-8 w-8 text-foreground-300" />
                     }
                   />
                 }
@@ -190,7 +190,7 @@ export default function UseCaseDetailClient({
 
             {/* Run Count */}
             <MetaInfoCard
-              icon={<PlayIcon className="h-7 w-7 text-zinc-400" />}
+              icon={<PlayIcon className="h-7 w-7 text-foreground-400" />}
               label="Ran"
               value={runCountText}
             />
@@ -223,8 +223,8 @@ export default function UseCaseDetailClient({
         steps={
           steps && steps.length > 0 ? (
             <div className="w-fit shrink-0">
-              <div className="sticky top-8 rounded-3xl bg-zinc-900 px-6 pt-4 pb-2">
-                <div className="text-sm font-medium text-zinc-500">
+              <div className="sticky top-8 rounded-3xl bg-surface-100 px-6 pt-4 pb-2">
+                <div className="text-sm font-medium text-foreground-500">
                   Workflow Steps:
                 </div>
                 <WorkflowSteps steps={stepsFormatted || []} size="large" />

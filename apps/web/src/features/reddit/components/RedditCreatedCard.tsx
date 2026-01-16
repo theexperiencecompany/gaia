@@ -32,7 +32,7 @@ export default function RedditCreatedCard({
   ];
 
   const content = (
-    <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-3 text-white">
+    <div className="w-full max-w-2xl rounded-3xl bg-surface-200 p-3 text-foreground">
       <ScrollShadow className="max-h-[400px] divide-y divide-gray-700">
         {allItems.map((item) => (
           <div key={item.data.id} className="space-y-3 p-3">
@@ -52,13 +52,13 @@ export default function RedditCreatedCard({
               </Chip>
             </div>
 
-            <div className="text-sm text-gray-300">{item.data.message}</div>
+            <div className="text-sm text-foreground-300">{item.data.message}</div>
 
             <div className="flex items-center justify-between pt-2">
               {item.data.id && (
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-foreground-500">
                   ID:{" "}
-                  <span className="font-mono text-gray-400">
+                  <span className="font-mono text-foreground-400">
                     {item.data.id}
                   </span>
                 </div>

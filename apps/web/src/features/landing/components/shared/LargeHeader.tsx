@@ -35,7 +35,7 @@ export default function LargeHeader({
       </h2>
       {!!subHeadingText && (
         <div
-          className={`max-w-(--breakpoint-md) text-xl text-zinc-400 ${centered ? "text-center" : ""} font-light`}
+          className={`max-w-(--breakpoint-md) text-xl text-foreground-500 ${centered ? "text-center" : ""} font-light`}
         >
           {subHeadingText}
         </div>

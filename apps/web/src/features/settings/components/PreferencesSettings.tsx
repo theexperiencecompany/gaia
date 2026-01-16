@@ -275,7 +275,7 @@ export default function PreferencesSettings({
   return (
     <div className="w-full space-y-6">
       <SettingsCard
-        icon={<UserCircle02Icon className="h-5 w-5 text-zinc-400" />}
+        icon={<UserCircle02Icon className="h-5 w-5 text-foreground-400" />}
         title="Personal"
       >
         <div className="space-y-3">
@@ -291,10 +291,10 @@ export default function PreferencesSettings({
               isDisabled={isUpdating}
               classNames={{
                 trigger:
-                  "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
-                popoverContent: "bg-zinc-800 z-50",
-                listbox: "bg-zinc-800",
-                value: "text-white text-sm",
+                  "bg-surface-200/50 hover:bg-surface-700/50 cursor-pointer min-h-[36px]",
+                popoverContent: "bg-surface-200 z-50",
+                listbox: "bg-surface-200",
+                value: "text-foreground-900 text-sm",
               }}
             >
               {professionOptions.map((profession) => (
@@ -318,10 +318,10 @@ export default function PreferencesSettings({
                 isDisabled={isUpdating}
                 classNames={{
                   trigger:
-                    "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
-                  popoverContent: "bg-zinc-800 z-50",
-                  listbox: "bg-zinc-800",
-                  value: "text-white text-sm",
+                    "bg-surface-200/50 hover:bg-surface-700/50 cursor-pointer min-h-[36px]",
+                  popoverContent: "bg-surface-200 z-50",
+                  listbox: "bg-surface-200",
+                  value: "text-foreground-900 text-sm",
                 }}
               >
                 {timezoneOptions.map((timezone) => (
@@ -338,16 +338,16 @@ export default function PreferencesSettings({
                   variant="flat"
                   onPress={handleAutoDetectTimezone}
                   isDisabled={isUpdating}
-                  className="border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700/50"
+                  className="border-border-surface-700 bg-surface-200/50 text-foreground-300 hover:bg-surface-700/50"
                 >
                   Auto Detect
                 </Button>
 
-                <div className="flex items-center gap-2 text-xs text-zinc-400">
-                  <span className="font-mono text-zinc-300">
+                <div className="flex items-center gap-2 text-xs text-foreground-400">
+                  <span className="font-mono text-foreground-300">
                     {formatTimezoneDisplay(getCurrentBrowserTimezone().value)}
                   </span>
-                  <span className="text-zinc-500">
+                  <span className="text-foreground-500">
                     {getCurrentBrowserTimezone().currentTime}
                   </span>
                 </div>
@@ -358,7 +358,7 @@ export default function PreferencesSettings({
       </SettingsCard>
 
       <SettingsCard
-        icon={<MessageMultiple02Icon className="h-5 w-5 text-zinc-400" />}
+        icon={<MessageMultiple02Icon className="h-5 w-5 text-foreground-400" />}
         title="Communication Style"
       >
         <div className="space-y-3">
@@ -379,10 +379,10 @@ export default function PreferencesSettings({
               isDisabled={isUpdating}
               classNames={{
                 trigger:
-                  "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
-                popoverContent: "bg-zinc-800 z-50",
-                listbox: "bg-zinc-800",
-                value: "text-white text-sm",
+                  "bg-surface-200/50 hover:bg-surface-700/50 cursor-pointer min-h-[36px]",
+                popoverContent: "bg-surface-200 z-50",
+                listbox: "bg-surface-200",
+                value: "text-foreground-900 text-sm",
               }}
             >
               {responseStyleOptions.map((style) => (
@@ -397,7 +397,7 @@ export default function PreferencesSettings({
                       {style.value.charAt(0).toUpperCase() +
                         style.value.slice(1)}
                     </div>
-                    <div className="text-xs text-zinc-500">
+                    <div className="text-xs text-foreground-500">
                       {style.label.split(" - ")[1]}
                     </div>
                   </div>
@@ -420,7 +420,7 @@ export default function PreferencesSettings({
       </SettingsCard>
 
       <SettingsCard
-        icon={<PencilEdit01Icon className="h-6 w-6 text-zinc-400" />}
+        icon={<PencilEdit01Icon className="h-6 w-6 text-foreground-400" />}
         title="Custom Instructions"
       >
         <div className="space-y-1">
@@ -431,11 +431,11 @@ export default function PreferencesSettings({
             isDisabled={isUpdating}
             minRows={3}
             classNames={{
-              input: "bg-zinc-800/50 text-sm",
-              inputWrapper: "bg-zinc-800/50 hover:bg-zinc-700/50",
+              input: "bg-surface-200/50 text-sm",
+              inputWrapper: "bg-surface-200/50 hover:bg-surface-700/50",
             }}
           />
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-foreground-500">
             These instructions will be included in every conversation to
             personalize GAIA's responses.
           </p>

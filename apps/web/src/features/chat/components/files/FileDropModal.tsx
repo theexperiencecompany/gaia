@@ -19,7 +19,7 @@ export function FileDropModal({
     <AnimatePresence>
       {isDragging && (
         <motion.div
-          className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs"
+          className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-surface-50/60 backdrop-blur-xs"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -57,12 +57,12 @@ export function FileDropModal({
               </p>
 
               <div className="text-muted-foreground mt-2 flex flex-wrap items-center justify-center gap-2 text-xs">
-                <div className="flex items-center rounded-full bg-zinc-800 px-3 py-1">
+                <div className="flex items-center rounded-full bg-surface-200 px-3 py-1">
                   <FileUploadIcon size={12} className="mr-1" />
                   <span>Max {maxFileSize}MB</span>
                 </div>
 
-                <div className="flex items-center rounded-full bg-zinc-800 px-3 py-1">
+                <div className="flex items-center rounded-full bg-surface-200 px-3 py-1">
                   <File01Icon size={12} className="mr-1" />
                   <span>
                     {acceptedFileTypes.includes("*")

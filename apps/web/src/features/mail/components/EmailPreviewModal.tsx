@@ -196,7 +196,7 @@ export function EmailPreviewModal({
       <ModalContent>
         <ModalHeader className="flex flex-col gap-1">
           <h2 className="text-xl font-semibold">Review & Send Email</h2>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-foreground-600">
             {recipient_query
               ? `AI composed this email based on: "${recipient_query}"`
               : "Review and edit your email before sending"}

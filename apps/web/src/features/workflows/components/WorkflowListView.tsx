@@ -36,7 +36,7 @@ const WorkflowRow = memo(
 
     return (
       <div
-        className="flex cursor-pointer items-center gap-3 rounded-2xl bg-zinc-800/50 p-3 transition-colors hover:bg-zinc-700/50"
+        className="flex cursor-pointer items-center gap-3 rounded-2xl bg-surface-200/50 p-3 transition-colors hover:bg-surface-300/50"
         onClick={handleClick}
       >
         {/* Stacked Icons matching workflow cards */}
@@ -73,11 +73,11 @@ const WorkflowRow = memo(
 
         {/* Workflow Title */}
         <div className="min-w-0 flex-1">
-          <h4 className="font-medium text-white line-clamp-1">
+          <h4 className="font-medium text-foreground-900 line-clamp-1">
             {workflow.title}
           </h4>
           {workflow.description && (
-            <p className="mt-0.5 text-xs text-zinc-400 line-clamp-1">
+            <p className="mt-0.5 text-xs text-foreground-400 line-clamp-1">
               {workflow.description}
             </p>
           )}
@@ -111,7 +111,7 @@ const WorkflowListView = memo(({ workflows = [] }: WorkflowListViewProps) => {
   return (
     <BaseCardView
       title="Workflows"
-      icon={<WorkflowSquare05Icon className="h-6 w-6 text-zinc-500" />}
+      icon={<WorkflowSquare05Icon className="h-6 w-6 text-foreground-500" />}
       isEmpty={isEmpty}
       emptyMessage="No workflows created yet"
       errorMessage="Failed to load workflows"

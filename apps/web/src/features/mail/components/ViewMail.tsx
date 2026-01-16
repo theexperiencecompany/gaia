@@ -51,7 +51,7 @@ function AISummary({
 }) {
   if (isLoading) {
     return (
-      <div className="mb-3 flex w-fit flex-col rounded-xl bg-zinc-800 p-2 shadow-md outline outline-zinc-700">
+      <div className="mb-3 flex w-fit flex-col rounded-xl bg-surface-200 p-2 shadow-md outline outline-zinc-700">
         <div className="relative flex items-center gap-3 text-sm font-medium text-white">
           <Chip
             classNames={{
@@ -75,7 +75,7 @@ function AISummary({
   if (!analysis) return null;
 
   return (
-    <div className="mb-3 flex w-fit flex-col rounded-xl bg-zinc-800 p-2 shadow-md outline outline-zinc-700">
+    <div className="mb-3 flex w-fit flex-col rounded-xl bg-surface-200 p-2 shadow-md outline outline-zinc-700">
       <div className="relative flex items-center gap-3 text-sm font-medium text-white">
         <Chip
           classNames={{
@@ -135,7 +135,7 @@ function AISummary({
               aria-label="Semantic Labels"
               title={
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400">Labels</span>
+                  <span className="text-xs text-foreground-400">Labels</span>
                   <Chip size="sm" variant="flat" color="default">
                     {analysis.semantic_labels.length}
                   </Chip>
@@ -307,7 +307,7 @@ export default function ViewEmail({
             { "--initial-transform": "calc(100% + 8px)" } as React.CSSProperties
           }
         >
-          <div className="relative flex h-full w-full grow flex-col overflow-y-auto rounded-l-2xl bg-zinc-900 p-6 pt-4">
+          <div className="relative flex h-full w-full grow flex-col overflow-y-auto rounded-l-2xl bg-surface-100 p-6 pt-4">
             <div className="mb-2 flex w-full justify-end">
               <Tooltip content="Close" color="foreground">
                 <div className="cursor-pointer">
@@ -389,7 +389,7 @@ export default function ViewEmail({
                     return (
                       <div
                         key={message.id}
-                        className={`rounded-lg p-4 ${isCurrentEmail ? "bg-zinc-800" : "bg-zinc-900"} border-l-2 ${isCurrentEmail ? "border-primary" : "border-zinc-700"}`}
+                        className={`rounded-lg p-4 ${isCurrentEmail ? "bg-surface-200" : "bg-surface-100"} border-l-2 ${isCurrentEmail ? "border-primary" : "border-border-surface-700"}`}
                       >
                         <div className="mb-2 flex items-start justify-between">
                           <User
@@ -401,10 +401,10 @@ export default function ViewEmail({
                             name={messageSenderName}
                             classNames={{
                               name: "font-medium",
-                              description: "text-gray-400",
+                              description: "text-foreground-400",
                             }}
                           />
-                          <div className="text-xs text-gray-400">
+                          <div className="text-xs text-foreground-400">
                             {new Date(message.time).toLocaleString()}
                           </div>
                         </div>
@@ -450,11 +450,11 @@ export default function ViewEmail({
                     name={nameFrom}
                     classNames={{
                       name: "font-medium",
-                      description: "text-gray-400",
+                      description: "text-foreground-400",
                     }}
                   />
                   <div>
-                    <hr className="my-4 border-gray-700" />
+                    <hr className="my-4 border-foreground-700" />
                     <GmailBody email={mail} />
                   </div>
                 </>
@@ -462,13 +462,13 @@ export default function ViewEmail({
 
               {/* ArrowTurnBackwardIcon editor */}
               {showReplyEditor && replyTo && (
-                <div className="mt-4 border-t-2 border-zinc-700 pt-4">
+                <div className="mt-4 border-t-2 border-border-surface-700 pt-4">
                   <div className="mb-2 flex items-center justify-between">
                     <div className="text-sm">
                       <span className="font-medium">
                         ArrowTurnBackwardIcon to:{" "}
                       </span>
-                      <span className="text-gray-400">
+                      <span className="text-foreground-400">
                         {parseEmail(replyTo.from).name ||
                           parseEmail(replyTo.from).email}
                       </span>
@@ -484,7 +484,7 @@ export default function ViewEmail({
                     </Button>
                   </div>
 
-                  <div className="rounded-lg border border-zinc-700 bg-zinc-800">
+                  <div className="rounded-lg border border-border-surface-700 bg-surface-200">
                     {/* <MenuBar editor={editor} /> */}
                     <div className="max-h-[250px] min-h-[150px] overflow-y-auto px-4 py-2">
                       <EditorContent editor={editor} />

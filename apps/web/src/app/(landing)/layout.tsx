@@ -13,7 +13,7 @@ export default function LandingLayout({ children }: { children: ReactNode }) {
     <div className="relative">
       <div
         id="navbar-backdrop"
-        className="pointer-events-none fixed inset-0 z-40 bg-black/20 opacity-0 backdrop-blur-sm transition-opacity duration-300 ease-in-out"
+        className="pointer-events-none fixed inset-0 z-40 bg-surface-50/20 opacity-0 backdrop-blur-sm transition-opacity duration-300 ease-in-out"
       />
 
       {!isDesktopLogin && <Navbar />}

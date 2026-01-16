@@ -1,6 +1,10 @@
 from typing import Optional
 
 import httpx
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi.responses import RedirectResponse
+from workos import WorkOSClient
+
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings
@@ -9,12 +13,10 @@ from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
 from app.services.calendar_service import initialize_calendar_preferences
 from app.services.composio.composio_service import get_composio_service
+from app.services.integration_service import update_user_integration_status
 from app.services.oauth_service import handle_oauth_connection, store_user_info
 from app.services.oauth_state_service import validate_and_consume_oauth_state
 from app.utils.oauth_utils import fetch_user_info_from_google, get_tokens_from_code
-from fastapi import APIRouter, BackgroundTasks, HTTPException
-from fastapi.responses import RedirectResponse
-from workos import WorkOSClient
 
 router = APIRouter()
 http_async_client = httpx.AsyncClient()
@@ -332,11 +334,9 @@ async def composio_callback(
             f"Composio connection successful: user={user_id}, "
             f"integration={integration_config.id}, account={connectedAccountId}"
         )
-        # Add success parameter to URL
+        # Add success parameter and integration name to URL
         separator = "?" if "?" not in redirect_path else "&"
-        redirect_url = (
-            f"{settings.FRONTEND_URL}/{redirect_path}{separator}oauth_success=true"
-        )
+        redirect_url = f"{settings.FRONTEND_URL}/{redirect_path}{separator}oauth_success=true&integration={integration_config.id}"
         return RedirectResponse(url=redirect_url)
 
     except Exception as e:
@@ -453,11 +453,23 @@ async def callback(
             access_token=access_token,
         )
 
+        # Update user_integrations for connected Google integrations
+        try:
+            scope = tokens.get("scope", "")
+            if "gmail" in scope.lower() or "mail" in scope.lower():
+                await update_user_integration_status(str(user_id), "gmail", "connected")
+                logger.info("Updated user_integrations for gmail")
+            if "calendar" in scope.lower():
+                await update_user_integration_status(
+                    str(user_id), "google_calendar", "connected"
+                )
+                logger.info("Updated user_integrations for google_calendar")
+        except Exception as e:
+            logger.warning(f"Failed to update user_integrations for Google scopes: {e}")
+
         # Redirect to the original page with success indicator
         separator = "&" if "?" in redirect_path else "?"
-        redirect_url = (
-            f"{settings.FRONTEND_URL}{redirect_path}{separator}oauth_success=true"
-        )
+        redirect_url = f"{settings.FRONTEND_URL}{redirect_path}{separator}oauth_success=true&integration=google"
         response = RedirectResponse(url=redirect_url)
 
         return response

@@ -1,6 +1,5 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import type { Selection } from "@heroui/react";
 import type React from "react";
 
@@ -23,7 +22,8 @@ const IntegrationItem: React.FC<{
   size?: "default" | "small";
 }> = ({ integration, onConnect, onClick, size }) => {
   const isConnected = integration.status === "connected";
-  const isAvailable = !!integration.loginEndpoint;
+  // Custom integrations are always available, platform integrations use available field
+  const isAvailable = integration.source === "custom" || integration.available;
 
   const handleClick = () => {
     onClick(integration.id);
@@ -38,23 +38,27 @@ const IntegrationItem: React.FC<{
 
   return (
     <div
-      className={`flex min-h-12 cursor-pointer flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
+      className={`flex min-h-12 cursor-pointer flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-surface-200/40 ${paddingClass} transition hover:bg-surface-300`}
       onClick={handleClick}
     >
       <div className="flex items-center gap-3">
-        <div className="flex-shrink-0">
-          {getToolCategoryIcon(integration.id, {
-            size: 26,
-            width: 26,
-            height: 26,
-            showBackground: false,
-          })}
+        <div className="shrink-0">
+          {getToolCategoryIcon(
+            integration.id,
+            {
+              size: 26,
+              width: 26,
+              height: 26,
+              showBackground: false,
+            },
+            integration.iconUrl,
+          )}
         </div>
 
         {size !== "small" ? (
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <div className="text-sm font-medium">{integration.name}</div>
-            <div className="truncate text-xs font-light text-zinc-400">
+            <div className="truncate text-xs font-light text-foreground-400">
               {integration.description}
             </div>
           </div>
@@ -62,30 +66,33 @@ const IntegrationItem: React.FC<{
           <div className="flex-1 text-sm font-medium">{integration.name}</div>
         )}
 
-        <div className="flex-shrink-0">
+        <div className="shrink-0 flex items-center gap-2">
+          {/* Status Dots - always show */}
           {isConnected && (
-            <Chip size="sm" variant="flat" color="success">
-              Connected
-            </Chip>
+            <span className="h-2 w-2 rounded-full bg-success mr-2" />
           )}
 
-          {isAvailable && !isConnected && (
-            <Button
-              size="sm"
-              variant="flat"
-              color="primary"
-              className="text-xs text-primary"
-              onPress={handleConnectClick}
-            >
-              Connect
-            </Button>
+          {integration.status === "created" && (
+            <span className="h-2 w-2 rounded-full bg-warning mr-2" />
           )}
 
-          {!isAvailable && (
-            <Chip size="sm" variant="flat" color="default" className="text-xs">
-              Soon
-            </Chip>
-          )}
+          {/* Connect button - only show for integrations that require auth */}
+          {!(
+            integration.managedBy === "mcp" && integration.authType === "none"
+          ) &&
+            isAvailable &&
+            !isConnected &&
+            integration.status !== "created" && (
+              <Button
+                size="sm"
+                variant="flat"
+                color="primary"
+                className="text-xs text-primary"
+                onPress={handleConnectClick}
+              >
+                Connect
+              </Button>
+            )}
         </div>
       </div>
     </div>
@@ -127,13 +134,13 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   ).length;
 
   const statusOrder = {
-    connected: 0,
-    not_connected: 1,
-    error: 2,
+    created: 0,
+    connected: 1,
+    not_connected: 2,
+    error: 3,
   };
-
   return (
-    <div className="mx-2 mb-3 border-b-1 border-zinc-800">
+    <div className="mx-2 mb-3 border-b-1 border-surface-200">
       <Accordion
         variant="light"
         isCompact
@@ -156,7 +163,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
                   <span className="text-xs font-normal text-foreground-500">
                     Integrations
                   </span>
-                  <span className="text-xs font-light text-zinc-400">
+                  <span className="text-xs font-light text-foreground-400">
                     {connectedCount}/{integrations.length}
                   </span>
                 </div>
@@ -167,7 +174,13 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
           <div onClick={(e) => e.stopPropagation()}>
             <div className="grid grid-cols-2 gap-2 pl-1">
               {[...integrations]
-                .sort((a, b) => statusOrder[a.status] - statusOrder[b.status])
+                .sort((a, b) => {
+                  // Connected first, then alphabetically
+                  const aOrder = statusOrder[a.status] ?? 99;
+                  const bOrder = statusOrder[b.status] ?? 99;
+                  if (aOrder !== bOrder) return aOrder - bOrder;
+                  return a.name.localeCompare(b.name);
+                })
                 .map((integration) => (
                   <IntegrationItem
                     key={integration.id}

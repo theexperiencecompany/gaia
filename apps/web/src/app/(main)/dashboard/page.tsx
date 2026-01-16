@@ -145,7 +145,7 @@ export default function HomePage() {
     <div className="flex flex-col p-6 min-h-screen h-fit overflow-y-scroll outline-none">
       <div className="flex flex-col p-3 mb-10 space-y-1">
         <div className="flex items-center gap-3 mb-9">
-          <h2 className="text-4xl font-medium text-zinc-700">
+          <h2 className="text-4xl font-medium text-foreground-700">
             {simpleGreeting}
           </h2>
           <div className="flex items-center gap-2">
@@ -157,7 +157,7 @@ export default function HomePage() {
                 className="shrink-0 ml-1 hover:scale-120 rotate-6 transition"
               />
             )}
-            <h1 className="font-medium text-4xl text-zinc-700">
+            <h1 className="font-medium text-4xl text-foreground-700">
               {user?.name?.split(" ")[0]}
               <span className="ml-4">:)</span>
             </h1>
@@ -171,13 +171,13 @@ export default function HomePage() {
           </div>
         ) : hasData ? (
           <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-3xl text-zinc-500">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-3xl text-foreground-500">
               <span>You have</span>
               {firstLineSections.map((section, index) => (
                 <span key={section.label}>
                   <span className="inline-flex items-center gap-1.5">
                     {section.icon}
-                    <span className="font-medium text-white">
+                    <span className="font-medium text-foreground-900">
                       {section.count}
                     </span>
                     <span>{section.label}</span>
@@ -196,12 +196,12 @@ export default function HomePage() {
             </div>
 
             {secondLineSections.length > 0 && (
-              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-3xl text-zinc-500">
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-3xl text-foreground-500">
                 {secondLineSections.map((section, index) => (
                   <span key={section.label}>
                     <span className="inline-flex items-center gap-1.5">
                       {section.icon}
-                      <span className="font-medium text-white">
+                      <span className="font-medium text-foreground-900">
                         {section.count}
                       </span>
                       <span>{section.label}</span>
@@ -220,7 +220,7 @@ export default function HomePage() {
             )}
           </div>
         ) : (
-          <p className="text-lg text-zinc-400">
+          <p className="text-lg text-foreground-400">
             Your day is clear — time to plan ahead!
           </p>
         )}

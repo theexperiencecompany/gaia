@@ -71,7 +71,7 @@ export default function DateFieldChip({
     >
       {({ onClose }) => (
         <div className="p-1">
-          <div className="border-0 bg-zinc-900 p-3">
+          <div className="border-0 bg-surface-100 p-3">
             <Input
               type="date"
               value={value ? value.split("T")[0] : ""}
@@ -89,7 +89,7 @@ export default function DateFieldChip({
               e.stopPropagation();
               handleQuickDate(0, onClose);
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-foreground-500 transition-colors hover:bg-surface-200"
           >
             <CalendarIcon width={18} height={18} />
             Today
@@ -99,7 +99,7 @@ export default function DateFieldChip({
               e.stopPropagation();
               handleQuickDate(1, onClose);
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-foreground-500 transition-colors hover:bg-surface-200"
           >
             <CalendarIcon width={18} height={18} />
             Tomorrow
@@ -109,7 +109,7 @@ export default function DateFieldChip({
               e.stopPropagation();
               handleQuickDate(3, onClose);
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-foreground-500 transition-colors hover:bg-surface-200"
           >
             <CalendarIcon width={18} height={18} />
             In 3 days
@@ -119,7 +119,7 @@ export default function DateFieldChip({
               e.stopPropagation();
               handleQuickDate(7, onClose);
             }}
-            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-zinc-500 transition-colors hover:bg-zinc-800"
+            className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-foreground-500 transition-colors hover:bg-surface-200"
           >
             <CalendarIcon width={18} height={18} />
             Next week
@@ -128,14 +128,14 @@ export default function DateFieldChip({
           {/* Clear date option */}
           {value && (
             <>
-              <div className="my-1 h-px bg-zinc-700" />
+              <div className="my-1 h-px bg-surface-700" />
               <div
                 onClick={(e) => {
                   e.stopPropagation();
                   onChange(undefined, undefined);
                   onClose();
                 }}
-                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-red-400 transition-colors hover:bg-zinc-800"
+                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-red-400 transition-colors hover:bg-surface-200"
               >
                 <Cancel01Icon width={18} height={18} />
                 Clear date
@@ -145,14 +145,14 @@ export default function DateFieldChip({
 
           {/* Hint */}
           <div className="mt-1 px-3 py-2">
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-foreground-500">
               Type{" "}
-              <span className="rounded bg-zinc-800 px-1 font-mono">today</span>,{" "}
-              <span className="rounded bg-zinc-800 px-1 font-mono">
+              <span className="rounded bg-surface-200 px-1 font-mono">today</span>,{" "}
+              <span className="rounded bg-surface-200 px-1 font-mono">
                 tomorrow
               </span>
               , or{" "}
-              <span className="rounded bg-zinc-800 px-1 font-mono">
+              <span className="rounded bg-surface-200 px-1 font-mono">
                 in 3 days
               </span>{" "}
               in title/description

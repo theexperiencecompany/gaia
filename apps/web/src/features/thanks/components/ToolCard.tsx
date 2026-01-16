@@ -76,7 +76,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
       showArrow
       delay={0}
       closeDelay={0}
-      className="max-w-[320px] border-0 bg-zinc-900 p-0 text-white shadow-xl rounded-2xl overflow-hidden"
+      className="max-w-[320px] border-0 bg-surface-100 p-0 text-foreground-900 shadow-xl rounded-2xl overflow-hidden"
       content={
         <div className="flex w-full flex-col rounded-3xl">
           {websiteImage && (
@@ -105,17 +105,17 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
                   onError={() => setFaviconError(true)}
                 />
               ) : (
-                <GlobalIcon className="h-5 w-5 text-zinc-400" />
+                <GlobalIcon className="h-5 w-5 text-foreground-400" />
               )}
-              <span className="font-semibold text-white">{tool.name}</span>
+              <span className="font-semibold text-foreground-900">{tool.name}</span>
             </div>
 
-            <p className="text-sm leading-relaxed text-zinc-300">
+            <p className="text-sm leading-relaxed text-foreground-300">
               {tool.description}
             </p>
 
             <div className="mt-1 flex items-center gap-2">
-              <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+              <span className="rounded-full bg-surface-200 px-2 py-0.5 text-xs text-foreground-400">
                 {tool.category}
               </span>
             </div>
@@ -137,11 +137,11 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
         href={tool.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="group flex items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-3 transition-all duration-200 hover:border-primary/50 hover:bg-zinc-800/50"
+        className="group flex items-center gap-3 rounded-2xl bg-surface-100 px-4 py-3 transition-all duration-200 hover:border-primary/50 hover:bg-surface-200/50"
       >
         <div
           className={`relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg ${
-            favicon ? "" : "bg-zinc-800"
+            favicon ? "" : "bg-surface-200"
           }`}
         >
           {favicon ? (
@@ -157,10 +157,10 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
               onError={() => setFaviconError(true)}
             />
           ) : (
-            <GlobalIcon className="h-5 w-5 text-zinc-500" />
+            <GlobalIcon className="h-5 w-5 text-foreground-500" />
           )}
         </div>
-        <span className="font-medium text-zinc-200 transition-colors group-hover:text-white">
+        <span className="font-medium text-foreground-200 transition-colors group-hover:text-foreground-900">
           {tool.name}
         </span>
       </a>

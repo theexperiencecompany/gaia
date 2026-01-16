@@ -10,12 +10,9 @@ from bson import ObjectId
 from app.agents.memory.profile_extractor import PLATFORM_CONFIG
 from app.agents.prompts.email_filter_prompts import EMAIL_MEMORY_EXTRACTION_PROMPT
 from app.config.loggers import memory_logger as logger
+from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
 from app.db.mongodb.collections import users_collection
 from app.services.memory_service import memory_service
-
-# Constants
-UNKNOWN_SENDER = "[Unknown]"
-NO_SUBJECT = "[No Subject]"
 
 # HTML to text converter
 _html_converter = html2text.HTML2Text()

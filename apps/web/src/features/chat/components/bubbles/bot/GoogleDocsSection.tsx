@@ -21,7 +21,7 @@ const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
     return (
       <div className="mt-3 h-fit">
         <div className="mb-2">
-          <span className="text-sm text-gray-600">{message}</span>
+          <span className="text-sm text-foreground-600">{message}</span>
         </div>
         <div className="space-y-2 space-x-2">
           <Button

@@ -171,7 +171,7 @@ export default function MemoryManagement({
 
       return (
         <div>
-          <Card className="bg-zinc-800 shadow-none">
+          <Card className="bg-surface-200 shadow-none">
             <CardBody className="flex flex-col gap-1">
               <div className="flex flex-row items-center justify-between">
                 <div className="flex-1">
@@ -190,7 +190,7 @@ export default function MemoryManagement({
               </div>
 
               {/* Additional memory details */}
-              <div className="flex w-full items-center justify-between text-xs text-gray-400">
+              <div className="flex w-full items-center justify-between text-xs text-foreground-400">
                 {formattedDate && <span>{formattedDate}</span>}
 
                 {memory.categories && memory.categories.length > 0 && (
@@ -198,7 +198,7 @@ export default function MemoryManagement({
                     {memory.categories.map((category) => (
                       <span
                         key={category}
-                        className="rounded-full bg-zinc-700 px-2 py-0.5"
+                        className="rounded-full bg-surface-700 px-2 py-0.5"
                       >
                         {category.split("_").map((part) => (
                           <span key={part}>
@@ -227,7 +227,7 @@ export default function MemoryManagement({
       />
 
       {memories.length === 0 && !loading ? (
-        <div className="flex h-40 flex-col items-center justify-center text-gray-500">
+        <div className="flex h-40 flex-col items-center justify-center text-foreground-500">
           <AiBrain01Icon className="mb-3 h-12 w-12 opacity-30" />
           <p>No memories yet</p>
           <p className="text-sm">
@@ -365,11 +365,11 @@ export default function MemoryManagement({
                 <div className="space-y-2">
                   {[...Array(5)].map((_, i) => (
                     // biome-ignore lint/suspicious/noArrayIndexKey: Simply mapping skeletons
-                    <Card key={i} className="bg-zinc-800 shadow-none">
+                    <Card key={i} className="bg-surface-200 shadow-none">
                       <CardBody>
                         <div className="flex animate-pulse flex-col gap-2">
-                          <div className="h-4 w-3/4 rounded bg-zinc-700" />
-                          <div className="h-3 w-1/2 rounded bg-zinc-700" />
+                          <div className="h-4 w-3/4 rounded bg-surface-700" />
+                          <div className="h-3 w-1/2 rounded bg-surface-700" />
                         </div>
                       </CardBody>
                     </Card>

@@ -377,7 +377,7 @@ export const HoloCardEditor = ({
                         : 0;
                       return (
                         <span
-                          className="border-1 border-zinc-300"
+                          className="border-1 border-surface-700"
                           style={{
                             display: "inline-block",
                             width: 24,
@@ -392,7 +392,7 @@ export const HoloCardEditor = ({
                       // Solid color
                       return (
                         <span
-                          className="border-1 border-zinc-300"
+                          className="border-1 border-surface-700"
                           style={{
                             display: "inline-block",
                             width: 24,
@@ -409,7 +409,7 @@ export const HoloCardEditor = ({
                 })()}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto bg-zinc-800 p-4">
+            <PopoverContent className="w-auto bg-surface-200 p-4">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-white/70">Color Picker</span>

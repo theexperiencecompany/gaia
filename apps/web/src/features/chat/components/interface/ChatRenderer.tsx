@@ -163,14 +163,20 @@ export default function ChatRenderer({
         );
       })}
       {isLoading && (
-        <div className="flex items-center gap-4 pt-3 pl-[40px] text-sm font-medium">
+        <div className="flex items-center gap-4 pl-12 text-sm font-medium">
           {toolInfo?.toolCategory &&
             getToolCategoryIcon(toolInfo.toolCategory, {
               size: 18,
               width: 18,
               height: 18,
+              iconOnly: true,
             })}
-          <span>{loadingText || "GAIA is thinking..."}</span>
+          <span>
+            {toolInfo?.showCategory !== false && toolInfo?.toolCategory
+              ? `${toolInfo.toolCategory.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}: `
+              : ""}
+            {loadingText || "GAIA is thinking..."}
+          </span>
           <Spinner variant="dots" color="primary" />
         </div>
       )}

@@ -60,7 +60,7 @@ function formatTime(time: string | null): string {
 
 export default function EmailListCard({
   emails,
-  backgroundColor = "bg-zinc-800",
+  backgroundColor = "bg-surface-200",
   maxHeight = "max-h-[300px]",
   isCollapsible = true,
 }: EmailListProps) {
@@ -81,7 +81,7 @@ export default function EmailListCard({
         className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
       >
         {/* Email List */}
-        <ScrollShadow className={`${maxHeight} divide-y divide-zinc-800`}>
+        <ScrollShadow className={`${maxHeight} divide-y divide-border-surface-800`}>
           {!!emails &&
             emails.length > 0 &&
             emails.map((email) => (
@@ -95,24 +95,24 @@ export default function EmailListCard({
                 disableAnimation
               >
                 <div
-                  className="group flex cursor-pointer items-center gap-4 p-3 transition-colors hover:bg-zinc-700"
+                  className="group flex cursor-pointer items-center gap-4 p-3 transition-colors hover:bg-surface-700"
                   onClick={() => handleEmailClick(email)}
                 >
                   <div className="w-40 flex-shrink-0">
-                    <span className="block truncate text-sm font-medium text-gray-300">
+                    <span className="block truncate text-sm font-medium text-foreground-300">
                       {extractSenderName(email.from || "Unknown Sender")}
                     </span>
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-white group-hover:text-gray-100">
+                    <span className="block truncate text-sm text-white group-hover:text-foreground-100">
                       {email.subject || "Unknown Subject"}
                     </span>
                   </div>
 
                   {/* Time */}
                   <div className="w-20 flex-shrink-0 text-right">
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-foreground-400">
                       {formatTime(email.time || null)}
                     </span>
                   </div>

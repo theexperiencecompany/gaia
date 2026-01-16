@@ -39,23 +39,26 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
     }
   };
 
-  // Check if integration is available (has loginEndpoint)
-  const isAvailable = !!integration?.loginEndpoint;
+  // Check if integration is available
+  const isAvailable =
+    integration?.source === "custom" || integration?.available;
   const isConnected = integration?.status === "connected";
 
   return (
     <div className="mx-2 mt-4 mb-2">
-      <div className="flex items-center justify-between rounded-xl bg-zinc-800 p-2">
+      <div className="flex items-center justify-between rounded-xl bg-surface-200 p-2">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/20">
             <SquareLock01Icon className="h-4 w-4 text-red-400" />
           </div>
           <div>
-            <div className="text-sm font-medium text-zinc-200">
-              {tools.length} {category.replace("_", " ")} tools locked
+            <div className="text-sm font-medium text-foreground-200">
+              {tools.length} {integration?.name || category.replace("_", " ")}{" "}
+              tools locked
             </div>
-            <div className="text-xs text-zinc-500">
-              Requires {requiredIntegration.name} connection
+            <div className="text-xs text-foreground-500">
+              Requires {integration?.name || requiredIntegration.name}{" "}
+              connection
             </div>
           </div>
         </div>
@@ -65,13 +68,17 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
             size="sm"
             color="primary"
             variant="flat"
-            startContent={getToolCategoryIcon(requiredIntegration.id, {
-              size: 16,
-              width: 16,
-              height: 16,
-              showBackground: false,
-              className: "h-4 w-4 object-contain",
-            })}
+            startContent={getToolCategoryIcon(
+              requiredIntegration.id,
+              {
+                size: 16,
+                width: 16,
+                height: 16,
+                showBackground: false,
+                className: "h-4 w-4 object-contain",
+              },
+              integration?.iconUrl,
+            )}
             onPress={handleConnect}
           >
             Connect

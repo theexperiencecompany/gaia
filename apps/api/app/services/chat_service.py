@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
@@ -55,6 +56,23 @@ async def chat_stream(
         f"User {user.get('user_id')} started a conversation with ID {conversation_id}"
     )
 
+    # Start description generation immediately as a background task for new conversations
+    description_task = None
+    if is_new_conversation:
+        last_message = body.messages[-1] if body.messages else None
+        selectedTool = body.selectedTool if body.selectedTool else None
+        selectedWorkflow = body.selectedWorkflow if body.selectedWorkflow else None
+
+        description_task = asyncio.create_task(
+            generate_and_update_description(
+                conversation_id,
+                last_message,
+                user,
+                selectedTool,
+                selectedWorkflow,
+            )
+        )
+
     user_id = user.get("user_id")
     user_model_config = None
     if user_id:
@@ -74,6 +92,16 @@ async def chat_stream(
         user_model_config=user_model_config,
         usage_metadata_callback=usage_metadata_callback,
     ):
+        # Check if description is ready and send it immediately
+        if description_task and description_task.done():
+            try:
+                description = description_task.result()
+                yield f"""data: {json.dumps({"conversation_description": description})}\n\n"""
+                description_task = None  # Clear task after yielding
+            except Exception as e:
+                logger.error(f"Failed to get conversation description: {e}")
+                description_task = None  # Clear task to avoid retry
+
         # Skip [DONE] marker from agent - we'll send it after description generation
         if chunk == "data: [DONE]\n\n":
             continue
@@ -96,6 +124,14 @@ async def chat_stream(
                         # new_data["tool_data"] is already a list of ToolDataEntry objects
                         for tool_entry in new_data["tool_data"]:
                             tool_data["tool_data"].append(tool_entry)
+
+                            # Check if this is a progress event (tool_calls_data)
+                            # Progress events are streamed directly - yield original chunk
+                            # and don't re-emit as tool_data to avoid duplication
+                            if tool_entry.get("tool_name") == "tool_calls_data":
+                                yield chunk
+                                continue
+
                             current_tool_data = {"tool_data": tool_entry}
                             yield f"data: {json.dumps(current_tool_data)}\n\n"
                     else:
@@ -124,21 +160,10 @@ async def chat_stream(
         else:
             yield chunk
 
-    # Generate and stream description for new conversations
-    if is_new_conversation:
-        last_message = body.messages[-1] if body.messages else None
-        selectedTool = body.selectedTool if body.selectedTool else None
-        selectedWorkflow = body.selectedWorkflow if body.selectedWorkflow else None
-
+    # Await and stream description if not already sent
+    if description_task:
         try:
-            description = await generate_and_update_description(
-                conversation_id,
-                last_message,
-                user,
-                selectedTool,
-                selectedWorkflow,
-            )
-
+            description = await description_task
             # Stream the updated description
             yield f"""data: {json.dumps({"conversation_description": description})}\n\n"""
         except Exception as e:
@@ -185,6 +210,27 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
         if "tool_data" in data:
             return {"tool_data": data["tool_data"]}
 
+        # Handle progress events - convert to tool_calls_data format for persistence
+        if "progress" in data and isinstance(data["progress"], dict):
+            progress = data["progress"]
+            if progress.get("tool_name"):
+                timestamp = datetime.now(timezone.utc).isoformat()
+                tool_entry: ToolDataEntry = {
+                    "tool_name": "tool_calls_data",
+                    "data": {
+                        "tool_name": progress.get("tool_name"),
+                        "tool_category": progress.get("tool_category", ""),
+                        "message": progress.get("message", ""),
+                        "show_category": progress.get("show_category", True),
+                        "tool_call_id": progress.get("tool_call_id"),
+                        "inputs": progress.get("inputs"),
+                        "icon_url": progress.get("icon_url"),
+                        "integration_name": progress.get("integration_name"),
+                    },
+                    "timestamp": timestamp,
+                }
+                return {"tool_data": [tool_entry]}
+
         # Map of legacy field names to their new unified tool names
 
         tool_data_entries = []
@@ -193,12 +239,12 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
         # Convert individual tool fields to unified format
         for field_name in tool_fields:
             if field_name in data and data[field_name] is not None:
-                tool_entry: ToolDataEntry = {
+                legacy_tool_entry: ToolDataEntry = {
                     "tool_name": field_name,
                     "data": data[field_name],
                     "timestamp": timestamp,
                 }
-                tool_data_entries.append(tool_entry)
+                tool_data_entries.append(legacy_tool_entry)
 
         # Return unified format if any tool data was found
         if tool_data_entries:

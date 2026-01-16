@@ -39,7 +39,7 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
     if (status === "completed" && output && !output.error) {
       return <CheckmarkCircle02Icon className="h-3 w-3 text-green-400" />;
     }
-    return <SourceCodeCircleIcon className="h-3 w-3 text-gray-400" />;
+    return <SourceCodeCircleIcon className="h-3 w-3 text-foreground-400" />;
   };
 
   const getStatusText = () => {
@@ -53,12 +53,12 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
     output && (output.stdout || output.stderr || output.results?.length);
 
   return (
-    <div className="w-full overflow-hidden rounded-2xl bg-zinc-800">
+    <div className="w-full overflow-hidden rounded-2xl bg-surface-200">
       {/* Header */}
-      <div className="p flex items-center justify-between bg-zinc-900 px-4 py-2">
+      <div className="p flex items-center justify-between bg-surface-100 px-4 py-2">
         <div className="flex items-center gap-2">
           {getStatusIcon()}
-          <span className="text-sm font-medium text-gray-200">
+          <span className="text-sm font-medium text-foreground-200">
             {getStatusText()}
           </span>
         </div>
@@ -68,9 +68,9 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
       </div>
 
       {/* Content */}
-      <div className="bg-zinc-900 p-3 pt-0">
+      <div className="bg-surface-100 p-3 pt-0">
         {status === "executing" && !output ? (
-          <div className="flex items-center gap-3 py-4 text-gray-400">
+          <div className="flex items-center gap-3 py-4 text-foreground-400">
             <div className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />
             <span className="text-sm">Executing {language} code...</span>
           </div>
@@ -109,7 +109,7 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
             {/* Execution Error */}
             {output.error && (
               <div className="space-y-2">
-                <div className="text-xs font-medium text-gray-500">
+                <div className="text-xs font-medium text-foreground-500">
                   EXECUTION ERROR
                 </div>
                 <div className="bg-black p-3 font-mono text-sm text-red-400">
@@ -119,7 +119,7 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
             )}
 
             {/* Status */}
-            <div className="flex items-center justify-between pb-3 text-xs text-gray-500">
+            <div className="flex items-center justify-between pb-3 text-xs text-foreground-500">
               <span>Status: {status || "unknown"}</span>
               {!output.error && !output.stderr ? (
                 <span className="text-green-400">Success</span>
@@ -133,13 +133,13 @@ const CodeExecutionOutput: React.FC<CodeExecutionOutputProps> = ({
               !output.stderr &&
               !output.results?.length &&
               !output.error && (
-                <div className="py-4 text-center text-sm text-gray-500">
+                <div className="py-4 text-center text-sm text-foreground-500">
                   No output produced
                 </div>
               )}
           </div>
         ) : (
-          <div className="py-4 text-center text-sm text-gray-500">
+          <div className="py-4 text-center text-sm text-foreground-500">
             Ready to execute
           </div>
         )}

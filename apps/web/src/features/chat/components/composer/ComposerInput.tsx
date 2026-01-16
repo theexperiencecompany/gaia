@@ -437,7 +437,7 @@ const ComposerInput = React.forwardRef<ComposerInputRef, SearchbarInputProps>(
             autoFocus
             classNames={{
               inputWrapper:
-                " px-3 data-[hover=true]:bg-zinc-800 group-data-[focus-visible=true]:ring-zinc-800 group-data-[focus-visible=true]:ring-offset-0 shadow-none group-data-[focus-visible=true]:ring-transparent",
+                " px-3 text-100! dark:bg-surface-200! bg-surface-100! group-data-[focus-visible=true]:ring-surface-200 group-data-[focus-visible=true]:ring-offset-0 shadow-none group-data-[focus-visible=true]:ring-transparent",
               innerWrapper: `${currentHeight > 24 ? "items-end" : "items-center"} `,
               input:
                 "font-light focus-visible:border-0! focus-visible:border-transparent!",

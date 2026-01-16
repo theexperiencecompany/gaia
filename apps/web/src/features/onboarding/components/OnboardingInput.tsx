@@ -128,8 +128,8 @@ export const OnboardingInput = ({
                   onboardingState.isProcessing && "cursor-wait",
                   !onboardingState.currentInputs.text.trim() ||
                     onboardingState.isProcessing
-                    ? "text-zinc-500"
-                    : "text-black",
+                    ? "text-foreground-500"
+                    : "text-primary-foreground",
                 )}
               >
                 <ArrowUp02Icon />
@@ -143,7 +143,7 @@ export const OnboardingInput = ({
   return (
     <form onSubmit={onSubmit} className="mx-auto w-full max-w-2xl">
       <div className="relative">{renderInput()}</div>
-      <p className="mt-2 flex items-center justify-center space-x-1 text-center text-xs text-zinc-500">
+      <p className="mt-2 flex items-center justify-center space-x-1 text-center text-xs text-foreground-500">
         <span>Press</span>
         <Kbd keys={"enter"} />
         <span>to continue</span>

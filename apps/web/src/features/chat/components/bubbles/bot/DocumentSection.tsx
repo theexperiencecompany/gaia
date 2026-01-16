@@ -82,7 +82,7 @@ const DocumentSection: React.FC<DocumentSectionProps> = ({ document_data }) => {
 
   return (
     <div className="mt-3">
-      <Card className="border-zinc-700 bg-zinc-800">
+      <Card className="border-surface-300 bg-surface-200">
         <CardBody className="p-4">
           <div className="flex items-center justify-between">
             <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -106,7 +106,7 @@ const DocumentSection: React.FC<DocumentSectionProps> = ({ document_data }) => {
                 </div>
 
                 {document_data.title && (
-                  <p className="truncate text-sm text-zinc-400">
+                  <p className="truncate text-sm text-foreground-400">
                     {document_data.filename}
                   </p>
                 )}

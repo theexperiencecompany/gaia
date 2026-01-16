@@ -6,7 +6,7 @@ export default function MarkdownWrapper({ content }: { content: string }) {
   return (
     <MarkdownRenderer
       content={content.toString()}
-      className="space-y-5 text-lg font-light text-zinc-300"
+      className="space-y-5 text-lg font-light text-foreground-300"
     />
   );
 }

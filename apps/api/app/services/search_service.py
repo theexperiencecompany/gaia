@@ -13,12 +13,6 @@ from app.db.utils import serialize_document
 from app.utils.general_utils import get_context_window
 from app.utils.tool_data_utils import convert_legacy_tool_data
 
-# Constants
-MAX_CONTENT_LENGTH = 8000  # Max characters per webpage
-MAX_TOTAL_CONTENT = 20000  # Max total characters for all webpages combined
-URL_TIMEOUT = 20.0  # Seconds
-CACHE_EXPIRY = 86400  # 24 hours
-
 
 async def search_messages(query: str, user_id: str) -> dict:
     """

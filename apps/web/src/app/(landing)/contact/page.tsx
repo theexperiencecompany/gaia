@@ -48,7 +48,7 @@ export default function ContactPage() {
   return (
     <>
       <JsonLd data={[contactSchema, webPageSchema, breadcrumbSchema]} />
-      <main className="flex h-screen w-screen flex-col items-center justify-center bg-gradient-to-b from-zinc-900 to-black px-6 py-16">
+      <main className="flex h-screen w-screen flex-col items-center justify-center bg-background px-6 py-16">
         <header className="text-center">
           <h1 className="font-serif text-8xl font-light tracking-tight text-balance">
             Contact us
@@ -60,7 +60,7 @@ export default function ContactPage() {
         </header>
 
         <section className="mt-16 grid w-full max-w-5xl gap-10 md:grid-cols-[250px_1fr]">
-          <aside className="border-zinc-800 md:border-r md:pr-10">
+          <aside className="border-surface-200 md:border-r md:pr-10">
             <ContactSidebar />
           </aside>
 

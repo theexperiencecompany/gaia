@@ -247,10 +247,10 @@ export default function ContextGatheringLoader({
   // Show loading state during initialization
   if (isInitializing) {
     return (
-      <div className="relative flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-4 shadow-xl backdrop-blur-sm">
+      <div className="relative flex flex-col justify-center gap-3 rounded-2xl bg-surface-200/90 p-4 shadow-xl backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <Spinner size="sm" variant="simple" />
-          <p className="text-xs font-medium text-zinc-300">
+          <p className="text-xs font-medium text-foreground-300">
             Initializing your personalization...
           </p>
         </div>
@@ -265,12 +265,12 @@ export default function ContextGatheringLoader({
   if (!phase) return null;
 
   return (
-    <div className="relative flex flex-col justify-center gap-3 rounded-2xl bg-zinc-800/90 p-4 shadow-2xl backdrop-blur-sm border-1 border-zinc-700/60 group">
+    <div className="relative flex flex-col justify-center gap-3 rounded-2xl bg-surface-200/90 p-4 shadow-2xl backdrop-blur-sm border-1 border-surface-300/60 group">
       {/* Dismiss button - only show when personalization complete */}
       {isPersonalizationComplete && (
         <button
           onClick={handleDismiss}
-          className="absolute top-2 right-2 rounded-full p-1 text-zinc-400 hover:bg-zinc-700 bg-zinc-800 hover:text-zinc-100 group-hover:opacity-100 opacity-0 transition cursor-pointer"
+          className="absolute top-2 right-2 rounded-full p-1 text-foreground-400 hover:bg-surface-300 bg-surface-200 hover:text-foreground-100 group-hover:opacity-100 opacity-0 transition cursor-pointer"
           aria-label="Dismiss"
           type="button"
         >
@@ -291,8 +291,8 @@ export default function ContextGatheringLoader({
           />
 
           <div className="flex flex-col items-start">
-            <p className="font-medium text-zinc-100">Your GAIA is ready!</p>
-            <p className="text-xs text-zinc-400">
+            <p className="font-medium text-foreground-100">Your GAIA is ready!</p>
+            <p className="text-xs text-foreground-400">
               Let's explore what I can do for you
             </p>
           </div>
@@ -300,7 +300,7 @@ export default function ContextGatheringLoader({
           <RaisedButton
             onClick={handleShowMeAround}
             color="#00bbff"
-            className="text-black!"
+            className="text-primary-foreground!"
           >
             Show me around
           </RaisedButton>
@@ -312,12 +312,12 @@ export default function ContextGatheringLoader({
             <Spinner size="sm" variant="simple" />
 
             <div className="flex-1">
-              <p className="text-xs font-medium text-zinc-300 transition-all duration-500">
+              <p className="text-xs font-medium text-foreground-300 transition-all duration-500">
                 {getLoadingMessage()}
               </p>
 
               {getProgressDetails() && (
-                <p className="mt-1 text-xs text-zinc-500 animate-fade-in">
+                <p className="mt-1 text-xs text-foreground-500 animate-fade-in">
                   {getProgressDetails()}
                 </p>
               )}
@@ -325,7 +325,7 @@ export default function ContextGatheringLoader({
           </div>
 
           {/* Real progress bar */}
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-300">
             <div
               className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
               style={{ width: `${getProgressPercentage()}%` }}

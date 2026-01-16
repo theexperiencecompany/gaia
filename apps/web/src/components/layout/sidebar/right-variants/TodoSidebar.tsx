@@ -100,7 +100,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
               color="success"
               radius="full"
               classNames={{
-                wrapper: `mt-1 ${todo.completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900 "}`,
+                wrapper: `mt-1 ${todo.completed ? "" : "border-foreground-500 border-dashed! border-1 before:border-0! bg-surface-100 "}`,
                 label: "w-[30vw]",
               }}
             />
@@ -121,7 +121,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                   autoFocus
                   classNames={{
                     input:
-                      "text-2xl font-medium bg-transparent text-zinc-100 placeholder:text-zinc-500",
+                      "text-2xl font-medium bg-transparent text-foreground-900 placeholder:text-foreground-500",
                     inputWrapper:
                       "bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
                   }}
@@ -130,10 +130,10 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
               ) : (
                 <h1
                   onClick={() => setIsEditingTitle(true)}
-                  className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${
+                  className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-foreground-800 ${
                     todo.completed
-                      ? "text-zinc-500 line-through"
-                      : "text-zinc-100"
+                      ? "text-foreground-500 line-through"
+                      : "text-foreground-900"
                   }`}
                 >
                   {todo.title}
@@ -156,17 +156,17 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
               maxRows={6}
               autoFocus
               classNames={{
-                input: "bg-transparent text-zinc-200 placeholder:text-zinc-500",
+                input: "bg-transparent text-foreground-800 placeholder:text-foreground-500",
                 inputWrapper:
-                  "bg-zinc-800/30 hover:bg-zinc-800/50 data-[hover=true]:bg-zinc-800/50 shadow-none",
+                  "bg-surface-200/30 hover:bg-surface-200/50 data-[hover=true]:bg-surface-200/50 shadow-none",
               }}
               variant="flat"
             />
           ) : (
             <p
               onClick={() => setIsEditingDescription(true)}
-              className={`cursor-pointer text-sm leading-relaxed transition-colors hover:text-zinc-300 ${
-                todo.completed ? "text-zinc-600" : "text-zinc-400"
+              className={`cursor-pointer text-sm leading-relaxed transition-colors hover:text-foreground-700 ${
+                todo.completed ? "text-foreground-600" : "text-foreground-400"
               }`}
             >
               {todo.description || "Add a description..."}
@@ -200,7 +200,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
           </div>
 
           <div
-            className={`py-4 border-y-1 border-zinc-800 ${todo?.subtasks?.length > 0 ? "pt-6r" : ""}`}
+            className={`py-4 border-y-1 border-surface-200 ${todo?.subtasks?.length > 0 ? "pt-6r" : ""}`}
           >
             <SubtaskManager
               subtasks={todo.subtasks}
@@ -219,7 +219,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
       <SidebarFooter className="p-3">
         <div className="flex items-center justify-between">
           <div className="py-2">
-            <span className="text-xs text-zinc-600">
+            <span className="text-xs text-foreground-600">
               Created{" "}
               {formatDistanceToNow(new Date(todo.created_at), {
                 addSuffix: true,

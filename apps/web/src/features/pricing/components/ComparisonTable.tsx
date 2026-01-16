@@ -192,7 +192,7 @@ export function ComparisonTable({
           />
         </div>
         <h3 className="mb-1 text-2xl font-semibold">{name}</h3>
-        <p className="text-sm text-gray-400">{description}</p>
+        <p className="text-sm text-foreground-400">{description}</p>
       </div>
     );
   }
@@ -208,7 +208,7 @@ export function ComparisonTable({
       <div className="flex flex-col items-center gap-2">
         <span
           className={`max-w-48 text-center text-sm leading-snug ${
-            highlight ? "font-semibold text-primary" : "text-zinc-400"
+            highlight ? "font-semibold text-primary" : "text-foreground-400"
           }`}
         >
           {status.description}
@@ -219,10 +219,10 @@ export function ComparisonTable({
 
   function FeatureRow({ feature }: { feature: ComparisonFeature }) {
     return (
-      <div className="group grid grid-cols-4 items-center gap-6 rounded-xl border-b border-white/5 px-2 py-2 transition-colors hover:bg-zinc-800/40">
+      <div className="group grid grid-cols-4 items-center gap-6 rounded-xl border-b border-surface-950/5 px-2 py-2 transition-colors hover:bg-surface-200/40">
         <div className="flex items-center gap-3">
           {feature.icon}
-          <span className="text-lg font-semibold text-zinc-100">
+          <span className="text-lg font-semibold text-foreground-100">
             {feature.title}
           </span>
         </div>
@@ -245,12 +245,12 @@ export function ComparisonTable({
         <h1 className="text-center font-serif text-6xl font-normal">
           See how GAIA stacks up against the competition.
         </h1>
-        <span className="text-xl font-light text-zinc-300">
+        <span className="text-xl font-light text-foreground-300">
           What makes GAIA better and not just a "chatbot"
         </span>
       </div>
 
-      <div className="relative overflow-hidden rounded-4xl bg-zinc-900/60 p-8 shadow-xl backdrop-blur-md">
+      <div className="relative overflow-hidden rounded-4xl bg-surface-100/60 p-8 shadow-xl backdrop-blur-md">
         <div className="mb-6 grid grid-cols-4 gap-6">
           <div />
           <CompanyHeader
@@ -280,7 +280,7 @@ export function ComparisonTable({
           <Link href={"/signup"}>
             <RaisedButton
               size={"lg"}
-              className="rounded-xl text-lg text-black!"
+              className="rounded-xl text-lg text-primary-foreground!"
               color="#00bbff"
             >
               Let's Go!

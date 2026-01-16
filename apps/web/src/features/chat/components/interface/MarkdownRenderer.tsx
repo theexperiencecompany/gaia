@@ -57,12 +57,12 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           ),
           blockquote: ({ ...props }) => (
             <blockquote
-              className="my-2 border-gray-300 bg-gray-300/10 py-3 pl-4 italic"
+              className="my-2 border-foreground-300 bg-surface-300/10 py-3 pl-4 italic"
               {...props}
             />
           ),
           hr: ({ ...props }) => (
-            <hr className="my-8 border-t border-zinc-700" {...props} />
+            <hr className="my-8 border-t border-surface-300" {...props} />
           ),
           li: ({ ...props }) => <li className="mb-2" {...props} />,
           img: ({ ...props }) => (
@@ -70,7 +70,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               width={500}
               height={500}
               alt="image"
-              className="mx-auto my-4 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
+              className="mx-auto my-4 cursor-pointer rounded-xl bg-surface-100 object-contain transition hover:opacity-80"
               src={props.src as string}
               onClick={() => openDialog(props.src as string)}
             />
@@ -81,29 +81,29 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           table: ({ ...props }) => (
             <div className="overflow-x-auto">
               <table
-                className="min-w-full border-collapse border-zinc-600"
+                className="min-w-full border-collapse border-surface-400"
                 {...props}
               />
             </div>
           ),
           thead: ({ ...props }) => (
             <thead
-              className="bg-opacity-20 border border-zinc-700 bg-zinc-700"
+              className="bg-opacity-20 border border-surface-300 bg-surface-300"
               {...props}
             />
           ),
           tbody: ({ ...props }) => <tbody {...props} />,
           tr: ({ ...props }) => (
-            <tr className="border-b border-zinc-600" {...props} />
+            <tr className="border-b border-surface-400" {...props} />
           ),
           th: ({ ...props }) => (
             <th
-              className="border border-zinc-600 px-4 py-2 text-left font-bold"
+              className="border border-surface-400 px-4 py-2 text-left font-bold"
               {...props}
             />
           ),
           td: ({ ...props }) => (
-            <td className="border border-zinc-700 px-4 py-2" {...props} />
+            <td className="border border-surface-300 px-4 py-2" {...props} />
           ),
         }}
         remarkPlugins={[remarkGfm]}

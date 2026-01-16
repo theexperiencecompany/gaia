@@ -39,7 +39,7 @@ function formatNumber(num: number): string {
 
 export default function RedditSearchCard({
   posts,
-  backgroundColor = "bg-zinc-800",
+  backgroundColor = "bg-surface-200",
   maxHeight = "max-h-[400px]",
   isCollapsible = true,
 }: RedditSearchCardProps) {
@@ -47,12 +47,12 @@ export default function RedditSearchCard({
 
   const content = (
     <div
-      className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
+      className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-foreground`}
     >
       <ScrollShadow className={`${maxHeight} divide-y divide-gray-700`}>
         {posts.map((post) => (
           <div
-            className="group w-full cursor-pointer p-3 transition-colors hover:bg-zinc-700"
+            className="group w-full cursor-pointer p-3 transition-colors hover:bg-surface-300"
             key={post.id}
           >
             <Link
@@ -68,10 +68,10 @@ export default function RedditSearchCard({
                       <span className="font-semibold text-[#FF4500]">
                         {post.subreddit}
                       </span>
-                      <span className="text-gray-500">•</span>
-                      <span className="text-gray-500">u/{post.author}</span>
-                      <span className="text-gray-500">•</span>
-                      <span className="text-gray-500">
+                      <span className="text-foreground-500">•</span>
+                      <span className="text-foreground-500">u/{post.author}</span>
+                      <span className="text-foreground-500">•</span>
+                      <span className="text-foreground-500">
                         {formatTime(post.created_utc)}
                       </span>
                     </div>
@@ -83,7 +83,7 @@ export default function RedditSearchCard({
 
                 {/* Content preview */}
                 {post.selftext && (
-                  <p className="line-clamp-2 text-xs leading-relaxed text-gray-400">
+                  <p className="line-clamp-2 text-xs leading-relaxed text-foreground-400">
                     {post.selftext}
                   </p>
                 )}
@@ -96,7 +96,7 @@ export default function RedditSearchCard({
                       {formatNumber(post.score)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 text-gray-400">
+                  <div className="flex items-center gap-1 text-foreground-400">
                     <BubbleChatIcon className="h-3.5 w-3.5" />
                     <span>{formatNumber(post.num_comments)}</span>
                   </div>

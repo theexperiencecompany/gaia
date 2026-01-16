@@ -62,7 +62,7 @@ export default function DesktopLoginPage() {
       </div>
 
       <div className="relative z-10 w-full max-w-xl px-6">
-        <div className="rounded-4xl bg-zinc-100/10 p-8 backdrop-blur-lg flex items-center flex-col">
+        <div className="rounded-4xl bg-surface-100/10 p-8 backdrop-blur-lg flex items-center flex-col">
           <div className="mb-8 flex justify-center">
             <Image
               // src="/images/logos/macos.png"
@@ -78,7 +78,7 @@ export default function DesktopLoginPage() {
           <h1 className="mb-2 text-center text-4xl font-semibold text-white">
             Welcome to GAIA Desktop
           </h1>
-          <p className="mb-8 text-center text-zinc-400 text-xl font-light">
+          <p className="mb-8 text-center text-foreground-400 text-xl font-light">
             Sign in to your account to continue
           </p>
 
@@ -96,7 +96,7 @@ export default function DesktopLoginPage() {
           {status === "opened" && (
             <div className="flex flex-col items-center gap-4 py-4">
               <Spinner />
-              <p className="text-center text-zinc-400">
+              <p className="text-center text-foreground-400">
                 Opening your browser...
               </p>
             </div>
@@ -129,14 +129,14 @@ export default function DesktopLoginPage() {
                 <p className="font-medium text-white">
                   Complete login in your browser
                 </p>
-                <p className="mt-1 text-sm text-zinc-500">
+                <p className="mt-1 text-sm text-foreground-500">
                   You&apos;ll be redirected back automatically
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setStatus("ready")}
-                className="mt-2 text-sm text-zinc-500 underline-offset-4 hover:text-zinc-300 hover:underline"
+                className="mt-2 text-sm text-foreground-500 underline-offset-4 hover:text-foreground-300 hover:underline"
               >
                 Try again
               </button>
@@ -168,7 +168,7 @@ export default function DesktopLoginPage() {
               <button
                 type="button"
                 onClick={() => setStatus("ready")}
-                className="rounded-lg bg-zinc-800 px-4 py-2 text-sm text-white transition-colors hover:bg-zinc-700"
+                className="rounded-lg bg-surface-200 px-4 py-2 text-sm text-white transition-colors hover:bg-surface-700"
               >
                 Try Again
               </button>
@@ -177,7 +177,7 @@ export default function DesktopLoginPage() {
         </div>
 
         {/* Footer text */}
-        <p className="mt-6 text-center text-xs text-zinc-500 font-light">
+        <p className="mt-6 text-center text-xs text-foreground-500 font-light">
           By signing in, you agree to our Terms of Service and Privacy Policy
         </p>
       </div>

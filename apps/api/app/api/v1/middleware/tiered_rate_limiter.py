@@ -31,19 +31,13 @@ from app.models.payment_models import PlanType
 from app.models.usage_models import (
     CreditUsage,
     FeatureUsage,
+    UsageInfo,
     UsagePeriod,
     UserUsageSnapshot,
 )
 from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
 from fastapi import HTTPException
-from pydantic import BaseModel
-
-
-class UsageInfo(BaseModel):
-    used: int
-    limit: int
-    reset_time: datetime
 
 
 class RateLimitExceededException(HTTPException):

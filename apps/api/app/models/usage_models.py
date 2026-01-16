@@ -10,6 +10,14 @@ class UsagePeriod(str, Enum):
     MONTH = "month"
 
 
+class UsageInfo(BaseModel):
+    """Usage information with limit and reset time."""
+
+    used: int
+    limit: int
+    reset_time: datetime
+
+
 class FeatureUsage(BaseModel):
     feature_key: str
     feature_title: str

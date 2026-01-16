@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
-from langchain_core.messages import AIMessageChunk
+from langchain_core.messages import AIMessageChunk, ToolMessage
 from langsmith import traceable
 from opik.integrations.langchain import OpikTracer
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
@@ -42,6 +42,8 @@ def build_agent_config(
     usage_metadata_callback: Optional[UsageMetadataCallbackHandler] = None,
     thread_id: Optional[str] = None,
     base_configurable: Optional[dict] = None,
+    selected_tool: Optional[str] = None,
+    tool_category: Optional[str] = None,
 ) -> dict:
     """Build configuration for graph execution with optional authentication tokens.
 
@@ -55,24 +57,32 @@ def build_agent_config(
         user_model_config: Optional model configuration with provider and token limits
         thread_id: Optional override for thread_id (defaults to conversation_id)
         base_configurable: Optional base configurable to inherit from (for child agents)
+        selected_tool: Optional tool name selected via slash command
+        tool_category: Optional category of the selected tool
 
     Returns:
         Configuration dictionary formatted for LangGraph execution with configurable
         parameters, metadata, and recursion limits
     """
 
-    callbacks: list[BaseCallbackHandler] = [
-        OpikTracer(
-            tags=["langchain", settings.ENV],
-            thread_id=conversation_id,
-            metadata={
-                "user_id": user.get("user_id"),
-                "conversation_id": conversation_id,
-                "agent_name": agent_name,
-            },
-            project_name="GAIA",
+    callbacks: list[BaseCallbackHandler] = []
+
+    # Add OpikTracer in production, or in development only if configured
+    # This prevents cluttered error logs when Opik isn't set up locally
+    is_opik_configured = settings.OPIK_API_KEY and settings.OPIK_WORKSPACE
+    if settings.ENV == "production" or is_opik_configured:
+        callbacks.append(
+            OpikTracer(
+                tags=["langchain", settings.ENV],
+                thread_id=conversation_id,
+                metadata={
+                    "user_id": user.get("user_id"),
+                    "conversation_id": conversation_id,
+                    "agent_name": agent_name,
+                },
+                project_name="GAIA",
+            )
         )
-    ]
     posthog_client = providers.get("posthog")
 
     if posthog_client is not None:
@@ -112,6 +122,8 @@ def build_agent_config(
         provider_name = base_configurable.get("provider", provider_name)
         max_tokens = base_configurable.get("max_tokens", max_tokens)
         model_name = base_configurable.get("model_name", model_name)
+        selected_tool = selected_tool or base_configurable.get("selected_tool")
+        tool_category = tool_category or base_configurable.get("tool_category")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -123,6 +135,8 @@ def build_agent_config(
         "max_tokens": max_tokens,
         "model_name": model_name,
         "model": model_name,
+        "selected_tool": selected_tool,
+        "tool_category": tool_category,
     }
 
     config = {
@@ -255,6 +269,10 @@ async def execute_graph_streaming(
     progress updates. Only yields content from the main agent to avoid duplication
     from subgraphs.
 
+    Tool progress is emitted incrementally:
+    1. When tool_call first detected: emit name/category (progress event)
+    2. When ToolMessage arrives: emit inputs (tool_inputs event) + output (tool_output event)
+
     Args:
         graph: LangGraph instance to execute
         initial_state: Starting state dictionary with query and context
@@ -268,13 +286,40 @@ async def execute_graph_streaming(
         - Final completion marker and accumulated message
     """
     complete_message = ""
+    # Track pending tool calls: id -> {name, args}
+    pending_tool_calls: dict[str, dict] = {}
 
     async for event in graph.astream(
         initial_state,
-        stream_mode=["messages", "custom"],
+        stream_mode=["messages", "custom", "updates"],
         config=config,
+        subgraphs=True,
     ):
-        stream_mode, payload = event
+        # Handle both 2-tuple and 3-tuple (with subgraphs=True)
+        if len(event) == 3:
+            ns, stream_mode, payload = event
+        elif len(event) == 2:
+            stream_mode, payload = event
+        else:
+            continue
+
+        # Capture complete tool_calls args from updates stream
+        if stream_mode == "updates":
+            # Updates contain node_name -> state_update
+            for node_name, state_update in payload.items():
+                if isinstance(state_update, dict) and "messages" in state_update:
+                    for msg in state_update["messages"]:
+                        # Check if it's an AIMessage with tool_calls
+                        if hasattr(msg, "tool_calls") and msg.tool_calls:
+                            for tc in msg.tool_calls:
+                                tc_id = tc.get("id")
+                                if tc_id:
+                                    # Store complete args for this tool call
+                                    pending_tool_calls[tc_id] = {
+                                        "name": tc.get("name"),
+                                        "args": tc.get("args", {}),
+                                    }
+            continue
 
         if stream_mode == "messages":
             chunk, metadata = payload
@@ -285,20 +330,69 @@ async def execute_graph_streaming(
                 content = str(chunk.content)
                 tool_calls = chunk.tool_calls
 
-                # Show tool execution progress
+                # Track tool calls and emit progress on first detection
                 if tool_calls:
                     for tool_call in tool_calls:
-                        progress_data = await format_tool_progress(tool_call)
-                        if progress_data:
-                            yield format_sse_data(progress_data)
+                        tc_id = tool_call.get("id")
+                        if tc_id and tc_id not in pending_tool_calls:
+                            # First time seeing this tool call - emit progress
+                            progress_data = await format_tool_progress(tool_call)
+                            if progress_data:
+                                yield format_sse_data(progress_data)
+
+                            # Store for later when ToolMessage arrives
+                            pending_tool_calls[tc_id] = {
+                                "name": tool_call.get("name"),
+                                "args": tool_call.get("args", {}),
+                            }
+                        elif tc_id:
+                            # Update stored args (they accumulate across chunks)
+                            pending_tool_calls[tc_id]["args"] = tool_call.get(
+                                "args", {}
+                            )
 
                 # Only yield content from main agent to avoid duplication
                 if content and metadata.get("agent_name") == "comms_agent":
                     yield format_sse_response(content)
                     complete_message += content
 
+            # Capture tool outputs from ToolMessage
+            elif chunk and isinstance(chunk, ToolMessage):
+                tc_id = chunk.tool_call_id
+
+                # Emit tool_inputs now that tool has executed with complete args
+                if tc_id and tc_id in pending_tool_calls:
+                    stored_call = pending_tool_calls[tc_id]
+                    if stored_call.get("args"):
+                        tool_inputs_data = {
+                            "tool_inputs": {
+                                "tool_call_id": tc_id,
+                                "inputs": stored_call["args"],
+                            }
+                        }
+                        yield format_sse_data(tool_inputs_data)
+                    del pending_tool_calls[tc_id]
+
+                # Emit tool output
+                tool_output_data = {
+                    "tool_output": {
+                        "tool_call_id": tc_id,
+                        "output": chunk.content[:3000]
+                        if isinstance(chunk.content, str)
+                        else str(chunk.content)[:3000],
+                    }
+                }
+                yield format_sse_data(tool_output_data)
+
         elif stream_mode == "custom":
-            # Forward custom events as-is
+            # Skip progress events that have tool_call_id - they're already handled
+            # via messages stream. This prevents duplication from subagent forwarding.
+            # Progress without tool_call_id (like handoff messages) are allowed through.
+            if isinstance(payload, dict) and "progress" in payload:
+                progress = payload.get("progress", {})
+                if isinstance(progress, dict) and progress.get("tool_call_id"):
+                    continue
+            # Forward other custom events as-is
             yield f"data: {json.dumps(payload)}\n\n"
 
     # Get token metadata after streaming completes and yield complete message for DB storage

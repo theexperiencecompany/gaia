@@ -11,9 +11,13 @@
   /* Font Family */
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-serif: var(--font-instrument-serif), serif;
+  --font-mono:
+    var(--font-anonymous-pro), ui-monospace, "Cascadia Code", "Source Code Pro",
+    Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
-  --color-secondary-bg: #141414; /* darker */
-  --color-primary-bg: #1a1a1a; /*  lighter*/
+  --color-secondary-bg: var(--sidebar-background); /* sidebar */
+  --color-secondary-bg-accent: hsl(var(--sidebar-accent)); /* sidebar hover */
+  --color-secondary-bg-border: hsl(var(--sidebar-border)); /* sidebar border */
 
   /* Colors */
   --color-primary: #00bbff;
@@ -21,13 +25,47 @@
   --color-white: #ffffff;
   --color-white-foreground: #000000;
 
-  /* Command colors */
-  --color-command-bg: #1e293b;
-  --color-command-text: #f8fafc;
-  --color-command-border: #334155;
+  /* Surface scale (50-950) - theme-aware background colors */
+  --color-surface-50: hsl(var(--surface-50));
+  --color-surface-100: hsl(var(--surface-100));
+  --color-surface-200: hsl(var(--surface-200));
+  --color-surface-300: hsl(var(--surface-300));
+  --color-surface-400: hsl(var(--surface-400));
+  --color-surface-500: hsl(var(--surface-500));
+  --color-surface-600: hsl(var(--surface-600));
+  --color-surface-700: hsl(var(--surface-700));
+  --color-surface-800: hsl(var(--surface-800));
+  --color-surface-900: hsl(var(--surface-900));
+  --color-surface-950: hsl(var(--surface-950));
+
+  /* Foreground scale (50-900) - theme-aware text colors */
+  --color-foreground-50: hsl(var(--text-50));
+  --color-foreground-100: hsl(var(--text-100));
+  --color-foreground-200: hsl(var(--text-200));
+  --color-foreground-300: hsl(var(--text-300));
+  --color-foreground-400: hsl(var(--text-400));
+  --color-foreground-500: hsl(var(--text-500));
+  --color-foreground-600: hsl(var(--text-600));
+  --color-foreground-700: hsl(var(--text-700));
+  --color-foreground-800: hsl(var(--text-800));
+  --color-foreground-900: hsl(var(--text-900));
+
+  /* Border surface scale (300-900) - theme-aware border colors */
+  --color-border-surface-300: hsl(var(--border-300));
+  --color-border-surface-400: hsl(var(--border-400));
+  --color-border-surface-500: hsl(var(--border-500));
+  --color-border-surface-600: hsl(var(--border-600));
+  --color-border-surface-700: hsl(var(--border-700));
+  --color-border-surface-800: hsl(var(--border-800));
+  --color-border-surface-900: hsl(var(--border-900));
+
+  /* Command colors - theme-aware */
+  --color-command-bg: hsl(var(--surface-200));
+  --color-command-text: hsl(var(--text-900));
+  --color-command-border: hsl(var(--border-300));
 
   /* Sidebar colors */
-  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar: var(--sidebar-background);
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   --color-sidebar-primary: hsl(var(--sidebar-primary));
   --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
@@ -205,27 +243,6 @@
   .editor ul {
     list-style-type: disc;
   }
-  :root {
-    --border: 1px solid #ccc;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-    --sidebar-width: 260px;
-  }
-  .dark {
-    --sidebar-width: 260px;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
 
   :root {
     /* HeroUI theme variables */
@@ -234,23 +251,50 @@
     --heroui-white: #ffffff;
     --heroui-white-foreground: #000000;
 
-    --background: 0 0% 100%;
-    --foreground: 222.2 47.4% 11.2%;
+    /* Light mode colors - exact zinc scale mapping */
+    --background: 0 0% 100%; /* White - page background */
+    --foreground: 240 5.9% 10%; /* zinc-950 - primary text */
 
+    /* Surface scale - preserves all zinc shades (light mode) */
+    --surface-50: 240 4.8% 95.9%; /* zinc-50 */
+    --surface-100: 240 4.8% 95.9%; /* zinc-100 */
+    --surface-200: 240 5.9% 90%; /* zinc-200 */
+    --surface-300: 240 4.9% 83.9%; /* zinc-300 */
+    --surface-400: 240 5% 64.9%; /* zinc-400 */
+    --surface-500: 240 3.8% 46.1%; /* zinc-500 */
+    --surface-600: 240 5.2% 33.9%; /* zinc-600 */
+    --surface-700: 240 5.3% 26.1%; /* zinc-700 */
+    --surface-800: 240 3.7% 15.9%; /* zinc-800 */
+    --surface-900: 240 5.9% 10%; /* zinc-900 */
+    --surface-950: 240 10% 3.9%; /* zinc-950 */
+
+    /* Text scale - dark text for light backgrounds (higher numbers = more visible) */
+    --text-50: 240 4.8% 95.9%; /* zinc-50 - least visible (light gray) */
+    --text-100: 240 5.9% 90%; /* zinc-200 */
+    --text-200: 240 4.9% 83.9%; /* zinc-300 */
+    --text-300: 240 5% 64.9%; /* zinc-400 */
+    --text-400: 240 3.8% 46.1%; /* zinc-500 - muted text */
+    --text-500: 240 5.2% 33.9%; /* zinc-600 - placeholder */
+    --text-600: 240 5.3% 26.1%; /* zinc-700 */
+    --text-700: 240 3.7% 15.9%; /* zinc-800 */
+    --text-800: 240 5.9% 10%; /* zinc-900 */
+    --text-900: 240 10% 3.9%; /* zinc-950 - most visible (darkest text) */
+
+    /* Border scale - preserves all zinc border shades (light mode) */
+    --border-300: 240 4.9% 83.9%; /* zinc-300 */
+    --border-400: 240 5% 64.9%; /* zinc-400 */
+    --border-500: 240 3.8% 46.1%; /* zinc-500 */
+    --border-600: 240 5.2% 33.9%; /* zinc-600 */
+    --border-700: 240 5.3% 26.1%; /* zinc-700 */
+    --border-800: 240 3.7% 15.9%; /* zinc-800 */
+    --border-900: 240 5.9% 10%; /* zinc-900 */
+
+    /* Semantic colors */
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 47.4% 11.2%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 47.4% 11.2%;
-
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 196 100% 50%; /* #00bbff */
+    --primary-foreground: 0 0% 0%; /* Black */
 
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -258,12 +302,33 @@
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
 
-    --destructive: 0 100% 50%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
 
-    --ring: 215 20.2% 65.1%;
+    --border: 214.3 31.8% 91.4%; /* Default border */
+    --input: 214.3 31.8% 91.4%;
+    --ring: 196 100% 50%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 47.4% 11.2%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
 
     --radius: 0.5rem;
+
+    /* Sidebar colors (light mode) - elevated from main content */
+    --sidebar-width: 250px;
+    --sidebar-background: #f6f6f6;
+    --sidebar-foreground: 240 5.3% 26.1%; /* zinc-700 - readable text */
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 5.9% 90%; /* zinc-200 - hover state */
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    --primary-bg: #ffffff; /* main */
   }
 
   .dark {
@@ -273,36 +338,84 @@
     --heroui-white: #ffffff;
     --heroui-white-foreground: #000000;
 
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
+    /* Dark mode colors - exact zinc scale mapping (inverted) */
+    --background: 240 10% 3.9%; /* zinc-950 - page background */
+    --foreground: 240 4.8% 95.9%; /* zinc-50 - primary text */
 
+    /* Surface scale - inverted zinc shades (dark mode) */
+    --surface-50: 240 10% 3.9%; /* zinc-950 */
+    --surface-100: 240 5.9% 10%; /* zinc-900 */
+    --surface-200: 240 3.7% 15.9%; /* zinc-800 */
+    --surface-300: 240 5.3% 26.1%; /* zinc-700 */
+    --surface-400: 240 5.2% 33.9%; /* zinc-600 */
+    --surface-500: 240 3.8% 46.1%; /* zinc-500 */
+    --surface-600: 240 5% 64.9%; /* zinc-400 */
+    --surface-700: 240 4.9% 83.9%; /* zinc-300 */
+    --surface-800: 240 5.9% 90%; /* zinc-200 */
+    --surface-900: 240 4.8% 95.9%; /* zinc-100 */
+    --surface-950: 240 4.8% 95.9%; /* zinc-50 */
+
+    /* Text scale - inverted zinc text shades (dark mode) */
+    --text-50: 240 10% 3.9%; /* zinc-950 - darkest text */
+    --text-100: 240 5.9% 10%; /* zinc-900 */
+    --text-200: 240 3.7% 15.9%; /* zinc-800 */
+    --text-300: 240 5.3% 26.1%; /* zinc-700 */
+    --text-400: 240 5.2% 33.9%; /* zinc-600 - muted text */
+    --text-500: 240 3.8% 46.1%; /* zinc-500 - placeholder */
+    --text-600: 240 5% 64.9%; /* zinc-400 */
+    --text-700: 240 4.9% 83.9%; /* zinc-300 */
+    --text-800: 240 5.9% 90%; /* zinc-200 */
+    --text-900: 240 4.8% 95.9%; /* zinc-50 - lightest text */
+
+    /* Border scale - inverted zinc border shades (dark mode) */
+    --border-300: 240 5.3% 26.1%; /* zinc-700 */
+    --border-400: 240 5.2% 33.9%; /* zinc-600 */
+    --border-500: 240 3.8% 46.1%; /* zinc-500 */
+    --border-600: 240 5% 64.9%; /* zinc-400 */
+    --border-700: 240 4.9% 83.9%; /* zinc-300 */
+    --border-800: 240 5.9% 90%; /* zinc-200 */
+    --border-900: 240 4.8% 95.9%; /* zinc-100 */
+
+    /* Semantic colors */
     --muted: 223 47% 11%;
     --muted-foreground: 215.4 16.3% 56.9%;
 
-    --accent: 216 34% 17%;
-    --accent-foreground: 210 40% 98%;
-
-    --popover: 224 71% 4%;
-    --popover-foreground: 215 20.2% 65.1%;
-
-    --border: 216 34% 17%;
-    --input: 216 34% 17%;
-
-    --card: 224 71% 4%;
-    --card-foreground: 213 31% 91%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 1.2%;
+    --primary: 196 100% 50%; /* #00bbff */
+    --primary-foreground: 0 0% 0%; /* Black */
 
     --secondary: 222.2 47.4% 11.2%;
     --secondary-foreground: 210 40% 98%;
 
+    --accent: 216 34% 17%;
+    --accent-foreground: 210 40% 98%;
+
     --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
 
-    --ring: 216 34% 17%;
+    --border: 216 34% 17%; /* Default border */
+    --input: 216 34% 17%;
+    --ring: 196 100% 50%;
+
+    --card: 224 71% 4%;
+    --card-foreground: 213 31% 91%;
+
+    --popover: 224 71% 4%;
+    --popover-foreground: 215 20.2% 65.1%;
 
     --radius: 0.5rem;
+
+    /* Sidebar colors (dark mode) */
+    --sidebar-width: 250px;
+    --sidebar-background: #1a1a1a; /* dark sidebar */
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    --primary-bg: #141414; /* main */
   }
 }
 
@@ -317,6 +430,15 @@
       opacity: 0;
     }
   }
+
+  /* Utility class for icons that are white and need to be inverted in light mode */
+  .icon-theme-aware {
+    filter: invert(1);
+  }
+
+  .dark .icon-theme-aware {
+    filter: invert(0);
+  }
 }
 
 @theme inline {
@@ -330,6 +452,9 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+
+  --color-primary-bg: var(--primary-bg); /* main */
+
   @keyframes marquee {
     from {
       transform: translateX(0);

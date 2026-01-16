@@ -50,7 +50,7 @@ export function DateRangePicker({
       {label && (
         <Label
           htmlFor="date-range"
-          className="px-1 text-sm font-medium text-zinc-400"
+          className="px-1 text-sm font-medium text-foreground-400"
         >
           {label}
         </Label>
@@ -61,8 +61,8 @@ export function DateRangePicker({
             variant="ghost"
             id="date-range"
             className={cn(
-              "w-full justify-between rounded-xl bg-zinc-800/30 text-left font-normal text-zinc-400 hover:bg-zinc-800/50",
-              !range?.from && "text-zinc-500",
+              "w-full justify-between rounded-xl bg-surface-200/30 text-left font-normal text-foreground-400 hover:bg-surface-200/50",
+              !range?.from && "text-foreground-500",
             )}
           >
             {range?.from && range?.to
@@ -74,7 +74,7 @@ export function DateRangePicker({
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          className="w-auto overflow-hidden rounded-2xl border-0 bg-zinc-800 p-1 shadow-xl"
+          className="w-auto overflow-hidden rounded-2xl border-0 bg-surface-200 p-1 shadow-xl"
           align="start"
         >
           <Calendar
@@ -82,7 +82,7 @@ export function DateRangePicker({
             selected={range}
             onSelect={handleSelect}
             numberOfMonths={2}
-            className="bg-zinc-800"
+            className="bg-surface-200"
           />
         </PopoverContent>
       </Popover>
