@@ -147,14 +147,11 @@ def _table(cells: List[List[str]]) -> str:
 
 def _apply_annotations(plain_text: str, annotations: Dict[str, Any]) -> str:
     """Apply text annotations (bold, italic, etc.) to plain text."""
-    if re.match(r"^\s*$", plain_text):
+    if not plain_text.strip():
         return plain_text
 
-    leading_space_match = re.match(r"^(\s*)", plain_text)
-    trailing_space_match = re.search(r"(\s*)$", plain_text)
-
-    leading_space = leading_space_match.group(0) if leading_space_match else ""
-    trailing_space = trailing_space_match.group(0) if trailing_space_match else ""
+    leading_space = plain_text[: len(plain_text) - len(plain_text.lstrip())]
+    trailing_space = plain_text[len(plain_text.rstrip()) :]
 
     plain_text = plain_text.strip()
 

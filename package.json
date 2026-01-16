@@ -1,7 +1,7 @@
 {
   "name": "gaia",
   "scripts": {
-    "postinstall": "composio generate --type-tools"
+
   },
   "dependencies": {
     "@react-navigation/native": "^7.1.25",
