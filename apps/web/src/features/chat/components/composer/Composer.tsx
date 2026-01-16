@@ -336,7 +336,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
   );
 
   const handleToggleSlashCommandDropdown = () => {
-    console.log("test");
+    // Focus the input first - this will naturally trigger slash command detection
     // Focus the input first - this will naturally trigger slash command detection
     if (inputRef.current) {
       inputRef.current.focus();
