@@ -62,6 +62,36 @@ class Integration(BaseModel):
         None, description="User ID for custom integrations"
     )
 
+    # Publishing metadata
+    published_at: Optional[datetime] = Field(
+        None, description="When integration was published to marketplace"
+    )
+    clone_count: int = Field(
+        0, description="Number of times this integration was cloned"
+    )
+    cloned_from: Optional[str] = Field(
+        None, description="Original integration_id if this is a clone"
+    )
+
+    # SEO/sharing metadata (set on publish)
+    slug: Optional[str] = Field(
+        None, description="URL-friendly unique slug for public pages"
+    )
+    og_title: Optional[str] = Field(
+        None, description="Open Graph title for social sharing"
+    )
+    og_description: Optional[str] = Field(
+        None, description="Open Graph description for social sharing"
+    )
+
+    # Denormalized creator info for public display
+    creator_name: Optional[str] = Field(
+        None, description="Creator's display name for public pages"
+    )
+    creator_picture: Optional[str] = Field(
+        None, description="Creator's profile picture URL for public pages"
+    )
+
     # Configuration (one of these based on managed_by)
     mcp_config: Optional[MCPConfig] = None
     composio_config: Optional[ComposioConfigDoc] = None
@@ -162,6 +192,16 @@ class IntegrationResponse(BaseModel):
     is_public: Optional[bool] = None
     created_by: Optional[str] = None
 
+    # Publishing metadata (for public integrations)
+    published_at: Optional[datetime] = None
+    clone_count: Optional[int] = None
+    cloned_from: Optional[str] = None
+    slug: Optional[str] = None
+
+    # Creator info for public display
+    creator_name: Optional[str] = None
+    creator_picture: Optional[str] = None
+
     @classmethod
     def from_integration(cls, integration: Integration) -> "IntegrationResponse":
         """Convert Integration model to response."""
@@ -189,6 +229,14 @@ class IntegrationResponse(BaseModel):
             icon_url=integration.icon_url,
             is_public=integration.is_public,
             created_by=integration.created_by,
+            # Publishing metadata
+            published_at=integration.published_at,
+            clone_count=integration.clone_count,
+            cloned_from=integration.cloned_from,
+            slug=integration.slug,
+            # Creator info
+            creator_name=integration.creator_name,
+            creator_picture=integration.creator_picture,
         )
 
     @classmethod
