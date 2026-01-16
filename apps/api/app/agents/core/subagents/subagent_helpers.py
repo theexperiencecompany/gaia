@@ -5,11 +5,14 @@ Reusable utilities for working with subagents, including system prompt creation
 with provider metadata injection.
 """
 
+import re
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import get_integration_by_id
 from app.models.oauth_models import OAuthIntegration
+from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from langchain_core.messages import SystemMessage
 
@@ -111,10 +114,7 @@ async def create_subagent_system_message(
         base_system_prompt=base_system_prompt,
     )
 
-    return SystemMessage(
-        content=system_prompt,
-        additional_kwargs={"visible_to": {agent_name}},
-    )
+    return SystemMessage(content=system_prompt)
 
 
 def get_integration_info(integration_id: str) -> Optional[OAuthIntegration]:
@@ -130,3 +130,85 @@ def get_integration_info(integration_id: str) -> Optional[OAuthIntegration]:
         The OAuthIntegration object or None if not found
     """
     return get_integration_by_id(integration_id)
+
+
+async def create_agent_context_message(
+    agent_name: str,
+    configurable: dict,
+    user_id: Optional[str] = None,
+    query: Optional[str] = None,
+) -> SystemMessage:
+    """
+    Create a context message with time, timezone, memories for executor/subagents.
+
+    This ensures executor and subagents have the same temporal awareness as the main agent,
+    including:
+    - Current UTC time
+    - User's timezone and local time (extracted from user_time)
+    - Conversation memories
+
+    Args:
+        agent_name: The agent name for visibility metadata
+        configurable: The config["configurable"] dict from RunnableConfig
+        user_id: Optional user ID (extracted from configurable if not provided)
+        query: Optional search query for memory retrieval
+
+    Returns:
+        SystemMessage with time/timezone/memories context
+    """
+    context_parts = []
+
+    # Extract user info from configurable
+    user_id = user_id or configurable.get("user_id")
+    user_name = configurable.get("user_name")
+    user_time_str = configurable.get("user_time", "")
+
+    # Add user name context
+    if user_name:
+        context_parts.append(f"User Name: {user_name}")
+
+    # Add current UTC time
+    utc_time = datetime.now(timezone.utc)
+    formatted_utc_time = utc_time.strftime("%A, %B %d, %Y, %H:%M:%S UTC")
+    context_parts.append(f"Current UTC Time: {formatted_utc_time}")
+
+    # Extract timezone from user_time_str and add local time
+    if user_time_str:
+        try:
+            user_time = datetime.fromisoformat(user_time_str)
+            formatted_user_time = user_time.strftime("%A, %B %d, %Y, %H:%M:%S")
+
+            # Extract timezone offset from user_time_str (e.g., +05:30 or -08:00 or Z)
+            tz_match = re.search(r"([+-]\d{2}:\d{2}|Z)$", user_time_str)
+            if tz_match:
+                tz_offset = tz_match.group(1)
+                if tz_offset == "Z":
+                    tz_offset = "+00:00"
+                context_parts.append(f"User Timezone Offset: {tz_offset}")
+                context_parts.append(f"User Local Time: {formatted_user_time}")
+            else:
+                context_parts.append(f"User Local Time: {formatted_user_time}")
+        except Exception as e:
+            logger.warning(f"Error parsing user_time: {e}")
+
+    # Search for conversation memories
+    memories_section = ""
+    if user_id and query:
+        try:
+            results = await memory_service.search_memories(
+                query=query, user_id=user_id, limit=5
+            )
+            if results:
+                memories = getattr(results, "memories", None)
+                if memories:
+                    memories_section = (
+                        "\n\nBased on our previous conversations:\n"
+                        + "\n".join(f"- {mem.content}" for mem in memories)
+                    )
+                    logger.info(f"Added {len(memories)} memories to subagent context")
+        except Exception as e:
+            logger.warning(f"Error retrieving memories for subagent: {e}")
+
+    content = "\n".join(context_parts) + memories_section
+
+    return SystemMessage(content=content, memory_message=True)

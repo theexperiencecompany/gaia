@@ -1,21 +1,14 @@
-import { View } from "react-native";
-import { Button } from "@/components/ui/button";
-import { Text } from "@/components/ui/text";
+import { PressableFeedback } from "heroui-native";
+import { Text, View } from "react-native";
 
 interface AuthFooterProps {
   showSignUpDisclaimer?: boolean;
 }
 
 export function AuthFooter({ showSignUpDisclaimer = false }: AuthFooterProps) {
-  const handleTermsPress = () => {
-    console.log("Navigate to Terms of Service");
-    // TODO: Implement navigation
-  };
+  const handleTermsPress = () => {};
 
-  const handlePrivacyPress = () => {
-    console.log("Navigate to Privacy Policy");
-    // TODO: Implement navigation
-  };
+  const handlePrivacyPress = () => {};
 
   return (
     <View className="items-center justify-center mt-6">
@@ -25,27 +18,17 @@ export function AuthFooter({ showSignUpDisclaimer = false }: AuthFooterProps) {
         </Text>
       )}
       <View className="flex-row flex-wrap justify-center">
-        <Button
-          variant="link"
-          size="sm"
-          onPress={handleTermsPress}
-          className="p-0 h-auto"
-        >
+        <PressableFeedback onPress={handleTermsPress}>
           <Text className="text-sm text-zinc-400 underline">
             Terms of Service
           </Text>
-        </Button>
+        </PressableFeedback>
         <Text className="text-sm text-zinc-400 mx-1"> and </Text>
-        <Button
-          variant="link"
-          size="sm"
-          onPress={handlePrivacyPress}
-          className="p-0 h-auto"
-        >
+        <PressableFeedback onPress={handlePrivacyPress}>
           <Text className="text-sm text-zinc-400 underline">
             Privacy Policy
           </Text>
-        </Button>
+        </PressableFeedback>
       </View>
     </View>
   );

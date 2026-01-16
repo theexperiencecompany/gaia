@@ -1,15 +1,18 @@
 import { useRouter } from "expo-router";
-import { Image, KeyboardAvoidingView, Platform, View } from "react-native";
+import { Button, PressableFeedback } from "heroui-native";
+import {
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Button } from "@/components/ui/button";
-import { Text } from "@/components/ui/text";
 
 export default function SignUpScreen() {
   const router = useRouter();
 
   const handleGoogleSignUp = () => {
-    console.log("Google Sign Up");
-    // TODO: Implement Google sign up
     router.replace("/");
   };
 
@@ -18,36 +21,35 @@ export default function SignUpScreen() {
   };
 
   return (
-    <View className="flex-1 bg-[#0c1f3d]">
+    <View className="flex-1 bg-background">
       {/* Full Background Image */}
       <Image
         source={require("@/assets/background/signup.webp")}
         className="absolute w-full h-full"
         resizeMode="cover"
         blurRadius={0.5}
-        fadeDuration={300}
       />
 
       {/* Dark Overlay */}
       <View className="absolute w-full h-full bg-black/50" />
 
-      <SafeAreaView className="flex-1">
+      <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView
           className="flex-1 justify-center items-center px-6"
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           {/* Sign Up Card */}
-          <View className="w-full max-w-[450px] bg-[#1a1a1a]/95 rounded-[20px] px-8 py-10 border border-white/10 shadow-2xl elevation-20">
+          <View className="w-full max-w-md bg-surface/95 rounded-3xl px-8 py-10 border border-border/20">
             {/* Logo and Title */}
             <View className="items-center mb-8">
-              <View className="w-[70px] h-[70px] rounded-full bg-[#16c1ff]/15 items-center justify-center mb-4">
+              <View className="w-18 h-18 rounded-full bg-accent/15 items-center justify-center mb-4">
                 <Image
-                  source={require("@/assets/logo/logo.webp")}
-                  className="w-[50px] h-[50px]"
+                  source={require("@shared/assets/logo/logo.webp")}
+                  className="w-12 h-12"
                   resizeMode="contain"
                 />
               </View>
-              <Text className="text-2xl font-bold text-white text-center">
+              <Text className="text-2xl font-bold text-foreground text-center">
                 Time to Supercharge You.
               </Text>
             </View>
@@ -55,57 +57,48 @@ export default function SignUpScreen() {
             {/* Sign Up Form */}
             <View className="w-full">
               {/* Google Button */}
-              <Button
-                variant="secondary"
-                size="lg"
-                className="bg-zinc-800/80 rounded-xl mb-4 flex-row items-center justify-center gap-2 border border-white/20"
-                onPress={handleGoogleSignUp}
-              >
+              <Button size="lg" variant="ghost" onPress={handleGoogleSignUp}>
                 <Image
                   source={require("@/assets/icons/google-logo.png")}
-                  className="w-[18px] h-[18px]"
+                  className="w-5 h-5 mr-2"
                   resizeMode="contain"
                 />
-                <Text className="text-base font-medium text-white">
-                  Continue with Google
-                </Text>
+                <Button.Label>Continue with Google</Button.Label>
               </Button>
 
               {/* Sign In Link */}
               <View className="flex-row items-center justify-center mt-4">
-                <Text className="text-base text-zinc-400">
+                <Text className="text-base text-muted-foreground">
                   Already have an account?{" "}
                 </Text>
-                <Button
-                  variant="link"
-                  size="sm"
-                  onPress={handleSignIn}
-                  className="p-0 h-auto"
-                >
-                  <Text className="text-base text-[#16c1ff] font-semibold">
+                <PressableFeedback onPress={handleSignIn}>
+                  <Text className="text-base text-accent font-semibold">
                     Sign in
                   </Text>
-                </Button>
+                </PressableFeedback>
               </View>
             </View>
 
             {/* Footer */}
-            <View className="items-center justify-center mt-6">
-              <Text className="text-sm text-zinc-400 text-center">
-                By creating an account, you agree to the{" "}
+            <View className="items-center mt-6">
+              <Text className="text-sm text-muted-foreground text-center">
+                By creating an account, you agree to the
               </Text>
               <View className="flex-row flex-wrap justify-center">
-                <Button variant="link" size="sm" className="p-0 h-auto">
-                  <Text className="text-sm text-zinc-400 underline">
+                <PressableFeedback>
+                  <Text className="text-sm text-muted-foreground underline">
                     Terms of Service
                   </Text>
-                </Button>
-                <Text className="text-sm text-zinc-400 mx-1"> and </Text>
-                <Button variant="link" size="sm" className="p-0 h-auto">
-                  <Text className="text-sm text-zinc-400 underline">
+                </PressableFeedback>
+                <Text className="text-sm text-muted-foreground mx-1">
+                  {" "}
+                  and{" "}
+                </Text>
+                <PressableFeedback>
+                  <Text className="text-sm text-muted-foreground underline">
                     Privacy Policy
                   </Text>
-                </Button>
+                </PressableFeedback>
               </View>
             </View>
           </View>

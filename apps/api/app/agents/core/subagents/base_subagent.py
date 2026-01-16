@@ -11,10 +11,8 @@ invoked via tool-calling pattern similar to executor_agent.
 import asyncio
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
-from app.agents.core.nodes import trim_messages_node
-from app.agents.core.nodes.delete_system_messages import (
-    create_delete_system_messages_node,
-)
+from app.agents.core.nodes import manage_system_prompts_node, trim_messages_node
+from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.memory_tools import search_memory
@@ -75,10 +73,9 @@ class SubAgentFactory:
             "tool_registry": scoped_tool_dict,  # Use scoped dict instead of global
             "agent_name": name,
             "pre_model_hooks": [
+                filter_messages_node,
+                manage_system_prompts_node,
                 trim_messages_node,
-            ],
-            "end_graph_hooks": [
-                create_delete_system_messages_node(),
             ],
         }
 
