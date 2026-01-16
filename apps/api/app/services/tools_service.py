@@ -52,8 +52,8 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
     # Load tool registry
     tool_registry = await get_tool_registry()
 
-    # Load provider tools (load_all_mcp_tools is a no-op, removed for performance)
-    await tool_registry.load_all_provider_tools()
+    # Provider tools are loaded at application startup via lifespan
+    # (see app/core/provider_registration.py - init_tool_registry and auto_initialize)
 
     # Get category-based tools from registry
     _categories = tool_registry.get_all_category_objects(
@@ -226,8 +226,8 @@ async def get_tool_categories() -> Dict[str, int]:
     category_counts: Dict[str, int] = {}
     tool_registry = await get_tool_registry()
 
-    # Load provider tools (load_all_mcp_tools is a no-op, removed for performance)
-    await tool_registry.load_all_provider_tools()
+    # Provider tools are loaded at application startup via lifespan
+    # (see app/core/provider_registration.py - init_tool_registry and auto_initialize)
 
     all_categories = tool_registry.get_all_category_objects()
 
