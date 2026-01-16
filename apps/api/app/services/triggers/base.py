@@ -6,11 +6,12 @@ All provider-specific trigger handlers must extend this class.
 
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from app.config.loggers import general_logger as logger
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
+from app.utils.exceptions import TriggerRegistrationError
 
 
 class TriggerHandler(ABC):
@@ -90,6 +91,90 @@ class TriggerHandler(ABC):
                 success = False
 
         return success
+
+    async def _register_triggers_parallel(
+        self,
+        user_id: str,
+        trigger_name: str,
+        configs: List[Dict[str, Any]],
+        composio_slug: str,
+        config_description_fn: Optional[Callable[[Dict[str, Any]], str]] = None,
+    ) -> List[str]:
+        """Register multiple triggers in parallel with automatic rollback on failure.
+
+        This is a reusable helper for handlers that create multiple triggers.
+        If any registration fails, all successful ones are rolled back.
+
+        Args:
+            user_id: The user ID
+            trigger_name: The trigger name (for error messages)
+            configs: List of Composio trigger configs to register
+            composio_slug: The Composio trigger slug
+            config_description_fn: Optional function to describe a config for logging
+
+        Returns:
+            List of registered trigger IDs (only if ALL succeed)
+
+        Raises:
+            TriggerRegistrationError: If any registration fails
+        """
+
+        if not configs:
+            return []
+
+        composio = get_composio_service()
+
+        async def register_single(config: Dict[str, Any]) -> Optional[str]:
+            """Register a single trigger and return trigger_id."""
+            result = await asyncio.to_thread(
+                composio.composio.triggers.create,
+                user_id=user_id,
+                slug=composio_slug,
+                trigger_config=config,
+            )
+            if result and hasattr(result, "trigger_id"):
+                return result.trigger_id
+            return None
+
+        # Execute all registrations in parallel
+        results = await asyncio.gather(
+            *[register_single(cfg) for cfg in configs],
+            return_exceptions=True,
+        )
+
+        # Collect results and check for failures
+        successful_ids: List[str] = []
+        has_failure = False
+        failure_message = ""
+
+        for i, result in enumerate(results):
+            if isinstance(result, BaseException):
+                has_failure = True
+                failure_message = str(result)
+                config_desc = (
+                    config_description_fn(configs[i])
+                    if config_description_fn
+                    else str(configs[i])
+                )
+                logger.error(f"Trigger registration failed for {config_desc}: {result}")
+            elif result is not None:
+                successful_ids.append(result)
+
+        # If any failed, rollback all successful ones
+        if has_failure:
+            if successful_ids:
+                logger.warning(
+                    f"Rolling back {len(successful_ids)} triggers due to partial failure"
+                )
+                await self.unregister(user_id, successful_ids)
+
+            raise TriggerRegistrationError(
+                f"Failed to register all {trigger_name} triggers: {failure_message}",
+                trigger_name,
+                partial_ids=successful_ids,
+            )
+
+        return successful_ids
 
     @abstractmethod
     async def find_workflows(

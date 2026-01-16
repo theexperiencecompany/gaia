@@ -150,13 +150,13 @@ class GoogleSheetsNewRowConfig(BaseTriggerConfigData):
     """Config for google_sheets_new_row trigger."""
 
     trigger_name: Literal["google_sheets_new_row"] = "google_sheets_new_row"
-    spreadsheet_ids: str = Field(
-        default="",
-        description="Comma-separated spreadsheet IDs to monitor",
+    spreadsheet_ids: List[str] = Field(
+        default_factory=list,
+        description="List of spreadsheet IDs to monitor",
     )
-    sheet_names: str = Field(
-        default="",
-        description="Comma-separated sheet names to monitor (requires spreadsheet_ids)",
+    sheet_names: List[str] = Field(
+        default_factory=list,
+        description="List of sheet names to monitor (requires spreadsheet_ids)",
     )
 
 
@@ -164,9 +164,9 @@ class GoogleSheetsNewSheetConfig(BaseTriggerConfigData):
     """Config for google_sheets_new_sheet trigger."""
 
     trigger_name: Literal["google_sheets_new_sheet"] = "google_sheets_new_sheet"
-    spreadsheet_ids: str = Field(
-        default="",
-        description="Comma-separated spreadsheet IDs to monitor",
+    spreadsheet_ids: List[str] = Field(
+        default_factory=list,
+        description="List of spreadsheet IDs to monitor",
     )
 
 

@@ -22,6 +22,7 @@ from app.models.trigger_configs import (
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
+from app.utils.exceptions import TriggerRegistrationError
 from composio.types import ToolExecutionResponse
 
 
@@ -188,13 +189,22 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> List[str]:
-        """Register Google Sheets triggers with multi-select support."""
+        """Register Google Sheets triggers with parallel execution and rollback.
+
+        All triggers are registered in parallel. If any fail, all successfully
+        created triggers are rolled back (deleted) to maintain atomicity.
+
+        Raises:
+            TriggerRegistrationError: If any trigger registration fails
+        """
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
             logger.error(f"Unknown Google Sheets trigger: {trigger_name}")
-            return []
+            raise TriggerRegistrationError(
+                f"Unknown Google Sheets trigger: {trigger_name}",
+                trigger_name,
+            )
 
-        composio = get_composio_service()
         trigger_data = trigger_config.trigger_data
 
         # Validate and narrow type based on trigger_name
@@ -204,128 +214,54 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                     f"Expected GoogleSheetsNewRowConfig for trigger '{trigger_name}', "
                     f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
                 )
-            spreadsheet_ids_str = trigger_data.spreadsheet_ids
-            sheet_names_str = trigger_data.sheet_names
+            spreadsheet_ids = trigger_data.spreadsheet_ids or []
+            sheet_names = trigger_data.sheet_names or []
         elif trigger_name == "google_sheets_new_sheet":
             if not isinstance(trigger_data, GoogleSheetsNewSheetConfig):
                 raise TypeError(
                     f"Expected GoogleSheetsNewSheetConfig for trigger '{trigger_name}', "
                     f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
                 )
-            spreadsheet_ids_str = trigger_data.spreadsheet_ids
-            sheet_names_str = ""
+            spreadsheet_ids = trigger_data.spreadsheet_ids or []
+            sheet_names = []
         else:
-            logger.error(f"Unknown trigger name: {trigger_name}")
-            return []
+            raise TriggerRegistrationError(
+                f"Unknown trigger name: {trigger_name}",
+                trigger_name,
+            )
 
-        # Parse comma-separated IDs
-        spreadsheet_ids = (
-            [s.strip() for s in spreadsheet_ids_str.split(",") if s.strip()]
-            if spreadsheet_ids_str
-            else []
-        )
-
-        sheet_names = (
-            [s.strip() for s in sheet_names_str.split(",") if s.strip()]
-            if sheet_names_str
-            else []
-        )
-
-        # Register triggers for each combination
-        trigger_ids = []
-        spreadsheets_to_monitor = (
-            spreadsheet_ids if spreadsheet_ids else [None]  # type: ignore
-        )  # None = all
+        # Build list of trigger configs to register
+        configs: List[Dict[str, Any]] = []
+        spreadsheets_to_monitor = spreadsheet_ids if spreadsheet_ids else [None]  # type: ignore
 
         for spreadsheet_id in spreadsheets_to_monitor:
-            # Skip if user is filtering by sheets but this spreadsheet has none selected
-            # This handles the case where user selected spreadsheet but deselected all sheets
-            if spreadsheet_id and sheet_names_str and not sheet_names:
-                logger.info(
-                    f"Skipping spreadsheet {spreadsheet_id} - sheet filtering active but no sheets selected"
-                )
-                continue
-
             if trigger_name == "google_sheets_new_row" and sheet_names:
-                # Register for each sheet
-                for sheet_name in sheet_names:
-                    composio_trigger_config: Dict[str, Any] = {}
+                # sheet_names may contain composite keys (spreadsheet_id::sheet_name)
+                for sheet_key in sheet_names:
+                    if "::" in sheet_key:
+                        key_spreadsheet_id, sheet_name = sheet_key.split("::", 1)
+                        if spreadsheet_id and key_spreadsheet_id != spreadsheet_id:
+                            continue
+                    else:
+                        sheet_name = sheet_key
+
+                    config: Dict[str, Any] = {}
                     if spreadsheet_id:
-                        composio_trigger_config["spreadsheet_id"] = spreadsheet_id
+                        config["spreadsheet_id"] = spreadsheet_id
                     if sheet_name:
-                        composio_trigger_config["sheet_name"] = sheet_name
-
-                    trigger_id = await self._register_single_trigger(
-                        composio, user_id, composio_slug, composio_trigger_config
-                    )
-                    if trigger_id:
-                        trigger_ids.append(trigger_id)
+                        config["sheet_name"] = sheet_name
+                    configs.append(config)
             else:
-                # Register for spreadsheet only
-                composio_trigger_config = (
-                    {"spreadsheet_id": spreadsheet_id} if spreadsheet_id else {}
-                )
-                trigger_id = self._register_single_trigger_sync(
-                    composio, user_id, composio_slug, composio_trigger_config
-                )
-                if trigger_id:
-                    trigger_ids.append(trigger_id)
+                config = {"spreadsheet_id": spreadsheet_id} if spreadsheet_id else {}
+                configs.append(config)
 
-        return trigger_ids
-
-    def _register_single_trigger_sync(
-        self,
-        composio,
-        user_id: str,
-        composio_slug: str,
-        trigger_config: Dict[str, Any],
-    ) -> Optional[str]:
-        """Register a single trigger with Composio synchronously."""
-        try:
-            result = composio.composio.triggers.create(
-                user_id=user_id,
-                slug=composio_slug,
-                trigger_config=trigger_config,
-            )
-
-            if result and hasattr(result, "trigger_id"):
-                logger.info(
-                    f"Registered {composio_slug} for user {user_id}: {result.trigger_id}"
-                )
-                return result.trigger_id
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Failed to register trigger {composio_slug}: {e}")
-            return None
-
-    async def _register_single_trigger(
-        self,
-        composio,
-        user_id: str,
-        composio_slug: str,
-        trigger_config: Dict[str, Any],
-    ) -> Optional[str]:
-        """Register a single trigger with Composio asynchronously."""
-        try:
-            result = await asyncio.to_thread(
-                composio.composio.triggers.create,
-                user_id=user_id,
-                slug=composio_slug,
-                trigger_config=trigger_config,
-            )
-
-            if result and hasattr(result, "trigger_id"):
-                logger.info(
-                    f"Registered {composio_slug} for user {user_id}: {result.trigger_id}"
-                )
-                return result.trigger_id
-
-        except Exception as e:
-            logger.error(f"Failed to register trigger {composio_slug}: {e}")
-
-        return None
+        # Use the base class helper for parallel registration with rollback
+        return await self._register_triggers_parallel(
+            user_id=user_id,
+            trigger_name=trigger_name,
+            configs=configs,
+            composio_slug=composio_slug,
+        )
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]

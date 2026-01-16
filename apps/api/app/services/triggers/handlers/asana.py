@@ -8,8 +8,8 @@ from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
 from app.models.trigger_configs import AsanaTaskTriggerConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
-from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
+from app.utils.exceptions import TriggerRegistrationError
 
 
 class AsanaTriggerHandler(TriggerHandler):
@@ -38,13 +38,19 @@ class AsanaTriggerHandler(TriggerHandler):
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> List[str]:
-        """Register Asana triggers."""
+        """Register Asana triggers.
+
+        Raises:
+            TriggerRegistrationError: If trigger registration fails
+        """
+
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
-            logger.error(f"Unknown Asana trigger: {trigger_name}")
-            return []
+            raise TriggerRegistrationError(
+                f"Unknown Asana trigger: {trigger_name}",
+                trigger_name,
+            )
 
-        composio = get_composio_service()
         trigger_data = trigger_config.trigger_data
 
         # Validate trigger_data type
@@ -61,25 +67,13 @@ class AsanaTriggerHandler(TriggerHandler):
         if trigger_data.workspace_id:
             composio_trigger_config["workspace_id"] = trigger_data.workspace_id
 
-        try:
-            # Direct synchronous call
-            result = composio.composio.triggers.create(
-                user_id=user_id,
-                slug=composio_slug,
-                trigger_config=composio_trigger_config,
-            )
-
-            if result and hasattr(result, "trigger_id"):
-                logger.info(
-                    f"Registered {composio_slug} for user {user_id}: {result.trigger_id}"
-                )
-                return [result.trigger_id]
-
-            return []
-
-        except Exception as e:
-            logger.error(f"Failed to register Asana trigger {trigger_name}: {e}")
-            return []
+        # Use the base class helper for consistent error handling
+        return await self._register_triggers_parallel(
+            user_id=user_id,
+            trigger_name=trigger_name,
+            configs=[composio_trigger_config],
+            composio_slug=composio_slug,
+        )
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]

@@ -24,6 +24,7 @@ from app.models.trigger_configs import (
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
+from app.utils.exceptions import TriggerRegistrationError
 
 
 class NotionTitleProperty(TypedDict):
@@ -155,17 +156,26 @@ class NotionTriggerHandler(TriggerHandler):
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> List[str]:
-        """Register Notion triggers."""
+        """Register Notion triggers with parallel execution and rollback.
+
+        If any trigger registration fails, all successfully created triggers
+        are rolled back to maintain atomicity.
+
+        Raises:
+            TriggerRegistrationError: If any trigger registration fails
+        """
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
-            logger.error(f"Unknown Notion trigger: {trigger_name}")
-            return []
+            raise TriggerRegistrationError(
+                f"Unknown Notion trigger: {trigger_name}",
+                trigger_name,
+            )
 
-        composio = get_composio_service()
-        trigger_ids = []
         trigger_data = trigger_config.trigger_data
 
-        # Handle multi-select support for databases and pages
+        # Build list of configs to register based on trigger type
+        configs: List[Dict[str, Any]] = []
+
         if trigger_name == "notion_new_page_in_db":
             if not isinstance(trigger_data, NotionNewPageInDbConfig):
                 raise TypeError(
@@ -178,24 +188,8 @@ class NotionTriggerHandler(TriggerHandler):
                 logger.warning("No database IDs provided for notion_new_page_in_db")
                 return []
 
-            # Register a trigger for each database
             for database_id in database_ids:
-                try:
-                    # Direct synchronous call
-                    result = composio.composio.triggers.create(
-                        user_id=user_id,
-                        slug=composio_slug,
-                        trigger_config={"database_id": database_id},
-                    )
-                    if result and hasattr(result, "trigger_id"):
-                        logger.info(
-                            f"Registered {composio_slug} for database {database_id}: {result.trigger_id}"
-                        )
-                        trigger_ids.append(result.trigger_id)
-                except Exception as e:
-                    logger.error(
-                        f"Failed to register trigger for database {database_id}: {e}"
-                    )
+                configs.append({"database_id": database_id})
 
         elif trigger_name == "notion_page_updated":
             if not isinstance(trigger_data, NotionPageUpdatedConfig):
@@ -209,24 +203,10 @@ class NotionTriggerHandler(TriggerHandler):
                 logger.warning("No page IDs provided for notion_page_updated")
                 return []
 
-            # Register a trigger for each page
             for page_id in page_ids:
-                try:
-                    result = composio.composio.triggers.create(
-                        user_id=user_id,
-                        slug=composio_slug,
-                        trigger_config={"page_id": page_id},
-                    )
-                    if result and hasattr(result, "trigger_id"):
-                        logger.info(
-                            f"Registered {composio_slug} for page {page_id}: {result.trigger_id}"
-                        )
-                        trigger_ids.append(result.trigger_id)
-                except Exception as e:
-                    logger.error(f"Failed to register trigger for page {page_id}: {e}")
+                configs.append({"page_id": page_id})
 
         elif trigger_name == "notion_all_page_events":
-            # Validate type even though no config is needed
             if trigger_data is not None and not isinstance(
                 trigger_data, NotionAllPageEventsConfig
             ):
@@ -234,25 +214,21 @@ class NotionTriggerHandler(TriggerHandler):
                     f"Expected NotionAllPageEventsConfig for trigger '{trigger_name}', "
                     f"but got {type(trigger_data).__name__}"
                 )
-            try:
-                result = await asyncio.to_thread(
-                    composio.composio.triggers.create,
-                    user_id=user_id,
-                    slug=composio_slug,
-                    trigger_config={},
-                )
-                if result and hasattr(result, "trigger_id"):
-                    logger.info(
-                        f"Registered {composio_slug} for user {user_id}: {result.trigger_id}"
-                    )
-                    trigger_ids.append(result.trigger_id)
-            except Exception as e:
-                logger.error(f"Failed to register Notion trigger {trigger_name}: {e}")
-        else:
-            logger.error(f"Unknown Notion trigger: {trigger_name}")
-            return []
+            configs.append({})
 
-        return trigger_ids
+        else:
+            raise TriggerRegistrationError(
+                f"Unknown Notion trigger: {trigger_name}",
+                trigger_name,
+            )
+
+        # Use the base class helper for parallel registration with rollback
+        return await self._register_triggers_parallel(
+            user_id=user_id,
+            trigger_name=trigger_name,
+            configs=configs,
+            composio_slug=composio_slug,
+        )
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]

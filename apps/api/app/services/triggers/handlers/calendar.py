@@ -20,8 +20,8 @@ from app.models.trigger_configs import (
     CalendarEventStartingSoonConfig,
 )
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
-from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
+from app.utils.exceptions import TriggerRegistrationError
 
 
 class CalendarTriggerHandler(TriggerHandler):
@@ -60,10 +60,13 @@ class CalendarTriggerHandler(TriggerHandler):
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> List[str]:
-        """Register calendar triggers.
+        """Register calendar triggers with parallel execution and rollback.
 
         Handles multi-calendar registration - creates one Composio trigger
-        per calendar ID for proper event matching.
+        per calendar ID for proper event matching. If any fail, all are rolled back.
+
+        Raises:
+            TriggerRegistrationError: If any trigger registration fails
         """
         trigger_data = trigger_config.trigger_data
 
@@ -83,54 +86,45 @@ class CalendarTriggerHandler(TriggerHandler):
                 )
             calendar_ids = trigger_data.calendar_ids
         else:
-            logger.error(f"Unknown calendar trigger: {trigger_name}")
-            return []
+            raise TriggerRegistrationError(
+                f"Unknown calendar trigger: {trigger_name}",
+                trigger_name,
+            )
 
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
-            logger.error(f"Unknown calendar trigger: {trigger_name}")
-            return []
+            raise TriggerRegistrationError(
+                f"Unknown calendar trigger: {trigger_name}",
+                trigger_name,
+            )
 
         if calendar_ids == ["all"]:
             calendar_ids = await self._fetch_user_calendars(user_id)
 
-        composio_service = get_composio_service()
+        if not calendar_ids:
+            return []
 
-        trigger_ids: List[str] = []
-
+        # Build configs for each calendar
+        configs: List[Dict[str, Any]] = []
         for calendar_id in calendar_ids:
-            try:
-                composio_trigger_config: Dict[str, Any] = {"calendarId": calendar_id}
-                if trigger_name == "calendar_event_starting_soon":
-                    # trigger_data is already validated as CalendarEventStartingSoonConfig
-                    starting_soon_data = trigger_data  # type: CalendarEventStartingSoonConfig
-                    if starting_soon_data.minutes_before_start is not None:
-                        composio_trigger_config["countdown_window_minutes"] = (
-                            starting_soon_data.minutes_before_start * 60
-                        )
-                    if starting_soon_data.include_all_day is not None:
-                        composio_trigger_config["include_all_day"] = (
-                            starting_soon_data.include_all_day
-                        )
+            config: Dict[str, Any] = {"calendarId": calendar_id}
+            if trigger_name == "calendar_event_starting_soon":
+                starting_soon_data = trigger_data  # type: CalendarEventStartingSoonConfig
+                if starting_soon_data.minutes_before_start is not None:
+                    config["countdown_window_minutes"] = (
+                        starting_soon_data.minutes_before_start * 60
+                    )
+                if starting_soon_data.include_all_day is not None:
+                    config["include_all_day"] = starting_soon_data.include_all_day
+            configs.append(config)
 
-                result = composio_service.composio.triggers.create(
-                    user_id=user_id,
-                    slug=composio_slug,
-                    trigger_config=composio_trigger_config,
-                )
-
-                if result and hasattr(result, "trigger_id"):
-                    trigger_id = result.trigger_id
-                    trigger_ids.append(trigger_id)
-                else:
-                    logger.warning(f"No trigger_id in result for {calendar_id}")
-
-            except Exception as e:
-                logger.error(
-                    f"Failed to register trigger for {calendar_id}: {e}",
-                    exc_info=True,
-                )
-        return trigger_ids
+        # Use the base class helper for parallel registration with rollback
+        return await self._register_triggers_parallel(
+            user_id=user_id,
+            trigger_name=trigger_name,
+            configs=configs,
+            composio_slug=composio_slug,
+        )
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]

@@ -1,7 +1,7 @@
 "use client";
 
 import { Select, SelectItem, SelectSection } from "@heroui/select";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
@@ -16,8 +16,8 @@ import type { TriggerConfig } from "../types";
 
 interface GoogleSheetsTriggerData {
   trigger_name: string;
-  spreadsheet_ids?: string;
-  sheet_names?: string;
+  spreadsheet_ids?: string[];
+  sheet_names?: string[];
 }
 
 interface GoogleSheetsConfig extends TriggerConfig {
@@ -51,62 +51,45 @@ export function GoogleSheetsSettings({
   const isConnected =
     integrations.find((i) => i.id === integrationId)?.status === "connected";
 
-  const [spreadsheetIds, setSpreadsheetIds] = useState<Set<string>>(
-    new Set(triggerData?.spreadsheet_ids?.split(",").filter(Boolean) || []),
+  // ============ SIMPLIFIED STATE: Just 2 states ============
+  const [spreadsheetIds, setSpreadsheetIds] = useState<string[]>(
+    triggerData?.spreadsheet_ids || [],
   );
-  // Store just sheet names initially - will be converted to full keys when sheets load
-  const [sheetKeys, setSheetKeys] = useState<Set<string>>(new Set());
-  const [pendingSheetNames, setPendingSheetNames] = useState<string[]>(
-    triggerData?.sheet_names?.split(",").filter(Boolean) || [],
+  // Store full composite keys (spreadsheet_id::sheet_name) to handle duplicate names
+  const [sheetKeys, setSheetKeys] = useState<string[]>(
+    triggerData?.sheet_names || [],
   );
-  const [searchQuery, _setSearchQuery] = useState("");
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
-  const [debouncedSpreadsheetIds, setDebouncedSpreadsheetIds] = useState<
-    string[]
-  >(Array.from(spreadsheetIds));
 
   const triggerSlug = config.trigger_name || "";
+  // Only new_row trigger needs sheet selection
+  const isNewRowTrigger = triggerSlug === "google_sheets_new_row";
 
-  // Debounce search query
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // Debounce spreadsheet IDs to reduce API calls
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSpreadsheetIds(Array.from(spreadsheetIds));
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [spreadsheetIds]);
-
-  // Fetch spreadsheets with search
+  // ============ DATA FETCHING ============
+  // Fetch spreadsheets (no manual debounce - React Query handles caching)
   const { data: spreadsheetsData, isLoading: isLoadingSpreadsheets } =
     useTriggerOptions(
       integrationId,
       triggerSlug,
       "spreadsheet_ids",
       isConnected && !!triggerSlug,
-      debouncedSearchQuery ? { search: debouncedSearchQuery } : undefined,
     );
 
-  // Fetch sheet names (dependent on spreadsheets) - use debounced IDs
+  // Fetch sheets for selected spreadsheets (only for new_row trigger)
   const { data: sheetsData, isLoading: isLoadingSheets } = useTriggerOptions(
     integrationId,
     triggerSlug,
     "sheet_names",
-    isConnected && !!triggerSlug && debouncedSpreadsheetIds.length > 0,
-    debouncedSpreadsheetIds.length > 0
-      ? { parent_values: debouncedSpreadsheetIds.join(",") }
+    isNewRowTrigger &&
+      isConnected &&
+      !!triggerSlug &&
+      spreadsheetIds.length > 0,
+    spreadsheetIds.length > 0
+      ? { parent_values: spreadsheetIds.join(",") }
       : undefined,
   );
 
-  const updateTriggerData = (updates: Partial<GoogleSheetsTriggerData>) => {
+  // ============ SINGLE SYNC EFFECT ============
+  useEffect(() => {
     const currentTriggerData = triggerData || {
       trigger_name: config.trigger_name || "",
     };
@@ -114,25 +97,15 @@ export function GoogleSheetsSettings({
       ...config,
       trigger_data: {
         ...currentTriggerData,
-        ...updates,
+        spreadsheet_ids: spreadsheetIds,
+        // Only include sheet_names for new_row trigger
+        ...(isNewRowTrigger && { sheet_names: sheetKeys }),
       },
     });
-  };
-
-  useEffect(() => {
-    // Extract just the sheet names from unique keys for backend
-    const sheetNames = Array.from(sheetKeys).map((key) => {
-      const parts = key.split("::");
-      return parts.length > 1 ? parts[1] : key;
-    });
-
-    updateTriggerData({
-      spreadsheet_ids: Array.from(spreadsheetIds).join(","),
-      sheet_names: sheetNames.join(","),
-    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spreadsheetIds, sheetKeys]);
+  }, [spreadsheetIds, sheetKeys, isNewRowTrigger]);
 
+  // ============ DERIVED DATA ============
   const spreadsheetOptions = (spreadsheetsData || []) as OptionItem[];
   const groupedSheetOptions = (sheetsData || []) as (
     | OptionItem
@@ -144,55 +117,56 @@ export function GoogleSheetsSettings({
     "group" in groupedSheetOptions[0] &&
     groupedSheetOptions[0].group !== undefined;
 
-  // Reconstruct full sheet keys from pending sheet names when sheets data loads
-  // This handles the update view case where we only have sheet names stored
-  useEffect(() => {
-    if (pendingSheetNames.length === 0 || groupedSheetOptions.length === 0) {
-      return;
-    }
-
-    const reconstructedKeys = new Set<string>();
-
-    // Build a map of sheet name -> full keys for quick lookup
-    const sheetNameToKeys = new Map<string, string[]>();
-
+  // Build a flat list of all available sheet names for matching
+  const allSheetOptions = useMemo(() => {
     if (hasGroupedSheets) {
-      for (const group of groupedSheetOptions as GroupedOption[]) {
-        for (const option of group.options) {
-          const parts = option.value.split("::");
-          const sheetName = parts.length > 1 ? parts[1] : option.value;
-          const existing = sheetNameToKeys.get(sheetName) || [];
-          existing.push(option.value);
-          sheetNameToKeys.set(sheetName, existing);
-        }
-      }
+      return (groupedSheetOptions as GroupedOption[]).flatMap((g) => g.options);
+    }
+    return groupedSheetOptions as OptionItem[];
+  }, [groupedSheetOptions, hasGroupedSheets]);
+
+  // Convert stored sheet keys to Set<string> for the Select component
+  const selectedSheetKeys = useMemo(() => {
+    return new Set(sheetKeys);
+  }, [sheetKeys]);
+
+  // ============ HANDLERS ============
+  const handleSpreadsheetChange = (selected: string[]) => {
+    setSpreadsheetIds(selected);
+    // Clear sheet selection when spreadsheets change
+    setSheetKeys([]);
+  };
+
+  const handleSheetSelectionChange = (keys: "all" | Set<React.Key>) => {
+    if (keys === "all") {
+      // Select all: store all composite keys
+      setSheetKeys(allSheetOptions.map((opt) => opt.value));
     } else {
-      for (const option of groupedSheetOptions as OptionItem[]) {
-        const parts = option.value.split("::");
-        const sheetName = parts.length > 1 ? parts[1] : option.value;
-        const existing = sheetNameToKeys.get(sheetName) || [];
-        existing.push(option.value);
-        sheetNameToKeys.set(sheetName, existing);
-      }
+      // Store the composite keys directly
+      setSheetKeys(Array.from(keys).map((key) => String(key)));
     }
+  };
 
-    // Match pending sheet names to full keys
-    for (const sheetName of pendingSheetNames) {
-      const matchingKeys = sheetNameToKeys.get(sheetName);
-      if (matchingKeys) {
-        for (const key of matchingKeys) {
-          reconstructedKeys.add(key);
-        }
-      }
-    }
+  const renderSheetValue = (
+    items: { key?: React.Key; textValue?: string }[],
+  ) => {
+    const count = items.length;
+    if (count === 0) return "Select sheets";
+    if (count === 1) return items[0]?.textValue || "1 sheet";
+    return `${count} sheets selected`;
+  };
 
-    if (reconstructedKeys.size > 0) {
-      setSheetKeys(reconstructedKeys);
-      setPendingSheetNames([]); // Clear pending after reconstruction
-    }
-  }, [groupedSheetOptions, pendingSheetNames, hasGroupedSheets]);
+  const renderSpreadsheetValue = (
+    items: { key: string; textValue: string }[],
+  ) => {
+    const count = items.length;
+    if (count === 0) return "Select spreadsheets";
+    if (count === 1) return items[0]?.textValue || "1 spreadsheet";
+    return `${count} spreadsheets selected`;
+  };
 
   if (!isConnected) {
+    // ============ RENDER ============
     return (
       <TriggerConnectionPrompt
         integrationName="Google Sheets"
@@ -201,41 +175,18 @@ export function GoogleSheetsSettings({
       />
     );
   }
-
-  const handleSheetSelectionChange = (keys: "all" | Set<React.Key>) => {
-    // Store the full unique keys directly (spreadsheet_id::sheet_name)
-    const keysArray =
-      keys === "all" ? [] : Array.from(keys).map((key) => String(key));
-    setSheetKeys(new Set(keysArray));
-  };
-
-  const renderValue = (items: { key: string; textValue: string }[]) => {
-    // Check if "all" is selected
-    if (sheetKeys.has("all")) return "All Sheets";
-
-    const count = items.filter((item) => item.key !== "all").length;
-    if (count === 0) return "Select sheets";
-    if (count === 1) return items[0]?.textValue || "1 sheet";
-    return `${count} sheets selected`;
-  };
-
   return (
     <div className="space-y-4">
-      {/* Spreadsheet Selection with Search */}
+      {/* Spreadsheet Selection */}
       <TriggerSelectToggle
         label="Spreadsheets"
         selectProps={{
           options: spreadsheetOptions,
-          selectedValues: Array.from(spreadsheetIds),
-          onSelectionChange: (selectedIds: string[]) => {
-            const newSelection = new Set(selectedIds);
-            setSpreadsheetIds(newSelection);
-            // Clear sheet selection when spreadsheets change
-            setSheetKeys(new Set());
-          },
+          selectedValues: spreadsheetIds,
+          onSelectionChange: handleSpreadsheetChange,
           isLoading: isLoadingSpreadsheets,
           placeholder: "Select spreadsheet(s)",
-          renderValue: renderValue,
+          renderValue: renderSpreadsheetValue,
           description: (
             <span className="text-xs text-zinc-500">
               Select spreadsheets to monitor
@@ -243,61 +194,63 @@ export function GoogleSheetsSettings({
           ),
         }}
         tagInputProps={{
-          values: Array.from(spreadsheetIds),
-          onChange: (selectedIds: string[]) => {
-            setSpreadsheetIds(new Set(selectedIds));
-            setSheetKeys(new Set());
-          },
+          values: spreadsheetIds,
+          onChange: handleSpreadsheetChange,
           placeholder: "Add another...",
           emptyPlaceholder: "Enter spreadsheet IDs",
         }}
         allowManualInput={true}
       />
 
-      {/* Sheet Name Selection */}
-      <Select
-        label="Sheets"
-        placeholder="Select sheet(s)"
-        selectionMode="multiple"
-        selectedKeys={sheetKeys}
-        onSelectionChange={handleSheetSelectionChange}
-        className="w-full max-w-xl"
-        description="Select specific sheets (leave empty for all sheets)"
-        isDisabled={spreadsheetIds.size === 0}
-        isLoading={isLoadingSheets}
-        renderValue={
-          renderValue as (
-            items: { key?: React.Key; textValue?: string }[],
-          ) => React.ReactNode
-        }
-      >
-        {hasGroupedSheets
-          ? (groupedSheetOptions as GroupedOption[]).map((group) => (
-              <SelectSection
-                key={group.group}
-                title={group.group}
-                classNames={{
-                  heading: "text-xs font-semibold text-zinc-400 px-2 py-1",
-                }}
-              >
-                {group.options.map((option) => (
-                  <SelectItem key={option.value} textValue={option.label}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectSection>
-            ))
-          : (groupedSheetOptions as OptionItem[]).map((option) => (
-              <SelectItem key={option.value} textValue={option.label}>
-                {option.label}
-              </SelectItem>
-            ))}
-      </Select>
+      {/* Sheet Name Selection - only for new_row trigger */}
+      {isNewRowTrigger && (
+        <Select
+          label="Sheets"
+          placeholder="Select sheet(s)"
+          selectionMode="multiple"
+          selectedKeys={selectedSheetKeys}
+          onSelectionChange={handleSheetSelectionChange}
+          className="w-full max-w-xl"
+          description="Select specific sheets (leave empty for all sheets)"
+          isDisabled={spreadsheetIds.length === 0}
+          isLoading={isLoadingSheets}
+          renderValue={renderSheetValue}
+        >
+          {hasGroupedSheets
+            ? (groupedSheetOptions as GroupedOption[]).map((group) => {
+                const spreadsheetName =
+                  spreadsheetOptions.find((opt) => opt.value === group.group)
+                    ?.label || group.group;
+                return (
+                  <SelectSection
+                    key={group.group}
+                    title={spreadsheetName}
+                    classNames={{
+                      heading: "text-xs font-semibold text-zinc-400 px-2 py-1",
+                    }}
+                  >
+                    {group.options.map((option) => (
+                      <SelectItem key={option.value} textValue={option.label}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectSection>
+                );
+              })
+            : (groupedSheetOptions as OptionItem[]).map((option) => (
+                <SelectItem key={option.value} textValue={option.label}>
+                  {option.label}
+                </SelectItem>
+              ))}
+        </Select>
+      )}
     </div>
   );
 }
 
-// Handler Registration
+// =============================================================================
+// HANDLER REGISTRATION
+// =============================================================================
 
 export const googleSheetsTriggerHandler: RegisteredHandler = {
   triggerSlugs: ["google_sheets_new_row", "google_sheets_new_sheet"],
@@ -308,8 +261,8 @@ export const googleSheetsTriggerHandler: RegisteredHandler = {
     trigger_name: slug,
     trigger_data: {
       trigger_name: slug,
-      spreadsheet_ids: "",
-      sheet_names: "",
+      spreadsheet_ids: [],
+      sheet_names: [],
     },
   }),
 

@@ -29,7 +29,7 @@ from app.models.workflow_models import (
     WorkflowStatusResponse,
 )
 from app.services.workflow import WorkflowService
-from app.services.workflow.trigger_service import TriggerRegistrationError
+from app.utils.exceptions import TriggerRegistrationError
 from app.utils.workflow_utils import transform_workflow_document
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -57,7 +57,7 @@ async def create_workflow(
         # Specific error for trigger registration failures
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to register triggers: {str(e)}",
+            detail=str(e),
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -156,7 +156,7 @@ async def activate_workflow(
         # Specific error for trigger registration failures
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to activate workflow: {str(e)}",
+            detail=str(e),
         )
     except HTTPException:
         raise
@@ -497,7 +497,7 @@ async def update_workflow(
         # Specific error for trigger registration failures
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to update workflow triggers: {str(e)}",
+            detail=str(e),
         )
     except HTTPException:
         raise

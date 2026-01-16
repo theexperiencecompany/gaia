@@ -40,7 +40,7 @@ class CustomToolsRegistry:
         custom_tool_names = custom_tools_registry.get_tool_names("gmail")
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._composio: Composio | None = None
         self._tools_by_toolkit: Dict[str, List[str]] = {}
         self._registered_toolkits: set = set()

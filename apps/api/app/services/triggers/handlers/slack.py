@@ -17,6 +17,7 @@ from app.models.trigger_configs import SlackChannelCreatedConfig, SlackNewMessag
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
+from app.utils.exceptions import TriggerRegistrationError
 from composio.types import ToolExecutionResponse
 
 
@@ -61,16 +62,19 @@ class SlackTriggerHandler(TriggerHandler):
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> List[str]:
-        """
-        Register Slack triggers based on user exclusion settings.
+        """Register Slack triggers with parallel execution and rollback.
 
         For each message type NOT excluded, registers the corresponding
-        specific Composio trigger. Always registers SLACK_RECEIVE_MESSAGE
-        for regular channel messages.
+        specific Composio trigger. If any fail, all are rolled back.
+
+        Raises:
+            TriggerRegistrationError: If any trigger registration fails
         """
         if trigger_name not in self.SUPPORTED_TRIGGERS:
-            logger.error(f"Unknown Slack trigger: {trigger_name}")
-            return []
+            raise TriggerRegistrationError(
+                f"Unknown Slack trigger: {trigger_name}",
+                trigger_name,
+            )
 
         trigger_data = trigger_config.trigger_data
 
@@ -93,8 +97,6 @@ class SlackTriggerHandler(TriggerHandler):
                 f"Expected SlackNewMessageConfig for trigger '{trigger_name}', "
                 f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
             )
-
-        trigger_ids: List[str] = []
 
         # Use channel_ids list directly
         channel_ids = trigger_data.channel_ids or []
@@ -134,6 +136,9 @@ class SlackTriggerHandler(TriggerHandler):
                         base_config["channel_id"] = channel_id
                     triggers_to_register.append((composio_slug, base_config.copy()))
 
+        if not triggers_to_register:
+            return []
+
         # Register all triggers in parallel
         async def register_single(
             composio_slug: str, config: Dict[str, Any]
@@ -145,13 +150,34 @@ class SlackTriggerHandler(TriggerHandler):
         tasks = [register_single(slug, cfg) for slug, cfg in triggers_to_register]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for result in results:
-            if isinstance(result, list):
-                trigger_ids.extend(result)
-            elif isinstance(result, Exception):
-                logger.error(f"Slack trigger registration failed: {result}")
+        # Collect results and check for failures
+        successful_ids: List[str] = []
+        has_failure = False
+        failure_message = ""
 
-        return trigger_ids
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                has_failure = True
+                failure_message = str(result)
+                logger.error(f"Slack trigger registration failed: {result}")
+            elif isinstance(result, list):
+                successful_ids.extend(result)
+
+        # If any failed, rollback all successful ones
+        if has_failure:
+            if successful_ids:
+                logger.warning(
+                    f"Rolling back {len(successful_ids)} Slack triggers due to partial failure"
+                )
+                await self.unregister(user_id, successful_ids)
+
+            raise TriggerRegistrationError(
+                f"Failed to register all Slack triggers: {failure_message}",
+                trigger_name,
+                partial_ids=successful_ids,
+            )
+
+        return successful_ids
 
     def _register_single_trigger_sync(
         self, user_id: str, composio_slug: str, trigger_config: Dict[str, Any]

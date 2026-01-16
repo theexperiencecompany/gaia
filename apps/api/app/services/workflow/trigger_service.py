@@ -14,17 +14,7 @@ from app.decorators.caching import Cacheable
 from app.models.oauth_models import WorkflowTriggerSchema
 from app.models.workflow_models import TriggerConfig
 from app.services.triggers import get_handler_by_name
-
-
-class TriggerRegistrationError(Exception):
-    """Raised when trigger registration fails."""
-
-    def __init__(
-        self, message: str, trigger_name: str, partial_ids: Optional[List[str]] = None
-    ):
-        super().__init__(message)
-        self.trigger_name = trigger_name
-        self.partial_ids = partial_ids or []
+from app.utils.exceptions import TriggerRegistrationError
 
 
 class TriggerService:

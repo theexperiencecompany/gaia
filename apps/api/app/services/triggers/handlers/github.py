@@ -24,6 +24,7 @@ from app.models.trigger_configs import (
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
+from app.utils.exceptions import TriggerRegistrationError
 from composio.types import ToolExecutionResponse
 
 
@@ -122,11 +123,20 @@ class GitHubTriggerHandler(TriggerHandler):
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> List[str]:
-        """Register GitHub triggers."""
+        """Register GitHub triggers with parallel execution and rollback.
+
+        If any trigger registration fails, all successfully created triggers
+        are rolled back to maintain atomicity.
+
+        Raises:
+            TriggerRegistrationError: If any trigger registration fails
+        """
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
-            logger.error(f"Unknown GitHub trigger: {trigger_name}")
-            return []
+            raise TriggerRegistrationError(
+                f"Unknown GitHub trigger: {trigger_name}",
+                trigger_name,
+            )
 
         trigger_data = trigger_config.trigger_data
 
@@ -156,58 +166,32 @@ class GitHubTriggerHandler(TriggerHandler):
                     f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
                 )
         else:
-            logger.error(f"Unknown GitHub trigger: {trigger_name}")
+            raise TriggerRegistrationError(
+                f"Unknown GitHub trigger: {trigger_name}",
+                trigger_name,
+            )
+
+        if not trigger_data.repos:
             return []
 
-        # Build list of registration tasks for parallel execution
-        async def register_single_repo(repo_full_name: str) -> Optional[str]:
-            """Register trigger for a single repo, returns trigger_id or None."""
-            owner = ""
-            repo = ""
+        # Build configs by parsing owner/repo from full names
+        configs: List[Dict[str, Any]] = []
+        for repo_full_name in trigger_data.repos:
             if "/" in repo_full_name:
                 parts = repo_full_name.split("/")
                 if len(parts) == 2:
-                    owner = parts[0]
-                    repo = parts[1]
+                    configs.append({"owner": parts[0], "repo": parts[1]})
 
-            if not owner or not repo:
-                return None
+        if not configs:
+            return []
 
-            composio_trigger_config = {"owner": owner, "repo": repo}
-            composio = get_composio_service()
-
-            try:
-                result = await asyncio.to_thread(
-                    composio.composio.triggers.create,
-                    user_id=user_id,
-                    slug=composio_slug,
-                    trigger_config=composio_trigger_config,
-                )
-
-                if result and hasattr(result, "trigger_id"):
-                    logger.info(
-                        f"Registered {composio_slug} for user {user_id} repo {repo_full_name}: {result.trigger_id}"
-                    )
-                    return result.trigger_id
-            except Exception as e:
-                logger.error(
-                    f"Failed to register GitHub trigger {trigger_name} for {repo_full_name}: {e}"
-                )
-            return None
-
-        # Execute all registrations in parallel
-        tasks = [register_single_repo(repo) for repo in trigger_data.repos]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Collect successful trigger IDs
-        trigger_ids = []
-        for result in results:
-            if isinstance(result, str):
-                trigger_ids.append(result)
-            elif isinstance(result, Exception):
-                logger.error(f"Trigger registration failed with exception: {result}")
-
-        return trigger_ids
+        # Use the base class helper for parallel registration with rollback
+        return await self._register_triggers_parallel(
+            user_id=user_id,
+            trigger_name=trigger_name,
+            configs=configs,
+            composio_slug=composio_slug,
+        )
 
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
