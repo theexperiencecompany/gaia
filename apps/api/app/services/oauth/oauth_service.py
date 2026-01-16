@@ -17,7 +17,7 @@ from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
 from app.services.composio.composio_service import get_composio_service
-from app.services.integration_service import update_user_integration_status
+from app.services.integrations.integration_service import update_user_integration_status
 from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
 )

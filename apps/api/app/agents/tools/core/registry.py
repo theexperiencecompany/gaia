@@ -375,15 +375,41 @@ class ToolRegistry:
         )
 
     async def _index_category_tools(self, category_name: str):
-        """Index tools from a category into ChromaDB store."""
+        """Index tools from a category into ChromaDB store.
+
+        Uses Redis-based change detection to skip indexing if tools haven't changed.
+        This avoids expensive ChromaDB queries on every startup.
+        """
         from app.db.chroma.chroma_tools_store import index_tools_to_store
+        from app.db.redis import get_cache, set_cache
+        import hashlib
 
         category = self._categories.get(category_name)
         if not category:
             return
 
         tools_with_space = [(tool.tool, category.space) for tool in category.tools]
+
+        # Compute a hash of all tool names + descriptions for change detection
+        tools_signature = "|".join(
+            f"{t.tool.name}:{getattr(t.tool, 'description', '')[:100]}"
+            for t in category.tools
+        )
+        tools_hash = hashlib.sha256(tools_signature.encode()).hexdigest()[:16]
+
+        # Check if tools have changed since last indexing
+        cache_key = f"chroma:indexed:{category_name}"
+        cached_hash = await get_cache(cache_key)
+
+        if cached_hash == tools_hash:
+            logger.debug(f"Skipping ChromaDB indexing for {category_name} - unchanged")
+            return
+
+        # Tools changed or first time - perform indexing
         await index_tools_to_store(tools_with_space)
+
+        # Cache the hash for 24 hours
+        await set_cache(cache_key, tools_hash, ttl=86400)
 
     def get_category(self, name: str) -> Optional[ToolCategory]:
         """Get a specific category by name."""

@@ -134,7 +134,7 @@ async def get_integration_details(integration_id: str) -> Optional[IntegrationRe
     Returns:
         IntegrationResponse or None if not found
     """
-    from app.services.integration_resolver import IntegrationResolver
+    from app.services.integrations.integration_resolver import IntegrationResolver
 
     # Fetch tools from global store
     tools_store = get_mcp_tools_store()
@@ -622,7 +622,7 @@ async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
     Returns:
         Set of integration IDs that user has connected
     """
-    from app.services.oauth_service import get_all_integrations_status
+    from app.services.oauth.oauth_service import get_all_integrations_status
 
     namespaces = set()
 

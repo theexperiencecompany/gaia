@@ -10,7 +10,7 @@ from app.models.user_models import (
     OnboardingRequest,
 )
 from app.utils.redis_utils import RedisPoolManager
-from app.services.post_onboarding_service import seed_initial_user_data
+from app.services.onboarding.post_onboarding_service import seed_initial_user_data
 from app.utils.user_preferences_utils import format_user_preferences_for_agent
 from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException

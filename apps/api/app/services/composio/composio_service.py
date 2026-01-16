@@ -76,34 +76,33 @@ class ComposioService:
         """
         Get tools for a specific toolkit with unified master hooks.
 
+        OPTIMIZED: Single API call instead of two. We apply hooks to all tools
+        in the toolkit, then filter excluded tools after fetch.
+
         The master hooks handle ALL tools automatically including:
         - User ID extraction from RunnableConfig metadata
         - Frontend streaming setup
         - All registered tool-specific hooks (Gmail, etc.)
         """
-        # Run the first tools.get() call asynchronously
-        tools = await asyncio.to_thread(
-            self.composio.tools.get, user_id="", toolkits=[tool_kit], limit=1000
-        )
-
         exclude_tools = exclude_tools or []
-        tools_name = [tool.name for tool in tools if tool.name not in exclude_tools]
 
-        master_before_modifier = before_execute(tools=tools_name)(
-            master_before_execute_hook
-        )
-        master_after_modifier = after_execute(tools=tools_name)(
-            master_after_execute_hook
-        )
+        # Build hook modifiers upfront - these will be applied to all toolkit tools
+        # We can't filter by tool name before the API call since we don't know them yet,
+        # but applying hooks to all tools and filtering after is equivalent and faster
+        master_before_modifier = before_execute()(master_before_execute_hook)
+        master_after_modifier = after_execute()(master_after_execute_hook)
 
-        # Run the second tools.get() call asynchronously
-        result = await asyncio.to_thread(
+        # Single API call with hooks applied
+        tools = await asyncio.to_thread(
             self.composio.tools.get,
             user_id="",
             toolkits=[tool_kit],
             modifiers=[master_before_modifier, master_after_modifier],
             limit=1000,
         )
+
+        # Filter excluded tools after fetch
+        result = [tool for tool in tools if tool.name not in exclude_tools]
 
         # Store tool names/descriptions in MongoDB for frontend visibility
         await self._store_tool_metadata(tool_kit, result)

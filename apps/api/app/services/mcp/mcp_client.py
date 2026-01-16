@@ -33,7 +33,7 @@ from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 from app.config.loggers import langchain_logger as logger
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.oauth_models import MCPConfig
-from app.services.integration_resolver import IntegrationResolver
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.utils.mcp_oauth_utils import (
@@ -463,7 +463,7 @@ class MCPClient:
 
             # Update user integration status to connected
             # Import here to avoid circular dependency
-            from app.services.integration_service import update_user_integration_status
+            from app.services.integrations.integration_service import update_user_integration_status
 
             try:
                 await update_user_integration_status(
@@ -532,7 +532,7 @@ class MCPClient:
                 resolved_description = description
 
                 if resolved_name is None:
-                    from app.services.integration_resolver import IntegrationResolver
+                    from app.services.integrations.integration_resolver import IntegrationResolver
 
                     resolved = await IntegrationResolver.resolve(integration_id)
                     if resolved and resolved.custom_doc:
@@ -1143,7 +1143,7 @@ class MCPClient:
         Returns dict mapping integration_id -> list of tools.
         """
         # Get all connected integrations from MongoDB (single source of truth)
-        from app.services.integration_service import get_user_connected_integrations
+        from app.services.integrations.integration_service import get_user_connected_integrations
 
         connected_ids: list[str] = []
         try:

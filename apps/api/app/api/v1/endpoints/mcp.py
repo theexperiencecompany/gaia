@@ -19,7 +19,7 @@ from app.helpers.mcp_helpers import (
     get_frontend_url,
     invalidate_mcp_status_cache,
 )
-from app.services.integration_resolver import IntegrationResolver
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_client import get_mcp_client
 
 router = APIRouter()

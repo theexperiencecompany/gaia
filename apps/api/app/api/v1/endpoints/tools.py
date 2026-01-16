@@ -7,25 +7,21 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.decorators.caching import Cacheable
+from app.db.redis import get_cache
 from app.models.tools_models import ToolsListResponse, ToolsCategoryResponse
-from app.services.tools_service import (
+from app.services.tools.tools_service import (
     get_available_tools,
     get_tools_by_category,
     get_tool_categories,
+    get_user_custom_tools,
+    merge_tools_responses,
 )
+from app.services.tools.tools_warmup import GLOBAL_TOOLS_CACHE_KEY
 
 router = APIRouter()
 
 
-def _tools_cache_key(*args, **kwargs) -> str:
-    """Generate cache key for tools endpoint using user_id from user dict."""
-    user = kwargs.get("user", {})
-    user_id = user.get("user_id", "anonymous")
-    return f"tools:user:{user_id}"
-
-
 @router.get("/tools", response_model=ToolsListResponse)
-@Cacheable(key_generator=_tools_cache_key, ttl=300, model=ToolsListResponse)  # 5 min
 async def list_available_tools(
     user: dict = Depends(get_current_user),
 ) -> ToolsListResponse:
@@ -36,15 +32,30 @@ async def list_available_tools(
     - Platform tools (always available)
     - Global MCP tools (stored when any user first connects to an MCP integration)
 
+    Performance optimization:
+    - Global tools are cached for 6 hours (shared across all users)
+    - User-specific custom tools are fetched on-demand
+
     Note: This endpoint returns global tool metadata for fast frontend visibility.
     User-specific tool connections are validated separately via integration status.
-    Cached for 5 minutes per user to improve performance.
 
     Returns:
         ToolsListResponse: List of tools with descriptions, parameters, and categories
     """
     try:
         user_id = user.get("user_id")
+
+        # Try global cache first (warmed at startup, 6 hour TTL)
+        cached_global = await get_cache(GLOBAL_TOOLS_CACHE_KEY, model=ToolsListResponse)
+        if cached_global is not None:
+            # Overlay user's custom MCP tools on top of cached global tools
+            if user_id:
+                custom_tools = await get_user_custom_tools(user_id)
+                if custom_tools:
+                    return merge_tools_responses(cached_global, custom_tools)
+            return cached_global
+
+        # Cache miss - build tools response (will also populate cache)
         return await get_available_tools(user_id=user_id)
     except Exception as e:
         raise HTTPException(

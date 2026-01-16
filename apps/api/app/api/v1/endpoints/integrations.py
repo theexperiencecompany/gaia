@@ -34,15 +34,15 @@ from app.schemas.integrations.responses import (
     MarketplaceResponse,
     UserIntegrationsListResponse,
 )
-from app.services.integration_connection_service import (
+from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,
     connect_mcp_integration,
     connect_self_integration,
     disconnect_integration,
 )
-from app.services.integration_resolver import IntegrationResolver
-from app.services.integration_service import (
+from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.integrations.integration_service import (
     add_user_integration,
     create_custom_integration,
     delete_custom_integration,
@@ -53,7 +53,7 @@ from app.services.integration_service import (
     update_custom_integration,
 )
 from app.services.mcp.mcp_client import get_mcp_client
-from app.services.oauth_service import get_all_integrations_status
+from app.services.oauth.oauth_service import get_all_integrations_status
 from fastapi import APIRouter, Depends, HTTPException
 from mcp_use.client.exceptions import OAuthAuthenticationError
 

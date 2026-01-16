@@ -11,6 +11,7 @@ integration document as `tools` array.
 Performance: Uses Redis cache to reduce MongoDB queries across all workers.
 """
 
+import asyncio
 from typing import Optional
 
 from app.config.loggers import langchain_logger as logger
@@ -62,8 +63,9 @@ class MCPToolsStore:
                 f"upserted={result.upserted_id is not None}, modified={result.modified_count}"
             )
 
-            # Invalidate cache
+            # Invalidate and refresh cache (fire-and-forget for speed)
             await delete_cache(MCP_TOOLS_CACHE_KEY)
+            asyncio.create_task(self._refresh_cache())
 
         except Exception as e:
             logger.error(f"[{integration_id}] Error storing tools: {e}", exc_info=True)
@@ -125,6 +127,30 @@ class MCPToolsStore:
         except Exception as e:
             logger.error(f"Error getting all MCP tools: {e}")
             return {}
+
+    async def _refresh_cache(self) -> None:
+        """Refresh the global MCP tools cache after a write.
+
+        Called as fire-and-forget task to pre-warm the cache
+        immediately after storing tools, reducing cache miss latency.
+        """
+        try:
+            cursor = integrations_collection.find(
+                {"tools": {"$exists": True, "$ne": []}},
+                {"integration_id": 1, "tools": 1},
+            )
+
+            grouped: dict[str, list[dict]] = {}
+            async for doc in cursor:
+                integration_id = doc.get("integration_id")
+                tools = doc.get("tools", [])
+                if integration_id and tools:
+                    grouped[integration_id] = tools
+
+            await set_cache(MCP_TOOLS_CACHE_KEY, grouped, ttl=MCP_TOOLS_CACHE_TTL)
+            logger.debug(f"Refreshed MCP tools cache with {len(grouped)} integrations")
+        except Exception as e:
+            logger.warning(f"Failed to refresh MCP tools cache: {e}")
 
 
 def get_mcp_tools_store() -> MCPToolsStore:

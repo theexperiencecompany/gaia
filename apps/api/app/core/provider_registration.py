@@ -53,6 +53,7 @@ from app.helpers.lifespan_helpers import (
 from app.services.composio.composio_service import init_composio_service
 from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.startup_validation import validate_startup_requirements
+from app.services.tools.tools_warmup import warmup_tools_cache
 from pydantic import PydanticDeprecatedSince20
 
 
@@ -123,6 +124,10 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # Add auto-initialization of providers marked with auto_initialize=True
     startup_tasks.append(providers.initialize_auto_providers())
     service_names.append("lazy_providers_auto_initializer")
+
+    # Warm up tools cache (loads provider tools and pre-caches global tools response)
+    startup_tasks.append(warmup_tools_cache())
+    service_names.append("tools_cache_warmup")
 
     try:
         # Execute all tasks in parallel (return_exceptions prevents cascade failures)

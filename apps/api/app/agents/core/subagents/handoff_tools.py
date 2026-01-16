@@ -12,16 +12,6 @@ All metadata comes from oauth_config.py OAUTH_INTEGRATIONS.
 from datetime import datetime
 from typing import Annotated, Optional, TypedDict
 
-from langchain_core.messages import (
-    AIMessageChunk,
-    HumanMessage,
-    ToolMessage,
-)
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
-from langgraph.store.base import BaseStore, PutOp
-
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
 from app.agents.core.subagents.subagent_helpers import (
     create_subagent_system_message,
@@ -33,12 +23,23 @@ from app.config.oauth_config import (
     get_subagent_integrations,
 )
 from app.core.lazy_loader import providers
+from app.db.mongodb.collections import integrations_collection
 from app.helpers.agent_helpers import build_agent_config
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.services.oauth_service import (
+from app.services.oauth.oauth_service import (
     check_integration_status,
 )
 from app.utils.agent_utils import format_tool_progress
+from langchain_core.messages import (
+    AIMessageChunk,
+    HumanMessage,
+    ToolMessage,
+)
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import tool
+from langgraph.config import get_stream_writer
+from langgraph.store.base import BaseStore, PutOp
 
 SUBAGENTS_NAMESPACE = ("subagents",)
 
@@ -105,9 +106,6 @@ async def _get_subagent_by_id(subagent_id: str):
             if integ.subagent_config and integ.subagent_config.has_subagent:
                 return integ
 
-    # Check custom MCPs in MongoDB
-    from app.db.mongodb.collections import integrations_collection
-
     # Search by integration_id (case-insensitive)
     custom = await integrations_collection.find_one(
         {
@@ -141,7 +139,6 @@ async def _get_subagent_by_id(subagent_id: str):
 
     # Fallback: Try IntegrationResolver which checks multiple sources
     # This handles cases where integration is in user_integrations but not integrations
-    from app.services.integration_resolver import IntegrationResolver
 
     resolved = await IntegrationResolver.resolve(search_id)
     if resolved and resolved.source == "custom" and resolved.custom_doc:

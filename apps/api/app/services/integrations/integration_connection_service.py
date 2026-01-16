@@ -18,14 +18,14 @@ from app.schemas.integrations.responses import (
     IntegrationSuccessResponse,
 )
 from app.services.composio.composio_service import get_composio_service
-from app.services.integration_resolver import IntegrationResolver
-from app.services.integration_service import (
+from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.integrations.integration_service import (
     delete_custom_integration,
     remove_user_integration,
     update_user_integration_status,
 )
 from app.services.mcp.mcp_client import get_mcp_client
-from app.services.oauth_state_service import create_oauth_state
+from app.services.oauth.oauth_state_service import create_oauth_state
 from app.utils.oauth_utils import build_google_oauth_url
 
 

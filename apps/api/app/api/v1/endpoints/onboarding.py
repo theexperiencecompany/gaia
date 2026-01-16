@@ -15,7 +15,7 @@ from app.models.user_models import (
     OnboardingResponse,
 )
 from app.services.composio.composio_service import get_composio_service
-from app.services.onboarding_service import (
+from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
     queue_personalization,

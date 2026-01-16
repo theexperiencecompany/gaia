@@ -14,6 +14,7 @@ from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
 )
+from app.utils.request_coalescing import coalesce_request
 
 
 # Build a lookup map for integration names
@@ -41,6 +42,22 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
 
     The user_id parameter is kept for future use but currently not used
     for tool fetching (only global tools are shown).
+
+    Performance: Uses request coalescing to prevent thundering herd on cache miss.
+    """
+    # For global tools (no user_id), use request coalescing to prevent
+    # multiple concurrent requests from doing redundant work
+    if user_id is None:
+        return await coalesce_request("global_tools", _build_tools_response)
+
+    # User-specific tools - build directly (per-user, no coalescing needed)
+    return await _build_tools_response(user_id)
+
+
+async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListResponse:
+    """Internal function to build the tools response.
+
+    Separated from get_available_tools to enable request coalescing.
     """
     _ = user_id  # Reserved for future use (e.g., user-specific tool filtering)
 
@@ -85,29 +102,40 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
 
     # Prepare custom integrations query (if user_id provided)
     async def fetch_custom_integrations():
+        """Fetch user's custom integrations with single aggregation query.
+
+        Optimized: Uses MongoDB aggregation pipeline instead of two separate queries.
+        """
         if not user_id:
             return []
         try:
-            # Step 1: Get connected integration_ids from user_integrations
-            # (status is stored in user_integrations, not integrations)
-            user_connected = await user_integrations_collection.find(
-                {"user_id": user_id, "status": "connected"},
-                {"integration_id": 1},
-            ).to_list(None)
-
-            if not user_connected:
-                return []
-
-            connected_ids = [doc["integration_id"] for doc in user_connected]
-
-            # Step 2: Fetch custom integrations by their IDs
-            return await integrations_collection.find(
+            # Single aggregation pipeline: join user_integrations with integrations
+            pipeline = [
+                # Match user's connected integrations
+                {"$match": {"user_id": user_id, "status": "connected"}},
+                # Lookup integration details
                 {
-                    "integration_id": {"$in": connected_ids},
-                    "source": "custom",
+                    "$lookup": {
+                        "from": "integrations",
+                        "localField": "integration_id",
+                        "foreignField": "integration_id",
+                        "as": "integration",
+                    }
                 },
-                {"integration_id": 1, "name": 1, "icon_url": 1},
-            ).to_list(None)
+                {"$unwind": "$integration"},
+                # Filter to custom source only
+                {"$match": {"integration.source": "custom"}},
+                # Project needed fields
+                {
+                    "$project": {
+                        "integration_id": 1,
+                        "name": "$integration.name",
+                        "icon_url": "$integration.icon_url",
+                    }
+                },
+            ]
+
+            return await user_integrations_collection.aggregate(pipeline).to_list(None)
         except Exception as e:
             logger.warning(f"Failed to fetch custom integrations: {e}")
             return []
@@ -235,3 +263,133 @@ async def get_tool_categories() -> Dict[str, int]:
         category_counts[category_name] = len(category_obj.tools)
 
     return category_counts
+
+
+async def get_user_custom_tools(user_id: str) -> list[ToolInfo]:
+    """Fetch only user's custom MCP integration tools.
+
+    Fast query - only fetches custom integrations, not global/platform tools.
+    Used to overlay user's custom tools on top of cached global tools.
+
+    Args:
+        user_id: The user's ID
+
+    Returns:
+        List of ToolInfo for user's connected custom MCP integrations
+    """
+    if not user_id:
+        return []
+
+    mcp_store = get_mcp_tools_store()
+    tool_infos: list[ToolInfo] = []
+    seen_tool_names: set[str] = set()
+
+    try:
+        # Single aggregation pipeline: join user_integrations with integrations
+        pipeline = [
+            # Match user's connected integrations
+            {"$match": {"user_id": user_id, "status": "connected"}},
+            # Lookup integration details
+            {
+                "$lookup": {
+                    "from": "integrations",
+                    "localField": "integration_id",
+                    "foreignField": "integration_id",
+                    "as": "integration",
+                }
+            },
+            {"$unwind": "$integration"},
+            # Filter to custom source only
+            {"$match": {"integration.source": "custom"}},
+            # Project needed fields
+            {
+                "$project": {
+                    "integration_id": 1,
+                    "name": "$integration.name",
+                    "icon_url": "$integration.icon_url",
+                }
+            },
+        ]
+
+        custom_integrations = await user_integrations_collection.aggregate(
+            pipeline
+        ).to_list(None)
+
+        for custom in custom_integrations:
+            integration_id = custom.get("integration_id")
+            icon_url = custom.get("icon_url")
+            custom_name = custom.get("name")
+
+            # Get cached tools from MCP tools store
+            custom_tools = await mcp_store.get_tools(integration_id)
+            if not custom_tools:
+                continue
+
+            for tool_dict in custom_tools:
+                tool_name = tool_dict["name"]
+                # Skip duplicate tool names
+                if tool_name in seen_tool_names:
+                    continue
+                seen_tool_names.add(tool_name)
+
+                tool_infos.append(
+                    ToolInfo(
+                        name=tool_name,
+                        category=integration_id,
+                        category_display_name=custom_name,
+                        integration_name=custom_name,
+                        required_integration=integration_id,
+                        icon_url=icon_url,
+                    )
+                )
+
+            logger.debug(
+                f"Fetched {len(custom_tools)} tools from custom MCP {integration_id}"
+            )
+
+    except Exception as e:
+        logger.warning(f"Failed to fetch user custom tools: {e}")
+
+    return tool_infos
+
+
+def merge_tools_responses(
+    global_tools: ToolsListResponse,
+    custom_tools: list[ToolInfo],
+) -> ToolsListResponse:
+    """Merge user's custom tools into global tools response.
+
+    Handles deduplication by tool name - custom tools take precedence
+    over global tools with the same name (user's tools first).
+
+    Args:
+        global_tools: Cached global tools response
+        custom_tools: User's custom MCP tools to overlay
+
+    Returns:
+        Merged ToolsListResponse with both global and custom tools
+    """
+    if not custom_tools:
+        return global_tools
+
+    # Build set of custom tool names for deduplication
+    custom_tool_names = {tool.name for tool in custom_tools}
+
+    # Filter global tools to exclude duplicates, then prepend custom tools
+    filtered_global = [
+        tool for tool in global_tools.tools if tool.name not in custom_tool_names
+    ]
+
+    # Custom tools first, then global tools
+    merged_tools = custom_tools + filtered_global
+
+    # Update categories to include custom integration categories
+    categories = set(global_tools.categories)
+    for tool in custom_tools:
+        categories.add(tool.category)
+
+    return ToolsListResponse(
+        tools=merged_tools,
+        total_count=len(merged_tools),
+        categories=sorted(list(categories)),
+    )

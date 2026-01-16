@@ -14,7 +14,7 @@ from typing import Annotated, Awaitable, Callable, Optional, TypedDict
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
-from app.services.integration_service import get_user_available_tool_namespaces
+from app.services.integrations.integration_service import get_user_available_tool_namespaces
 from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore
