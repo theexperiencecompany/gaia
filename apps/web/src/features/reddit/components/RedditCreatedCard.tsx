@@ -52,13 +52,13 @@ export default function RedditCreatedCard({
               </Chip>
             </div>
 
-            <div className="text-sm text-gray-300">{item.data.message}</div>
+            <div className="text-sm text-foreground-300">{item.data.message}</div>
 
             <div className="flex items-center justify-between pt-2">
               {item.data.id && (
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-foreground-500">
                   ID:{" "}
-                  <span className="font-mono text-gray-400">
+                  <span className="font-mono text-foreground-400">
                     {item.data.id}
                   </span>
                 </div>

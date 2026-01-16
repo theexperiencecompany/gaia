@@ -76,7 +76,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
       showArrow
       delay={0}
       closeDelay={0}
-      className="max-w-[320px] border-0 bg-surface-100 p-0 text-white shadow-xl rounded-2xl overflow-hidden"
+      className="max-w-[320px] border-0 bg-surface-100 p-0 text-foreground-900 shadow-xl rounded-2xl overflow-hidden"
       content={
         <div className="flex w-full flex-col rounded-3xl">
           {websiteImage && (
@@ -107,7 +107,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
               ) : (
                 <GlobalIcon className="h-5 w-5 text-foreground-400" />
               )}
-              <span className="font-semibold text-white">{tool.name}</span>
+              <span className="font-semibold text-foreground-900">{tool.name}</span>
             </div>
 
             <p className="text-sm leading-relaxed text-foreground-300">
@@ -160,7 +160,7 @@ const ToolCard = memo(({ tool, metadata }: ToolCardProps) => {
             <GlobalIcon className="h-5 w-5 text-foreground-500" />
           )}
         </div>
-        <span className="font-medium text-foreground-200 transition-colors group-hover:text-white">
+        <span className="font-medium text-foreground-200 transition-colors group-hover:text-foreground-900">
           {tool.name}
         </span>
       </a>

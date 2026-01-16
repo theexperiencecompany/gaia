@@ -66,7 +66,7 @@ export function AgentControlBar({
             enabled={microphoneToggle.enabled}
             pending={microphoneToggle.pending}
             onClick={() => microphoneToggle.toggle()}
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-700/20 shadow-md transition-colors hover:bg-gray-700/30 active:bg-gray-700/30"
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-700/20 shadow-md transition-colors hover:bg-surface-700/30 active:bg-surface-700/30"
           />
         </div>
 
@@ -75,7 +75,7 @@ export function AgentControlBar({
             aria-label="Toggle chat"
             onClick={() => setChatOpen((prev) => !prev)}
             disabled={!isAgentAvailable}
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-700/20 shadow-md transition-colors hover:bg-gray-700/30 active:bg-gray-700/30"
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-700/20 shadow-md transition-colors hover:bg-surface-700/30 active:bg-surface-700/30"
           >
             <Message01Icon className="!h-6 !w-6 text-white" />
           </Button>

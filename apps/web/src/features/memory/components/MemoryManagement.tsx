@@ -190,7 +190,7 @@ export default function MemoryManagement({
               </div>
 
               {/* Additional memory details */}
-              <div className="flex w-full items-center justify-between text-xs text-gray-400">
+              <div className="flex w-full items-center justify-between text-xs text-foreground-400">
                 {formattedDate && <span>{formattedDate}</span>}
 
                 {memory.categories && memory.categories.length > 0 && (
@@ -227,7 +227,7 @@ export default function MemoryManagement({
       />
 
       {memories.length === 0 && !loading ? (
-        <div className="flex h-40 flex-col items-center justify-center text-gray-500">
+        <div className="flex h-40 flex-col items-center justify-center text-foreground-500">
           <AiBrain01Icon className="mb-3 h-12 w-12 opacity-30" />
           <p>No memories yet</p>
           <p className="text-sm">

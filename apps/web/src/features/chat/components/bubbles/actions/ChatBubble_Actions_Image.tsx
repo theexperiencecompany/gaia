@@ -85,7 +85,7 @@ export default function ChatBubble_Actions_Image({
           onPress={downloadFromSrc}
         >
           <DownloadSquare01Icon className={`cursor-pointer`} height="22" />
-          <span className="text-black">{fullWidth ? "Download" : ""}</span>
+          <span className="text-primary-foreground">{fullWidth ? "Download" : ""}</span>
         </Button>
       </Tooltip>
     </div>

@@ -43,15 +43,15 @@ export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
       <div className="space-y-2">
         {emailSentData.subject && (
           <div className="text-sm">
-            <span className="text-gray-400">Subject: </span>
-            <span className="text-gray-200">{emailSentData.subject}</span>
+            <span className="text-foreground-400">Subject: </span>
+            <span className="text-foreground-200">{emailSentData.subject}</span>
           </div>
         )}
 
         {emailSentData.recipients && emailSentData.recipients.length > 0 && (
           <div className="text-sm">
-            <span className="text-gray-400">To: </span>
-            <span className="text-gray-200">
+            <span className="text-foreground-400">To: </span>
+            <span className="text-foreground-200">
               {emailSentData.recipients.join(", ")}
             </span>
           </div>

@@ -154,8 +154,8 @@ const iconConfigs: Record<string, IconConfig> = {
   },
   general: {
     icon: ToolsIcon,
-    bgColor: "bg-gray-500/20 backdrop-blur",
-    iconColor: "text-gray-400",
+    bgColor: "bg-surface-500/20 backdrop-blur",
+    iconColor: "text-foreground-400",
   },
   // Integration icons
   google_calendar: {

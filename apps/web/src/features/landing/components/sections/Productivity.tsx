@@ -47,7 +47,7 @@ export default function Productivity() {
 
         <Link href={"/use-cases"} className="mt-2">
           <RaisedButton
-            className="rounded-xl text-black! before:rounded-xl hover:scale-110"
+            className="rounded-xl text-primary-foreground! before:rounded-xl hover:scale-110"
             color="#00bbff"
           >
             View all Use Cases

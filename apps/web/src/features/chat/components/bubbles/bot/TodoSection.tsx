@@ -55,7 +55,7 @@ const priorityConfig = {
     color: "default" as const,
     icon: null,
     bgColor: "",
-    textColor: "text-gray-500",
+    textColor: "text-foreground-500",
   },
 };
 

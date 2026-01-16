@@ -166,7 +166,7 @@ export default function OpenSource() {
             className="w-full sm:w-auto"
           >
             <RaisedButton
-              className="w-full justify-center rounded-xl text-black! before:rounded-xl hover:scale-110 sm:w-auto"
+              className="w-full justify-center rounded-xl text-primary-foreground! before:rounded-xl hover:scale-110 sm:w-auto"
               color="#00bbff"
             >
               Star on GitHub <StarFilledIcon width={17} height={17} />

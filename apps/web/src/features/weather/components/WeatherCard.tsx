@@ -359,7 +359,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 p-1 text-white hover:bg-white/20"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-50/10 p-1 text-white hover:bg-surface-50/20"
                 aria-label="Temperature settings"
               >
                 <ThermometerWarmIcon className="h-5 w-5" />

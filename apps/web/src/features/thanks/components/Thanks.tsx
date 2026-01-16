@@ -26,7 +26,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
   );
 
   return (
-    <div className="flex min-h-screen w-screen justify-center bg-black px-6 py-28">
+    <div className="flex min-h-screen w-screen justify-center bg-background px-6 py-28">
       <div className="fixed top-0 left-0 z-0 flex h-screen w-full items-center justify-center opacity-5">
         <Image
           src="/images/logos/logo.webp"
@@ -48,7 +48,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
           </div>
 
           <div className="space-y-4">
-            <h1 className="text-4xl font-bold tracking-tight text-white md:text-5xl">
+            <h1 className="text-4xl font-bold tracking-tight text-foreground-900 md:text-5xl">
               Tools We Love
             </h1>
             <p className="mx-auto max-w-2xl text-lg font-light leading-relaxed text-foreground-500">
@@ -68,7 +68,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
             return (
               <section key={category} className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <h2 className="text-xl font-semibold text-white">
+                  <h2 className="text-xl font-semibold text-foreground-900">
                     {category}
                   </h2>
                   <span className="rounded-full bg-surface-200 p-1 px-1.5 aspect-square flex items-center justify-center text-sm text-foreground-400 size-7">

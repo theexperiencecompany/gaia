@@ -232,7 +232,7 @@ export default function UseCaseSection({
           >
             <Chip
               variant={selectedCategory === category ? "solid" : "flat"}
-              className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
+              className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-surface-50/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
               size="lg"
               startContent={
                 category === "featured" ? (

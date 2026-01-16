@@ -138,7 +138,7 @@ export default function MailsPage() {
           <h3 className="text-lg font-medium text-white">
             Failed to load emails
           </h3>
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-sm text-foreground-400">
             Check your internet connection and try again
           </p>
         </div>
@@ -175,7 +175,7 @@ export default function MailsPage() {
           className="relative flex h-full w-full items-center px-4 text-sm text-foreground/70 backdrop-blur-xs sm:px-1"
         >
           {item.data as string}
-          <div className="absolute bottom-4 h-[1px] w-full border-none bg-white/20 outline-hidden sm:bottom-2"></div>
+          <div className="absolute bottom-4 h-[1px] w-full border-none bg-surface-50/20 outline-hidden sm:bottom-2"></div>
         </div>
       );
 

@@ -135,7 +135,7 @@ function AISummary({
               aria-label="Semantic Labels"
               title={
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400">Labels</span>
+                  <span className="text-xs text-foreground-400">Labels</span>
                   <Chip size="sm" variant="flat" color="default">
                     {analysis.semantic_labels.length}
                   </Chip>
@@ -401,10 +401,10 @@ export default function ViewEmail({
                             name={messageSenderName}
                             classNames={{
                               name: "font-medium",
-                              description: "text-gray-400",
+                              description: "text-foreground-400",
                             }}
                           />
-                          <div className="text-xs text-gray-400">
+                          <div className="text-xs text-foreground-400">
                             {new Date(message.time).toLocaleString()}
                           </div>
                         </div>
@@ -450,11 +450,11 @@ export default function ViewEmail({
                     name={nameFrom}
                     classNames={{
                       name: "font-medium",
-                      description: "text-gray-400",
+                      description: "text-foreground-400",
                     }}
                   />
                   <div>
-                    <hr className="my-4 border-gray-700" />
+                    <hr className="my-4 border-foreground-700" />
                     <GmailBody email={mail} />
                   </div>
                 </>
@@ -468,7 +468,7 @@ export default function ViewEmail({
                       <span className="font-medium">
                         ArrowTurnBackwardIcon to:{" "}
                       </span>
-                      <span className="text-gray-400">
+                      <span className="text-foreground-400">
                         {parseEmail(replyTo.from).name ||
                           parseEmail(replyTo.from).email}
                       </span>

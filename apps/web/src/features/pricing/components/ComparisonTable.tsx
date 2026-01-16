@@ -192,7 +192,7 @@ export function ComparisonTable({
           />
         </div>
         <h3 className="mb-1 text-2xl font-semibold">{name}</h3>
-        <p className="text-sm text-gray-400">{description}</p>
+        <p className="text-sm text-foreground-400">{description}</p>
       </div>
     );
   }
@@ -280,7 +280,7 @@ export function ComparisonTable({
           <Link href={"/signup"}>
             <RaisedButton
               size={"lg"}
-              className="rounded-xl text-lg text-black!"
+              className="rounded-xl text-lg text-primary-foreground!"
               color="#00bbff"
             >
               Let's Go!

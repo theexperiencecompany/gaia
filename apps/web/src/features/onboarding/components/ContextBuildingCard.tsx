@@ -89,7 +89,7 @@ export function ContextBuildingCard() {
         contextStatus === "parsing_emails" ||
         contextStatus === "building_graph") && (
         <div className="mt-3 h-1 overflow-hidden rounded-full bg-surface-950/10">
-          <div className="h-full w-1/2 animate-pulse rounded-full bg-blue-400/50" />
+          <div className="h-full w-1/2 animate-pulse rounded-full bg-primary/50" />
         </div>
       )}
     </Card>

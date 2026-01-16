@@ -129,7 +129,7 @@ export const OnboardingInput = ({
                   !onboardingState.currentInputs.text.trim() ||
                     onboardingState.isProcessing
                     ? "text-foreground-500"
-                    : "text-black",
+                    : "text-primary-foreground",
                 )}
               >
                 <ArrowUp02Icon />

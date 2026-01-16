@@ -8,7 +8,7 @@ const PrismAsyncLight = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-20 items-center justify-center text-sm text-gray-500">
+      <div className="flex h-20 items-center justify-center text-sm text-foreground-500">
         Loading syntax highlighter...
       </div>
     ),
@@ -56,7 +56,7 @@ const MermaidCode: React.FC<MermaidCodeProps> = ({
 
   if (!theme) {
     return (
-      <div className="flex h-20 items-center justify-center text-sm text-gray-500">
+      <div className="flex h-20 items-center justify-center text-sm text-foreground-500">
         Loading theme...
       </div>
     );

@@ -27,7 +27,7 @@ export default function PublishWorkflowCTA() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          <RaisedButton color="#00bbff" className="mt-5 text-black!">
+          <RaisedButton color="#00bbff" className="mt-5 text-foreground-900!">
             Learn How
           </RaisedButton>
         </a>

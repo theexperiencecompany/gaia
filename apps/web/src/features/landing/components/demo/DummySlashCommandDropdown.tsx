@@ -645,14 +645,14 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                     className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${
                       selectedCategory === category
                         ? "bg-surface-700 text-white"
-                        : "text-foreground-400 hover:bg-white/10 hover:text-foreground-300"
+                        : "text-foreground-400 hover:bg-surface-50/10 hover:text-foreground-300"
                     }`}
                   >
                     {category === "all" ? (
                       <GridIcon
                         size={16}
                         strokeWidth={2}
-                        className="text-gray-400"
+                        className="text-foreground-400"
                       />
                     ) : (
                       getToolCategoryIcon(category)
@@ -677,7 +677,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
               {filteredTools.map((tool) => (
                 <div
                   key={tool.name}
-                  className="relative mx-2 mb-1 cursor-pointer rounded-xl border border-transparent transition-all duration-150 hover:border-border-surface-600 hover:bg-white/5"
+                  className="relative mx-2 mb-1 cursor-pointer rounded-xl border border-transparent transition-all duration-150 hover:border-border-surface-600 hover:bg-surface-50/5"
                   onClick={() => handleToolClick(tool.name)}
                 >
                   <div className="flex items-center gap-3 p-3">

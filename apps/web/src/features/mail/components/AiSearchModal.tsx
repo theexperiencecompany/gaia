@@ -165,7 +165,7 @@ export const AiSearchModal: React.FC<AiSearchModalProps> = ({
         )}
 
         {/* Disclaimer */}
-        <div className="mt-3 text-xs text-gray-400">
+        <div className="mt-3 text-xs text-foreground-400">
           Disclaimer: Email suggestions are sourced from publicly available
           internet data and may not be 100% accurate.
         </div>

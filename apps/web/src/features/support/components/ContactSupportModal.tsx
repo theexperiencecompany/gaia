@@ -205,7 +205,7 @@ export default function ContactSupportModal({
                 <div
                   className={`cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all duration-200 ${
                     dragActive
-                      ? "scale-[1.02] border-primary bg-blue-50 shadow-lg"
+                      ? "scale-[1.02] border-primary bg-primary/5 shadow-lg"
                       : "hover:bg-surface-300 border-border-surface-700 bg-surface-200 hover:border-primary"
                   }`}
                   onDragEnter={handleDrag}
@@ -225,10 +225,10 @@ export default function ContactSupportModal({
 
                   <div className="flex flex-col items-center space-y-2">
                     <div
-                      className={`rounded-full p-4 ${dragActive ? "bg-blue-100" : "bg-surface-700"} transition-colors`}
+                      className={`rounded-full p-4 ${dragActive ? "bg-primary/10" : "bg-surface-700"} transition-colors`}
                     >
                       <Upload01Icon
-                        className={`h-8 w-8 ${dragActive ? "text-blue-600" : "text-gray-400"} transition-colors`}
+                        className={`h-8 w-8 ${dragActive ? "text-blue-600" : "text-foreground-400"} transition-colors`}
                       />
                     </div>
 

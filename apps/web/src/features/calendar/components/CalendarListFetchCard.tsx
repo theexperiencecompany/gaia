@@ -43,11 +43,11 @@ export default function CalendarListFetchCard({
                   />
 
                   <div className="flex-1">
-                    <span className="block truncate text-sm font-medium text-gray-300 group-hover:text-white">
+                    <span className="block truncate text-sm font-medium text-foreground-300 group-hover:text-white">
                       {calendar.name}
                     </span>
                     {calendar.description && (
-                      <span className="block truncate text-xs text-gray-500 group-hover:text-gray-400">
+                      <span className="block truncate text-xs text-foreground-500 group-hover:text-foreground-400">
                         {calendar.description}
                       </span>
                     )}

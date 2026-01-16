@@ -625,7 +625,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                       <GridIcon
                         size={16}
                         strokeWidth={2}
-                        className="text-gray-400"
+                        className="text-foreground-400"
                       />
                     ) : (
                       getToolCategoryIcon(

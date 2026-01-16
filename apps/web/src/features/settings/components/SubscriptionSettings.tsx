@@ -91,7 +91,7 @@ export function SubscriptionSettings() {
               <div className="space-y-3">
                 <Button
                   color="primary"
-                  className="w-full font-semibold text-black"
+                  className="w-full font-semibold text-primary-foreground"
                   onPress={handleUpgrade}
                 >
                   Upgrade to Pro

@@ -70,7 +70,7 @@ function EmailBodyRenderer({
 
   if (!body && (!content || (!content.text && !content.html))) {
     return (
-      <div className="p-4 text-sm text-gray-500">No content available.</div>
+      <div className="p-4 text-sm text-foreground-500">No content available.</div>
     );
   }
 

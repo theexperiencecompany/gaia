@@ -10,7 +10,7 @@ interface CopyButtonProps {
 
 const CopyButton: React.FC<CopyButtonProps> = ({ copied, onPress }) => (
   <Button
-    className="text-xs text-foreground hover:text-gray-300"
+    className="text-xs text-foreground hover:text-foreground-300"
     size="sm"
     isIconOnly
     variant="light"

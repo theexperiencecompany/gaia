@@ -300,7 +300,7 @@ export default function ContextGatheringLoader({
           <RaisedButton
             onClick={handleShowMeAround}
             color="#00bbff"
-            className="text-black!"
+            className="text-primary-foreground!"
           >
             Show me around
           </RaisedButton>

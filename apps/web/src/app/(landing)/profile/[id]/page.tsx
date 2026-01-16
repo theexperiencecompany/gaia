@@ -66,7 +66,7 @@ export default function ProfilePage() {
     : null;
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-black">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background">
       <h1 className="sr-only">
         {holoCardData?.name
           ? `${holoCardData.name} - GAIA Profile`

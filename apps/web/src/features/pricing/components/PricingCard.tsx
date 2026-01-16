@@ -184,7 +184,7 @@ export function PricingCard({
           )}
 
           <RaisedButton
-            className={`w-full ${price === 0 ? "text-foreground-400!" : "text-black!"} `}
+            className={`w-full ${price === 0 ? "text-foreground-400!" : "text-primary-foreground!"} `}
             color={price === 0 ? "#3b3b3b" : "#00bbff"}
             onClick={handleGetStarted}
             disabled={

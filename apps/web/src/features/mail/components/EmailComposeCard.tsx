@@ -104,7 +104,7 @@ function EditEmailModal({
               variant="light"
               size="sm"
               onPress={onClose}
-              className="h-7 px-2 text-xs text-gray-300"
+              className="h-7 px-2 text-xs text-foreground-300"
             >
               Cancel
             </Button>
@@ -468,10 +468,10 @@ export default function EmailComposeCard({
             </span>
           </div>
           <Separator className="my-1.5 bg-surface-700" />
-          <div className="flex w-full items-center justify-between text-sm text-gray-400">
+          <div className="flex w-full items-center justify-between text-sm text-foreground-400">
             <div className="flex items-center gap-2">
               <span>Subject:</span>
-              <span className="font-medium text-gray-200">
+              <span className="font-medium text-foreground-200">
                 {editData.subject}
               </span>
             </div>

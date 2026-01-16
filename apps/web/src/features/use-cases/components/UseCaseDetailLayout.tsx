@@ -61,7 +61,7 @@ export default function UseCaseDetailLayout({
             <ShareButton slug={slug} />
             <RaisedButton
               color="#00bbff"
-              className="flex-shrink-0 text-black!"
+              className="flex-shrink-0 text-foreground-900!"
               onClick={onCreateWorkflow}
               disabled={isCreating}
             >

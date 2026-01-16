@@ -131,7 +131,7 @@ const CustomAnchor = memo(
                       onError={() => handleImageError(metadata.favicon!)}
                     />
                   ) : (
-                    <GlobalIcon className="h-5 w-5 text-gray-400" />
+                    <GlobalIcon className="h-5 w-5 text-foreground-400" />
                   )}
                   {metadata.website_name && (
                     <div className="truncate text-sm font-semibold">
@@ -150,7 +150,7 @@ const CustomAnchor = memo(
 
               {/* Description */}
               {metadata.description && (
-                <div className="line-clamp-3 text-xs text-gray-400">
+                <div className="line-clamp-3 text-xs text-foreground-400">
                   {metadata.description}
                 </div>
               )}
@@ -167,8 +167,8 @@ const CustomAnchor = memo(
             </div>
           ) : (
             <div className="flex items-center gap-2 p-3">
-              <GlobalIcon className="h-4 w-4 text-gray-400" />
-              <span className="text-sm text-gray-400">
+              <GlobalIcon className="h-4 w-4 text-foreground-400" />
+              <span className="text-sm text-foreground-400">
                 No preview available
               </span>
             </div>

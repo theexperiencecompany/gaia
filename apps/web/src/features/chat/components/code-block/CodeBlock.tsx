@@ -14,7 +14,7 @@ import StandardCodeBlock from "./StandardCodeBlock";
 const MermaidTabs = dynamic(() => import("./MermaidTabs"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-40 items-center justify-center text-sm text-gray-500">
+    <div className="flex h-40 items-center justify-center text-sm text-foreground-500">
       Loading diagram...
     </div>
   ),

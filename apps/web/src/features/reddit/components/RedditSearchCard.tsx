@@ -68,10 +68,10 @@ export default function RedditSearchCard({
                       <span className="font-semibold text-[#FF4500]">
                         {post.subreddit}
                       </span>
-                      <span className="text-gray-500">•</span>
-                      <span className="text-gray-500">u/{post.author}</span>
-                      <span className="text-gray-500">•</span>
-                      <span className="text-gray-500">
+                      <span className="text-foreground-500">•</span>
+                      <span className="text-foreground-500">u/{post.author}</span>
+                      <span className="text-foreground-500">•</span>
+                      <span className="text-foreground-500">
                         {formatTime(post.created_utc)}
                       </span>
                     </div>
@@ -83,7 +83,7 @@ export default function RedditSearchCard({
 
                 {/* Content preview */}
                 {post.selftext && (
-                  <p className="line-clamp-2 text-xs leading-relaxed text-gray-400">
+                  <p className="line-clamp-2 text-xs leading-relaxed text-foreground-400">
                     {post.selftext}
                   </p>
                 )}
@@ -96,7 +96,7 @@ export default function RedditSearchCard({
                       {formatNumber(post.score)}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 text-gray-400">
+                  <div className="flex items-center gap-1 text-foreground-400">
                     <BubbleChatIcon className="h-3.5 w-3.5" />
                     <span>{formatNumber(post.num_comments)}</span>
                   </div>

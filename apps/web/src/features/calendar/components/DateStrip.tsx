@@ -59,7 +59,7 @@ export const DateStrip: React.FC<DateStripProps> = ({
                     : isSelected
                       ? "bg-surface-200 text-white hover:bg-surface-700/40"
                       : isWeekend
-                        ? "hover:bg-zinc- bg-surface-100 text-foreground-400"
+                        ? "hover:bg-surface-200 bg-surface-100 text-foreground-400"
                         : "bg-primary-bg text-foreground-400 hover:bg-surface-200"
                 }`}
                 style={{
@@ -73,7 +73,7 @@ export const DateStrip: React.FC<DateStripProps> = ({
                 </div>
                 <div
                   className={`rounded-lg text-sm font-medium ${
-                    isToday ? "bg-primary p-1 px-2 text-black" : ""
+                    isToday ? "bg-primary p-1 px-2 text-primary-foreground" : ""
                   }`}
                 >
                   {dayNumber}

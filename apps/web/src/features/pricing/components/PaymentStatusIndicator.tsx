@@ -170,7 +170,7 @@ export function PaymentStatusSteps({
                       ? "text-green-600"
                       : step.isActive
                         ? "text-blue-600"
-                        : "text-gray-500"
+                        : "text-foreground-500"
                   }`}
                 >
                   {step.label}
@@ -179,7 +179,7 @@ export function PaymentStatusSteps({
               {index < steps.length - 1 && (
                 <div
                   className={`mx-2 h-0.5 flex-1 ${
-                    step.isCompleted ? "bg-green-500" : "bg-gray-200"
+                    step.isCompleted ? "bg-green-500" : "bg-surface-200"
                   }`}
                 />
               )}

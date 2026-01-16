@@ -57,7 +57,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           ),
           blockquote: ({ ...props }) => (
             <blockquote
-              className="my-2 border-gray-300 bg-gray-300/10 py-3 pl-4 italic"
+              className="my-2 border-foreground-300 bg-surface-300/10 py-3 pl-4 italic"
               {...props}
             />
           ),

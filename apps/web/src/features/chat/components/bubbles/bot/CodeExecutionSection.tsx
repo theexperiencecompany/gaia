@@ -66,7 +66,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           aria-label="Executed Code"
           title="Executed Code"
           classNames={{
-            trigger: "text-sm font-medium text-gray-300 hover:text-foreground-50",
+            trigger: "text-sm font-medium text-foreground-300 hover:text-foreground-50",
             content: "pt-0",
           }}
         >
@@ -83,7 +83,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
           aria-label="Output"
           title="Output"
           classNames={{
-            trigger: "text-sm font-medium text-gray-300 hover:text-foreground-50",
+            trigger: "text-sm font-medium text-foreground-300 hover:text-foreground-50",
             content: "pt-0",
           }}
         >
@@ -103,7 +103,7 @@ const CodeExecutionSection: React.FC<CodeExecutionSectionProps> = ({
             aria-label="Charts"
             title="Charts"
             classNames={{
-              trigger: "text-sm font-medium text-gray-300 hover:text-foreground-50",
+              trigger: "text-sm font-medium text-foreground-300 hover:text-foreground-50",
               content: "pt-0",
             }}
           >
