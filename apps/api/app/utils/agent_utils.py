@@ -66,17 +66,15 @@ async def format_tool_progress(
             tool_category = tool_registry.get_category_of_tool(tool_name_raw)
             # Extract integration name from MCP categories
             # Category format: mcp_{integration_id} or mcp_{integration_id}_{user_id}
-            # Examples: "mcp_perplexity", "mcp_custom_scholar_6947dd82_user123"
+            # User IDs are UUIDs with dashes (e.g., 550e8400-e29b-41d4-a716-446655440000)
+            # Custom integration IDs have hex suffixes WITHOUT dashes (e.g., custom_reposearch_6966a2fb964b5991c13ab887)
             if tool_category and tool_category.startswith("mcp_"):
                 # Strip "mcp_" prefix
                 without_prefix = tool_category[4:]
-                # Remove user ID suffix if present (pattern: _user_*)
-                # User IDs are typically at the end after the last underscore
-                # For custom integrations, the ID is like "custom_scholar_6947dd82"
-                # So we need to detect if the last part looks like a user ID
+                # Only strip suffix if it looks like a UUID (contains dashes) - not a hex ID
                 parts = without_prefix.rsplit("_", 1)
-                if len(parts) == 2 and len(parts[-1]) > 20:
-                    # Last part is likely a user ID (UUIDs are long)
+                if len(parts) == 2 and "-" in parts[-1]:
+                    # Last part is a user ID (UUID with dashes)
                     tool_category = parts[0]
                 else:
                     tool_category = without_prefix

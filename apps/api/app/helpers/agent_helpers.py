@@ -17,12 +17,15 @@ from opik.integrations.langchain import OpikTracer
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.config.settings import settings
+from app.config.loggers import langchain_logger as logger
 from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
 )
 from app.core.lazy_loader import providers
+from app.db.mongodb.collections import integrations_collection
+from app.db.redis import get_cache, set_cache
 from app.models.models_models import ModelConfig
 from app.utils.agent_utils import (
     format_sse_data,
@@ -31,6 +34,86 @@ from app.utils.agent_utils import (
     process_custom_event_for_tools,
     store_agent_progress,
 )
+
+
+# Cache key pattern and TTL for custom integration metadata
+CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
+CUSTOM_INT_METADATA_TTL = 3600  # 1 hour
+
+
+async def get_custom_integration_metadata(tool_name: str, user_id: str) -> dict:
+    """Look up icon_url, integration_id, integration_name for custom MCP tools.
+
+    Uses Redis cache to avoid repeated MongoDB queries during a conversation.
+    Cache is keyed by integration_id (not tool_name) since multiple tools share
+    the same integration metadata.
+
+    Args:
+        tool_name: Name of the tool being called
+        user_id: User ID for MCP category resolution
+
+    Returns:
+        Dict with icon_url, integration_id, integration_name if found,
+        empty dict otherwise
+    """
+    from app.agents.tools.core.registry import get_tool_registry
+
+    tool_registry = await get_tool_registry()
+    tool_category = tool_registry.get_category_of_tool(tool_name)
+
+    if not tool_category:
+        return {}
+
+    # Extract integration_id from MCP category
+    # Category format: mcp_{integration_id} or mcp_{integration_id}_{user_id}
+    # User IDs are UUIDs with dashes (e.g., 550e8400-e29b-41d4-a716-446655440000)
+    # Custom integration IDs have hex suffixes WITHOUT dashes (e.g., custom_reposearch_6966a2fb964b5991c13ab887)
+    if not tool_category.startswith("mcp_"):
+        return {}
+
+    without_prefix = tool_category[4:]
+    parts = without_prefix.rsplit("_", 1)
+    # Only strip suffix if it looks like a UUID (contains dashes) - not a hex ID
+    if len(parts) == 2 and "-" in parts[-1]:
+        # Last part is a user ID (UUID with dashes)
+        integration_id = parts[0]
+    else:
+        integration_id = without_prefix
+
+    # Only lookup for custom integrations
+    if not integration_id.startswith("custom_"):
+        return {}
+
+    # Check Redis cache first
+    cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
+    cached = await get_cache(cache_key)
+    if cached:
+        return cached
+
+    # Cache miss - query MongoDB
+    try:
+        integration = await integrations_collection.find_one(
+            {"integration_id": integration_id}, {"name": 1, "icon_url": 1}
+        )
+
+        if not integration:
+            # Cache negative result too (empty dict)
+            await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
+            return {}
+
+        metadata = {
+            "icon_url": integration.get("icon_url"),
+            "integration_id": integration_id,
+            "integration_name": integration.get("name"),
+        }
+
+        # Cache for 1 hour
+        await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
+        return metadata
+
+    except Exception as e:
+        logger.warning(f"Failed to lookup custom integration metadata: {e}")
+        return {}
 
 
 def build_agent_config(
@@ -335,15 +418,33 @@ async def execute_graph_streaming(
                     for tool_call in tool_calls:
                         tc_id = tool_call.get("id")
                         if tc_id and tc_id not in pending_tool_calls:
-                            # First time seeing this tool call - emit progress
-                            progress_data = await format_tool_progress(tool_call)
+                            # Look up custom integration metadata for icon display
+                            tool_name = tool_call.get("name")
+                            user_id = config.get("configurable", {}).get("user_id")
+                            custom_metadata = {}
+                            if tool_name and user_id:
+                                custom_metadata = await get_custom_integration_metadata(
+                                    tool_name, user_id
+                                )
+
+                            # First time seeing this tool call - emit progress with metadata
+                            progress_data = await format_tool_progress(
+                                tool_call,
+                                icon_url=custom_metadata.get("icon_url"),
+                                integration_id=custom_metadata.get("integration_id"),
+                                integration_name=custom_metadata.get(
+                                    "integration_name"
+                                ),
+                            )
                             if progress_data:
                                 yield format_sse_data(progress_data)
 
-                            # Store for later when ToolMessage arrives
+                            # Store for later when ToolMessage arrives (include metadata)
                             pending_tool_calls[tc_id] = {
                                 "name": tool_call.get("name"),
                                 "args": tool_call.get("args", {}),
+                                "tool_category": custom_metadata.get("integration_id"),
+                                "icon_url": custom_metadata.get("icon_url"),
                             }
                         elif tc_id:
                             # Update stored args (they accumulate across chunks)
@@ -368,6 +469,8 @@ async def execute_graph_streaming(
                             "tool_inputs": {
                                 "tool_call_id": tc_id,
                                 "inputs": stored_call["args"],
+                                "tool_category": stored_call.get("tool_category"),
+                                "icon_url": stored_call.get("icon_url"),
                             }
                         }
                         yield format_sse_data(tool_inputs_data)
