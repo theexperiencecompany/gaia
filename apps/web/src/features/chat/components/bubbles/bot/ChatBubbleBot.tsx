@@ -73,7 +73,7 @@ export default function ChatBubbleBot(
   // Let ChatRenderer's loading indicator handle it
   if (loading && !hasContent) return null;
 
-  const itshouldShowTextBubble = shouldShowTextBubble(
+  const itShouldShowTextBubble = shouldShowTextBubble(
     text,
     isConvoSystemGenerated,
     systemPurpose,
