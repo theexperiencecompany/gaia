@@ -286,7 +286,7 @@ export default function UnifiedWorkflowCard({
     <div
       className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl ${
         useBlurEffect
-          ? "dark:bg-surface-200/40 backdrop-blur-lg bg-surface-100/40"
+          ? "dark:bg-surface-200/40 backdrop-blur-lg bg-surface-100"
           : "dark:bg-surface-200 bg-surface-100"
       } p-4 transition-all select-none ${
         isClickable ? "cursor-pointer hover:bg-surface-300/70" : ""

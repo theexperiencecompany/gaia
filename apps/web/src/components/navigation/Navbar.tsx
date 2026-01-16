@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import MobileMenu from "@/components/navigation/MobileMenu";
+import { useTheme } from "@/components/providers/ThemeProvider";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
@@ -20,7 +21,6 @@ import {
   StarFilledIcon,
 } from "@/icons";
 import { posthog } from "@/lib";
-import { useTheme } from "@/components/providers/ThemeProvider";
 
 import { Github } from "../shared";
 import { RaisedButton } from "../ui/raised-button";
@@ -38,9 +38,10 @@ export default function Navbar() {
   const user = useUser();
 
   // Theme-aware logo
-  const logoSrc = resolvedTheme === "dark" 
-    ? "/images/logos/text_w_logo_white.webp"
-    : "/images/logos/text_w_logo_black.webp";
+  const logoSrc =
+    resolvedTheme === "dark"
+      ? "/images/logos/text_w_logo_white.webp"
+      : "/images/logos/text_w_logo_black.webp";
 
   // Handle scroll to change navbar appearance
   useEffect(() => {
@@ -118,7 +119,7 @@ export default function Navbar() {
             activeDropdown
               ? "rounded-t-2xl bg-surface-100"
               : isScrolled
-                ? "rounded-2xl bg-surface-100/30 backdrop-blur-md"
+                ? "rounded-2xl bg-surface-200/30 backdrop-blur-md"
                 : "rounded-2xl border-transparent bg-transparent"
           }`}
         >

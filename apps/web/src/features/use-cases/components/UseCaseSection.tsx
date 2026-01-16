@@ -232,6 +232,7 @@ export default function UseCaseSection({
           >
             <Chip
               variant={selectedCategory === category ? "solid" : "flat"}
+              color={selectedCategory === category ? "primary" : "default"}
               className={`cursor-pointer capitalize ${selectedCategory === category ? "" : "bg-surface-50/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
               size="lg"
               startContent={
