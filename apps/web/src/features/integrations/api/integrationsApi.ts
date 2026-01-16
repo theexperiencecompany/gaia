@@ -1,9 +1,11 @@
 import { apiService } from "@/lib/api";
 
 import type {
+  CommunityIntegrationsResponse,
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
   Integration,
+  PublicIntegrationResponse,
   UserIntegrationsResponse,
 } from "../types";
 
@@ -214,5 +216,122 @@ export const integrationsApi = {
       );
       throw error;
     }
+  },
+
+  /**
+   * Publish a custom integration to the community marketplace
+   */
+  publishIntegration: async (
+    integrationId: string,
+  ): Promise<{
+    message: string;
+    integrationId: string;
+    slug: string;
+    publicUrl: string;
+  }> => {
+    const response = await apiService.post(
+      `/integrations/custom/${integrationId}/publish`,
+      {},
+    );
+    return response as {
+      message: string;
+      integrationId: string;
+      slug: string;
+      publicUrl: string;
+    };
+  },
+
+  /**
+   * Unpublish a custom integration from the marketplace
+   */
+  unpublishIntegration: async (
+    integrationId: string,
+  ): Promise<{
+    message: string;
+    integrationId: string;
+  }> => {
+    const response = await apiService.post(
+      `/integrations/custom/${integrationId}/unpublish`,
+      {},
+    );
+    return response as {
+      message: string;
+      integrationId: string;
+    };
+  },
+
+  /**
+   * Get community integrations for the public marketplace
+   */
+  getCommunityIntegrations: async (params?: {
+    sort?: "popular" | "recent" | "name";
+    category?: string;
+    limit?: number;
+    offset?: number;
+    search?: string;
+  }): Promise<CommunityIntegrationsResponse> => {
+    const searchParams = new URLSearchParams();
+    if (params?.sort) searchParams.set("sort", params.sort);
+    if (params?.category) searchParams.set("category", params.category);
+    if (params?.limit) searchParams.set("limit", params.limit.toString());
+    if (params?.offset) searchParams.set("offset", params.offset.toString());
+    if (params?.search) searchParams.set("search", params.search);
+
+    const query = searchParams.toString();
+    const response = await apiService.get(
+      `/integrations/community${query ? `?${query}` : ""}`,
+    );
+    return response as CommunityIntegrationsResponse;
+  },
+
+  /**
+   * Get public integration details by slug (no auth required)
+   */
+  getPublicIntegration: async (
+    slug: string,
+  ): Promise<PublicIntegrationResponse> => {
+    const response = await apiService.get(`/integrations/public/${slug}`);
+    return response as PublicIntegrationResponse;
+  },
+
+  /**
+   * Clone a public integration to user's workspace
+   */
+  cloneIntegration: async (
+    slug: string,
+  ): Promise<{
+    message: string;
+    integrationId: string;
+    name: string;
+    connectionStatus: string;
+  }> => {
+    const response = await apiService.post(
+      `/integrations/public/${slug}/clone`,
+      {},
+    );
+    return response as {
+      message: string;
+      integrationId: string;
+      name: string;
+      connectionStatus: string;
+    };
+  },
+
+  /**
+   * Search public integrations using semantic search
+   */
+  searchIntegrations: async (
+    query: string,
+  ): Promise<{
+    integrations: PublicIntegrationResponse[];
+    query: string;
+  }> => {
+    const response = await apiService.get(
+      `/integrations/search?q=${encodeURIComponent(query)}`,
+    );
+    return response as {
+      integrations: PublicIntegrationResponse[];
+      query: string;
+    };
   },
 };

@@ -30,6 +30,8 @@ export interface Integration {
   tools?: Array<{ name: string; description?: string }>;
   // Custom integration icon (favicon from MCP server)
   iconUrl?: string;
+  // Slug for public integrations
+  slug?: string;
 }
 
 export interface IntegrationStatus {
@@ -144,4 +146,41 @@ export interface IntegrationListData {
   integrations: IntegrationInfo[];
   total_count: number;
   connected_count: number;
+}
+
+/**
+ * Community/Public Marketplace Types
+ */
+
+export interface CommunityIntegrationCreator {
+  name: string;
+  picture: string | null;
+}
+
+export interface CommunityIntegration {
+  integrationId: string;
+  name: string;
+  description: string;
+  category: string;
+  iconUrl: string | null;
+  slug: string;
+  cloneCount: number;
+  toolCount: number;
+  tools: Array<{ name: string; description: string | null }>;
+  publishedAt: string;
+  creator: CommunityIntegrationCreator;
+}
+
+export interface CommunityIntegrationsResponse {
+  integrations: CommunityIntegration[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface PublicIntegrationResponse extends CommunityIntegration {
+  mcpConfig?: {
+    serverUrl: string;
+    requiresAuth: boolean;
+    authType: string | null;
+  };
 }
