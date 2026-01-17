@@ -190,13 +190,13 @@ async function getIntegrationPages(): Promise<MetadataRoute.Sitemap> {
       const data = await response.json();
       return (data.integrations || []).map(
         (integration: {
-          slug: string;
-          published_at?: string;
-          created_at?: string;
+          integrationId: string;
+          publishedAt?: string;
+          createdAt?: string;
         }) => ({
-          url: `${BASE_URL}/marketplace/${integration.slug}`,
+          url: `${BASE_URL}/marketplace/${integration.integrationId}`,
           lastModified: new Date(
-            integration.published_at || integration.created_at || Date.now(),
+            integration.publishedAt || integration.createdAt || Date.now(),
           ),
           changeFrequency: "weekly" as const,
           priority: 0.7,

@@ -7,16 +7,17 @@ import { toast } from "sonner";
 import { Copy01Icon, Tick02Icon } from "@/icons";
 
 interface ShareButtonProps {
-  slug: string;
+  /** ID or slug to use in the URL */
+  id: string;
   basePath?: string;
 }
 
 export default function ShareButton({
-  slug,
+  id,
   basePath = "/use-cases",
 }: ShareButtonProps) {
   const [copied, setCopied] = useState(false);
-  const shareUrl = `https://heygaia.io${basePath}/${slug}`;
+  const shareUrl = `https://heygaia.io${basePath}/${id}`;
 
   const handleCopyLink = async () => {
     try {

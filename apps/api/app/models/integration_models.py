@@ -69,28 +69,8 @@ class Integration(BaseModel):
     clone_count: int = Field(
         0, description="Number of times this integration was cloned"
     )
-    cloned_from: Optional[str] = Field(
-        None, description="Original integration_id if this is a clone"
-    )
-
-    # SEO/sharing metadata (set on publish)
-    slug: Optional[str] = Field(
-        None, description="URL-friendly unique slug for public pages"
-    )
-    og_title: Optional[str] = Field(
-        None, description="Open Graph title for social sharing"
-    )
-    og_description: Optional[str] = Field(
-        None, description="Open Graph description for social sharing"
-    )
-
-    # Denormalized creator info for public display
-    creator_name: Optional[str] = Field(
-        None, description="Creator's display name for public pages"
-    )
-    creator_picture: Optional[str] = Field(
-        None, description="Creator's profile picture URL for public pages"
-    )
+    # Note: cloned_from, slug, og_title, og_description, creator_name, creator_picture
+    # have been removed. Creator info is now fetched from users collection at runtime.
 
     # Configuration (one of these based on managed_by)
     mcp_config: Optional[MCPConfig] = None
@@ -201,12 +181,7 @@ class IntegrationResponse(BaseModel):
     # Publishing metadata (for public integrations)
     published_at: Optional[datetime] = None
     clone_count: int = 0
-    cloned_from: Optional[str] = None
-    slug: Optional[str] = None
-
-    # Creator info for public display
-    creator_name: Optional[str] = None
-    creator_picture: Optional[str] = None
+    # Note: Creator info is populated via aggregation from users collection
 
     @field_validator("clone_count", mode="before")
     @classmethod
@@ -244,11 +219,6 @@ class IntegrationResponse(BaseModel):
             # Publishing metadata
             published_at=integration.published_at,
             clone_count=integration.clone_count or 0,
-            cloned_from=integration.cloned_from,
-            slug=integration.slug,
-            # Creator info
-            creator_name=integration.creator_name,
-            creator_picture=integration.creator_picture,
         )
 
     @classmethod

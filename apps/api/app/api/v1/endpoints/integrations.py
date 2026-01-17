@@ -56,7 +56,8 @@ from app.schemas.integrations.responses import (
 from app.services.integrations.category_inference_service import (
     infer_integration_category,
 )
-from app.utils.string_utils import generate_unique_slug
+
+# Note: generate_unique_slug removed - using integration_id in URLs now
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,
@@ -342,11 +343,13 @@ def _format_community_integrations(docs: list) -> list[CommunityIntegrationItem]
             for t in tools[:10]  # Limit to first 10 tools
         ]
 
+        # Creator info is now populated via aggregation pipeline
         creator = None
-        if doc.get("creator_name") or doc.get("creator_picture"):
+        creator_data = doc.get("creator")
+        if creator_data:
             creator = CommunityIntegrationCreator(
-                name=doc.get("creator_name"),
-                picture=doc.get("creator_picture"),
+                name=creator_data.get("name"),
+                picture=creator_data.get("picture"),
             )
 
         result.append(
@@ -356,7 +359,6 @@ def _format_community_integrations(docs: list) -> list[CommunityIntegrationItem]
                 description=doc.get("description", ""),
                 category=doc.get("category", "custom"),
                 icon_url=doc.get("icon_url"),
-                slug=doc.get("slug"),
                 clone_count=doc.get("clone_count", 0),
                 tool_count=len(tools),
                 tools=tool_items,
@@ -436,17 +438,8 @@ async def create_custom_mcp_integration(
     try:
         t_start = time.perf_counter()
 
-        # EARLY VALIDATION: Check for duplicate name BEFORE slow network ops
-        # This prevents users from waiting 50+ seconds only to get a duplicate error
-        potential_id = f"custom_{request.name.lower().replace(' ', '_')}_{user_id}"
-        existing = await integrations_collection.find_one(
-            {"integration_id": potential_id}
-        )
-        if existing:
-            raise ValueError(
-                f"You already have an integration named '{request.name}'. "
-                "Please choose a different name."
-            )
+        # Note: With UUID-based integration_ids, duplicate name check is no longer needed
+        # Each integration gets a unique UUID regardless of name
 
         t0 = time.perf_counter()
         mcp_client = await get_mcp_client(user_id=user_id)
@@ -642,17 +635,50 @@ async def delete_custom_mcp_integration(
 # ============================================================================
 
 
-@router.get("/public/{slug}", response_model=PublicIntegrationDetailResponse)
-async def get_public_integration(slug: str) -> PublicIntegrationDetailResponse:
+@router.get("/public/{integration_id}", response_model=PublicIntegrationDetailResponse)
+async def get_public_integration(
+    integration_id: str,
+) -> PublicIntegrationDetailResponse:
     """
-    Get public integration details by slug.
+    Get public integration details by integration_id.
     No authentication required - used for public pages (SEO/sharing).
     """
     try:
-        # Find integration by slug
-        doc = await integrations_collection.find_one({"slug": slug, "is_public": True})
-        if not doc:
+        # Use aggregation to join creator data from users collection
+        pipeline = [
+            {"$match": {"integration_id": integration_id, "is_public": True}},
+            {
+                "$lookup": {
+                    "from": "users",
+                    "let": {"creator_id": {"$toObjectId": "$created_by"}},
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$_id", "$$creator_id"]}}},
+                        {"$project": {"name": 1, "picture": 1}},
+                    ],
+                    "as": "creator_info",
+                }
+            },
+            {
+                "$addFields": {
+                    "creator": {
+                        "$cond": {
+                            "if": {"$gt": [{"$size": "$creator_info"}, 0]},
+                            "then": {"$arrayElemAt": ["$creator_info", 0]},
+                            "else": None,
+                        }
+                    }
+                }
+            },
+            {"$project": {"creator_info": 0}},
+        ]
+
+        cursor = integrations_collection.aggregate(pipeline)
+        docs = await cursor.to_list(length=1)
+
+        if not docs:
             raise HTTPException(status_code=404, detail="Integration not found")
+
+        doc = docs[0]
 
         # Extract MCP config details as nested object
         mcp_config_doc = doc.get("mcp_config", {})
@@ -664,12 +690,13 @@ async def get_public_integration(slug: str) -> PublicIntegrationDetailResponse:
                 auth_type=mcp_config_doc.get("auth_type"),
             )
 
-        # Build creator as nested object
+        # Build creator as nested object from aggregated data
         creator = None
-        if doc.get("creator_name") or doc.get("creator_picture"):
+        creator_data = doc.get("creator")
+        if creator_data:
             creator = CommunityIntegrationCreator(
-                name=doc.get("creator_name"),
-                picture=doc.get("creator_picture"),
+                name=creator_data.get("name"),
+                picture=creator_data.get("picture"),
             )
 
         tools = doc.get("tools", [])
@@ -679,7 +706,6 @@ async def get_public_integration(slug: str) -> PublicIntegrationDetailResponse:
             name=doc["name"],
             description=doc.get("description", ""),
             category=doc.get("category", "custom"),
-            slug=doc.get("slug", ""),
             icon_url=doc.get("icon_url"),
             creator=creator,
             mcp_config=mcp_config,
@@ -697,54 +723,34 @@ async def get_public_integration(slug: str) -> PublicIntegrationDetailResponse:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching public integration {slug}: {e}")
+        logger.error(f"Error fetching public integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch integration")
 
 
-@router.post("/public/{slug}/clone", response_model=CloneIntegrationResponse)
+@router.post("/public/{integration_id}/clone", response_model=CloneIntegrationResponse)
 async def clone_integration(
-    slug: str,
+    integration_id: str,
     user_id: str = Depends(get_user_id),
 ) -> CloneIntegrationResponse:
     """Clone a public integration to user's workspace."""
+    import uuid
+
     from app.db.mongodb.collections import user_integrations_collection
 
     try:
-        # 1. Get public integration by slug
+        # 1. Get public integration by integration_id
         original_doc = await integrations_collection.find_one(
-            {"slug": slug, "is_public": True}
+            {"integration_id": integration_id, "is_public": True}
         )
         if not original_doc:
             raise HTTPException(status_code=404, detail="Integration not found")
 
         original_id = original_doc["integration_id"]
 
-        # 2. Check if user already cloned this integration
-        existing_clone = await integrations_collection.find_one(
-            {"cloned_from": original_id, "created_by": user_id}
-        )
-        if existing_clone:
-            raise HTTPException(
-                status_code=400,
-                detail="You have already cloned this integration",
-            )
+        # 2. Generate new unique integration_id using short UUID
+        new_integration_id = uuid.uuid4().hex[:12]
 
-        # 3. Create new integration in user's account
-        # Generate unique ID based on name and user
-        base_name = original_doc["name"].lower().replace(" ", "_")
-        new_integration_id = f"custom_{base_name}_{user_id}"
-
-        # Check if ID exists (user may have an integration with same name)
-        existing_with_id = await integrations_collection.find_one(
-            {"integration_id": new_integration_id}
-        )
-        if existing_with_id:
-            # Add suffix to make unique
-            import time
-
-            new_integration_id = f"custom_{base_name}_{user_id}_{int(time.time())}"
-
-        # Copy relevant fields
+        # Copy relevant fields (cloned_from field removed)
         mcp_config = original_doc.get("mcp_config", {})
         new_doc = {
             "integration_id": new_integration_id,
@@ -755,7 +761,6 @@ async def clone_integration(
             "source": "custom",
             "is_public": False,  # Clone is private by default
             "created_by": user_id,
-            "cloned_from": original_id,
             "icon_url": original_doc.get("icon_url"),
             "mcp_config": mcp_config,
             "tools": original_doc.get("tools", []),
@@ -767,21 +772,21 @@ async def clone_integration(
         try:
             await integrations_collection.insert_one(new_doc)
         except Exception as e:
-            # Handle race condition: duplicate key error if user already cloned
+            # Handle race condition: duplicate key error
             if "duplicate key" in str(e).lower() or "E11000" in str(e):
                 raise HTTPException(
                     status_code=400,
-                    detail="You have already cloned this integration",
+                    detail="Failed to create clone - please try again",
                 )
             raise
 
-        # 4. Increment clone_count on original (atomic update)
+        # 3. Increment clone_count on original (atomic update)
         await integrations_collection.update_one(
             {"integration_id": original_id},
             {"$inc": {"clone_count": 1}},
         )
 
-        # 5. Auto-add to user's workspace with status="created"
+        # 4. Auto-add to user's workspace with status="created"
         user_integration_doc = {
             "user_id": user_id,
             "integration_id": new_integration_id,
@@ -804,7 +809,7 @@ async def clone_integration(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error cloning integration {slug}: {e}")
+        logger.error(f"Error cloning integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to clone integration")
 
 
@@ -860,7 +865,6 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
                     clone_count=r.get("clone_count", doc.get("clone_count", 0)),
                     tool_count=r.get("tool_count", len(doc.get("tools", []))),
                     icon_url=doc.get("icon_url"),
-                    slug=doc.get("slug"),
                 )
             )
 
@@ -923,17 +927,6 @@ async def publish_integration(
                 detail="; ".join(validation_errors),
             )
 
-        # Generate unique slug for public URL
-        async def check_slug_exists(slug: str) -> bool:
-            existing = await integrations_collection.find_one({"slug": slug})
-            return existing is not None
-
-        slug = await generate_unique_slug(
-            name=integration.get("name", "integration"),
-            user_id=user_id,
-            check_exists_func=check_slug_exists,
-        )
-
         # Infer category using LLM
         category = await infer_integration_category(
             name=integration.get("name", ""),
@@ -942,10 +935,8 @@ async def publish_integration(
             server_url=integration.get("mcp_config", {}).get("server_url", ""),
         )
 
-        # Fetch user info for creator metadata
-        user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
-        creator_name = user_doc.get("name", "Anonymous") if user_doc else "Anonymous"
-        creator_picture = user_doc.get("picture") if user_doc else None
+        # Note: creator_name and creator_picture are no longer stored
+        # Creator info is now fetched from users collection at runtime via aggregation
 
         # Atomic update with condition to prevent race condition
         # Only update if is_public is not already True
@@ -961,10 +952,7 @@ async def publish_integration(
                 "$set": {
                     "is_public": True,
                     "published_at": now,
-                    "slug": slug,
                     "category": category,
-                    "creator_name": creator_name,
-                    "creator_picture": creator_picture,
                     "clone_count": integration.get("clone_count", 0),
                 }
             },
@@ -994,13 +982,12 @@ async def publish_integration(
             tools=tools,
         )
 
-        public_url = f"/integrations/{slug}"
-        logger.info(f"Published integration {integration_id} as {slug}")
+        public_url = f"/marketplace/{integration_id}"
+        logger.info(f"Published integration {integration_id}")
 
         return PublishIntegrationResponse(
             message="Integration published successfully",
             integration_id=integration_id,
-            slug=slug,
             public_url=public_url,
         )
 
@@ -1045,7 +1032,7 @@ async def unpublish_integration(
             {"integration_id": integration_id},
             {
                 "$set": {"is_public": False},
-                "$unset": {"published_at": "", "slug": ""},
+                "$unset": {"published_at": ""},
             },
         )
 

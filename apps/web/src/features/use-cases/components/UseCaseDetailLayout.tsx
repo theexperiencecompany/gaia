@@ -11,7 +11,7 @@ interface UseCaseDetailLayoutProps {
   breadcrumbs: Array<{ label: string; href?: string }>;
   title: string;
   description?: string;
-  slug: string;
+  id: string;
   isCreating: boolean;
   onCreateWorkflow: () => void;
   metaInfo: ReactNode;
@@ -25,7 +25,7 @@ export default function UseCaseDetailLayout({
   breadcrumbs,
   title,
   description,
-  slug,
+  id,
   isCreating,
   onCreateWorkflow,
   metaInfo,
@@ -58,7 +58,7 @@ export default function UseCaseDetailLayout({
           </div>
 
           <div className="flex items-center gap-3">
-            <ShareButton slug={slug} />
+            <ShareButton id={id} />
             <RaisedButton
               color="#00bbff"
               className="shrink-0 text-black!"
@@ -82,7 +82,7 @@ export default function UseCaseDetailLayout({
 
         {similarContent}
 
-        <YouMightAlsoLike currentSlug={slug} categories={categories} />
+        <YouMightAlsoLike currentSlug={id} categories={categories} />
 
         <PublishWorkflowCTA />
       </div>

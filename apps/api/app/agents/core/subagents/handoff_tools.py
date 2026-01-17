@@ -175,9 +175,12 @@ async def index_custom_mcp_as_subagent(
 
     Args:
         store: The ChromaStore instance
-        integration_id: Unique ID of the custom integration
+        integration_id: Unique ID of the custom integration (12-char hex)
         name: Display name of the integration
         description: Description of what the integration does
+
+    Note: With the new short UUID format for integration_id (e.g., a1b2c3d4e5f6),
+    the subagent key is now clean: subagent:a1b2c3d4e5f6
     """
     # Create rich description for semantic matching
     rich_description = (
@@ -189,7 +192,7 @@ async def index_custom_mcp_as_subagent(
 
     put_op = PutOp(
         namespace=SUBAGENTS_NAMESPACE,
-        key=integration_id,
+        key=integration_id,  # Now a clean 12-char hex UUID
         value={
             "id": integration_id,
             "name": name,
@@ -200,7 +203,7 @@ async def index_custom_mcp_as_subagent(
     )
 
     await store.abatch([put_op])
-    logger.info(f"Indexed custom MCP {integration_id} as subagent")
+    logger.info(f"Indexed custom MCP {name} ({integration_id}) as subagent")
 
 
 @tool

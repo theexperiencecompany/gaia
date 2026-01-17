@@ -178,7 +178,7 @@ export default function UseCaseDetailClient({
       <UseCaseDetailLayout
         breadcrumbs={breadcrumbs}
         title={title}
-        slug={currentSlug}
+        id={currentSlug}
         isCreating={isCreating}
         onCreateWorkflow={handleCreateWorkflow}
         metaInfo={

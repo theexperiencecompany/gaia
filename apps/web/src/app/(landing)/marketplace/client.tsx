@@ -96,7 +96,6 @@ export function IntegrationsPageClient() {
           </p>
         </div>
 
-        {/* Filters */}
         <IntegrationsFilters
           onFilterChange={handleFilterChange}
           initialFilters={filters}

@@ -9,6 +9,7 @@ This service handles:
 """
 
 import asyncio
+import uuid
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 
@@ -416,16 +417,10 @@ async def create_custom_integration(
     Raises:
         ValueError: If integration with same ID already exists
     """
-    integration_id = f"custom_{request.name.lower().replace(' ', '_')}_{user_id}"
+    # Generate short UUID for integration_id (12 hex chars)
+    integration_id = uuid.uuid4().hex[:12]
 
-    existing = await integrations_collection.find_one(
-        {"integration_id": integration_id}
-    )
-    if existing:
-        raise ValueError(
-            f"You already have an integration named '{request.name}'. "
-            "Please choose a different name."
-        )
+    # Note: No duplicate check needed since UUIDs are unique
 
     # Clean up orphaned user_integration if exists (from failed previous creation)
     orphaned = await user_integrations_collection.find_one(

@@ -226,7 +226,6 @@ export const integrationsApi = {
   ): Promise<{
     message: string;
     integrationId: string;
-    slug: string;
     publicUrl: string;
   }> => {
     const response = await apiService.post(
@@ -236,7 +235,6 @@ export const integrationsApi = {
     return response as {
       message: string;
       integrationId: string;
-      slug: string;
       publicUrl: string;
     };
   },
@@ -285,12 +283,14 @@ export const integrationsApi = {
   },
 
   /**
-   * Get public integration details by slug (no auth required)
+   * Get public integration details by integration ID (no auth required)
    */
   getPublicIntegration: async (
-    slug: string,
+    integrationId: string,
   ): Promise<PublicIntegrationResponse> => {
-    const response = await apiService.get(`/integrations/public/${slug}`);
+    const response = await apiService.get(
+      `/integrations/public/${integrationId}`,
+    );
     return response as PublicIntegrationResponse;
   },
 
@@ -298,7 +298,7 @@ export const integrationsApi = {
    * Clone a public integration to user's workspace
    */
   cloneIntegration: async (
-    slug: string,
+    integrationId: string,
   ): Promise<{
     message: string;
     integrationId: string;
@@ -306,7 +306,7 @@ export const integrationsApi = {
     connectionStatus: string;
   }> => {
     const response = await apiService.post(
-      `/integrations/public/${slug}/clone`,
+      `/integrations/public/${integrationId}/clone`,
       {},
     );
     return response as {

@@ -104,10 +104,8 @@ class IntegrationResponse(CamelModel, CloneCountMixin):
     # Publishing fields
     published_at: Optional[datetime] = None
     clone_count: int = 0
-    cloned_from: Optional[str] = None
-    slug: Optional[str] = None
-    creator_name: Optional[str] = None
-    creator_picture: Optional[str] = None
+    # Note: Creator info is populated via aggregation from users collection
+    # Fields removed: cloned_from, slug, creator_name, creator_picture
 
 
 class UserIntegrationResponse(CamelModel):
@@ -140,7 +138,6 @@ class ConnectIntegrationResponse(CamelModel):
 
 class PublishIntegrationResponse(SuccessResponse, CamelModel):
     integration_id: str
-    slug: str
     public_url: str
 
 
@@ -163,7 +160,6 @@ class CommunityIntegrationItem(CamelModel, CloneCountMixin):
     description: str
     category: str
     icon_url: Optional[str] = None
-    slug: Optional[str] = None
     clone_count: int = 0
     tool_count: int = 0
     tools: List[IntegrationTool] = []
@@ -194,10 +190,9 @@ class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
     name: str
     description: str
     category: str
-    slug: str
     icon_url: Optional[str] = None
 
-    # Creator info (nested object for frontend compatibility)
+    # Creator info (nested object populated via aggregation from users collection)
     creator: Optional[CommunityIntegrationCreator] = None
 
     # MCP config for public display (nested object for frontend compatibility)
@@ -231,7 +226,6 @@ class SearchIntegrationItem(CamelModel, CloneCountMixin):
     clone_count: int = 0
     tool_count: int = 0
     icon_url: Optional[str] = None
-    slug: Optional[str] = None
 
 
 class SearchIntegrationsResponse(BaseModel):

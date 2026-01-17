@@ -37,6 +37,21 @@ const IntegrationIcon: React.FC<{
 
   // Otherwise, try to use the iconUrl with error handling
   if (iconUrl && !hasError) {
+    // Use regular img tag for SVG URLs to avoid Next.js Image optimization issues
+    const isSvg = iconUrl.toLowerCase().endsWith(".svg");
+    if (isSvg) {
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={iconUrl}
+          alt="Integration icon"
+          width={28}
+          height={28}
+          className="aspect-square object-contain"
+          onError={() => setHasError(true)}
+        />
+      );
+    }
     return (
       <Image
         src={iconUrl}
@@ -76,7 +91,7 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
   };
 
   return (
-    <Link href={`/marketplace/${integration.slug}`}>
+    <Link href={`/marketplace/${integration.integrationId}`}>
       <div className="group relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 outline-1 outline-zinc-800/70 transition-all select-none cursor-pointer hover:bg-zinc-700/50">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 aspect-square shrink-0 items-center justify-center rounded-xl p-0">

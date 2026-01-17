@@ -1,5 +1,11 @@
 "use client";
 
+import { Button, ButtonGroup } from "@heroui/button";
+import { Chip } from "@heroui/chip";
+import { Tooltip } from "@heroui/tooltip";
+import Link from "next/link";
+import React, { useState } from "react";
+import { toast } from "sonner";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { RaisedButton, SidebarHeader } from "@/components/ui";
 import { SidebarContent } from "@/components/ui/sidebar";
@@ -14,12 +20,6 @@ import {
   Share08Icon,
   Unlink04Icon,
 } from "@/icons";
-import { Button, ButtonGroup } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Tooltip } from "@heroui/tooltip";
-import Link from "next/link";
-import React, { useState } from "react";
-import { toast } from "sonner";
 
 interface IntegrationSidebarProps {
   integration: Integration;
@@ -59,10 +59,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   // Calculate how many buttons will be shown to determine icon-only mode
   const buttonCount = [
     !!onDisconnect,
-    integration.isPublic && integration.slug, // View on Marketplace
+    integration.isPublic, // View on Marketplace
     integration.source === "custom" && integration.isPublic, // Unpublish
     integration.source === "custom" && !integration.isPublic, // Publish
-    integration.isPublic && integration.slug, // Share
+    integration.isPublic, // Share
   ].filter(Boolean).length;
 
   const useIconOnly = buttonCount >= 2;
@@ -251,13 +251,13 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               </Tooltip>
             )}
 
-            {integration.isPublic && integration.slug && (
+            {integration.isPublic && (
               <Tooltip content="View on Marketplace">
                 <Button
                   className="w-full"
                   isIconOnly={useIconOnly}
                   as={Link}
-                  href={`/marketplace/${integration.slug}`}
+                  href={`/marketplace/${integration.id}`}
                   color="primary"
                   aria-label="View on Marketplace"
                   startContent={
@@ -319,7 +319,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               </Tooltip>
             )}
 
-            {integration.isPublic && integration.slug && (
+            {integration.isPublic && (
               <Tooltip content="Copy share link to clipboard">
                 <Button
                   isIconOnly={useIconOnly}
@@ -327,7 +327,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   color="default"
                   onPress={() => {
                     navigator.clipboard.writeText(
-                      `${window.location.origin}/marketplace/${integration.slug}`,
+                      `${window.location.origin}/marketplace/${integration.id}`,
                     );
                     toast.success("Link copied to clipboard!");
                   }}

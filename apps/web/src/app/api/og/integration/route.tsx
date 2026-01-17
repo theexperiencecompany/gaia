@@ -23,9 +23,9 @@ export const runtime = "edge";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const slug = searchParams.get("slug");
+    const id = searchParams.get("id");
 
-    if (!slug) {
+    if (!id) {
       return createFallbackResponse("GAIA Marketplace");
     }
 
@@ -35,12 +35,9 @@ export async function GET(request: Request) {
 
     let integration = null;
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/integrations/public/${slug}`,
-        {
-          cache: "no-store",
-        },
-      );
+      const response = await fetch(`${apiBaseUrl}/integrations/public/${id}`, {
+        cache: "no-store",
+      });
       if (response.ok) {
         integration = await response.json();
       }
@@ -48,7 +45,7 @@ export async function GET(request: Request) {
       console.error("[OG Image] Fetch failed:", e);
     }
 
-    const name = integration?.name || slug;
+    const name = integration?.name || id;
     const description = integration?.description || "MCP Integration for GAIA";
     const category = integration?.category || "integration";
     const creatorName = integration?.creator?.name || "Community";
@@ -56,7 +53,7 @@ export async function GET(request: Request) {
     const toolCount = integration?.toolCount || 0;
 
     // Integration ID is used to look up known icons
-    const integrationId = integration?.integrationId || slug;
+    const integrationId = integration?.integrationId || id;
 
     // First, try to get a known icon from the config (same as PublicIntegrationCard)
     const knownIconPath = getOgIconPath(integrationId);

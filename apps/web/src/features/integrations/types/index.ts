@@ -40,8 +40,6 @@ export interface Integration {
   tools?: Array<{ name: string; description?: string }>;
   // Custom integration icon (favicon from MCP server)
   iconUrl?: string;
-  // Slug for public integrations
-  slug?: string;
 }
 
 export interface IntegrationStatus {
@@ -87,7 +85,6 @@ export interface MarketplaceIntegration {
   isPublic?: boolean;
   createdBy?: string;
   // Publishing metadata
-  slug?: string;
   publishedAt?: string;
   cloneCount?: number;
 }
@@ -177,7 +174,6 @@ export interface CommunityIntegration {
   description: string;
   category: string;
   iconUrl: string | null;
-  slug: string;
   cloneCount: number;
   toolCount: number;
   tools: Array<{ name: string; description: string | null }>;

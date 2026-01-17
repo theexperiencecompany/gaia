@@ -18,6 +18,7 @@ Flags:
 import argparse
 import asyncio
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -30,6 +31,11 @@ sys.path.insert(0, str(backend_dir))
 from app.db.mongodb.collections import integrations_collection  # noqa: E402
 
 
+def generate_integration_id() -> str:
+    """Generate a short 12-character hex UUID for integration_id."""
+    return uuid.uuid4().hex[:12]
+
+
 def get_public_integrations() -> List[Dict[str, Any]]:
     """
     Define public community integrations to seed.
@@ -40,7 +46,7 @@ def get_public_integrations() -> List[Dict[str, Any]]:
     return [
         # Research & Knowledge
         {
-            "integration_id": "custom_semantic_scholar",
+            "integration_id": generate_integration_id(),
             "name": "Semantic Scholar",
             "description": "Search and retrieve academic papers, citations, and research data from Semantic Scholar's database of over 200 million papers.",
             "category": "research",
@@ -50,11 +56,6 @@ def get_public_integrations() -> List[Dict[str, Any]]:
             "created_by": "system_seed",
             "published_at": now,
             "clone_count": random.randint(50, 200),
-            "slug": "semantic-scholar",
-            "og_title": "Semantic Scholar MCP Integration",
-            "og_description": "Access academic papers and research data through AI",
-            "creator_name": "Hamid Vakilzadeh",
-            "creator_picture": None,
             "mcp_config": {
                 "server_url": "https://server.smithery.ai/@hamid-vakilzadeh/mcpsemanticscholar",
                 "requires_auth": False,
@@ -89,7 +90,7 @@ def get_public_integrations() -> List[Dict[str, Any]]:
         },
         # Web & Browser
         {
-            "integration_id": "custom_browserbase",
+            "integration_id": generate_integration_id(),
             "name": "Browserbase",
             "description": "Control headless browsers for web scraping, automation, and testing. Navigate pages, extract content, and interact with web elements.",
             "category": "developer",
@@ -99,11 +100,6 @@ def get_public_integrations() -> List[Dict[str, Any]]:
             "created_by": "system_seed",
             "published_at": now,
             "clone_count": random.randint(100, 400),
-            "slug": "browserbase",
-            "og_title": "Browserbase MCP Integration",
-            "og_description": "AI-powered browser automation and web scraping",
-            "creator_name": "Browserbase Team",
-            "creator_picture": None,
             "mcp_config": {
                 "server_url": "https://server.smithery.ai/@anthropics/mcp-server-browserbase",
                 "requires_auth": False,
@@ -123,7 +119,7 @@ def get_public_integrations() -> List[Dict[str, Any]]:
         },
         # Database & Storage
         {
-            "integration_id": "custom_supabase",
+            "integration_id": generate_integration_id(),
             "name": "Supabase",
             "description": "Interact with Supabase databases - query tables, insert data, manage authentication, and work with real-time subscriptions.",
             "category": "developer",
@@ -133,11 +129,6 @@ def get_public_integrations() -> List[Dict[str, Any]]:
             "created_by": "system_seed",
             "published_at": now,
             "clone_count": random.randint(150, 500),
-            "slug": "supabase",
-            "og_title": "Supabase MCP Integration",
-            "og_description": "Connect AI to your Supabase database",
-            "creator_name": "Alexander Zuev",
-            "creator_picture": None,
             "mcp_config": {
                 "server_url": "https://server.smithery.ai/@alexander-zuev/supabase-mcp-server",
                 "requires_auth": False,
@@ -163,7 +154,7 @@ def get_public_integrations() -> List[Dict[str, Any]]:
         },
         # File & Document
         {
-            "integration_id": "custom_gdrive",
+            "integration_id": generate_integration_id(),
             "name": "Google Drive MCP",
             "description": "Search, read, and manage files in Google Drive. Access documents, spreadsheets, and collaborate on shared files.",
             "category": "productivity",
@@ -173,11 +164,6 @@ def get_public_integrations() -> List[Dict[str, Any]]:
             "created_by": "system_seed",
             "published_at": now,
             "clone_count": random.randint(200, 600),
-            "slug": "google-drive-mcp",
-            "og_title": "Google Drive MCP Integration",
-            "og_description": "AI access to your Google Drive files",
-            "creator_name": "Anthropic",
-            "creator_picture": None,
             "mcp_config": {
                 "server_url": "https://server.smithery.ai/@anthropics/mcp-server-gdrive",
                 "requires_auth": True,
@@ -200,7 +186,7 @@ def get_public_integrations() -> List[Dict[str, Any]]:
         },
         # Communication
         {
-            "integration_id": "custom_slack_mcp",
+            "integration_id": generate_integration_id(),
             "name": "Slack MCP",
             "description": "Send messages, search conversations, and manage Slack workspaces. Interact with channels, users, and threads programmatically.",
             "category": "communication",
@@ -210,11 +196,6 @@ def get_public_integrations() -> List[Dict[str, Any]]:
             "created_by": "system_seed",
             "published_at": now,
             "clone_count": random.randint(100, 350),
-            "slug": "slack-mcp",
-            "og_title": "Slack MCP Integration",
-            "og_description": "AI-powered Slack messaging and search",
-            "creator_name": "Anthropic",
-            "creator_picture": None,
             "mcp_config": {
                 "server_url": "https://server.smithery.ai/@anthropics/mcp-server-slack",
                 "requires_auth": True,
@@ -237,7 +218,7 @@ def get_public_integrations() -> List[Dict[str, Any]]:
         },
         # Code & Development
         {
-            "integration_id": "custom_github_mcp",
+            "integration_id": generate_integration_id(),
             "name": "GitHub MCP",
             "description": "Interact with GitHub repositories - search code, manage issues and pull requests, view commits, and automate workflows.",
             "category": "developer",
@@ -247,11 +228,6 @@ def get_public_integrations() -> List[Dict[str, Any]]:
             "created_by": "system_seed",
             "published_at": now,
             "clone_count": random.randint(300, 800),
-            "slug": "github-mcp",
-            "og_title": "GitHub MCP Integration",
-            "og_description": "Connect AI to your GitHub repositories",
-            "creator_name": "Anthropic",
-            "creator_picture": None,
             "mcp_config": {
                 "server_url": "https://server.smithery.ai/@anthropics/mcp-server-github",
                 "requires_auth": True,
@@ -274,7 +250,7 @@ def get_public_integrations() -> List[Dict[str, Any]]:
         },
         # Data & APIs
         {
-            "integration_id": "custom_weather",
+            "integration_id": generate_integration_id(),
             "name": "Weather API",
             "description": "Get current weather conditions, forecasts, and historical weather data for any location worldwide.",
             "category": "data",
@@ -284,11 +260,6 @@ def get_public_integrations() -> List[Dict[str, Any]]:
             "created_by": "system_seed",
             "published_at": now,
             "clone_count": random.randint(50, 150),
-            "slug": "weather-api",
-            "og_title": "Weather API MCP Integration",
-            "og_description": "Real-time weather data for AI applications",
-            "creator_name": "MCP Community",
-            "creator_picture": None,
             "mcp_config": {
                 "server_url": "https://server.smithery.ai/@anthropics/mcp-server-fetch",
                 "requires_auth": False,
@@ -312,7 +283,7 @@ def get_public_integrations() -> List[Dict[str, Any]]:
         },
         # E-commerce
         {
-            "integration_id": "custom_stripe",
+            "integration_id": generate_integration_id(),
             "name": "Stripe",
             "description": "Manage Stripe payments - view transactions, customers, subscriptions, and generate reports on your payment data.",
             "category": "finance",
@@ -322,11 +293,6 @@ def get_public_integrations() -> List[Dict[str, Any]]:
             "created_by": "system_seed",
             "published_at": now,
             "clone_count": random.randint(80, 250),
-            "slug": "stripe",
-            "og_title": "Stripe MCP Integration",
-            "og_description": "AI-powered Stripe payment management",
-            "creator_name": "MCP Community",
-            "creator_picture": None,
             "mcp_config": {
                 "server_url": "https://server.smithery.ai/@anthropics/mcp-server-stripe",
                 "requires_auth": True,
@@ -349,7 +315,7 @@ def get_public_integrations() -> List[Dict[str, Any]]:
         },
         # News & Content
         {
-            "integration_id": "custom_hackernews",
+            "integration_id": generate_integration_id(),
             "name": "Hacker News",
             "description": "Search and browse Hacker News - get top stories, comments, and discussions from the tech community.",
             "category": "news",
@@ -359,11 +325,6 @@ def get_public_integrations() -> List[Dict[str, Any]]:
             "created_by": "system_seed",
             "published_at": now,
             "clone_count": random.randint(60, 180),
-            "slug": "hacker-news",
-            "og_title": "Hacker News MCP Integration",
-            "og_description": "AI access to Hacker News content",
-            "creator_name": "MCP Community",
-            "creator_picture": None,
             "mcp_config": {
                 "server_url": "https://server.smithery.ai/@anthropics/mcp-server-fetch",
                 "requires_auth": False,
@@ -390,7 +351,7 @@ def get_public_integrations() -> List[Dict[str, Any]]:
         },
         # Memory & Context
         {
-            "integration_id": "custom_memory",
+            "integration_id": generate_integration_id(),
             "name": "Memory Server",
             "description": "Persistent memory storage for AI conversations - remember user preferences, past interactions, and important context.",
             "category": "ai",
@@ -400,11 +361,6 @@ def get_public_integrations() -> List[Dict[str, Any]]:
             "created_by": "system_seed",
             "published_at": now,
             "clone_count": random.randint(40, 120),
-            "slug": "memory-server",
-            "og_title": "Memory Server MCP Integration",
-            "og_description": "Persistent memory for AI applications",
-            "creator_name": "Anthropic",
-            "creator_picture": None,
             "mcp_config": {
                 "server_url": "https://server.smithery.ai/@anthropics/mcp-server-memory",
                 "requires_auth": False,
@@ -475,16 +431,17 @@ async def seed_integrations(
     skipped = 0
 
     for integration in integrations:
-        # Check if integration already exists
+        # Check if integration already exists by name (since IDs are now random)
         existing = await integrations_collection.find_one(
-            {"integration_id": integration["integration_id"]}
+            {"name": integration["name"], "created_by": "system_seed"}
         )
 
         if existing:
             if force:
-                # Update existing
+                # Update existing (keep the original integration_id)
+                integration["integration_id"] = existing["integration_id"]
                 await integrations_collection.update_one(
-                    {"integration_id": integration["integration_id"]},
+                    {"_id": existing["_id"]},
                     {"$set": integration},
                 )
                 updated += 1

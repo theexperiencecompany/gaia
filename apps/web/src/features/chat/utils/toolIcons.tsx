@@ -1,5 +1,10 @@
 import Image from "next/image";
 import {
+  iconAliases,
+  normalizeCategoryName,
+  toolIconConfigs,
+} from "@/config/toolIconConfig";
+import {
   AlarmClockIcon,
   Brain02Icon,
   CheckListIcon,
@@ -15,11 +20,6 @@ import {
   Target02Icon,
   ToolsIcon,
 } from "@/icons";
-import {
-  toolIconConfigs,
-  iconAliases,
-  normalizeCategoryName,
-} from "@/config/toolIconConfig";
 
 interface IconProps {
   size?: number;
@@ -68,7 +68,7 @@ const iconConfigs: Record<string, IconConfig> = Object.fromEntries(
       iconColor: config.iconColor,
       isImage: config.isImage,
     },
-  ])
+  ]),
 );
 
 // Component that auto-detects and inverts dark icons
@@ -81,13 +81,31 @@ const AutoInvertIcon: React.FC<{
   className?: string;
 }> = ({ src, alt, size, width, height, className }) => {
   // const { shouldInvert } = useIconColorDetection(src);
+  const imgWidth = width || size || 20;
+  const imgHeight = height || size || 20;
+  const imgClassName = `${className} aspect-square object-contain`;
+
+  // Use regular img tag for SVG URLs to avoid Next.js Image optimization issues
+  const isSvg = src.toLowerCase().endsWith(".svg");
+  if (isSvg) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        alt={alt}
+        width={imgWidth}
+        height={imgHeight}
+        className={imgClassName}
+        src={src}
+      />
+    );
+  }
 
   return (
     <Image
       alt={alt}
-      width={width || size || 20}
-      height={height || size || 20}
-      className={`${className} aspect-square object-contain`}
+      width={imgWidth}
+      height={imgHeight}
+      className={imgClassName}
       src={src}
     />
     //  ${shouldInvert ? "invert" : ""} commented out temporarily
@@ -97,7 +115,7 @@ const AutoInvertIcon: React.FC<{
 export const getToolCategoryIcon = (
   category: string,
   iconProps: IconProps = {},
-  iconUrl?: string | null
+  iconUrl?: string | null,
 ) => {
   const { showBackground = true, iconOnly = false, ...restProps } = iconProps;
 
@@ -128,7 +146,7 @@ export const getToolCategoryIcon = (
   if (!config) {
     const normalizedConfigs = Object.entries(iconConfigs);
     const matchingConfig = normalizedConfigs.find(
-      ([key]) => normalizeCategoryName(key) === finalCategory
+      ([key]) => normalizeCategoryName(key) === finalCategory,
     );
     if (matchingConfig) {
       config = matchingConfig[1];

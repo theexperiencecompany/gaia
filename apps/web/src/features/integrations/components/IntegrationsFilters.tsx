@@ -44,7 +44,7 @@ interface IntegrationsFiltersProps {
  */
 function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
   callback: T,
-  delay: number
+  delay: number,
 ): T {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callbackRef = useRef(callback);
@@ -72,7 +72,7 @@ function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
         callbackRef.current(...args);
       }, delay);
     }) as T,
-    [delay]
+    [delay],
   );
 }
 
@@ -105,21 +105,9 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
 
   return (
     <div className="mb-8 space-y-4">
-      {/* Search bar */}
-      <Input
-        type="search"
-        placeholder="Search integrations..."
-        value={search}
-        onValueChange={handleSearchChange}
-        startContent={<SearchIcon className="text-zinc-400" />}
-        classNames={{
-          input: "bg-zinc-900",
-          inputWrapper: "bg-zinc-900 hover:bg-zinc-800",
-        }}
-      />
-
-      <div className="flex items-center justify-between gap-4">
+      <div className="grid grid-cols-7 items-center justify-between gap-5">
         <Tabs
+          className="col-span-4"
           selectedKey={category}
           onSelectionChange={(key) => handleCategoryChange(key as string)}
           variant="light"
@@ -129,20 +117,30 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
           ))}
         </Tabs>
 
-        <Select
-          size="sm"
-          selectedKeys={[sort]}
-          onSelectionChange={(keys) => {
-            const selected = Array.from(keys)[0] as string;
-            if (selected) handleSortChange(selected);
-          }}
-          className="w-40"
-          aria-label="Sort by"
-        >
-          {SORT_OPTIONS.map((option) => (
-            <SelectItem key={option.key}>{option.label}</SelectItem>
-          ))}
-        </Select>
+        <div className="flex justify-center pl-3">
+          <Select
+            selectedKeys={[sort]}
+            onSelectionChange={(keys) => {
+              const selected = Array.from(keys)[0] as string;
+              if (selected) handleSortChange(selected);
+            }}
+            className="w-40"
+            aria-label="Sort by"
+          >
+            {SORT_OPTIONS.map((option) => (
+              <SelectItem key={option.key}>{option.label}</SelectItem>
+            ))}
+          </Select>
+        </div>
+
+        <Input
+          className="col-span-2"
+          type="search"
+          placeholder="Search integrations..."
+          value={search}
+          onValueChange={handleSearchChange}
+          startContent={<SearchIcon className="text-zinc-400" />}
+        />
       </div>
     </div>
   );

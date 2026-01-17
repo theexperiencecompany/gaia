@@ -1,9 +1,9 @@
 "use client";
 
 import { Avatar } from "@heroui/avatar";
-import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Chip } from "@heroui/chip";
+import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
@@ -50,13 +50,13 @@ export function IntegrationDetailClient({
     enabled: isAuthenticated,
   });
 
-  // Check if user already has this integration (match by slug)
+  // Check if user already has this integration (match by integrationId)
   const alreadyHasIntegration = useMemo(() => {
     if (!userIntegrationsData?.integrations) return false;
     return userIntegrationsData.integrations.some(
-      (ui) => ui.integration.slug === integration.slug,
+      (ui) => ui.integration.integrationId === integration.integrationId,
     );
-  }, [userIntegrationsData, integration.slug]);
+  }, [userIntegrationsData, integration.integrationId]);
 
   const handleClone = async () => {
     // Already cloned in this session
@@ -76,7 +76,9 @@ export function IntegrationDetailClient({
 
     setIsCloning(true);
     try {
-      const result = await integrationsApi.cloneIntegration(integration.slug);
+      const result = await integrationsApi.cloneIntegration(
+        integration.integrationId,
+      );
       toast.success(`Successfully cloned ${result.name}!`);
       setIsCloned(true);
     } catch {
@@ -146,7 +148,10 @@ export function IntegrationDetailClient({
             </div>
 
             <div className="flex items-center gap-3">
-              <ShareButton slug={integration.slug} basePath="/marketplace" />
+              <ShareButton
+                id={integration.integrationId}
+                basePath="/marketplace"
+              />
               <RaisedButton
                 color="#00bbff"
                 className="shrink-0 text-black!"
