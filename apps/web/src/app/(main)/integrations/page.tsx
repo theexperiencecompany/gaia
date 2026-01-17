@@ -30,6 +30,8 @@ export default function IntegrationsPage() {
     connectIntegration,
     disconnectIntegration,
     deleteCustomIntegration,
+    publishIntegration,
+    unpublishIntegration,
     refetch,
   } = useIntegrations();
 
@@ -83,6 +85,14 @@ export default function IntegrationsPage() {
       setTimeout(() => closeRightSidebar(), 500);
     };
 
+    const handlePublish = async (id: string) => {
+      await publishIntegration(id);
+    };
+
+    const handleUnpublish = async (id: string) => {
+      await unpublishIntegration(id);
+    };
+
     setRightSidebarContent(
       <IntegrationSidebar
         integration={selectedIntegration}
@@ -90,6 +100,12 @@ export default function IntegrationsPage() {
         onDisconnect={handleDisconnect}
         onDelete={
           selectedIntegration.source === "custom" ? handleDelete : undefined
+        }
+        onPublish={
+          selectedIntegration.source === "custom" ? handlePublish : undefined
+        }
+        onUnpublish={
+          selectedIntegration.source === "custom" ? handleUnpublish : undefined
         }
         category={selectedIntegration.name}
       />,
@@ -102,6 +118,8 @@ export default function IntegrationsPage() {
     connectIntegration,
     disconnectIntegration,
     deleteCustomIntegration,
+    publishIntegration,
+    unpublishIntegration,
     closeRightSidebar,
   ]);
 

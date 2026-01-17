@@ -4,6 +4,7 @@ import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
 import Image from "next/image";
 
+import { wallpapers } from "@/app/api/og/shared";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { ComparisonTable } from "@/features/pricing/components/ComparisonTable";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
@@ -31,16 +32,16 @@ const integrations = [
 export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
   return (
     <div className="flex min-h-screen w-screen flex-col items-center justify-center pt-[35vh]">
-      <div className="fixed inset-0 top-0 z-0 h-[90vh] w-[100%]">
+      <div className="fixed inset-0 top-0 z-0 h-[90vh] w-full">
         <Image
-          src={"/images/wallpapers/field.webp"}
+          src={wallpapers.pricing.webp}
           alt="GAIA Pricing page Wallpaper"
           sizes="100vw"
           priority
           fill
           className="aspect-video object-cover object-bottom opacity-65"
         />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-background via-background to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-linear-to-t from-background via-background to-transparent" />
       </div>
 
       <div className="relative z-[1] flex flex-col items-center gap-2">

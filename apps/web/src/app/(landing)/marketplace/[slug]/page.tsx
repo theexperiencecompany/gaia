@@ -51,7 +51,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title: integration.name,
       description: integration.description,
-      images: [`/marketplace/${slug}/opengraph-image`],
+      images: [`/api/og/integration?slug=${slug}`],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: integration.name,
+      description: integration.description,
+      images: [`/api/og/integration?slug=${slug}`],
     },
   };
 }

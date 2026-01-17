@@ -30,6 +30,8 @@ export interface UseIntegrationsReturn {
     request: CreateCustomIntegrationRequest,
   ) => Promise<CreateCustomIntegrationResponse>;
   deleteCustomIntegration: (integrationId: string) => Promise<void>;
+  publishIntegration: (integrationId: string) => Promise<void>;
+  unpublishIntegration: (integrationId: string) => Promise<void>;
 
   // Refresh
   refetch: () => void;
@@ -229,6 +231,58 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     [deleteMutation],
   );
 
+  // Publish custom integration
+  const publishIntegration = useCallback(
+    async (integrationId: string): Promise<void> => {
+      const integration = integrations.find(
+        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
+      );
+      const integrationName = integration?.name || integrationId;
+
+      const toastId = toast.loading(`Publishing ${integrationName}...`);
+
+      try {
+        await integrationsApi.publishIntegration(integrationId);
+        toast.success(`${integrationName} published to community`, {
+          id: toastId,
+        });
+        await queryClient.refetchQueries({ queryKey: ["integrations"] });
+      } catch (error) {
+        toast.error(
+          `Failed to publish: ${error instanceof Error ? error.message : "Unknown error"}`,
+          { id: toastId },
+        );
+        throw error;
+      }
+    },
+    [queryClient, integrations],
+  );
+
+  // Unpublish custom integration
+  const unpublishIntegration = useCallback(
+    async (integrationId: string): Promise<void> => {
+      const integration = integrations.find(
+        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
+      );
+      const integrationName = integration?.name || integrationId;
+
+      const toastId = toast.loading(`Unpublishing ${integrationName}...`);
+
+      try {
+        await integrationsApi.unpublishIntegration(integrationId);
+        toast.success(`${integrationName} unpublished`, { id: toastId });
+        await queryClient.refetchQueries({ queryKey: ["integrations"] });
+      } catch (error) {
+        toast.error(
+          `Failed to unpublish: ${error instanceof Error ? error.message : "Unknown error"}`,
+          { id: toastId },
+        );
+        throw error;
+      }
+    },
+    [queryClient, integrations],
+  );
+
   // Simple refetch all
   const refetch = useCallback(() => {
     queryClient.refetchQueries({ queryKey: ["integrations"] });
@@ -243,6 +297,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     disconnectIntegration,
     createCustomIntegration,
     deleteCustomIntegration,
+    publishIntegration,
+    unpublishIntegration,
     refetch,
   };
 };

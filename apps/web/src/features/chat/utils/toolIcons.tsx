@@ -15,6 +15,11 @@ import {
   Target02Icon,
   ToolsIcon,
 } from "@/icons";
+import {
+  toolIconConfigs,
+  iconAliases,
+  normalizeCategoryName,
+} from "@/config/toolIconConfig";
 
 interface IconProps {
   size?: number;
@@ -33,310 +38,38 @@ interface IconConfig {
   isImage?: boolean;
 }
 
-/**
- * Normalize a category/integration name for icon lookup
- * - Converts to lowercase
- * - Replaces spaces, dashes, and multiple underscores with single underscore
- */
-const normalizeCategoryName = (name: string): string => {
-  if (!name) return "general";
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[\s-]+/g, "_") // Replace spaces and dashes with underscore
-    .replace(/_+/g, "_") // Replace multiple underscores with single underscore
-    .replace(/^_|_$/g, ""); // Remove leading/trailing underscores
+/** Map icon component names to actual React components */
+const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
+  CheckListIcon,
+  AlarmClockIcon,
+  FileEmpty02Icon,
+  SourceCodeCircleIcon,
+  Brain02Icon,
+  Image02Icon,
+  Target02Icon,
+  NotificationIcon,
+  InformationCircleIcon,
+  ToolsIcon,
+  ConnectIcon,
+  SquareArrowUpRight02Icon,
+  PackageOpenIcon,
+  ComputerTerminal01Icon,
 };
 
-// Alias mapping for backwards compatibility and category-to-integration mapping
-const iconAliases: Record<string, string> = {
-  calendar: "google_calendar", // Map old category name to integration name
-};
-
-const iconConfigs: Record<string, IconConfig> = {
-  gmail: {
-    icon: "/images/icons/gmail.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zin`c-200",
-    isImage: true,
-  },
-  todos: {
-    icon: CheckListIcon,
-    bgColor: "bg-emerald-500/20 backdrop-blur",
-    iconColor: "text-emerald-400",
-  },
-  reminders: {
-    icon: AlarmClockIcon,
-    bgColor: "bg-blue-500/20 backdrop-blur",
-    iconColor: "text-blue-400",
-  },
-  documents: {
-    icon: FileEmpty02Icon,
-    bgColor: "bg-orange-500/20 backdrop-blur",
-    iconColor: "text-[#FF4500]",
-  },
-  google_docs: {
-    icon: "/images/icons/google_docs.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  googlesheets: {
-    icon: "/images/icons/googlesheets.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  development: {
-    icon: SourceCodeCircleIcon,
-    bgColor: "bg-cyan-500/20 backdrop-blur",
-    iconColor: "text-cyan-400",
-  },
-  search: {
-    icon: "/images/icons/google.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  memory: {
-    icon: Brain02Icon,
-    bgColor: "bg-indigo-500/20 backdrop-blur",
-    iconColor: "text-indigo-400",
-  },
-  creative: {
-    icon: Image02Icon,
-    bgColor: "bg-pink-500/20 backdrop-blur",
-    iconColor: "text-pink-400",
-  },
-  weather: {
-    icon: "/images/icons/weather.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  goal_tracking: {
-    icon: Target02Icon,
-    bgColor: "bg-emerald-500/20 backdrop-blur",
-    iconColor: "text-emerald-400",
-  },
-  notion: {
-    icon: "/images/icons/notion.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  twitter: {
-    icon: "/images/icons/twitter.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  linkedin: {
-    icon: "/images/icons/linkedin.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  notifications: {
-    icon: NotificationIcon,
-    bgColor: "bg-yellow-500/20 backdrop-blur",
-    iconColor: "text-yellow-400",
-  },
-  webpage: {
-    icon: InformationCircleIcon,
-    bgColor: "bg-purple-500/20 backdrop-blur",
-    iconColor: "text-purple-400",
-  },
-  support: {
-    icon: InformationCircleIcon,
-    bgColor: "bg-blue-500/20 backdrop-blur",
-    iconColor: "text-blue-400",
-  },
-  general: {
-    icon: ToolsIcon,
-    bgColor: "bg-gray-500/20 backdrop-blur",
-    iconColor: "text-gray-400",
-  },
-  // Integration icons
-  google_calendar: {
-    icon: "/images/icons/googlecalendar.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  github: {
-    icon: "/images/icons/github.png",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  reddit: {
-    icon: "/images/icons/reddit.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  airtable: {
-    icon: "/images/icons/airtable.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  linear: {
-    icon: "/images/icons/linear.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  slack: {
-    icon: "/images/icons/slack.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  hubspot: {
-    icon: "/images/icons/hubspot.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  googletasks: {
-    icon: "/images/icons/googletasks.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  todoist: {
-    icon: "/images/icons/todoist.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  microsoft_teams: {
-    icon: "/images/icons/microsoft_teams.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  googlemeet: {
-    icon: "/images/icons/googlemeet.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  zoom: {
-    icon: "/images/icons/zoom.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  google_maps: {
-    icon: "/images/icons/google_maps.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  asana: {
-    icon: "/images/icons/asana.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  trello: {
-    icon: "/images/icons/trello.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  instagram: {
-    icon: "/images/icons/instagram.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  clickup: {
-    icon: "/images/icons/clickup.svg",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  deepwiki: {
-    icon: "/images/icons/deepwiki.webp",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-
-  context7: {
-    icon: "/images/icons/context7.png",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  hackernews: {
-    icon: "/images/icons/hackernews.png",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  instacart: {
-    icon: "/images/icons/instacart.png",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  yelp: {
-    icon: "/images/icons/yelp.png",
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-    isImage: true,
-  },
-  vercel: {
-    icon: "/images/icons/vercel.svg",
-    bgColor: "bg-zinc-800",
-    iconColor: "text-white",
-    isImage: true,
-  },
-  perplexity: {
-    icon: "/images/icons/perplexity.png",
-    bgColor: "bg-zinc-800",
-    iconColor: "text-white",
-    isImage: true,
-  },
-  figma: {
-    icon: "/images/icons/figma.svg",
-    bgColor: "bg-zinc-800",
-    iconColor: "text-white",
-    isImage: true,
-  },
-  integrations: {
-    isImage: false,
-    icon: ConnectIcon,
-    bgColor: "bg-zinc-700",
-    iconColor: "text-zinc-200",
-  },
-  // Special categories for agent tool calls
-  handoff: {
-    icon: SquareArrowUpRight02Icon,
-    bgColor: "bg-sky-500/20 backdrop-blur",
-    iconColor: "text-sky-400",
-  },
-  retrieve_tools: {
-    icon: PackageOpenIcon,
-    bgColor: "bg-indigo-500/20 backdrop-blur",
-    iconColor: "text-indigo-400",
-  },
-  executor: {
-    icon: ComputerTerminal01Icon,
-    bgColor: "bg-teal-500/20 backdrop-blur",
-    iconColor: "text-teal-400",
-  },
-  unknown: {
-    icon: ToolsIcon,
-    bgColor: "bg-zinc-500/20 backdrop-blur",
-    iconColor: "text-zinc-400",
-  },
-};
+/** Build runtime icon configs from shared config */
+const iconConfigs: Record<string, IconConfig> = Object.fromEntries(
+  Object.entries(toolIconConfigs).map(([key, config]) => [
+    key,
+    {
+      icon: config.isImage
+        ? config.icon
+        : iconComponentMap[config.icon] || ToolsIcon,
+      bgColor: config.bgColor,
+      iconColor: config.iconColor,
+      isImage: config.isImage,
+    },
+  ])
+);
 
 // Component that auto-detects and inverts dark icons
 const AutoInvertIcon: React.FC<{
@@ -364,7 +97,7 @@ const AutoInvertIcon: React.FC<{
 export const getToolCategoryIcon = (
   category: string,
   iconProps: IconProps = {},
-  iconUrl?: string | null,
+  iconUrl?: string | null
 ) => {
   const { showBackground = true, iconOnly = false, ...restProps } = iconProps;
 
@@ -395,7 +128,7 @@ export const getToolCategoryIcon = (
   if (!config) {
     const normalizedConfigs = Object.entries(iconConfigs);
     const matchingConfig = normalizedConfigs.find(
-      ([key]) => normalizeCategoryName(key) === finalCategory,
+      ([key]) => normalizeCategoryName(key) === finalCategory
     );
     if (matchingConfig) {
       config = matchingConfig[1];

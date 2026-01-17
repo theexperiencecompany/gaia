@@ -4,6 +4,8 @@ import { Avatar } from "@heroui/avatar";
 import { PlayIcon } from "@theexperiencecompany/gaia-icons/solid-standard";
 import Image from "next/image";
 import { useState } from "react";
+
+import { wallpapers } from "@/config/wallpapers";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -154,7 +156,7 @@ export default function UseCaseDetailClient({
   return (
     <div className="relative">
       <Image
-        src={"/images/wallpapers/meadow.webp"}
+        src={wallpapers.useCases.webp}
         alt="GAIA Use-Cases Wallpaper"
         priority
         fill

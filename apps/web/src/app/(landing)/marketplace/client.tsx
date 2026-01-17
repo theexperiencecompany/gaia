@@ -8,6 +8,7 @@ import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { IntegrationsFilters } from "@/features/integrations/components/IntegrationsFilters";
 import { PublicIntegrationCard } from "@/features/integrations/components/PublicIntegrationCard";
 import type { CommunityIntegration } from "@/features/integrations/types";
+import Image from "next/image";
 
 export function IntegrationsPageClient() {
   const [integrations, setIntegrations] = useState<CommunityIntegration[]>([]);
@@ -49,7 +50,7 @@ export function IntegrationsPageClient() {
         setIsLoading(false);
       }
     },
-    [filters, integrations.length],
+    [filters, integrations.length]
   );
 
   useEffect(() => {
@@ -71,13 +72,24 @@ export function IntegrationsPageClient() {
 
   return (
     <div className="min-h-screen pt-32 pb-16">
-      <div className="mx-auto max-w-7xl px-6">
-        {/* Header */}
+      <div className="absolute inset-0 top-0 z-0 h-[70vh] w-full">
+        <Image
+          src={"/images/wallpapers/library.webp"}
+          alt="GAIA Use-Cases Wallpaper"
+          sizes="100vw"
+          priority
+          fill
+          className="aspect-video object-cover object-center opacity-80"
+        />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-linear-to-t from-background to-transparent" />
+      </div>
+
+      <div className="mx-auto max-w-7xl px-6 z-1 relative mt-40">
         <div className="mb-12">
-          <h1 className="mb-4 font-serif text-5xl md:text-6xl text-white">
+          <h1 className="mb-4 font-serif text-5xl md:text-7xl font-normal text-foreground">
             Integration Marketplace
           </h1>
-          <p className="text-lg text-zinc-400 max-w-2xl">
+          <p className="text-lg text-foreground-500 font-light max-w-2xl">
             Discover MCP integrations built by the community. Clone them to your
             workspace and connect AI tools to your favorite services.
           </p>
@@ -89,14 +101,12 @@ export function IntegrationsPageClient() {
           initialFilters={filters}
         />
 
-        {/* Results count */}
         {!isLoading && (
           <p className="mb-6 text-sm text-zinc-500">
             {total} integration{total !== 1 ? "s" : ""} found
           </p>
         )}
 
-        {/* Grid */}
         {isLoading && integrations.length === 0 ? (
           <div className="flex justify-center py-20">
             <Spinner size="lg" />

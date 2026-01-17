@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 
+import { wallpapers } from "@/app/api/og/shared";
 import UseCasesPageClient from "@/app/(landing)/use-cases/client";
 import JsonLd from "@/components/seo/JsonLd";
 import {
@@ -20,6 +21,7 @@ export const metadata: Metadata = generatePageMetadata({
   description:
     "Explore powerful workflows and use cases for GAIA. Discover how others are using AI to automate tasks, manage emails, schedule meetings, and boost productivity with community-built workflows.",
   path: "/use-cases",
+  image: "/api/og/use-cases",
   keywords: [
     "GAIA workflows",
     "AI automation workflows",
@@ -51,7 +53,7 @@ export default async function UseCasesPage() {
     [
       { name: "Home", url: siteConfig.url },
       { name: "Use Cases", url: `${siteConfig.url}/use-cases` },
-    ],
+    ]
   );
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
@@ -63,22 +65,22 @@ export default async function UseCasesPage() {
       url: `${siteConfig.url}/use-cases/${workflow.id}`,
       description: workflow.description || "",
     })),
-    "Article",
+    "Article"
   );
 
   return (
-    <div className="relative h-fit min-h-screen pt-110">
+    <div className="relative h-fit min-h-screen pt-90">
       <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
-      <div className="absolute inset-0 top-0 z-0 h-[70vh] w-[100%]">
+      <div className="absolute inset-0 top-0 z-0 h-[70vh] w-full">
         <Image
-          src={"/images/wallpapers/meadow.webp"}
+          src={wallpapers.useCases.webp}
           alt="GAIA Use-Cases Wallpaper"
           sizes="100vw"
           priority
           fill
           className="aspect-video object-cover object-center opacity-80"
         />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-background to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-linear-to-t from-background to-transparent" />
       </div>
 
       <UseCasesPageClient communityWorkflows={communityWorkflows} />
