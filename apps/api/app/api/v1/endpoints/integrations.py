@@ -43,6 +43,7 @@ from app.schemas.integrations.responses import (
     IntegrationSuccessResponse,
     IntegrationTool,
     MarketplaceResponse,
+    MCPConfigDetail,
     PublicIntegrationDetailResponse,
     PublishIntegrationResponse,
     SearchIntegrationItem,
@@ -651,8 +652,24 @@ async def get_public_integration(slug: str) -> PublicIntegrationDetailResponse:
         if not doc:
             raise HTTPException(status_code=404, detail="Integration not found")
 
-        # Extract MCP config details
-        mcp_config = doc.get("mcp_config", {})
+        # Extract MCP config details as nested object
+        mcp_config_doc = doc.get("mcp_config", {})
+        mcp_config = None
+        if mcp_config_doc:
+            mcp_config = MCPConfigDetail(
+                server_url=mcp_config_doc.get("server_url"),
+                requires_auth=mcp_config_doc.get("requires_auth", False),
+                auth_type=mcp_config_doc.get("auth_type"),
+            )
+
+        # Build creator as nested object
+        creator = None
+        if doc.get("creator_name") or doc.get("creator_picture"):
+            creator = CommunityIntegrationCreator(
+                name=doc.get("creator_name"),
+                picture=doc.get("creator_picture"),
+            )
+
         tools = doc.get("tools", [])
 
         return PublicIntegrationDetailResponse(
@@ -662,13 +679,8 @@ async def get_public_integration(slug: str) -> PublicIntegrationDetailResponse:
             category=doc.get("category", "custom"),
             slug=doc.get("slug", ""),
             icon_url=doc.get("icon_url"),
-            creator_name=doc.get("creator_name"),
-            creator_picture=doc.get("creator_picture"),
-            server_url=mcp_config.get("server_url") if mcp_config else None,
-            requires_auth=mcp_config.get("requires_auth", False)
-            if mcp_config
-            else False,
-            auth_type=mcp_config.get("auth_type") if mcp_config else None,
+            creator=creator,
+            mcp_config=mcp_config,
             tools=[
                 IntegrationTool(
                     name=t.get("name", ""), description=t.get("description")
@@ -676,6 +688,7 @@ async def get_public_integration(slug: str) -> PublicIntegrationDetailResponse:
                 for t in tools
             ],
             clone_count=doc.get("clone_count", 0),
+            tool_count=len(tools),
             published_at=doc.get("published_at"),
         )
 

@@ -159,6 +159,14 @@ class CommunityListResponse(BaseModel):
     has_more: bool = False
 
 
+class MCPConfigDetail(CamelModel):
+    """MCP config for public display."""
+
+    server_url: Optional[str] = None
+    requires_auth: bool = False
+    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
+
+
 class PublicIntegrationDetailResponse(CamelModel):
     """Full public integration details for public pages (SEO/sharing)."""
 
@@ -169,20 +177,18 @@ class PublicIntegrationDetailResponse(CamelModel):
     slug: str
     icon_url: Optional[str] = None
 
-    # Creator info
-    creator_name: Optional[str] = None
-    creator_picture: Optional[str] = None
+    # Creator info (nested object for frontend compatibility)
+    creator: Optional[CommunityIntegrationCreator] = None
 
-    # MCP config for public display
-    server_url: Optional[str] = None
-    requires_auth: bool = False
-    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
+    # MCP config for public display (nested object for frontend compatibility)
+    mcp_config: Optional[MCPConfigDetail] = None
 
     # Tools list
     tools: List[IntegrationTool] = []
 
     # Stats
     clone_count: int = 0
+    tool_count: int = 0
     published_at: Optional[datetime] = None
 
 
