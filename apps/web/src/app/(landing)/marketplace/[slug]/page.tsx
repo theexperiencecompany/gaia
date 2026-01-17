@@ -5,14 +5,28 @@ import { IntegrationDetailClient } from "./client";
 
 // Fetch integration data for metadata
 async function getIntegration(slug: string) {
+  const apiUrl =
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
+  // Remove trailing slash if present
+  const baseUrl = apiUrl.replace(/\/$/, "");
+
   try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/integrations/public/${slug}`,
-      { next: { revalidate: 60 } }, // Cache for 60 seconds
-    );
+    // Add timeout to prevent hanging during SSR
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(`${baseUrl}/integrations/public/${slug}`, {
+      next: { revalidate: 60 },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
     if (!response.ok) return null;
     return response.json();
-  } catch {
+  } catch (error) {
+    // Log for debugging but don't crash
+    console.error(`[marketplace/${slug}] Failed to fetch integration:`, error);
     return null;
   }
 }

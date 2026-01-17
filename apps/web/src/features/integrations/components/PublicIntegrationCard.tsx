@@ -9,6 +9,7 @@ import {
   DateTimeIcon,
   Download01Icon,
   GitForkIcon,
+  PackageOpenIcon,
   UserCircle02Icon,
 } from "@/icons";
 
@@ -35,17 +36,15 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
   return (
     <Link href={`/marketplace/${integration.slug}`}>
       <div className="group relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 outline-1 outline-zinc-800/70 transition-all select-none cursor-pointer hover:bg-zinc-700/50">
-        {/* Header: Icon + Title + Category */}
         <div className="flex items-start gap-3">
-          {/* Integration Icon with fallback */}
           <div className="flex h-10 w-10 aspect-square shrink-0 items-center justify-center rounded-xl p-0">
             {getToolCategoryIcon(
               integration.integrationId,
-              { size: 100, width: 28, height: 28, showBackground: true },
+              { size: 100, width: 28, height: 28, showBackground: false },
               integration.iconUrl || undefined
             ) || (
               <div className="flex h-9 w-9 aspect-square items-center justify-center rounded-xl bg-zinc-700 text-sm font-medium text-zinc-300">
-                {integration.name.charAt(0).toUpperCase()}
+                <PackageOpenIcon />
               </div>
             )}
           </div>

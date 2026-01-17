@@ -661,6 +661,27 @@ async def create_integration_indexes():
                 [("name", "text"), ("description", "text")],
                 name="text_search",
             ),
+            # Unique sparse index on slug (only published integrations have slugs)
+            _create_index_safe(
+                integrations_collection,
+                "slug",
+                unique=True,
+                sparse=True,
+                name="slug_unique_sparse",
+            ),
+            # Compound index for public integration lookup by slug
+            _create_index_safe(
+                integrations_collection,
+                [("slug", 1), ("is_public", 1)],
+                sparse=True,
+                name="slug_public_lookup",
+            ),
+            # Community marketplace listing (public integrations sorted by popularity)
+            _create_index_safe(
+                integrations_collection,
+                [("is_public", 1), ("clone_count", -1), ("published_at", -1)],
+                name="public_popular",
+            ),
         )
 
     except Exception as e:

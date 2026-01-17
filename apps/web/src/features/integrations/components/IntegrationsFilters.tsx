@@ -44,7 +44,7 @@ interface IntegrationsFiltersProps {
  */
 function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
   callback: T,
-  delay: number,
+  delay: number
 ): T {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callbackRef = useRef(callback);
@@ -72,7 +72,7 @@ function useDebouncedCallback<T extends (...args: Parameters<T>) => void>(
         callbackRef.current(...args);
       }, delay);
     }) as T,
-    [delay],
+    [delay]
   );
 }
 
@@ -118,23 +118,17 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
         }}
       />
 
-      {/* Category tabs */}
       <div className="flex items-center justify-between gap-4">
         <Tabs
           selectedKey={category}
           onSelectionChange={(key) => handleCategoryChange(key as string)}
           variant="light"
-          classNames={{
-            tabList: "gap-1 flex-wrap",
-            tab: "px-3 py-1.5 text-sm",
-          }}
         >
           {CATEGORIES.map((cat) => (
             <Tab key={cat.key} title={cat.label} />
           ))}
         </Tabs>
 
-        {/* Sort dropdown */}
         <Select
           size="sm"
           selectedKeys={[sort]}
