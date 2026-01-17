@@ -2,17 +2,27 @@
  * Integration system types and interfaces
  */
 
+/**
+ * Integration category values - synced with backend INTEGRATION_CATEGORIES
+ * (apps/api/app/services/integrations/category_inference_service.py)
+ */
+export type IntegrationCategoryValue =
+  | "productivity"
+  | "communication"
+  | "developer"
+  | "analytics"
+  | "finance"
+  | "marketing"
+  | "storage"
+  | "ai-ml"
+  | "automation"
+  | "other";
+
 export interface Integration {
   id: string;
   name: string;
   description: string;
-  category:
-    | "productivity"
-    | "communication"
-    | "developer"
-    | "social"
-    | "business"
-    | "custom";
+  category: IntegrationCategoryValue;
   status: "connected" | "not_connected" | "created" | "error";
   // New properties for unified integrations
   isSpecial?: boolean;
