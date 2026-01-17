@@ -883,6 +883,22 @@ async def publish_integration(
                 detail="Integration must be connected with tools before publishing",
             )
 
+        # Validate content for publishing
+        from app.services.integrations.publish_validator import (
+            PublishIntegrationValidator,
+        )
+
+        validation_errors = PublishIntegrationValidator.validate_for_publish(
+            name=integration.get("name", ""),
+            description=integration.get("description"),
+            tools=tools,
+        )
+        if validation_errors:
+            raise HTTPException(
+                status_code=400,
+                detail="; ".join(validation_errors),
+            )
+
         # Check if already published
         if integration.get("is_public"):
             raise HTTPException(
