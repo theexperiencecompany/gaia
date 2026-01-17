@@ -249,11 +249,13 @@ async def list_community_integrations(
         # Clamp limit to max 100
         limit = min(limit, 100)
 
-        # If search query provided, use ChromaDB semantic search
+        # If search query provided, try ChromaDB semantic search first, fallback to MongoDB
         if search and search.strip():
-            # Use semantic search via ChromaDB
+            search_query = search.strip()
+
+            # Try semantic search via ChromaDB first
             search_results = await search_public_integrations(
-                query=search.strip(),
+                query=search_query,
                 limit=limit,
                 category=category if category != "all" else None,
             )
@@ -265,54 +267,104 @@ async def list_community_integrations(
                 if r.get("integration_id")
             ]
 
-            if not integration_ids:
-                return CommunityListResponse(integrations=[], total=0, has_more=False)
+            if integration_ids:
+                # ChromaDB returned results - use aggregation to join creator info
+                pipeline: list = [
+                    {
+                        "$match": {
+                            "integration_id": {"$in": integration_ids},
+                            "is_public": True,
+                        }
+                    },
+                    *_build_creator_lookup_stages(),
+                ]
+                cursor = integrations_collection.aggregate(pipeline)
+                docs = await cursor.to_list(length=limit)
 
-            # Fetch full documents from MongoDB
-            cursor = integrations_collection.find(
-                {"integration_id": {"$in": integration_ids}, "is_public": True}
+                # Create a map for ordering by search relevance
+                docs_map = {doc["integration_id"]: doc for doc in docs}
+                ordered_docs = [
+                    docs_map[iid] for iid in integration_ids if iid in docs_map
+                ]
+
+                integrations = _format_community_integrations(ordered_docs)
+
+                return CommunityListResponse(
+                    integrations=integrations,
+                    total=len(integrations),
+                    has_more=False,  # Semantic search doesn't support pagination
+                )
+
+            # ChromaDB returned no results - fallback to MongoDB text search
+            logger.info(
+                f"ChromaDB returned no results for '{search_query}', falling back to MongoDB"
             )
+
+            # Build MongoDB query with regex search on name and description
+            mongo_query: dict = {"is_public": True}
+            search_regex = {"$regex": search_query, "$options": "i"}
+            mongo_query["$or"] = [
+                {"name": search_regex},
+                {"description": search_regex},
+                {"tools.name": search_regex},
+                {"tools.description": search_regex},
+            ]
+
+            if category and category != "all":
+                mongo_query["category"] = category
+
+            # Get total count for search
+            total = await integrations_collection.count_documents(mongo_query)
+
+            # Use aggregation to join creator info
+            pipeline: list = [
+                {"$match": mongo_query},
+                {"$sort": {"clone_count": -1, "published_at": -1}},
+                {"$skip": offset},
+                {"$limit": limit},
+                *_build_creator_lookup_stages(),
+            ]
+            cursor = integrations_collection.aggregate(pipeline)
             docs = await cursor.to_list(length=limit)
 
-            # Create a map for ordering by search relevance
-            docs_map = {doc["integration_id"]: doc for doc in docs}
-            ordered_docs = [docs_map[iid] for iid in integration_ids if iid in docs_map]
-
-            integrations = _format_community_integrations(ordered_docs)
+            integrations = _format_community_integrations(docs)
 
             return CommunityListResponse(
                 integrations=integrations,
-                total=len(integrations),
-                has_more=False,  # Semantic search doesn't support pagination
+                total=total,
+                has_more=(offset + len(docs)) < total,
             )
 
         # MongoDB query path (without search)
-        query = {"is_public": True}
+        query: dict = {"is_public": True}
 
         # Apply category filter
         if category and category != "all":
             query["category"] = category
 
-        # Determine sort order
+        # Determine sort order for aggregation
         if sort == "popular":
-            sort_field = [("clone_count", -1), ("published_at", -1)]
+            sort_dict = {"clone_count": -1, "published_at": -1}
         elif sort == "recent":
-            sort_field = [("published_at", -1)]
+            sort_dict = {"published_at": -1}
         elif sort == "name":
-            sort_field = [("name", 1)]
+            sort_dict = {"name": 1}
         else:
-            sort_field = [("clone_count", -1), ("published_at", -1)]
+            sort_dict = {"clone_count": -1, "published_at": -1}
 
         # Get total count
         total = await integrations_collection.count_documents(query)
 
-        # Fetch with pagination
-        cursor = (
-            integrations_collection.find(query)
-            .sort(sort_field)
-            .skip(offset)
-            .limit(limit)
-        )
+        # Use aggregation pipeline to join creator info from users collection
+        pipeline: list = [
+            {"$match": query},
+            {"$sort": sort_dict},
+            {"$skip": offset},
+            {"$limit": limit},
+            *_build_creator_lookup_stages(),
+        ]
+
+        cursor = integrations_collection.aggregate(pipeline)
         docs = await cursor.to_list(length=limit)
 
         integrations = _format_community_integrations(docs)
@@ -328,6 +380,47 @@ async def list_community_integrations(
         raise HTTPException(
             status_code=500, detail="Failed to fetch community integrations"
         )
+
+
+def _build_creator_lookup_stages() -> list[dict]:
+    """Build aggregation stages to join creator info from users collection.
+
+    Handles cases where created_by is not a valid ObjectId (e.g., "system_seed").
+    """
+    return [
+        {
+            "$lookup": {
+                "from": "users",
+                "let": {
+                    "creator_id": {
+                        "$convert": {
+                            "input": "$created_by",
+                            "to": "objectId",
+                            "onError": None,  # Return null if conversion fails
+                            "onNull": None,
+                        }
+                    }
+                },
+                "pipeline": [
+                    {"$match": {"$expr": {"$eq": ["$_id", "$$creator_id"]}}},
+                    {"$project": {"name": 1, "picture": 1}},
+                ],
+                "as": "creator_info",
+            }
+        },
+        {
+            "$addFields": {
+                "creator": {
+                    "$cond": {
+                        "if": {"$gt": [{"$size": "$creator_info"}, 0]},
+                        "then": {"$arrayElemAt": ["$creator_info", 0]},
+                        "else": None,
+                    }
+                }
+            }
+        },
+        {"$project": {"creator_info": 0}},
+    ]
 
 
 def _format_community_integrations(docs: list) -> list[CommunityIntegrationItem]:
@@ -650,7 +743,16 @@ async def get_public_integration(
             {
                 "$lookup": {
                     "from": "users",
-                    "let": {"creator_id": {"$toObjectId": "$created_by"}},
+                    "let": {
+                        "creator_id": {
+                            "$convert": {
+                                "input": "$created_by",
+                                "to": "objectId",
+                                "onError": None,
+                                "onNull": None,
+                            }
+                        }
+                    },
                     "pipeline": [
                         {"$match": {"$expr": {"$eq": ["$_id", "$$creator_id"]}}},
                         {"$project": {"name": 1, "picture": 1}},
@@ -835,7 +937,7 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
         if not results:
             return SearchIntegrationsResponse(integrations=[], query=q)
 
-        # Fetch full docs from MongoDB for additional fields (icon_url, slug)
+        # Fetch full docs from MongoDB for additional fields (icon_url, etc.)
         integration_ids = [
             r.get("integration_id") for r in results if r.get("integration_id")
         ]

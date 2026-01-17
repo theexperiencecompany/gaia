@@ -58,6 +58,7 @@ async def index_public_integration(
             ids=[integration_id],
             metadatas=[
                 {
+                    "integration_id": integration_id,  # Store ID in metadata for easy retrieval
                     "name": name,
                     "description": description[:500] if description else "",
                     "category": category,
@@ -139,9 +140,13 @@ async def search_public_integrations(
         formatted = []
         for doc, score in results:
             metadata = doc.metadata.copy()
-            metadata["integration_id"] = (
-                doc.metadata.get("id") or doc.id if hasattr(doc, "id") else None
-            )
+            # The integration_id is stored in metadata and as document ID
+            integration_id = metadata.get("integration_id")
+            if not integration_id:
+                # Fallback to document ID for older indexed documents
+                if hasattr(doc, "id") and doc.id:
+                    integration_id = doc.id
+            metadata["integration_id"] = integration_id
             metadata["relevance_score"] = score
             formatted.append(metadata)
 
