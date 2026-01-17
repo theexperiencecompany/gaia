@@ -304,7 +304,5 @@ async def execute_graph_streaming(
     # Get token metadata after streaming completes and yield complete message for DB storage
     message_data = {"complete_message": complete_message}
 
-    message_data = {**message_data}
-
     yield f"nostream: {json.dumps(message_data)}"
     yield "data: [DONE]\n\n"

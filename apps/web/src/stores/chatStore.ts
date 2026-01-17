@@ -252,6 +252,16 @@ export const useChatStoreSync = () => {
       useChatStore.getState().upsertConversation(conversation);
     };
 
+    const handleConversationDeleted = (conversationId: string) => {
+      useChatStore.getState().removeConversation(conversationId);
+    };
+
+    const handleConversationsDeletedBulk = (conversationIds: string[]) => {
+      conversationIds.forEach((id) => {
+        useChatStore.getState().removeConversation(id);
+      });
+    };
+
     dbEventEmitter.on("messageAdded", handleMessageAdded);
     dbEventEmitter.on("messageUpdated", handleMessageUpdated);
     dbEventEmitter.on("messageDeleted", handleMessageDeleted);
@@ -259,6 +269,11 @@ export const useChatStoreSync = () => {
     dbEventEmitter.on("messageIdReplaced", handleMessageIdReplaced);
     dbEventEmitter.on("conversationAdded", handleConversationAdded);
     dbEventEmitter.on("conversationUpdated", handleConversationUpdated);
+    dbEventEmitter.on("conversationDeleted", handleConversationDeleted);
+    dbEventEmitter.on(
+      "conversationsDeletedBulk",
+      handleConversationsDeletedBulk,
+    );
 
     return () => {
       isActive = false;
@@ -270,6 +285,11 @@ export const useChatStoreSync = () => {
       dbEventEmitter.off("messageIdReplaced", handleMessageIdReplaced);
       dbEventEmitter.off("conversationAdded", handleConversationAdded);
       dbEventEmitter.off("conversationUpdated", handleConversationUpdated);
+      dbEventEmitter.off("conversationDeleted", handleConversationDeleted);
+      dbEventEmitter.off(
+        "conversationsDeletedBulk",
+        handleConversationsDeletedBulk,
+      );
     };
   }, []);
 };

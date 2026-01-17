@@ -9,6 +9,14 @@ import type { MessageType } from "@/types/features/convoTypes";
 
 const MAX_SYNC_CONVERSATIONS = 100;
 
+// Safety threshold: Only delete conversations that haven't been updated locally in the last X hours
+// This prevents accidental deletion of conversations that might not be in the first page of API results
+const DELETED_CONVERSATION_SAFETY_HOURS = 24;
+
+// Minimum age for a local conversation to be considered for deletion (in milliseconds)
+const MIN_AGE_FOR_DELETION_MS =
+  DELETED_CONVERSATION_SAFETY_HOURS * 60 * 60 * 1000;
+
 const mergeMessageLists = (
   localMessages: IMessage[],
   remoteMessages: IMessage[],
@@ -144,6 +152,43 @@ const identifyStaleConversations = (
   return staleItems;
 };
 
+/**
+ * Identifies conversations that exist locally but were deleted on the server.
+ * Applies safety filters to avoid aggressive deletion:
+ * 1. Only considers conversations older than MIN_AGE_FOR_DELETION_MS
+ * 2. Skips conversations that are currently being streamed
+ * 3. Only checks against conversations within the sync window (first page of results)
+ */
+const identifyDeletedConversations = (
+  localConversations: IConversation[],
+  remoteConversations: Conversation[],
+): string[] => {
+  const now = Date.now();
+  const remoteIds = new Set(remoteConversations.map((c) => c.conversation_id));
+  const deletedIds: string[] = [];
+
+  for (const local of localConversations) {
+    // Skip if conversation exists on remote
+    if (remoteIds.has(local.id)) continue;
+
+    // Skip if conversation is currently being streamed
+    if (streamState.isStreamingConversation(local.id)) continue;
+
+    // Safety: Skip recently created/updated conversations
+    // They might not have synced to the server yet, or might be beyond the pagination limit
+    const localUpdateTime = (local.updatedAt || local.createdAt).getTime();
+    const ageMs = now - localUpdateTime;
+
+    if (ageMs < MIN_AGE_FOR_DELETION_MS) {
+      continue;
+    }
+
+    deletedIds.push(local.id);
+  }
+
+  return deletedIds;
+};
+
 export const batchSyncConversations = async (): Promise<void> => {
   // CRITICAL: Skip sync if there's an active stream to prevent data corruption
   if (streamState.isStreaming()) return;
@@ -164,6 +209,20 @@ export const batchSyncConversations = async (): Promise<void> => {
       localConversations,
       remoteConversations,
     );
+
+    // Identify conversations that exist locally but were deleted on the server
+    const deletedConversationIds = identifyDeletedConversations(
+      localConversations,
+      remoteConversations,
+    );
+
+    if (deletedConversationIds.length > 0) {
+      // Delete conversations that no longer exist on the server
+      await db.deleteConversationsAndMessagesBulk(deletedConversationIds);
+      console.log(
+        `[SyncService] Removed ${deletedConversationIds.length} deleted conversations from local DB`,
+      );
+    }
 
     if (staleItems.length === 0) {
       return;
