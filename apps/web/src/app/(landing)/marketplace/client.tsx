@@ -9,6 +9,7 @@ import { IntegrationsFilters } from "@/features/integrations/components/Integrat
 import { PublicIntegrationCard } from "@/features/integrations/components/PublicIntegrationCard";
 import type { CommunityIntegration } from "@/features/integrations/types";
 import Image from "next/image";
+import FinalSection from "@/features/landing/components/sections/FinalSection";
 
 export function IntegrationsPageClient() {
   const [integrations, setIntegrations] = useState<CommunityIntegration[]>([]);
@@ -50,7 +51,7 @@ export function IntegrationsPageClient() {
         setIsLoading(false);
       }
     },
-    [filters, integrations.length]
+    [filters, integrations.length],
   );
 
   useEffect(() => {
@@ -144,6 +145,8 @@ export function IntegrationsPageClient() {
           </>
         )}
       </div>
+
+      <FinalSection />
     </div>
   );
 }

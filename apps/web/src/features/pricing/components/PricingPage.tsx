@@ -4,7 +4,7 @@ import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
 import Image from "next/image";
 
-import { wallpapers } from "@/app/api/og/shared";
+import { wallpapers } from "@/config/wallpapers";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { ComparisonTable } from "@/features/pricing/components/ComparisonTable";
 import { PricingCards } from "@/features/pricing/components/PricingCards";

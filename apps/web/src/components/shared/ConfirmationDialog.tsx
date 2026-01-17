@@ -18,7 +18,7 @@ interface ConfirmationDialogProps {
   confirmText?: string;
   cancelText?: string;
   variant?: "default" | "destructive";
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -33,9 +33,15 @@ export function ConfirmationDialog({
   onCancel,
 }: ConfirmationDialogProps) {
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  // Track if confirm was just pressed to avoid triggering onCancel
+  const confirmPressedRef = useRef(false);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      // Reset the flag when dialog closes
+      confirmPressedRef.current = false;
+      return;
+    }
 
     // Focus the confirm button when dialog opens
     const timer = setTimeout(() => {
@@ -45,6 +51,7 @@ export function ConfirmationDialog({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
         e.preventDefault();
+        confirmPressedRef.current = true;
         onConfirm();
       } else if (e.key === "Escape") {
         e.preventDefault();
@@ -60,9 +67,14 @@ export function ConfirmationDialog({
   }, [isOpen, onConfirm, onCancel]);
 
   const handleOpenChange = (open: boolean) => {
-    if (!open) {
+    if (!open && !confirmPressedRef.current) {
       onCancel();
     }
+  };
+
+  const handleConfirmPress = () => {
+    confirmPressedRef.current = true;
+    onConfirm();
   };
 
   return (
@@ -90,7 +102,7 @@ export function ConfirmationDialog({
                 ref={confirmButtonRef}
                 color={variant === "destructive" ? "danger" : "primary"}
                 onPress={() => {
-                  onConfirm();
+                  handleConfirmPress();
                   onClose();
                 }}
                 endContent={<Kbd keys={["enter"]} />}

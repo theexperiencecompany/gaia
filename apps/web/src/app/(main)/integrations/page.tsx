@@ -75,6 +75,15 @@ export default function IntegrationsPage() {
 
     if (!selectedIntegration) return;
 
+    // Debug: Log the integration source
+    console.log("[IntegrationsPage] Rendering sidebar for integration:", {
+      id: selectedIntegration.id,
+      name: selectedIntegration.name,
+      source: selectedIntegration.source,
+      isPublic: selectedIntegration.isPublic,
+      createdBy: selectedIntegration.createdBy,
+    });
+
     const handleDisconnect = async (id: string) => {
       await disconnectIntegration(id);
       setTimeout(() => closeRightSidebar(), 500);
@@ -93,20 +102,18 @@ export default function IntegrationsPage() {
       await unpublishIntegration(id);
     };
 
+    // For custom integrations, always pass the handlers
+    // The sidebar component will determine when to show the buttons
+    const isCustomIntegration = selectedIntegration.source === "custom";
+
     setRightSidebarContent(
       <IntegrationSidebar
         integration={selectedIntegration}
         onConnect={connectIntegration}
         onDisconnect={handleDisconnect}
-        onDelete={
-          selectedIntegration.source === "custom" ? handleDelete : undefined
-        }
-        onPublish={
-          selectedIntegration.source === "custom" ? handlePublish : undefined
-        }
-        onUnpublish={
-          selectedIntegration.source === "custom" ? handleUnpublish : undefined
-        }
+        onDelete={isCustomIntegration ? handleDelete : undefined}
+        onPublish={isCustomIntegration ? handlePublish : undefined}
+        onUnpublish={isCustomIntegration ? handleUnpublish : undefined}
         category={selectedIntegration.name}
       />,
     );

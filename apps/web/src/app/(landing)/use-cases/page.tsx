@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-
-import { wallpapers } from "@/app/api/og/shared";
 import UseCasesPageClient from "@/app/(landing)/use-cases/client";
 import JsonLd from "@/components/seo/JsonLd";
+import { wallpapers } from "@/config/wallpapers";
 import {
   type CommunityWorkflow,
   workflowApi,
@@ -53,7 +52,7 @@ export default async function UseCasesPage() {
     [
       { name: "Home", url: siteConfig.url },
       { name: "Use Cases", url: `${siteConfig.url}/use-cases` },
-    ]
+    ],
   );
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
@@ -65,7 +64,7 @@ export default async function UseCasesPage() {
       url: `${siteConfig.url}/use-cases/${workflow.id}`,
       description: workflow.description || "",
     })),
-    "Article"
+    "Article",
   );
 
   return (

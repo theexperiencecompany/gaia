@@ -86,6 +86,10 @@ export interface MarketplaceIntegration {
   iconUrl?: string;
   isPublic?: boolean;
   createdBy?: string;
+  // Publishing metadata
+  slug?: string;
+  publishedAt?: string;
+  cloneCount?: number;
 }
 
 // Matches backend UserIntegrationResponse with camelCase aliases

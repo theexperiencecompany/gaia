@@ -128,6 +128,18 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         await onUnpublish(integration.id);
       } else if (!integration.isPublic && onPublish) {
         await onPublish(integration.id);
+      } else {
+        // Neither condition matched - this shouldn't happen for custom integrations
+        console.error(
+          "[IntegrationSidebar] confirmPublish failed: handler not available",
+          {
+            isPublic: integration.isPublic,
+            hasOnPublish: !!onPublish,
+            hasOnUnpublish: !!onUnpublish,
+            source: integration.source,
+          },
+        );
+        toast.error("Unable to publish: handler not available");
       }
     } catch (error) {
       // Error toast is handled in the hook

@@ -22,6 +22,8 @@ export default function IntegrationsSidebar() {
     connectIntegration,
     disconnectIntegration,
     deleteCustomIntegration,
+    publishIntegration,
+    unpublishIntegration,
   } = useIntegrations();
 
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
@@ -40,12 +42,24 @@ export default function IntegrationsSidebar() {
         setTimeout(() => closeRightSidebar(), 500);
       };
 
+      const handlePublish = async (id: string) => {
+        await publishIntegration(id);
+      };
+
+      const handleUnpublish = async (id: string) => {
+        await unpublishIntegration(id);
+      };
+
+      const isCustomIntegration = integration.source === "custom";
+
       setRightSidebarContent(
         <IntegrationSidebar
           integration={integration}
           onConnect={connectIntegration}
           onDisconnect={handleDisconnect}
-          onDelete={integration.source === "custom" ? handleDelete : undefined}
+          onDelete={isCustomIntegration ? handleDelete : undefined}
+          onPublish={isCustomIntegration ? handlePublish : undefined}
+          onUnpublish={isCustomIntegration ? handleUnpublish : undefined}
           category={integration.name}
         />,
       );
@@ -57,6 +71,8 @@ export default function IntegrationsSidebar() {
       connectIntegration,
       disconnectIntegration,
       deleteCustomIntegration,
+      publishIntegration,
+      unpublishIntegration,
       closeRightSidebar,
     ],
   );

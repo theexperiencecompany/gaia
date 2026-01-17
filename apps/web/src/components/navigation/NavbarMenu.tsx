@@ -13,6 +13,7 @@ import {
   resources,
 } from "@/config/appConfig";
 import { cn } from "@/lib/utils";
+import { wallpapers } from "@/config/wallpapers";
 
 interface NavbarMenuProps {
   activeMenu: string;
@@ -138,12 +139,12 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
         ease: [0.19, 1, 0.15, 1.01],
       }}
       className={cn(
-        "absolute top-full left-0 z-40 w-full origin-top overflow-hidden rounded-b-2xl border-1 border-y-0 border-white/5 bg-gradient-to-b from-zinc-900 to-zinc-900/30 backdrop-blur-xl outline-none",
+        "absolute top-full left-0 z-40 w-full origin-top overflow-hidden rounded-b-2xl border-1 border-y-0 border-white/5 bg-linear-to-b from-zinc-900 to-zinc-900/30 backdrop-blur-xl outline-none",
       )}
     >
       <div className="p-6 pt-2">
         {activeMenu === "product" && (
-          <div className="grid w-full grid-cols-3 grid-rows-2 gap-4">
+          <div className="grid w-full grid-cols-3 grid-rows-3 gap-4">
             {links.map((link) => (
               <ListItem
                 key={link.href}
@@ -152,14 +153,18 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
                 external={link.external}
                 icon={link.icon}
                 backgroundImage={
-                  link.label === "Get Started"
+                  link.href === "/login"
                     ? "/images/wallpapers/surreal.webp"
-                    : link.label === "Use Cases"
-                      ? "/images/wallpapers/meadow.webp"
-                      : undefined
+                    : link.href === "/use-cases"
+                      ? wallpapers.useCases.webp
+                      : link.href === "/marketplace"
+                        ? wallpapers.integration.webp
+                        : undefined
                 }
                 rowSpan={
-                  link.label === "Get Started" || link.label === "Use Cases"
+                  link.href === "/login" ||
+                  link.href === "/use-cases" ||
+                  link.href === "/marketplace"
                     ? 2
                     : undefined
                 }

@@ -80,7 +80,7 @@ export const appConfig = {
       },
       {
         href: "/marketplace",
-        label: "Marketplace",
+        label: "Integration Marketplace",
         icon: <ConnectIcon width={20} height={20} color={"currentColor"} />,
         description: "Explore community integrations",
       },

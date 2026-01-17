@@ -7,6 +7,7 @@ export const metadata: Metadata = generatePageMetadata({
   description:
     "Discover and clone MCP integrations built by the community. Connect AI tools to your favorite services.",
   path: "/marketplace",
+  image: "/api/og/integrations",
   keywords: [
     "MCP integrations",
     "AI integrations",
