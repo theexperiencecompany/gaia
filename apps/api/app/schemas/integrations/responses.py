@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 
 from app.schemas.common import SuccessResponse
@@ -15,6 +15,16 @@ class CamelModel(BaseModel):
         populate_by_name=True,
         alias_generator=to_camel,
     )
+
+
+class CloneCountMixin(BaseModel):
+    """Mixin to handle clone_count None -> 0 coercion."""
+
+    @field_validator("clone_count", mode="before", check_fields=False)
+    @classmethod
+    def coerce_clone_count(cls, v):
+        """Coerce None to 0 for clone_count."""
+        return v if v is not None else 0
 
 
 class IntegrationConfigItem(CamelModel):
@@ -73,7 +83,7 @@ class IntegrationTool(BaseModel):
     description: Optional[str] = None
 
 
-class IntegrationResponse(CamelModel):
+class IntegrationResponse(CamelModel, CloneCountMixin):
     """Integration details for API responses."""
 
     integration_id: str
@@ -145,7 +155,7 @@ class CommunityIntegrationCreator(CamelModel):
     picture: Optional[str] = None
 
 
-class CommunityIntegrationItem(CamelModel):
+class CommunityIntegrationItem(CamelModel, CloneCountMixin):
     """Integration item for community marketplace listing."""
 
     integration_id: str
@@ -177,7 +187,7 @@ class MCPConfigDetail(CamelModel):
     auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
 
 
-class PublicIntegrationDetailResponse(CamelModel):
+class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
     """Full public integration details for public pages (SEO/sharing)."""
 
     integration_id: str
@@ -210,7 +220,7 @@ class CloneIntegrationResponse(SuccessResponse, CamelModel):
     connection_status: Literal["created", "connected"]
 
 
-class SearchIntegrationItem(CamelModel):
+class SearchIntegrationItem(CamelModel, CloneCountMixin):
     """Integration item in search results."""
 
     integration_id: str

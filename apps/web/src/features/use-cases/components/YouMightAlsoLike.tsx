@@ -76,13 +76,13 @@ export default function YouMightAlsoLike({
   if (items.length === 0) return null;
 
   return (
-    <div className="mx-auto max-w-7xl">
-      <div className="my-20 border-[1px] border-t border-zinc-900" />
+    <div className="mx-auto max-w-5xl">
+      <div className="my-20 border border-t border-zinc-900" />
       <div className="mx-auto space-y-6">
         <h2 className="mx-auto text-center font-serif text-6xl font-normal text-foreground">
           You might also like
         </h2>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((workflow) => (
             <UnifiedWorkflowCard
               key={workflow.id}

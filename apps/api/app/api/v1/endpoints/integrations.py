@@ -3,6 +3,8 @@
 from datetime import datetime, timezone
 from typing import Optional
 
+from bson import ObjectId
+
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
@@ -941,7 +943,7 @@ async def publish_integration(
         )
 
         # Fetch user info for creator metadata
-        user_doc = await users_collection.find_one({"user_id": user_id})
+        user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
         creator_name = user_doc.get("name", "Anonymous") if user_doc else "Anonymous"
         creator_picture = user_doc.get("picture") if user_doc else None
 

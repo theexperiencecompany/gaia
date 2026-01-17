@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional, cast
 
 from app.models.oauth_models import MCPConfig
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Type alias for auth_type
 AuthType = Literal["none", "oauth", "bearer"]
@@ -110,6 +110,12 @@ class Integration(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: Optional[datetime] = None
 
+    @field_validator("clone_count", mode="before")
+    @classmethod
+    def coerce_clone_count(cls, v):
+        """Coerce None to 0 for clone_count."""
+        return v if v is not None else 0
+
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat()}
 
@@ -194,13 +200,19 @@ class IntegrationResponse(BaseModel):
 
     # Publishing metadata (for public integrations)
     published_at: Optional[datetime] = None
-    clone_count: Optional[int] = None
+    clone_count: int = 0
     cloned_from: Optional[str] = None
     slug: Optional[str] = None
 
     # Creator info for public display
     creator_name: Optional[str] = None
     creator_picture: Optional[str] = None
+
+    @field_validator("clone_count", mode="before")
+    @classmethod
+    def coerce_clone_count(cls, v):
+        """Coerce None to 0 for clone_count."""
+        return v if v is not None else 0
 
     @classmethod
     def from_integration(cls, integration: Integration) -> "IntegrationResponse":
@@ -231,7 +243,7 @@ class IntegrationResponse(BaseModel):
             created_by=integration.created_by,
             # Publishing metadata
             published_at=integration.published_at,
-            clone_count=integration.clone_count,
+            clone_count=integration.clone_count or 0,
             cloned_from=integration.cloned_from,
             slug=integration.slug,
             # Creator info

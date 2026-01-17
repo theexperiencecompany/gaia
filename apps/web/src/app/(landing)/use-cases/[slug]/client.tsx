@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useState } from "react";
 
 import { wallpapers } from "@/config/wallpapers";
+import { useLoginModalActions } from "@/features/auth/hooks/useLoginModal";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -19,6 +20,7 @@ import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps"
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplay } from "@/features/workflows/utils/triggerDisplay";
 import { UserCircle02Icon } from "@/icons";
+import { useUserStore } from "@/stores/userStore";
 
 interface UseCaseDetailClientProps {
   useCase: UseCase | null;
@@ -36,7 +38,18 @@ export default function UseCaseDetailClient({
   const { selectWorkflow } = useWorkflowSelection();
   const { integrations } = useIntegrations();
 
+  // Auth check
+  const userEmail = useUserStore((state) => state.email);
+  const isAuthenticated = Boolean(userEmail);
+  const { openModal: openLoginModal } = useLoginModalActions();
+
   const handleCreateWorkflow = async () => {
+    // Check authentication first - open login modal if not authenticated
+    if (!isAuthenticated) {
+      openLoginModal();
+      return;
+    }
+
     const title = useCase?.title || communityWorkflow?.title;
     const description = useCase?.description || communityWorkflow?.description;
     const existingSteps = useCase?.steps || communityWorkflow?.steps;
@@ -226,7 +239,7 @@ export default function UseCaseDetailClient({
           steps && steps.length > 0 ? (
             <div className="w-fit shrink-0">
               <div className="sticky top-8 rounded-3xl bg-zinc-900 px-6 pt-4 pb-2">
-                <div className="text-sm font-medium text-zinc-500">
+                <div className="text-sm font-medium text-zinc-500 mb-3">
                   Workflow Steps:
                 </div>
                 <WorkflowSteps steps={stepsFormatted || []} size="large" />

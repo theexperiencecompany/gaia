@@ -8,11 +8,15 @@ import { Copy01Icon, Tick02Icon } from "@/icons";
 
 interface ShareButtonProps {
   slug: string;
+  basePath?: string;
 }
 
-export default function ShareButton({ slug }: ShareButtonProps) {
+export default function ShareButton({
+  slug,
+  basePath = "/use-cases",
+}: ShareButtonProps) {
   const [copied, setCopied] = useState(false);
-  const shareUrl = `https://heygaia.io/use-cases/${slug}`;
+  const shareUrl = `https://heygaia.io${basePath}/${slug}`;
 
   const handleCopyLink = async () => {
     try {

@@ -11,6 +11,30 @@ import {
 } from "@/features/auth/hooks/useLoginModal";
 import { Login02Icon } from "@/icons";
 
+// Routes where login modal should NOT be dismissable (main app routes that require auth)
+const NON_DISMISSABLE_ROUTE_PREFIXES = [
+  "/c",
+  "/mail",
+  "/integrations",
+  "/workflows",
+  "/todos",
+  "/onboarding",
+  "/settings",
+  "/pins",
+  "/subscription",
+  "/redirect",
+  "/notifications",
+  "/goals",
+  "/calendar",
+  "/dashboard",
+];
+
+const isNonDismissableRoute = (pathname: string): boolean => {
+  return NON_DISMISSABLE_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+};
+
 export default function LoginModal() {
   const isOpen = useLoginModal();
   const { setLoginModalOpen } = useLoginModalActions();
@@ -19,14 +43,18 @@ export default function LoginModal() {
   // Prevent rendering on /login or /signup pages
   if (pathname === "/login" || pathname === "/signup") return null;
 
+  // Allow dismissing everywhere EXCEPT main app routes (which require auth)
+  const canDismiss = !isNonDismissableRoute(pathname);
+
   return (
     <Modal
       isOpen={isOpen}
       onOpenChange={(v) => setLoginModalOpen(v)}
-      isDismissable={false}
+      isDismissable={canDismiss}
       backdrop="blur"
-      isKeyboardDismissDisabled
-      hideCloseButton
+      className="outline-none"
+      isKeyboardDismissDisabled={!canDismiss}
+      hideCloseButton={!canDismiss}
     >
       <ModalContent className="p-4">
         <ModalBody>

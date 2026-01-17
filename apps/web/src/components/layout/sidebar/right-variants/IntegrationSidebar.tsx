@@ -1,9 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import React, { useState } from "react";
-import { toast } from "sonner";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { RaisedButton, SidebarHeader } from "@/components/ui";
 import { SidebarContent } from "@/components/ui/sidebar";
@@ -13,10 +9,17 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { Integration } from "@/features/integrations/types";
 import {
   GlobalIcon,
+  LinkSquareIcon,
+  RemoveCircleIcon,
   Share08Icon,
   Unlink04Icon,
-  ViewOffSlashIcon,
 } from "@/icons";
+import { Button, ButtonGroup } from "@heroui/button";
+import { Chip } from "@heroui/chip";
+import { Tooltip } from "@heroui/tooltip";
+import Link from "next/link";
+import React, { useState } from "react";
+import { toast } from "sonner";
 
 interface IntegrationSidebarProps {
   integration: Integration;
@@ -52,6 +55,17 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+
+  // Calculate how many buttons will be shown to determine icon-only mode
+  const buttonCount = [
+    !!onDisconnect,
+    integration.isPublic && integration.slug, // View on Marketplace
+    integration.source === "custom" && integration.isPublic, // Unpublish
+    integration.source === "custom" && !integration.isPublic, // Publish
+    integration.isPublic && integration.slug, // Share
+  ].filter(Boolean).length;
+
+  const useIconOnly = buttonCount >= 2;
 
   // Get tools that belong to this integration or its included integrations
   const integrationTools = React.useMemo(() => {
@@ -211,24 +225,122 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                 : "Connect"}
           </RaisedButton>
         ) : (
-          onDisconnect && (
-            <Button
-              color="danger"
-              variant="light"
-              fullWidth
-              onPress={handleDisconnect}
-              isLoading={isDisconnecting}
-              isDisabled={isDisconnecting}
-              endContent={
-                <Unlink04Icon width={20} height={20} className="outline-0!" />
-              }
-            >
-              Disconnect
-            </Button>
-          )
+          <ButtonGroup variant="flat" className="w-full" fullWidth>
+            {onDisconnect && (
+              <Tooltip content="Disconnect this integration">
+                <Button
+                  isIconOnly={useIconOnly}
+                  className="w-full"
+                  color="danger"
+                  onPress={handleDisconnect}
+                  isLoading={isDisconnecting}
+                  isDisabled={isDisconnecting}
+                  aria-label="Disconnect"
+                  startContent={
+                    !isDisconnecting ? (
+                      <Unlink04Icon
+                        width={18}
+                        height={18}
+                        className="outline-0!"
+                      />
+                    ) : undefined
+                  }
+                >
+                  {!useIconOnly && "Disconnect"}
+                </Button>
+              </Tooltip>
+            )}
+
+            {integration.isPublic && integration.slug && (
+              <Tooltip content="View on Marketplace">
+                <Button
+                  className="w-full"
+                  isIconOnly={useIconOnly}
+                  as={Link}
+                  href={`/marketplace/${integration.slug}`}
+                  color="primary"
+                  aria-label="View on Marketplace"
+                  startContent={
+                    <LinkSquareIcon
+                      width={18}
+                      height={18}
+                      className="outline-none!"
+                    />
+                  }
+                >
+                  {!useIconOnly && "View"}
+                </Button>
+              </Tooltip>
+            )}
+
+            {integration.source === "custom" && integration.isPublic && (
+              <Tooltip content="Unpublish from Marketplace">
+                <Button
+                  isIconOnly={useIconOnly}
+                  color="warning"
+                  className="w-full"
+                  onPress={handlePublish}
+                  isLoading={isPublishing}
+                  isDisabled={isPublishing}
+                  aria-label="Unpublish"
+                  startContent={
+                    !isPublishing ? (
+                      <RemoveCircleIcon
+                        width={18}
+                        height={18}
+                        className="outline-none!"
+                      />
+                    ) : undefined
+                  }
+                >
+                  {!useIconOnly && "Unpublish"}
+                </Button>
+              </Tooltip>
+            )}
+
+            {integration.source === "custom" && !integration.isPublic && (
+              <Tooltip content="Publish to Community Marketplace">
+                <Button
+                  isIconOnly={useIconOnly}
+                  className="w-full"
+                  color="primary"
+                  onPress={handlePublish}
+                  isLoading={isPublishing}
+                  isDisabled={isPublishing}
+                  aria-label="Publish"
+                  startContent={
+                    !isPublishing ? (
+                      <GlobalIcon width={18} height={18} />
+                    ) : undefined
+                  }
+                >
+                  {!useIconOnly && "Publish"}
+                </Button>
+              </Tooltip>
+            )}
+
+            {integration.isPublic && integration.slug && (
+              <Tooltip content="Copy share link to clipboard">
+                <Button
+                  isIconOnly={useIconOnly}
+                  className="w-full"
+                  color="default"
+                  onPress={() => {
+                    navigator.clipboard.writeText(
+                      `${window.location.origin}/marketplace/${integration.slug}`,
+                    );
+                    toast.success("Link copied to clipboard!");
+                  }}
+                  aria-label="Share"
+                  startContent={<Share08Icon width={18} height={18} />}
+                >
+                  {!useIconOnly && "Share"}
+                </Button>
+              </Tooltip>
+            )}
+          </ButtonGroup>
         )}
 
-        {/* Delete button for integrations with status=created */}
         {showRetry && onDelete && (
           <Button
             color="danger"
@@ -239,44 +351,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             isDisabled={isDeleting}
           >
             Delete Integration
-          </Button>
-        )}
-
-        {/* Publish/Unpublish button for custom connected integrations */}
-        {integration.source === "custom" && isConnected && (
-          <Button
-            color={integration.isPublic ? "warning" : "primary"}
-            variant="flat"
-            fullWidth
-            onPress={handlePublish}
-            isLoading={isPublishing}
-            isDisabled={isPublishing}
-            startContent={
-              integration.isPublic ? (
-                <ViewOffSlashIcon width={18} height={18} />
-              ) : (
-                <GlobalIcon width={18} height={18} />
-              )
-            }
-          >
-            {integration.isPublic ? "Unpublish" : "Publish to Community"}
-          </Button>
-        )}
-
-        {/* Share button for public integrations */}
-        {integration.isPublic && integration.slug && (
-          <Button
-            variant="light"
-            fullWidth
-            onPress={() => {
-              navigator.clipboard.writeText(
-                `${window.location.origin}/marketplace/${integration.slug}`,
-              );
-              toast.success("Link copied to clipboard!");
-            }}
-            startContent={<Share08Icon width={18} height={18} />}
-          >
-            Share Integration
           </Button>
         )}
 

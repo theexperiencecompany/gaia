@@ -11,7 +11,6 @@ import Sidebar from "@/components/layout/sidebar/MainSidebar";
 import RightSidebar from "@/components/layout/sidebar/RightSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import LoginModal from "@/features/auth/components/LoginModal";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
 import { useUser } from "@/features/auth/hooks/useUser";
 import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
@@ -182,8 +181,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
         onOpenChange={handleOpenChange}
         defaultOpen={defaultOpen}
       >
-        <LoginModal />
-
         <div
           className="relative flex min-h-screen w-full dark"
           style={{ touchAction: "pan-y" }}

@@ -6,8 +6,8 @@ import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 
 import { IntegrationDetailClient } from "./client";
 
-// Revalidate every hour
-export const revalidate = 3600;
+// Revalidate every minute for fresher data
+export const revalidate = 60;
 
 // Fetch integration data for metadata and page
 async function getIntegration(slug: string) {
@@ -20,7 +20,7 @@ async function getIntegration(slug: string) {
     const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     const response = await fetch(`${baseUrl}/integrations/public/${slug}`, {
-      next: { revalidate: 3600 },
+      next: { revalidate: 60 },
       signal: controller.signal,
     });
 
@@ -44,7 +44,7 @@ async function getAllIntegrations() {
     const response = await fetch(
       `${baseUrl}/integrations/community?limit=100`,
       {
-        next: { revalidate: 3600 },
+        next: { revalidate: 60 },
       },
     );
     if (!response.ok) return [];
