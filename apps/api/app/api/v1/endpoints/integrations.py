@@ -762,7 +762,16 @@ async def clone_integration(
             "created_at": datetime.now(timezone.utc),
         }
 
-        await integrations_collection.insert_one(new_doc)
+        try:
+            await integrations_collection.insert_one(new_doc)
+        except Exception as e:
+            # Handle race condition: duplicate key error if user already cloned
+            if "duplicate key" in str(e).lower() or "E11000" in str(e):
+                raise HTTPException(
+                    status_code=400,
+                    detail="You have already cloned this integration",
+                )
+            raise
 
         # 4. Increment clone_count on original (atomic update)
         await integrations_collection.update_one(
@@ -912,12 +921,6 @@ async def publish_integration(
                 detail="; ".join(validation_errors),
             )
 
-        # Check if already published
-        if integration.get("is_public"):
-            raise HTTPException(
-                status_code=400, detail="Integration is already published"
-            )
-
         # Generate unique slug for public URL
         async def check_slug_exists(slug: str) -> bool:
             existing = await integrations_collection.find_one({"slug": slug})
@@ -942,10 +945,16 @@ async def publish_integration(
         creator_name = user_doc.get("name", "Anonymous") if user_doc else "Anonymous"
         creator_picture = user_doc.get("picture") if user_doc else None
 
-        # Update the integration with publish metadata
+        # Atomic update with condition to prevent race condition
+        # Only update if is_public is not already True
         now = datetime.now(timezone.utc)
         update_result = await integrations_collection.update_one(
-            {"integration_id": integration_id},
+            {
+                "integration_id": integration_id,
+                "created_by": user_id,
+                "source": "custom",
+                "is_public": {"$ne": True},  # Only update if not already public
+            },
             {
                 "$set": {
                     "is_public": True,
@@ -960,7 +969,15 @@ async def publish_integration(
         )
 
         if update_result.modified_count == 0:
-            raise HTTPException(status_code=500, detail="Failed to update integration")
+            # Either not found or already published - check which
+            existing = await integrations_collection.find_one(
+                {"integration_id": integration_id, "created_by": user_id}
+            )
+            if existing and existing.get("is_public"):
+                raise HTTPException(
+                    status_code=400, detail="Integration is already published"
+                )
+            raise HTTPException(status_code=404, detail="Integration not found")
 
         # Index in ChromaDB for semantic search
         await index_public_integration(
