@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar } from "@heroui/avatar";
 import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
@@ -14,12 +15,14 @@ import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { Integration } from "@/features/integrations/types";
 import {
+  GitForkIcon,
   GlobalIcon,
   LinkSquareIcon,
   RemoveCircleIcon,
   Share08Icon,
   Unlink04Icon,
 } from "@/icons";
+import { useUserStore } from "@/stores/userStore";
 
 interface IntegrationSidebarProps {
   integration: Integration;
@@ -43,10 +46,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   category,
 }) => {
   const isConnected = integration.status === "connected";
-  // Show retry only if OAuth was started but not completed (status = "created")
   const showRetry = integration.status === "created";
-  // Custom integrations are always available, platform integrations use available field
-  const isAvailable = integration.source === "custom" || integration.available;
   const { tools } = useToolsWithIntegrations();
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -56,16 +56,35 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const [isConnecting, setIsConnecting] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
 
+  const currentUserName = useUserStore((state) => state.name);
+  const currentUserPicture = useUserStore((state) => state.profilePicture);
+
+  // Determine if this is a custom integration created by the current user vs forked
+  const isOwnIntegration = React.useMemo(() => {
+    if (integration.source !== "custom") return false;
+    // If no creator info, check if createdBy exists (legacy behavior)
+    if (!integration.creator) return !!integration.createdBy;
+    // If creator name matches current user, it's their integration
+    return integration.creator.name === currentUserName;
+  }, [integration, currentUserName]);
+
+  const isForkedIntegration = React.useMemo(() => {
+    if (integration.source !== "custom") return false;
+    // Has creator info but creator is NOT the current user
+    return integration.creator && integration.creator.name !== currentUserName;
+  }, [integration, currentUserName]);
+
   // Calculate how many buttons will be shown to determine icon-only mode
   const buttonCount = [
     !!onDisconnect,
     integration.isPublic, // View on Marketplace
-    integration.source === "custom" && integration.isPublic, // Unpublish
-    integration.source === "custom" && !integration.isPublic, // Publish
+    isOwnIntegration && integration.isPublic, // Unpublish (only for own integrations)
+    isOwnIntegration && !integration.isPublic, // Publish (only for own integrations)
     integration.isPublic, // Share
   ].filter(Boolean).length;
 
-  const useIconOnly = buttonCount >= 2;
+  // Only use icon-only mode when 3+ buttons
+  const useIconOnly = buttonCount >= 3;
 
   // Get tools that belong to this integration or its included integrations
   const integrationTools = React.useMemo(() => {
@@ -155,7 +174,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         );
         toast.error("Unable to publish: handler not available");
       }
-    } catch (error) {
+    } catch (_error) {
       // Error toast is handled in the hook
     } finally {
       setIsPublishing(false);
@@ -180,30 +199,63 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         </div>
 
         <div className="mb-0 mt-2 flex flex-col items-start gap-1">
-          {integration.createdBy && (
-            <Chip
-              size="sm"
-              variant="flat"
-              color="default"
-              radius="sm"
-              className="mb-2 text-xs text-zinc-400 font-light relative right-1"
-            >
-              Created by You
-            </Chip>
-          )}
-          <div className="flex w-full items-center justify-between">
-            <h1 className="text-2xl font-semibold text-zinc-100">
-              {integration.name}
-            </h1>
-
-            <div className="flex items-end gap-1">
-              {isConnected && (
-                <Chip size="sm" variant="flat" color="success">
-                  Connected
-                </Chip>
-              )}
-            </div>
+          <div className="flex items-center gap-2 flex-row mb-2">
+            {isConnected && (
+              <Chip size="sm" variant="flat" color="success" radius="sm">
+                Connected
+              </Chip>
+            )}
+            {integration.source === "custom" && (
+              <div className="flex items-center gap-1">
+                {isForkedIntegration ? (
+                  integration.creator && (
+                    <Chip
+                      size="sm"
+                      variant="flat"
+                      radius="sm"
+                      className="text-xs font-light relative text-foreground-500"
+                      startContent={
+                        <Avatar
+                          src={integration.creator.picture || undefined}
+                          name={integration.creator.name || undefined}
+                          size="sm"
+                          className="h-4 w-4"
+                        />
+                      }
+                    >
+                      <div className="flex items-center gap-1.5 text-xs pl-0.5">
+                        <span>
+                          Created by {integration.creator.name || "Unknown"}
+                        </span>
+                      </div>
+                    </Chip>
+                  )
+                ) : isOwnIntegration ? (
+                  <Chip
+                    size="sm"
+                    variant="flat"
+                    color="default"
+                    radius="sm"
+                    className="text-xs text-zinc-400 font-light relative right-1"
+                    startContent={
+                      <Avatar
+                        src={currentUserPicture || undefined}
+                        name={currentUserName || undefined}
+                        size="sm"
+                        className="h-4 w-4"
+                      />
+                    }
+                  >
+                    Created by You
+                  </Chip>
+                ) : null}
+              </div>
+            )}
           </div>
+
+          <h1 className="text-2xl font-semibold text-zinc-100">
+            {integration.name}
+          </h1>
 
           <p className="text-sm leading-relaxed font-light text-zinc-400">
             {integration.description}
@@ -273,7 +325,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               </Tooltip>
             )}
 
-            {integration.source === "custom" && integration.isPublic && (
+            {isOwnIntegration && integration.isPublic && (
               <Tooltip content="Unpublish from Marketplace">
                 <Button
                   isIconOnly={useIconOnly}
@@ -298,7 +350,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               </Tooltip>
             )}
 
-            {integration.source === "custom" && !integration.isPublic && (
+            {isOwnIntegration && !integration.isPublic && (
               <Tooltip content="Publish to Community Marketplace">
                 <Button
                   isIconOnly={useIconOnly}

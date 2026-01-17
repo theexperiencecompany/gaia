@@ -105,6 +105,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       iconUrl: ui.integration.iconUrl ?? undefined,
       isPublic: ui.integration.isPublic ?? undefined,
       createdBy: ui.integration.createdBy ?? undefined,
+      creator: ui.integration.creator ?? undefined,
     }));
 
     // Get IDs of integrations user already has

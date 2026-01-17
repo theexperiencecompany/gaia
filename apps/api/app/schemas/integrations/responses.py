@@ -104,8 +104,8 @@ class IntegrationResponse(CamelModel, CloneCountMixin):
     # Publishing fields
     published_at: Optional[datetime] = None
     clone_count: int = 0
-    # Note: Creator info is populated via aggregation from users collection
-    # Fields removed: cloned_from, slug, creator_name, creator_picture
+    # Creator info (populated via aggregation from users collection)
+    creator: Optional["CommunityIntegrationCreator"] = None
 
 
 class UserIntegrationResponse(CamelModel):

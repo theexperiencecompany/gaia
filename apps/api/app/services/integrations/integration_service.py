@@ -18,6 +18,7 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
+    users_collection,
 )
 from app.decorators.caching import CacheInvalidator
 from app.models.integration_models import (
@@ -167,6 +168,29 @@ async def get_integration_details(integration_id: str) -> Optional[IntegrationRe
             IntegrationTool(name=t["name"], description=t.get("description"))
             for t in stored_tools
         ]
+
+    # Populate creator info if created_by exists
+    if response.created_by:
+        try:
+            from bson import ObjectId
+
+            # Try to parse as ObjectId, skip if it's a system value like "system_seed"
+            try:
+                creator_oid = ObjectId(response.created_by)
+                creator_doc = await users_collection.find_one(
+                    {"_id": creator_oid},
+                    {"name": 1, "picture": 1},
+                )
+                if creator_doc:
+                    response.creator = {
+                        "name": creator_doc.get("name"),
+                        "picture": creator_doc.get("picture"),
+                    }
+            except Exception:
+                # Invalid ObjectId (e.g., "system_seed"), skip creator lookup
+                pass
+        except Exception as e:
+            logger.warning(f"Failed to fetch creator for {integration_id}: {e}")
 
     return response
 

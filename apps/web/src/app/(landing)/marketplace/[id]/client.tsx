@@ -4,12 +4,13 @@ import { Avatar } from "@heroui/avatar";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Chip } from "@heroui/chip";
 import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
+import { Spinner } from "@heroui/spinner";
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-
 import { RaisedButton } from "@/components";
 import { wallpapers } from "@/config/wallpapers";
 import { useLoginModalActions } from "@/features/auth/hooks/useLoginModal";
@@ -21,6 +22,7 @@ import {
   DateTimeIcon,
   GitForkIcon,
   LayersIcon,
+  Loading02Icon,
   PackageOpenIcon,
   UserCircle02Icon,
 } from "@/icons";
@@ -33,6 +35,7 @@ interface IntegrationDetailClientProps {
 export function IntegrationDetailClient({
   integration,
 }: IntegrationDetailClientProps) {
+  const router = useRouter();
   const [isAdding, setIsAdding] = useState(false);
   const [isAdded, setIsAdded] = useState(false);
 
@@ -82,10 +85,11 @@ export function IntegrationDetailClient({
         integration.integrationId,
       );
 
-      // If redirecting to OAuth, dismiss the loading toast
-      // The browser will navigate away
+      // If redirecting to OAuth, update toast but keep loading state
+      // The browser will navigate away, so we don't dismiss
       if (result.status === "redirecting") {
-        toast.dismiss(loadingToast);
+        toast.loading("Redirecting to authorize...", { id: loadingToast });
+        // Don't setIsAdding(false) - keep button in loading state
         return;
       }
 
@@ -93,10 +97,14 @@ export function IntegrationDetailClient({
       toast.dismiss(loadingToast);
       toast.success(`Successfully added ${result.name}!`);
       setIsAdded(true);
+
+      // Redirect to integrations page with sidebar open
+      setTimeout(() => {
+        router.push(`/integrations?id=${integration.integrationId}`);
+      }, 1000);
     } catch {
       toast.dismiss(loadingToast);
       toast.error("Failed to add integration.");
-    } finally {
       setIsAdding(false);
     }
   };
@@ -171,11 +179,16 @@ export function IntegrationDetailClient({
                 onClick={handleAdd}
                 disabled={isAdding || isAdded || alreadyHasIntegration}
               >
-                {isAdded || alreadyHasIntegration
-                  ? "Already in your GAIA"
-                  : isAdding
-                    ? "Adding..."
-                    : "Add to your GAIA"}
+                {isAdding ? (
+                  <>
+                    <Spinner />
+                    Adding...
+                  </>
+                ) : isAdded || alreadyHasIntegration ? (
+                  "Already in your GAIA"
+                ) : (
+                  "Add to your GAIA"
+                )}
               </RaisedButton>
             </div>
           </div>

@@ -40,6 +40,11 @@ export interface Integration {
   tools?: Array<{ name: string; description?: string }>;
   // Custom integration icon (favicon from MCP server)
   iconUrl?: string;
+  // Creator info (populated from users collection)
+  creator?: {
+    name: string | null;
+    picture: string | null;
+  } | null;
 }
 
 export interface IntegrationStatus {
@@ -87,6 +92,11 @@ export interface MarketplaceIntegration {
   // Publishing metadata
   publishedAt?: string;
   cloneCount?: number;
+  // Creator info (populated from users collection)
+  creator?: {
+    name: string | null;
+    picture: string | null;
+  } | null;
 }
 
 // Matches backend UserIntegrationResponse with camelCase aliases

@@ -8,7 +8,7 @@ This module defines Pydantic models for:
 """
 
 from datetime import datetime, timezone
-from typing import List, Literal, Optional, cast
+from typing import Dict, List, Literal, Optional, cast
 
 from app.models.oauth_models import MCPConfig
 from pydantic import BaseModel, Field, field_validator
@@ -181,7 +181,8 @@ class IntegrationResponse(BaseModel):
     # Publishing metadata (for public integrations)
     published_at: Optional[datetime] = None
     clone_count: int = 0
-    # Note: Creator info is populated via aggregation from users collection
+    # Creator info (populated via aggregation from users collection)
+    creator: Optional[Dict[str, Optional[str]]] = None
 
     @field_validator("clone_count", mode="before")
     @classmethod

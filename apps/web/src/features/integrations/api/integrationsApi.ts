@@ -316,7 +316,8 @@ export const integrationsApi = {
       };
     }
 
-    const redirectPath = window.location.pathname + window.location.search;
+    // After OAuth, redirect to integrations page with sidebar open
+    const redirectPath = `/integrations?id=${integrationId}`;
 
     const response = (await apiService.post(
       `/integrations/public/${integrationId}/add`,

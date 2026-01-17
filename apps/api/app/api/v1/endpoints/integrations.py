@@ -12,7 +12,11 @@ from app.db.chroma.public_integrations_store import (
     index_public_integration,
     remove_public_integration,
 )
-from app.db.mongodb.collections import integrations_collection, users_collection
+from app.db.mongodb.collections import (
+    integrations_collection,
+    user_integrations_collection,
+    users_collection,
+)
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
     CreateCustomIntegrationRequest as CreateCustomIntegrationRequestModel,
@@ -1016,6 +1020,16 @@ async def publish_integration(
         if integration.get("source") != "custom":
             raise HTTPException(
                 status_code=400, detail="Only custom integrations can be published"
+            )
+
+        # Verify user has this integration connected
+        user_integration = await user_integrations_collection.find_one(
+            {"user_id": user_id, "integration_id": integration_id}
+        )
+        if not user_integration or user_integration.get("status") != "connected":
+            raise HTTPException(
+                status_code=400,
+                detail="Integration must be connected before publishing",
             )
 
         # Verify integration has tools (is connected)
