@@ -42,6 +42,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const { tools } = useToolsWithIntegrations();
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -112,7 +113,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
   const handlePublish = async () => {
     if (isPublishing) return;
+    setShowPublishDialog(true);
+  };
 
+  const confirmPublish = async () => {
     setIsPublishing(true);
     try {
       if (integration.isPublic && onUnpublish) {
@@ -124,6 +128,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       // Error toast is handled in the hook
     } finally {
       setIsPublishing(false);
+      setShowPublishDialog(false);
     }
   };
 
@@ -308,6 +313,21 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         variant="destructive"
         onConfirm={confirmDelete}
         onCancel={() => setShowDeleteDialog(false)}
+      />
+
+      <ConfirmationDialog
+        isOpen={showPublishDialog}
+        title={integration.isPublic ? "Unpublish Integration" : "Publish Integration"}
+        message={
+          integration.isPublic
+            ? `Are you sure you want to unpublish ${integration.name}? It will no longer be visible in the community marketplace.`
+            : `Are you sure you want to publish ${integration.name} to the community marketplace? Your integration name, description, and tool list will be publicly visible.`
+        }
+        confirmText={integration.isPublic ? "Unpublish" : "Publish"}
+        cancelText="Cancel"
+        variant={integration.isPublic ? "destructive" : "default"}
+        onConfirm={confirmPublish}
+        onCancel={() => setShowPublishDialog(false)}
       />
     </div>
   );
