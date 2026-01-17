@@ -12,7 +12,7 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { MCPIntegrationModal } from "@/features/integrations/components/MCPIntegrationModal";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
-import { PlusSignIcon } from "@/icons";
+import { CursorAddSelectionIcon } from "@/icons";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function IntegrationsSidebar() {
@@ -120,7 +120,9 @@ export default function IntegrationsSidebar() {
             color="primary"
             size="sm"
             variant="flat"
-            startContent={<PlusSignIcon className="h-4 w-4 outline-0" />}
+            startContent={
+              <CursorAddSelectionIcon className="h-4 w-4 outline-0" />
+            }
             onPress={onOpen}
             data-keyboard-shortcut="create-integration"
           >

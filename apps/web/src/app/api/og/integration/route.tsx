@@ -1,16 +1,20 @@
 import { ImageResponse } from "next/og";
 import {
+  CategoryBadge,
   colors,
+  createErrorResponse,
+  createFallbackResponse,
   fonts,
-  loadFonts,
   getApiBaseUrl,
   getBaseUrl,
-  truncateText,
-  createFallbackResponse,
-  createErrorResponse,
-  CategoryBadge,
-  OG_WIDTH,
+  getCategoryInitial,
+  getOgCompatibleIconUrl,
+  getOgIconPath,
+  getToolIconConfig,
+  loadFonts,
   OG_HEIGHT,
+  OG_WIDTH,
+  truncateText,
   wallpapers,
 } from "../shared";
 
@@ -35,7 +39,7 @@ export async function GET(request: Request) {
         `${apiBaseUrl}/integrations/public/${slug}`,
         {
           cache: "no-store",
-        }
+        },
       );
       if (response.ok) {
         integration = await response.json();
@@ -50,7 +54,18 @@ export async function GET(request: Request) {
     const creatorName = integration?.creator?.name || "Community";
     const cloneCount = integration?.cloneCount || 0;
     const toolCount = integration?.toolCount || 0;
-    const iconUrl = integration?.iconUrl;
+
+    // Integration ID is used to look up known icons
+    const integrationId = integration?.integrationId || slug;
+
+    // First, try to get a known icon from the config (same as PublicIntegrationCard)
+    const knownIconPath = getOgIconPath(integrationId);
+    const iconConfig = getToolIconConfig(integrationId);
+
+    // Then try the external icon URL (converted to OG-compatible format)
+    const externalIconUrl = !knownIconPath
+      ? getOgCompatibleIconUrl(integration?.iconUrl)
+      : null;
 
     const categoryLabel =
       category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
@@ -70,8 +85,10 @@ export async function GET(request: Request) {
           fontFamily: fonts.sans,
         }}
       >
+        {/* biome-ignore lint/performance/noImgElement: og image */}
         <img
           src={wallpaperUrl}
+          alt="Background"
           width={OG_WIDTH}
           height={OG_HEIGHT}
           style={{
@@ -106,7 +123,7 @@ export async function GET(request: Request) {
             gap: 40,
             padding: "48px 64px",
             position: "relative",
-            zIndex: 1,
+            zIndex: "1",
           }}
         >
           <div
@@ -118,9 +135,33 @@ export async function GET(request: Request) {
               flexShrink: 0,
             }}
           >
-            {iconUrl ? (
+            {/* Priority: 1. Known icon from config, 2. External iconUrl, 3. Category initial fallback */}
+            {knownIconPath ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 120,
+                  height: 120,
+                  borderRadius: 16,
+                  backgroundColor: iconConfig?.bgColorRaw || "#3f3f46",
+                }}
+              >
+                {/* biome-ignore lint/performance/noImgElement: og image */}
+                <img
+                  src={`${siteBaseUrl}${knownIconPath}`}
+                  alt="Integration icon"
+                  width={100}
+                  height={100}
+                  style={{ objectFit: "contain" }}
+                />
+              </div>
+            ) : externalIconUrl ? (
+              // biome-ignore lint/performance/noImgElement: og image
               <img
-                src={iconUrl}
+                src={externalIconUrl}
+                alt="Integration icon"
                 width={120}
                 height={120}
                 style={{ objectFit: "contain" }}
@@ -135,7 +176,7 @@ export async function GET(request: Request) {
                   display: "flex",
                 }}
               >
-                {name.charAt(0).toUpperCase()}
+                {getCategoryInitial(name)}
               </div>
             )}
           </div>
@@ -243,7 +284,7 @@ export async function GET(request: Request) {
         width: OG_WIDTH,
         height: OG_HEIGHT,
         fonts: loadedFonts.length > 0 ? loadedFonts : undefined,
-      }
+      },
     );
   } catch (e: unknown) {
     console.error(`OG Image generation failed:`, e);

@@ -46,12 +46,12 @@ export const fonts = {
 
 export async function loadGoogleFont(
   font: string,
-  text: string
+  text: string,
 ): Promise<ArrayBuffer> {
   const url = `https://fonts.googleapis.com/css2?family=${font}&text=${encodeURIComponent(text)}`;
   const css = await (await fetch(url)).text();
   const resource = css.match(
-    /src: url\((.+)\) format\('(opentype|truetype)'\)/
+    /src: url\((.+)\) format\('(opentype|truetype)'\)/,
   );
 
   if (resource) {
@@ -66,7 +66,7 @@ export async function loadGoogleFont(
 
 export async function loadFonts(
   serifText: string,
-  sansText: string
+  sansText: string,
 ): Promise<{ name: string; data: ArrayBuffer; style: "normal" }[]> {
   const fonts: { name: string; data: ArrayBuffer; style: "normal" }[] = [];
 
@@ -134,7 +134,7 @@ export function createFallbackResponse(title: string): ImageResponse {
     >
       {title}
     </div>,
-    { width: OG_WIDTH, height: OG_HEIGHT }
+    { width: OG_WIDTH, height: OG_HEIGHT },
   );
 }
 
@@ -234,7 +234,7 @@ export function HeroLayout({
           flex: 1,
           padding: 60,
           position: "relative",
-          zIndex: 1,
+          zIndex: "1",
         }}
       >
         <div
@@ -273,4 +273,95 @@ export function HeroLayout({
       </div>
     </div>
   );
+}
+
+/**
+ * OG-compatible image formats (Satori doesn't support WebP)
+ */
+const OG_COMPATIBLE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".svg", ".gif"];
+
+/**
+ * Check if a URL points to an OG-compatible image format
+ */
+export function isOgCompatibleUrl(url: string): boolean {
+  if (!url) return false;
+  const lowercaseUrl = url.toLowerCase();
+  return OG_COMPATIBLE_EXTENSIONS.some((ext) => lowercaseUrl.includes(ext));
+}
+
+/**
+ * Get an OG-compatible avatar URL
+ * - GitHub avatars: append format parameter for PNG
+ * - Gravatar: append format parameter for PNG
+ * - Other URLs: return as-is if compatible, null otherwise
+ */
+export function getOgCompatibleAvatarUrl(
+  url: string | null | undefined,
+): string | null {
+  if (!url) return null;
+
+  // GitHub avatar URLs - force PNG format
+  if (
+    url.includes("avatars.githubusercontent.com") ||
+    url.includes("github.com")
+  ) {
+    const avatarUrl = new URL(url);
+    avatarUrl.searchParams.set("format", "png");
+    return avatarUrl.toString();
+  }
+
+  // Gravatar URLs - force PNG format
+  if (url.includes("gravatar.com") || url.includes("secure.gravatar.com")) {
+    const gravatarUrl = url.includes("?") ? `${url}&f=png` : `${url}?f=png`;
+    return gravatarUrl.replace(".jpg", ".png");
+  }
+
+  // Google user content (profile pics)
+  if (url.includes("googleusercontent.com")) {
+    return url;
+  }
+
+  // Check if already OG-compatible
+  if (isOgCompatibleUrl(url)) {
+    return url;
+  }
+
+  // WebP or unknown format - can't use
+  return null;
+}
+
+/**
+ * Get an OG-compatible icon URL for integrations
+ * Validates the URL format and returns null for incompatible formats
+ */
+export function getOgCompatibleIconUrl(
+  url: string | null | undefined,
+): string | null {
+  if (!url) return null;
+
+  // Skip WebP images
+  if (url.toLowerCase().endsWith(".webp")) {
+    return null;
+  }
+
+  // Check if compatible format
+  if (isOgCompatibleUrl(url)) {
+    return url;
+  }
+
+  return null;
+}
+
+/**
+ * Check if the creator is the GAIA team (system user)
+ */
+export function isGaiaTeam(creatorId: string | null | undefined): boolean {
+  return !creatorId || creatorId === "system";
+}
+
+/**
+ * Get the GAIA team / Experience company logo path for OG images
+ */
+export function getGaiaTeamLogoUrl(siteBaseUrl: string): string {
+  return `${siteBaseUrl}/brand/experience_logo_white.png`;
 }

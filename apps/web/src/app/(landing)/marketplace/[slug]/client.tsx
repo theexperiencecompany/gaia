@@ -1,5 +1,16 @@
 "use client";
 
+import { Avatar } from "@heroui/avatar";
+import { Button } from "@heroui/button";
+import { Card, CardBody, CardHeader } from "@heroui/card";
+import { Chip } from "@heroui/chip";
+import { formatDistanceToNow } from "date-fns";
+import Image from "next/image";
+import Link from "next/link";
+import { useState } from "react";
+import { toast } from "sonner";
+
+import { wallpapers } from "@/config/wallpapers";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
@@ -12,16 +23,7 @@ import {
   GitForkIcon,
   PackageOpenIcon,
   UserCircle02Icon,
-  UserIcon,
 } from "@/icons";
-import { Avatar } from "@heroui/avatar";
-import { Button } from "@heroui/button";
-import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Chip } from "@heroui/chip";
-import { formatDistanceToNow } from "date-fns";
-import Link from "next/link";
-import { useState } from "react";
-import { toast } from "sonner";
 
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
@@ -53,8 +55,15 @@ export function IntegrationDetailClient({
   };
 
   return (
-    <div className="min-h-screen pt-28 pb-16">
-      <div className="mx-auto max-w-4xl px-6">
+    <div className="relative min-h-screen pt-28 pb-16">
+      <Image
+        src={wallpapers.integration.webp}
+        alt="GAIA Marketplace Wallpaper"
+        priority
+        fill
+        className="mask-[linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)] object-cover opacity-15 z-0 w-screen fixed h-screen left-0 top-0 max-h-screen"
+      />
+      <div className="relative z-10 mx-auto max-w-4xl px-6">
         <Link
           href="/marketplace"
           className="mb-8 inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-200"
@@ -69,7 +78,7 @@ export function IntegrationDetailClient({
             {getToolCategoryIcon(
               integration.integrationId,
               { size: 48, width: 48, height: 48, showBackground: false },
-              integration.iconUrl || undefined
+              integration.iconUrl || undefined,
             ) || (
               <div className="flex h-20 w-20 aspect-square items-center justify-center rounded-xl bg-zinc-700 font-medium text-zinc-300">
                 <PackageOpenIcon width={48} height={48} />
@@ -147,7 +156,7 @@ export function IntegrationDetailClient({
           </Button>
         </div>
 
-        <Card className="mb-6">
+        <Card className="mb-6 bg-zinc-900/50 backdrop-blur-sm outline-0 border-none rounded-3xl">
           <CardHeader>
             <h2 className="text-lg font-normal">
               Available Tools ({integration.toolCount})
@@ -155,7 +164,7 @@ export function IntegrationDetailClient({
           </CardHeader>
           <CardBody className="grid grid-cols-2 gap-4">
             {integration.tools.map((tool) => (
-              <div key={tool.name} className="bg-zinc-800 p-3 rounded-xl">
+              <div key={tool.name} className="bg-zinc-800/50 p-3 rounded-xl">
                 <p className="font-medium text-zinc-200">
                   {tool.name
                     .replace(/_/g, " ")

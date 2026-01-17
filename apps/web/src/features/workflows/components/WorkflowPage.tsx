@@ -26,6 +26,7 @@ import {
   workflowApi,
 } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
+import { CommunityBanner } from "./CommunityBanner";
 import EditWorkflowModal from "./EditWorkflowModal";
 import UnifiedWorkflowCard from "./shared/UnifiedWorkflowCard";
 import { WorkflowListSkeleton } from "./WorkflowSkeletons";
@@ -190,7 +191,7 @@ export default function WorkflowPage() {
 
     if (items.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl bg-zinc-800 border-dashed border-2 border-zinc-700 py-16">
+        <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl bg-zinc-800/30 border-dashed border-2 border-zinc-800 py-16">
           <div className="text-center">
             <h3 className="text-lg font-medium text-zinc-300">{emptyTitle}</h3>
             <p className="mt-2 text-sm text-zinc-500">{emptyDescription}</p>
@@ -245,6 +246,18 @@ export default function WorkflowPage() {
         </>
       ) : (
         <>
+          {/* Community Banner */}
+          <div className="mb-6">
+            <CommunityBanner
+              onCreateWorkflow={() => {
+                const btn = document.querySelector(
+                  '[data-keyboard-shortcut="create-workflow"]',
+                ) as HTMLButtonElement;
+                btn?.click();
+              }}
+            />
+          </div>
+
           <div className="flex flex-col gap-6">
             {renderGrid(
               workflows,
@@ -263,18 +276,6 @@ export default function WorkflowPage() {
                   onCardClick={() => handleWorkflowClick(workflow.id)}
                 />
               ),
-              <Button
-                color="primary"
-                variant="flat"
-                onPress={() => {
-                  const btn = document.querySelector(
-                    '[data-keyboard-shortcut="create-workflow"]',
-                  ) as HTMLButtonElement;
-                  btn?.click();
-                }}
-              >
-                Create Your First Workflow
-              </Button>,
             )}
           </div>
 

@@ -3,17 +3,59 @@
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DateTimeIcon,
-  Download01Icon,
   GitForkIcon,
   PackageOpenIcon,
   UserCircle02Icon,
 } from "@/icons";
 
 import type { CommunityIntegration } from "../types";
+
+// Component to handle integration icon with fallback on error
+const IntegrationIcon: React.FC<{
+  integrationId: string;
+  iconUrl?: string | null;
+}> = ({ integrationId, iconUrl }) => {
+  const [hasError, setHasError] = useState(false);
+
+  // First, try to get the icon from toolCategoryIcon (which checks known categories)
+  const categoryIcon = getToolCategoryIcon(integrationId, {
+    size: 100,
+    width: 28,
+    height: 28,
+    showBackground: false,
+  });
+
+  // If we have a category icon, use it directly
+  if (categoryIcon) {
+    return <>{categoryIcon}</>;
+  }
+
+  // Otherwise, try to use the iconUrl with error handling
+  if (iconUrl && !hasError) {
+    return (
+      <Image
+        src={iconUrl}
+        alt="Integration icon"
+        width={28}
+        height={28}
+        className="aspect-square object-contain"
+        onError={() => setHasError(true)}
+      />
+    );
+  }
+
+  // Fallback to PackageOpenIcon
+  return (
+    <div className="flex h-9 w-9 aspect-square items-center justify-center rounded-xl bg-zinc-700 text-sm font-medium text-zinc-300">
+      <PackageOpenIcon />
+    </div>
+  );
+};
 
 interface PublicIntegrationCardProps {
   integration: CommunityIntegration;
@@ -38,15 +80,10 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
       <div className="group relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 outline-1 outline-zinc-800/70 transition-all select-none cursor-pointer hover:bg-zinc-700/50">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 aspect-square shrink-0 items-center justify-center rounded-xl p-0">
-            {getToolCategoryIcon(
-              integration.integrationId,
-              { size: 100, width: 28, height: 28, showBackground: false },
-              integration.iconUrl || undefined
-            ) || (
-              <div className="flex h-9 w-9 aspect-square items-center justify-center rounded-xl bg-zinc-700 text-sm font-medium text-zinc-300">
-                <PackageOpenIcon />
-              </div>
-            )}
+            <IntegrationIcon
+              integrationId={integration.integrationId}
+              iconUrl={integration.iconUrl}
+            />
           </div>
 
           {/* Title + Category */}

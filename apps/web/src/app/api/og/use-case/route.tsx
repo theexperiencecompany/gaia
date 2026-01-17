@@ -9,8 +9,11 @@ import {
   getApiBaseUrl,
   getBaseUrl,
   getCategoryInitial,
+  getGaiaTeamLogoUrl,
+  getOgCompatibleAvatarUrl,
   getOgIconPath,
   getToolIconConfig,
+  isGaiaTeam,
   loadFonts,
   OG_HEIGHT,
   OG_WIDTH,
@@ -61,8 +64,20 @@ export async function GET(request: NextRequest) {
     const description = workflow?.description || "Automate your tasks with AI";
     const steps = workflow?.steps || [];
     const totalExecutions = workflow?.total_executions || 0;
-    const creatorName = workflow?.creator?.name || "Community";
-    const creatorAvatar = workflow?.creator?.avatar_url;
+
+    // Determine if this is a GAIA team workflow
+    const creatorId = workflow?.creator?.id;
+    const isGaiaTeamWorkflow = isGaiaTeam(creatorId);
+
+    // Use actual creator name, or "GAIA Team" for system workflows
+    const creatorName = isGaiaTeamWorkflow
+      ? "GAIA Team"
+      : workflow?.creator?.name || "Community";
+
+    // Use Experience logo for GAIA team, otherwise use creator avatar (converted to PNG)
+    const creatorAvatar = isGaiaTeamWorkflow
+      ? getGaiaTeamLogoUrl(siteBaseUrl)
+      : getOgCompatibleAvatarUrl(workflow?.creator?.avatar_url);
 
     const toolCategories = [
       ...new Set(steps.map((s: { category: string }) => s.category)),
@@ -126,7 +141,9 @@ export async function GET(request: NextRequest) {
                         zIndex: String(toolCategories.length - index),
                       }}
                     >
+                      {/** biome-ignore lint/performance/noImgElement: og image */}
                       <img
+                        alt="Icon"
                         src={`${siteBaseUrl}${iconPath}`}
                         width={80}
                         height={80}
@@ -141,6 +158,9 @@ export async function GET(request: NextRequest) {
                   iconColorRaw: "#a1a1aa",
                 };
 
+                // Check if we have an SVG path for this category
+                const svgPath = iconConfig?.svgPath;
+
                 return (
                   <div
                     key={category}
@@ -154,12 +174,28 @@ export async function GET(request: NextRequest) {
                       zIndex: String(toolCategories.length - index),
                     }}
                   >
-                    <span
-                      tw="text-2xl font-semibold"
-                      style={{ color: fallbackConfig.iconColorRaw }}
-                    >
-                      {getCategoryInitial(category)}
-                    </span>
+                    {svgPath ? (
+                      <svg
+                        width="56"
+                        height="56"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={fallbackConfig.iconColorRaw}
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <title>{category} Icon</title>
+                        <path d={svgPath} />
+                      </svg>
+                    ) : (
+                      <span
+                        tw="text-2xl font-semibold"
+                        style={{ color: fallbackConfig.iconColorRaw }}
+                      >
+                        {getCategoryInitial(category)}
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -210,6 +246,7 @@ export async function GET(request: NextRequest) {
                       viewBox="0 0 24 24"
                       fill="currentColor"
                     >
+                      <title>Play Icon</title>
                       <polygon points="5 3 19 12 5 21 5 3" />
                     </svg>
                     <span tw="ml-2 text-xl">
@@ -221,12 +258,16 @@ export async function GET(request: NextRequest) {
 
               <div tw="flex items-center">
                 {creatorAvatar ? (
+                  // biome-ignore lint/performance/noImgElement: og image
                   <img
                     src={creatorAvatar}
+                    alt="Creator Avatar"
                     width={40}
                     height={40}
-                    tw="rounded-full"
-                    style={{ objectFit: "cover" }}
+                    tw={`${!isGaiaTeamWorkflow ? "rounded-full" : ""} `}
+                    style={{
+                      objectFit: !isGaiaTeamWorkflow ? "cover" : "contain",
+                    }}
                   />
                 ) : (
                   <div

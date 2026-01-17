@@ -1,5 +1,6 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { useDisclosure } from "@heroui/modal";
 import type React from "react";
 import { useMemo } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -13,6 +14,8 @@ import { useIntegrationSearch } from "../hooks/useIntegrationSearch";
 import { useIntegrations } from "../hooks/useIntegrations";
 import type { Integration } from "../types";
 import { CategoryFilter } from "./CategoryFilter";
+import { MarketplaceBanner } from "./MarketplaceBanner";
+import { MCPIntegrationModal } from "./MCPIntegrationModal";
 
 const IntegrationRow: React.FC<{
   integration: Integration;
@@ -118,6 +121,7 @@ const IntegrationSection: React.FC<IntegrationSectionProps> = ({
 export const IntegrationsList: React.FC<{
   onIntegrationClick?: (integrationId: string) => void;
 }> = ({ onIntegrationClick }) => {
+  const { isOpen, onOpen, onOpenChange } = useDisclosure();
   const { integrations, connectIntegration } = useIntegrations();
 
   // Get state from store
@@ -196,7 +200,11 @@ export const IntegrationsList: React.FC<{
 
   return (
     <div>
-      {/* Category Filter */}
+      {/* Marketplace Banner */}
+      <div className="my-8">
+        <MarketplaceBanner onCreateCustomIntegration={onOpen} />
+      </div>
+
       <div className="mb-6">
         <CategoryFilter
           categories={availableCategories}
@@ -286,6 +294,8 @@ export const IntegrationsList: React.FC<{
           onIntegrationClick={onIntegrationClick}
         />
       )}
+
+      <MCPIntegrationModal isOpen={isOpen} onClose={() => onOpenChange()} />
     </div>
   );
 };
