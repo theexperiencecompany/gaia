@@ -74,6 +74,8 @@ class IntegrationTool(BaseModel):
 
 
 class IntegrationResponse(CamelModel):
+    """Integration details for API responses."""
+
     integration_id: str
     name: str
     description: str
@@ -88,6 +90,14 @@ class IntegrationResponse(CamelModel):
     icon_url: Optional[str] = None
     is_public: Optional[bool] = None
     created_by: Optional[str] = None
+
+    # Publishing fields
+    published_at: Optional[datetime] = None
+    clone_count: int = 0
+    cloned_from: Optional[str] = None
+    slug: Optional[str] = None
+    creator_name: Optional[str] = None
+    creator_picture: Optional[str] = None
 
 
 class UserIntegrationResponse(CamelModel):
