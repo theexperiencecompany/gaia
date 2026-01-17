@@ -203,6 +203,22 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
             title="Notification Operations", description="Manage user notifications"
         ),
     ),
+    "integration_publish": TieredRateLimits(
+        free=RateLimitConfig(day=10, month=50),
+        pro=RateLimitConfig(day=50, month=500),
+        info=FeatureInfo(
+            title="Integration Publishing",
+            description="Publish custom integrations to the community marketplace",
+        ),
+    ),
+    "integration_clone": TieredRateLimits(
+        free=RateLimitConfig(day=20, month=100),
+        pro=RateLimitConfig(day=100, month=1000),
+        info=FeatureInfo(
+            title="Integration Cloning",
+            description="Clone community integrations to your workspace",
+        ),
+    ),
 }
 
 

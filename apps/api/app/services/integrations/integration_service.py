@@ -539,7 +539,7 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
 
     Only the creator can delete their custom integration.
     Also removes all user_integrations referencing this integration
-    and cleans up ChromaDB subagent entry.
+    and cleans up ChromaDB subagent entry and public integrations index.
 
     Args:
         user_id: The user making the deletion
@@ -548,6 +548,26 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
     Returns:
         True if deleted, False if not found/not authorized
     """
+    # First, check if integration exists and was public (for ChromaDB cleanup)
+    doc = await integrations_collection.find_one(
+        {
+            "integration_id": integration_id,
+            "source": "custom",
+            "created_by": user_id,
+        }
+    )
+
+    # If the integration was public, remove from ChromaDB public integrations index
+    if doc and doc.get("is_public"):
+        try:
+            from app.db.chroma.public_integrations_store import (
+                remove_public_integration,
+            )
+
+            await remove_public_integration(integration_id)
+        except Exception as e:
+            logger.warning(f"Failed to remove from public integrations: {e}")
+
     result = await integrations_collection.delete_one(
         {
             "integration_id": integration_id,
