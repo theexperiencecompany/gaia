@@ -1,7 +1,6 @@
 """String utilities for the API."""
 
 import re
-from typing import Optional
 
 
 def slugify(text: str, max_length: int = 50) -> str:

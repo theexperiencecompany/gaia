@@ -153,7 +153,7 @@ export interface IntegrationListData {
  */
 
 export interface CommunityIntegrationCreator {
-  name: string;
+  name: string | null;
   picture: string | null;
 }
 
@@ -168,7 +168,7 @@ export interface CommunityIntegration {
   toolCount: number;
   tools: Array<{ name: string; description: string | null }>;
   publishedAt: string;
-  creator: CommunityIntegrationCreator;
+  creator: CommunityIntegrationCreator | null;
 }
 
 export interface CommunityIntegrationsResponse {
