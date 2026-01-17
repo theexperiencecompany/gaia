@@ -181,7 +181,7 @@ export function IntegrationDetailClient({
               >
                 {isAdding ? (
                   <>
-                    <Spinner />
+                    <Spinner size="sm" color="default" />
                     Adding...
                   </>
                 ) : isAdded || alreadyHasIntegration ? (

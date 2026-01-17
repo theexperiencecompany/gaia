@@ -7,6 +7,7 @@ import { Tooltip } from "@heroui/tooltip";
 import Link from "next/link";
 import React, { useState } from "react";
 import { toast } from "sonner";
+
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { RaisedButton, SidebarHeader } from "@/components/ui";
 import { SidebarContent } from "@/components/ui/sidebar";
@@ -15,7 +16,6 @@ import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { Integration } from "@/features/integrations/types";
 import {
-  GitForkIcon,
   GlobalIcon,
   LinkSquareIcon,
   RemoveCircleIcon,
@@ -48,6 +48,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const isConnected = integration.status === "connected";
   const showRetry = integration.status === "created";
   const { tools } = useToolsWithIntegrations();
+
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
@@ -59,34 +60,36 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const currentUserName = useUserStore((state) => state.name);
   const currentUserPicture = useUserStore((state) => state.profilePicture);
 
-  // Determine if this is a custom integration created by the current user vs forked
+  // Determine if this is a custom integration created by the current user
   const isOwnIntegration = React.useMemo(() => {
     if (integration.source !== "custom") return false;
-    // If no creator info, check if createdBy exists (legacy behavior)
-    if (!integration.creator) return !!integration.createdBy;
-    // If creator name matches current user, it's their integration
+    if (!integration.creator) return false;
     return integration.creator.name === currentUserName;
-  }, [integration, currentUserName]);
+  }, [integration.source, integration.creator, currentUserName]);
 
+  // Determine if this is a forked integration (added from marketplace, created by someone else)
   const isForkedIntegration = React.useMemo(() => {
     if (integration.source !== "custom") return false;
-    // Has creator info but creator is NOT the current user
-    return integration.creator && integration.creator.name !== currentUserName;
-  }, [integration, currentUserName]);
+    if (!integration.creator) return false;
+    return integration.creator.name !== currentUserName;
+  }, [integration.source, integration.creator, currentUserName]);
+
+  // Show delete/remove button for non-connected custom integrations
+  const showDeleteButton =
+    !isConnected && integration.source === "custom" && onDelete;
 
   // Calculate how many buttons will be shown to determine icon-only mode
   const buttonCount = [
     !!onDisconnect,
     integration.isPublic, // View on Marketplace
-    isOwnIntegration && integration.isPublic, // Unpublish (only for own integrations)
-    isOwnIntegration && !integration.isPublic, // Publish (only for own integrations)
+    isOwnIntegration && integration.isPublic, // Unpublish
+    isOwnIntegration && !integration.isPublic, // Publish
     integration.isPublic, // Share
   ].filter(Boolean).length;
 
-  // Only use icon-only mode when 3+ buttons
   const useIconOnly = buttonCount >= 3;
 
-  // Get tools that belong to this integration or its included integrations
+  // Get tools that belong to this integration
   const integrationTools = React.useMemo(() => {
     const integrationIds = [
       integration.id,
@@ -102,7 +105,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
   const handleConnect = async () => {
     if (isConnected || isConnecting) return;
-
     setIsConnecting(true);
     try {
       await onConnect(integration.id);
@@ -149,7 +151,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     }
   };
 
-  const handlePublish = async () => {
+  const handlePublish = () => {
     if (isPublishing) return;
     setShowPublishDialog(true);
   };
@@ -162,25 +164,27 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       } else if (!integration.isPublic && onPublish) {
         await onPublish(integration.id);
       } else {
-        // Neither condition matched - this shouldn't happen for custom integrations
-        console.error(
-          "[IntegrationSidebar] confirmPublish failed: handler not available",
-          {
-            isPublic: integration.isPublic,
-            hasOnPublish: !!onPublish,
-            hasOnUnpublish: !!onUnpublish,
-            source: integration.source,
-          },
-        );
         toast.error("Unable to publish: handler not available");
       }
-    } catch (_error) {
+    } catch {
       // Error toast is handled in the hook
     } finally {
       setIsPublishing(false);
       setShowPublishDialog(false);
     }
   };
+
+  // Dynamic text based on ownership
+  const deleteButtonText = isForkedIntegration
+    ? "Remove from GAIA"
+    : "Delete Integration";
+  const deleteDialogTitle = isForkedIntegration
+    ? "Remove Integration"
+    : "Delete Integration";
+  const deleteDialogMessage = isForkedIntegration
+    ? `Are you sure you want to remove ${integration.name} from your GAIA? You can add it again from the marketplace.`
+    : `Are you sure you want to delete ${integration.name}? This action cannot be undone.`;
+  const deleteDialogConfirmText = isForkedIntegration ? "Remove" : "Delete";
 
   return (
     <div className="flex h-full max-h-[calc(100vh-60px)] flex-col px-5">
@@ -207,30 +211,29 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             )}
             {integration.source === "custom" && (
               <div className="flex items-center gap-1">
-                {isForkedIntegration ? (
-                  integration.creator && (
-                    <Chip
-                      size="sm"
-                      variant="flat"
-                      radius="sm"
-                      className="text-xs font-light relative text-foreground-500"
-                      startContent={
-                        <Avatar
-                          src={integration.creator.picture || undefined}
-                          name={integration.creator.name || undefined}
-                          size="sm"
-                          className="h-4 w-4"
-                        />
-                      }
-                    >
-                      <div className="flex items-center gap-1.5 text-xs pl-0.5">
-                        <span>
-                          Created by {integration.creator.name || "Unknown"}
-                        </span>
-                      </div>
-                    </Chip>
-                  )
-                ) : isOwnIntegration ? (
+                {isForkedIntegration && integration.creator && (
+                  <Chip
+                    size="sm"
+                    variant="flat"
+                    radius="sm"
+                    className="text-xs font-light relative text-foreground-500"
+                    startContent={
+                      <Avatar
+                        src={integration.creator.picture || undefined}
+                        name={integration.creator.name || undefined}
+                        size="sm"
+                        className="h-4 w-4"
+                      />
+                    }
+                  >
+                    <div className="flex items-center gap-1.5 text-xs pl-0.5">
+                      <span>
+                        Created by {integration.creator.name || "Unknown"}
+                      </span>
+                    </div>
+                  </Chip>
+                )}
+                {isOwnIntegration && (
                   <Chip
                     size="sm"
                     variant="flat"
@@ -248,7 +251,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   >
                     Created by You
                   </Chip>
-                ) : null}
+                )}
               </div>
             )}
           </div>
@@ -262,7 +265,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           </p>
         </div>
 
-        {/* Connect/Disconnect buttons for all integrations */}
+        {/* Connect/Disconnect buttons */}
         {!isConnected ? (
           <RaisedButton
             color="#00bbff"
@@ -393,7 +396,8 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           </ButtonGroup>
         )}
 
-        {showRetry && onDelete && (
+        {/* Delete/Remove button for non-connected custom integrations */}
+        {showDeleteButton && (
           <Button
             color="danger"
             variant="light"
@@ -402,7 +406,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             isLoading={isDeleting}
             isDisabled={isDeleting}
           >
-            Delete Integration
+            {deleteButtonText}
           </Button>
         )}
 
@@ -412,6 +416,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           </h2>
         )}
       </SidebarHeader>
+
       <SidebarContent className="flex-1 overflow-y-auto">
         <div className="space-y-4 pb-4">
           {integrationTools.length > 0 && (
@@ -449,9 +454,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
       <ConfirmationDialog
         isOpen={showDeleteDialog}
-        title="Delete Integration"
-        message={`Are you sure you want to delete ${integration.name}? This action cannot be undone.`}
-        confirmText="Delete"
+        title={deleteDialogTitle}
+        message={deleteDialogMessage}
+        confirmText={deleteDialogConfirmText}
         cancelText="Cancel"
         variant="destructive"
         onConfirm={confirmDelete}

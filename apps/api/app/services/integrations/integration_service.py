@@ -554,94 +554,148 @@ async def update_custom_integration(
 
 async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
     """
-    Delete a custom integration.
+    Delete or remove a custom integration based on ownership.
 
-    Only the creator can delete their custom integration.
-    Also removes all user_integrations referencing this integration
-    and cleans up ChromaDB subagent entry and public integrations index.
+    - If user is the creator: Full delete (integration doc + all user_integrations + cleanup)
+    - If user is NOT the creator but has the integration: Remove only their user_integrations entry
+
+    This handles both "own" integrations and "forked" integrations from the marketplace.
 
     Args:
         user_id: The user making the deletion
-        integration_id: ID of integration to delete
+        integration_id: ID of integration to delete/remove
 
     Returns:
-        True if deleted, False if not found/not authorized
+        True if deleted/removed, False if not found
     """
-    # First, check if integration exists and was public (for ChromaDB cleanup)
+    # Check if integration exists and if user is the creator
     doc = await integrations_collection.find_one(
-        {
-            "integration_id": integration_id,
-            "source": "custom",
-            "created_by": user_id,
-        }
+        {"integration_id": integration_id, "source": "custom"}
     )
 
-    # If the integration was public, remove from ChromaDB public integrations index
-    if doc and doc.get("is_public"):
-        try:
-            from app.db.chroma.public_integrations_store import (
-                remove_public_integration,
+    if not doc:
+        # Integration doesn't exist - check if user has a user_integrations entry anyway
+        # (cleanup for orphaned records)
+        user_int = await user_integrations_collection.find_one(
+            {"user_id": user_id, "integration_id": integration_id}
+        )
+        if user_int:
+            await user_integrations_collection.delete_one(
+                {"user_id": user_id, "integration_id": integration_id}
+            )
+            logger.info(
+                f"User {user_id} removed orphaned user_integration for {integration_id}"
+            )
+            return True
+        return False
+
+    is_creator = doc.get("created_by") == user_id
+
+    if is_creator:
+        # Full delete: user is the creator
+        # If the integration was public, remove from ChromaDB public integrations index
+        if doc.get("is_public"):
+            try:
+                from app.db.chroma.public_integrations_store import (
+                    remove_public_integration,
+                )
+
+                await remove_public_integration(integration_id)
+            except Exception as e:
+                logger.warning(f"Failed to remove from public integrations: {e}")
+
+        # Delete the integration document
+        result = await integrations_collection.delete_one(
+            {
+                "integration_id": integration_id,
+                "source": "custom",
+                "created_by": user_id,
+            }
+        )
+
+        if result.deleted_count > 0:
+            # Clean up ALL user_integrations for this integration (all users who added it)
+            await user_integrations_collection.delete_many(
+                {"integration_id": integration_id}
             )
 
-            await remove_public_integration(integration_id)
-        except Exception as e:
-            logger.warning(f"Failed to remove from public integrations: {e}")
+            # Clean up MCP credentials from PostgreSQL
+            try:
+                from sqlalchemy import delete
 
-    result = await integrations_collection.delete_one(
-        {
-            "integration_id": integration_id,
-            "source": "custom",
-            "created_by": user_id,
-        }
-    )
+                from app.db.postgresql import get_db_session
+                from app.models.oauth_models import MCPCredential
 
-    # Always clean up user_integrations (prevents orphaned records)
-    await user_integrations_collection.delete_many({"integration_id": integration_id})
-
-    if result.deleted_count > 0:
-        # Clean up MCP credentials from PostgreSQL (prevents orphaned records)
-        try:
-            from sqlalchemy import delete
-
-            from app.db.postgresql import get_db_session
-            from app.models.oauth_models import MCPCredential
-
-            async with get_db_session() as session:
-                await session.execute(
-                    delete(MCPCredential).where(
-                        MCPCredential.integration_id == integration_id
+                async with get_db_session() as session:
+                    await session.execute(
+                        delete(MCPCredential).where(
+                            MCPCredential.integration_id == integration_id
+                        )
                     )
-                )
-                await session.commit()
-                logger.debug(f"Deleted MCP credentials for {integration_id}")
-        except Exception as e:
-            logger.warning(f"Failed to delete MCP credentials: {e}")
+                    await session.commit()
+                    logger.debug(f"Deleted MCP credentials for {integration_id}")
+            except Exception as e:
+                logger.warning(f"Failed to delete MCP credentials: {e}")
 
-        # Invalidate global MCP tools cache
-        try:
-            from app.db.redis import delete_cache
+            # Invalidate global MCP tools cache
+            try:
+                from app.db.redis import delete_cache
 
-            await delete_cache("mcp:tools:all")
-        except Exception as e:
-            logger.warning(f"Failed to invalidate tools cache: {e}")
+                await delete_cache("mcp:tools:all")
+            except Exception as e:
+                logger.warning(f"Failed to invalidate tools cache: {e}")
 
-        # Remove subagent entry from ChromaDB
-        try:
-            from app.core.lazy_loader import providers
+            # Remove subagent entry from ChromaDB
+            try:
+                from app.core.lazy_loader import providers
 
-            store = await providers.aget("chroma_tools_store")
-            if store:
-                await store.adelete(namespace=("subagents",), key=integration_id)
-                logger.info(
-                    f"Deleted subagent entry for {integration_id} from ChromaDB"
-                )
-        except Exception as e:
-            logger.warning(f"Failed to delete subagent from ChromaDB: {e}")
+                store = await providers.aget("chroma_tools_store")
+                if store:
+                    await store.adelete(namespace=("subagents",), key=integration_id)
+                    logger.info(
+                        f"Deleted subagent entry for {integration_id} from ChromaDB"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to delete subagent from ChromaDB: {e}")
 
-        logger.info(f"User {user_id} deleted custom integration {integration_id}")
-        return True
+            logger.info(f"User {user_id} deleted custom integration {integration_id}")
+            return True
 
-    return False
+        return False
+    else:
+        # User is NOT the creator - just remove their user_integrations entry
+        result = await user_integrations_collection.delete_one(
+            {"user_id": user_id, "integration_id": integration_id}
+        )
+
+        if result.deleted_count > 0:
+            # Also clean up this user's MCP credentials for this integration
+            try:
+                from sqlalchemy import delete
+
+                from app.db.postgresql import get_db_session
+                from app.models.oauth_models import MCPCredential
+
+                async with get_db_session() as session:
+                    await session.execute(
+                        delete(MCPCredential).where(
+                            MCPCredential.integration_id == integration_id,
+                            MCPCredential.user_id == user_id,
+                        )
+                    )
+                    await session.commit()
+                    logger.debug(
+                        f"Deleted MCP credentials for user {user_id} integration {integration_id}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to delete user MCP credentials: {e}")
+
+            logger.info(
+                f"User {user_id} removed forked integration {integration_id} from workspace"
+            )
+            return True
+
+        return False
 
 
 async def get_user_available_tool_namespaces(user_id: str) -> set[str]:

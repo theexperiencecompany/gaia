@@ -75,15 +75,6 @@ export default function IntegrationsPage() {
 
     if (!selectedIntegration) return;
 
-    // Debug: Log the integration source
-    console.log("[IntegrationsPage] Rendering sidebar for integration:", {
-      id: selectedIntegration.id,
-      name: selectedIntegration.name,
-      source: selectedIntegration.source,
-      isPublic: selectedIntegration.isPublic,
-      createdBy: selectedIntegration.createdBy,
-    });
-
     const handleDisconnect = async (id: string) => {
       await disconnectIntegration(id);
       setTimeout(() => closeRightSidebar(), 500);
