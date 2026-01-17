@@ -30,8 +30,8 @@ from app.schemas.integrations.requests import (
     UpdateCustomIntegrationRequest,
 )
 from app.schemas.integrations.responses import (
+    AddIntegrationResponse,
     AddUserIntegrationResponse,
-    CloneIntegrationResponse,
     CommunityIntegrationCreator,
     CommunityIntegrationItem,
     CommunityListResponse,
@@ -829,90 +829,103 @@ async def get_public_integration(
         raise HTTPException(status_code=500, detail="Failed to fetch integration")
 
 
-@router.post("/public/{integration_id}/clone", response_model=CloneIntegrationResponse)
-async def clone_integration(
+@router.post("/public/{integration_id}/add", response_model=AddIntegrationResponse)
+async def add_public_integration(
     integration_id: str,
+    request: ConnectIntegrationRequest,
     user_id: str = Depends(get_user_id),
-) -> CloneIntegrationResponse:
-    """Clone a public integration to user's workspace."""
-    import uuid
+) -> AddIntegrationResponse:
+    """
+    Add a public integration to user's workspace and trigger connection.
 
+    This does NOT duplicate the integration - it just creates a user_integrations
+    entry pointing to the original public integration, then triggers the OAuth
+    flow if needed.
+
+    Args:
+        integration_id: The public integration's ID
+        request: Contains redirect_path for OAuth callback
+
+    Returns:
+        AddIntegrationResponse with status "connected", "redirect", or "error"
+    """
     from app.db.mongodb.collections import user_integrations_collection
+    from app.services.integrations.integration_connection_service import (
+        connect_mcp_integration,
+    )
 
     try:
-        # 1. Get public integration by integration_id
+        # 1. Get public integration
         original_doc = await integrations_collection.find_one(
             {"integration_id": integration_id, "is_public": True}
         )
         if not original_doc:
             raise HTTPException(status_code=404, detail="Integration not found")
 
-        original_id = original_doc["integration_id"]
+        integration_name = original_doc["name"]
 
-        # 2. Generate new unique integration_id using short UUID
-        new_integration_id = uuid.uuid4().hex[:12]
-
-        # Copy relevant fields (cloned_from field removed)
-        mcp_config = original_doc.get("mcp_config", {})
-        new_doc = {
-            "integration_id": new_integration_id,
-            "name": original_doc["name"],
-            "description": original_doc.get("description", ""),
-            "category": original_doc.get("category", "custom"),
-            "managed_by": "mcp",
-            "source": "custom",
-            "is_public": False,  # Clone is private by default
-            "created_by": user_id,
-            "icon_url": original_doc.get("icon_url"),
-            "mcp_config": mcp_config,
-            "tools": original_doc.get("tools", []),
-            "display_priority": 0,
-            "is_featured": False,
-            "created_at": datetime.now(timezone.utc),
-        }
-
-        try:
-            await integrations_collection.insert_one(new_doc)
-        except Exception as e:
-            # Handle race condition: duplicate key error
-            if "duplicate key" in str(e).lower() or "E11000" in str(e):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Failed to create clone - please try again",
+        # 2. Check if user already has this integration
+        existing = await user_integrations_collection.find_one(
+            {"user_id": user_id, "integration_id": integration_id}
+        )
+        if existing:
+            # Already added - check status
+            if existing.get("status") == "connected":
+                return AddIntegrationResponse(
+                    integration_id=integration_id,
+                    name=integration_name,
+                    status="connected",
+                    message="Integration already connected",
                 )
-            raise
+            # Not connected yet - try connecting again
+            logger.info(f"User {user_id} re-attempting connection to {integration_id}")
+        else:
+            # 3. Add to user_integrations (pointing to ORIGINAL, not a copy)
+            user_integration_doc = {
+                "user_id": user_id,
+                "integration_id": integration_id,  # Same as original
+                "status": "created",
+                "created_at": datetime.now(timezone.utc),
+            }
+            await user_integrations_collection.insert_one(user_integration_doc)
 
-        # 3. Increment clone_count on original (atomic update)
-        await integrations_collection.update_one(
-            {"integration_id": original_id},
-            {"$inc": {"clone_count": 1}},
+            # 4. Increment clone_count on original
+            await integrations_collection.update_one(
+                {"integration_id": integration_id},
+                {"$inc": {"clone_count": 1}},
+            )
+
+            logger.info(f"User {user_id} added integration {integration_id}")
+
+        # 5. Trigger connection flow immediately
+        mcp_config = original_doc.get("mcp_config", {})
+        server_url = mcp_config.get("server_url")
+        requires_auth = mcp_config.get("requires_auth", False)
+
+        connect_result = await connect_mcp_integration(
+            user_id=user_id,
+            integration_id=integration_id,
+            requires_auth=requires_auth,
+            redirect_path=request.redirect_path,
+            server_url=server_url,
+            is_platform=False,
         )
 
-        # 4. Auto-add to user's workspace with status="created"
-        user_integration_doc = {
-            "user_id": user_id,
-            "integration_id": new_integration_id,
-            "status": "created",
-            "created_at": datetime.now(timezone.utc),
-        }
-        await user_integrations_collection.insert_one(user_integration_doc)
-
-        logger.info(
-            f"User {user_id} cloned integration {original_id} as {new_integration_id}"
-        )
-
-        return CloneIntegrationResponse(
-            message="Integration cloned successfully",
-            integration_id=new_integration_id,
-            name=original_doc["name"],
-            connection_status="created",
+        # 6. Return result (may include redirect_url for OAuth)
+        return AddIntegrationResponse(
+            integration_id=integration_id,
+            name=integration_name,
+            status=connect_result.status,
+            redirect_url=connect_result.redirect_url,
+            tools_count=connect_result.tools_count,
+            message=connect_result.message or "Integration added successfully",
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error cloning integration {integration_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to clone integration")
+        logger.error(f"Error adding integration {integration_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to add integration")
 
 
 @router.get("/search", response_model=SearchIntegrationsResponse)

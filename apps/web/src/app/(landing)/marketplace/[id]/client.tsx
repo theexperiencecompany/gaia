@@ -33,8 +33,8 @@ interface IntegrationDetailClientProps {
 export function IntegrationDetailClient({
   integration,
 }: IntegrationDetailClientProps) {
-  const [isCloning, setIsCloning] = useState(false);
-  const [isCloned, setIsCloned] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [isAdded, setIsAdded] = useState(false);
 
   // Check if user is authenticated (has email in store)
   const userEmail = useUserStore((state) => state.email);
@@ -58,9 +58,9 @@ export function IntegrationDetailClient({
     );
   }, [userIntegrationsData, integration.integrationId]);
 
-  const handleClone = async () => {
-    // Already cloned in this session
-    if (isCloned) return;
+  const handleAdd = async () => {
+    // Already added in this session
+    if (isAdded) return;
 
     // Check authentication first - open login modal if not authenticated
     if (!isAuthenticated) {
@@ -74,17 +74,30 @@ export function IntegrationDetailClient({
       return;
     }
 
-    setIsCloning(true);
+    setIsAdding(true);
+    const loadingToast = toast.loading("Adding integration...");
+
     try {
-      const result = await integrationsApi.cloneIntegration(
+      const result = await integrationsApi.addIntegration(
         integration.integrationId,
       );
-      toast.success(`Successfully cloned ${result.name}!`);
-      setIsCloned(true);
+
+      // If redirecting to OAuth, dismiss the loading toast
+      // The browser will navigate away
+      if (result.status === "redirecting") {
+        toast.dismiss(loadingToast);
+        return;
+      }
+
+      // Integration connected successfully
+      toast.dismiss(loadingToast);
+      toast.success(`Successfully added ${result.name}!`);
+      setIsAdded(true);
     } catch {
-      toast.error("Failed to clone integration.");
+      toast.dismiss(loadingToast);
+      toast.error("Failed to add integration.");
     } finally {
-      setIsCloning(false);
+      setIsAdding(false);
     }
   };
 
@@ -155,12 +168,12 @@ export function IntegrationDetailClient({
               <RaisedButton
                 color="#00bbff"
                 className="shrink-0 text-black!"
-                onClick={handleClone}
-                disabled={isCloning || isCloned || alreadyHasIntegration}
+                onClick={handleAdd}
+                disabled={isAdding || isAdded || alreadyHasIntegration}
               >
-                {isCloned || alreadyHasIntegration
+                {isAdded || alreadyHasIntegration
                   ? "Already in your GAIA"
-                  : isCloning
+                  : isAdding
                     ? "Adding..."
                     : "Add to your GAIA"}
               </RaisedButton>

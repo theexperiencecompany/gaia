@@ -207,12 +207,16 @@ class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
     published_at: Optional[datetime] = None
 
 
-class CloneIntegrationResponse(SuccessResponse, CamelModel):
-    """Response for cloning a public integration."""
+class AddIntegrationResponse(CamelModel):
+    """Response for adding a public integration to user's workspace."""
 
     integration_id: str
     name: str
-    connection_status: Literal["created", "connected"]
+    status: Literal["connected", "redirect", "error"]
+    message: str = "Integration added successfully"
+    redirect_url: Optional[str] = None
+    tools_count: Optional[int] = None
+    error: Optional[str] = None
 
 
 class SearchIntegrationItem(CamelModel, CloneCountMixin):

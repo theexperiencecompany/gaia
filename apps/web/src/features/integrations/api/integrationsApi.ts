@@ -295,26 +295,53 @@ export const integrationsApi = {
   },
 
   /**
-   * Clone a public integration to user's workspace
+   * Add a public integration to user's workspace and trigger OAuth if needed
    */
-  cloneIntegration: async (
+  addIntegration: async (
     integrationId: string,
   ): Promise<{
-    message: string;
+    status: "connected" | "redirect" | "redirecting" | "error";
     integrationId: string;
     name: string;
-    connectionStatus: string;
+    message: string;
+    toolsCount?: number;
+    redirectUrl?: string;
   }> => {
-    const response = await apiService.post(
-      `/integrations/public/${integrationId}/clone`,
-      {},
-    );
-    return response as {
-      message: string;
+    if (typeof window === "undefined") {
+      return {
+        status: "error",
+        integrationId,
+        name: "",
+        message: "Cannot add integration on server",
+      };
+    }
+
+    const redirectPath = window.location.pathname + window.location.search;
+
+    const response = (await apiService.post(
+      `/integrations/public/${integrationId}/add`,
+      { redirect_path: redirectPath },
+    )) as {
+      status: "connected" | "redirect" | "error";
       integrationId: string;
       name: string;
-      connectionStatus: string;
+      message: string;
+      toolsCount?: number;
+      redirectUrl?: string;
+      error?: string;
     };
+
+    // Handle OAuth redirect
+    if (response.status === "redirect" && response.redirectUrl) {
+      window.location.href = response.redirectUrl;
+      return { ...response, status: "redirecting" };
+    }
+
+    if (response.status === "error") {
+      throw new Error(response.error || "Failed to add integration");
+    }
+
+    return response;
   },
 
   /**
