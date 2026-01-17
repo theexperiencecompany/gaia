@@ -3,6 +3,7 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import React, { useState } from "react";
+import { toast } from "sonner";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { RaisedButton, SidebarHeader } from "@/components/ui";
 import { SidebarContent } from "@/components/ui/sidebar";
@@ -10,8 +11,12 @@ import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithInte
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { Integration } from "@/features/integrations/types";
-import { GlobalIcon, Share08Icon, Unlink04Icon, ViewOffSlashIcon } from "@/icons";
-import { toast } from "sonner";
+import {
+  GlobalIcon,
+  Share08Icon,
+  Unlink04Icon,
+  ViewOffSlashIcon,
+} from "@/icons";
 
 interface IntegrationSidebarProps {
   integration: Integration;
@@ -253,7 +258,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             fullWidth
             onPress={() => {
               navigator.clipboard.writeText(
-                `${window.location.origin}/integrations/${integration.slug}`
+                `${window.location.origin}/marketplace/${integration.slug}`,
               );
               toast.success("Link copied to clipboard!");
             }}
@@ -317,7 +322,9 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
       <ConfirmationDialog
         isOpen={showPublishDialog}
-        title={integration.isPublic ? "Unpublish Integration" : "Publish Integration"}
+        title={
+          integration.isPublic ? "Unpublish Integration" : "Publish Integration"
+        }
         message={
           integration.isPublic
             ? `Are you sure you want to unpublish ${integration.name}? It will no longer be visible in the community marketplace.`

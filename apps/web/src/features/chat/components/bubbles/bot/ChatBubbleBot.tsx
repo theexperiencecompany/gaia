@@ -19,7 +19,7 @@ export default function ChatBubbleBot(
   props: ChatBubbleBotProps & {
     disableActions?: boolean;
     children?: ReactNode;
-  },
+  }
 ) {
   const {
     text,
@@ -76,7 +76,7 @@ export default function ChatBubbleBot(
   const itShouldShowTextBubble = shouldShowTextBubble(
     text,
     isConvoSystemGenerated,
-    systemPurpose,
+    systemPurpose
   );
 
   return (
@@ -89,7 +89,7 @@ export default function ChatBubbleBot(
       >
         <div className="flex items-end gap-1">
           <div className="relative bottom-0 min-w-10 shrink-0">
-            {itshouldShowTextBubble && (
+            {itShouldShowTextBubble && (
               <Image
                 alt="GAIA Logo"
                 src={"/images/logos/logo.webp"}
@@ -113,7 +113,7 @@ export default function ChatBubbleBot(
           </div>
         </div>
 
-        {itshouldShowTextBubble && (
+        {itShouldShowTextBubble && (
           <div className="ml-10.75 flex flex-col">
             {!!follow_up_actions && follow_up_actions?.length > 0 && (
               <FollowUpActions

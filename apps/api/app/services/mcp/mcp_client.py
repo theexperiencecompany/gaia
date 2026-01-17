@@ -726,7 +726,6 @@ class MCPClient:
             dcr_data = await self.token_store.get_dcr_client(integration_id)
             if dcr_data:
                 client_id = dcr_data.get("client_id")
-                client_secret = dcr_data.get("client_secret")
 
         if not client_id:
             # NEW: Check if client metadata document is supported

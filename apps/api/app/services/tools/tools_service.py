@@ -10,10 +10,7 @@ from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
-from app.db.mongodb.collections import (
-    integrations_collection,
-    user_integrations_collection,
-)
+from app.db.mongodb.collections import user_integrations_collection
 from app.utils.request_coalescing import coalesce_request
 
 

@@ -1,18 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { Avatar } from "@heroui/avatar";
 import { Button } from "@heroui/button";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { Chip } from "@heroui/chip";
-import { Avatar } from "@heroui/avatar";
-import { toast } from "sonner";
-import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-
+import Link from "next/link";
+import { useState } from "react";
+import { toast } from "sonner";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { ArrowLeft01Icon, Copy01Icon, Download01Icon, CheckmarkCircle02Icon } from "@/icons";
+import {
+  ArrowLeft01Icon,
+  CheckmarkCircle02Icon,
+  Copy01Icon,
+  Download01Icon,
+} from "@/icons";
 
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
@@ -48,7 +52,7 @@ export function IntegrationDetailClient({
       <div className="mx-auto max-w-4xl px-6">
         {/* Back link */}
         <Link
-          href="/integrations"
+          href="/marketplace"
           className="mb-8 inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-200"
         >
           <ArrowLeft01Icon width={16} height={16} />
@@ -61,7 +65,7 @@ export function IntegrationDetailClient({
             {getToolCategoryIcon(
               integration.integrationId,
               { size: 48, showBackground: false },
-              integration.iconUrl || undefined
+              integration.iconUrl || undefined,
             )}
           </div>
 

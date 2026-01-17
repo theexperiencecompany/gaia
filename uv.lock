@@ -19,6 +19,7 @@ members = [
 name = "aenum"
 version = "3.1.16"
 source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/7a/61ed58e8be9e30c3fe518899cc78c284896d246d51381bab59b5db11e1f3/aenum-3.1.16.tar.gz", hash = "sha256:bfaf9589bdb418ee3a986d85750c7318d9d2839c1b1a1d6fe8fc53ec201cf140", size = 137693, upload-time = "2026-01-12T22:34:38.819Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e3/52/6ad8f63ec8da1bf40f96996d25d5b650fdd38f5975f8c813732c47388f18/aenum-3.1.16-py3-none-any.whl", hash = "sha256:9035092855a98e41b66e3d0998bd7b96280e85ceb3a04cc035636138a1943eaf", size = 165627, upload-time = "2025-04-25T03:17:58.89Z" },
 ]
@@ -2031,7 +2032,6 @@ backend = [
     { name = "langgraph-bigtool" },
     { name = "langgraph-checkpoint-postgres" },
     { name = "language-data" },
-    { name = "livekit-api" },
     { name = "llama-cloud-services" },
     { name = "llama-parse" },
     { name = "llvmlite" },
@@ -2186,7 +2186,6 @@ backend = [
     { name = "langgraph-bigtool", specifier = ">=0.0.2" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0.21" },
     { name = "language-data", specifier = "==1.3.0" },
-    { name = "livekit-api" },
     { name = "llama-cloud-services", specifier = ">=0.6.15" },
     { name = "llama-parse", specifier = ">=0.6.12" },
     { name = "llvmlite", specifier = "==0.44.0" },
