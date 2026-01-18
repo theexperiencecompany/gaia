@@ -10,6 +10,7 @@ All metadata comes from oauth_config.py OAUTH_INTEGRATIONS.
 """
 
 from datetime import datetime
+import re
 from typing import Annotated, Optional, TypedDict
 
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
@@ -210,7 +211,7 @@ async def index_custom_mcp_as_subagent(
 async def handoff(
     subagent_id: Annotated[
         str,
-        "The ID of the subagent to delegate to (e.g., 'gmail', 'subagent:gmail', 'google_calendar'). "
+        "The ID of the subagent to delegate to (e.g., 'gmail', 'subagent:gmail', 'subagent:semantic_scholar (fb9dfd7e05f8)'). "
         "Get this from retrieve_tools results (subagent IDs have 'subagent:' prefix).",
     ],
     task: Annotated[
@@ -229,7 +230,10 @@ async def handoff(
     2. Return the result of the completed task
 
     Args:
-        subagent_id: ID of the subagent from retrieve_tools (with or without 'subagent:' prefix)
+        subagent_id: ID of the subagent from retrieve_tools. Supports formats:
+            - "subagent:gmail" (platform integration)
+            - "subagent:semantic_scholar (fb9dfd7e05f8)" (custom integration with name and ID)
+            - "gmail" or "fb9dfd7e05f8" (bare IDs)
         task: Complete task description with all necessary context
     """
     try:
@@ -241,8 +245,17 @@ async def handoff(
             logger.warning(f"handoff received non-dict config: {type(config).__name__}")
         user_id = configurable.get("user_id")
 
-        # Strip 'subagent:' prefix if present
+        # Parse subagent ID from various formats:
+        # - "subagent:gmail" -> "gmail"
+        # - "subagent:semantic_scholar (fb9dfd7e05f8)" -> "fb9dfd7e05f8"
+        # - "gmail" -> "gmail"
+        # - "fb9dfd7e05f8" -> "fb9dfd7e05f8"
         clean_id = subagent_id.replace("subagent:", "").strip()
+
+        # Check for format with parentheses: "name (id)" -> extract id
+        paren_match = re.search(r"\(([a-f0-9]+)\)$", clean_id)
+        if paren_match:
+            clean_id = paren_match.group(1)
 
         integration = await _get_subagent_by_id(clean_id)
 

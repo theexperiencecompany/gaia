@@ -173,23 +173,35 @@ export function IntegrationDetailClient({
                 id={integration.integrationId}
                 basePath="/marketplace"
               />
-              <RaisedButton
-                color="#00bbff"
-                className="shrink-0 text-black!"
-                onClick={handleAdd}
-                disabled={isAdding || isAdded || alreadyHasIntegration}
-              >
-                {isAdding ? (
-                  <>
-                    <Spinner size="sm" color="default" />
-                    Adding...
-                  </>
-                ) : isAdded || alreadyHasIntegration ? (
-                  "Already in your GAIA"
-                ) : (
-                  "Add to your GAIA"
-                )}
-              </RaisedButton>
+              {alreadyHasIntegration ? (
+                <RaisedButton
+                  color="#00bbff"
+                  className="shrink-0 text-black!"
+                  onClick={() =>
+                    router.push(`/integrations?id=${integration.integrationId}`)
+                  }
+                >
+                  View Integration
+                </RaisedButton>
+              ) : (
+                <RaisedButton
+                  color="#00bbff"
+                  className="shrink-0 text-black!"
+                  onClick={handleAdd}
+                  disabled={isAdding || isAdded}
+                >
+                  {isAdding ? (
+                    <>
+                      <Spinner size="sm" color="default" />
+                      Adding...
+                    </>
+                  ) : isAdded ? (
+                    "Added to your GAIA"
+                  ) : (
+                    "Add to your GAIA"
+                  )}
+                </RaisedButton>
+              )}
             </div>
           </div>
 
@@ -231,7 +243,7 @@ export function IntegrationDetailClient({
             <div className="flex items-center gap-2 rounded-xl bg-zinc-900/50 backdrop-blur-md px-4 py-3">
               <GitForkIcon width={24} height={24} className="text-zinc-400" />
               <div>
-                <div className="text-xs text-zinc-500">Clones</div>
+                <div className="text-xs text-zinc-500">Users</div>
                 <div className="text-sm text-zinc-300">
                   {integration.cloneCount}
                 </div>

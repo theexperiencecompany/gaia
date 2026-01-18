@@ -10,6 +10,8 @@
   },
   "type": "module",
   "scripts": {
+    "extract-icons": "tsx scripts/extract-icon-paths.ts",
+    "prebuild": "npm run extract-icons",
     "dev": "nx next:dev --turbopack",
     "dev:webpack": "nx next:dev",
     "build": "nx next:build",

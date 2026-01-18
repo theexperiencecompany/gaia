@@ -1,3 +1,14 @@
+/**
+ * Tool Icons - React UI Layer
+ *
+ * This file provides React components for rendering tool/category icons.
+ * It imports configuration from toolIconConfig.ts (the single source of truth)
+ * and maps icon names to actual React components.
+ *
+ * For OG images (Edge runtime), see: iconPaths.generated.ts
+ * For icon configuration: src/config/toolIconConfig.ts
+ */
+
 import Image from "next/image";
 import {
   iconAliases,

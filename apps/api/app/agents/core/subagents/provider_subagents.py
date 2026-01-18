@@ -112,7 +112,7 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
     Uses cached tools when available to avoid reconnecting to MCP server.
 
     Args:
-        integration_id: The integration ID from oauth_config or custom_* ID
+        integration_id: The integration ID from oauth_config or custom MCP ID (12-char hex)
         user_id: The user's ID for token lookup
 
     Returns:
@@ -121,11 +121,12 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
     integration = get_integration_by_id(integration_id)
 
     # Handle custom MCPs from MongoDB (not in OAUTH_INTEGRATIONS)
-    if not integration and integration_id.startswith("custom_"):
+    # Custom MCPs can have either "custom_" prefix or 12-char hex IDs
+    if not integration:
         return await _create_custom_mcp_subagent(integration_id, user_id)
 
     # Platform integration validation
-    if not integration or not integration.subagent_config:
+    if not integration.subagent_config:
         logger.error(f"{integration_id} integration or subagent config not found")
         return None
 

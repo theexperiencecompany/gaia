@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { getIconPaths } from "@/config/iconPaths.generated";
 import {
   getCategoryInitial,
   getIconPath,
@@ -20,6 +21,7 @@ export {
   getIconPath,
   getOgIconPath,
   getCategoryInitial,
+  getIconPaths,
   wallpapers,
 };
 export type { ToolIconConfig };
@@ -35,8 +37,8 @@ export const colors = {
   muted: "#71717a",
   mutedLight: "#a1a1aa",
   mutedLighter: "#d4d4d8",
-  accent: "#60a5fa",
-  accentBg: "rgba(59, 130, 246, 0.15)",
+  accent: "#00bbff",
+  accentBg: "#00bbff50",
 } as const;
 
 export const fonts = {
@@ -154,6 +156,7 @@ export function CategoryBadge({ label }: { label: string }) {
         fontWeight: 500,
         fontFamily: fonts.sans,
         display: "flex",
+        backdropFilter: "blur(5px)",
       }}
     >
       {label}
@@ -251,7 +254,6 @@ export function HeroLayout({
               fontWeight: 400,
               color: colors.white,
               fontFamily: fonts.serif,
-              // textShadow: "0 4px 24px rgba(0,0,0,0.4)",
             }}
           >
             {title}
@@ -262,7 +264,6 @@ export function HeroLayout({
               color: colors.white,
               fontWeight: 500,
               fontFamily: fonts.sans,
-              // textShadow: "0 2px 12px rgba(0,0,0,0.4)",
               textAlign: "center",
               maxWidth: 900,
             }}
@@ -321,6 +322,16 @@ export function getOgCompatibleAvatarUrl(
     return url;
   }
 
+  // WorkOS CDN (Clerk/AuthKit profile pics)
+  if (url.includes("workoscdn.com")) {
+    return url;
+  }
+
+  // Clerk CDN (clerk.dev profile pics)
+  if (url.includes("clerk.dev") || url.includes("clerk.com")) {
+    return url;
+  }
+
   // Check if already OG-compatible
   if (isOgCompatibleUrl(url)) {
     return url;
@@ -339,17 +350,160 @@ export function getOgCompatibleIconUrl(
 ): string | null {
   if (!url) return null;
 
-  // Skip WebP images
-  if (url.toLowerCase().endsWith(".webp")) {
+  const lowercaseUrl = url.toLowerCase();
+
+  // Skip WebP images - Satori doesn't support them
+  if (lowercaseUrl.endsWith(".webp")) {
     return null;
   }
 
-  // Check if compatible format
-  if (isOgCompatibleUrl(url)) {
+  // Skip ICO images - Satori doesn't support them
+  if (lowercaseUrl.includes(".ico")) {
+    return null;
+  }
+
+  // Skip external SVG images - fetching is unreliable (rate limits, CORS)
+  // Note: local SVG paths (starting with /) are handled separately via svgPath in iconConfig
+  if (lowercaseUrl.includes(".svg")) {
+    return null;
+  }
+
+  // Extract path without query string for extension checking
+  const urlPath = lowercaseUrl.split("?")[0];
+
+  // Check if compatible format (png, jpg, jpeg, gif only - others are skipped above)
+  const compatibleExtensions = [".png", ".jpg", ".jpeg", ".gif"];
+  if (compatibleExtensions.some((ext) => urlPath.endsWith(ext))) {
+    return url;
+  }
+
+  // Also check if the URL contains these extensions anywhere (for dynamic URLs)
+  if (compatibleExtensions.some((ext) => lowercaseUrl.includes(ext))) {
     return url;
   }
 
   return null;
+}
+
+/**
+ * Fetch any external image and convert to base64 data URI
+ * This allows Satori to render images it normally can't handle (external SVG, etc)
+ * Works on Edge runtime without requiring heavy dependencies like Sharp
+ *
+ * Note: ICO files are NOT supported - Satori cannot render them even as base64.
+ * Changing MIME type doesn't convert the binary format.
+ */
+export async function fetchImageAsBase64(url: string): Promise<string | null> {
+  try {
+    // Skip ICO files upfront - Satori cannot render them
+    const lowercaseUrl = url.toLowerCase();
+    if (lowercaseUrl.includes(".ico")) {
+      console.log(`[OG Image] Skipping ICO file (unsupported): ${url}`);
+      return null;
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        Accept: "image/*",
+        "User-Agent": "Mozilla/5.0 (compatible; GAIA-OG/1.0)",
+      },
+    });
+
+    if (!response.ok) {
+      console.warn(
+        `[OG Image] Failed to fetch image: ${url} (${response.status})`,
+      );
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type") || "image/png";
+    const mimeType = contentType.split(";")[0].trim();
+
+    // Skip ICO files detected by content-type - Satori cannot render them
+    if (
+      mimeType === "image/x-icon" ||
+      mimeType === "image/vnd.microsoft.icon"
+    ) {
+      console.log(
+        `[OG Image] Skipping ICO file (unsupported content-type): ${url}`,
+      );
+      return null;
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+
+    return `data:${mimeType};base64,${base64}`;
+  } catch (error) {
+    console.error(`[OG Image] Error fetching image as base64:`, error);
+    return null;
+  }
+}
+
+/**
+ * Check if a URL points to an SVG file
+ */
+export function isSvgUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const lowercaseUrl = url.toLowerCase();
+  return lowercaseUrl.includes(".svg");
+}
+
+/**
+ * Fetch external SVG content and extract the path data for inline rendering
+ * Returns the viewBox and path data, or null if fetch fails
+ */
+export async function fetchSvgContent(
+  url: string,
+): Promise<{ viewBox: string; paths: string[] } | null> {
+  try {
+    console.log("[OG Image] Fetching SVG from:", url);
+    const response = await fetch(url, {
+      headers: {
+        Accept: "image/svg+xml",
+      },
+    });
+
+    console.log("[OG Image] SVG fetch response:", {
+      ok: response.ok,
+      status: response.status,
+      contentType: response.headers.get("content-type"),
+    });
+
+    if (!response.ok) return null;
+
+    const svgText = await response.text();
+    console.log("[OG Image] SVG content length:", svgText.length);
+    console.log("[OG Image] SVG preview:", svgText.substring(0, 500));
+
+    // Extract viewBox attribute
+    const viewBoxMatch = svgText.match(/viewBox=["']([^"']+)["']/i);
+    const viewBox = viewBoxMatch?.[1] || "0 0 24 24";
+
+    // Extract path d attributes
+    const pathMatches = svgText.matchAll(
+      /<path[^>]*d=["']([^"']+)["'][^>]*>/gi,
+    );
+    const paths: string[] = [];
+    for (const match of pathMatches) {
+      if (match[1]) {
+        paths.push(match[1]);
+      }
+    }
+
+    console.log("[OG Image] Extracted paths count:", paths.length);
+
+    // If no paths found, return null and let fallback handle it
+    if (paths.length === 0) {
+      console.log("[OG Image] No paths found in SVG, using fallback");
+      return null;
+    }
+
+    return { viewBox, paths };
+  } catch (error) {
+    console.error("[OG Image] Failed to fetch SVG:", error);
+    return null;
+  }
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   getBaseUrl,
   getCategoryInitial,
   getGaiaTeamLogoUrl,
+  getIconPaths,
   getOgCompatibleAvatarUrl,
   getOgIconPath,
   getToolIconConfig,
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
 
     let workflow = null;
     try {
+      // First try explore endpoint (has creator info)
       const exploreResponse = await fetch(`${apiBaseUrl}/workflows/explore`, {
         cache: "no-store",
       });
@@ -46,6 +48,19 @@ export async function GET(request: NextRequest) {
         workflow = data.workflows?.find((w: { id: string }) => w.id === slug);
       }
 
+      // If not in explore, try community endpoint (has creator info)
+      if (!workflow) {
+        const communityResponse = await fetch(
+          `${apiBaseUrl}/workflows/community?limit=100`,
+          { cache: "no-store" },
+        );
+        if (communityResponse.ok) {
+          const data = await communityResponse.json();
+          workflow = data.workflows?.find((w: { id: string }) => w.id === slug);
+        }
+      }
+
+      // If still not found, try public endpoint (may not have full creator info)
       if (!workflow) {
         const publicResponse = await fetch(
           `${apiBaseUrl}/workflows/public/${slug}`,
@@ -75,9 +90,10 @@ export async function GET(request: NextRequest) {
       : workflow?.creator?.name || "Community";
 
     // Use Experience logo for GAIA team, otherwise use creator avatar (converted to PNG)
+    const rawAvatarUrl = workflow?.creator?.avatar;
     const creatorAvatar = isGaiaTeamWorkflow
       ? getGaiaTeamLogoUrl(siteBaseUrl)
-      : getOgCompatibleAvatarUrl(workflow?.creator?.avatar_url);
+      : getOgCompatibleAvatarUrl(rawAvatarUrl);
 
     const toolCategories = [
       ...new Set(steps.map((s: { category: string }) => s.category)),
@@ -108,7 +124,7 @@ export async function GET(request: NextRequest) {
           }}
         />
 
-        <div tw="flex flex-col flex-1 relative" style={{ zIndex: "10" }}>
+        <div tw="flex flex-col flex-1 relative" style={{ zIndex: 10 }}>
           <div
             tw="flex flex-col flex-1 p-14"
             style={{
@@ -138,7 +154,7 @@ export async function GET(request: NextRequest) {
                         backgroundColor: iconConfig.bgColorRaw,
                         transform: `rotate(${rotation})`,
                         marginLeft: index > 0 ? -6 : 0,
-                        zIndex: String(toolCategories.length - index),
+                        zIndex: toolCategories.length - index,
                       }}
                     >
                       {/** biome-ignore lint/performance/noImgElement: og image */}
@@ -158,8 +174,10 @@ export async function GET(request: NextRequest) {
                   iconColorRaw: "#a1a1aa",
                 };
 
-                // Check if we have an SVG path for this category
-                const svgPath = iconConfig?.svgPath;
+                // Check if we have SVG paths for this category from generated file
+                const iconPathData = iconConfig?.icon
+                  ? getIconPaths(iconConfig.icon)
+                  : null;
 
                 return (
                   <div
@@ -171,22 +189,19 @@ export async function GET(request: NextRequest) {
                       backgroundColor: fallbackConfig.bgColorRaw,
                       transform: `rotate(${rotation})`,
                       marginLeft: index > 0 ? -6 : 0,
-                      zIndex: String(toolCategories.length - index),
+                      zIndex: toolCategories.length - index,
                     }}
                   >
-                    {svgPath ? (
+                    {iconPathData ? (
                       <svg
                         width="56"
                         height="56"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke={fallbackConfig.iconColorRaw}
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                        viewBox={iconPathData.viewBox}
+                        fill={fallbackConfig.iconColorRaw}
                       >
-                        <title>{category} Icon</title>
-                        <path d={svgPath} />
+                        {iconPathData.paths.map((d, i) => (
+                          <path key={`${category}-path-${i}`} d={d} />
+                        ))}
                       </svg>
                     ) : (
                       <span
@@ -238,25 +253,6 @@ export async function GET(request: NextRequest) {
 
             <div tw="flex items-center justify-between">
               <div tw="flex items-center">
-                {totalExecutions > 0 && (
-                  <div tw="flex items-center" style={{ color: colors.muted }}>
-                    <svg
-                      width="22"
-                      height="22"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                    >
-                      <title>Play Icon</title>
-                      <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
-                    <span tw="ml-2 text-xl">
-                      {formatCount(totalExecutions)} runs
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div tw="flex items-center">
                 {creatorAvatar ? (
                   // biome-ignore lint/performance/noImgElement: og image
                   <img
@@ -283,8 +279,26 @@ export async function GET(request: NextRequest) {
                   </div>
                 )}
                 <span tw="ml-3 text-xl" style={{ color: colors.mutedLight }}>
-                  {creatorName}
+                  by {creatorName}
                 </span>
+              </div>
+
+              <div tw="flex items-center">
+                {totalExecutions > 0 && (
+                  <div tw="flex items-center" style={{ color: colors.muted }}>
+                    <svg
+                      width="22"
+                      height="22"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                    >
+                      <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                    <span tw="ml-2 text-xl">
+                      {formatCount(totalExecutions)} runs
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

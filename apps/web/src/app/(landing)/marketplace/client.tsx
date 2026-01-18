@@ -1,14 +1,15 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
-
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { IntegrationsFilters } from "@/features/integrations/components/IntegrationsFilters";
-import { PublicIntegrationCard } from "@/features/integrations/components/PublicIntegrationCard";
+import {
+  PublicIntegrationCard,
+  PublicIntegrationCardSkeletonGrid,
+} from "@/features/integrations/components/PublicIntegrationCard";
 import type { CommunityIntegration } from "@/features/integrations/types";
-import Image from "next/image";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 
 export function IntegrationsPageClient() {
@@ -108,8 +109,8 @@ export function IntegrationsPageClient() {
         )}
 
         {isLoading && integrations.length === 0 ? (
-          <div className="flex justify-center py-20">
-            <Spinner size="lg" />
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <PublicIntegrationCardSkeletonGrid count={6} />
           </div>
         ) : integrations.length === 0 ? (
           <div className="py-20 text-center">

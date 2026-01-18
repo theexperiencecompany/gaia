@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@heroui/skeleton";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import Link from "next/link";
@@ -155,5 +156,50 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
         </div>
       </div>
     </Link>
+  );
+};
+
+// Skeleton component for loading state
+export const PublicIntegrationCardSkeleton: React.FC = () => {
+  return (
+    <div className="relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 outline-1 outline-zinc-800/70">
+      <div className="flex items-start gap-3">
+        <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+        <div className="flex flex-1 flex-col gap-2 min-w-0">
+          <Skeleton className="h-5 w-3/4 rounded-lg" />
+          <Skeleton className="h-3 w-1/3 rounded-lg" />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-4 w-full rounded-lg" />
+        <Skeleton className="h-4 w-4/5 rounded-lg" />
+      </div>
+
+      <div className="mt-auto flex items-center justify-between pt-1">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-6 w-6 rounded-full" />
+          <Skeleton className="h-3 w-20 rounded-lg" />
+        </div>
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-3 w-12 rounded-lg" />
+          <Skeleton className="h-3 w-16 rounded-lg" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Grid of skeleton cards for loading state
+export const PublicIntegrationCardSkeletonGrid: React.FC<{
+  count?: number;
+}> = ({ count = 6 }) => {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders
+        <PublicIntegrationCardSkeleton key={i} />
+      ))}
+    </>
   );
 };
