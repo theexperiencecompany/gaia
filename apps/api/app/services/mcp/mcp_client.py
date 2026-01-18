@@ -513,7 +513,7 @@ class MCPClient:
                 # Try to extract required scopes from error message
                 # Format: scope="required_scope1 required_scope2"
                 scope_match = re.search(r'scope="([^"]+)"', str(e))
-                required_scopes = []
+                required_scopes: list[str] = []
                 if scope_match:
                     required_scopes = scope_match.group(1).split()
                 logger.info(

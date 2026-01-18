@@ -12,8 +12,8 @@ import {
   product,
   resources,
 } from "@/config/appConfig";
-import { cn } from "@/lib/utils";
 import { wallpapers } from "@/config/wallpapers";
+import { cn } from "@/lib/utils";
 
 interface NavbarMenuProps {
   activeMenu: string;

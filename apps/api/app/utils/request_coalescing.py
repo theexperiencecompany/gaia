@@ -19,7 +19,7 @@ from app.config.loggers import app_logger as logger
 
 T = TypeVar("T")
 
-# In-flight requests: maps key -> (task, waiters_count)
+# In-flight requests: maps key -> task
 _pending_requests: Dict[str, asyncio.Task[Any]] = {}
 _lock = asyncio.Lock()
 

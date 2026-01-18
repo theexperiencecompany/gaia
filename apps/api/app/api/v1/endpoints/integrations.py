@@ -14,7 +14,6 @@ from app.db.chroma.public_integrations_store import (
 from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
-    users_collection,
 )
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
@@ -82,7 +81,6 @@ from app.services.integrations.integration_service import (
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.oauth.oauth_service import get_all_integrations_status
 from app.utils.favicon_utils import fetch_favicon_from_url
-from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from mcp_use.client.exceptions import OAuthAuthenticationError
 
@@ -322,14 +320,14 @@ async def list_community_integrations(
             total = await integrations_collection.count_documents(mongo_query)
 
             # Use aggregation to join creator info
-            pipeline: list = [
+            mongo_pipeline: list = [
                 {"$match": mongo_query},
                 {"$sort": {"clone_count": -1, "published_at": -1}},
                 {"$skip": offset},
                 {"$limit": limit},
                 *_build_creator_lookup_stages(),
             ]
-            cursor = integrations_collection.aggregate(pipeline)
+            cursor = integrations_collection.aggregate(mongo_pipeline)
             docs = await cursor.to_list(length=limit)
 
             integrations = _format_community_integrations(docs)
@@ -361,7 +359,7 @@ async def list_community_integrations(
         total = await integrations_collection.count_documents(query)
 
         # Use aggregation pipeline to join creator info from users collection
-        pipeline: list = [
+        sort_pipeline: list = [
             {"$match": query},
             {"$sort": sort_dict},
             {"$skip": offset},
@@ -369,7 +367,7 @@ async def list_community_integrations(
             *_build_creator_lookup_stages(),
         ]
 
-        cursor = integrations_collection.aggregate(pipeline)
+        cursor = integrations_collection.aggregate(sort_pipeline)
         docs = await cursor.to_list(length=limit)
 
         integrations = _format_community_integrations(docs)

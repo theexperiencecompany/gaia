@@ -4,7 +4,6 @@ OAuth Token Models
 This module defines SQLAlchemy models for OAuth tokens.
 """
 
-import base64
 from collections.abc import Callable
 from datetime import datetime
 from enum import Enum

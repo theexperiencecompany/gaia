@@ -456,7 +456,7 @@ async def seed_integrations(
             print(f"  ✅ Inserted: {integration['name']}")
 
     print("\n" + "=" * 50)
-    print(f"📊 Summary:")
+    print("📊 Summary:")
     print(f"   Inserted: {inserted}")
     print(f"   Updated:  {updated}")
     print(f"   Skipped:  {skipped}")

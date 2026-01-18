@@ -37,9 +37,6 @@ from app.models.integration_models import (
 from app.models.oauth_models import MCPConfig
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
-from app.services.integrations.user_integration_status import (
-    update_user_integration_status,
-)
 
 
 async def get_all_integrations(

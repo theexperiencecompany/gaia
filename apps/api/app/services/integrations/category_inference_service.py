@@ -87,7 +87,13 @@ async def infer_integration_category(
             temperature=0,
         )
 
-        category = response.choices[0].message.content.strip().lower()
+        content = response.choices[0].message.content
+        if content is None:
+            logger.warning(
+                f"LLM returned empty content for integration '{name}', falling back to 'other'"
+            )
+            return "other"
+        category = content.strip().lower()
 
         # Validate response is a known category
         if category not in INTEGRATION_CATEGORIES:

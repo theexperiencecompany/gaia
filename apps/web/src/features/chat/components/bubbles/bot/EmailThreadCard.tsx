@@ -98,6 +98,7 @@ export default function EmailThreadCard({
     <div
       className={`mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-all duration-300`}
     >
+      {/* @ts-expect-error HeroUI Accordion has complex union types */}
       <Accordion variant="light" defaultExpandedKeys={["email-thread"]}>
         <AccordionItem
           key="email-thread"

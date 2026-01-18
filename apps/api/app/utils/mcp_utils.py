@@ -87,7 +87,7 @@ def wrap_tools_with_null_filter(tools: list[BaseTool]) -> list[BaseTool]:
     return [wrap_tool_with_null_filter(t) for t in tools]
 
 
-def extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
+def extract_type_from_field(field_info: dict) -> tuple[Any, Any, bool]:
     """
     Extract Python type from JSON Schema field info.
 
@@ -102,6 +102,7 @@ def extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
     """
     default_val = field_info.get("default")
     is_optional = False
+    python_type: Any = str  # Default type, will be reassigned
 
     # Check for enum first - this takes priority over type
     enum_values = field_info.get("enum")
@@ -129,7 +130,7 @@ def extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
             is_optional = "null" in json_type
             json_type = next((t for t in json_type if t != "null"), "string")
 
-    type_map = {
+    type_map: dict[str, type] = {
         "string": str,
         "integer": int,
         "number": float,
@@ -140,7 +141,7 @@ def extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
     python_type = type_map.get(json_type, Any)
 
     if is_optional and default_val is None:
-        python_type = Union[python_type, None]  # type: ignore[assignment]
+        python_type = Union[python_type, None]
 
     return python_type, default_val, is_optional
 

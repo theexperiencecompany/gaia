@@ -467,7 +467,7 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
  * Get icon config for a category, with normalization and alias resolution
  */
 export function getToolIconConfig(
-  category: string
+  category: string,
 ): ToolIconConfig | undefined {
   const normalizedCategory = normalizeCategoryName(category);
   const aliasedCategory =
@@ -481,7 +481,7 @@ export function getToolIconConfig(
   if (!config) {
     const normalizedConfigs = Object.entries(toolIconConfigs);
     const matchingConfig = normalizedConfigs.find(
-      ([key]) => normalizeCategoryName(key) === finalCategory
+      ([key]) => normalizeCategoryName(key) === finalCategory,
     );
     if (matchingConfig) {
       config = matchingConfig[1];

@@ -35,7 +35,6 @@ export async function GET(request: NextRequest) {
 
     const apiBaseUrl = getApiBaseUrl();
     const siteBaseUrl = getBaseUrl(request.url);
-    const wallpaperUrl = `${siteBaseUrl}${wallpapers.useCases.png}`;
 
     let workflow = null;
     try {
@@ -198,8 +197,11 @@ export async function GET(request: NextRequest) {
                         height="56"
                         viewBox={iconPathData.viewBox}
                         fill={fallbackConfig.iconColorRaw}
+                        role="img"
+                        aria-label={category}
                       >
                         {iconPathData.paths.map((d, i) => (
+                          // biome-ignore lint/suspicious/noArrayIndexKey: SVG paths are static and won't reorder
                           <path key={`${category}-path-${i}`} d={d} />
                         ))}
                       </svg>
@@ -291,6 +293,8 @@ export async function GET(request: NextRequest) {
                       height="22"
                       viewBox="0 0 24 24"
                       fill="currentColor"
+                      role="img"
+                      aria-label="Runs"
                     >
                       <polygon points="5 3 19 12 5 21 5 3" />
                     </svg>

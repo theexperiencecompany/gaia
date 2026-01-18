@@ -1,11 +1,11 @@
 import { ImageResponse } from "next/og";
 import {
-  loadFonts,
-  getBaseUrl,
   createErrorResponse,
+  getBaseUrl,
   HeroLayout,
-  OG_WIDTH,
+  loadFonts,
   OG_HEIGHT,
+  OG_WIDTH,
   wallpapers,
 } from "../shared";
 
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
         width: OG_WIDTH,
         height: OG_HEIGHT,
         fonts: loadedFonts.length > 0 ? loadedFonts : undefined,
-      }
+      },
     );
   } catch (e: unknown) {
     console.error("OG Image generation failed:", e);

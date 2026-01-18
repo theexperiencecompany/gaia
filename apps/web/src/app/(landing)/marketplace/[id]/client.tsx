@@ -2,7 +2,6 @@
 
 import { Avatar } from "@heroui/avatar";
 import { Card, CardBody, CardHeader } from "@heroui/card";
-import { Chip } from "@heroui/chip";
 import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import { Spinner } from "@heroui/spinner";
 import { useQuery } from "@tanstack/react-query";
@@ -22,7 +21,6 @@ import {
   DateTimeIcon,
   GitForkIcon,
   LayersIcon,
-  Loading02Icon,
   PackageOpenIcon,
   UserCircle02Icon,
 } from "@/icons";

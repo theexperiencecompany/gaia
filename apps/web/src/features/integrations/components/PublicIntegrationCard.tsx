@@ -42,7 +42,7 @@ const IntegrationIcon: React.FC<{
     const isSvg = iconUrl.toLowerCase().endsWith(".svg");
     if (isSvg) {
       return (
-        // eslint-disable-next-line @next/next/no-img-element
+        // biome-ignore lint/performance/noImgElement: Using img for SVG to avoid Next.js Image optimization issues with SVG
         <img
           src={iconUrl}
           alt="Integration icon"

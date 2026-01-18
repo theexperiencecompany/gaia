@@ -1,17 +1,12 @@
 /**
  * Build script to extract SVG path data from gaia-icons React components
- * 
+ *
  * Run with: npx tsx apps/web/scripts/extract-icon-paths.ts
- * 
+ *
  * This generates a JSON file with pre-extracted SVG paths that can be used
  * in Edge runtime (like OG image generation) where React components can't
  * be rendered.
  */
-
-import * as React from "react";
-import * as ReactDOMServer from "react-dom/server";
-import * as fs from "fs";
-import * as path from "path";
 
 // Import icons that are used for category rendering
 import {
@@ -30,6 +25,10 @@ import {
   Target02Icon,
   ToolsIcon,
 } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import * as fs from "fs";
+import * as path from "path";
+import * as React from "react";
+import * as ReactDOMServer from "react-dom/server";
 
 type IconComponent = React.ComponentType<{
   size?: number;
@@ -52,7 +51,7 @@ function extractSvgPaths(IconComponent: IconComponent): ExtractedSvgData {
       size: 24,
       color: "currentColor",
       strokeWidth: 1.5,
-    })
+    }),
   );
 
   // Extract viewBox
@@ -62,8 +61,7 @@ function extractSvgPaths(IconComponent: IconComponent): ExtractedSvgData {
   // Extract all path d attributes
   const pathRegex = /<path[^>]*d="([^"]+)"[^>]*>/g;
   const paths: string[] = [];
-  let match;
-  while ((match = pathRegex.exec(html)) !== null) {
+  for (const match of html.matchAll(pathRegex)) {
     if (match[1]) {
       paths.push(match[1]);
     }
@@ -99,16 +97,17 @@ for (const [name, component] of Object.entries(icons)) {
   console.log(`  Found ${iconPaths[name].paths.length} paths`);
 }
 
+import { dirname } from "path";
 // ESM-compatible directory resolution
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { fileURLToPath } from "url";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Write to JSON file
 const outputPath = path.join(
   __dirname,
-  "../src/config/iconPaths.generated.json"
+  "../src/config/iconPaths.generated.json",
 );
 fs.writeFileSync(outputPath, JSON.stringify(iconPaths, null, 2));
 console.log(`\nWrote icon paths to ${outputPath}`);
@@ -133,7 +132,7 @@ export function getIconPaths(iconName: string): ExtractedSvgData | null {
 
 const tsOutputPath = path.join(
   __dirname,
-  "../src/config/iconPaths.generated.ts"
+  "../src/config/iconPaths.generated.ts",
 );
 fs.writeFileSync(tsOutputPath, tsContent);
 console.log(`Wrote TypeScript file to ${tsOutputPath}`);

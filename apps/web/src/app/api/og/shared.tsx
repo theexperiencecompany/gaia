@@ -110,7 +110,7 @@ export function getApiBaseUrl(): string {
 }
 
 export function truncateText(text: string, maxLength: number): string {
-  return text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
 }
 
 export function formatCount(count: number): string {
@@ -201,8 +201,11 @@ export function HeroLayout({
         fontFamily: fonts.sans,
       }}
     >
+      {/* biome-ignore lint/performance/noImgElement: Using img for OG image generation (not Next.js context) */}
       <img
         src={backgroundImage}
+        alt=""
+        aria-hidden="true"
         width={OG_WIDTH}
         height={OG_HEIGHT}
         style={{

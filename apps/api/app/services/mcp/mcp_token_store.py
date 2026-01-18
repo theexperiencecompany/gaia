@@ -338,6 +338,14 @@ class MCPTokenStore:
         cred = await self.get_credential(integration_id)
         return cred is not None and cred.access_token is not None
 
+    async def is_connected(self, integration_id: str) -> bool:
+        """Check if user has a connected credential for this integration.
+
+        Returns True if credential exists and has 'connected' status.
+        """
+        cred = await self.get_credential(integration_id)
+        return cred is not None and cred.status == "connected"
+
     async def get_integrations_with_credentials(self) -> list[str]:
         """Get all MCP integration IDs that have stored credentials.
 

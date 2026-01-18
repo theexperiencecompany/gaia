@@ -19,7 +19,7 @@ export default function ChatBubbleBot(
   props: ChatBubbleBotProps & {
     disableActions?: boolean;
     children?: ReactNode;
-  }
+  },
 ) {
   const {
     text,
@@ -76,7 +76,7 @@ export default function ChatBubbleBot(
   const itShouldShowTextBubble = shouldShowTextBubble(
     text,
     isConvoSystemGenerated,
-    systemPurpose
+    systemPurpose,
   );
 
   return (
