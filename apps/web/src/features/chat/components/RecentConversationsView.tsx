@@ -2,27 +2,20 @@
 
 import { Chip } from "@heroui/chip";
 import { useRouter } from "next/navigation";
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useMemo } from "react";
 
 import { Calendar03Icon, MessageMultiple02Icon } from "@/components";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
-import {
-  useConversationList,
-  useFetchConversations,
-} from "@/features/chat/hooks/useConversationList";
+import { useConversationList } from "@/features/chat/hooks/useConversationList";
+import { useSyncStatus } from "@/hooks/useBackgroundSync";
 
 const RecentConversationsView = memo(() => {
   const router = useRouter();
-  const { conversations, loading, error } = useConversationList();
-  const fetchConversations = useFetchConversations();
-  const hasLoadedRef = useRef(false);
+  const { conversations } = useConversationList();
+  const { initialSyncCompleted } = useSyncStatus();
 
-  useEffect(() => {
-    if (!hasLoadedRef.current && conversations.length === 0 && !loading) {
-      hasLoadedRef.current = true;
-      fetchConversations(1, 10);
-    }
-  }, [conversations.length, loading, fetchConversations]);
+  // Only show loading when no cache AND initial sync hasn't completed
+  const isLoading = conversations.length === 0 && !initialSyncCompleted;
 
   const displayConversations = useMemo(() => {
     return conversations.slice(0, 20);
@@ -43,10 +36,10 @@ const RecentConversationsView = memo(() => {
     <BaseCardView
       title="Recent Conversations"
       icon={<MessageMultiple02Icon className="h-6 w-6 text-zinc-500" />}
-      isFetching={loading}
-      isEmpty={displayConversations.length === 0}
+      isFetching={isLoading}
+      isEmpty={displayConversations.length === 0 && !isLoading}
       emptyMessage="No recent conversations"
-      errorMessage={error ?? "Failed to load conversations"}
+      errorMessage={undefined}
       path="/chat"
       onRefresh={handleViewAll}
     >

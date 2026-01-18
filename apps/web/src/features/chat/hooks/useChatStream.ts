@@ -1,5 +1,4 @@
 import type { EventSourceMessage } from "@microsoft/fetch-event-source";
-import { useRouter } from "next/navigation";
 import { useRef } from "react";
 
 import { chatApi } from "@/features/chat/api/chatApi";
@@ -20,7 +19,6 @@ import { useLoadingText } from "./useLoadingText";
 import { parseStreamData } from "./useStreamDataParser";
 
 export const useChatStream = () => {
-  const router = useRouter();
   const { setIsLoading, setAbortController } = useLoading();
   const { convoMessages } = useConversation();
   const { setLoadingText, resetLoadingText } = useLoadingText();
@@ -60,7 +58,8 @@ export const useChatStream = () => {
     streamController.clear();
     setAbortController(null);
 
-    // Clear any remaining optimistic message (error/abort scenarios)
+    // Clear streaming indicator and any remaining optimistic message
+    useChatStore.getState().setStreamingConversationId(null);
     useChatStore.getState().clearOptimisticMessage();
   };
 
@@ -107,30 +106,6 @@ export const useChatStream = () => {
       });
     } catch (error) {
       console.error("Failed to update conversation description:", error);
-    }
-  };
-
-  const saveIncompleteConversation = async () => {
-    if (!refs.current.botMessage || !refs.current.accumulatedResponse) return;
-
-    try {
-      const response = await chatApi.saveIncompleteConversation(
-        refs.current.userPrompt,
-        refs.current.newConversation.id || null,
-        refs.current.accumulatedResponse,
-        refs.current.botMessage.fileData || [],
-        refs.current.botMessage.selectedTool || null,
-        refs.current.botMessage.toolCategory || null,
-        refs.current.botMessage.selectedWorkflow || null,
-        refs.current.botMessage.selectedCalendarEvent || null,
-      );
-
-      // Handle navigation for incomplete conversations
-      if (response.conversation_id && !refs.current.newConversation.id) {
-        router.replace(`/c/${response.conversation_id}`);
-      }
-    } catch (saveError) {
-      console.error("Failed to save incomplete conversation:", saveError);
     }
   };
 
@@ -262,16 +237,23 @@ export const useChatStream = () => {
     conversation_description: string | null;
     bot_message_id?: string;
     user_message_id?: string;
+    stream_id?: string;
   }) => {
     const {
       conversation_id,
       conversation_description,
       bot_message_id,
       user_message_id,
+      stream_id,
     } = data;
 
     refs.current.newConversation.id = conversation_id;
     refs.current.newConversation.description = conversation_description;
+
+    // Set stream_id for backend cancellation support
+    if (stream_id) {
+      streamController.setStreamId(stream_id);
+    }
 
     // CRITICAL: Update streamState with the new conversationId for sync protection
     // This prevents background sync from syncing this conversation while it's being streamed
@@ -298,15 +280,27 @@ export const useChatStream = () => {
     useChatStore.getState().clearOptimisticMessage();
     window.history.replaceState({}, "", `/c/${conversation_id}`);
     useChatStore.getState().setActiveConversationId(conversation_id);
+
+    // Set streaming indicator for sidebar
+    useChatStore.getState().setStreamingConversationId(conversation_id);
   };
 
   const handleExistingConversationMessages = async (data: {
     user_message_id: string;
     bot_message_id: string;
+    stream_id?: string;
   }) => {
-    const { user_message_id, bot_message_id } = data;
+    const { user_message_id, bot_message_id, stream_id } = data;
     const conversationId = useChatStore.getState().activeConversationId;
     if (!conversationId) return;
+
+    // Set stream_id for backend cancellation support
+    if (stream_id) {
+      streamController.setStreamId(stream_id);
+    }
+
+    // Set streaming indicator for sidebar (existing conversation)
+    useChatStore.getState().setStreamingConversationId(conversationId);
 
     if (refs.current.optimisticUserId) {
       try {
@@ -516,6 +510,9 @@ export const useChatStream = () => {
       refs.current.botMessage = null;
       refs.current.currentStreamingMessages = [];
       refs.current.newConversation = { id: null, description: null };
+
+      // Clear streaming indicator
+      useChatStore.getState().setStreamingConversationId(null);
     } catch (error) {
       console.error("Error handling stream close:", error);
       resetStreamState(); // Ensure state is reset even on error
@@ -597,18 +594,39 @@ export const useChatStream = () => {
       const controller = new AbortController();
       setAbortController(controller);
 
-      // Register the save callback for when user clicks stop
-      streamController.setSaveCallback(() => {
+      // Register the stop callback for when user clicks stop
+      // This persists the current accumulated response to Dexie immediately
+      streamController.setSaveCallback(async () => {
         // Update the UI immediately when stop is clicked
         if (refs.current.botMessage) {
           updateBotMessage({
             response: refs.current.accumulatedResponse,
             loading: false,
           });
-        }
 
-        // Save the incomplete conversation
-        saveIncompleteConversation();
+          // Persist accumulated response to Dexie immediately
+          // This ensures data isn't lost on page refresh
+          const conversationId =
+            refs.current.newConversation.id ||
+            useChatStore.getState().activeConversationId;
+
+          if (conversationId && refs.current.botMessage.message_id) {
+            try {
+              await db.putMessage({
+                id: refs.current.botMessage.message_id,
+                conversationId,
+                content: refs.current.accumulatedResponse,
+                role: "assistant",
+                status: "sent",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+            } catch (error) {
+              console.error("Failed to persist message on abort:", error);
+            }
+          }
+        }
+        // Note: Backend also saves - streamController.abort() schedules sync after 3s
       });
 
       await chatApi.fetchChatStream(

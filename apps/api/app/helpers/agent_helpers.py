@@ -23,6 +23,7 @@ from app.constants.llm import (
     DEFAULT_MODEL_NAME,
 )
 from app.core.lazy_loader import providers
+from app.core.stream_manager import stream_manager
 from app.models.models_models import ModelConfig
 from app.utils.agent_utils import (
     format_sse_data,
@@ -255,6 +256,9 @@ async def execute_graph_streaming(
     progress updates. Only yields content from the main agent to avoid duplication
     from subgraphs.
 
+    Supports cancellation via stream_id in config - when cancelled via
+    stream_manager, streaming stops gracefully.
+
     Args:
         graph: LangGraph instance to execute
         initial_state: Starting state dictionary with query and context
@@ -269,11 +273,21 @@ async def execute_graph_streaming(
     """
     complete_message = ""
 
+    # Get stream_id for cancellation checking (optional)
+    stream_id = config.get("configurable", {}).get("stream_id")
+
     async for event in graph.astream(
         initial_state,
         stream_mode=["messages", "custom"],
         config=config,
     ):
+        # Check for cancellation at each event
+        if stream_id and await stream_manager.is_cancelled(stream_id):
+            # Yield final state and exit gracefully
+            yield f"nostream: {json.dumps({'complete_message': complete_message, 'cancelled': True})}"
+            yield "data: [DONE]\n\n"
+            return
+
         stream_mode, payload = event
 
         if stream_mode == "messages":

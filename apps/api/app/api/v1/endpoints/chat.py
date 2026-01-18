@@ -1,25 +1,29 @@
-from datetime import datetime, timezone
+"""
+Chat endpoints with Redis-backed background streaming.
 
-from fastapi import APIRouter, BackgroundTasks, Depends
-from fastapi.responses import StreamingResponse
+The streaming architecture is decoupled from HTTP request lifecycle:
+1. Endpoint starts background task for LangGraph execution
+2. Background task publishes chunks to Redis channel
+3. Endpoint subscribes to channel and forwards to HTTP response
+4. If client disconnects, stream continues in background
+5. Conversation is always saved to MongoDB on completion
+"""
+
+import asyncio
+from uuid import uuid4
 
 from app.api.v1.dependencies.oauth_dependencies import (
     GET_USER_TZ_TYPE,
     get_current_user,
     get_user_timezone,
 )
+from app.config.loggers import chat_logger as logger
+from app.core.stream_manager import stream_manager
 from app.decorators import tiered_rate_limit
-from app.models.chat_models import MessageModel, UpdateMessagesRequest
-from app.models.message_models import (
-    MessageDict,
-    MessageRequestWithHistory,
-    SaveIncompleteConversationRequest,
-)
-from app.services.chat_service import (
-    chat_stream,
-)
-from app.services.conversation_service import update_messages
-from app.utils.chat_utils import create_conversation
+from app.models.message_models import MessageRequestWithHistory
+from app.services.chat_service import run_chat_stream_background
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 
@@ -27,89 +31,87 @@ router = APIRouter()
 @router.post("/chat-stream")
 @tiered_rate_limit("chat_messages")
 async def chat_stream_endpoint(
+    request: Request,
     body: MessageRequestWithHistory,
     background_tasks: BackgroundTasks,
     user: dict = Depends(get_current_user),
     tz_info: GET_USER_TZ_TYPE = Depends(get_user_timezone),
 ) -> StreamingResponse:
     """
-    Stream chat messages in real time.
-    """
+    Stream chat messages with background execution.
 
-    return StreamingResponse(
-        chat_stream(
+    The streaming runs in a background task independent of the HTTP connection.
+    If the client disconnects, the stream continues and saves to MongoDB.
+    """
+    # Generate unique stream ID and conversation ID
+    stream_id = str(uuid4())
+    conversation_id = body.conversation_id or str(uuid4())
+    user_id = user.get("user_id")
+    if not user_id:
+        raise ValueError("user_id is required")
+
+    # Initialize stream tracking in Redis
+    await stream_manager.start_stream(
+        stream_id=stream_id,
+        conversation_id=conversation_id,
+        user_id=user_id,
+    )
+
+    # Start background streaming task (continues even if client disconnects)
+    asyncio.create_task(
+        run_chat_stream_background(
+            stream_id=stream_id,
             body=body,
             user=user,
-            background_tasks=background_tasks,
             user_time=tz_info[1],
-        ),
+            conversation_id=conversation_id,
+        )
+    )
+
+    async def stream_from_redis():
+        """Subscribe to Redis channel and forward chunks to HTTP response."""
+        try:
+            async for chunk in stream_manager.subscribe_stream(stream_id):
+                # Check if client disconnected
+                if await request.is_disconnected():
+                    logger.info(
+                        f"Client disconnected, stream {stream_id} continues in background"
+                    )
+                    break
+                yield chunk
+        except asyncio.CancelledError:
+            # Client disconnected - stream continues in background
+            logger.info(f"Stream {stream_id}: client connection cancelled")
+        except Exception as e:
+            logger.error(f"Error streaming to client: {e}")
+
+    return StreamingResponse(
+        stream_from_redis(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable Nginx buffering
             "Access-Control-Allow-Origin": "*",
+            "X-Stream-Id": stream_id,  # Send stream ID for cancellation
         },
     )
 
 
-@router.post("/save-incomplete-conversation")
-@tiered_rate_limit("chat_messages")
-async def save_incomplete_conversation(
-    body: SaveIncompleteConversationRequest,
-    background_tasks: BackgroundTasks,
+@router.post("/cancel-stream/{stream_id}")
+async def cancel_stream_endpoint(
+    stream_id: str,
     user: dict = Depends(get_current_user),
 ) -> dict:
     """
-    Save incomplete conversation when stream is cancelled.
+    Cancel a running stream.
+
+    Called from frontend when user clicks the Stop button.
     """
-    conversation_id = body.conversation_id
-
-    # Only create new conversation if conversation_id is None
-    if conversation_id is None:
-        last_message: MessageDict = {"role": "user", "content": body.message}
-        selectedTool = body.selectedTool
-        selectedWorkflow = body.selectedWorkflow
-        conversation = await create_conversation(
-            last_message,
-            user=user,
-            selectedTool=selectedTool,
-            selectedWorkflow=selectedWorkflow,
-        )
-        conversation_id = conversation.get("conversation_id", "")
-
-    # Save the incomplete conversation immediately (not as background task)
-    # Since user expects to see it right away when they navigate/refresh
-
-    # Create user message
-    user_message = MessageModel(
-        type="user",
-        response=body.message,
-        date=datetime.now(timezone.utc).isoformat(),
-        fileIds=body.fileIds,
-        fileData=body.fileData,
-        selectedTool=body.selectedTool,
-        toolCategory=body.toolCategory,
-    )
-
-    # Create bot message with incomplete response
-    bot_message = MessageModel(
-        type="bot",
-        response=body.incomplete_response,
-        date=datetime.now(timezone.utc).isoformat(),
-        fileIds=body.fileIds,
-    )
-
-    # Save immediately instead of background task
-    await update_messages(
-        UpdateMessagesRequest(
-            conversation_id=conversation_id,
-            messages=[user_message, bot_message],
-        ),
-        user=user,
-    )
+    success = await stream_manager.cancel_stream(stream_id)
+    logger.info(f"Cancel stream request: stream_id={stream_id}, success={success}")
 
     return {
-        "success": True,
-        "conversation_id": conversation_id,
+        "success": success,
+        "stream_id": stream_id,
     }

@@ -8,6 +8,7 @@ import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { db } from "@/lib/db/chatDb";
+import { syncSingleConversation } from "@/services";
 import { useChatStore } from "@/stores/chatStore";
 import {
   useComposerTextActions,
@@ -62,6 +63,8 @@ const ChatPage = React.memo(function MainChat() {
         // Fire API call (don't await to avoid blocking)
         chatApi.markAsRead(convoIdParam).catch(console.error);
       }
+
+      syncSingleConversation(convoIdParam);
     }
 
     // Clear optimistic message when navigating to a different conversation

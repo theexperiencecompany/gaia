@@ -3,19 +3,10 @@ import {
   type ConversationSyncItem,
   chatApi,
 } from "@/features/chat/api/chatApi";
+import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
 import type { MessageType } from "@/types/features/convoTypes";
-
-const MAX_SYNC_CONVERSATIONS = 100;
-
-// Safety threshold: Only delete conversations that haven't been updated locally in the last X hours
-// This prevents accidental deletion of conversations that might not be in the first page of API results
-const DELETED_CONVERSATION_SAFETY_HOURS = 24;
-
-// Minimum age for a local conversation to be considered for deletion (in milliseconds)
-const MIN_AGE_FOR_DELETION_MS =
-  DELETED_CONVERSATION_SAFETY_HOURS * 60 * 60 * 1000;
 
 const mergeMessageLists = (
   localMessages: IMessage[],
@@ -36,17 +27,20 @@ const mergeMessageLists = (
       // Always replace optimistic messages with remote versions
       messageMap.set(msg.id, msg);
     } else if (existing.status === "sending") {
-      // CRITICAL: Never overwrite messages currently being streamed
-      // Keep local version as it has the most up-to-date streaming content
-      return;
-    } else {
-      // Message exists locally - prefer remote if it's newer
-      const remoteTime = msg.updatedAt?.getTime() ?? msg.createdAt.getTime();
-      const localTime =
-        existing.updatedAt?.getTime() ?? existing.createdAt.getTime();
-      if (remoteTime > localTime) {
-        messageMap.set(msg.id, msg);
+      // CRITICAL: Only preserve "sending" status if we are ACTUALLY streaming this conversation.
+      // If we are not streaming (e.g. page refresh, crash recovery), this "sending" status is stale
+      // and MUST be overwritten by the remote message (which has the true final state).
+      if (streamState.isStreamingConversation(existing.conversationId)) {
+        return;
       }
+      // Not streaming? Clean up stale "sending" message by overwriting/merging from remote
+      messageMap.set(msg.id, msg);
+    } else {
+      // Message exists locally
+      // ALWAYS prefer remote version for synced messages to ensure consistency
+      // Local timestamps might be drifted or ahead due to optimistic updates (like on abort)
+      // The only exception is 'sending' status handled above
+      messageMap.set(msg.id, msg);
     }
   });
 
@@ -163,7 +157,14 @@ const identifyDeletedConversations = (
   localConversations: IConversation[],
   remoteConversations: Conversation[],
 ): string[] => {
-  const now = Date.now();
+  // Safety threshold: Only delete conversations that haven't been updated locally in the last X minutes
+  // This prevents accidental deletion of conversations that might not be in the first page of API results
+  // Reduced to 5 minutes to clean up deleted conversations faster while still providing a safety buffer for new creations
+  const DELETED_CONVERSATION_SAFETY_MINUTES = 5;
+
+  // Minimum age for a local conversation to be considered for deletion (in milliseconds)
+  const MIN_AGE_FOR_DELETION_MS =
+    DELETED_CONVERSATION_SAFETY_MINUTES * 60 * 1000;
   const remoteIds = new Set(remoteConversations.map((c) => c.conversation_id));
   const deletedIds: string[] = [];
 
@@ -177,7 +178,7 @@ const identifyDeletedConversations = (
     // Safety: Skip recently created/updated conversations
     // They might not have synced to the server yet, or might be beyond the pagination limit
     const localUpdateTime = (local.updatedAt || local.createdAt).getTime();
-    const ageMs = now - localUpdateTime;
+    const ageMs = Date.now() - localUpdateTime;
 
     if (ageMs < MIN_AGE_FOR_DELETION_MS) {
       continue;
@@ -219,9 +220,6 @@ export const batchSyncConversations = async (): Promise<void> => {
     if (deletedConversationIds.length > 0) {
       // Delete conversations that no longer exist on the server
       await db.deleteConversationsAndMessagesBulk(deletedConversationIds);
-      console.log(
-        `[SyncService] Removed ${deletedConversationIds.length} deleted conversations from local DB`,
-      );
     }
 
     if (staleItems.length === 0) {
@@ -272,5 +270,70 @@ export const batchSyncConversations = async (): Promise<void> => {
     );
   } catch {
     // Ignore background sync errors to avoid impacting the UI
+  }
+};
+
+/**
+ * Sync a single conversation from backend to IndexedDB.
+ * Used after stream cancellation to ensure local data matches backend.
+ */
+export const syncSingleConversation = async (
+  conversationId: string,
+): Promise<void> => {
+  try {
+    // Use batch sync with a single conversation item
+    // Sending undefined for last_updated forces backend to return the full conversation
+    const { conversations: freshConversations } =
+      await chatApi.batchSyncConversations([
+        { conversation_id: conversationId, last_updated: undefined },
+      ]);
+
+    if (freshConversations.length === 0) {
+      return;
+    }
+
+    const conversation = freshConversations[0];
+    const messages = conversation.messages ?? [];
+
+    // Map conversation to IndexedDB format
+    const mappedConversation: IConversation = {
+      id: conversationId,
+      title: conversation.description || "Untitled conversation",
+      description: conversation.description,
+      starred: conversation.starred ?? false,
+      isSystemGenerated: conversation.is_system_generated ?? false,
+      systemPurpose: conversation.system_purpose ?? null,
+      isUnread: conversation.is_unread ?? false,
+      createdAt: new Date(conversation.createdAt),
+      updatedAt: conversation.updatedAt
+        ? new Date(conversation.updatedAt)
+        : new Date(conversation.createdAt),
+    };
+
+    // Map messages
+    const remoteMessages = mapApiMessagesToStored(messages, conversationId);
+    const localMessages = await db.getMessagesForConversation(conversationId);
+    console.log(
+      `[SyncService] Local has ${localMessages.length} messages. Merging...`,
+    );
+
+    const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
+
+    // Persist to IndexedDB
+    await Promise.allSettled([
+      db.putConversation(mappedConversation),
+      messages.length > 0
+        ? db.syncMessages(conversationId, mergedMessages)
+        : Promise.resolve(),
+    ]);
+
+    console.debug(
+      `[SyncService] Synced conversation ${conversationId} with ${messages.length} messages`,
+    );
+  } catch (error) {
+    console.error(
+      `[SyncService] Failed to sync conversation ${conversationId}:`,
+      error,
+    );
   }
 };

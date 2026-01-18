@@ -113,9 +113,14 @@ async def call_agent(
     user_time: datetime,
     user_model_config: Optional[ModelConfig] = None,
     usage_metadata_callback: Optional[UsageMetadataCallbackHandler] = None,
+    stream_id: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Execute agent in streaming mode for interactive chat.
+
+    Args:
+        stream_id: Optional stream ID for Redis-based cancellation checking.
+                   When provided, streaming can be cancelled via stream_manager.
 
     Returns an AsyncGenerator that yields SSE-formatted streaming data.
     """
@@ -128,6 +133,10 @@ async def call_agent(
             user_model_config,
             usage_metadata_callback=usage_metadata_callback,
         )
+
+        # Add stream_id to config for cancellation checking
+        if stream_id:
+            config["configurable"]["stream_id"] = stream_id
 
         return execute_graph_streaming(graph, initial_state, config)
 

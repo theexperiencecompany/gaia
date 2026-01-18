@@ -5,8 +5,6 @@ import type { IConversation, IMessage } from "@/lib/db/chatDb";
 import { db, dbEventEmitter } from "@/lib/db/chatDb";
 import type { FileData } from "@/types/shared";
 
-type LoadingStatus = "idle" | "loading" | "success" | "error";
-
 // Optimistic message for new conversations (before conversation ID is assigned)
 // These are stored in Zustand only to avoid IndexedDB pollution if not cleared properly
 interface OptimisticMessage {
@@ -27,7 +25,7 @@ interface ChatState {
   conversations: IConversation[];
   messagesByConversation: Record<string, IMessage[]>;
   activeConversationId: string | null;
-  conversationsLoadingStatus: LoadingStatus;
+  streamingConversationId: string | null; // ID of conversation currently streaming
   // Single optimistic message for new conversations (not yet persisted to IndexedDB)
   // Only ONE optimistic message can exist at a time - enforced by using single object instead of array
   optimisticMessage: OptimisticMessage | null;
@@ -45,7 +43,7 @@ interface ChatState {
   removeConversation: (conversationId: string) => void;
   removeMessage: (messageId: string, conversationId: string) => void;
   setActiveConversationId: (id: string | null) => void;
-  setConversationsLoadingStatus: (status: LoadingStatus) => void;
+  setStreamingConversationId: (id: string | null) => void;
   // Optimistic message management for new conversations (single message only)
   setOptimisticMessage: (message: OptimisticMessage | null) => void;
   clearOptimisticMessage: () => void;
@@ -55,7 +53,7 @@ export const useChatStore = create<ChatState>((set) => ({
   conversations: [],
   messagesByConversation: {},
   activeConversationId: null,
-  conversationsLoadingStatus: "idle",
+  streamingConversationId: null, // Track which conversation is streaming
   // Single optimistic message for new conversations (prevents IndexedDB pollution)
   // Only one message at a time - enforced by type
   optimisticMessage: null,
@@ -154,8 +152,7 @@ export const useChatStore = create<ChatState>((set) => ({
 
   setActiveConversationId: (id) => set({ activeConversationId: id }),
 
-  setConversationsLoadingStatus: (status) =>
-    set({ conversationsLoadingStatus: status }),
+  setStreamingConversationId: (id) => set({ streamingConversationId: id }),
 
   // Set the single optimistic message (replaces any existing one)
   // Only one optimistic message can exist at a time

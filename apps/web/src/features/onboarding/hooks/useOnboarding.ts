@@ -4,8 +4,8 @@ import { toast } from "sonner";
 
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
-import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useFetchIntegrationStatus } from "@/features/integrations";
+import { batchSyncConversations } from "@/services/syncService";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
 import type { Message, OnboardingResponse, OnboardingState } from "../types";
@@ -18,7 +18,6 @@ export const useOnboarding = () => {
   const user = useUser();
   const { setUser } = useUserActions();
   const [isInitialized, setIsInitialized] = useState(false);
-  const fetchConversations = useFetchConversations();
 
   // Force integration status refresh on this page to show connected state immediately
   const { refetch: refetchIntegrationStatus } = useFetchIntegrationStatus({
@@ -411,10 +410,10 @@ export const useOnboarding = () => {
 
         // Fetch conversations to populate sidebar with seeded data
         try {
-          await fetchConversations(1, 20);
+          await batchSyncConversations();
         } catch (error) {
-          console.error("Failed to fetch conversations:", error);
-          // Don't block navigation if conversation fetch fails
+          console.error("Failed to sync conversations:", error);
+          // Don't block navigation if conversation sync fails
         }
 
         // Navigate to the main chat page
