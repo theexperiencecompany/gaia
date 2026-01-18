@@ -1,7 +1,7 @@
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 from uuid import uuid4
 
 from app.agents.core.agent import call_agent
@@ -48,6 +48,7 @@ async def chat_stream(
 
     # Dictionary to collect tool outputs during streaming
     tool_data: Dict[str, Any] = {"tool_data": []}
+    follow_up_actions: List[str] = []
 
     if init_chunk:  # Return the conversation id and metadata if new convo
         yield init_chunk
@@ -117,7 +118,12 @@ async def chat_stream(
                 # Extract tool data from the chunk
                 new_data = extract_tool_data(chunk[6:])
                 if new_data:
-                    current_time = datetime.now(timezone.utc).isoformat()
+                    if "other_data" in new_data:
+                        other_data_dict = new_data["other_data"]
+                        if "follow_up_actions" in other_data_dict:
+                            follow_up_actions = other_data_dict["follow_up_actions"]
+                            # Stream follow_up_actions to frontend
+                            yield f"data: {json.dumps({'follow_up_actions': follow_up_actions})}\n\n"
 
                     # Handle unified tool_data format
                     if "tool_data" in new_data:
@@ -133,22 +139,6 @@ async def chat_stream(
                                 continue
 
                             current_tool_data = {"tool_data": tool_entry}
-                            yield f"data: {json.dumps(current_tool_data)}\n\n"
-                    else:
-                        # Handle legacy individual fields (shouldn't happen with new extract_tool_data, but kept for safety)
-                        for key, value in new_data.items():
-                            if key == "follow_up_actions":
-                                yield chunk
-                                continue  # Skip adding follow-up actions to tool_data
-
-                            tool_data_entry: ToolDataEntry = {
-                                "tool_name": key,
-                                "data": value,
-                                "timestamp": current_time,
-                            }
-                            tool_data["tool_data"].append(tool_data_entry)
-
-                            current_tool_data = {"tool_data": tool_data_entry}
                             yield f"data: {json.dumps(current_tool_data)}\n\n"
                 else:
                     yield chunk
@@ -183,6 +173,7 @@ async def chat_stream(
         metadata=usage_metadata_callback.usage_metadata,
         user_message_id=user_message_id,
         bot_message_id=bot_message_id,
+        follow_up_actions=follow_up_actions,
     )
 
 
@@ -194,7 +185,9 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
     into unified ToolDataEntry array format for consistent frontend handling.
 
     Returns:
-        Dict[str, Any]: A dictionary containing tool_data array with ToolDataEntry objects.
+        Dict[str, Any]: A dictionary containing:
+            - "tool_data": Array of ToolDataEntry objects (if any tool data found)
+            - "other_data": Dict with non-tool fields like follow_up_actions
 
     Notes:
         - This function converts legacy individual tool fields into the unified tool_data array structure
@@ -205,52 +198,61 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
         from datetime import datetime, timezone
 
         data = json.loads(json_str)
-
-        # If tool_data already exists in unified format, return it directly
-        if "tool_data" in data:
-            return {"tool_data": data["tool_data"]}
-
-        # Handle progress events - convert to tool_calls_data format for persistence
-        if "progress" in data and isinstance(data["progress"], dict):
-            progress = data["progress"]
-            if progress.get("tool_name"):
-                timestamp = datetime.now(timezone.utc).isoformat()
-                tool_entry: ToolDataEntry = {
-                    "tool_name": "tool_calls_data",
-                    "data": {
-                        "tool_name": progress.get("tool_name"),
-                        "tool_category": progress.get("tool_category", ""),
-                        "message": progress.get("message", ""),
-                        "show_category": progress.get("show_category", True),
-                        "tool_call_id": progress.get("tool_call_id"),
-                        "inputs": progress.get("inputs"),
-                        "icon_url": progress.get("icon_url"),
-                        "integration_name": progress.get("integration_name"),
-                    },
-                    "timestamp": timestamp,
-                }
-                return {"tool_data": [tool_entry]}
-
-        # Map of legacy field names to their new unified tool names
-
-        tool_data_entries = []
         timestamp = datetime.now(timezone.utc).isoformat()
 
-        # Convert individual tool fields to unified format
-        for field_name in tool_fields:
-            if field_name in data and data[field_name] is not None:
-                legacy_tool_entry: ToolDataEntry = {
-                    "tool_name": field_name,
-                    "data": data[field_name],
-                    "timestamp": timestamp,
-                }
-                tool_data_entries.append(legacy_tool_entry)
+        # Step 1: Extract non-tool data (e.g., follow_up_actions)
+        other_data: Dict[str, Any] = {}
+        if data.get("follow_up_actions") is not None:
+            other_data["follow_up_actions"] = data["follow_up_actions"]
 
-        # Return unified format if any tool data was found
+        # Step 2: Extract tool_data from one of three sources (in priority order)
+        tool_data_entries: List[ToolDataEntry] = []
+
+        # Source A: Already in unified format
+        if "tool_data" in data:
+            tool_data_entries = data["tool_data"]
+
+        # Source B: Progress events - convert to tool_calls_data format
+        elif "progress" in data and isinstance(data["progress"], dict):
+            progress = data["progress"]
+            if progress.get("tool_name"):
+                tool_data_entries = [
+                    {
+                        "tool_name": "tool_calls_data",
+                        "data": {
+                            "tool_name": progress.get("tool_name"),
+                            "tool_category": progress.get("tool_category", ""),
+                            "message": progress.get("message", ""),
+                            "show_category": progress.get("show_category", True),
+                            "tool_call_id": progress.get("tool_call_id"),
+                            "inputs": progress.get("inputs"),
+                            "icon_url": progress.get("icon_url"),
+                            "integration_name": progress.get("integration_name"),
+                        },
+                        "timestamp": timestamp,
+                    }
+                ]
+
+        # Source C: Legacy individual tool fields
+        else:
+            for field_name in tool_fields:
+                if data.get(field_name) is not None:
+                    tool_data_entries.append(
+                        {
+                            "tool_name": field_name,
+                            "data": data[field_name],
+                            "timestamp": timestamp,
+                        }
+                    )
+
+        # Step 3: Build result from collected data
+        result: Dict[str, Any] = {}
         if tool_data_entries:
-            return {"tool_data": tool_data_entries}
+            result["tool_data"] = tool_data_entries
+        if other_data:
+            result["other_data"] = other_data
 
-        return {}
+        return result
 
     except json.JSONDecodeError:
         return {}
@@ -336,6 +338,7 @@ def update_conversation_messages(
     metadata: Dict[str, Any] = {},
     user_message_id: Optional[str] = None,
     bot_message_id: Optional[str] = None,
+    follow_up_actions: List[str] = [],
 ) -> None:
     """
     Schedule conversation update in the background.
@@ -350,6 +353,7 @@ def update_conversation_messages(
         metadata: Token usage metadata from LLM calls by model
         user_message_id: Optional pre-generated ID for user message
         bot_message_id: Optional pre-generated ID for bot message
+        follow_up_actions: Optional list of follow-up action suggestions
     """
     # Process token usage and calculate total cost in background
     if metadata and user.get("user_id"):
@@ -386,6 +390,7 @@ def update_conversation_messages(
         date=bot_timestamp.isoformat(),
         fileIds=body.fileIds,
         metadata=metadata,
+        follow_up_actions=follow_up_actions,
     )
 
     # Set message_id if provided from init_chunk
