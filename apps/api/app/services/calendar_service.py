@@ -444,7 +444,7 @@ def enrich_calendar_options_with_metadata(
 
 def get_calendar_events(
     user_id: str,
-    access_token: Optional[str] = None,
+    access_token: str,
     page_token: Optional[str] = None,
     selected_calendars: Optional[List[str]] = None,
     time_min: Optional[str] = None,
@@ -473,10 +473,6 @@ def get_calendar_events(
             - has_more: Boolean indicating if any calendar was truncated
             - calendars_truncated: List of calendar IDs that hit limits
     """
-    # Get valid access token if not provided
-    if not access_token:
-        raise HTTPException(status_code=401, detail="No valid access token available")
-
     # Fetch the calendar list - token refresh will be handled by the decorator if needed
     calendar_data = fetch_calendar_list(access_token)
 

@@ -31,7 +31,10 @@ def _patched_call(self, **kwargs):
         return obj
 
     # Extract ``user_id`` (default to ``"default"`` if not supplied).
-    user_id = kwargs.pop("user_id", None) or "default"
+    # Using .get() with explicit del to preserve kwargs for debugging/logging if needed
+    user_id = kwargs.get("user_id") or "default"
+    if "user_id" in kwargs:
+        del kwargs["user_id"]
 
     # Convert any Pydantic objects in kwargs to dicts to avoid class mismatch
     # between dynamically generated models (from json_schema_to_model) and
@@ -46,6 +49,10 @@ def _patched_call(self, **kwargs):
         return self.f(request=request)
 
     # Retrieve auth credentials and inject ``user_id``.
+    # NOTE: We must use name-mangled private method access here because
+    # Composio's CustomTool does not expose a public API for retrieving
+    # auth credentials. This is a known coupling point - if Composio
+    # changes their internal implementation, this patch may need updating.
     auth_credentials = self._CustomTool__get_auth_credentials(user_id)
     auth_credentials = dict(auth_credentials)  # shallow copy to avoid mutation
     auth_credentials["user_id"] = user_id

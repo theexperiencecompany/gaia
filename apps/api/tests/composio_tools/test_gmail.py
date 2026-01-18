@@ -7,7 +7,6 @@ Tests Gmail tools:
 - GMAIL_MARK_AS_READ
 - GMAIL_MARK_AS_UNREAD
 - GMAIL_STAR_EMAIL
-- GMAIL_SNOOZE_EMAIL
 - GMAIL_ARCHIVE_EMAIL
 - GMAIL_DELETE_DRAFT (cleanup)
 
@@ -19,7 +18,7 @@ Usage:
 """
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any, Dict, Generator
 
 import pytest
@@ -220,38 +219,6 @@ class TestGmailMessageOperations:
         assert result.get("successful"), f"API call failed: {result.get('error')}"
         data = parse_data(result)
         assert data.get("action") == "unstarred", "Should report action as 'unstarred'"
-
-    def test_snooze_email(self, composio_client, user_id, test_email):
-        """
-        Test SNOOZE_EMAIL snoozes the test email.
-
-        Expected output schema:
-        {
-          "data": {
-            "snooze_until": "2026-01-01T18:25:26.969995Z",
-            "snoozed_label_id": "Label_1"
-          },
-          "error": null,
-          "successful": true
-        }
-        """
-        # Use timezone-aware datetime
-        snooze_until = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-
-        result = execute_tool(
-            composio_client,
-            "GMAIL_SNOOZE_EMAIL",
-            {
-                "message_ids": [test_email["message_id"]],
-                "snooze_until": snooze_until,
-            },
-            user_id,
-        )
-
-        assert result.get("successful"), f"API call failed: {result.get('error')}"
-        data = parse_data(result)
-        assert data.get("snooze_until"), "Should have snooze_until timestamp"
-        assert data.get("snoozed_label_id"), "Should have snoozed_label_id"
 
     def test_archive_email(self, composio_client, user_id, test_email):
         """

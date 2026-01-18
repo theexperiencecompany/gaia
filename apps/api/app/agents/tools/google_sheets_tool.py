@@ -238,7 +238,6 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
             ]
         }
 
-        print(f"DEBUG: Pivot Table Batch Request: {batch_request}")
         resp = _http_client.post(
             f"{SHEETS_API_BASE}/{request.spreadsheet_id}:batchUpdate",
             headers=headers,

@@ -27,7 +27,7 @@ def test_page(composio_client, user_id) -> Generator[Dict[str, Any], None, None]
     """
     Create a test Notion page with some content.
 
-    Creates page via NOTION_CREATE_PAGE, adds content, yields info, then archives.
+    Creates page via NOTION_CUSTOM_CREATE_TEST_PAGE, adds content, yields info, then archives.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     title = f"[PYTEST] Test Page {timestamp}"
@@ -73,7 +73,7 @@ def test_page(composio_client, user_id) -> Generator[Dict[str, Any], None, None]
             user_id,
         )
     except Exception:
-        pass  # Content is optional for tests
+        pass  # Content insertion is optional for tests
 
     page_info = {
         "page_id": page_id,
@@ -179,7 +179,7 @@ class TestNotionModifyOperations:
 
             try:
                 data = json.loads(data)
-            except Exception:
+            except json.JSONDecodeError:
                 pytest.fail(f"Tool execution failed with message: {data}")
 
         dup_id = data.get("id") or (data.get("object") == "page" and data.get("id"))

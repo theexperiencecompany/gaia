@@ -9,7 +9,7 @@ Tests 12 Linear tools:
                CREATE_SUB_ISSUES, CREATE_ISSUE_RELATION, BULK_UPDATE_ISSUES
 
 Usage:
-    pytest tests/composio_tools/test_linear_pytest.py -v --user-id USER_ID
+    pytest tests/composio_tools/test_linear.py -v --user-id USER_ID
 
 NOTE: Linear has no delete issue API. Created issues must be manually archived.
 """

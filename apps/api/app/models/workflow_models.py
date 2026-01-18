@@ -3,7 +3,7 @@ Clean and lean workflow models for GAIA workflow system.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from datetime import timezone as dt_timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
@@ -289,7 +289,7 @@ class Workflow(BaseScheduledTask):
 
         # Set default scheduled_at if still not provided
         if "scheduled_at" not in data:
-            data["scheduled_at"] = datetime.now(timezone.utc)
+            data["scheduled_at"] = datetime.now(dt_timezone.utc)
 
         super().__init__(**data)
 

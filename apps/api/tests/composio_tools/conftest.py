@@ -8,7 +8,7 @@ Provides shared fixtures:
 - test_event: Creates/cleans up a test event
 
 Usage:
-    pytest tests/composio_tools/test_calendar_pytest.py -v --user-id USER_ID
+    pytest tests/composio_tools/test_calendar.py -v --user-id USER_ID
 """
 
 import asyncio

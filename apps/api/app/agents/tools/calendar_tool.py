@@ -106,10 +106,22 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         user_id = _get_user_id(auth_credentials)
 
         # Get user's timezone from their preferences
+        # Note: We need to run async code in sync context. Using run_until_complete
+        # with proper event loop handling.
         try:
-            loop = asyncio.get_event_loop()
-            user = loop.run_until_complete(user_service.get_user_by_id(user_id))
-            user_timezone = user.get("timezone") if user else None
+            try:
+                loop = asyncio.get_running_loop()
+                # If we're already in an async context, we can't use run_until_complete
+                # Fall back to not fetching user timezone
+                user_timezone = None
+            except RuntimeError:
+                # No running loop - safe to create one and run
+                loop = asyncio.new_event_loop()
+                try:
+                    user = loop.run_until_complete(user_service.get_user_by_id(user_id))
+                    user_timezone = user.get("timezone") if user else None
+                finally:
+                    loop.close()
         except Exception:
             user_timezone = None
 

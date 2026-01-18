@@ -267,81 +267,10 @@ def register_gmail_custom_tools(composio: Composio):
             "label_id": request.label_id,
         }
 
-    @composio.tools.custom_tool(toolkit="gmail")
-    def SNOOZE_EMAIL(
-        request: SnoozeEmailInput,
-        execute_request: Any,
-        auth_credentials: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Snooze Gmail messages until a specified time.
-
-        Removes the specified messages from the inbox temporarily by adding
-        them to the 'Snoozed' label and removing the 'INBOX' label. The
-        messages will be moved back to inbox at the specified snooze time
-        by an external scheduler.
-
-        Note: The snooze time is stored in message metadata. An external
-        process should monitor snoozed messages and move them back to
-        inbox when the snooze time arrives.
-
-        Args:
-            request.message_ids: List of Gmail message IDs to snooze
-            request.snooze_until: ISO 8601 timestamp for when to unsnooze
-
-        Returns:
-            Dict with success status, snoozed count, and snooze time
-        """
-        headers = _auth_headers(auth_credentials)
-
-        # First, try to get or create the 'Snoozed' label
-        labels_url = "https://gmail.googleapis.com/gmail/v1/users/me/labels"
-        labels_resp = _http_client.get(labels_url, headers=headers)
-        labels_resp.raise_for_status()
-        labels_data = labels_resp.json()
-
-        snoozed_label_id = None
-        for label in labels_data.get("labels", []):
-            if label.get("name") == "Snoozed":
-                snoozed_label_id = label.get("id")
-                break
-
-        # Create 'Snoozed' label if it doesn't exist
-        if not snoozed_label_id:
-            create_label_payload = {
-                "name": "Snoozed",
-                "labelListVisibility": "labelShow",
-                "messageListVisibility": "show",
-            }
-            create_resp = _http_client.post(
-                labels_url, json=create_label_payload, headers=headers
-            )
-            create_resp.raise_for_status()
-            snoozed_label_id = create_resp.json().get("id")
-
-        # Batch modify: add Snoozed label, remove INBOX label
-        modify_url = (
-            "https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify"
-        )
-        modify_payload = {
-            "ids": request.message_ids,
-            "addLabelIds": [snoozed_label_id],
-            "removeLabelIds": ["INBOX"],
-        }
-        modify_resp = _http_client.post(
-            modify_url, json=modify_payload, headers=headers
-        )
-        modify_resp.raise_for_status()
-
-        return {
-            "snooze_until": request.snooze_until,
-            "snoozed_label_id": snoozed_label_id,
-        }
-
     return [
         "GMAIL_MARK_AS_READ",
         "GMAIL_MARK_AS_UNREAD",
         "GMAIL_ARCHIVE_EMAIL",
         "GMAIL_STAR_EMAIL",
         "GMAIL_GET_UNREAD_COUNT",
-        "GMAIL_SNOOZE_EMAIL",
     ]

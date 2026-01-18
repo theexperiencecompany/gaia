@@ -40,7 +40,7 @@ class ComposioService:
             provider=LangchainProvider(),
             api_key=api_key,
             timeout=120,
-            toolkit_versions=toolkit_versions if toolkit_versions else None,
+            toolkit_versions=toolkit_versions or None,
         )
         custom_tools_registry.initialize(self.composio)
 

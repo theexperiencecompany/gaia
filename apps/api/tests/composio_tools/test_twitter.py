@@ -166,9 +166,7 @@ class TestTwitterDestructiveOperations:
                     user_id,
                 )
                 if not cleanup.get("successful"):
-                    logger.warning(
-                        f"⚠️ Failed to delete ID {tid}: {cleanup.get('error')}"
-                    )
+                    logger.error(f"⚠️ Failed to delete ID {tid}: {cleanup.get('error')}")
         else:
             logger.warning(
                 f"⚠️ Could not identify tweet IDs. Please manually delete: {thread_url}"

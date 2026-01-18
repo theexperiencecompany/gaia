@@ -201,8 +201,6 @@ class SlackTriggerHandler(TriggerHandler):
             logger.error(f"Failed to register Slack trigger {composio_slug}: {e}")
             return []
 
-        return []
-
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
     ) -> List[Workflow]:

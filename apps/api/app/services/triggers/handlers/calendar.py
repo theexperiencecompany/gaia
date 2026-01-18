@@ -116,7 +116,7 @@ class CalendarTriggerHandler(TriggerHandler):
                 starting_soon_data = trigger_data
                 if starting_soon_data.minutes_before_start is not None:
                     config["countdown_window_minutes"] = (
-                        starting_soon_data.minutes_before_start * 60
+                        starting_soon_data.minutes_before_start
                     )
                 if starting_soon_data.include_all_day is not None:
                     config["include_all_day"] = starting_soon_data.include_all_day

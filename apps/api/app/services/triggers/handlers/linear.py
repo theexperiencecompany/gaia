@@ -169,13 +169,6 @@ class LinearTriggerHandler(TriggerHandler):
                 "trigger_config.composio_trigger_ids": trigger_id,
             }
 
-            # optional: validate payload for issue created
-            if "issue_created" in event_type.lower():
-                try:
-                    LinearIssueCreatedPayload.model_validate(data)
-                except Exception as e:
-                    logger.debug(f"Linear payload validation failed: {e}")
-
             # Validate payload
             try:
                 if "issue_created" in event_type.lower():

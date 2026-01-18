@@ -13,7 +13,7 @@ Tests 9 calendar tools with proper assertions:
 - CUSTOM_DELETE_EVENT
 
 Usage:
-    pytest tests/composio_tools/test_calendar_pytest.py -v --user-id USER_ID
+    pytest tests/composio_tools/test_calendar.py -v --user-id USER_ID
 """
 
 from datetime import datetime, timedelta

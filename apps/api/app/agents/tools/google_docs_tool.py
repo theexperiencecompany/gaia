@@ -131,7 +131,7 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
                 user_id=auth_credentials.get("user_id"),
             )
         except TypeError as e:
-            print(f"DEBUG: TypeError in execute: {e}")
+            logger.debug(f"TypeError in execute: {e}")
             raise
 
         # Unwrap response (ToolExecutionResponse format)
@@ -143,8 +143,8 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         if isinstance(doc_data, str):
             try:
                 doc_data = json.loads(doc_data)
-            except Exception:
-                pass  # nosec
+            except json.JSONDecodeError as e:
+                logger.debug(f"JSON parsing skipped for doc_data: {e}")
 
         if not doc_data or "body" not in doc_data:
             raise ValueError("Failed to get document or document has no body content")

@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from app.config.loggers import general_logger as logger
+
 LINEAR_GRAPHQL_ENDPOINT = "https://api.linear.app/graphql"
 
 # Reusable sync HTTP client
@@ -69,8 +71,8 @@ def graphql_request(
 
     if "errors" in result:
         error_messages = [e.get("message", str(e)) for e in result["errors"]]
-        print(
-            f"DEBUG: GraphQL Errors: {error_messages} Query: {query} Variables: {variables}"
+        logger.error(
+            f"GraphQL Errors: {error_messages} Query: {query} Variables: {variables}"
         )
         raise Exception(f"GraphQL errors: {'; '.join(error_messages)}")
 

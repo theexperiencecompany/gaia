@@ -274,7 +274,7 @@ export const googleSheetsTriggerHandler: RegisteredHandler = {
     return {
       label:
         triggerName === "google_sheets_new_row" ? "on new row" : "on new sheet",
-      integrationId: "google_sheets",
+      integrationId: "googlesheets",
     };
   },
 };
