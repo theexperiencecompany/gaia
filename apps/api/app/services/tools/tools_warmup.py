@@ -5,8 +5,10 @@ Pre-loads provider tools and warms the global cache at startup,
 eliminating cold-start latency for the /tools endpoint.
 """
 
+from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import app_logger as logger
 from app.db.redis import set_cache
+from app.services.tools.tools_service import get_available_tools
 
 # Global tools cache key - shared across all users
 GLOBAL_TOOLS_CACHE_KEY = "tools:global"
@@ -23,9 +25,6 @@ async def warmup_tools_cache() -> None:
 
     Called from lifespan to ensure tools are ready before serving requests.
     """
-    from app.agents.tools.core.registry import get_tool_registry
-    from app.services.tools.tools_service import get_available_tools
-
     logger.info("Warming up tools cache...")
 
     try:

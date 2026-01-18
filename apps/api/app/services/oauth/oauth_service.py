@@ -12,7 +12,7 @@ from app.config.oauth_config import (
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
 from app.core.websocket_manager import websocket_manager
-from app.db.mongodb.collections import users_collection
+from app.db.mongodb.collections import user_integrations_collection, users_collection
 from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
@@ -116,8 +116,6 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
     result = {}
 
     # Step 1: Get all user_integrations from MongoDB (canonical source)
-    from app.db.mongodb.collections import user_integrations_collection
-
     user_ints = await user_integrations_collection.find({"user_id": user_id}).to_list(
         100
     )

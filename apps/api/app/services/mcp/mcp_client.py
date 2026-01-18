@@ -19,8 +19,10 @@ Features:
 """
 
 import base64
+import os
 import re
 import secrets
+import time
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -30,10 +32,24 @@ from langchain_core.tools import BaseTool
 from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 
+from app.agents.core.subagents.handoff_tools import index_custom_mcp_as_subagent
 from app.config.loggers import langchain_logger as logger
+from app.constants.mcp import OAUTH_DISCOVERY_PREFIX
+from app.core.lazy_loader import providers
+from app.db.chroma.chroma_tools_store import index_tools_to_store
+from app.db.mongodb.collections import (
+    integrations_collection,
+    user_integrations_collection,
+)
+from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.oauth_models import MCPConfig
 from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.integrations.integration_service import (
+    get_user_connected_integrations,
+    update_user_integration_status,
+)
+from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.utils.mcp_oauth_utils import (
@@ -153,8 +169,6 @@ class MCPClient:
             requires_auth: Whether auth is required
             auth_type: The auth type ("oauth", "none", etc.)
         """
-        from app.db.mongodb.collections import integrations_collection
-
         try:
             result = await integrations_collection.update_one(
                 {"integration_id": integration_id},
@@ -477,11 +491,6 @@ class MCPClient:
                 )
 
             # Update user integration status to connected
-            # Import here to avoid circular dependency
-            from app.services.integrations.integration_service import (
-                update_user_integration_status,
-            )
-
             try:
                 await update_user_integration_status(
                     self.user_id, integration_id, "connected"
@@ -527,8 +536,6 @@ class MCPClient:
         """Handle custom integration: index tools and register as subagent."""
         # Index tools in ChromaDB for semantic discovery
         try:
-            from app.db.chroma.chroma_tools_store import index_tools_to_store
-
             tools_with_space = [(tool, integration_id) for tool in tools]
             await index_tools_to_store(tools_with_space)
         except Exception as e:
@@ -538,21 +545,12 @@ class MCPClient:
 
         # Index as subagent for discovery via retrieve_tools
         try:
-            from app.agents.core.subagents.handoff_tools import (
-                index_custom_mcp_as_subagent,
-            )
-            from app.core.lazy_loader import providers
-
             store = await providers.aget("chroma_tools_store")
             if store:
                 resolved_name = name
                 resolved_description = description
 
                 if resolved_name is None:
-                    from app.services.integrations.integration_resolver import (
-                        IntegrationResolver,
-                    )
-
                     resolved = await IntegrationResolver.resolve(integration_id)
                     if resolved and resolved.custom_doc:
                         resolved_name = resolved.custom_doc.get("name", integration_id)
@@ -634,8 +632,6 @@ class MCPClient:
                 # Calculate new expiry
                 expires_at = None
                 if tokens.get("expires_in"):
-                    from datetime import datetime, timedelta, timezone
-
                     expires_at = datetime.now(timezone.utc) + timedelta(
                         seconds=tokens["expires_in"]
                     )
@@ -668,8 +664,6 @@ class MCPClient:
         Returns:
             Tuple of (client_id, client_secret), either may be None
         """
-        import os
-
         client_id = mcp_config.client_id
         client_secret = mcp_config.client_secret
 
@@ -830,8 +824,6 @@ class MCPClient:
             ValueError: For other registration failures
         """
         try:
-            from app.utils.mcp_oauth_utils import MCP_PROTOCOL_VERSION
-
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     registration_endpoint,
@@ -1045,9 +1037,6 @@ class MCPClient:
             del self._tools[integration_id]
 
         # Clear OAuth discovery cache
-        from app.constants.mcp import OAUTH_DISCOVERY_PREFIX
-        from app.db.redis import delete_cache
-
         try:
             await delete_cache(f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}")
         except Exception as e:
@@ -1148,8 +1137,6 @@ class MCPClient:
                 "error": str,  # Only present if unhealthy
             }
         """
-        import time
-
         if integration_id not in self._clients:
             return {"status": "disconnected", "latency_ms": 0}
 
@@ -1174,8 +1161,6 @@ class MCPClient:
 
     async def is_connected_db(self, integration_id: str) -> bool:
         """Check if integration is connected (in MongoDB user_integrations)."""
-        from app.db.mongodb.collections import user_integrations_collection
-
         doc = await user_integrations_collection.find_one(
             {
                 "user_id": self.user_id,
@@ -1198,10 +1183,6 @@ class MCPClient:
         Returns dict mapping integration_id -> list of tools.
         """
         # Get all connected integrations from MongoDB (single source of truth)
-        from app.services.integrations.integration_service import (
-            get_user_connected_integrations,
-        )
-
         connected_ids: list[str] = []
         try:
             user_integrations = await get_user_connected_integrations(self.user_id)
@@ -1312,7 +1293,5 @@ class MCPClient:
 
 async def get_mcp_client(user_id: str) -> MCPClient:
     """Get MCP client for a user from the pool."""
-    from app.services.mcp.mcp_client_pool import get_mcp_client_pool
-
     pool = await get_mcp_client_pool()
     return await pool.get(user_id)

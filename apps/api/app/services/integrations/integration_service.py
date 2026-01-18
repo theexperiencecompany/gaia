@@ -13,6 +13,8 @@ import uuid
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Literal, Optional
 
+from bson import ObjectId
+
 from app.config.loggers import app_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import (
@@ -33,7 +35,9 @@ from app.models.integration_models import (
     UserIntegrationsListResponse,
 )
 from app.models.oauth_models import MCPConfig
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.oauth.oauth_service import get_all_integrations_status
 
 
 async def get_all_integrations(
@@ -136,8 +140,6 @@ async def get_integration_details(integration_id: str) -> Optional[IntegrationRe
     Returns:
         IntegrationResponse or None if not found
     """
-    from app.services.integrations.integration_resolver import IntegrationResolver
-
     # Fetch tools from global store
     tools_store = get_mcp_tools_store()
     stored_tools = await tools_store.get_tools(integration_id)
@@ -172,8 +174,6 @@ async def get_integration_details(integration_id: str) -> Optional[IntegrationRe
     # Populate creator info if created_by exists
     if response.created_by:
         try:
-            from bson import ObjectId
-
             # Try to parse as ObjectId, skip if it's a system value like "system_seed"
             try:
                 creator_oid = ObjectId(response.created_by)
@@ -722,8 +722,6 @@ async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
     Returns:
         Set of integration IDs that user has connected
     """
-    from app.services.oauth.oauth_service import get_all_integrations_status
-
     namespaces = set()
 
     # Add core namespaces that are always available

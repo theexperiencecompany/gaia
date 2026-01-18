@@ -11,13 +11,10 @@ import asyncio
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
 
 from app.config.loggers import langchain_logger as logger
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-
-if TYPE_CHECKING:
-    from app.services.mcp.mcp_client import MCPClient
+from app.services.mcp.mcp_client import MCPClient
 
 
 @dataclass
@@ -56,9 +53,6 @@ class MCPClientPool:
 
     async def get(self, user_id: str) -> "MCPClient":
         """Get or create MCPClient for user."""
-        # Import here to avoid circular import
-        from app.services.mcp.mcp_client import MCPClient
-
         async with self._lock:
             if user_id in self._clients:
                 pooled = self._clients[user_id]

@@ -14,6 +14,7 @@ from app.utils.tool_data_utils import (
 )
 from bson import ObjectId
 from fastapi import HTTPException, status
+from uuid import uuid4
 
 
 async def create_conversation_service(
@@ -332,8 +333,6 @@ async def create_system_conversation(
     Returns:
         dict: Created conversation data
     """
-    from uuid import uuid4
-
     conversation_id = str(uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
 

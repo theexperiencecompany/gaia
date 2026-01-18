@@ -8,6 +8,7 @@ from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import TriggerConfig
 from app.services.composio.langchain_composio_service import LangchainProvider
+from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.utils.composio_hooks.registry import (
     master_after_execute_hook,
     master_before_execute_hook,
@@ -124,8 +125,6 @@ class ComposioService:
             toolkit_name: The Composio toolkit name (e.g., "GMAIL", "NOTION")
             tools: List of Composio tool objects
         """
-        from app.services.mcp.mcp_tools_store import get_mcp_tools_store
-
         if not tools:
             return
 

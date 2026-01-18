@@ -24,6 +24,7 @@ from app.constants.mcp import (
 from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
 from app.models.oauth_models import MCPCredential
+from app.utils.mcp_oauth_utils import introspect_token as do_introspect
 
 
 class MCPTokenStore:
@@ -450,8 +451,6 @@ class MCPTokenStore:
 
         Returns introspection response with 'active' field, or None if failed.
         """
-        from app.utils.mcp_oauth_utils import introspect_token as do_introspect
-
         oauth_config = await self.get_oauth_discovery(integration_id)
         if not oauth_config:
             return None
