@@ -73,6 +73,9 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
         },
       ],
       onSubmit: async (data) => {
+        // Auth type is determined by API key presence. OAuth-only integrations
+        // are detected by the backend when probing the server URL - the response
+        // will indicate requires_oauth status and provide the OAuth redirect URL.
         const result = await createCustomIntegration({
           name: data.name,
           description: data.description?.trim() || undefined,

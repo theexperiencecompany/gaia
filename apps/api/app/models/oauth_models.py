@@ -4,8 +4,10 @@ OAuth Token Models
 This module defines SQLAlchemy models for OAuth tokens.
 """
 
+import base64
 from collections.abc import Callable
 from datetime import datetime
+from enum import Enum
 from typing import Dict, List, Literal, Optional
 
 from app.db.postgresql import Base
@@ -13,6 +15,22 @@ from pydantic import BaseModel
 from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
+
+
+class MCPAuthType(str, Enum):
+    """Authentication types for MCP integrations."""
+
+    NONE = "none"
+    OAUTH = "oauth"
+    BEARER = "bearer"
+
+
+class MCPCredentialStatus(str, Enum):
+    """Status values for MCP credentials."""
+
+    PENDING = "pending"
+    CONNECTED = "connected"
+    ERROR = "error"
 
 
 class OAuthToken(Base):
@@ -56,8 +74,10 @@ class MCPCredential(Base):
     integration_id: Mapped[str] = mapped_column(String(100), nullable=False)
     auth_type: Mapped[str] = mapped_column(
         String(20), nullable=False
-    )  # none, oauth, bearer
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    )  # Uses MCPAuthType enum values: none, oauth, bearer
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default=MCPCredentialStatus.PENDING.value
+    )  # Uses MCPCredentialStatus enum values
     access_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # Encrypted
     refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # Encrypted
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

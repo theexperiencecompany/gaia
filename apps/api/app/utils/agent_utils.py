@@ -1,10 +1,12 @@
 import json
+import re
 from datetime import datetime, timezone
 from typing import List, Optional, cast
 from uuid import uuid4
 
 from langchain_core.messages import ToolCall
 
+from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import llm_logger as logger
 from app.models.chat_models import (
     MessageModel,
@@ -13,7 +15,12 @@ from app.models.chat_models import (
     tool_fields,
 )
 from app.services.conversation_service import update_messages
-from app.agents.tools.core.registry import get_tool_registry
+
+# UUID v4 pattern for identifying user ID suffixes
+# Matches: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
+)
 
 
 async def format_tool_progress(
@@ -66,15 +73,15 @@ async def format_tool_progress(
             tool_category = tool_registry.get_category_of_tool(tool_name_raw)
             # Extract integration name from MCP categories
             # Category format: mcp_{integration_id} or mcp_{integration_id}_{user_id}
-            # User IDs are UUIDs with dashes (e.g., 550e8400-e29b-41d4-a716-446655440000)
-            # Custom integration IDs have hex suffixes WITHOUT dashes (e.g., custom_reposearch_6966a2fb964b5991c13ab887)
+            # User IDs are UUIDs v4 (e.g., 550e8400-e29b-41d4-a716-446655440000)
+            # Custom integration IDs have hex suffixes (e.g., custom_reposearch_6966a2fb964b5991c13ab887)
             if tool_category and tool_category.startswith("mcp_"):
                 # Strip "mcp_" prefix
                 without_prefix = tool_category[4:]
-                # Only strip suffix if it looks like a UUID (contains dashes) - not a hex ID
+                # Only strip suffix if it matches UUID v4 pattern
                 parts = without_prefix.rsplit("_", 1)
-                if len(parts) == 2 and "-" in parts[-1]:
-                    # Last part is a user ID (UUID with dashes)
+                if len(parts) == 2 and UUID_PATTERN.match(parts[-1]):
+                    # Last part is a valid UUID (user ID)
                     tool_category = parts[0]
                 else:
                     tool_category = without_prefix

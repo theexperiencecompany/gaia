@@ -165,7 +165,12 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
             continue
 
         for tool_dict in custom_tools:
-            tool_name = tool_dict["name"]
+            tool_name = tool_dict.get("name")
+            if not tool_name:
+                logger.warning(
+                    f"Skipping tool with missing 'name' from custom MCP {integration_id}"
+                )
+                continue
             # Skip duplicate tool names
             if tool_name in seen_tool_names:
                 logger.debug(
@@ -197,7 +202,12 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
                 continue
 
             for tool in tools:
-                tool_name = tool["name"]
+                tool_name = tool.get("name")
+                if not tool_name:
+                    logger.warning(
+                        f"Skipping tool with missing 'name' from MCP {integration_id}"
+                    )
+                    continue
                 # Skip duplicate tool names
                 if tool_name in seen_tool_names:
                     logger.debug(
