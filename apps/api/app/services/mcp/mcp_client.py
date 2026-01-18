@@ -32,7 +32,6 @@ from langchain_core.tools import BaseTool
 from mcp_use import MCPClient as BaseMCPClient
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 
-from app.agents.core.subagents.handoff_tools import index_custom_mcp_as_subagent
 from app.config.loggers import langchain_logger as logger
 from app.constants.mcp import OAUTH_DISCOVERY_PREFIX
 from app.core.lazy_loader import providers
@@ -47,6 +46,8 @@ from app.models.oauth_models import MCPConfig
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.integration_service import (
     get_user_connected_integrations,
+)
+from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
@@ -559,6 +560,11 @@ class MCPClient:
                         )
 
                 if resolved_name:
+                    # Local import to avoid circular dependency
+                    from app.agents.core.subagents.handoff_tools import (
+                        index_custom_mcp_as_subagent,
+                    )
+
                     await index_custom_mcp_as_subagent(
                         store=store,
                         integration_id=integration_id,

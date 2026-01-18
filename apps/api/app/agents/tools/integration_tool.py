@@ -11,8 +11,6 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.decorators import with_doc
 from app.services.oauth.oauth_service import (
     check_integration_status as check_single_integration_status,
-)
-from app.services.oauth.oauth_service import (
     check_multiple_integrations_status,
 )
 from app.templates.docstrings.integration_tool_docs import (

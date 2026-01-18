@@ -17,12 +17,14 @@ from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
 from app.services.composio.composio_service import get_composio_service
-from app.services.integrations.integration_service import update_user_integration_status
 from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
 )
 from app.utils.email_utils import add_contact_to_resend, send_welcome_email
 from app.utils.redis_utils import RedisPoolManager
+from app.services.integrations.user_integration_status import (
+    update_user_integration_status,
+)
 
 
 async def store_user_info(name: str, email: str, picture_url: Optional[str]):

@@ -22,6 +22,8 @@ from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.integration_service import (
     delete_custom_integration,
     remove_user_integration,
+)
+from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
 from app.services.mcp.mcp_client import get_mcp_client

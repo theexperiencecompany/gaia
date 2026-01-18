@@ -37,7 +37,9 @@ from app.models.integration_models import (
 from app.models.oauth_models import MCPConfig
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
-from app.services.oauth.oauth_service import get_all_integrations_status
+from app.services.integrations.user_integration_status import (
+    update_user_integration_status,
+)
 
 
 async def get_all_integrations(
@@ -357,52 +359,6 @@ async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     return False
 
 
-@CacheInvalidator(key_patterns=["tools:user:{user_id}"])
-async def update_user_integration_status(
-    user_id: str,
-    integration_id: str,
-    status: str,
-) -> bool:
-    """
-    Update or create user integration status (upsert).
-
-    Called after successful OAuth or MCP connection to set status='connected'.
-    Creates the record if it doesn't exist.
-
-    Args:
-        user_id: The user's ID
-        integration_id: ID of integration
-        status: New status ('created' or 'connected')
-
-    Returns:
-        True if updated or created
-    """
-    update_data: Dict[str, Any] = {
-        "status": status,
-        "user_id": user_id,
-        "integration_id": integration_id,
-    }
-    if status == "connected":
-        update_data["connected_at"] = datetime.now(UTC)
-
-    result = await user_integrations_collection.update_one(
-        {"user_id": user_id, "integration_id": integration_id},
-        {
-            "$set": update_data,
-            "$setOnInsert": {"created_at": datetime.now(UTC)},
-        },
-        upsert=True,
-    )
-
-    if result.modified_count > 0 or result.upserted_id:
-        logger.info(
-            f"Updated user {user_id} integration {integration_id} status to {status}"
-        )
-        return True
-
-    return False
-
-
 async def check_user_has_integration(user_id: str, integration_id: str) -> bool:
     """
     Check if a user has added a specific integration.
@@ -475,6 +431,8 @@ async def create_custom_integration(
             auth_type=request.auth_type,
         ),
         created_at=datetime.now(UTC),
+        published_at=None,
+        clone_count=0,
     )
 
     await integrations_collection.insert_one(integration.model_dump())
@@ -737,6 +695,9 @@ async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
 
     # Use cached unified status check for all connected integrations
     try:
+        # Lazy import to avoid circular dependency with oauth_service
+        from app.services.oauth.oauth_service import get_all_integrations_status
+
         all_statuses = await get_all_integrations_status(user_id)
         connected = [
             integration_id

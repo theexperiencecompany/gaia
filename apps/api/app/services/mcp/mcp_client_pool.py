@@ -11,10 +11,13 @@ import asyncio
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 from app.config.loggers import langchain_logger as logger
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.services.mcp.mcp_client import MCPClient
+
+if TYPE_CHECKING:
+    from app.services.mcp.mcp_client import MCPClient
 
 
 @dataclass
@@ -67,7 +70,9 @@ class MCPClientPool:
                 oldest_key = next(iter(self._clients))
                 await self._evict(oldest_key)
 
-            # Create new client
+            # Create new client (local import to avoid circular dependency)
+            from app.services.mcp.mcp_client import MCPClient
+
             client = MCPClient(user_id=user_id)
             self._clients[user_id] = PooledClient(client=client)
             logger.debug(f"Created new pooled MCPClient for {user_id}")

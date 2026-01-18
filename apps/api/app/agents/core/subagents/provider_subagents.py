@@ -17,7 +17,6 @@ from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.core.lazy_loader import providers
-from app.services.mcp.mcp_client import get_mcp_client
 
 from .base_subagent import SubAgentFactory
 
@@ -61,6 +60,9 @@ async def create_subagent(integration_id: str):
                 f"{integration_id} requires authentication - use create_subagent_for_user"
             )
         elif category_name not in tool_registry._categories:
+            # Lazy import to avoid circular dependency
+            from app.services.mcp.mcp_client import get_mcp_client
+
             mcp_client = await get_mcp_client(user_id="_system")
             tools = await mcp_client.connect(integration.id)
             if tools:
@@ -141,6 +143,9 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
     category_name = f"mcp_{integration.id}_{user_id}"
 
     if category_name not in tool_registry._categories:
+        # Lazy import to avoid circular dependency
+        from app.services.mcp.mcp_client import get_mcp_client
+
         mcp_client = await get_mcp_client(user_id=user_id)
 
         # get_all_connected_tools uses cached tools when available
@@ -227,6 +232,9 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
     category_name = f"mcp_{integration_id}_{user_id}"
 
     if category_name not in tool_registry._categories:
+        # Lazy import to avoid circular dependency
+        from app.services.mcp.mcp_client import get_mcp_client
+
         mcp_client = await get_mcp_client(user_id=user_id)
 
         # get_all_connected_tools uses cached tools when available

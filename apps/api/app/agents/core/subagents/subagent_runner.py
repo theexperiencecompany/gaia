@@ -20,7 +20,7 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.core.lazy_loader import providers
 from app.helpers.agent_helpers import build_agent_config
 from app.models.models_models import ModelConfig
-from app.services.oauth_service import check_integration_status
+from app.services.oauth.oauth_service import check_integration_status
 from langchain_core.messages import AIMessageChunk, HumanMessage
 
 
