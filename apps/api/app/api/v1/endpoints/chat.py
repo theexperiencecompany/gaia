@@ -25,6 +25,9 @@ from app.services.chat_service import run_chat_stream_background
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import StreamingResponse
 
+# Set to hold references to background tasks to prevent garbage collection
+_background_tasks: set[asyncio.Task] = set()
+
 router = APIRouter()
 
 
@@ -58,7 +61,7 @@ async def chat_stream_endpoint(
     )
 
     # Start background streaming task (continues even if client disconnects)
-    asyncio.create_task(
+    task = asyncio.create_task(
         run_chat_stream_background(
             stream_id=stream_id,
             body=body,
@@ -67,6 +70,8 @@ async def chat_stream_endpoint(
             conversation_id=conversation_id,
         )
     )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
     async def stream_from_redis():
         """Subscribe to Redis channel and forward chunks to HTTP response."""
