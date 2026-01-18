@@ -188,7 +188,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
               startContent={<ConnectIcon width={16} height={16} />}
             />
 
-            <Input
+            {/* <Input
               label="API Key (optional)"
               placeholder="sk-..."
               value={formData.api_key || ""}
@@ -196,7 +196,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
               type="password"
               description="If provided, API key authentication will be used. Leave empty to automatically detect OAuth requirements."
               startContent={<KeyIcon width={16} height={16} />}
-            />
+            /> */}
           </div>
         </ModalBody>
 
