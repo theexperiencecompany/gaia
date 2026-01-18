@@ -87,7 +87,7 @@ const SplitTextBlur = ({
         initial="hidden"
         animate={shouldAnimate ? "visible" : "hidden"}
         variants={containerVariants}
-        className={`${cn(className)} z-10`}
+        className={`${cn(className)} z-[10]`}
         style={{
           willChange: "transform, opacity, filter",
           background: gradient,
@@ -109,7 +109,7 @@ const SplitTextBlur = ({
               WebkitBackgroundClip: "inherit",
               WebkitTextFillColor: "inherit",
               backgroundClip: "inherit",
-              padding: "7px 0",
+              paddingBottom: "7px",
             }}
             className="font-serif"
           >
@@ -123,7 +123,7 @@ const SplitTextBlur = ({
           initial="hidden"
           animate={shouldAnimate ? "visible" : "hidden"}
           variants={containerVariants}
-          className={`${cn(className)} text-black/10 blur-md absolute top-0 z-[-1]`}
+          className={`${cn(className)} text-white blur-md absolute top-0 z-[-1]`}
         >
           {words.map((word, index) => (
             <motion.span

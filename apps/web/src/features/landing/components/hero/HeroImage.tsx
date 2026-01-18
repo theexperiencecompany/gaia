@@ -32,8 +32,8 @@ export default function HeroImage({
         }}
         className="absolute inset-0 h-full w-full"
       >
-        <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[30vh] bg-linear-to-t from-background to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-linear-to-b from-background to-transparent opacity-50" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
 
         <ProgressiveImage
           webpSrc="/images/wallpapers/g3.webp"

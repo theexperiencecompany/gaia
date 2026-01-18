@@ -16,7 +16,7 @@ export default function Productivity() {
 
   return (
     <div className="relative flex flex-col items-center justify-start px-4 sm:px-6">
-      <div
+      {/* <div
         className="absolute -top-20 left-0 z-0 h-screen w-screen"
         style={{
           backgroundImage: `
@@ -29,7 +29,7 @@ export default function Productivity() {
           filter: "blur(100px)",
           backgroundRepeat: "no-repeat",
         }}
-      />
+      /> */}
 
       <div className="relative z-1 flex w-full max-w-7xl flex-col items-center justify-center p-4 sm:p-6 lg:p-7 gap-10">
         <LargeHeader

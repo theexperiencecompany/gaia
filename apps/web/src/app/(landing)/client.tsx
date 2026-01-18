@@ -50,17 +50,17 @@ export default function LandingPageClient() {
   ];
   return (
     <div className="relative overflow-hidden">
-      <div className="absolute inset-0 h-screen w-full opacity-80">
+      <div className="absolute inset-0 h-screen w-full opacity-100">
         <HeroImage />
       </div>
 
       <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
         <HeroSection />
       </section>
-
+      {/* 
       <div className="mx-auto max-w-6xl relative -top-25 z-20">
         <ImageSelector images={imageOptions} defaultIndex={2} />
-      </div>
+      </div> */}
 
       <div>
         <div className="relative">

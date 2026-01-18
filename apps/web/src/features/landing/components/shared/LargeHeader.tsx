@@ -15,7 +15,7 @@ export default function LargeHeader({
 }) {
   return (
     <div
-      className={`flex max-w-(--breakpoint-lg) flex-col ${centered ? "items-center text-center" : "items-start text-left"}`}
+      className={`flex max-w-(--breakpoint-xl) flex-col ${centered ? "items-center text-center" : "items-start text-left"}`}
     >
       <div
         className={`flex w-full gap-1 ${centered ? "items-center justify-center" : "items-start justify-start"}`}
