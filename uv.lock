@@ -19,6 +19,7 @@ members = [
 name = "aenum"
 version = "3.1.16"
 source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/7a/61ed58e8be9e30c3fe518899cc78c284896d246d51381bab59b5db11e1f3/aenum-3.1.16.tar.gz", hash = "sha256:bfaf9589bdb418ee3a986d85750c7318d9d2839c1b1a1d6fe8fc53ec201cf140", size = 137693, upload-time = "2026-01-12T22:34:38.819Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e3/52/6ad8f63ec8da1bf40f96996d25d5b650fdd38f5975f8c813732c47388f18/aenum-3.1.16-py3-none-any.whl", hash = "sha256:9035092855a98e41b66e3d0998bd7b96280e85ceb3a04cc035636138a1943eaf", size = 165627, upload-time = "2025-04-25T03:17:58.89Z" },
 ]
@@ -1273,15 +1274,6 @@ wheels = [
 ]
 
 [[package]]
-name = "defusedxml"
-version = "0.7.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0f/d5/c66da9b79e5bdb124974bfe172b4daf3c984ebd9c2a06e2b8a4dc7331c72/defusedxml-0.7.1.tar.gz", hash = "sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69", size = 75520, upload-time = "2021-03-08T10:59:26.269Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/07/6c/aa3f2f849e01cb6a001cd8554a88d4c77c5c1a31c95bdf1cf9301e6d9ef4/defusedxml-0.7.1-py2.py3-none-any.whl", hash = "sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61", size = 25604, upload-time = "2021-03-08T10:59:24.45Z" },
-]
-
-[[package]]
 name = "deprecated"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1464,22 +1456,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/cc/28/c14e053b6762b1044f34a13aab6859bbf40456d37d23aa286ac24cfd9a5d/executing-2.2.1.tar.gz", hash = "sha256:3632cc370565f6648cc328b32435bd120a1e4ebb20c77e3fdde9a13cd1e533c4", size = 1129488, upload-time = "2025-09-01T09:48:10.866Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/ea/53f2148663b321f21b5a606bd5f191517cf40b7072c0497d3c92c4a13b1e/executing-2.2.1-py2.py3-none-any.whl", hash = "sha256:760643d3452b4d777d295bb167ccc74c64a81df23fb5e08eff250c425a4b2017", size = 28317, upload-time = "2025-09-01T09:48:08.5Z" },
-]
-
-[[package]]
-name = "extract-favicon"
-version = "0.5.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "beautifulsoup4" },
-    { name = "defusedxml" },
-    { name = "pillow" },
-    { name = "reachable" },
-    { name = "tldextract" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/8c/2a/fed38079504579b70e3f5ac5a26b99809cf47c8f0b78fb57ca09c0192428/extract_favicon-0.5.1.tar.gz", hash = "sha256:db6ed41882d99ab5824e55465b368a9e9a96d0d00c3114590eed14e78a7cd65e", size = 20983, upload-time = "2025-05-30T14:41:58.384Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/cf/1d/7868c16e9c6051de92623398837dc1d3eeabe1de39357e305f21a3f86b0e/extract_favicon-0.5.1-py3-none-any.whl", hash = "sha256:90791640c6e04e4990f6cbe88bf24cb00a25b85b8cfedaa16edc14e28e6ac4ff", size = 18961, upload-time = "2025-05-30T14:41:56.707Z" },
 ]
 
 [[package]]
@@ -1959,7 +1935,6 @@ dependencies = [
     { name = "aiolimiter" },
     { name = "beartype" },
     { name = "croniter" },
-    { name = "extract-favicon" },
     { name = "fastapi-cache2", extra = ["redis"] },
     { name = "favicon" },
     { name = "filelock" },
@@ -1967,7 +1942,6 @@ dependencies = [
     { name = "httpx" },
     { name = "livekit" },
     { name = "livekit-api" },
-    { name = "mcp-use" },
     { name = "orjson" },
     { name = "ormsgpack" },
     { name = "pendulum" },
@@ -2031,7 +2005,6 @@ backend = [
     { name = "langgraph-bigtool" },
     { name = "langgraph-checkpoint-postgres" },
     { name = "language-data" },
-    { name = "livekit-api" },
     { name = "llama-cloud-services" },
     { name = "llama-parse" },
     { name = "llvmlite" },
@@ -2115,7 +2088,6 @@ requires-dist = [
     { name = "aiolimiter", specifier = ">=1.2.1" },
     { name = "beartype", specifier = ">=0.21.0" },
     { name = "croniter", specifier = ">=3.0.0" },
-    { name = "extract-favicon", specifier = ">=0.5.1" },
     { name = "fastapi-cache2", extras = ["redis"], specifier = ">=0.1.8" },
     { name = "favicon", specifier = ">=0.7.0" },
     { name = "filelock", specifier = ">=3.20.1" },
@@ -2123,7 +2095,6 @@ requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "livekit", specifier = ">=1.0.23" },
     { name = "livekit-api", specifier = ">=1.1.0" },
-    { name = "mcp-use", specifier = ">=1.5.1" },
     { name = "orjson", specifier = ">=3.11.3" },
     { name = "ormsgpack", specifier = ">=1.12.0" },
     { name = "pendulum", specifier = ">=3.0.0" },
@@ -2186,7 +2157,6 @@ backend = [
     { name = "langgraph-bigtool", specifier = ">=0.0.2" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0.21" },
     { name = "language-data", specifier = "==1.3.0" },
-    { name = "livekit-api" },
     { name = "llama-cloud-services", specifier = ">=0.6.15" },
     { name = "llama-parse", specifier = ">=0.6.12" },
     { name = "llvmlite", specifier = "==0.44.0" },
@@ -9829,24 +9799,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/85/33/cd87d92b23f0b06e8914a61cea6850c6d495ca027f669fab7a379041827a/rapidfuzz-3.14.3-pp311-pypy311_pp73-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:1faa0f8f76ba75fd7b142c984947c280ef6558b5067af2ae9b8729b0a0f99ede", size = 1352187, upload-time = "2025-11-01T11:54:45.518Z" },
     { url = "https://files.pythonhosted.org/packages/22/20/9d30b4a1ab26aac22fff17d21dec7e9089ccddfe25151d0a8bb57001dc3d/rapidfuzz-3.14.3-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:1e6eefec45625c634926a9fd46c9e4f31118ac8f3156fff9494422cee45207e6", size = 3101472, upload-time = "2025-11-01T11:54:47.255Z" },
     { url = "https://files.pythonhosted.org/packages/b1/ad/fa2d3e5c29a04ead7eaa731c7cd1f30f9ec3c77b3a578fdf90280797cbcb/rapidfuzz-3.14.3-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:56fefb4382bb12250f164250240b9dd7772e41c5c8ae976fd598a32292449cc5", size = 1511361, upload-time = "2025-11-01T11:54:49.057Z" },
-]
-
-[[package]]
-name = "reachable"
-version = "0.7.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "brotli" },
-    { name = "fake-useragent" },
-    { name = "httpx", extra = ["http2"] },
-    { name = "playwright" },
-    { name = "tldextract" },
-    { name = "tqdm" },
-    { name = "zstandard" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/1c/f6/aefb18879a4bb4ea37661979c4edeac9180b9652b2af4c5f63a792355dd3/reachable-0.7.0.tar.gz", hash = "sha256:8d338626d7b6428dbe2bf28b634bd8f376572a11fabec08a48370bef3a8bcbbf", size = 14241, upload-time = "2024-12-21T22:40:15.862Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/d5/f570ea73a9f42835ca7c7d866bdea5ee072b8962ef5a9948e0a4ceb1f343/reachable-0.7.0-py3-none-any.whl", hash = "sha256:036b7ceb0c263f0438d9703aecac5f1bbada6576f545a6bf47009b6badc78bbd", size = 12649, upload-time = "2024-12-21T22:40:11.709Z" },
 ]
 
 [[package]]

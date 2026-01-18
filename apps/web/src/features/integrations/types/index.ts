@@ -77,6 +77,9 @@ export interface MarketplaceIntegration {
 }
 
 // Matches backend UserIntegrationResponse with camelCase aliases
+// Note: status is restricted to "created" | "connected" because this represents
+// the database record state. The broader Integration.status ("not_connected" | "error")
+// is derived at the API layer based on whether a UserIntegration record exists.
 export interface UserIntegration {
   integrationId: string;
   status: "created" | "connected";

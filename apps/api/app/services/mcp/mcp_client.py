@@ -1292,6 +1292,24 @@ class MCPClient:
             return await self._try_refresh_token(integration_id, resolved.mcp_config)
         return False
 
+    async def close_all_client_sessions(self) -> None:
+        """Close all active MCP client sessions.
+
+        Public method for graceful shutdown - used by MCPClientPool.
+        """
+        for integration_id in list(self._clients.keys()):
+            try:
+                await self._clients[integration_id].close_all_sessions()
+            except Exception as e:
+                logger.warning(f"Error closing MCP session for {integration_id}: {e}")
+
+    def get_active_integration_ids(self) -> list[str]:
+        """Get list of active integration IDs.
+
+        Public method for introspection - used by MCPClientPool.
+        """
+        return list(self._clients.keys())
+
 
 async def get_mcp_client(user_id: str) -> MCPClient:
     """Get MCP client for a user from the pool."""

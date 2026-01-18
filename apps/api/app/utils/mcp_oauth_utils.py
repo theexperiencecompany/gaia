@@ -10,6 +10,8 @@ Contains functions for OAuth discovery per MCP specification:
 - Token introspection support (RFC 7662)
 """
 
+import base64
+import json
 import re
 import time
 from typing import Any, Optional, Protocol
@@ -136,21 +138,32 @@ async def extract_auth_challenge(server_url: str) -> dict:
                 www_auth = response.headers.get("WWW-Authenticate", "")
                 result = {"raw": www_auth}
 
-                rm_match = re.search(r'resource_metadata="([^"]+)"', www_auth)
-                if rm_match:
-                    result["resource_metadata"] = rm_match.group(1)
+                # Regex pattern handles escaped quotes within quoted values
+                # Matches: key="value" or key="value with \" escaped"
+                def extract_quoted_value(key: str, header: str) -> Optional[str]:
+                    # Match key="..." handling escaped quotes
+                    pattern = rf'{key}="((?:[^"\\]|\\.)*)"'
+                    match = re.search(pattern, header)
+                    if match:
+                        # Unescape any escaped quotes
+                        return match.group(1).replace('\\"', '"')
+                    return None
 
-                scope_match = re.search(r'scope="([^"]+)"', www_auth)
-                if scope_match:
-                    result["scope"] = scope_match.group(1)
+                rm_value = extract_quoted_value("resource_metadata", www_auth)
+                if rm_value:
+                    result["resource_metadata"] = rm_value
 
-                error_match = re.search(r'error="([^"]+)"', www_auth)
-                if error_match:
-                    result["error"] = error_match.group(1)
+                scope_value = extract_quoted_value("scope", www_auth)
+                if scope_value:
+                    result["scope"] = scope_value
 
-                error_desc_match = re.search(r'error_description="([^"]+)"', www_auth)
-                if error_desc_match:
-                    result["error_description"] = error_desc_match.group(1)
+                error_value = extract_quoted_value("error", www_auth)
+                if error_value:
+                    result["error"] = error_value
+
+                error_desc_value = extract_quoted_value("error_description", www_auth)
+                if error_desc_value:
+                    result["error_description"] = error_desc_value
 
                 logger.info(
                     f"[TIMING] Probe {server_url}: 401 OAuth required, {elapsed_ms:.0f}ms"
@@ -366,8 +379,6 @@ async def revoke_token(
     if client_id:
         if client_secret:
             # Use HTTP Basic auth for confidential clients
-            import base64
-
             credentials = f"{client_id}:{client_secret}"
             encoded = base64.b64encode(credentials.encode()).decode()
             headers["Authorization"] = f"Basic {encoded}"
@@ -455,8 +466,6 @@ async def introspect_token(
     # Add client authentication (usually required for introspection)
     if client_id:
         if client_secret:
-            import base64
-
             credentials = f"{client_id}:{client_secret}"
             encoded = base64.b64encode(credentials.encode()).decode()
             headers["Authorization"] = f"Basic {encoded}"
@@ -656,9 +665,6 @@ def validate_jwt_issuer(
         return True
 
     try:
-        import base64
-        import json
-
         # Decode payload (middle part)
         payload_b64 = parts[1]
         # Add padding if needed

@@ -39,7 +39,13 @@ class MCPTokenStore:
             key = getattr(settings, "MCP_ENCRYPTION_KEY", None)
             if not key:
                 raise ValueError("MCP_ENCRYPTION_KEY not configured in Infisical")
-            self._cipher = Fernet(key.encode())
+            try:
+                # Fernet expects a URL-safe base64-encoded 32-byte key
+                self._cipher = Fernet(key.encode())
+            except Exception as e:
+                raise ValueError(
+                    f"MCP_ENCRYPTION_KEY is not a valid Fernet key (must be 32 url-safe base64-encoded bytes): {e}"
+                )
         return self._cipher
 
     def _encrypt(self, data: str) -> str:
@@ -86,9 +92,13 @@ class MCPTokenStore:
             return None
 
         # Check if token is expired
-        if cred.token_expires_at and cred.token_expires_at < datetime.now(timezone.utc):
-            logger.warning(f"OAuth token expired for {integration_id}")
-            return None
+        # Note: token_expires_at is stored as naive UTC in PostgreSQL TIMESTAMP WITHOUT TIME ZONE
+        # We compare with naive UTC for consistency
+        if cred.token_expires_at:
+            now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+            if cred.token_expires_at < now_utc:
+                logger.warning(f"OAuth token expired for {integration_id}")
+                return None
 
         logger.debug(f"[{integration_id}] Returning decrypted OAuth token")
         return self._decrypt(cred.access_token)

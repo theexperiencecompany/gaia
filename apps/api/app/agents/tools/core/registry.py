@@ -158,6 +158,7 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._categories: Dict[str, ToolCategory] = {}
+        self._user_mcp_categories: Dict[str, set[str]] = {}
 
     async def setup(self):
         self._initialize_categories()
@@ -456,9 +457,7 @@ class ToolRegistry:
 
         loaded: Dict[str, List[BaseTool]] = {}
 
-        # Track which MCP categories this user has access to
-        if not hasattr(self, "_user_mcp_categories"):
-            self._user_mcp_categories: Dict[str, set[str]] = {}
+        # Ensure user has an entry in the MCP categories tracking dict
         if user_id not in self._user_mcp_categories:
             self._user_mcp_categories[user_id] = set()
 

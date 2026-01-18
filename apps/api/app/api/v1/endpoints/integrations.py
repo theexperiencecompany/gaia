@@ -1,10 +1,12 @@
 """Integration API routes."""
 
+import asyncio
 from typing import Optional
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.db.mongodb.collections import integrations_collection
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
     CreateCustomIntegrationRequest as CreateCustomIntegrationRequestModel,
@@ -54,6 +56,7 @@ from app.services.integrations.integration_service import (
 )
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.oauth.oauth_service import get_all_integrations_status
+from app.utils.favicon_utils import fetch_favicon_from_url
 from fastapi import APIRouter, Depends, HTTPException
 from mcp_use.client.exceptions import OAuthAuthenticationError
 
@@ -259,15 +262,7 @@ async def create_custom_mcp_integration(
     user_id: str = Depends(get_user_id),
 ) -> CreateCustomIntegrationResponse:
     """Create a custom MCP integration."""
-    import asyncio
-    import time
-
-    from app.db.mongodb.collections import integrations_collection
-    from app.utils.favicon_utils import fetch_favicon_from_url
-
     try:
-        t_start = time.perf_counter()
-
         # EARLY VALIDATION: Check for duplicate name BEFORE slow network ops
         # This prevents users from waiting 50+ seconds only to get a duplicate error
         potential_id = f"custom_{request.name.lower().replace(' ', '_')}_{user_id}"
@@ -280,34 +275,25 @@ async def create_custom_mcp_integration(
                 "Please choose a different name."
             )
 
-        t0 = time.perf_counter()
         mcp_client = await get_mcp_client(user_id=user_id)
-        logger.info(
-            f"[TIMING] get_mcp_client: {(time.perf_counter() - t0) * 1000:.0f}ms"
-        )
 
         # Parallel: Favicon fetch + MCP probe
-        t1 = time.perf_counter()
         favicon_result, probe_result = await asyncio.gather(
             fetch_favicon_from_url(request.server_url),
             mcp_client.probe_connection(request.server_url),
             return_exceptions=True,
         )
-        logger.info(
-            f"[TIMING] parallel fetch (favicon + probe): {(time.perf_counter() - t1) * 1000:.0f}ms"
-        )
 
         # Log individual results for debugging
         if isinstance(favicon_result, Exception):
-            logger.debug(f"[TIMING] favicon fetch failed: {favicon_result}")
+            logger.debug(f"Favicon fetch failed: {favicon_result}")
         if isinstance(probe_result, Exception):
-            logger.debug(f"[TIMING] probe failed: {probe_result}")
+            logger.debug(f"Probe failed: {probe_result}")
 
         icon_url = None
         if favicon_result and not isinstance(favicon_result, Exception):
             icon_url = favicon_result
 
-        t2 = time.perf_counter()
         integration = await create_custom_integration(
             user_id,
             CreateCustomIntegrationRequestModel(
@@ -320,12 +306,6 @@ async def create_custom_mcp_integration(
                 is_public=request.is_public,
             ),
             icon_url,
-        )
-        logger.info(
-            f"[TIMING] create_custom_integration: {(time.perf_counter() - t2) * 1000:.0f}ms"
-        )
-        logger.info(
-            f"[TIMING] total before connect: {(time.perf_counter() - t_start) * 1000:.0f}ms"
         )
 
         # Helper to build OAuth URL and return appropriate connection result
@@ -382,8 +362,6 @@ async def create_custom_mcp_integration(
                     status="connected", tools_count=tools_count
                 )
             except OAuthAuthenticationError:
-                # mcp-use detected OAuth requirement at runtime (probe missed it)
-                # Update the stored integration so future connects know auth is required
                 await mcp_client.update_integration_auth_status(
                     integration.integration_id,
                     requires_auth=True,

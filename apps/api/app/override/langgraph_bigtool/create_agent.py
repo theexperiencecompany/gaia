@@ -303,6 +303,18 @@ def create_agent(
     # Use DynamicToolNode to support tools added after graph compilation
     tool_node = DynamicToolNode(tool_registry)  # type: ignore[arg-type]
 
+    def _emit_tool_inputs(writer: Any, tool_call: dict) -> None:
+        """Emit tool_inputs event if writer is available and args are present."""
+        if writer is not None and tool_call.get("args"):
+            writer(
+                {
+                    "tool_inputs": {
+                        "tool_call_id": tool_call.get("id"),
+                        "inputs": tool_call.get("args"),
+                    }
+                }
+            )
+
     def select_tools(
         tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore
     ) -> State:
@@ -319,15 +331,7 @@ def create_agent(
         for tool_call in tool_calls:
             # Emit tool_inputs immediately since we have complete args
             # This fixes the race condition where args may be incomplete during streaming
-            if writer is not None and tool_call.get("args"):
-                writer(
-                    {
-                        "tool_inputs": {
-                            "tool_call_id": tool_call.get("id"),
-                            "inputs": tool_call.get("args"),
-                        }
-                    }
-                )
+            _emit_tool_inputs(writer, tool_call)
 
             kwargs = {**tool_call["args"]}
             if store_arg:
@@ -377,15 +381,7 @@ def create_agent(
         for tool_call in tool_calls:
             # Emit tool_inputs immediately since we have complete args
             # This fixes the race condition where args may be incomplete during streaming
-            if writer is not None and tool_call.get("args"):
-                writer(
-                    {
-                        "tool_inputs": {
-                            "tool_call_id": tool_call.get("id"),
-                            "inputs": tool_call.get("args"),
-                        }
-                    }
-                )
+            _emit_tool_inputs(writer, tool_call)
 
             kwargs = {**tool_call["args"]}
             if store_arg:
@@ -432,9 +428,7 @@ def create_agent(
                 if retrieve_tools is not None and call["name"] == retrieve_tools.name:
                     destinations.append(Send("select_tools", [call]))
                 else:
-                    # tool_call = tool_node._inject_tool_args(call, state, store)  # type: ignore[arg-type]
-                    # destinations.append(Send("tools", [tool_call]))
-                    # Tool args injection is now handled internally by ToolNode during execution
+                    # Tool args injection handled internally by ToolNode during execution
                     destinations.append(Send("tools", [call]))
 
             return destinations

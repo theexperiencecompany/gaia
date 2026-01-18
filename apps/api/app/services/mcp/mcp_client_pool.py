@@ -85,12 +85,11 @@ class MCPClientPool:
             return
 
         pooled = self._clients.pop(user_id)
-        # Close all active MCP sessions
-        for integration_id in list(pooled.client._clients.keys()):
-            try:
-                await pooled.client._clients[integration_id].close_all_sessions()
-            except Exception as e:
-                logger.warning(f"Error closing MCP session for {integration_id}: {e}")
+        # Close all active MCP sessions using public method
+        try:
+            await pooled.client.close_all_client_sessions()
+        except Exception as e:
+            logger.warning(f"Error closing MCP sessions for user {user_id}: {e}")
         logger.debug(f"Evicted MCPClient for {user_id}")
 
     async def cleanup_stale(self):
@@ -112,9 +111,15 @@ class MCPClientPool:
 
         async def _loop():
             while True:
-                await asyncio.sleep(interval)
+                try:
+                    await asyncio.sleep(interval)
+                except asyncio.CancelledError:
+                    logger.info("MCPClientPool cleanup loop cancelled")
+                    raise
                 try:
                     await self.cleanup_stale()
+                except asyncio.CancelledError:
+                    raise
                 except Exception as e:
                     logger.warning(f"Error in MCP cleanup loop: {e}")
 

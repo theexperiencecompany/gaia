@@ -10,7 +10,7 @@ This service handles:
 
 import asyncio
 from datetime import datetime, UTC
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from app.config.loggers import app_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
@@ -240,7 +240,7 @@ async def get_user_connected_integrations(user_id: str) -> List[Dict[str, Any]]:
 async def add_user_integration(
     user_id: str,
     integration_id: str,
-    initial_status: Optional[str] = None,
+    initial_status: Optional[Literal["created", "connected"]] = None,
 ) -> UserIntegration:
     """
     Add an integration to user's workspace.
@@ -278,6 +278,7 @@ async def add_user_integration(
     # - If initial_status is provided, use it (for custom MCPs that need probe first)
     # - No auth required: connect immediately
     # - Auth required: set to created (needs OAuth to complete)
+    status: Literal["created", "connected"]
     if initial_status:
         status = initial_status
     else:
@@ -287,7 +288,7 @@ async def add_user_integration(
     user_integration = UserIntegration(
         user_id=user_id,
         integration_id=integration_id,
-        status="connected" if status == "connected" else "created",
+        status=status,
         created_at=datetime.now(UTC),
         connected_at=connected_at,
     )
@@ -461,7 +462,13 @@ async def create_custom_integration(
 
     # Auto-add to user's workspace with status='created'
     # The probe/connect flow in the endpoint will update to 'connected' after success
-    await add_user_integration(user_id, integration_id, initial_status="created")
+    try:
+        await add_user_integration(user_id, integration_id, initial_status="created")
+    except Exception as e:
+        # Rollback: remove the orphaned integration if user_integration creation fails
+        logger.error(f"Failed to add user_integration, rolling back integration: {e}")
+        await integrations_collection.delete_one({"integration_id": integration_id})
+        raise
 
     return integration
 
@@ -556,10 +563,12 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
         }
     )
 
-    # Always clean up user_integrations (prevents orphaned records)
-    await user_integrations_collection.delete_many({"integration_id": integration_id})
-
+    # Only clean up user_integrations if the main delete succeeded
     if result.deleted_count > 0:
+        await user_integrations_collection.delete_many(
+            {"integration_id": integration_id}
+        )
+
         # Clean up MCP credentials from PostgreSQL (prevents orphaned records)
         try:
             from sqlalchemy import delete

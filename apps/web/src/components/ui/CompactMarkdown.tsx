@@ -1,7 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
-
+import ReactMarkdown from "react-markdown";
 import { formatJsonLikeString, normalizeValue } from "@/utils/jsonFormatters";
 
 interface CompactMarkdownProps {
@@ -28,24 +27,21 @@ export function CompactMarkdown({ content }: CompactMarkdownProps) {
         : JSON.stringify(data, null, 2);
 
     return (
-      <pre className="bg-zinc-900/50 rounded-xl p-3 max-h-60 overflow-y-auto text-xs text-zinc-400 whitespace-pre-wrap break-words w-fit max-w-200">
+      <pre className="bg-zinc-900/50 rounded-xl p-3 max-h-60 overflow-y-auto text-xs text-zinc-400 whitespace-pre-wrap wrap-break-word w-fit max-w-prose">
         {displayText}
       </pre>
     );
   }
 
   // For text content, use react-markdown
-  const ReactMarkdown = require("react-markdown").default;
   const textContent = String(data);
 
   return (
-    <div className="bg-zinc-900/50 rounded-xl p-3 max-h-60 overflow-y-auto text-xs text-zinc-400 leading-relaxed w-fit max-w-200">
+    <div className="bg-zinc-900/50 rounded-xl p-3 max-h-60 overflow-y-auto text-xs text-zinc-400 leading-relaxed w-fit max-w-prose">
       <ReactMarkdown
         components={{
-          p: ({ children }: { children: ReactNode }) => (
-            <p className="mb-1 last:mb-0">{children}</p>
-          ),
-          a: ({ href, children }: { href?: string; children: ReactNode }) => (
+          p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+          a: ({ href, children }) => (
             <a
               href={href}
               target="_blank"
@@ -55,34 +51,32 @@ export function CompactMarkdown({ content }: CompactMarkdownProps) {
               {children}
             </a>
           ),
-          strong: ({ children }: { children: ReactNode }) => (
+          strong: ({ children }) => (
             <strong className="font-semibold">{children}</strong>
           ),
-          em: ({ children }: { children: ReactNode }) => <em>{children}</em>,
-          code: ({ children }: { children: ReactNode }) => (
+          em: ({ children }) => <em>{children}</em>,
+          code: ({ children }) => (
             <code className="bg-zinc-800 px-1 py-0.5 rounded text-[11px]">
               {children}
             </code>
           ),
-          pre: ({ children }: { children: ReactNode }) => (
+          pre: ({ children }) => (
             <pre className="bg-zinc-800 rounded p-2 my-1 overflow-x-auto text-[11px] whitespace-pre-wrap">
               {children}
             </pre>
           ),
-          ul: ({ children }: { children: ReactNode }) => (
-            <ul className="list-disc pl-4">{children}</ul>
-          ),
-          ol: ({ children }: { children: ReactNode }) => (
+          ul: ({ children }) => <ul className="list-disc pl-4">{children}</ul>,
+          ol: ({ children }) => (
             <ol className="list-decimal pl-4">{children}</ol>
           ),
-          li: ({ children }: { children: ReactNode }) => <li>{children}</li>,
-          h1: ({ children }: { children: ReactNode }) => (
+          li: ({ children }) => <li>{children}</li>,
+          h1: ({ children }) => (
             <h1 className="font-semibold mb-1">{children}</h1>
           ),
-          h2: ({ children }: { children: ReactNode }) => (
+          h2: ({ children }) => (
             <h2 className="font-semibold mb-1">{children}</h2>
           ),
-          h3: ({ children }: { children: ReactNode }) => (
+          h3: ({ children }) => (
             <h3 className="font-medium mb-1">{children}</h3>
           ),
         }}

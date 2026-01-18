@@ -261,6 +261,8 @@ export const IntegrationsList: React.FC<{
 
       {/* Category Sections */}
       {selectedCategory === "all" ? (
+        // Exclude "created_by_you" (shown above) and "custom" (user-created integrations
+        // are shown in "Created by You" section instead, to avoid duplicates)
         availableCategories
           .filter((cat) => cat !== "created_by_you" && cat !== "custom")
           .map((category) => {

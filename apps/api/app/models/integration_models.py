@@ -10,7 +10,7 @@ This module defines Pydantic models for:
 from datetime import datetime, timezone
 from typing import List, Literal, Optional, cast
 
-from app.models.oauth_models import MCPConfig
+from app.models.oauth_models import MCPConfig, OAuthIntegration
 from pydantic import BaseModel, Field
 
 # Type alias for auth_type
@@ -192,7 +192,9 @@ class IntegrationResponse(BaseModel):
         )
 
     @classmethod
-    def from_oauth_integration(cls, oauth_int) -> "IntegrationResponse":
+    def from_oauth_integration(
+        cls, oauth_int: OAuthIntegration
+    ) -> "IntegrationResponse":
         """Convert OAuthIntegration from config to response."""
         requires_auth = False
         auth_type = None

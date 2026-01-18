@@ -465,26 +465,7 @@ export default function TextBubble({
 
                 let bubbleClassName = "imessage-bubble imessage-from-them";
 
-                if (isEmojiOnly) {
-                  if (emojiCount === 1) {
-                    bubbleClassName = "select-none"; // No background, no padding
-                    groupedClasses = ""; // Remove grouping/tail classes
-                    // We need to ensure font size is applied. renderBubbleContent uses MarkdownRenderer.
-                    // MarkdownRenderer might wrap in <p>. We can pass a class or wrap it.
-                    // Actually, if it's 1 emoji, we might just render it directly to avoid markdown overhead/styling or styling issues?
-                    // But MarkdownRenderer handles streaming.
-                    // If streaming is done, we can just render text.
-                    // If loading, markdown might be better.
-                    // Let's assume for 1 emoji we can just style the container and MarkdownRenderer handles text size via inheritance or utility class on container?
-                    // MarkdownRenderer usually resets typography.
-                    // Let's try applying text size to container.
-                    // But `imessage-bubble` has padding.
-                  } else if (emojiCount === 2) {
-                    // Medium large
-                  }
-                }
-
-                // Construct styles
+                // Construct styles for emoji-only messages
                 let textClass = "";
 
                 if (isEmojiOnly) {
