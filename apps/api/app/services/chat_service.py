@@ -287,6 +287,7 @@ async def _save_conversation_async(
         if body.messages and len(body.messages) > 0
         else None
     ) or body.message
+
     user_message = MessageModel(
         type="user",
         response=user_content,
