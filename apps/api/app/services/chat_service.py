@@ -283,7 +283,7 @@ async def _save_conversation_async(
 
     # Create user message
     user_content = (
-        body.messages[-1]["content"]
+        body.messages[-1].get("content")
         if body.messages and len(body.messages) > 0
         else None
     ) or body.message
@@ -434,7 +434,7 @@ def update_conversation_messages(
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
 
     user_content = (
-        body.messages[-1]["content"]
+        body.messages[-1].get("content")
         if body.messages and len(body.messages) > 0
         else None
     ) or body.message
