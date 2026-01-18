@@ -114,6 +114,10 @@ export default function ChatRenderer({
     }, 700);
   };
 
+  const formatCategoryName = (category: string): string => {
+    return category.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
   return (
     <>
       <title id="chat_title">
@@ -173,7 +177,7 @@ export default function ChatRenderer({
             })}
           <span>
             {toolInfo?.showCategory !== false && toolInfo?.toolCategory
-              ? `${toolInfo.toolCategory.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}: `
+              ? `${formatCategoryName(toolInfo.toolCategory)}: `
               : ""}
             {loadingText || "GAIA is thinking..."}
           </span>

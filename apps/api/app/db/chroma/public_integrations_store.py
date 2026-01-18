@@ -47,7 +47,7 @@ async def index_public_integration(
         tools_text = " ".join(
             [
                 f"{t.get('name', '')}: {t.get('description', '')}"
-                for t in tools[:20]  # Limit to first 20 tools
+                for t in tools
             ]
         )
         content = f"{name}\n{description}\n{tools_text}"

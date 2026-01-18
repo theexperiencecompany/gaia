@@ -254,20 +254,17 @@ export const IntegrationsList: React.FC<{
           />
         )}
 
-      {/* Created by You Section */}
       {createdByYouIntegrations.length > 0 &&
         !searchQuery &&
         selectedCategory === "all" && (
           <IntegrationSection
             title="Created by You"
             integrations={createdByYouIntegrations}
-            // chipColor="primary"
             onConnect={handleConnect}
             onIntegrationClick={onIntegrationClick}
           />
         )}
 
-      {/* Category Sections */}
       {selectedCategory === "all" ? (
         // Exclude "created_by_you" (shown above) and "custom" (user-created integrations
         // are shown in "Created by You" section instead, to avoid duplicates)

@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
 
     const toolCategories = [
       ...new Set(steps.map((s: { category: string }) => s.category)),
-    ].slice(0, 3) as string[];
+    ].slice(0, 7) as string[];
 
     const truncatedDesc = truncateText(description, 500);
 
@@ -107,14 +107,6 @@ export async function GET(request: NextRequest) {
         tw="flex flex-col w-full h-full relative"
         style={{ fontFamily: fonts.sans }}
       >
-        {/* <img
-          src={wallpaperUrl}
-          width={OG_WIDTH}
-          height={OG_HEIGHT}
-          tw="absolute inset-0 w-full h-full"
-          style={{ objectFit: "cover", objectPosition: "center" }}
-        /> */}
-
         <div
           tw="absolute inset-0"
           style={{

@@ -10,6 +10,7 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.chroma.public_integrations_store import (
     index_public_integration,
     remove_public_integration,
+    search_public_integrations,
 )
 from app.db.mongodb.collections import (
     integrations_collection,
@@ -58,8 +59,6 @@ from app.schemas.integrations.responses import (
 from app.services.integrations.category_inference_service import (
     infer_integration_category,
 )
-
-# Note: generate_unique_slug removed - using integration_id in URLs now
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,
@@ -77,6 +76,9 @@ from app.services.integrations.integration_service import (
     get_user_integrations,
     remove_user_integration,
     update_custom_integration,
+)
+from app.services.integrations.publish_validator import (
+    PublishIntegrationValidator,
 )
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.oauth.oauth_service import get_all_integrations_status
@@ -246,8 +248,6 @@ async def list_community_integrations(
 
     This is an UNAUTHENTICATED endpoint for browsing the marketplace.
     """
-    from app.db.chroma.public_integrations_store import search_public_integrations
-
     try:
         # Clamp limit to max 100
         limit = min(limit, 100)
@@ -827,10 +827,6 @@ async def add_public_integration(
     Returns:
         AddIntegrationResponse with status "connected", "redirect", or "error"
     """
-    from app.db.mongodb.collections import user_integrations_collection
-    from app.services.integrations.integration_connection_service import (
-        connect_mcp_integration,
-    )
 
     try:
         # 1. Get public integration
@@ -912,7 +908,7 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
     Search public integrations using semantic search.
     No authentication required.
     """
-    from app.db.chroma.public_integrations_store import search_public_integrations
+
 
     try:
         if not q or not q.strip():
@@ -1013,11 +1009,6 @@ async def publish_integration(
                 status_code=400,
                 detail="Integration must be connected with tools before publishing",
             )
-
-        # Validate content for publishing
-        from app.services.integrations.publish_validator import (
-            PublishIntegrationValidator,
-        )
 
         validation_errors = PublishIntegrationValidator.validate_for_publish(
             name=integration.get("name", ""),

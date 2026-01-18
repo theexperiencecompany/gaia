@@ -119,14 +119,6 @@ async def _get_subagent_by_id(subagent_id: str):
     )
 
     if custom:
-        # Debug: Log raw MongoDB document
-        logger.info(
-            f"_get_subagent_by_id found custom MCP: "
-            f"integration_id={custom.get('integration_id')}, "
-            f"name={custom.get('name')}, "
-            f"icon_url={custom.get('icon_url')}, "
-            f"all_keys={list(custom.keys())}"
-        )
         # Return a dict that mimics the integration structure
         return {
             "id": custom.get("integration_id"),
@@ -144,11 +136,6 @@ async def _get_subagent_by_id(subagent_id: str):
     resolved = await IntegrationResolver.resolve(search_id)
     if resolved and resolved.source == "custom" and resolved.custom_doc:
         doc = resolved.custom_doc
-        logger.info(
-            f"_get_subagent_by_id found via IntegrationResolver: "
-            f"integration_id={doc.get('integration_id')}, "
-            f"name={doc.get('name')}"
-        )
         return {
             "id": doc.get("integration_id"),
             "name": doc.get("name"),

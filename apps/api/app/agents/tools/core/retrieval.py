@@ -196,11 +196,6 @@ def get_retrieve_tools_function(
         if not user_id:
             logger.warning("retrieve_tools called with NO user_id (arg or config)")
 
-        logger.info(
-            f"retrieve_tools DISCOVERY: query='{query}', user_id={user_id}, "
-            f"include_subagents={include_subagents}, tool_space={tool_space}"
-        )
-
         # BINDING MODE: Validate and bind exact tool names
         if exact_tool_names:
             validated_tool_names = [
