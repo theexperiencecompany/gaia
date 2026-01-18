@@ -65,7 +65,6 @@ export const useLogout = () => {
               };
 
               request.onsuccess = () => {
-                console.log(`Deleted database: ${dbInfo.name}`);
                 resolve();
               };
             }),

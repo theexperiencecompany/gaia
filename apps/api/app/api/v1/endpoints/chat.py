@@ -19,10 +19,11 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.config.loggers import chat_logger as logger
 from app.core.stream_manager import stream_manager
+from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat_service import run_chat_stream_background
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 # Set to hold references to background tasks to prevent garbage collection
@@ -51,7 +52,10 @@ async def chat_stream_endpoint(
     conversation_id = body.conversation_id or str(uuid4())
     user_id = user.get("user_id")
     if not user_id:
-        raise ValueError("user_id is required")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="user_id is required",
+        )
 
     # Initialize stream tracking in Redis
     await stream_manager.start_stream(
@@ -75,6 +79,12 @@ async def chat_stream_endpoint(
 
     async def stream_from_redis():
         """Subscribe to Redis channel and forward chunks to HTTP response."""
+        # Check Redis availability before subscribing
+        if not redis_cache.redis:
+            logger.error(f"Redis unavailable for stream {stream_id}")
+            yield "data: [STREAM_ERROR]\n\n"
+            return
+
         try:
             async for chunk in stream_manager.subscribe_stream(stream_id):
                 # Check if client disconnected
@@ -112,7 +122,30 @@ async def cancel_stream_endpoint(
     Cancel a running stream.
 
     Called from frontend when user clicks the Stop button.
+    Verifies that the requesting user owns the stream before cancelling.
     """
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="user_id is required",
+        )
+
+    # Verify stream ownership
+    progress = await stream_manager.get_progress(stream_id)
+    if not progress:
+        return {
+            "success": False,
+            "stream_id": stream_id,
+            "error": "Stream not found",
+        }
+
+    if progress.get("user_id") != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to cancel this stream",
+        )
+
     success = await stream_manager.cancel_stream(stream_id)
     logger.info(f"Cancel stream request: stream_id={stream_id}, success={success}")
 

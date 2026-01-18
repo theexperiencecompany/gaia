@@ -313,9 +313,6 @@ export const syncSingleConversation = async (
     // Map messages
     const remoteMessages = mapApiMessagesToStored(messages, conversationId);
     const localMessages = await db.getMessagesForConversation(conversationId);
-    console.log(
-      `[SyncService] Local has ${localMessages.length} messages. Merging...`,
-    );
 
     const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
 

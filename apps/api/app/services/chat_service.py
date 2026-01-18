@@ -244,8 +244,9 @@ def _extract_response_text(chunk: str) -> str:
     """Extract response text from a data chunk."""
     try:
         if chunk.startswith("data: "):
-            data = json.loads(chunk[6:])
-            return data.get("response", "")
+            chunk = chunk[6:]
+        data = json.loads(chunk)
+        return data.get("response", "")
     except (json.JSONDecodeError, KeyError):
         pass
     return ""
@@ -281,7 +282,11 @@ async def _save_conversation_async(
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
 
     # Create user message
-    user_content = body.messages[-1]["content"] if body.messages else body.message
+    user_content = (
+        body.messages[-1]["content"]
+        if body.messages and len(body.messages) > 0
+        else None
+    ) or body.message
     user_message = MessageModel(
         type="user",
         response=user_content,
@@ -427,7 +432,11 @@ def update_conversation_messages(
     bot_timestamp = datetime.now(timezone.utc)
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
 
-    user_content = body.messages[-1]["content"] if body.messages else body.message
+    user_content = (
+        body.messages[-1]["content"]
+        if body.messages and len(body.messages) > 0
+        else None
+    ) or body.message
     user_message = MessageModel(
         type="user",
         response=user_content,

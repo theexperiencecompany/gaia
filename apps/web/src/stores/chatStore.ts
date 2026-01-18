@@ -130,10 +130,17 @@ export const useChatStore = create<ChatState>((set) => ({
           ? null
           : state.activeConversationId;
 
+      // Clear streaming indicator if the removed conversation was being streamed
+      const streamingConversationId =
+        state.streamingConversationId === conversationId
+          ? null
+          : state.streamingConversationId;
+
       return {
         conversations,
         messagesByConversation: remainingMessages,
         activeConversationId,
+        streamingConversationId,
       };
     }),
 

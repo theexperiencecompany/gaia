@@ -604,22 +604,19 @@ export const useChatStream = () => {
             loading: false,
           });
 
-          // Persist accumulated response to Dexie immediately
-          // This ensures data isn't lost on page refresh
+          // Persist accumulated response to Dexie using atomic merge-update
+          // This preserves existing metadata (tool_data, follow_up_actions, image_data, etc.)
           const conversationId =
             refs.current.newConversation.id ||
             useChatStore.getState().activeConversationId;
 
           if (conversationId && refs.current.botMessage.message_id) {
             try {
-              await db.putMessage({
-                id: refs.current.botMessage.message_id,
-                conversationId,
+              // Use updateMessage for atomic merge-update instead of putMessage
+              // This only updates content/status/updatedAt while preserving all other fields
+              await db.updateMessage(refs.current.botMessage.message_id, {
                 content: refs.current.accumulatedResponse,
-                role: "assistant",
                 status: "sent",
-                createdAt: new Date(),
-                updatedAt: new Date(),
               });
             } catch (error) {
               console.error("Failed to persist message on abort:", error);

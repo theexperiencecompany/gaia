@@ -67,18 +67,16 @@ export const streamController = {
       // Clear streaming indicator immediately
       useChatStore.getState().setStreamingConversationId(null);
 
-      // Schedule sync after backend has time to save.
+      // Schedule sync after backend has time to save with exponential backoff.
       // When user clicks Stop:
       //   1. Frontend aborts HTTP connection immediately
       //   2. Backend receives cancel signal via Redis
-      //   3. Backend's finally block saves to MongoDB (takes ~1-2s)
-      //   4. We wait 3s then fetch to ensure data is fully persisted
+      //   3. Backend's finally block saves to MongoDB (may take 1-5s under load)
+      //   4. We retry with exponential backoff to ensure data is fully persisted
       // This ensures IndexedDB has the complete response after refresh.
       const conversationId = useChatStore.getState().activeConversationId;
       if (conversationId) {
-        setTimeout(async () => {
-          await syncSingleConversation(conversationId);
-        }, 3000);
+        syncWithRetry(conversationId);
       }
 
       return true;
@@ -120,6 +118,39 @@ export const streamController = {
     useChatStore.getState().setStreamingConversationId(null);
   },
 };
+
+/**
+ * Sync conversation with exponential backoff retry.
+ * Handles cases where backend save takes longer than expected under load.
+ */
+async function syncWithRetry(
+  conversationId: string,
+  maxRetries = 3,
+  baseDelayMs = 3000,
+): Promise<void> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const delay = baseDelayMs * 2 ** attempt; // 3s, 6s, 12s
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    try {
+      await syncSingleConversation(conversationId);
+      // If sync succeeds, we're done
+      return;
+    } catch (error) {
+      console.debug(
+        `[syncWithRetry] Attempt ${attempt + 1}/${maxRetries} failed:`,
+        error,
+      );
+      // Continue to next retry
+    }
+  }
+
+  // Final attempt failed - log but don't throw
+  console.warn(
+    `[syncWithRetry] All ${maxRetries} attempts failed for conversation ${conversationId}`,
+  );
+}
 
 /**
  * Call the backend cancel endpoint.

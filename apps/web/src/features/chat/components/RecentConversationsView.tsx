@@ -12,7 +12,7 @@ import { useSyncStatus } from "@/hooks/useBackgroundSync";
 const RecentConversationsView = memo(() => {
   const router = useRouter();
   const { conversations } = useConversationList();
-  const { initialSyncCompleted } = useSyncStatus();
+  const { initialSyncCompleted, syncError } = useSyncStatus();
 
   // Only show loading when no cache AND initial sync hasn't completed
   const isLoading = conversations.length === 0 && !initialSyncCompleted;
@@ -39,7 +39,7 @@ const RecentConversationsView = memo(() => {
       isFetching={isLoading}
       isEmpty={displayConversations.length === 0 && !isLoading}
       emptyMessage="No recent conversations"
-      errorMessage={undefined}
+      errorMessage={syncError ?? undefined}
       path="/chat"
       onRefresh={handleViewAll}
     >
