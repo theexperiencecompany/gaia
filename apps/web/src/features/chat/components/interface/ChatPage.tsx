@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { VoiceApp } from "@/features/chat/components/composer/VoiceModeOverlay";
@@ -26,6 +27,8 @@ const ChatPage = React.memo(function MainChat() {
   const setActiveConversationId = useChatStore(
     (state) => state.setActiveConversationId,
   );
+  const searchParams = useSearchParams();
+  const shouldSync = searchParams.get("sync") === "true";
 
   // Fetching status on chat-page to resolve caching issues when new integration is connected
   useFetchIntegrationStatus({
@@ -62,6 +65,47 @@ const ChatPage = React.memo(function MainChat() {
         // Fire API call (don't await to avoid blocking)
         chatApi.markAsRead(convoIdParam).catch(console.error);
       }
+
+      // Sync messages from backend if coming from voice call (sync=true param)
+      // This ensures voice messages are fetched without manual IndexedDB persistence
+      if (shouldSync) {
+        const syncMessagesFromBackend = async () => {
+          try {
+            const remoteMessages = await chatApi.fetchMessages(convoIdParam);
+            if (remoteMessages.length > 0) {
+              const mappedMessages = remoteMessages.map((msg, index) => {
+                const createdAt = msg.date ? new Date(msg.date) : new Date();
+                const role = msg.type === "user" ? "user" : "assistant";
+                const messageId =
+                  msg.message_id ||
+                  `${convoIdParam}-${index}-${createdAt.getTime()}`;
+
+                return {
+                  id: messageId,
+                  conversationId: convoIdParam,
+                  content: msg.response,
+                  role: role as "user" | "assistant",
+                  status: "sent" as const,
+                  createdAt,
+                  updatedAt: createdAt,
+                  messageId: msg.message_id,
+                  fileIds: msg.fileIds,
+                  fileData: msg.fileData,
+                  toolName: msg.selectedTool ?? null,
+                  toolCategory: msg.toolCategory ?? null,
+                };
+              });
+
+              // Use syncMessages to properly merge with any existing local messages
+              await db.syncMessages(convoIdParam, mappedMessages);
+            }
+          } catch (error) {
+            console.error("Failed to sync messages after voice call:", error);
+          }
+        };
+
+        syncMessagesFromBackend();
+      }
     }
 
     // Clear optimistic message when navigating to a different conversation
@@ -72,6 +116,7 @@ const ChatPage = React.memo(function MainChat() {
   }, [
     convoIdParam,
     setActiveConversationId,
+    shouldSync,
     // NOTE: Not including conversations or upsertConversation in deps
     // to avoid re-triggering when manually toggling read/unread status
   ]);
