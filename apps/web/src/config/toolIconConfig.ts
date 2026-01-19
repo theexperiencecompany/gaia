@@ -55,7 +55,7 @@ export function normalizeCategoryName(name: string): string {
     .trim()
     .replace(/[\s-]+/g, "_")
     .replace(/_+/g, "_")
-    .replace(/^_|_$/g, "");
+    .replace(/(?:^_|_$)/g, "");
 }
 
 /** Alias mapping for backwards compatibility and category-to-integration mapping */
