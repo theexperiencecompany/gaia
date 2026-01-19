@@ -12,7 +12,7 @@ ensuring conversations are always saved even if client disconnects.
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from app.agents.core.agent import call_agent
@@ -42,7 +42,7 @@ async def run_chat_stream_background(
     user: dict,
     user_time: datetime,
     conversation_id: str,
-) -> AsyncGenerator[Any, Any]:
+) -> None:
     """
     Run chat streaming in background, publishing chunks to Redis.
 
@@ -130,11 +130,14 @@ async def run_chat_stream_background(
             if description_task and description_task.done():
                 try:
                     description = description_task.result()
-                    yield f"""data: {json.dumps({"conversation_description": description})}\n\n"""
-                    description_task = None  # Clear task after yielding
+                    await stream_manager.publish_chunk(
+                        stream_id,
+                        f"""data: {json.dumps({"conversation_description": description})}\n\n""",
+                    )
                 except Exception as e:
                     logger.error(f"Failed to get conversation description: {e}")
-                    description_task = None  # Clear task to avoid retry
+                finally:
+                    description_task = None  # Clear to prevent duplicate sends
 
             # Process complete message marker (internal, not sent to client)
             if chunk.startswith("nostream: "):
@@ -152,7 +155,10 @@ async def run_chat_stream_background(
                             if "follow_up_actions" in other_data_dict:
                                 follow_up_actions = other_data_dict["follow_up_actions"]
                                 # Stream follow_up_actions to frontend
-                                yield f"data: {json.dumps({'follow_up_actions': follow_up_actions})}\n\n"
+                                await stream_manager.publish_chunk(
+                                    stream_id,
+                                    f"data: {json.dumps({'follow_up_actions': follow_up_actions})}\n\n",
+                                )
 
                         if "tool_data" in new_data:
                             for tool_entry in new_data["tool_data"]:
@@ -181,23 +187,19 @@ async def run_chat_stream_background(
         # Get usage metadata
         usage_metadata = usage_metadata_callback.usage_metadata or {}
 
-        # Generate description for new conversations
-        if is_new_conversation:
+        # Await description task if still pending
+        if description_task:
             try:
-                last_message = body.messages[-1] if body.messages else None
-                description = await generate_and_update_description(
-                    conversation_id,
-                    last_message,
-                    user,
-                    body.selectedTool,
-                    body.selectedWorkflow,
-                )
+                description = await description_task
                 await stream_manager.publish_chunk(
                     stream_id,
-                    f"data: {json.dumps({'conversation_description': description})}\n\n",
+                    f"""data: {json.dumps({"conversation_description": description})}\n\n""",
                 )
             except Exception as e:
-                logger.error(f"Failed to generate description: {e}")
+                logger.error(f"Failed to get conversation description: {e}")
+
+        # Send [DONE] marker to signal stream completion
+        await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
 
         # Mark stream complete
         await stream_manager.complete_stream(stream_id)

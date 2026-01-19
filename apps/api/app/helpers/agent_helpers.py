@@ -24,9 +24,9 @@ from app.constants.llm import (
     DEFAULT_MODEL_NAME,
 )
 from app.core.lazy_loader import providers
+from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
-from app.core.stream_manager import stream_manager
 from app.models.models_models import ModelConfig
 from app.utils.agent_utils import (
     format_sse_data,
@@ -431,7 +431,7 @@ async def execute_graph_streaming(
                 continue
 
             if chunk and isinstance(chunk, AIMessageChunk):
-                content = str(chunk.content)
+                content = chunk.text()
                 tool_calls = chunk.tool_calls
 
                 # Track tool calls and emit progress on first detection
