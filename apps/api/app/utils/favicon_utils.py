@@ -10,13 +10,13 @@ Strategy:
 """
 
 import asyncio
-import re
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 import httpx
 import favicon
 import tldextract
+from bs4 import BeautifulSoup
 
 from app.config.loggers import app_logger as logger
 from app.db.redis import get_cache, set_cache
@@ -105,15 +105,7 @@ def _make_absolute_url(href: str, base_url: str) -> str:
     """Convert relative URL to absolute."""
     if href.startswith("data:"):
         return ""
-    if href.startswith("//"):
-        return f"https:{href}"
-    if href.startswith("/"):
-        parsed = urlparse(base_url)
-        return f"{parsed.scheme}://{parsed.netloc}{href}"
-    if not href.startswith("http"):
-        parsed = urlparse(base_url)
-        return f"{parsed.scheme}://{parsed.netloc}/{href}"
-    return href
+    return urljoin(base_url, href)
 
 
 def _parse_favicon_size(sizes_attr: str) -> int:
@@ -123,37 +115,32 @@ def _parse_favicon_size(sizes_attr: str) -> int:
     max_size = 0
     for size in sizes_attr.split():
         if "x" in size.lower():
-            try:
-                w, h = size.lower().split("x")
-                max_size = max(max_size, int(w), int(h))
-            except ValueError:
-                pass
+            parts = size.lower().split("x")
+            if len(parts) == 2:
+                try:
+                    max_size = max(max_size, int(parts[0]), int(parts[1]))
+                except ValueError:
+                    pass
     return max_size
 
 
 def _parse_icons_from_html(html: str, base_url: str) -> list[dict]:
-    """Parse HTML to extract all link[rel=icon] entries."""
-    link_pattern = re.compile(
-        r'<link[^>]+rel=["\'][^"\']*icon[^"\']*["\'][^>]*>',
-        re.IGNORECASE,
-    )
-    href_pattern = re.compile(r'href=["\']([^"\']+)["\']', re.IGNORECASE)
-    sizes_pattern = re.compile(r'sizes=["\']([^"\']+)["\']', re.IGNORECASE)
-
-    matches = link_pattern.findall(html)
+    """Parse HTML to extract all link[rel=icon] entries using BeautifulSoup."""
+    soup = BeautifulSoup(html, "lxml")
     icons = []
 
-    for link_tag in matches:
-        href_match = href_pattern.search(link_tag)
-        if not href_match:
-            continue
-
-        href = _make_absolute_url(href_match.group(1), base_url)
+    # Find all link tags with rel containing "icon"
+    for link in soup.find_all("link", rel=lambda x: x and "icon" in x.lower()):
+        href = link.get("href")
         if not href:
             continue
 
-        sizes_match = sizes_pattern.search(link_tag)
-        size = _parse_favicon_size(sizes_match.group(1) if sizes_match else "")
+        href = _make_absolute_url(href, base_url)
+        if not href:
+            continue
+
+        sizes = link.get("sizes", "")
+        size = _parse_favicon_size(sizes)
 
         href_lower = href.lower()
         if ".png" in href_lower:
