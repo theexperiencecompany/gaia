@@ -3,6 +3,8 @@
 from functools import lru_cache
 from typing import Literal
 
+import pymongo.errors
+import redis
 from mcp_use.exceptions import OAuthAuthenticationError
 
 from app.config.loggers import auth_logger as logger
@@ -278,12 +280,12 @@ async def _invalidate_caches(
         cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
         await delete_cache(cache_key)
         logger.info(f"OAuth status cache invalidated for user {user_id}")
-    except Exception as e:
+    except redis.RedisError as e:
         logger.warning(f"Failed to invalidate OAuth status cache: {e}")
 
     if managed_by != "mcp":
         try:
             await update_user_integration_status(user_id, integration_id, "created")
             logger.info(f"Updated status to 'created' for {integration_id}")
-        except Exception as e:
+        except pymongo.errors.PyMongoError as e:
             logger.warning(f"Failed to update status: {e}")

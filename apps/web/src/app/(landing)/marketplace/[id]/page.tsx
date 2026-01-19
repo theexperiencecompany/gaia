@@ -6,7 +6,6 @@ import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 
 import { IntegrationDetailClient } from "./client";
 
-// Revalidate every minute for fresher data
 export const revalidate = 60;
 
 // Fetch integration data for metadata and page

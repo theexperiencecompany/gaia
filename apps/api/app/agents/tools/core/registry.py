@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict
 from collections.abc import Mapping
 from functools import cache
 from typing import Dict, Iterator, List, Optional
@@ -158,7 +159,7 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._categories: Dict[str, ToolCategory] = {}
-        self._user_mcp_categories: Dict[str, set[str]] = {}
+        self._user_mcp_categories: Dict[str, set[str]] = defaultdict(set)
 
     async def setup(self):
         self._initialize_categories()
@@ -456,10 +457,6 @@ class ToolRegistry:
         all_tools = await mcp_client.get_all_connected_tools()
 
         loaded: Dict[str, List[BaseTool]] = {}
-
-        # Ensure user has an entry in the MCP categories tracking dict
-        if user_id not in self._user_mcp_categories:
-            self._user_mcp_categories[user_id] = set()
 
         for integration_id, tools in all_tools.items():
             if not tools:

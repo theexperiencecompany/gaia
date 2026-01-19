@@ -37,6 +37,7 @@ from app.agents.prompts.subagent_prompts import (
     TRELLO_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
 )
+from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
 from app.models.oauth_models import (
     ComposioConfig,
@@ -843,7 +844,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="instacart",
         managed_by="mcp",
         mcp_config=MCPConfig(
-            server_url="https://backend.composio.dev/v3/mcp/6bb2556a-57ef-4daa-81ad-bd1e3f9e443d/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3",
+            server_url=INSTACART_MCP_SERVER_URL,
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -869,7 +870,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="yelp",
         managed_by="mcp",
         mcp_config=MCPConfig(
-            server_url="https://backend.composio.dev/v3/mcp/8e1efded-6b08-4346-a657-92d0b94399e5/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3",
+            server_url=YELP_MCP_SERVER_URL,
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,

@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import datetime, time, timedelta, timezone
 from typing import Annotated, Any, Dict, List, Optional
@@ -1000,7 +1001,6 @@ async def delete_subtask(
 @with_doc(GET_TODOS_SUMMARY)
 async def get_todos_summary(config: RunnableConfig) -> Dict[str, Any]:
     """Get a comprehensive summary of the user's todos in a single call."""
-    import asyncio
 
     try:
         logger.info("Todo Tool: Getting comprehensive todos summary")

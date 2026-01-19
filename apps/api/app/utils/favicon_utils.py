@@ -187,8 +187,8 @@ async def _validate_favicon_url(url: str) -> bool:
             response = await client.head(url, follow_redirects=True)
             if response.status_code != 200:
                 return False
-            content_type = response.headers.get("content-type", "")
-            return "image" in content_type or not content_type
+            content_type = response.headers.get("content-type", "").lower()
+            return "image" in content_type
     except Exception as e:
         logger.debug(f"Favicon validation failed for {url}: {e}")
         return False
@@ -199,7 +199,6 @@ async def _try_standard_favicon(url: str) -> str | None:
     parsed = urlparse(url)
     favicon_url = f"{parsed.scheme}://{parsed.netloc}/favicon.ico"
 
-    # Skip validation for .ico - known format
     if await _validate_favicon_url(favicon_url):
         return favicon_url
     return None

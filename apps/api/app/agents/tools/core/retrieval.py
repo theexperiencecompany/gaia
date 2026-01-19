@@ -350,8 +350,8 @@ def get_retrieve_tools_function(
                             continue
 
                 # Include if it's in available tools
-                if item.key in available_tool_names:
-                    all_results.append({"id": item.key, "score": item.score})
+                if tool_key in available_tool_names:
+                    all_results.append({"id": tool_key, "score": item.score})
 
         # Remove duplicates and sort by score
         seen = set()

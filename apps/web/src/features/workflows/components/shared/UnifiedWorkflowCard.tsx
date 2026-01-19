@@ -6,14 +6,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { useLoginModalActions } from "@/features/auth/hooks/useLoginModal";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { PlayIcon, ZapIcon } from "@/icons";
 import { posthog } from "@/lib";
 import { useAppendToInput } from "@/stores/composerStore";
-import { useUserStore } from "@/stores/userStore";
+
 import type {
   CommunityWorkflow,
   PublicWorkflowStep,
@@ -90,9 +90,7 @@ export default function UnifiedWorkflowCard({
   const router = useRouter();
 
   // Auth check
-  const userEmail = useUserStore((state) => state.email);
-  const isAuthenticated = Boolean(userEmail);
-  const { openModal: openLoginModal } = useLoginModalActions();
+  const { isAuthenticated, openLoginModal } = useAuth();
 
   const { selectWorkflow } = useWorkflowSelection();
   const { createWorkflow } = useWorkflowCreation();

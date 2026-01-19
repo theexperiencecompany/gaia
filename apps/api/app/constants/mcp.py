@@ -19,6 +19,11 @@ OAUTH_STATE_TTL = TEN_MINUTES_TTL  # OAuth state is short-lived for security
 OAUTH_DISCOVERY_TTL = ONE_DAY_TTL  # Discovery data changes infrequently
 
 
+# Public MCP server URLs
+YELP_MCP_SERVER_URL = "https://backend.composio.dev/v3/mcp/8e1efded-6b08-4346-a657-92d0b94399e5/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3"
+INSTACART_MCP_SERVER_URL = "https://backend.composio.dev/v3/mcp/6bb2556a-57ef-4daa-81ad-bd1e3f9e443d/mcp?user_id=pg-test-15a6d21a-2a4b-4be5-98c9-d92f55b3ccc3"
+
+
 class UserIntegrationStatus(StrEnum):
     """Status of a user's integration in MongoDB user_integrations collection."""
 

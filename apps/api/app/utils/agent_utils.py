@@ -100,7 +100,7 @@ async def format_tool_progress(
             "tool_category": tool_category,
             "show_category": show_category,
             "tool_call_id": tool_call_id,
-            "inputs": tool_args if tool_args else None,
+            "inputs": tool_args,
             "icon_url": icon_url,
             "integration_name": integration_name,
         }

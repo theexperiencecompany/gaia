@@ -119,9 +119,10 @@ class MCPTokenStore:
         if cred and cred.token_expires_at:
             from datetime import timedelta
 
-            expiry_threshold = datetime.now(timezone.utc) + timedelta(
-                seconds=threshold_seconds
-            )
+            # Use naive UTC for comparison with stored naive timestamps
+            expiry_threshold = (
+                datetime.now(timezone.utc) + timedelta(seconds=threshold_seconds)
+            ).replace(tzinfo=None)
             return cred.token_expires_at < expiry_threshold
         return False
 

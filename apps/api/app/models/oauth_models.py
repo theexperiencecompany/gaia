@@ -12,6 +12,7 @@ from typing import Dict, List, Literal, Optional
 from app.db.postgresql import Base
 from pydantic import BaseModel
 from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -71,12 +72,12 @@ class MCPCredential(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     integration_id: Mapped[str] = mapped_column(String(100), nullable=False)
-    auth_type: Mapped[str] = mapped_column(
-        String(20), nullable=False
-    )  # Uses MCPAuthType enum values: none, oauth, bearer
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default=MCPCredentialStatus.PENDING.value
-    )  # Uses MCPCredentialStatus enum values
+    auth_type: Mapped[MCPAuthType] = mapped_column(
+        SQLEnum(MCPAuthType), nullable=False
+    )
+    status: Mapped[MCPCredentialStatus] = mapped_column(
+        SQLEnum(MCPCredentialStatus), nullable=False, default=MCPCredentialStatus.PENDING
+    )
     access_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # Encrypted
     refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # Encrypted
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

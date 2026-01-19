@@ -7,7 +7,7 @@ Re-exported from the original location for backwards compatibility.
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class AddUserIntegrationRequest(BaseModel):
@@ -20,12 +20,18 @@ class CreateCustomIntegrationRequest(BaseModel):
     """Request to create a custom MCP integration."""
 
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
+    description: Optional[str] = Field(None, min_length=1, max_length=500)
     category: str = Field(default="custom")
     server_url: str = Field(..., description="MCP server URL")
     requires_auth: bool = Field(False)
     auth_type: Optional[Literal["none", "oauth", "bearer"]] = Field(None)
     is_public: bool = Field(False, description="Make visible in marketplace")
+
+    @model_validator(mode="after")
+    def validate_auth_type(self):
+        if self.requires_auth and not self.auth_type:
+            raise ValueError("auth_type must be specified when requires_auth is True")
+        return self
 
 
 class UpdateCustomIntegrationRequest(BaseModel):

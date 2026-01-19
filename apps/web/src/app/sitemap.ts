@@ -218,8 +218,9 @@ async function getIntegrationPages(): Promise<MetadataRoute.Sitemap> {
 export default async function sitemap(props: {
   id: Promise<string>;
 }): Promise<MetadataRoute.Sitemap> {
-  const id = Number(await props.id);
-
+  const idString = await props.id;
+  const id = Number(idString);
+  
   switch (id) {
     case SITEMAP_IDS.STATIC:
       return getStaticPages();
