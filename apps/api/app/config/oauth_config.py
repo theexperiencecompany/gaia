@@ -8,7 +8,6 @@ Defines integrations, scopes, display properties, and subagent configurations.
 from functools import cache
 from typing import Dict, List, Optional
 
-
 from app.agents.prompts.subagent_prompts import (
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
@@ -38,7 +37,6 @@ from app.agents.prompts.subagent_prompts import (
     TODOIST_AGENT_SYSTEM_PROMPT,
     TRELLO_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
-    ZOOM_AGENT_SYSTEM_PROMPT,
 )
 from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
@@ -54,7 +52,6 @@ from app.models.oauth_models import (
     TriggerConfigFieldSchema,
     WorkflowTriggerSchema,
 )
-
 
 # Define all integrations dynamically
 OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
@@ -744,7 +741,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=AIRTABLE_AGENT_SYSTEM_PROMPT,
         ),
     ),
-    # Linear MCP (OAuth via MCP spec discovery)
     OAuthIntegration(
         id="linear",
         name="Linear",
@@ -831,32 +827,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_direct_tools=True,
         ),
     ),
-    # OLD Composio Linear (commented out - using MCP now)
-    # OAuthIntegration(
-    #     id="linear",
-    #     name="Linear",
-    #     description="Manage issues, projects, and track development progress with AI assistance",
-    #     category="developer",
-    #     provider="linear",
-    #     scopes=[],
-    #     available=True,
-    #     short_name="linear",
-    #     managed_by="composio",
-    #     composio_config=ComposioConfig(
-    #         auth_config_id="ac_mnrcEhhTXPVS",
-    #         toolkit="LINEAR",
-    #     ),
-    #     subagent_config=SubAgentConfig(
-    #         has_subagent=True,
-    #         agent_name="linear_agent",
-    #         tool_space="linear",
-    #         handoff_tool_name="call_linear_agent",
-    #         domain="issue tracking and project management",
-    #         capabilities="creating issues, managing projects, tracking progress, assigning tasks, organizing sprints, and automating development workflows",
-    #         use_cases="issue management, project tracking, sprint planning, or any Linear development workflow task",
-    #         system_prompt=LINEAR_AGENT_SYSTEM_PROMPT,
-    #     ),
-    # ),
     OAuthIntegration(
         id="slack",
         name="Slack",
@@ -1063,32 +1033,32 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
         ),
     ),
-    OAuthIntegration(
-        id="zoom",
-        name="Zoom",
-        description="Create and manage Zoom meetings, webinars, and video conferencing",
-        category="communication",
-        provider="zoom",
-        scopes=[],
-        available=True,
-        short_name="zoom",
-        managed_by="composio",
-        composio_config=ComposioConfig(
-            auth_config_id="ac_fABNBG17lf2A",
-            toolkit="ZOOM",
-            toolkit_version="20260107_00",
-        ),
-        subagent_config=SubAgentConfig(
-            has_subagent=True,
-            agent_name="zoom_agent",
-            tool_space="zoom",
-            handoff_tool_name="call_zoom_agent",
-            domain="video conferencing and webinar management",
-            capabilities="creating meetings, scheduling webinars, managing participants, cloud recording, meeting invitations, attendance tracking, and automating video conferencing workflows",
-            use_cases="scheduling meetings, managing webinars, recording conferences, tracking attendance, or any Zoom video conferencing task",
-            system_prompt=ZOOM_AGENT_SYSTEM_PROMPT,
-        ),
-    ),
+    # OAuthIntegration(
+    #     id="zoom",
+    #     name="Zoom",
+    #     description="Create and manage Zoom meetings, webinars, and video conferencing",
+    #     category="communication",
+    #     provider="zoom",
+    #     scopes=[],
+    #     available=True,
+    #     short_name="zoom",
+    #     managed_by="composio",
+    #     composio_config=ComposioConfig(
+    #         auth_config_id="ac_fABNBG17lf2A",
+    #         toolkit="ZOOM",
+    #         toolkit_version="20260107_00",
+    #     ),
+    #     subagent_config=SubAgentConfig(
+    #         has_subagent=True,
+    #         agent_name="zoom_agent",
+    #         tool_space="zoom",
+    #         handoff_tool_name="call_zoom_agent",
+    #         domain="video conferencing and webinar management",
+    #         capabilities="creating meetings, scheduling webinars, managing participants, cloud recording, meeting invitations, attendance tracking, and automating video conferencing workflows",
+    #         use_cases="scheduling meetings, managing webinars, recording conferences, tracking attendance, or any Zoom video conferencing task",
+    #         system_prompt=ZOOM_AGENT_SYSTEM_PROMPT,
+    #     ),
+    # ),
     OAuthIntegration(
         id="googlemeet",
         name="Google Meet",
