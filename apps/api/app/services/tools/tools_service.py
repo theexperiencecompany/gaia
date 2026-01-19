@@ -100,7 +100,7 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
     mcp_store = get_mcp_tools_store()
 
     # Prepare custom integrations query (if user_id provided)
-    async def fetch_custom_integrations():
+    async def fetch_custom_integrations() -> list[dict]:
         """Fetch user's custom integrations with single aggregation query.
 
         Optimized: Uses MongoDB aggregation pipeline instead of two separate queries.
@@ -140,6 +140,8 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
             return []
 
     # Fetch global MCP tools and custom integrations in parallel
+    global_mcp_tools: dict[str, list[dict]] = {}
+    custom_integrations: list[dict] = []
     try:
         global_mcp_tools, custom_integrations = await asyncio.gather(
             mcp_store.get_all_mcp_tools(),
@@ -147,15 +149,13 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
         )
     except Exception as e:
         logger.warning(f"Failed to fetch MCP tools: {e}")
-        global_mcp_tools = {}
-        custom_integrations = []
 
     # Process user's custom MCP tools FIRST (to get proper metadata like name, icon)
     # This must happen before global MCP tools, otherwise custom integrations get
     # overwritten with incomplete metadata (null integration_name, category_display_name)
     for custom in custom_integrations:
         integration_id = custom.get("integration_id")
-        if integration_id in seen_integrations:
+        if not integration_id or integration_id in seen_integrations:
             continue
 
         # Get cached tools from MCP tools store
@@ -203,8 +203,8 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
             if integration_id in seen_integrations:
                 continue
 
-            for tool in tools:
-                tool_name = tool.get("name")  # type: ignore[union-attr]
+            for tool_dict in tools:
+                tool_name = tool_dict.get("name")
                 if not tool_name:
                     logger.warning(
                         f"Skipping tool with missing 'name' from MCP {integration_id}"
