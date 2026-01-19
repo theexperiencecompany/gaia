@@ -395,7 +395,7 @@ async def create_custom_integration(
         ValueError: If integration with same ID already exists
     """
     # Generate short UUID for integration_id (12 hex chars)
-    integration_id = uuid.uuid4()
+    integration_id = str(uuid.uuid4())
 
     # Clean up orphaned user_integration if exists (from failed previous creation)
     orphaned = await user_integrations_collection.find_one(
