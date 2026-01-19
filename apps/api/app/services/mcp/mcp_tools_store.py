@@ -49,15 +49,21 @@ class MCPToolsStore:
                 name = t.get("name", "").strip()
                 description = t.get("description", "").strip()
                 if not name:
-                    logger.warning(f"[{integration_id}] Skipping tool with empty name: {t}")
+                    logger.warning(
+                        f"[{integration_id}] Skipping tool with empty name: {t}"
+                    )
                     continue
                 formatted_tools.append({"name": name, "description": description})
 
             if not formatted_tools:
-                logger.warning(f"[{integration_id}] All tools filtered out due to empty names - skipping store")
+                logger.warning(
+                    f"[{integration_id}] All tools filtered out due to empty names - skipping store"
+                )
                 return
 
-            logger.info(f"[{integration_id}] Storing {len(formatted_tools)} tools in integrations collection")
+            logger.info(
+                f"[{integration_id}] Storing {len(formatted_tools)} tools in integrations collection"
+            )
 
             result = await integrations_collection.update_one(
                 {"integration_id": integration_id},

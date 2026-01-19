@@ -52,7 +52,7 @@ export default function WorkflowPage() {
   } = useDisclosure();
 
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(
-    null
+    null,
   );
 
   const { workflows, isLoading, error, refetch } = useWorkflows();
@@ -117,7 +117,7 @@ export default function WorkflowPage() {
         setCommunityError(
           error instanceof Error
             ? error.message
-            : "Failed to load community workflows"
+            : "Failed to load community workflows",
         );
       } finally {
         setIsLoadingCommunity(false);
@@ -144,7 +144,7 @@ export default function WorkflowPage() {
       console.log("Workflow deleted:", workflowId);
       refetch();
     },
-    [refetch]
+    [refetch],
   );
 
   const handleWorkflowClick = (workflowId: string) => {
@@ -176,7 +176,7 @@ export default function WorkflowPage() {
     emptyDescription: string,
     onRefetch: () => void,
     renderItem: (item: T) => ReactNode,
-    emptyAction?: ReactNode
+    emptyAction?: ReactNode,
   ) => {
     if (isLoading) return <WorkflowListSkeleton />;
 
@@ -219,7 +219,7 @@ export default function WorkflowPage() {
     title: string,
     description: string,
     children: ReactNode,
-    icon?: ReactElement<IconProps>
+    icon?: ReactElement<IconProps>,
   ) => (
     <div className="mt-12 flex flex-col gap-3">
       <div className="flex flex-col space-y-1">
@@ -243,12 +243,12 @@ export default function WorkflowPage() {
           {renderSection(
             "Explore & Discover",
             "See what's possible with real examples that actually work!",
-            <WorkflowListSkeleton />
+            <WorkflowListSkeleton />,
           )}
           {renderSection(
             "Community Workflows",
             "Check out what others have built and grab anything that looks useful!",
-            <WorkflowListSkeleton />
+            <WorkflowListSkeleton />,
           )}
         </>
       ) : (
@@ -275,7 +275,7 @@ export default function WorkflowPage() {
                   primaryAction="none"
                   onCardClick={() => handleWorkflowClick(workflow.id)}
                 />
-              )
+              ),
             )}
           </div>
 
@@ -288,7 +288,7 @@ export default function WorkflowPage() {
                 dummySectionRef={pageRef}
                 hideUserWorkflows={true}
                 exploreWorkflows={exploreWorkflows}
-              />
+              />,
             )}
 
           {renderSection(
@@ -309,8 +309,8 @@ export default function WorkflowPage() {
                   showCreator={true}
                   onCardClick={() => handleCommunityWorkflowClick(workflow.id)}
                 />
-              )
-            )
+              ),
+            ),
           )}
         </>
       )}

@@ -19,7 +19,6 @@ import {
   OG_HEIGHT,
   OG_WIDTH,
   truncateText,
-  wallpapers,
 } from "../shared";
 
 export const runtime = "edge";

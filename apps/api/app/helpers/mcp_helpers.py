@@ -87,7 +87,9 @@ def create_stub_tools_from_cache(
 
                 except OAuthAuthenticationError:
                     # mcp-use raises OAuthAuthenticationError for 401/authentication failures
-                    logger.info(f"Got authentication error for {int_id}, attempting token refresh")
+                    logger.info(
+                        f"Got authentication error for {int_id}, attempting token refresh"
+                    )
                     if await mcp_client.try_token_refresh(int_id):
                         # Force reconnect with new token
                         try:

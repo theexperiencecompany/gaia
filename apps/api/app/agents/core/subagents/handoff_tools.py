@@ -220,7 +220,6 @@ async def handoff(
         subagent_id: ID of the subagent from retrieve_tools. Supports formats:
             - "subagent:gmail" (platform integration)
             - "subagent:semantic_scholar (fb9dfd7e05f8)" (custom integration with name and ID)
-            - "gmail" or "fb9dfd7e05f8" (bare IDs)
         task: Complete task description with all necessary context
     """
     try:

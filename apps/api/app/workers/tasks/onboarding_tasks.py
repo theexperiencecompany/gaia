@@ -1,6 +1,8 @@
 """ARQ worker task for post-onboarding personalization."""
 
-from app.services.onboarding.post_onboarding_service import process_post_onboarding_personalization
+from app.services.onboarding.post_onboarding_service import (
+    process_post_onboarding_personalization,
+)
 
 
 async def process_personalization_task(ctx, user_id: str) -> str:

@@ -220,7 +220,7 @@ export default async function sitemap(props: {
 }): Promise<MetadataRoute.Sitemap> {
   const idString = await props.id;
   const id = Number(idString);
-  
+
   switch (id) {
     case SITEMAP_IDS.STATIC:
       return getStaticPages();
