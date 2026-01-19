@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from collections import defaultdict
 from collections.abc import Mapping
 from functools import cache
@@ -23,6 +24,7 @@ from app.agents.tools import (
 )
 from app.config.loggers import langchain_logger as logger
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.db.redis import get_cache, set_cache
 from langchain_core.tools import BaseTool
 
 
@@ -365,8 +367,6 @@ class ToolRegistry:
         This avoids expensive ChromaDB queries on every startup.
         """
         from app.db.chroma.chroma_tools_store import index_tools_to_store
-        from app.db.redis import get_cache, set_cache
-        import hashlib
 
         category = self._categories.get(category_name)
         if not category:

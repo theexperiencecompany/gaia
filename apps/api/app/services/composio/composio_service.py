@@ -108,7 +108,6 @@ class ComposioService:
         """
 
         logger.info(f"Loading {tool_kit} toolkit...")
-        start_time = time.time()
 
         custom_tool_names = custom_tools_registry.get_tool_names(tool_kit.lower())
 
@@ -127,9 +126,9 @@ class ComposioService:
         # Build hook modifiers upfront - these will be applied to all toolkit tools
         # We can't filter by tool name before the API call since we don't know them yet,
         # but applying hooks to all tools and filtering after is equivalent and faster
-        master_before_modifier = before_execute()(master_before_execute_hook)
-        master_after_modifier = after_execute()(master_after_execute_hook)
-        master_schema_mod = schema_modifier(tools=tools_name)(master_schema_modifier)
+        master_before_modifier = before_execute(tools=tools)(master_before_execute_hook)
+        master_after_modifier = after_execute(tools=tools)(master_after_execute_hook)
+        master_schema_mod = schema_modifier(tools=tools)(master_schema_modifier)
 
         # Single API call with hooks applied
         tools = await asyncio.to_thread(
