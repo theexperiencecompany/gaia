@@ -22,7 +22,7 @@ import type {
 import { formatRunCount } from "@/utils/formatters";
 
 import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
-import { getTriggerDisplay } from "../../utils/triggerDisplay";
+import { getTriggerDisplayInfo } from "../../triggers";
 import {
   ActivationStatus,
   CreatorAvatar,
@@ -124,7 +124,7 @@ export default function UnifiedWorkflowCard({
 
   // Get trigger info for user workflows
   const triggerDisplay = workflow
-    ? getTriggerDisplay(workflow, integrations)
+    ? getTriggerDisplayInfo(workflow, integrations)
     : null;
   const nextRunText = workflow ? getNextRunDisplay(workflow) : null;
 

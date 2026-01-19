@@ -471,6 +471,10 @@ async def create_workflow_indexes():
             workflows_collection.create_index([("user_id", 1), ("source", 1)]),
             # Sparse index for workflow steps (only workflows with steps)
             workflows_collection.create_index("steps", sparse=True),
+            # Sparse index for composio trigger IDs (for efficient webhook routing)
+            workflows_collection.create_index(
+                "trigger_config.composio_trigger_ids", sparse=True
+            ),
             # Community workflows indexes
             workflows_collection.create_index([("is_public", 1), ("created_at", -1)]),
             workflows_collection.create_index([("created_by", 1)]),

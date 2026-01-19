@@ -19,7 +19,8 @@ async def find_matching_workflows(user_id: str) -> List[Workflow]:
         query = {
             "user_id": user_id,
             "activated": True,
-            "trigger_config.type": TriggerType.EMAIL,
+            "trigger_config.type": TriggerType.INTEGRATION,
+            "trigger_config.trigger_name": "gmail_new_message",
             "trigger_config.enabled": True,
         }
 

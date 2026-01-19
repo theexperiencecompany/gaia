@@ -56,7 +56,7 @@ export const authApi = {
 
   // Logout user
   logout: async (): Promise<void> => {
-    await apiService.post<{ logout_url: string }>(
+    const response = await apiService.post<{ logout_url?: string }>(
       "/user/logout",
       {},
       {
@@ -66,8 +66,19 @@ export const authApi = {
     );
 
     // Redirect to the logout URL returned by the backend
-    // if (response.logout_url)
-    //   window.location.href = response.logout_url;
+    // Validate URL scheme to prevent XSS/open-redirect via javascript:/data: URLs
+    if (response.logout_url) {
+      try {
+        const url = new URL(response.logout_url, window.location.origin);
+        if (url.protocol === "https:" || url.protocol === "http:") {
+          window.location.href = response.logout_url;
+        } else {
+          console.error("[authApi] Invalid logout URL scheme:", url.protocol);
+        }
+      } catch {
+        console.error("[authApi] Invalid logout URL:", response.logout_url);
+      }
+    }
   },
 
   // Complete onboarding

@@ -2,7 +2,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from app.api.v1.dependencies.google_scope_dependencies import require_integration
-from app.config.token_repository import token_repository
 from app.decorators import tiered_rate_limit
 from app.models.calendar_models import (
     BatchEventCreateRequest,
@@ -19,6 +18,7 @@ from app.services.calendar_service import (
     delete_calendar_event,
     update_calendar_event,
 )
+from app.utils.composio_token_utils import get_google_calendar_token
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter()
@@ -43,13 +43,10 @@ async def get_calendar_list(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
-        # Get token from repository instead of using it directly from current_user
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=True
-        )
-        access_token = str(token.get("access_token", ""))
+        # Get token from Composio
+        access_token = get_google_calendar_token(str(user_id))
 
-        return await calendar_service.list_calendars(access_token)
+        return calendar_service.list_calendars(access_token)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -110,13 +107,10 @@ async def query_events(
                     status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
                 )
 
-        # Get token from repository
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=True
-        )
-        access_token = str(token.get("access_token", ""))
+        # Get token from Composio
+        access_token = get_google_calendar_token(str(user_id))
 
-        return await calendar_service.get_calendar_events(
+        return calendar_service.get_calendar_events(
             user_id=user_id,
             access_token=access_token,
             page_token=None,
@@ -192,13 +186,10 @@ async def get_events(
                     status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
                 )
 
-        # Get token from repository
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=True
-        )
-        access_token = str(token.get("access_token", ""))
+        # Get token from Composio
+        access_token = get_google_calendar_token(str(user_id))
 
-        return await calendar_service.get_calendar_events(
+        return calendar_service.get_calendar_events(
             user_id=user_id,
             access_token=access_token,
             page_token=page_token,
@@ -270,13 +261,10 @@ async def get_events_by_calendar(
                     status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
                 )
 
-        # Get token from repository
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=True
-        )
-        access_token = str(token.get("access_token", ""))
+        # Get token from Composio
+        access_token = get_google_calendar_token(str(user_id))
 
-        return await calendar_service.get_calendar_events_by_id(
+        return calendar_service.get_calendar_events_by_id(
             calendar_id=calendar_id,
             access_token=access_token,
             page_token=page_token,
@@ -311,15 +299,10 @@ async def create_event(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
-        # Get token from repository
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=True
-        )
-        access_token = str(token.get("access_token", ""))
+        # Get token from Composio
+        access_token = get_google_calendar_token(str(user_id))
 
-        return await calendar_service.create_calendar_event(
-            event, access_token, user_id
-        )
+        return calendar_service.create_calendar_event(event, access_token, user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -338,7 +321,7 @@ async def get_calendar_preferences(
         HTTPException: If the user is not authenticated or preferences are not found.
     """
     try:
-        return await calendar_service.get_user_calendar_preferences(
+        return calendar_service.get_user_calendar_preferences(
             str(current_user.get("user_id", ""))
         )
     except HTTPException as e:
@@ -366,7 +349,7 @@ async def update_calendar_preferences(
         HTTPException: If the user is not authenticated.
     """
     try:
-        return await calendar_service.update_user_calendar_preferences(
+        return calendar_service.update_user_calendar_preferences(
             current_user["user_id"], preferences.selected_calendars
         )
     except Exception as e:
@@ -396,13 +379,10 @@ async def delete_event(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
-        # Get token from repository
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=True
-        )
-        access_token = str(token.get("access_token", ""))
+        # Get token from Composio
+        access_token = get_google_calendar_token(str(user_id))
 
-        return await delete_calendar_event(event, access_token, user_id)
+        return delete_calendar_event(event, access_token, user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -431,13 +411,10 @@ async def update_event(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
-        # Get token from repository
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=True
-        )
-        access_token = str(token.get("access_token", ""))
+        # Get token from Composio
+        access_token = get_google_calendar_token(str(user_id))
 
-        return await update_calendar_event(event, access_token, user_id)
+        return update_calendar_event(event, access_token, user_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -465,16 +442,14 @@ async def create_events_batch(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=True
-        )
-        access_token = str(token.get("access_token", ""))
+        # Get token from Composio
+        access_token = get_google_calendar_token(str(user_id))
 
         results: Dict[str, List[Any]] = {"successful": [], "failed": []}
 
         for event in batch_request.events:
             try:
-                created_event = await calendar_service.create_calendar_event(
+                created_event = calendar_service.create_calendar_event(
                     event, access_token, user_id
                 )
                 results["successful"].append(created_event)
@@ -514,18 +489,14 @@ async def update_events_batch(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=True
-        )
-        access_token = str(token.get("access_token", ""))
+        # Get token from Composio
+        access_token = get_google_calendar_token(str(user_id))
 
         results: dict[str, list] = {"successful": [], "failed": []}
 
         for event in batch_request.events:
             try:
-                updated_event = await update_calendar_event(
-                    event, access_token, user_id
-                )
+                updated_event = update_calendar_event(event, access_token, user_id)
                 results["successful"].append(updated_event)
             except Exception as e:
                 results["failed"].append(
@@ -563,16 +534,14 @@ async def delete_events_batch(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=True
-        )
-        access_token = str(token.get("access_token", ""))
+        # Get token from Composio
+        access_token = get_google_calendar_token(str(user_id))
 
         results: dict[str, list] = {"successful": [], "failed": []}
 
         for event in batch_request.events:
             try:
-                await delete_calendar_event(event, access_token, user_id)
+                delete_calendar_event(event, access_token, user_id)
                 results["successful"].append(
                     {
                         "event_id": event.event_id,

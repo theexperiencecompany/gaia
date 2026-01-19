@@ -34,7 +34,7 @@ export const useWorkflowCreation = (): UseWorkflowCreationReturn => {
       const error = err as Error & {
         response?: {
           status?: number;
-          data?: { workflow?: Workflow };
+          data?: { workflow?: Workflow; detail?: string };
         };
       };
       const statusCode = error?.response?.status;
@@ -53,8 +53,10 @@ export const useWorkflowCreation = (): UseWorkflowCreationReturn => {
         return { success: true, workflow: responseData.workflow };
       }
 
+      // Extract error detail from API response (FastAPI returns {detail: "..."})
       const errorMessage =
-        error instanceof Error ? error.message : "Failed to create workflow";
+        responseData?.detail ||
+        (error instanceof Error ? error.message : "Failed to create workflow");
       setError(errorMessage);
       return { success: false };
     } finally {

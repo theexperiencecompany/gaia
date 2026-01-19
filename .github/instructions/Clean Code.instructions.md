@@ -36,3 +36,8 @@ Use DeepWiki MCP (when available) for understanding the codebase. Use the ask_qu
 Maintain clarity, conciseness, and production-level quality in all code edits.
 
 # Don't unnecessary read log files if the user has already told you what to do and has passed you the necessary logs.
+
+# Composio Type References
+Composio TypeScript schemas are generated at `node_modules/@composio/core/generated/<toolkit>.ts` via `composio generate --type-tools` (runs on postinstall).
+These contain full input/output types for tools and trigger payloads. Use these as reference when creating Pydantic models for backend trigger handlers.
+Toolkit versions are pinned in `oauth_config.py` to prevent breaking changes.

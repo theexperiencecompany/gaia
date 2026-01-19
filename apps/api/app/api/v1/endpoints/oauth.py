@@ -116,8 +116,8 @@ async def login_workos_mobile(redirect_uri: Optional[str] = None):
 
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
-        redirect_uri=f"{settings.HOST}/api/v1/oauth/workos/mobile/callback",
-        state=state,
+        redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
+        state=state
     )
     return {"url": authorization_url}
 
@@ -176,7 +176,9 @@ async def workos_mobile_callback(
 
     except Exception as e:
         logger.error(f"Unexpected error during WorkOS mobile callback: {str(e)}")
-        return RedirectResponse(url=f"{mobile_redirect}?error=server_error")
+        return RedirectResponse(
+            url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=server_error"
+        )
 
 
 @router.get("/login/workos/desktop")
@@ -528,7 +530,7 @@ async def callback(
             logger.warning(f"Failed to invalidate OAuth status cache: {e}")
 
         # Initialize calendar preferences (select all calendars by default)
-        await initialize_calendar_preferences(
+        initialize_calendar_preferences(
             user_id=str(user_id),
             access_token=access_token,
         )

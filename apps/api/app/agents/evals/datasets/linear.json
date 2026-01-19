@@ -1,0 +1,205 @@
+{
+  "name": "Linear Capabilities",
+  "description": "Evaluation dataset for Linear subagent capabilities including issue management, project tracking, labels, and team operations. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "linear_agent",
+  "integration_id": "linear",
+  "items": [
+    {
+      "input": "create issue for fixing login bug",
+      "expected_output": "1. Get teams. 2. Create issue with title about login bug fix.",
+      "context": "User wants to create a simple issue",
+      "tags": ["issue", "create", "lazy"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show my assigned issues",
+      "expected_output": "1. Get current user ID. 2. List issues filtered by assignee_id.",
+      "context": "User wants to see their issues",
+      "tags": ["issue", "list", "filter"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create issue 'Implement dark mode' on Mobile team with high priority",
+      "expected_output": "1. Get teams. 2. Find Mobile team. 3. Create issue with title, team_id, and priority=1.",
+      "context": "User wants detailed issue creation",
+      "tags": ["issue", "create", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "assign issue about payment to john",
+      "expected_output": "1. Search/list issues about payment. 2. Get users. 3. Find john. 4. Update issue with assignee.",
+      "context": "User wants to assign issue",
+      "tags": ["issue", "assign", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "move issue FE-123 to in progress",
+      "expected_output": "1. Get issue FE-123. 2. Get team states. 3. Find 'In Progress' state. 4. Update issue state.",
+      "context": "User wants to change issue state",
+      "tags": ["issue", "update", "state"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add comment to issue about the API changes being deployed",
+      "expected_output": "1. Search issues about API. 2. Create comment on the issue.",
+      "context": "User wants to comment on issue",
+      "tags": ["comment", "create", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list all projects",
+      "expected_output": "List all Linear projects.",
+      "context": "User wants to see projects",
+      "tags": ["project", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create project called 'Q1 Roadmap' for team Backend",
+      "expected_output": "1. Get teams. 2. Find Backend team. 3. Create project with name and team association.",
+      "context": "User wants to create project",
+      "tags": ["project", "create", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get all teams",
+      "expected_output": "List all Linear teams in workspace.",
+      "context": "User wants to see teams",
+      "tags": ["team", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add label 'urgent' to issue about checkout",
+      "expected_output": "1. Search issues about checkout. 2. Get/create urgent label. 3. Update issue with label.",
+      "context": "User wants to add label to issue",
+      "tags": ["issue", "label", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create label 'tech-debt' with red color on team Engineering",
+      "expected_output": "1. Get teams. 2. Find Engineering team. 3. Create label with name and color.",
+      "context": "User wants to create new label",
+      "tags": ["label", "create", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get details of issue FE-99",
+      "expected_output": "Get Linear issue by identifier FE-99 with full details.",
+      "context": "User wants specific issue details",
+      "tags": ["issue", "get", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "what cycles are active for team Frontend",
+      "expected_output": "1. Get teams. 2. Find Frontend team. 3. Get cycles by team ID.",
+      "context": "User wants to see sprints/cycles",
+      "tags": ["cycle", "list", "filter"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "remove label from issue about refactoring",
+      "expected_output": "1. Search issues about refactoring. 2. Get issue labels. 3. Remove specified label.",
+      "context": "User wants to remove label",
+      "tags": ["issue", "label", "remove", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list all labels",
+      "expected_output": "Get all labels across workspace.",
+      "context": "User wants to see available labels",
+      "tags": ["label", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "archive the old issue about deprecated feature",
+      "expected_output": "1. Search issues about deprecated feature. 2. Confirm deletion/archive. 3. Delete/archive issue.",
+      "context": "User wants to archive issue - needs consent",
+      "tags": ["issue", "delete", "search", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "who are the users in my workspace",
+      "expected_output": "List all Linear users in workspace.",
+      "context": "User wants to see team members",
+      "tags": ["user", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "set due date for issue about onboarding to next friday",
+      "expected_output": "1. Search issues about onboarding. 2. Update issue with due date.",
+      "context": "User wants to set deadline",
+      "tags": ["issue", "update", "duedate", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get issue in lineer about authentication",
+      "expected_output": "1. Recognize 'lineer' as typo for 'linear'. 2. Search issues about authentication.",
+      "context": "User made typo in 'linear'",
+      "tags": ["issue", "search", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add attachment link to issue FE-50",
+      "expected_output": "1. Get issue FE-50. 2. Create attachment with URL on issue.",
+      "context": "User wants to add link attachment",
+      "tags": ["attachment", "create", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "who am I logged in as",
+      "expected_output": "Get current authenticated user information.",
+      "context": "User wants to see their identity",
+      "tags": ["user", "current", "profile"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "what are the workflow states for team Mobile",
+      "expected_output": "1. Get teams. 2. Find Mobile team. 3. List states for that team.",
+      "context": "User wants to see workflow states",
+      "tags": ["state", "list", "team"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create issue in current sprint about performance optimization",
+      "expected_output": "1. Get teams. 2. Get current/active cycle. 3. Create issue with cycle_id.",
+      "context": "User wants issue in current cycle",
+      "tags": ["issue", "create", "cycle", "lazy"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "show all issues in project Alpha",
+      "expected_output": "1. Get projects. 2. Find 'Alpha' project. 3. List issues filtered by project_id.",
+      "context": "User wants project-specific issues",
+      "tags": ["issue", "list", "project", "filter"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "link issue FE-40 to issue FE-45",
+      "expected_output": "Create issue relation/link between FE-40 and FE-45.",
+      "context": "User wants to link related issues",
+      "tags": ["issue", "link", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add 👍 reaction to the comment saying 'looks good'",
+      "expected_output": "1. Find comment with text 'looks good'. 2. Add thumbsup reaction to comment.",
+      "context": "User wants to react to comment",
+      "tags": ["comment", "reaction", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "change priority of bug issue to critical",
+      "expected_output": "1. Search issues with 'bug' in title/description. 2. Update issue priority to critical (0 or 1).",
+      "context": "User wants to escalate priority",
+      "tags": ["issue", "update", "priority", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list issues completed this week",
+      "expected_output": "List issues filtered by completed state and date range.",
+      "context": "User wants completed issues report",
+      "tags": ["issue", "list", "filter", "date"],
+      "metadata": { "difficulty": "hard" }
+    }
+  ]
+}

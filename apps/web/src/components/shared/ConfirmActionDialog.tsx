@@ -13,8 +13,8 @@ import { useRouter } from "next/navigation";
 import { useLogout } from "@/features/auth/hooks/useLogout";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
-import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { db } from "@/lib/db/chatDb";
+import { batchSyncConversations } from "@/services/syncService";
 
 export type ConfirmAction = "logout" | "clear_chats" | null;
 //  | "delete_account"
@@ -39,7 +39,6 @@ export function ConfirmActionDialog({
 }: ConfirmActionDialogProps) {
   const { logout } = useLogout();
   const router = useRouter();
-  const fetchConversations = useFetchConversations();
   const { updateConvoMessages } = useConversation();
 
   const getActionConfig = (): ActionConfig | null => {
@@ -69,7 +68,8 @@ export function ConfirmActionDialog({
               router.push("/c");
               await chatApi.deleteAllConversations();
               await db.clearAll();
-              await fetchConversations(1, 20);
+              // Sync from API to get fresh state after clearing
+              await batchSyncConversations();
               updateConvoMessages();
             } catch (error) {
               console.error("Error clearing chats:", error);

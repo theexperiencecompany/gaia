@@ -1,0 +1,21 @@
+{
+  "name": "@gaia/bot-discord",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "deploy-commands": "tsx src/deploy-commands.ts"
+  },
+  "dependencies": {
+    "@gaia/shared": "workspace:*",
+    "discord.js": "^14.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

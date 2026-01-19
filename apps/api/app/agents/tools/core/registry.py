@@ -5,13 +5,11 @@ from functools import cache
 from typing import Dict, Iterator, List, Optional
 
 from app.agents.tools import (
-    calendar_tool,
     code_exec_tool,
     document_tool,
     file_tools,
     flowchart_tool,
     goal_tool,
-    google_docs_tool,
     image_tool,
     integration_tool,
     memory_tools,
@@ -235,22 +233,6 @@ class ToolRegistry:
         )
         self._add_category("creative", tools=[image_tool.generate_image])
         self._add_category("weather", tools=[weather_tool.get_weather])
-
-        self._add_category(
-            "google_calendar",
-            tools=calendar_tool.tools,
-            require_integration=True,
-            integration_name="google_calendar",
-            is_delegated=True,
-            space="google_calendar",
-        )
-
-        self._add_category(
-            "google_docs",
-            tools=google_docs_tool.tools,
-            require_integration=True,
-            integration_name="google_docs",
-        )
 
     async def register_mcp_tools(self, server_name: str = "deepwiki"):
         """

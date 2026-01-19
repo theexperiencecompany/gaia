@@ -18,7 +18,7 @@ import type { UseCase } from "@/features/use-cases/types";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
-import { getTriggerDisplay } from "@/features/workflows/utils/triggerDisplay";
+import { getTriggerDisplayInfo } from "@/features/workflows/triggers";
 import { UserCircle02Icon } from "@/icons";
 
 interface UseCaseDetailClientProps {
@@ -147,7 +147,7 @@ export default function UseCaseDetailClient({
 
   // Prepare trigger info (only for community workflows)
   const triggerInfo = communityWorkflow
-    ? getTriggerDisplay(communityWorkflow, integrations)
+    ? getTriggerDisplayInfo(communityWorkflow, integrations)
     : null;
   const shouldShowTrigger =
     communityWorkflow && communityWorkflow.trigger_config.type !== "manual";

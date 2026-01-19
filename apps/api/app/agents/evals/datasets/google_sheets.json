@@ -1,0 +1,149 @@
+{
+  "name": "Google Sheets Capabilities",
+  "description": "Evaluation dataset for Google Sheets subagent capabilities including spreadsheet management, cell operations, formulas, and data retrieval. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "google_sheets_agent",
+  "integration_id": "googlesheets",
+  "items": [
+    {
+      "input": "create a new spreadsheet called 'Budget 2024'",
+      "expected_output": "Create new Google Spreadsheet with title 'Budget 2024'.",
+      "context": "User wants new spreadsheet",
+      "tags": ["spreadsheet", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add sheet 'Q1 Data' to my spreadsheet",
+      "expected_output": "1. Find spreadsheet. 2. Add new sheet with title 'Q1 Data'.",
+      "context": "User wants to add sheet/tab",
+      "tags": ["sheet", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get data from cells A1 to C10",
+      "expected_output": "1. Find spreadsheet. 2. Batch get range A1:C10.",
+      "context": "User wants to read cells",
+      "tags": ["cell", "get", "range", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "write values to spreadsheet",
+      "expected_output": "1. Find spreadsheet. 2. Batch update with values.",
+      "context": "User wants to write data",
+      "tags": ["cell", "update", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "search for spreadsheet about sales",
+      "expected_output": "Search spreadsheets with query 'sales'.",
+      "context": "User wants to find spreadsheet",
+      "tags": ["spreadsheet", "search"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add row to spreadsheet with name and email",
+      "expected_output": "1. Find spreadsheet. 2. Append row with data.",
+      "context": "User wants to add row",
+      "tags": ["row", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "aggregate column B where A equals 'Complete'",
+      "expected_output": "1. Find spreadsheet. 2. Aggregate column data with filter.",
+      "context": "User wants calculation",
+      "tags": ["aggregate", "column", "filter"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "add 5 rows to sheet",
+      "expected_output": "1. Find spreadsheet/sheet. 2. Append dimension (rows).",
+      "context": "User wants more rows",
+      "tags": ["dimension", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get sheet properties",
+      "expected_output": "1. Find spreadsheet. 2. Get spreadsheet metadata.",
+      "context": "User wants sheet info",
+      "tags": ["spreadsheet", "get", "properties", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "clear cells in range D1:D50",
+      "expected_output": "1. Find spreadsheet. 2. Clear values in range.",
+      "context": "User wants to clear data",
+      "tags": ["cell", "clear", "range", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get gogle sheets data",
+      "expected_output": "1. Recognize 'gogle' as typo for 'google'. 2. Ask which spreadsheet to get data from.",
+      "context": "User made typo",
+      "tags": ["spreadsheet", "get", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "delete the old spreadsheet",
+      "expected_output": "1. Find old spreadsheet. 2. Request confirmation. 3. Delete spreadsheet.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["spreadsheet", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "copy sheet to another spreadsheet",
+      "expected_output": "1. Find source spreadsheet/sheet. 2. Find destination. 3. Copy sheet.",
+      "context": "User wants to copy sheet",
+      "tags": ["sheet", "copy", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "find row where email is john@example.com",
+      "expected_output": "1. Find spreadsheet. 2. Search rows for matching value.",
+      "context": "User wants to find data",
+      "tags": ["row", "search", "filter"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "update cell A1 with 'Total'",
+      "expected_output": "1. Find spreadsheet. 2. Update cell A1 with value.",
+      "context": "User wants to update cell",
+      "tags": ["cell", "update", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list all my spreadsheets",
+      "expected_output": "List spreadsheets accessible by user.",
+      "context": "User wants spreadsheet list",
+      "tags": ["spreadsheet", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "rename sheet to 'Final Data'",
+      "expected_output": "1. Find spreadsheet/sheet. 2. Update sheet properties with new name.",
+      "context": "User wants to rename sheet",
+      "tags": ["sheet", "rename", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "format cells as currency",
+      "expected_output": "1. Find spreadsheet. 2. Apply number format to cells.",
+      "context": "User wants formatting",
+      "tags": ["cell", "format", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "delete sheet from spreadsheet",
+      "expected_output": "1. Find spreadsheet/sheet. 2. Request confirmation. 3. Delete sheet.",
+      "context": "User wants to delete sheet - needs consent",
+      "tags": ["sheet", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add column after B",
+      "expected_output": "1. Find spreadsheet. 2. Insert dimension (column) after B.",
+      "context": "User wants to add column",
+      "tags": ["dimension", "add", "column", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    }
+  ]
+}

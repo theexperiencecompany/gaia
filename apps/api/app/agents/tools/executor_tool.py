@@ -83,7 +83,6 @@ async def call_executor(
         context_message = await create_agent_context_message(
             agent_name="executor_agent",
             configurable=configurable,
-            user_id=user.get("user_id"),
             query=task,
         )
 

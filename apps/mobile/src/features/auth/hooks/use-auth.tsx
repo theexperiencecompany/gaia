@@ -13,7 +13,7 @@ import {
   removeAuthToken,
   removeUserInfo,
 } from "@/features/auth/utils/auth-storage";
-import { unregisterDeviceOnLogout } from "@/features/notifications";
+import { unregisterDeviceOnLogout } from "@/features/notifications/utils/notification-storage";
 
 interface AuthContextType {
   isAuthenticated: boolean;

@@ -1,0 +1,184 @@
+{
+  "name": "HubSpot Capabilities",
+  "description": "Evaluation dataset for HubSpot subagent capabilities including CRM operations, contacts, deals, companies, tickets, and marketing. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "hubspot_agent",
+  "integration_id": "hubspot",
+  "items": [
+    {
+      "input": "create contact for john@example.com",
+      "expected_output": "Create contact with email john@example.com.",
+      "context": "User wants new contact",
+      "tags": ["contact", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "search contacts with company Acme Corp",
+      "expected_output": "Search contacts with filter for company property.",
+      "context": "User wants filtered contacts",
+      "tags": ["contact", "search", "filter"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create deal 'Enterprise License' worth $50000",
+      "expected_output": "Create deal with dealname and amount properties.",
+      "context": "User wants new deal",
+      "tags": ["deal", "create", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "list all deals in pipeline",
+      "expected_output": "List deals, optionally filtered by pipeline.",
+      "context": "User wants to see deals",
+      "tags": ["deal", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "move deal to 'Closed Won' stage",
+      "expected_output": "1. Find deal. 2. Get pipeline stages. 3. Update deal stage.",
+      "context": "User wants to update deal",
+      "tags": ["deal", "update", "stage", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create company Acme Corporation",
+      "expected_output": "Create company with name property.",
+      "context": "User wants new company",
+      "tags": ["company", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "associate contact with company",
+      "expected_output": "1. Find contact. 2. Find company. 3. Create association.",
+      "context": "User wants to link records",
+      "tags": ["association", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create ticket for 'Login issue reported'",
+      "expected_output": "Create ticket with subject property.",
+      "context": "User wants support ticket",
+      "tags": ["ticket", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get contact details for sarah@company.com",
+      "expected_output": "Search or get contact by email.",
+      "context": "User wants contact info",
+      "tags": ["contact", "get", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "update contact phone number to 555-1234",
+      "expected_output": "1. Find contact. 2. Update contact with phone property.",
+      "context": "User wants to update contact",
+      "tags": ["contact", "update", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create note on contact about meeting follow-up",
+      "expected_output": "1. Find contact. 2. Create note associated with contact.",
+      "context": "User wants to add note",
+      "tags": ["note", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list all companies",
+      "expected_output": "List company objects.",
+      "context": "User wants companies",
+      "tags": ["company", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get pipeline stages for deals",
+      "expected_output": "Get pipelines for objectType 'deals'.",
+      "context": "User wants pipeline info",
+      "tags": ["pipeline", "get"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create product 'Pro Subscription' at $99/month",
+      "expected_output": "Create product with name and price properties.",
+      "context": "User wants new product",
+      "tags": ["product", "create", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "search hubsopt for contact john",
+      "expected_output": "1. Recognize 'hubsopt' as typo for 'hubspot'. 2. Search contacts for 'john'.",
+      "context": "User made typo",
+      "tags": ["contact", "search", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "delete the old contact",
+      "expected_output": "1. Find old contact. 2. Request confirmation. 3. Archive/delete contact.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["contact", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create quote for deal",
+      "expected_output": "1. Find deal. 2. Create quote associated with deal.",
+      "context": "User wants new quote",
+      "tags": ["quote", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "update deal value to $75000",
+      "expected_output": "1. Find deal. 2. Update deal amount property.",
+      "context": "User wants to update deal",
+      "tags": ["deal", "update", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get all tickets",
+      "expected_output": "List ticket objects.",
+      "context": "User wants tickets",
+      "tags": ["ticket", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "list products in catalog",
+      "expected_output": "List product objects.",
+      "context": "User wants products",
+      "tags": ["product", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create custom property 'Industry' for contacts",
+      "expected_output": "Create property for objectType contacts.",
+      "context": "User wants custom field",
+      "tags": ["property", "create", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "merge duplicate contacts",
+      "expected_output": "1. Find duplicate contacts. 2. Request confirmation. 3. Merge contacts.",
+      "context": "User wants to merge - needs consent",
+      "tags": ["contact", "merge", "destructive"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "close ticket as resolved",
+      "expected_output": "1. Find ticket. 2. Update ticket status to resolved.",
+      "context": "User wants to resolve ticket",
+      "tags": ["ticket", "update", "status", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get deal owner for Enterprise deal",
+      "expected_output": "1. Find Enterprise deal. 2. Get deal with owner property.",
+      "context": "User wants owner info",
+      "tags": ["deal", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "batch create contacts for import",
+      "expected_output": "Create batch of contact objects.",
+      "context": "User wants bulk import",
+      "tags": ["contact", "create", "bulk"],
+      "metadata": { "difficulty": "medium" }
+    }
+  ]
+}

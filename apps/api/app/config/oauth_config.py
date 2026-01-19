@@ -18,7 +18,7 @@ from app.agents.prompts.subagent_prompts import (
     DEEPWIKI_AGENT_SYSTEM_PROMPT,
     GITHUB_AGENT_SYSTEM_PROMPT,
     GMAIL_AGENT_SYSTEM_PROMPT,
-    GOALS_AGENT_SYSTEM_PROMPT,
+    GOOGLE_DOCS_AGENT_SYSTEM_PROMPT,
     GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
     GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
     GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
@@ -27,6 +27,7 @@ from app.agents.prompts.subagent_prompts import (
     INSTAGRAM_AGENT_SYSTEM_PROMPT,
     LINEAR_AGENT_SYSTEM_PROMPT,
     LINKEDIN_AGENT_SYSTEM_PROMPT,
+    MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
     NOTION_AGENT_SYSTEM_PROMPT,
     PERPLEXITY_AGENT_SYSTEM_PROMPT,
     REDDIT_AGENT_SYSTEM_PROMPT,
@@ -36,9 +37,11 @@ from app.agents.prompts.subagent_prompts import (
     TODOIST_AGENT_SYSTEM_PROMPT,
     TRELLO_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
+    ZOOM_AGENT_SYSTEM_PROMPT,
 )
 from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
+from app.langchain.core.subgraphs.slack_subgraph import SLACK_TOOLS
 from app.models.oauth_models import (
     ComposioConfig,
     MCPConfig,
@@ -47,6 +50,8 @@ from app.models.oauth_models import (
     ProviderMetadataConfig,
     SubAgentConfig,
     TriggerConfig,
+    TriggerConfigFieldSchema,
+    WorkflowTriggerSchema,
 )
 
 
@@ -71,7 +76,66 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         ],
         is_featured=True,
         short_name="calendar",
-        managed_by="self",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_exqcpnLvCzGJ",
+            toolkit="GOOGLECALENDAR",
+            toolkit_version="20260107_00",
+        ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
+                name="Event Created",
+                description="Polling trigger that fires when a new calendar event is created.",
+                auto_activate=True,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="calendar_event_created",
+                    composio_slug="GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
+                    name="New Calendar Event",
+                    description="Trigger when new events are created",
+                    config_schema={
+                        "calendar_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="primary",
+                            options_endpoint="/calendar/list",
+                            description="Calendar to monitor for new events",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER",
+                name="Event Starting Soon",
+                description="Triggers when a calendar event is starting soon",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="calendar_event_starting_soon",
+                    composio_slug="GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER",
+                    name="Event Starting Soon",
+                    description="Trigger before events start",
+                    config_schema={
+                        "calendar_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="primary",
+                            options_endpoint="/calendar/list",
+                            description="Calendar to monitor for upcoming events",
+                        ),
+                        "minutes_before_start": TriggerConfigFieldSchema(
+                            type="integer",
+                            default=10,
+                            min=1,
+                            max=1440,
+                            description="Trigger when event is within this many minutes from starting",
+                        ),
+                        "include_all_day": TriggerConfigFieldSchema(
+                            type="boolean",
+                            default=False,
+                            description="Whether to include all-day events",
+                        ),
+                    },
+                ),
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="google_calendar_agent",
@@ -81,26 +145,94 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating events, scheduling meetings, managing availability, setting reminders, updating calendar entries, and organizing schedules",
             use_cases="scheduling meetings, managing calendar events, checking availability, or any calendar-related task",
             system_prompt=CALENDAR_AGENT_SYSTEM_PROMPT,
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
+            specific_tools=[
+                "GOOGLECALENDAR_FIND_FREE_SLOTS",
+                "GOOGLECALENDAR_FREE_BUSY_QUERY",
+                "GOOGLECALENDAR_EVENTS_MOVE",
+                "GOOGLECALENDAR_REMOVE_ATTENDEE",
+                "GOOGLECALENDAR_CALENDAR_LIST_INSERT",
+                "GOOGLECALENDAR_CALENDAR_LIST_UPDATE",
+                "GOOGLECALENDAR_CALENDARS_DELETE",
+                "GOOGLECALENDAR_CALENDARS_UPDATE",
+                "GOOGLECALENDAR_CUSTOM_CREATE_EVENT",
+                "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS",
+                "GOOGLECALENDAR_CUSTOM_GET_DAY_SUMMARY",
+                "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+                "GOOGLECALENDAR_CUSTOM_FIND_EVENT",
+                "GOOGLECALENDAR_CUSTOM_GET_EVENT",
+                "GOOGLECALENDAR_CUSTOM_DELETE_EVENT",
+                "GOOGLECALENDAR_CUSTOM_PATCH_EVENT",
+                "GOOGLECALENDAR_CUSTOM_ADD_RECURRENCE",
+            ],
         ),
     ),
     OAuthIntegration(
         id="google_docs",
         name="Google Docs",
-        description="Create and edit documents in your workspace",
+        description="Create, edit, and share documents in your workspace",
         category="productivity",
-        provider="google",
-        scopes=[
-            OAuthScope(
-                scope="https://www.googleapis.com/auth/documents",
-                description="Create and edit documents",
+        provider="googledocs",
+        scopes=[],
+        is_featured=True,
+        short_name="docs",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_coVAA1WRsbdK",  # TODO: Replace with actual auth_config_id
+            toolkit="GOOGLEDOCS",
+            toolkit_version="20260107_00",
+        ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="GOOGLEDOCS_PAGE_ADDED_TRIGGER",
+                name="New Document Created",
+                description="Triggers when a new Google Doc is created in your workspace.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="google_docs_new_document",
+                    composio_slug="GOOGLEDOCS_PAGE_ADDED_TRIGGER",
+                    name="New Google Doc Created",
+                    description="Trigger when a new document is created",
+                    config_schema={},
+                ),
+            ),
+            TriggerConfig(
+                slug="GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER",
+                name="Document Deleted",
+                description="Triggers when a Google Doc is deleted in your workspace.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="google_docs_document_deleted",
+                    composio_slug="GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER",
+                    name="Document Deleted",
+                    description="Trigger when a document is deleted",
+                    config_schema={},
+                ),
+            ),
+            TriggerConfig(
+                slug="GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER",
+                name="Document Updated",
+                description="Triggers when a Google Doc is updated in your workspace.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="google_docs_document_updated",
+                    composio_slug="GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER",
+                    name="Document Updated",
+                    description="Trigger when a document is updated",
+                    config_schema={},
+                ),
             ),
         ],
-        short_name="docs",
-        managed_by="self",
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="google_docs_agent",
+            tool_space="googledocs",
+            handoff_tool_name="call_google_docs_agent",
+            domain="document creation, editing, and collaboration",
+            capabilities="creating documents, editing content, formatting text, sharing with collaborators, managing document structure, inserting tables and images, and using templates",
+            use_cases="creating documents, editing docs, sharing with team members, formatting content, or any Google Docs operation",
+            system_prompt=GOOGLE_DOCS_AGENT_SYSTEM_PROMPT,
+        ),
     ),
-    # Internal Todo System (no OAuth required)
     OAuthIntegration(
         id="todos",
         name="Todos",
@@ -191,7 +323,9 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="gmail",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_svLPDmjcTVMX", toolkit="GMAIL"
+            auth_config_id="ac_svLPDmjcTVMX",
+            toolkit="GMAIL",
+            toolkit_version="20260107_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -199,6 +333,14 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 name="New Gmail Message",
                 description="Triggered when a new Gmail message arrives",
                 config={"labelIds": "INBOX", "user_id": "me", "interval": 1},
+                auto_activate=True,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="gmail_new_message",
+                    composio_slug="GMAIL_NEW_GMAIL_MESSAGE",
+                    name="New Gmail Message",
+                    description="Trigger when a new email arrives",
+                    config_schema={},
+                ),
             )
         ],
         subagent_config=SubAgentConfig(
@@ -226,7 +368,61 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_DR3IWp9-Kezl",
             toolkit="NOTION",
+            toolkit_version="20260107_00",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="NOTION_PAGE_ADDED_TO_DATABASE",
+                name="New Page in Database",
+                description="Triggers when a new page is added to a Notion database.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="notion_new_page_in_db",
+                    composio_slug="NOTION_PAGE_ADDED_TO_DATABASE",
+                    name="New Page in Database",
+                    description="Trigger when a page is added to a specific database",
+                    config_schema={
+                        "database_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="The ID of the Notion database to monitor",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="NOTION_PAGE_UPDATED_TRIGGER",
+                name="Page Updated",
+                description="Triggers when any block within a specified Notion page is updated.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="notion_page_updated",
+                    composio_slug="NOTION_PAGE_UPDATED_TRIGGER",
+                    name="Page Updated",
+                    description="Trigger when a specific page is updated",
+                    config_schema={
+                        "page_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="The ID of the Notion page to monitor",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="NOTION_ALL_PAGE_EVENTS_TRIGGER",
+                name="All Page Events",
+                description="Triggers when any Notion page is created or updated across the workspace.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="notion_all_page_events",
+                    composio_slug="NOTION_ALL_PAGE_EVENTS_TRIGGER",
+                    name="Any Page Event",
+                    description="Trigger on any page creation or update",
+                    config_schema={},
+                ),
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="notion_agent",
@@ -251,6 +447,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_vloH3fnhIeUa",
             toolkit="TWITTER",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -264,7 +461,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         ),
         metadata_config=ProviderMetadataConfig(
             user_info_tool="TWITTER_USER_LOOKUP_ME",
-            username_field="data.data.username",
+            username_field="data.username",
         ),
     ),
     OAuthIntegration(
@@ -280,7 +477,53 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_18I3fRfWyXDu",
             toolkit="GOOGLESHEETS",
+            toolkit_version="20260107_00",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="GOOGLESHEETS_NEW_ROWS_TRIGGER",
+                name="New Rows in Sheet",
+                description="Triggered when new rows are added to a specific Google Sheet.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="google_sheets_new_row",
+                    composio_slug="GOOGLESHEETS_NEW_ROWS_TRIGGER",
+                    name="New Row Added",
+                    description="Trigger when a new row is added",
+                    config_schema={
+                        "spreadsheet_ids": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Comma-separated spreadsheet IDs to monitor (empty for all)",
+                        ),
+                        "sheet_names": TriggerConfigFieldSchema(
+                            type="string",
+                            description="Comma-separated sheet names (empty for all sheets)",
+                            default="",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER",
+                name="New Sheet Added",
+                description="Triggered when a new sheet/tab is created in a Google Spreadsheet.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="google_sheets_new_sheet",
+                    composio_slug="GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER",
+                    name="New Spreadsheet",
+                    description="Trigger when a new sheet is added",
+                    config_schema={
+                        "spreadsheet_ids": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Comma-separated spreadsheet IDs to monitor",
+                        ),
+                    },
+                ),
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="google_sheets_agent",
@@ -305,6 +548,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_GMeJBELf3z_m",
             toolkit="LINKEDIN",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -312,8 +556,8 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             tool_space="linkedin",
             handoff_tool_name="call_linkedin_agent",
             domain="professional networking",
-            capabilities="creating professional posts, managing connections, networking outreach, updating profile, engaging with content, job searching, and building professional presence",
-            use_cases="posting professional content, managing connections, networking, or any LinkedIn career-related activity",
+            capabilities="creating professional posts with images/documents/articles, managing connections, engaging with content through comments and reactions, networking outreach, and building professional presence",
+            use_cases="posting professional content with rich media, commenting on posts, reacting to content, sharing articles, or any LinkedIn career-related activity",
             system_prompt=LINKEDIN_AGENT_SYSTEM_PROMPT,
         ),
     ),
@@ -331,7 +575,106 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_y2VK4j0ATiZo",
             toolkit="GITHUB",
+            toolkit_version="20260107_00",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="GITHUB_COMMIT_EVENT",
+                name="Commit Event",
+                description="Triggered when a new commit is pushed to a repository.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="github_commit_event",
+                    composio_slug="GITHUB_COMMIT_EVENT",
+                    name="New Commit",
+                    description="Trigger on new commits to a repository",
+                    config_schema={
+                        "owner": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Owner of the repository (username or org)",
+                        ),
+                        "repo": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Repository name",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="GITHUB_PULL_REQUEST_EVENT",
+                name="Pull Request Event",
+                description="Triggered when a pull request is opened, closed, or synchronized.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="github_pr_event",
+                    composio_slug="GITHUB_PULL_REQUEST_EVENT",
+                    name="Pull Request Updates",
+                    description="Trigger on PR open, close, or sync",
+                    config_schema={
+                        "owner": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Owner of the repository (username or org)",
+                        ),
+                        "repo": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Repository name",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="GITHUB_STAR_ADDED_EVENT",
+                name="Star Added",
+                description="Triggered when a new star is added to the repository.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="github_star_added",
+                    composio_slug="GITHUB_STAR_ADDED_EVENT",
+                    name="New Repository Star",
+                    description="Trigger when someone stars the repository",
+                    config_schema={
+                        "owner": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Owner of the repository (username or org)",
+                        ),
+                        "repo": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Repository name",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="GITHUB_ISSUE_ADDED_EVENT",
+                name="Issue Added",
+                description="Triggered when a new issue is added to the repository.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="github_issue_added",
+                    composio_slug="GITHUB_ISSUE_ADDED_EVENT",
+                    name="New Issue Created",
+                    description="Trigger when a new issue is created",
+                    config_schema={
+                        "owner": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Owner of the repository (username or org)",
+                        ),
+                        "repo": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="Repository name",
+                        ),
+                    },
+                ),
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="github_agent",
@@ -361,6 +704,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_7-hfiMVLhcDN",
             toolkit="REDDIT",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -386,6 +730,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_QPtQsXnIYm4C",
             toolkit="AIRTABLE",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -408,11 +753,71 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         scopes=[],
         available=True,
         short_name="linear",
-        managed_by="mcp",
-        mcp_config=MCPConfig(
-            server_url="https://mcp.linear.app/sse",
-            requires_auth=True,
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_mnrcEhhTXPVS",
+            toolkit="LINEAR",
+            toolkit_version="20260107_00",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="LINEAR_ISSUE_CREATED_TRIGGER",
+                name="Issue Created",
+                description="Triggered when a new issue is created in Linear.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="linear_issue_created",
+                    composio_slug="LINEAR_ISSUE_CREATED_TRIGGER",
+                    name="New Linear Issue",
+                    description="Trigger when a new issue is created",
+                    config_schema={
+                        "team_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="ID of the team to filter issues by",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="LINEAR_ISSUE_UPDATED_TRIGGER",
+                name="Issue Updated",
+                description="Triggered when an issue is updated in Linear.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="linear_issue_updated",
+                    composio_slug="LINEAR_ISSUE_UPDATED_TRIGGER",
+                    name="Updated Linear Issue",
+                    description="Trigger when an issue is updated",
+                    config_schema={
+                        "team_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="ID of the team to filter issues by",
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="LINEAR_COMMENT_EVENT_TRIGGER",
+                name="Comment Received",
+                description="Triggered when a new comment is posted on an issue.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="linear_comment_added",
+                    composio_slug="LINEAR_COMMENT_EVENT_TRIGGER",
+                    name="New Comment",
+                    description="Trigger when a comment is added",
+                    config_schema={
+                        "team_id": TriggerConfigFieldSchema(
+                            type="string",
+                            default="",
+                            description="ID of the team to filter comments by",
+                        ),
+                    },
+                ),
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="linear_agent",
@@ -465,7 +870,67 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_acm0K6K_kWxY",
             toolkit="SLACK",
+            toolkit_version="20260107_00",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="SLACK_RECEIVE_MESSAGE",
+                name="New Message",
+                description="Triggered when messages are posted in Slack",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="slack_new_message",
+                    composio_slug="SLACK_RECEIVE_MESSAGE",
+                    name="New Slack Message",
+                    description="Trigger on new Slack messages with optional filtering",
+                    config_schema={
+                        "channel_ids": TriggerConfigFieldSchema(
+                            type="string",
+                            description="Channel IDs to monitor (leave empty for all channels)",
+                            default="",
+                        ),
+                        "exclude_bot_messages": TriggerConfigFieldSchema(
+                            type="boolean",
+                            description="Exclude messages from bots",
+                            default=False,
+                        ),
+                        "exclude_direct_messages": TriggerConfigFieldSchema(
+                            type="boolean",
+                            description="Exclude 1:1 direct messages",
+                            default=False,
+                        ),
+                        "exclude_group_messages": TriggerConfigFieldSchema(
+                            type="boolean",
+                            description="Exclude private group messages",
+                            default=False,
+                        ),
+                        "exclude_mpim_messages": TriggerConfigFieldSchema(
+                            type="boolean",
+                            description="Exclude multi-person direct messages",
+                            default=False,
+                        ),
+                        "exclude_thread_replies": TriggerConfigFieldSchema(
+                            type="boolean",
+                            description="Exclude replies in threads",
+                            default=False,
+                        ),
+                    },
+                ),
+            ),
+            TriggerConfig(
+                slug="SLACK_CHANNEL_CREATED",
+                name="Channel Created",
+                description="Triggered when a new channel is created",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="slack_channel_created",
+                    composio_slug="SLACK_CHANNEL_CREATED",
+                    name="New Slack Channel",
+                    description="Trigger when a channel is created",
+                    config_schema={},
+                ),
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="slack_agent",
@@ -475,6 +940,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="sending messages, managing channels, organizing conversations, sharing files, setting reminders, and automating team communication workflows",
             use_cases="sending Slack messages, managing channels, team communication, or automating workspace workflows",
             system_prompt=SLACK_AGENT_SYSTEM_PROMPT,
+            specific_tools=SLACK_TOOLS,
         ),
     ),
     OAuthIntegration(
@@ -490,6 +956,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_rcnwYp1PRCVr",
             toolkit="HUBSPOT",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -515,6 +982,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_xPSnVjKyHCDb",
             toolkit="GOOGLETASKS",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -540,7 +1008,23 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_TOjltL3O2kEB",
             toolkit="TODOIST",
+            toolkit_version="20260107_00",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="TODOIST_NEW_TASK_CREATED",
+                name="New Task Created",
+                description="Trigger when a new task is added to Todoist.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="todoist_new_task_created",
+                    composio_slug="TODOIST_NEW_TASK_CREATED",
+                    name="New Task Created",
+                    description="Trigger when a new task is added to Todoist.",
+                    config_schema={},
+                ),
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="todoist_agent",
@@ -552,34 +1036,58 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=TODOIST_AGENT_SYSTEM_PROMPT,
         ),
     ),
-    # OAuthIntegration(
-    #     id="microsoft_teams",
-    #     name="Microsoft Teams",
-    #     description="Collaborate with teams, send messages, manage channels, and automate team workflows",
-    #     category="communication",
-    #     provider="microsoft_teams",
-    #     scopes=[],
-    #     available=True,
-    #     short_name="teams",
-    #     managed_by="composio",
-    #     composio_config=ComposioConfig(
-    #         auth_config_id="ac_0kzvAbsi2xu3", toolkit="MICROSOFTTEAMS"
-    #     ),
-    # ),
-    # OAuthIntegration(
-    #     id="zoom",
-    #     name="Zoom",
-    #     description="Create and manage Zoom meetings, webinars, and video conferencing",
-    #     category="communication",
-    #     provider="zoom",
-    #     scopes=[],
-    #     available=True,
-    #     short_name="zoom",
-    #     managed_by="composio",
-    #     composio_config=ComposioConfig(
-    #         auth_config_id="ac_fABNBG17lf2A", toolkit="ZOOM"
-    #     ),
-    # ),
+    OAuthIntegration(
+        id="microsoft_teams",
+        name="Microsoft Teams",
+        description="Collaborate with teams, send messages, manage channels, and automate team workflows",
+        category="communication",
+        provider="microsoft_teams",
+        scopes=[],
+        available=True,
+        short_name="teams",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_0kzvAbsi2xu3",
+            toolkit="MICROSOFT_TEAMS",
+            toolkit_version="20260107_00",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="microsoft_teams_agent",
+            tool_space="microsoft_teams",
+            handoff_tool_name="call_microsoft_teams_agent",
+            domain="team collaboration and communication",
+            capabilities="sending messages, managing channels, scheduling meetings, managing teams, file sharing, chat operations, call management, and automating team workflows",
+            use_cases="team messaging, channel management, meeting coordination, file sharing, or any Microsoft Teams collaboration task",
+            system_prompt=MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
+        ),
+    ),
+    OAuthIntegration(
+        id="zoom",
+        name="Zoom",
+        description="Create and manage Zoom meetings, webinars, and video conferencing",
+        category="communication",
+        provider="zoom",
+        scopes=[],
+        available=True,
+        short_name="zoom",
+        managed_by="composio",
+        composio_config=ComposioConfig(
+            auth_config_id="ac_fABNBG17lf2A",
+            toolkit="ZOOM",
+            toolkit_version="20260107_00",
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="zoom_agent",
+            tool_space="zoom",
+            handoff_tool_name="call_zoom_agent",
+            domain="video conferencing and webinar management",
+            capabilities="creating meetings, scheduling webinars, managing participants, cloud recording, meeting invitations, attendance tracking, and automating video conferencing workflows",
+            use_cases="scheduling meetings, managing webinars, recording conferences, tracking attendance, or any Zoom video conferencing task",
+            system_prompt=ZOOM_AGENT_SYSTEM_PROMPT,
+        ),
+    ),
     OAuthIntegration(
         id="googlemeet",
         name="Google Meet",
@@ -593,6 +1101,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_GsHKAmsiGvz1",
             toolkit="GOOGLEMEET",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -618,6 +1127,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_vy6NqsFlzLuO",
             toolkit="GOOGLE_MAPS",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -643,7 +1153,34 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_gF2RuhulKw3I",
             toolkit="ASANA",
+            toolkit_version="20260107_00",
         ),
+        associated_triggers=[
+            TriggerConfig(
+                slug="ASANA_TASK_TRIGGER",
+                name="Task Trigger",
+                description="Triggered when a task involves the user.",
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="asana_task_trigger",
+                    composio_slug="ASANA_TASK_TRIGGER",
+                    name="Task Trigger",
+                    description="Triggered when a task involves the user.",
+                    config_schema={
+                        "project_id": TriggerConfigFieldSchema(
+                            type="string",
+                            description="ID of the project to trigger on.",
+                            default="",
+                        ),
+                        "workspace_id": TriggerConfigFieldSchema(
+                            type="string",
+                            description="ID of the workspace to trigger on.",
+                            default="",
+                        ),
+                    },
+                ),
+            ),
+        ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="asana_agent",
@@ -668,6 +1205,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_nMjBqOcjLTGW",
             toolkit="TRELLO",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -693,6 +1231,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_JP45uYkUcjVV",
             toolkit="INSTAGRAM",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -718,6 +1257,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_cyT9vqo3pcF3",
             toolkit="CLICKUP",
+            toolkit_version="20260107_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,

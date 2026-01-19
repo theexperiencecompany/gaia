@@ -1,5 +1,6 @@
 [tools]
 node = "22"
+java = "temurin-17"
 
 [tasks.setup]
 description = "Install dependencies and setup Expo environment"

@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { PressableFeedback } from "heroui-native";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
@@ -5,9 +6,10 @@ import {
   BubbleChatIcon,
   FavouriteIcon,
   HugeiconsIcon,
+  TestTube01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { cn } from "@/lib/utils";
+import { useResponsive } from "@/lib/responsive";
 import { useChatContext } from "../../hooks/use-chat-context";
 import {
   type Conversation,
@@ -26,24 +28,33 @@ interface ChatItemProps {
 }
 
 function ChatItem({ item, isActive, onPress }: ChatItemProps) {
+  const { spacing, fontSize, iconSize } = useResponsive();
+
   return (
     <PressableFeedback onPress={onPress}>
       <View
-        className={`flex-row items-center px-6 py-2 gap-3 relative ${
-          isActive ? "bg-muted/10 rounded-xl" : ""
-        }`}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: spacing.lg,
+          paddingVertical: spacing.sm,
+          gap: spacing.md,
+          backgroundColor: isActive ? "rgba(255,255,255,0.05)" : "transparent",
+          borderRadius: isActive ? 12 : 0,
+        }}
       >
         <HugeiconsIcon
           icon={item.is_starred ? FavouriteIcon : BubbleChatIcon}
-          size={16}
+          size={iconSize.sm}
           color={isActive ? "#ffffff" : "#666666"}
         />
         <Text
           numberOfLines={1}
-          className={cn("text-sm", {
-            "text-foreground": isActive,
-            "text-muted": !isActive,
-          })}
+          style={{
+            fontSize: fontSize.sm,
+            color: isActive ? "#ffffff" : "#8e8e93",
+            flex: 1,
+          }}
         >
           {item.title}
         </Text>
@@ -69,15 +80,23 @@ function Section({
   isExpanded,
   onToggle,
 }: SectionProps) {
+  const { spacing, fontSize } = useResponsive();
+
   if (items.length === 0) return null;
 
   return (
-    <View className="mb-2">
+    <View style={{ marginBottom: spacing.sm }}>
       <Pressable
         onPress={onToggle}
-        className="flex-row items-center px-6 py-3 opacity-60"
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: spacing.lg,
+          paddingVertical: spacing.md,
+          opacity: 0.6,
+        }}
       >
-        <Text className="text-xs text-muted">{title}</Text>
+        <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>{title}</Text>
       </Pressable>
       {isExpanded &&
         items.map((item) => (
@@ -93,8 +112,10 @@ function Section({
 }
 
 export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
+  const router = useRouter();
   const { activeChatId } = useChatContext();
   const { conversations, isLoading, error } = useConversations();
+  const { spacing, fontSize, iconSize } = useResponsive();
 
   const [expandedSections, setExpandedSections] = useState<
     Record<string, boolean>
@@ -121,9 +142,15 @@ export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
 
   if (isLoading) {
     return (
-      <View className="flex-1 justify-center items-center">
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
         <ActivityIndicator size="small" color="#16c1ff" />
-        <Text className="text-muted-foreground mt-3 text-xs">
+        <Text
+          style={{
+            color: "#8e8e93",
+            marginTop: spacing.md,
+            fontSize: fontSize.xs,
+          }}
+        >
           Loading conversations...
         </Text>
       </View>
@@ -132,19 +159,54 @@ export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
 
   if (error) {
     return (
-      <View className="flex-1 justify-center items-center p-6">
-        <Text className="text-destructive text-xs text-center">{error}</Text>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: spacing.lg,
+        }}
+      >
+        <Text
+          style={{
+            color: "#ef4444",
+            fontSize: fontSize.xs,
+            textAlign: "center",
+          }}
+        >
+          {error}
+        </Text>
       </View>
     );
   }
 
   if (conversations.length === 0) {
     return (
-      <View className="flex-1 justify-center items-center p-6">
-        <Text className="text-muted-foreground text-sm text-center">
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: spacing.lg,
+        }}
+      >
+        <Text
+          style={{
+            color: "#8e8e93",
+            fontSize: fontSize.sm,
+            textAlign: "center",
+          }}
+        >
           No conversations yet
         </Text>
-        <Text className="text-muted-foreground text-xs text-center mt-2">
+        <Text
+          style={{
+            color: "#8e8e93",
+            fontSize: fontSize.xs,
+            textAlign: "center",
+            marginTop: spacing.sm,
+          }}
+        >
           Start a new chat to begin
         </Text>
       </View>
@@ -152,7 +214,33 @@ export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
   }
 
   return (
-    <ScrollView style={{ flex: 1 }} className="px-3">
+    <ScrollView style={{ flex: 1, paddingHorizontal: spacing.md }}>
+      <PressableFeedback onPress={() => router.push("/test")}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: spacing.lg,
+            paddingVertical: spacing.sm,
+            gap: spacing.md,
+            marginBottom: spacing.sm,
+          }}
+        >
+          <HugeiconsIcon
+            icon={TestTube01Icon}
+            size={iconSize.sm}
+            color="#8e8e93"
+          />
+          <Text
+            style={{
+              fontSize: fontSize.sm,
+              color: "#8e8e93",
+            }}
+          >
+            Test
+          </Text>
+        </View>
+      </PressableFeedback>
       <Section
         title="Starred"
         items={groupedChats.starred}

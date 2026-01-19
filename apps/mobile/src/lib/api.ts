@@ -29,7 +29,7 @@ async function request<T = unknown>(config: RequestConfig): Promise<T> {
   }
 
   const headers: Record<string, string> = {
-    Cookie: `wos_session=${token}`,
+    Authorization: `Bearer ${token}`,
     Accept: "application/json",
     "x-timezone": getUserTimezone(),
   };

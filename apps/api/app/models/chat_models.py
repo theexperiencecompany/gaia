@@ -82,6 +82,8 @@ tool_fields = [
     "integration_connection_required",
     "integration_list_data",
     "reddit_data",
+    "twitter_user_data",
+    "twitter_search_data",
 ]
 
 

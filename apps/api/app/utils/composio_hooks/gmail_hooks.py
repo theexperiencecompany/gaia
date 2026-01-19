@@ -1,11 +1,15 @@
 """
 Gmail-specific hooks using the enhanced decorator system.
 
-These hooks implement writer functionality for frontend streaming
-and response processing for raw Gmail API data.
+These hooks implement writer functionality for frontend streaming,
+response processing for raw Gmail API data, and schema modifiers
+for customizing tool descriptions and defaults.
 """
 
 from typing import Any
+
+from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
+from langgraph.config import get_stream_writer
 
 from app.agents.templates.mail_templates import (
     detailed_message_template,
@@ -20,10 +24,86 @@ from app.utils.markdown_utils import (
     convert_markdown_to_plain_text,
     is_markdown_content,
 )
-from composio.types import ToolExecuteParams, ToolExecutionResponse
-from langgraph.config import get_stream_writer
 
-from .registry import register_after_hook, register_before_hook
+from .registry import (
+    register_after_hook,
+    register_before_hook,
+    register_schema_modifier,
+)
+
+# ====================== SCHEMA MODIFIERS ======================
+# These modifiers customize tool schemas before they are seen by agents
+
+
+@register_schema_modifier(tools=["GMAIL_SEND_EMAIL"])
+def gmail_send_email_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
+    """
+    Add draft-first workflow guidance to GMAIL_SEND_EMAIL description.
+
+    This encourages agents to create drafts for user review before
+    sending emails directly, unless explicitly instructed otherwise.
+    """
+    draft_guidance = (
+        "\n\n⚠️ IMPORTANT WORKFLOW: Unless the user explicitly requests "
+        "immediate sending, prefer creating a draft first using "
+        "GMAIL_CREATE_EMAIL_DRAFT for user review. "
+        "If a draft was already created in the current conversation, "
+        "use GMAIL_SEND_DRAFT with the draft_id instead of this tool."
+    )
+    schema.description += draft_guidance
+    return schema
+
+
+@register_schema_modifier(
+    tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"]
+)
+def gmail_fetch_emails_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
+    """
+    Set sensible defaults for GMAIL_FETCH_EMAILS and GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID.
+
+    - max_results: default to 10 (was 1)
+    - label_ids: default to ["INBOX"]
+    - format: default to "full"
+    - Add Gmail search syntax tips to description
+    """
+    input_params = schema.input_parameters
+    if not isinstance(input_params, dict):
+        return schema
+
+    props = input_params.get("properties", {})
+    if not isinstance(props, dict):
+        return schema
+
+    if tool == "GMAIL_FETCH_EMAILS":
+        # Set max_results default to 10
+        if "max_results" in props and isinstance(props["max_results"], dict):
+            props["max_results"]["default"] = 10
+
+        # Set label_ids default to ["INBOX"]
+        if "label_ids" in props and isinstance(props["label_ids"], dict):
+            props["label_ids"]["default"] = ["INBOX"]
+
+        # Add Gmail search syntax tips to description
+        search_tips = (
+            "\n\nGMAIL SEARCH SYNTAX (use in 'query' parameter):\n"
+            "• from:sender@email.com - emails from specific sender\n"
+            "• to:recipient@email.com - emails to specific recipient\n"
+            "• subject:keyword - emails with keyword in subject\n"
+            "• is:unread, is:read, is:starred - filter by status\n"
+            "• has:attachment - emails with attachments\n"
+            "• after:2024/01/01, before:2024/12/31 - date range\n"
+            "• newer_than:7d, older_than:1m - relative dates\n"
+            "• label:labelname - emails with specific label\n"
+            "• in:inbox, in:sent, in:drafts - filter by folder"
+        )
+        schema.description += search_tips
+
+    # Set format default to "full" for detailed content
+    if "format" in props and isinstance(props["format"], dict):
+        props["format"]["default"] = "full"
+
+    return schema
+
 
 # ====================== BEFORE EXECUTE HOOKS ======================
 # These hooks send progress/streaming data to frontend before tool execution
@@ -117,27 +197,6 @@ def gmail_compose_before_hook(
     except Exception as e:
         logger.error(f"Error in gmail_compose_before_hook: {e}")
         return params
-
-
-@register_before_hook(tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
-def gmail_fetch_before_hook(
-    tool: str, toolkit: str, params: ToolExecuteParams
-) -> ToolExecuteParams:
-    """Handle email fetching progress."""
-    try:
-        arguments = params.get("arguments", {})
-
-        if tool == "GMAIL_FETCH_EMAILS":
-            arguments["label_ids"] = (
-                ["INBOX"] if not arguments.get("label_ids") else arguments["label_ids"]
-            )
-        arguments["format"] = "full"
-
-        params["arguments"] = arguments
-    except Exception as e:
-        logger.error(f"Error in gmail_fetch_before_hook: {e}")
-
-    return params
 
 
 # ====================== AFTER EXECUTE HOOKS ======================
@@ -293,10 +352,13 @@ def gmail_attachment_after_hook(
 ) -> Any:
     """Process attachment response to extract metadata only."""
     try:
-        if not response or "error" in response["data"]:
+        if not response["successful"]:
             return response["data"]
 
         # Extract only metadata, not the base64 content
+        if not isinstance(response["data"], dict):
+            return response["data"]
+
         processed_response = {
             "attachmentId": response["data"].get("attachmentId", ""),
             "filename": response["data"].get("filename", ""),
@@ -636,16 +698,16 @@ def gmail_get_contacts_after_hook(
         if writer is not None and contact_list:
             payload = {
                 "contacts_data": contact_list,
-                "total_count": response_data.get("totalPeople", len(contact_list)),
-                "next_page_token": response_data.get("nextPageToken"),
+                "total_count": response["data"].get("totalPeople", len(contact_list)),
+                "next_page_token": response["data"].get("nextPageToken"),
             }
             writer(payload)
 
         # Return minimal data for LLM
         return {
             "contacts": llm_contacts,
-            "total_count": response_data.get("totalPeople", len(llm_contacts)),
-            "has_more": bool(response_data.get("nextPageToken")),
+            "total_count": response["data"].get("totalPeople", len(llm_contacts)),
+            "has_more": bool(response["data"].get("nextPageToken")),
         }
 
     except Exception as e:

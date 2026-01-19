@@ -6,14 +6,12 @@ import {
   Menu01Icon,
   Search01Icon,
 } from "@/components/icons";
-import type { AIModel } from "@/features/chat/types";
+import { useResponsive } from "@/lib/responsive";
 
 interface ChatHeaderProps {
   onMenuPress: () => void;
   onNewChatPress: () => void;
   onSearchPress?: () => void;
-  selectedModel?: AIModel;
-  onModelChange?: (model: AIModel) => void;
 }
 
 export function ChatHeader({
@@ -21,25 +19,44 @@ export function ChatHeader({
   onNewChatPress,
   onSearchPress,
 }: ChatHeaderProps) {
+  const { spacing, iconSize, moderateScale } = useResponsive();
+
   return (
-    <View className="flex-row items-center justify-between px-6 py-4 border-b border-border/10 bg-transparent">
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.md,
+        backgroundColor: "transparent",
+      }}
+    >
       <PressableFeedback onPress={onMenuPress}>
-        <View className="p-1">
-          <HugeiconsIcon icon={Menu01Icon} size={24} color="#ffffff" />
+        <View style={{ padding: moderateScale(4, 0.5) }}>
+          <HugeiconsIcon icon={Menu01Icon} size={iconSize.lg} color="#ffffff" />
         </View>
       </PressableFeedback>
 
-      <View className="flex-row gap-2">
+      <View style={{ flexDirection: "row", gap: spacing.sm }}>
         {onSearchPress && (
           <PressableFeedback onPress={onSearchPress}>
-            <View className="p-1">
-              <HugeiconsIcon icon={Search01Icon} size={18} color="#bbbbbb" />
+            <View style={{ padding: moderateScale(4, 0.5) }}>
+              <HugeiconsIcon
+                icon={Search01Icon}
+                size={iconSize.md - 2}
+                color="#bbbbbb"
+              />
             </View>
           </PressableFeedback>
         )}
         <PressableFeedback onPress={onNewChatPress}>
-          <View className="p-1">
-            <HugeiconsIcon icon={BubbleChatAddIcon} size={18} color="#bbbbbb" />
+          <View style={{ padding: moderateScale(4, 0.5) }}>
+            <HugeiconsIcon
+              icon={BubbleChatAddIcon}
+              size={iconSize.md - 2}
+              color="#bbbbbb"
+            />
           </View>
         </PressableFeedback>
       </View>

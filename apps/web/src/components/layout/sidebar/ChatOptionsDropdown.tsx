@@ -25,7 +25,6 @@ import {
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useDeleteConversation } from "@/hooks/useDeleteConversation";
 import {
@@ -56,7 +55,6 @@ export default function ChatOptionsDropdown({
   logo2?: boolean;
   btnChildren?: ReactNode;
 }) {
-  const fetchConversations = useFetchConversations();
   const deleteConversation = useDeleteConversation();
   const { confirm, confirmationProps } = useConfirmation();
   const [dangerStateHovered, setDangerStateHovered] = useState(false);
@@ -75,8 +73,7 @@ export default function ChatOptionsDropdown({
       await db.updateConversationFields(chatId, {
         starred: newStarredValue,
       });
-
-      await fetchConversations();
+      // No need to fetchConversations - IndexedDB events update Zustand automatically
     } catch (error) {
       console.error("Failed to update star", error);
     }
@@ -126,7 +123,7 @@ export default function ChatOptionsDropdown({
       });
 
       closeEditModal();
-      await fetchConversations(1, 20);
+      // No need to fetchConversations - IndexedDB events update Zustand automatically
     } catch (error) {
       console.error("Failed to update chat name", error);
     }
@@ -147,11 +144,11 @@ export default function ChatOptionsDropdown({
     try {
       router.push("/c");
       await deleteConversation(chatId);
-      await fetchConversations(1, 20);
+      // No need to fetchConversations - IndexedDB events update Zustand automatically
     } catch (error) {
       console.error("Failed to delete chat", error);
     }
-  }, [router, chatId, deleteConversation, fetchConversations, confirm]);
+  }, [router, chatId, deleteConversation, confirm]);
 
   const openEditModal = () => {
     setNewName(chatName); // Reset to current chat name when opening edit modal

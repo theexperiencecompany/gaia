@@ -20,11 +20,13 @@ import {
   storeAuthToken,
   storeUserInfo,
 } from "@/features/auth/utils/auth-storage";
+import { useResponsive } from "@/lib/responsive";
 
 export default function LoginScreen() {
   const router = useRouter();
   const { refreshAuth } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const { spacing, fontSize, moderateScale, width } = useResponsive();
 
   const handleLogin = async () => {
     setIsLoading(true);
@@ -54,42 +56,86 @@ export default function LoginScreen() {
     router.push("/signup");
   };
 
+  // Card max width adapts to screen size
+  const cardMaxWidth = Math.min(width * 0.9, 400);
+  const logoSize = moderateScale(48, 0.5);
+  const logoContainerSize = moderateScale(72, 0.5);
+
   return (
-    <View className="flex-1 bg-background">
+    <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
       {/* Full Background Image */}
       <Image
         source={require("@/assets/background/login.webp")}
-        className="absolute w-full h-full"
+        style={{ position: "absolute", width: "100%", height: "100%" }}
         resizeMode="cover"
         blurRadius={0.5}
       />
 
       {/* Dark Overlay */}
-      <View className="absolute w-full h-full bg-black/50" />
+      <View
+        style={{
+          position: "absolute",
+          width: "100%",
+          height: "100%",
+          backgroundColor: "rgba(0,0,0,0.5)",
+        }}
+      />
 
       <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView
-          className="flex-1 justify-center items-center px-6"
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            paddingHorizontal: spacing.lg,
+          }}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           {/* Login Card */}
-          <View className="w-full max-w-md bg-surface/95 rounded-3xl px-8 py-10 border border-border/20">
+          <View
+            style={{
+              width: "100%",
+              maxWidth: cardMaxWidth,
+              backgroundColor: "rgba(28,28,30,0.95)",
+              borderRadius: moderateScale(24, 0.5),
+              paddingHorizontal: spacing.xl,
+              paddingVertical: moderateScale(40, 0.5),
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.1)",
+            }}
+          >
             {/* Logo and Title */}
-            <View className="items-center mb-8">
-              <View className="w-18 h-18 rounded-full bg-accent/15 items-center justify-center mb-4">
+            <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
+              <View
+                style={{
+                  width: logoContainerSize,
+                  height: logoContainerSize,
+                  borderRadius: logoContainerSize / 2,
+                  backgroundColor: "rgba(0,187,255,0.15)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: spacing.md,
+                }}
+              >
                 <Image
                   source={require("@shared/assets/logo/logo.webp")}
-                  className="w-12 h-12"
+                  style={{ width: logoSize, height: logoSize }}
                   resizeMode="contain"
                 />
               </View>
-              <Text className="text-2xl font-bold text-center">
+              <Text
+                style={{
+                  fontSize: fontSize["2xl"],
+                  fontWeight: "bold",
+                  textAlign: "center",
+                }}
+              >
                 Let's Get You Back In
               </Text>
             </View>
 
             {/* Login Form */}
-            <View className="w-full">
+            <View style={{ width: "100%" }}>
               {/* Login Button */}
               <Button
                 size="lg"
@@ -105,15 +151,28 @@ export default function LoginScreen() {
               </Button>
 
               {/* Sign Up Link */}
-              <View className="flex-row items-center justify-center mt-4">
-                <Text className="text-base text-muted">
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginTop: spacing.md,
+                }}
+              >
+                <Text style={{ fontSize: fontSize.base, color: "#8e8e93" }}>
                   Don't have an account?{" "}
                 </Text>
                 <PressableFeedback
                   onPress={handleSignUp}
                   isDisabled={isLoading}
                 >
-                  <Text className="text-base text-accent font-semibold">
+                  <Text
+                    style={{
+                      fontSize: fontSize.base,
+                      color: "#00bbff",
+                      fontWeight: "600",
+                    }}
+                  >
                     Sign up
                   </Text>
                 </PressableFeedback>
@@ -121,15 +180,43 @@ export default function LoginScreen() {
             </View>
 
             {/* Footer */}
-            <View className="flex-row items-center justify-center mt-6 flex-wrap">
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: spacing.lg,
+                flexWrap: "wrap",
+              }}
+            >
               <PressableFeedback>
-                <Text className="text-sm text-muted underline">
+                <Text
+                  style={{
+                    fontSize: fontSize.sm,
+                    color: "#8e8e93",
+                    textDecorationLine: "underline",
+                  }}
+                >
                   Terms of Service
                 </Text>
               </PressableFeedback>
-              <Text className="text-sm text-muted mx-1"> and </Text>
+              <Text
+                style={{
+                  fontSize: fontSize.sm,
+                  color: "#8e8e93",
+                  marginHorizontal: spacing.xs,
+                }}
+              >
+                and
+              </Text>
               <PressableFeedback>
-                <Text className="text-sm text-muted underline">
+                <Text
+                  style={{
+                    fontSize: fontSize.sm,
+                    color: "#8e8e93",
+                    textDecorationLine: "underline",
+                  }}
+                >
                   Privacy Policy
                 </Text>
               </PressableFeedback>

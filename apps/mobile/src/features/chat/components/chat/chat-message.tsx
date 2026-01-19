@@ -1,6 +1,7 @@
 import { Pressable, View } from "react-native";
 import { MessageBubble } from "@/components/ui/message-bubble";
 import { Text } from "@/components/ui/text";
+import { useResponsive } from "@/lib/responsive";
 import { ToolDataRenderer } from "../../tool-data";
 import type { Message } from "../../types";
 import { splitMessageByBreaks } from "../../utils/messageBreakUtils";
@@ -11,17 +12,36 @@ interface FollowUpActionsProps {
 }
 
 function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
+  const { spacing, fontSize, moderateScale } = useResponsive();
+
   if (!actions.length) return null;
 
   return (
-    <View className="mt-2 flex-row flex-wrap gap-2 pl-8">
+    <View
+      style={{
+        marginTop: spacing.sm,
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: spacing.sm,
+        paddingLeft: moderateScale(32, 0.5),
+      }}
+    >
       {actions.map((action) => (
         <Pressable
           key={action}
           onPress={() => onActionPress?.(action)}
-          className="rounded-lg border-2 border-dotted border-muted/20 px-3 py-2 active:opacity-70"
+          style={{
+            borderRadius: moderateScale(8, 0.5),
+            borderWidth: 2,
+            borderStyle: "dotted",
+            borderColor: "rgba(255,255,255,0.1)",
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
+          }}
         >
-          <Text className="text-xs text-foreground">{action}</Text>
+          <Text style={{ fontSize: fontSize.xs, color: "#ffffff" }}>
+            {action}
+          </Text>
         </Pressable>
       ))}
     </View>
@@ -42,6 +62,7 @@ export function ChatMessage({
   loadingMessage = "Thinking...",
 }: ChatMessageProps) {
   const isUser = message.isUser;
+  const { spacing, width } = useResponsive();
 
   const rawText = message.text ?? "";
   const messageParts = splitMessageByBreaks(rawText).filter(Boolean);
@@ -49,9 +70,25 @@ export function ChatMessage({
   const hasContent = messageParts.length > 0;
   const showLoadingState = !isUser && isLoading && !hasContent;
 
+  // Message max width adapts to screen size (85% of screen width, min 280, max 400)
+  const messageMaxWidth = Math.min(Math.max(width * 0.85, 280), 400);
+
   return (
-    <View className={`flex-col py-2 ${isUser ? "items-end" : "items-start"}`}>
-      <View className="flex-col gap-2 px-4" style={{ maxWidth: "85%" }}>
+    <View
+      style={{
+        flexDirection: "column",
+        paddingVertical: spacing.sm,
+        alignItems: isUser ? "flex-end" : "flex-start",
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "column",
+          gap: spacing.sm,
+          paddingHorizontal: spacing.md,
+          maxWidth: messageMaxWidth,
+        }}
+      >
         {!isUser && message.toolData?.length ? (
           <ToolDataRenderer toolData={message.toolData} />
         ) : null}

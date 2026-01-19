@@ -6,6 +6,8 @@ This package contains the API routes and dependencies for version 1 of the GAIA 
 
 from app.api.v1.endpoints import (
     blog,
+    bot,
+    bot_auth,
     calendar,
     chat,
     conversations,
@@ -28,6 +30,7 @@ from app.api.v1.endpoints import (
     team,
     todos,
     tools,
+    triggers,
     usage,
     user,
     voice_token,
@@ -64,10 +67,13 @@ router.include_router(websocket.router, tags=["WebSocket"])
 router.include_router(webhook_composio.router, tags=["Composio Webhook"])
 router.include_router(todos.router, tags=["Todos"])
 router.include_router(workflows.router, tags=["Workflows"])
+router.include_router(triggers.router, tags=["Triggers"])
 router.include_router(reminders.router, tags=["Reminders"])
 router.include_router(support.router, tags=["Support"])
 router.include_router(payments.router, prefix="/payments", tags=["Payments"])
 router.include_router(usage.router, tags=["Usage"])
 router.include_router(tools.router, tags=["Tools"])
 router.include_router(models.router, tags=["Models"])
-# api_router.include_router(audio.router, tags=["Audio"])
+router.include_router(bot.router, prefix="/bot", tags=["Bot"])
+router.include_router(bot_auth.router, prefix="/bot-auth", tags=["Bot Auth"])
+

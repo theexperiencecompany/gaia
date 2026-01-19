@@ -12,9 +12,6 @@ interface RegisterDeviceTokenResponse {
 }
 
 export const notificationsApi = {
-  /**
-   * Register a device push notification token with the backend
-   */
   registerDeviceToken: async (
     payload: RegisterDeviceTokenPayload,
   ): Promise<RegisterDeviceTokenResponse> => {
@@ -24,9 +21,6 @@ export const notificationsApi = {
     );
   },
 
-  /**
-   * Unregister a device push notification token
-   */
   unregisterDeviceToken: async (token: string): Promise<void> => {
     return apiService.post("/notifications/unregister-device", {
       token,

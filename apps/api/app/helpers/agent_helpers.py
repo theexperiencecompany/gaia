@@ -26,6 +26,7 @@ from app.constants.llm import (
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
+from app.core.stream_manager import stream_manager
 from app.models.models_models import ModelConfig
 from app.utils.agent_utils import (
     format_sse_data,
@@ -363,6 +364,9 @@ async def execute_graph_streaming(
     1. When tool_call first detected: emit name/category (progress event)
     2. When ToolMessage arrives: emit inputs (tool_inputs event) + output (tool_output event)
 
+    Supports cancellation via stream_id in config - when cancelled via
+    stream_manager, streaming stops gracefully.
+
     Args:
         graph: LangGraph instance to execute
         initial_state: Starting state dictionary with query and context
@@ -376,6 +380,9 @@ async def execute_graph_streaming(
         - Final completion marker and accumulated message
     """
     complete_message = ""
+
+    # Get stream_id for cancellation checking (optional)
+    stream_id = config.get("configurable", {}).get("stream_id")
     # Track pending tool calls: id -> {name, args}
     pending_tool_calls: dict[str, dict] = {}
 
@@ -385,6 +392,13 @@ async def execute_graph_streaming(
         config=config,
         subgraphs=True,
     ):
+        # Check for cancellation at each event
+        if stream_id and await stream_manager.is_cancelled(stream_id):
+            # Yield final state and exit gracefully
+            yield f"nostream: {json.dumps({'complete_message': complete_message, 'cancelled': True})}"
+            yield "data: [DONE]\n\n"
+            return
+
         # Handle both 2-tuple and 3-tuple (with subgraphs=True)
         if len(event) == 3:
             ns, stream_mode, payload = event
@@ -507,8 +521,6 @@ async def execute_graph_streaming(
 
     # Get token metadata after streaming completes and yield complete message for DB storage
     message_data = {"complete_message": complete_message}
-
-    message_data = {**message_data}
 
     yield f"nostream: {json.dumps(message_data)}"
     yield "data: [DONE]\n\n"

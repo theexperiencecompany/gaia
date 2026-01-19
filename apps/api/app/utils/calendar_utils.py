@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Set
 
-from fastapi import HTTPException
 import pendulum
+from fastapi import HTTPException
 
 from app.config.loggers import chat_logger as logger
 
@@ -19,7 +19,7 @@ def resolve_timezone(timezone: str) -> str:
         raise HTTPException(status_code=400, detail=f"Invalid timezone: '{timezone}'")
 
 
-async def fetch_calendar_color(calendar_id: str, user_id: str) -> tuple[str, str]:
+def fetch_calendar_color(calendar_id: str, user_id: str) -> tuple[str, str]:
     """
     Fetch calendar name and background color for a given calendar_id.
 
@@ -33,7 +33,7 @@ async def fetch_calendar_color(calendar_id: str, user_id: str) -> tuple[str, str
     from app.services.calendar_service import list_calendars
 
     try:
-        calendar_list = await list_calendars(user_id)
+        calendar_list = list_calendars(user_id)
         if calendar_list:
             for cal in calendar_list.get("items", []):
                 if cal.get("id") == calendar_id:
@@ -69,7 +69,7 @@ def extract_event_dates(calendar_options: List[Dict[str, Any]]) -> Set[str]:
     return event_dates
 
 
-async def fetch_same_day_events(
+def fetch_same_day_events(
     event_dates: Set[str],
     access_token: str,
     user_id: str,
@@ -86,29 +86,24 @@ async def fetch_same_day_events(
         List of events across all specified dates
     """
     from app.services.calendar_service import get_calendar_events
-    import asyncio
 
-    async def fetch_events_for_date(event_date: str) -> List[Dict[str, Any]]:
+    all_events: List[Dict[str, Any]] = []
+
+    for event_date in event_dates:
         try:
             time_min = f"{event_date}T00:00:00Z"
             time_max = f"{event_date}T23:59:59Z"
 
-            events_response = await get_calendar_events(
+            events_response = get_calendar_events(
                 access_token=access_token,
                 user_id=user_id,
                 time_min=time_min,
                 time_max=time_max,
             )
 
-            return events_response.get("events", []) if events_response else []
+            if events_response:
+                all_events.extend(events_response.get("events", []))
         except Exception as e:
             logger.warning(f"Error fetching events for {event_date}: {str(e)}")
-            return []
 
-    # Fetch events for all dates in parallel
-    results = await asyncio.gather(
-        *[fetch_events_for_date(date) for date in event_dates]
-    )
-
-    # Flatten the list of lists
-    return [event for sublist in results for event in sublist]
+    return all_events

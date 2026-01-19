@@ -5,43 +5,93 @@ import {
   PencilEdit02Icon,
   Search01Icon,
 } from "@/components/icons";
+import { useResponsive } from "@/lib/responsive";
 
 interface SidebarHeaderProps {
   onNewChat: () => void;
 }
 
 export function SidebarHeader({ onNewChat }: SidebarHeaderProps) {
+  const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
+
   return (
-    <View className="px-4 py-4 pt-6">
-      <View className="flex-row items-center gap-3 mb-6 px-1">
+    <View
+      style={{
+        paddingHorizontal: spacing.md,
+        paddingTop: spacing.lg,
+        paddingBottom: spacing.md,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: moderateScale(12, 0.5),
+          marginBottom: spacing.lg,
+          paddingHorizontal: spacing.xs,
+        }}
+      >
         <Image
           source={require("@shared/assets/logo/logo.webp")}
-          className="w-7 h-7"
+          style={{
+            width: moderateScale(28, 0.5),
+            height: moderateScale(28, 0.5),
+          }}
           resizeMode="contain"
         />
-        <Text className="text-xl font-bold tracking-tight text-foreground">
+        <Text
+          style={{
+            fontSize: fontSize.xl,
+            fontWeight: "bold",
+            letterSpacing: -0.5,
+            color: "#ffffff",
+          }}
+        >
           GAIA
         </Text>
       </View>
 
-      <View className="flex-row items-center">
-        <View className="flex-1 flex-row items-center bg-default rounded-xl px-3 py-2">
-          <HugeiconsIcon icon={Search01Icon} size={14} color="#8e8e93" />
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: "#1c1c1e",
+            borderRadius: moderateScale(12, 0.5),
+            paddingHorizontal: moderateScale(12, 0.5),
+            paddingVertical: spacing.sm,
+          }}
+        >
+          <HugeiconsIcon
+            icon={Search01Icon}
+            size={iconSize.sm}
+            color="#8e8e93"
+          />
           <TextInput
             placeholder="Search"
             placeholderTextColor="#8e8e93"
-            className="flex-1 ml-2 text-sm text-foreground"
+            style={{
+              flex: 1,
+              marginLeft: spacing.sm,
+              fontSize: fontSize.sm,
+              color: "#ffffff",
+            }}
           />
         </View>
 
         <Button
           variant="secondary"
           size="sm"
-          className="ml-2"
+          style={{ marginLeft: spacing.sm }}
           isIconOnly
           onPress={onNewChat}
         >
-          <HugeiconsIcon icon={PencilEdit02Icon} size={16} color="#ffffff" />
+          <HugeiconsIcon
+            icon={PencilEdit02Icon}
+            size={iconSize.sm}
+            color="#ffffff"
+          />
         </Button>
       </View>
     </View>

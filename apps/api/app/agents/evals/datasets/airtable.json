@@ -1,0 +1,149 @@
+{
+  "name": "Airtable Capabilities",
+  "description": "Evaluation dataset for Airtable subagent capabilities including base management, table operations, record CRUD, and field management. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "airtable_agent",
+  "integration_id": "airtable",
+  "items": [
+    {
+      "input": "list all my bases",
+      "expected_output": "List all Airtable bases accessible to user.",
+      "context": "User wants to see bases",
+      "tags": ["base", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show tables in Projects base",
+      "expected_output": "1. List bases. 2. Find Projects base. 3. Get base schema to see tables.",
+      "context": "User wants to see tables",
+      "tags": ["base", "schema", "search"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create record in Tasks table with name 'Review PR' and status 'Todo'",
+      "expected_output": "1. Find base with Tasks table. 2. Create record with specified fields.",
+      "context": "User wants to create record",
+      "tags": ["record", "create", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get all records from Clients table",
+      "expected_output": "1. Find base with Clients table. 2. List records from table.",
+      "context": "User wants to read records",
+      "tags": ["record", "list", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "update record where Name is 'John' to set Status as 'Complete'",
+      "expected_output": "1. Find table. 2. List records with filter for Name=John. 3.  Update record status.",
+      "context": "User wants to update specific record",
+      "tags": ["record", "update", "filter", "detailed"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "delete the record about canceled project",
+      "expected_output": "1. Search records for 'canceled project'. 2. Request confirmation. 3. Delete record.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["record", "delete", "search", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create table called 'Inventory' in main base",
+      "expected_output": "1. Find main base. 2. Create table named 'Inventory' with default fields.",
+      "context": "User wants new table",
+      "tags": ["table", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add column 'Due Date' to Tasks table",
+      "expected_output": "1. Find base with Tasks. 2. Create field named 'Due Date' with date type.",
+      "context": "User wants new field",
+      "tags": ["field", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get schema for CRM base",
+      "expected_output": "1. Find CRM base. 2. Get base schema with tables and fields.",
+      "context": "User wants structure info",
+      "tags": ["base", "schema", "get"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "filter records where Status is 'In Progress'",
+      "expected_output": "List records with filterByFormula for Status='In Progress'.",
+      "context": "User wants filtered records",
+      "tags": ["record", "list", "filter"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add comment to record about budget approval",
+      "expected_output": "1. Find record about budget. 2. Create comment on record.",
+      "context": "User wants to comment",
+      "tags": ["comment", "create", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create multiple records for new employees",
+      "expected_output": "Create multiple records in batch with employee data.",
+      "context": "User wants bulk create",
+      "tags": ["record", "create", "bulk"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get record with ID rec123abc",
+      "expected_output": "Get specific record by record ID.",
+      "context": "User wants single record",
+      "tags": ["record", "get", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "who am I in airtabble",
+      "expected_output": "1. Recognize 'airtabble' as typo for 'airtable'. 2. Get user info.",
+      "context": "User made typo",
+      "tags": ["user", "get", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show comments on record about Q4 planning",
+      "expected_output": "1. Find record about Q4 planning. 2. List comments on record.",
+      "context": "User wants record comments",
+      "tags": ["comment", "list", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create new base called 'Project Tracker'",
+      "expected_output": "Create new Airtable base with name 'Project Tracker'.",
+      "context": "User wants new base",
+      "tags": ["base", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "update multiple records to set Status to 'Archived'",
+      "expected_output": "Update multiple records in batch to change status.",
+      "context": "User wants bulk update",
+      "tags": ["record", "update", "bulk"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "sort records by Created Date descending",
+      "expected_output": "List records with sort parameter for Created Date in descending order.",
+      "context": "User wants sorted results",
+      "tags": ["record", "list", "sort"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "delete comment from the task record",
+      "expected_output": "1. Find task record. 2. Find comment. 3. Request confirmation. 4. Delete comment.",
+      "context": "User wants to delete comment - needs consent",
+      "tags": ["comment", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get only Name and Email fields from Contacts",
+      "expected_output": "List records from Contacts with fields parameter for Name and Email only.",
+      "context": "User wants specific fields",
+      "tags": ["record", "list", "fields"],
+      "metadata": { "difficulty": "medium" }
+    }
+  ]
+}

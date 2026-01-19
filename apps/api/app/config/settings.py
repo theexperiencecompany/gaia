@@ -250,6 +250,17 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     DEBUG_EMAIL_PROCESSING: bool = False
 
+    # ----------------------------------------------
+    # Bot Configuration
+    # ----------------------------------------------
+    GAIA_BOT_API_KEY: str
+    DISCORD_BOT_TOKEN: str
+    DISCORD_CLIENT_ID: str
+    SLACK_BOT_TOKEN: str
+    SLACK_SIGNING_SECRET: str
+    SLACK_APP_TOKEN: str
+    TELEGRAM_BOT_TOKEN: str
+
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         extra="allow",
@@ -385,6 +396,17 @@ class DevelopmentSettings(CommonSettings):
 
     # Default to show warnings in development environment
     SHOW_MISSING_KEY_WARNINGS: bool = True
+
+    # ----------------------------------------------
+    # Bot Configuration
+    # ----------------------------------------------
+    GAIA_BOT_API_KEY: Optional[str] = None
+    DISCORD_BOT_TOKEN: Optional[str] = None
+    DISCORD_CLIENT_ID: Optional[str] = None
+    SLACK_BOT_TOKEN: Optional[str] = None
+    SLACK_SIGNING_SECRET: Optional[str] = None
+    SLACK_APP_TOKEN: Optional[str] = None
+    TELEGRAM_BOT_TOKEN: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",

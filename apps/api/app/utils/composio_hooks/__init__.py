@@ -6,6 +6,7 @@ A clean, powerful hook system for Composio tools with:
 - Enhanced decorators supporting multiple tools/toolkits
 - Conditional logic based on tool name/toolkit
 - Integrated user_id extraction and frontend streaming
+- Schema modifiers for customizing tool schemas
 
 Auto-registration: Simply import this module and all hooks are automatically registered.
 """
@@ -16,14 +17,18 @@ from .registry import (
     hook_registry,
     master_after_execute_hook,
     master_before_execute_hook,
+    master_schema_modifier,
     register_after_hook,
     register_before_hook,
+    register_schema_modifier,
 )
 
 __all__ = [
     "hook_registry",
     "master_before_execute_hook",
     "master_after_execute_hook",
+    "master_schema_modifier",
     "register_before_hook",
     "register_after_hook",
+    "register_schema_modifier",
 ]

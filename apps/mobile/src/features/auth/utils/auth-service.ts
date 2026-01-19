@@ -63,9 +63,8 @@ export async function fetchUserInfo(token: string): Promise<UserInfoResponse> {
     const response = await fetch(`${API_BASE_URL}/user/me`, {
       method: "GET",
       headers: {
-        Cookie: `wos_session=${token}`,
+        Authorization: `Bearer ${token}`,
       },
-      credentials: "include",
     });
 
     if (!response.ok) {
@@ -90,9 +89,8 @@ export async function logout(token: string): Promise<void> {
     await fetch(`${API_BASE_URL}/oauth/logout`, {
       method: "POST",
       headers: {
-        Cookie: `wos_session=${token}`,
+        Authorization: `Bearer ${token}`,
       },
-      credentials: "include",
     });
   } catch (error) {
     console.error("Error during logout:", error);

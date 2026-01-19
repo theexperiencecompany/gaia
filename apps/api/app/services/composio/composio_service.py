@@ -7,23 +7,43 @@ from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import TriggerConfig
+from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import LangchainProvider
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
 from app.utils.composio_hooks.registry import (
     master_after_execute_hook,
     master_before_execute_hook,
+    master_schema_modifier,
 )
 from app.utils.query_utils import add_query_param
-from composio import Composio, after_execute, before_execute
+from composio import Composio, after_execute, before_execute, schema_modifier
 
 COMPOSIO_SOCIAL_CONFIGS = get_composio_social_configs()
 
 
 class ComposioService:
     def __init__(self, api_key: str):
+        from app.config.oauth_config import OAUTH_INTEGRATIONS
+
+        # Build toolkit_versions from oauth_config for version pinning
+        toolkit_versions: dict[str, str] = {}
+        for integration in OAUTH_INTEGRATIONS:
+            if (
+                integration.composio_config
+                and integration.composio_config.toolkit_version
+            ):
+                toolkit_name = integration.composio_config.toolkit.lower()
+                toolkit_versions[toolkit_name] = (
+                    integration.composio_config.toolkit_version
+                )
+
         self.composio = Composio(
-            provider=LangchainProvider(), api_key=api_key, timeout=120
+            provider=LangchainProvider(),
+            api_key=api_key,
+            timeout=120,
+            toolkit_versions=toolkit_versions or None,
         )
+        custom_tools_registry.initialize(self.composio)
 
     async def connect_account(
         self, provider: str, user_id: str, state_token: Optional[str] = None
@@ -84,7 +104,24 @@ class ComposioService:
         - User ID extraction from RunnableConfig metadata
         - Frontend streaming setup
         - All registered tool-specific hooks (Gmail, etc.)
+        - Schema modifications for tool descriptions and defaults
         """
+
+        logger.info(f"Loading {tool_kit} toolkit...")
+        start_time = time.time()
+
+        custom_tool_names = custom_tools_registry.get_tool_names(tool_kit.lower())
+
+        # Run the first tools.get() call asynchronously
+        tools = await asyncio.to_thread(
+            lambda: self.composio.tools.get(  # type: ignore[call-overload]
+                user_id="",
+                toolkits=[tool_kit],
+                tools=custom_tool_names,
+                limit=1000,
+            )
+        )
+
         exclude_tools = exclude_tools or []
 
         # Build hook modifiers upfront - these will be applied to all toolkit tools
@@ -92,13 +129,19 @@ class ComposioService:
         # but applying hooks to all tools and filtering after is equivalent and faster
         master_before_modifier = before_execute()(master_before_execute_hook)
         master_after_modifier = after_execute()(master_after_execute_hook)
+        master_schema_mod = schema_modifier(tools=tools_name)(master_schema_modifier)
 
         # Single API call with hooks applied
         tools = await asyncio.to_thread(
             self.composio.tools.get,
             user_id="",
             toolkits=[tool_kit],
-            modifiers=[master_before_modifier, master_after_modifier],
+            tools=custom_tool_names,
+            modifiers=[
+                master_schema_mod,
+                master_before_modifier,
+                master_after_modifier,
+            ],
             limit=1000,
         )
 
@@ -153,6 +196,7 @@ class ComposioService:
         tool_names: list[str],
         use_before_hook: bool = True,
         use_after_hook: bool = True,
+        use_schema_modifier: bool = True,
     ):
         """
         Get specific tools by names with unified master hooks.
@@ -161,10 +205,18 @@ class ComposioService:
         - User ID extraction from RunnableConfig metadata
         - Frontend streaming setup
         - All registered tool-specific hooks (Gmail, etc.)
+        - Schema modifications for tool descriptions and defaults
         """
         start_time = time.time()
 
         modifiers = []
+
+        # Add schema modifier first (modifies schema before agent sees it)
+        if use_schema_modifier:
+            master_schema_mod = schema_modifier(tools=tool_names)(
+                master_schema_modifier
+            )
+            modifiers.append(master_schema_mod)
 
         # Add hooks based on flags
         if use_before_hook:
@@ -196,6 +248,7 @@ class ComposioService:
         tool_name: str,
         use_before_hook: bool = True,
         use_after_hook: bool = True,
+        use_schema_modifier: bool = True,
         user_id: str = "",
     ):
         """
@@ -205,12 +258,20 @@ class ComposioService:
             tool_name: Name of the specific tool to retrieve (e.g., 'GMAIL_SEND_EMAIL')
             use_before_hook: Whether to apply master before execute hook
             use_after_hook: Whether to apply master after execute hook
+            use_schema_modifier: Whether to apply schema modifiers
 
         Returns:
             The specific tool with selected hooks applied, or None if not found
         """
         try:
             modifiers = []
+
+            # Add schema modifier first
+            if use_schema_modifier:
+                master_schema_mod = schema_modifier(tools=[tool_name])(
+                    master_schema_modifier
+                )
+                modifiers.append(master_schema_mod)
 
             # Add hooks based on flags
             if use_before_hook:
@@ -379,8 +440,19 @@ class ComposioService:
     ):
         """
         Handle the subscription trigger for a specific provider.
+        Only subscribes to triggers marked with auto_activate=True.
         """
-        logger.info(f"Subscribing triggers for user {user_id}: {triggers}")
+        # Filter triggers that should be auto-activated
+        active_triggers = [t for t in triggers if t.auto_activate]
+
+        if not active_triggers:
+            logger.info(f"No auto-active triggers to subscribe for user {user_id}")
+            return []
+
+        logger.info(
+            f"Subscribing to {len(active_triggers)} auto-active triggers for user {user_id}"
+        )
+
         try:
             # Create tasks for each trigger to run them concurrently
             def create_trigger(trigger: TriggerConfig):
@@ -392,7 +464,7 @@ class ComposioService:
 
             tasks = [
                 asyncio.get_event_loop().run_in_executor(None, create_trigger, trigger)
-                for trigger in triggers
+                for trigger in active_triggers
             ]
 
             # Execute all trigger creation tasks concurrently
@@ -405,7 +477,6 @@ class ComposioService:
     name="composio_service",
     required_keys=[settings.COMPOSIO_KEY],
     strategy=MissingKeyStrategy.WARN,
-    auto_initialize=False,
 )
 def init_composio_service():
     # This condition is just for type checking purposes and will never be false at runtime

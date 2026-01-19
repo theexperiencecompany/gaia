@@ -1,16 +1,24 @@
 import { FlashList } from "@shopify/flash-list";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useState } from "react";
-import { Image, Keyboard, Pressable, View } from "react-native";
+import {
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  LayoutAnimation,
+  Platform,
+  Pressable,
+  ScrollView,
+  UIManager,
+  View,
+} from "react-native";
 import Animated, {
   Easing,
-  runOnJS,
-  useAnimatedKeyboard,
-  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChatInput } from "@/components/ui/chat-input";
 import { Text } from "@/components/ui/text";
 import {
@@ -21,15 +29,26 @@ import {
   useChatContext,
 } from "@/features/chat";
 import { getRelevantThinkingMessage } from "@/features/chat/utils/playfulThinking";
+import { useResponsive } from "@/lib/responsive";
+import { useChatStore } from "@/stores/chat-store";
 
 function EmptyState() {
   return (
-    <View className="flex-1 items-center justify-center px-6">
-      <Text variant={"h2"}>What can I help you with?</Text>
-      <Text className="text-xs">
+    <ScrollView
+      contentContainerStyle={{
+        flexGrow: 1,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text className="text-3xl font-semibold text-center">
+        What can I help you with?
+      </Text>
+      <Text className="text-xs text-gray-200 mt-2 text-center">
         Start a conversation by typing a message below
       </Text>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -49,17 +68,14 @@ function ChatContent({
     scrollToBottom,
   } = useChat(activeChatId);
 
+  const { spacing, moderateScale } = useResponsive();
+  const insets = useSafeAreaInsets();
+
   const [inputValue, setInputValue] = useState("");
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [thinkingMessage, setThinkingMessage] = useState(() =>
     getRelevantThinkingMessage(""),
   );
-
-  const keyboard = useAnimatedKeyboard();
-
-  const animatedInputStyle = useAnimatedStyle(() => ({
-    bottom: keyboard.height.value,
-  }));
 
   useEffect(() => {
     if (isTyping && !progress) {
@@ -80,17 +96,38 @@ function ChatContent({
     scrollToBottom();
   }, [messages.length, scrollToBottom]);
 
-  useAnimatedReaction(
-    () => keyboard.height.value,
-    (currentHeight, previousHeight) => {
+  useEffect(() => {
+    const setupLayoutAnimations = () => {
       if (
-        currentHeight > 0 &&
-        (previousHeight === null || currentHeight > previousHeight)
+        Platform.OS === "android" &&
+        UIManager.setLayoutAnimationEnabledExperimental
       ) {
-        runOnJS(scrollToBottom)();
+        UIManager.setLayoutAnimationEnabledExperimental(true);
       }
-    },
-  );
+    };
+
+    setupLayoutAnimations();
+
+    const keyboardWillShow = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      () => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setTimeout(() => scrollToBottom(), 50);
+      },
+    );
+
+    const keyboardWillHide = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      },
+    );
+
+    return () => {
+      keyboardWillShow.remove();
+      keyboardWillHide.remove();
+    };
+  }, [scrollToBottom]);
 
   const handleFollowUpAction = useCallback(
     (action: string) => {
@@ -129,55 +166,70 @@ function ChatContent({
   );
 
   const showEmptyState = messages.length === 0 && !isTyping && !activeChatId;
-
   return (
-    <View style={{ flex: 1 }}>
-      {showEmptyState ? (
-        <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
-          <EmptyState />
-        </Pressable>
-      ) : (
-        <FlashList
-          ref={flatListRef}
-          data={messages}
-          renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
-          extraData={[
-            messages[messages.length - 1]?.text,
-            isTyping,
-            displayMessage,
-          ]}
-          contentContainerStyle={{
-            paddingTop: 16,
-            paddingBottom: 90,
-          }}
-          showsVerticalScrollIndicator={true}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          onLoad={() => {
-            if (messages.length > 0) {
-              flatListRef.current?.scrollToEnd({ animated: false });
-            }
-          }}
-        />
-      )}
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "height" : undefined}
+      keyboardVerticalOffset={
+        Platform.OS === "ios" ? insets.top + spacing.xl : 0
+      }
+    >
+      <View style={{ flex: 1 }}>
+        {showEmptyState ? (
+          <Pressable style={{ flex: 1 }} onPress={Keyboard.dismiss}>
+            <EmptyState />
+          </Pressable>
+        ) : (
+          <FlashList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            extraData={[
+              messages[messages.length - 1]?.text,
+              isTyping,
+              displayMessage,
+            ]}
+            contentContainerStyle={{
+              paddingTop: spacing.md,
+              paddingBottom: spacing.md,
+            }}
+            showsVerticalScrollIndicator
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            onLoad={() => {
+              if (messages.length > 0) {
+                flatListRef.current?.scrollToEnd({ animated: false });
+              }
+            }}
+          />
+        )}
 
-      <Animated.View
-        className="absolute left-0 right-0 px-2 pb-5 bg-surface rounded-t-4xl"
-        style={animatedInputStyle}
-      >
-        <ChatInput
-          onSend={handleSend}
-          value={inputValue}
-          onChangeText={setInputValue}
-        />
-      </Animated.View>
-    </View>
+        <View
+          style={{
+            paddingHorizontal: spacing.sm,
+            paddingTop: spacing.sm,
+
+            paddingBottom: insets.bottom + spacing.md,
+            backgroundColor: "#1c1c1e",
+            borderTopLeftRadius: moderateScale(24, 0.5),
+            borderTopRightRadius: moderateScale(24, 0.5),
+          }}
+        >
+          <ChatInput
+            onSend={handleSend}
+            value={inputValue}
+            onChangeText={setInputValue}
+          />
+        </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 export default function ChatScreen() {
   const { activeChatId } = useChatContext();
+  const isTyping = useChatStore((state) => state.streamingState.isTyping);
 
   const [_isReady, setIsReady] = useState(false);
   const screenOpacity = useSharedValue(0);
@@ -200,7 +252,7 @@ export default function ChatScreen() {
   return (
     <ChatLayout
       background={
-        !activeChatId ? (
+        !activeChatId && !isTyping ? (
           <>
             <Image
               source={require("@/assets/background/chat.jpg")}
@@ -221,7 +273,7 @@ export default function ChatScreen() {
         ) : undefined
       }
     >
-      <Animated.View className="flex-1" style={animatedScreenStyle}>
+      <Animated.View style={[{ flex: 1 }, animatedScreenStyle]}>
         <ChatContent activeChatId={activeChatId} />
       </Animated.View>
     </ChatLayout>

@@ -1,0 +1,184 @@
+{
+  "name": "Twitter Capabilities",
+  "description": "Evaluation dataset for Twitter/X subagent capabilities including posting, direct messages, lists, bookmarks, and user interactions. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "twitter_agent",
+  "integration_id": "twitter",
+  "items": [
+    {
+      "input": "post a tweet saying 'Hello world!'",
+      "expected_output": "Create a post with text 'Hello world!'.",
+      "context": "User wants to post a tweet",
+      "tags": ["tweet", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "search tweets about AI",
+      "expected_output": "Search for tweets matching query 'AI'.",
+      "context": "User wants to search tweets",
+      "tags": ["tweet", "search"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show my timeline",
+      "expected_output": "Get user's home timeline or reverse chronological timeline.",
+      "context": "User wants to see their feed",
+      "tags": ["timeline", "get"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "like the tweet about product launch",
+      "expected_output": "1. Search tweets about product launch. 2. Like the tweet.",
+      "context": "User wants to like a tweet",
+      "tags": ["tweet", "like", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "retweet the announcement post",
+      "expected_output": "1. Search for announcement post. 2. Retweet it.",
+      "context": "User wants to retweet",
+      "tags": ["tweet", "retweet", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "send DM to @friend about meeting",
+      "expected_output": "1. Find user @friend. 2. Create DM conversation. 3. Send message about meeting.",
+      "context": "User wants to send direct message",
+      "tags": ["dm", "send", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get my recent DMs",
+      "expected_output": "Get recent direct message events.",
+      "context": "User wants to see DMs",
+      "tags": ["dm", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "bookmark the tweet about tech news",
+      "expected_output": "1. Search for tech news tweet. 2. Add to bookmarks.",
+      "context": "User wants to bookmark tweet",
+      "tags": ["bookmark", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "show my bookmarks",
+      "expected_output": "Get bookmarks for authenticated user.",
+      "context": "User wants to see bookmarks",
+      "tags": ["bookmark", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create list called 'Tech Leaders'",
+      "expected_output": "Create a new Twitter list with name 'Tech Leaders'.",
+      "context": "User wants to create list",
+      "tags": ["list", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add @elonmusk to my Tech list",
+      "expected_output": "1. Find list 'Tech'. 2. Find user @elonmusk. 3. Add member to list.",
+      "context": "User wants to add member to list",
+      "tags": ["list", "member", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "who liked my last tweet",
+      "expected_output": "1. Get user's tweets. 2. Get likers for the latest tweet.",
+      "context": "User wants to see who liked tweet",
+      "tags": ["tweet", "likers", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "follow @nasa",
+      "expected_output": "1. Find user @nasa. 2. Follow user.",
+      "context": "User wants to follow account",
+      "tags": ["user", "follow"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "mute user @spammer",
+      "expected_output": "1. Find user @spammer. 2. Mute user by ID.",
+      "context": "User wants to mute account",
+      "tags": ["user", "mute"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "reply to the tweet about conference",
+      "expected_output": "1. Search for tweet about conference. 2. Create reply tweet.",
+      "context": "User wants to reply to tweet",
+      "tags": ["tweet", "reply", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "delete my tweet about typo",
+      "expected_output": "1. Get user's tweets. 2. Find tweet about typo. 3. Request confirmation. 4. Delete tweet.",
+      "context": "User wants to delete tweet - needs consent",
+      "tags": ["tweet", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get my twtter followers",
+      "expected_output": "1. Recognize 'twtter' as typo for 'twitter'. 2. Get user's followers.",
+      "context": "User made typo",
+      "tags": ["user", "followers", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "quote tweet the product launch with my thoughts",
+      "expected_output": "1. Find product launch tweet. 2. Create quote tweet with user's text.",
+      "context": "User wants to quote tweet",
+      "tags": ["tweet", "quote", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "who retweeted my post",
+      "expected_output": "1. Get user's recent tweets. 2. Get retweeters for the tweet.",
+      "context": "User wants to see retweeters",
+      "tags": ["tweet", "retweeters", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get my lists",
+      "expected_output": "Get lists owned by authenticated user.",
+      "context": "User wants to see their lists",
+      "tags": ["list", "get"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "unfollow @oldaccount",
+      "expected_output": "1. Find user @oldaccount. 2. Unfollow user.",
+      "context": "User wants to unfollow",
+      "tags": ["user", "unfollow"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "hide reply to my tweet about pricing",
+      "expected_output": "1. Find tweet about pricing. 2. Find reply. 3. Set reply visibility to hidden.",
+      "context": "User wants to hide reply",
+      "tags": ["tweet", "reply", "hide", "lazy"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "get tweets from list Tech News",
+      "expected_output": "1. Find list 'Tech News'. 2. Get list posts timeline.",
+      "context": "User wants list timeline",
+      "tags": ["list", "timeline", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create group DM with @friend1 and @friend2",
+      "expected_output": "1. Find users. 2. Create group DM conversation.",
+      "context": "User wants group DM",
+      "tags": ["dm", "group", "create"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "pin my list Favorites",
+      "expected_output": "1. Find list Favorites. 2. Pin the list.",
+      "context": "User wants to pin list",
+      "tags": ["list", "pin"],
+      "metadata": { "difficulty": "medium" }
+    }
+  ]
+}

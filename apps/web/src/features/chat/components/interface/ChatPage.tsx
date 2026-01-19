@@ -9,6 +9,7 @@ import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { db } from "@/lib/db/chatDb";
+import { syncSingleConversation } from "@/services";
 import { useChatStore } from "@/stores/chatStore";
 import {
   useComposerTextActions,
@@ -66,46 +67,7 @@ const ChatPage = React.memo(function MainChat() {
         chatApi.markAsRead(convoIdParam).catch(console.error);
       }
 
-      // Sync messages from backend if coming from voice call (sync=true param)
-      // This ensures voice messages are fetched without manual IndexedDB persistence
-      if (shouldSync) {
-        const syncMessagesFromBackend = async () => {
-          try {
-            const remoteMessages = await chatApi.fetchMessages(convoIdParam);
-            if (remoteMessages.length > 0) {
-              const mappedMessages = remoteMessages.map((msg, index) => {
-                const createdAt = msg.date ? new Date(msg.date) : new Date();
-                const role = msg.type === "user" ? "user" : "assistant";
-                const messageId =
-                  msg.message_id ||
-                  `${convoIdParam}-${index}-${createdAt.getTime()}`;
-
-                return {
-                  id: messageId,
-                  conversationId: convoIdParam,
-                  content: msg.response,
-                  role: role as "user" | "assistant",
-                  status: "sent" as const,
-                  createdAt,
-                  updatedAt: createdAt,
-                  messageId: msg.message_id,
-                  fileIds: msg.fileIds,
-                  fileData: msg.fileData,
-                  toolName: msg.selectedTool ?? null,
-                  toolCategory: msg.toolCategory ?? null,
-                };
-              });
-
-              // Use syncMessages to properly merge with any existing local messages
-              await db.syncMessages(convoIdParam, mappedMessages);
-            }
-          } catch (error) {
-            console.error("Failed to sync messages after voice call:", error);
-          }
-        };
-
-        syncMessagesFromBackend();
-      }
+      syncSingleConversation(convoIdParam);
     }
 
     // Clear optimistic message when navigating to a different conversation

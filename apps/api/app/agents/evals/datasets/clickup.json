@@ -1,0 +1,184 @@
+{
+  "name": "ClickUp Capabilities",
+  "description": "Evaluation dataset for ClickUp subagent capabilities including task management, spaces, folders, lists, time tracking, and goals. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "clickup_agent",
+  "integration_id": "clickup",
+  "items": [
+    {
+      "input": "create task 'Review documentation' in my workspace",
+      "expected_output": "1. Get workspaces/teams. 2. Get spaces. 3. Get lists. 4. Create task in list.",
+      "context": "User wants new task",
+      "tags": ["task", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "show my tasks",
+      "expected_output": "Get tasks filtered by assignee or from user's workspace.",
+      "context": "User wants their tasks",
+      "tags": ["task", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get all spaces in my workspace",
+      "expected_output": "1. Get teams/workspaces. 2. Get spaces for workspace.",
+      "context": "User wants to see spaces",
+      "tags": ["space", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create folder 'Q4 Projects' in Development space",
+      "expected_output": "1. Get spaces. 2. Find Development space. 3. Create folder.",
+      "context": "User wants new folder",
+      "tags": ["folder", "create", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add comment to task about login bug",
+      "expected_output": "1. Search tasks for login bug. 2. Create comment on task.",
+      "context": "User wants to comment",
+      "tags": ["comment", "create", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "move task to Done status",
+      "expected_output": "1. Find task. 2. Update task status to Done.",
+      "context": "User wants to update status",
+      "tags": ["task", "update", "status", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create list 'Sprint 5' in project folder",
+      "expected_output": "1. Find project folder. 2. Create list in folder.",
+      "context": "User wants new list",
+      "tags": ["list", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add tag 'urgent' to task about payment",
+      "expected_output": "1. Find task about payment. 2. Add tag to task.",
+      "context": "User wants to tag task",
+      "tags": ["task", "tag", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get task details for task ID abc123",
+      "expected_output": "Get task by task ID.",
+      "context": "User wants specific task",
+      "tags": ["task", "get", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "start time tracking on current task",
+      "expected_output": "1. Find current/active task. 2. Start time entry on task.",
+      "context": "User wants to track time",
+      "tags": ["time", "start", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "stop time tracking",
+      "expected_output": "Stop running time entry.",
+      "context": "User wants to stop timer",
+      "tags": ["time", "stop"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "assign task to sarah",
+      "expected_output": "1. Find task. 2. Get workspace members. 3. Find sarah. 4. Update task assignee.",
+      "context": "User wants to assign task",
+      "tags": ["task", "assign", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "set due date for task to next friday",
+      "expected_output": "1. Find task. 2. Update task with due_date.",
+      "context": "User wants deadline",
+      "tags": ["task", "update", "due", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add subtask 'Write tests' to main task",
+      "expected_output": "1. Find main task. 2. Create subtask under parent task.",
+      "context": "User wants subtask",
+      "tags": ["task", "create", "subtask", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create goal 'Complete Q4 deliverables'",
+      "expected_output": "Create goal in workspace.",
+      "context": "User wants new goal",
+      "tags": ["goal", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show folders in Engineering space",
+      "expected_output": "1. Find Engineering space. 2. Get folders in space.",
+      "context": "User wants folders",
+      "tags": ["folder", "list", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "delete task about old feature",
+      "expected_output": "1. Find task about old feature. 2. Request confirmation. 3. Delete task.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["task", "delete", "search", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "link task to related task about API",
+      "expected_output": "1. Find source task. 2. Find related API task. 3. Add task link.",
+      "context": "User wants to link tasks",
+      "tags": ["task", "link", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get all lists in folder",
+      "expected_output": "1. Find folder. 2. Get lists in folder.",
+      "context": "User wants lists",
+      "tags": ["list", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add dependency between tasks",
+      "expected_output": "Add task dependency (blocking/waiting on).",
+      "context": "User wants task dependency",
+      "tags": ["task", "dependency", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "show time entries for today",
+      "expected_output": "Get time entries filtered for today.",
+      "context": "User wants time log",
+      "tags": ["time", "list", "filter"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "update task priority to high",
+      "expected_output": "1. Find task. 2. Update task priority.",
+      "context": "User wants to prioritize",
+      "tags": ["task", "update", "priority", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get team members in workspace",
+      "expected_output": "Get authorized teams and their members.",
+      "context": "User wants to see team",
+      "tags": ["team", "members", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create tag 'bug' in space",
+      "expected_output": "1. Find space. 2. Create tag in space.",
+      "context": "User wants new tag",
+      "tags": ["tag", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "search clikup for payment task",
+      "expected_output": "1. Recognize 'clikup' as typo for 'clickup'. 2. Search tasks for 'payment'.",
+      "context": "User made typo",
+      "tags": ["task", "search", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    }
+  ]
+}

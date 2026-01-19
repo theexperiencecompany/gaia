@@ -1,677 +1,581 @@
-import asyncio
-import json
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+"""Calendar tools using Composio custom tool infrastructure.
+
+These tools provide calendar functionality using the access_token from Composio's
+auth_credentials. Uses shared calendar_service functions for all operations.
+
+Note: Errors are raised as exceptions, not returned as dicts - Composio wraps
+responses in {successful: bool, data: Any, error: str} format automatically.
+"""
+
+import zoneinfo
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List
 
 import httpx
-from app.agents.templates.calendar_template import (
-    CALENDAR_LIST_TEMPLATE,
-    CALENDAR_PROMPT_TEMPLATE,
-)
 from app.config.loggers import chat_logger as logger
-from app.decorators import (
-    require_integration,
-    with_doc,
-    with_rate_limiting,
-)
+from app.decorators import with_doc
 from app.models.calendar_models import (
-    CalendarEventToolRequest,
-    CalendarEventUpdateToolRequest,
-    EventLookupRequest,
+    AddRecurrenceInput,
+    CreateEventInput,
+    DeleteEventInput,
+    FetchEventsInput,
+    FindEventInput,
+    GetDaySummaryInput,
+    GetEventInput,
+    ListCalendarsInput,
+    PatchEventInput,
 )
-from app.services.calendar_service import (
-    enrich_calendar_options_with_metadata,
-    find_event_for_action,
-    format_event_for_frontend,
-    get_calendar_events,
-    get_calendar_metadata_map,
-    list_calendars,
-    search_calendar_events_native,
+from app.services import calendar_service, user_service
+from app.templates.docstrings.calendar_tool_docs import (
+    CUSTOM_ADD_RECURRENCE as CUSTOM_ADD_RECURRENCE_DOC,
 )
 from app.templates.docstrings.calendar_tool_docs import (
-    CALENDAR_EVENT,
-    DELETE_CALENDAR_EVENT,
-    EDIT_CALENDAR_EVENT,
-    FETCH_CALENDAR_EVENTS,
-    FETCH_CALENDAR_LIST,
-    SEARCH_CALENDAR_EVENTS,
-    VIEW_CALENDAR_EVENT,
+    CUSTOM_CREATE_EVENT as CUSTOM_CREATE_EVENT_DOC,
 )
-from app.utils.oauth_utils import get_tokens_by_user_id
-from langchain_core.runnables.config import RunnableConfig
-from langchain_core.tools import tool
-from langgraph.config import get_stream_writer
+from app.templates.docstrings.calendar_tool_docs import (
+    CUSTOM_DELETE_EVENT as CUSTOM_DELETE_EVENT_DOC,
+)
+from app.templates.docstrings.calendar_tool_docs import (
+    CUSTOM_FETCH_EVENTS as CUSTOM_FETCH_EVENTS_DOC,
+)
+from app.templates.docstrings.calendar_tool_docs import (
+    CUSTOM_FIND_EVENT as CUSTOM_FIND_EVENT_DOC,
+)
+from app.templates.docstrings.calendar_tool_docs import (
+    CUSTOM_GET_DAY_SUMMARY as CUSTOM_GET_DAY_SUMMARY_DOC,
+)
+from app.templates.docstrings.calendar_tool_docs import (
+    CUSTOM_GET_EVENT as CUSTOM_GET_EVENT_DOC,
+)
+from app.templates.docstrings.calendar_tool_docs import (
+    CUSTOM_LIST_CALENDARS as CUSTOM_LIST_CALENDARS_DOC,
+)
+from app.templates.docstrings.calendar_tool_docs import (
+    CUSTOM_PATCH_EVENT as CUSTOM_PATCH_EVENT_DOC,
+)
+from composio import Composio
+
+CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
+
+# Reusable sync HTTP client for direct API calls
+_http_client = httpx.Client(timeout=30)
 
 
-async def get_calendar_auth(
-    config: RunnableConfig,
-) -> tuple[str, str] | tuple[None, str]:
-    """
-    Extract and validate calendar authentication from config.
-
-    Returns:
-        tuple: (user_id, access_token) on success, or (None, error_message) on failure
-    """
-    try:
-        configurable = config.get("configurable", {})
-        if not configurable:
-            error_msg = "Missing 'configurable' section in config"
-            logger.error(error_msg)
-            return None, "Configuration data is missing"
-
-        user_id = configurable.get("user_id")
-        if not user_id:
-            logger.error("User ID is required for calendar operations")
-            return None, "User ID is required for calendar operations"
-
-        access_token, _, token_success = await get_tokens_by_user_id(user_id)
-        if not token_success or not access_token:
-            logger.error(f"Failed to get valid access token for user {user_id}")
-            return None, "Failed to authenticate. Please reconnect your calendar."
-
-        logger.debug(f"Successfully retrieved auth for user {user_id}")
-        return user_id, access_token
-
-    except Exception as e:
-        error_msg = f"Error retrieving calendar authentication: {str(e)}"
-        logger.error(error_msg)
-        return None, f"Authentication error: {str(e)}"
+def _get_access_token(auth_credentials: Dict[str, Any]) -> str:
+    """Extract access token from auth_credentials."""
+    token = auth_credentials.get("access_token")
+    if not token:
+        raise ValueError("Missing access_token in auth_credentials")
+    return token
 
 
-async def process_single_event(
-    event: CalendarEventToolRequest,
-    user_time_str: str,
-    user_id: str,
-) -> tuple[Dict[str, Any] | None, str | None]:
-    """
-    Process a single calendar event with validation and timezone handling.
-
-    Returns:
-        tuple: (event_dict or None, error_message or None)
-    """
-    try:
-        processed_event = event.process_times(user_time_str)
-
-        event_dict = {
-            "summary": processed_event.summary,
-            "description": processed_event.description or "",
-            "is_all_day": processed_event.is_all_day,
-            "start": processed_event.start,
-            "end": processed_event.end,
-        }
-
-        if processed_event.calendar_id:
-            event_dict["calendar_id"] = processed_event.calendar_id
-            try:
-                pass
-            except Exception as e:
-                logger.warning(f"Could not process calendar_id: {e}")
-
-        if processed_event.recurrence:
-            event_dict["recurrence"] = processed_event.recurrence.model_dump()
-
-        logger.info(f"Added calendar event: {processed_event.summary}")
-        return event_dict, None
-
-    except Exception as e:
-        error_msg = f"Error processing calendar event: {e}"
-        logger.error(error_msg)
-        return None, error_msg
+def _get_user_id(auth_credentials: Dict[str, Any]) -> str:
+    """Extract user_id from auth_credentials."""
+    return auth_credentials.get("user_id", "")
 
 
-@tool()
-@with_rate_limiting("calendar_management")
-@with_doc(CALENDAR_EVENT)
-@require_integration("calendar")
-async def create_calendar_event(
-    events_data: List[CalendarEventToolRequest],
-    config: RunnableConfig,
-) -> str:
-    """Create calendar events with proper auth flow."""
-    try:
-        if not events_data:
-            logger.error("Empty event list provided")
-            return json.dumps(
-                {
-                    "error": "At least one calendar event must be provided",
-                    "calendar_options": [],
-                    "prompt": str(CALENDAR_PROMPT_TEMPLATE.invoke({})),
-                }
-            )
+def _auth_headers(access_token: str) -> Dict[str, str]:
+    """Return Bearer token header for Google Calendar API."""
+    return {"Authorization": f"Bearer {access_token}"}
 
-        configurable = config.get("configurable", {})
-        user_time_str: str = configurable.get("user_time", "")
 
-        if not user_time_str:
-            logger.error("User time is required for calendar event processing")
-            return json.dumps(
-                {
-                    "error": "User time is required to process calendar events",
-                    "calendar_options": [],
-                    "prompt": str(CALENDAR_PROMPT_TEMPLATE.invoke({})),
-                }
-            )
+def register_calendar_custom_tools(composio: Composio) -> List[str]:
+    """Register calendar tools as Composio custom tools."""
 
-        # Get auth credentials
-        auth_result = await get_calendar_auth(config)
-        if auth_result[0] is None:
-            return json.dumps(
-                {
-                    "error": auth_result[1],
-                    "calendar_options": [],
-                    "prompt": str(CALENDAR_PROMPT_TEMPLATE.invoke({})),
-                }
-            )
+    @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
+    @with_doc(CUSTOM_LIST_CALENDARS_DOC)
+    def CUSTOM_LIST_CALENDARS(
+        request: ListCalendarsInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        access_token = _get_access_token(auth_credentials)
+        calendars = calendar_service.list_calendars(access_token, short=request.short)
+        return {"calendars": calendars}
 
-        user_id, access_token = auth_result
+    @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
+    @with_doc(CUSTOM_GET_DAY_SUMMARY_DOC)
+    def CUSTOM_GET_DAY_SUMMARY(
+        request: GetDaySummaryInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        import asyncio
 
-        logger.info(f"Processing {len(events_data)} calendar events")
+        access_token = _get_access_token(auth_credentials)
+        user_id = _get_user_id(auth_credentials)
 
-        # Process all events in parallel
-        results = await asyncio.gather(
-            *[
-                process_single_event(event, user_time_str, user_id)
-                for event in events_data
-            ]
-        )
-
-        calendar_options = []
-        validation_errors = []
-
-        for event_dict, error_msg in results:
-            if event_dict:
-                calendar_options.append(event_dict)
-            if error_msg:
-                validation_errors.append(error_msg)
-
-        if validation_errors and not calendar_options:
-            logger.error(f"Calendar event validation failed: {validation_errors}")
-            return json.dumps(
-                {
-                    "error": "Calendar event validation failed",
-                    "details": validation_errors,
-                    "calendar_options": [],
-                    "prompt": str(CALENDAR_PROMPT_TEMPLATE.invoke({})),
-                }
-            )
-
-        writer = get_stream_writer()
-
+        # Get user's timezone from their preferences
+        # Note: We need to run async code in sync context. Using run_until_complete
+        # with proper event loop handling.
         try:
-            calendar_options = await enrich_calendar_options_with_metadata(
-                calendar_options, access_token, user_id
-            )
+            try:
+                loop = asyncio.get_running_loop()
+                # If we're already in an async context, we can't use run_until_complete
+                # Fall back to not fetching user timezone
+                user_timezone = None
+            except RuntimeError:
+                # No running loop - safe to create one and run
+                loop = asyncio.new_event_loop()
+                try:
+                    user = loop.run_until_complete(user_service.get_user_by_id(user_id))
+                    user_timezone = user.get("timezone") if user else None
+                finally:
+                    loop.close()
+        except Exception:
+            user_timezone = None
 
-            writer({"calendar_options": calendar_options, "intent": "calendar"})
-        except Exception as e:
-            logger.warning(f"Error enriching calendar options: {str(e)}")
-            writer({"calendar_options": calendar_options, "intent": "calendar"})
+        # Use user's timezone or fallback to UTC
+        tz: zoneinfo.ZoneInfo | timezone = timezone.utc
+        try:
+            if user_timezone:
+                tz = zoneinfo.ZoneInfo(user_timezone)
+            else:
+                user_timezone = "UTC"
+        except Exception:
+            user_timezone = "UTC"
 
-        logger.info("Calendar event processing successful")
-        logger.info(f"Sent {len(calendar_options)} calendar options to frontend")
-        return "Calendar options sent to frontend"
-
-    except Exception as e:
-        error_msg = f"Error processing calendar event: {e}"
-        logger.error(error_msg)
-        return json.dumps(
-            {
-                "error": "Unable to process calendar event",
-                "details": str(e),
-                "calendar_options": [],
-                "prompt": str(CALENDAR_PROMPT_TEMPLATE.invoke({})),
-            }
-        )
-
-
-@tool
-@with_rate_limiting("calendar_management")
-@with_doc(FETCH_CALENDAR_LIST)
-@require_integration("calendar")
-async def fetch_calendar_list(
-    config: RunnableConfig,
-) -> str | dict:
-    """Fetch list of calendars."""
-    try:
-        # Get auth credentials
-        auth_result = await get_calendar_auth(config)
-        if auth_result[0] is None:
-            return auth_result[1]
-
-        user_id, access_token = auth_result
-
-        calendars = await list_calendars(access_token=access_token, short=True)
-        if calendars is None:
-            logger.error("Unable to fetch calendars - no data returned")
-            return "Unable to fetch your calendars. Please ensure your calendar is connected."
-
-        # Build array of {name, id, description} for all calendars
-        calendar_list_fetch_data: List[Dict[str, Any]] = []
-        if calendars and isinstance(calendars, list):
-            for calendar in calendars:
-                if isinstance(calendar, dict):
-                    calendar_list_fetch_data.append(
-                        {
-                            "name": calendar.get("summary", "Unknown Calendar"),
-                            "id": calendar.get("id", ""),
-                            "description": calendar.get("description", ""),
-                            "backgroundColor": calendar.get("backgroundColor"),
-                        }
-                    )
-
-        writer = get_stream_writer()
-        writer({"calendar_list_fetch_data": calendar_list_fetch_data})
-
-        formatted_response = CALENDAR_LIST_TEMPLATE.format(
-            calendars=json.dumps(calendars)
-        )
-
-        return formatted_response
-    except Exception as e:
-        error_msg = f"Error fetching calendars: {str(e)}"
-        logger.error(error_msg)
-        return f"Error fetching calendars: {str(e)}"
-
-
-@tool(parse_docstring=True)
-@with_rate_limiting("calendar_management")
-@with_doc(FETCH_CALENDAR_EVENTS)
-@require_integration("calendar")
-async def fetch_calendar_events(
-    config: RunnableConfig,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-    selected_calendars: Optional[List[str]] = None,
-    limit: int = 20,
-) -> str:
-    """Fetch calendar events."""
-    try:
-        # Get auth credentials
-        auth_result = await get_calendar_auth(config)
-        if auth_result[0] is None:
-            return auth_result[1]
-
-        user_id, access_token = auth_result
-
-        logger.info(f"Fetching calendar events for user {user_id} with limit {limit}")
-
-        if time_min is None:
-            time_min = datetime.now(timezone.utc).isoformat()
-
-        color_map, name_map = await get_calendar_metadata_map(access_token)
-
-        events_data = await get_calendar_events(
-            user_id=user_id,
-            access_token=access_token,
-            selected_calendars=selected_calendars,
-            time_min=time_min,
-            time_max=time_max,
-            max_results=limit,
-        )
-
-        events = events_data.get("events", [])
-        logger.info(f"Fetched {len(events)} events")
-
-        calendar_fetch_data = [
-            format_event_for_frontend(event, color_map, name_map) for event in events
-        ]
-
-        writer = get_stream_writer()
-        writer({"calendar_fetch_data": calendar_fetch_data})
-
-        return json.dumps(
-            {
-                "events": events,
-                "total_events": len(events),
-                "selected_calendars": events_data.get("selectedCalendars", []),
-                "next_page_token": events_data.get("nextPageToken"),
-            }
-        )
-
-    except Exception as e:
-        error_msg = f"Error fetching calendar events: {str(e)}"
-        logger.error(error_msg)
-        return error_msg
-
-
-@tool(parse_docstring=True)
-@with_doc(SEARCH_CALENDAR_EVENTS)
-@with_rate_limiting("calendar_management")
-@require_integration("calendar")
-async def search_calendar_events(
-    query: str,
-    config: RunnableConfig,
-    time_min: Optional[str] = None,
-    time_max: Optional[str] = None,
-) -> str:
-    """Search calendar events."""
-    try:
-        # Get auth credentials
-        auth_result = await get_calendar_auth(config)
-        if auth_result[0] is None:
-            return auth_result[1]
-
-        user_id, access_token = auth_result
-
-        logger.info(f"Searching calendar events for query: {query}")
-
-        writer = get_stream_writer()
-        writer({"progress": f"Searching calendar events for '{query}'..."})
-
-        search_results = await search_calendar_events_native(
-            query=query,
-            access_token=access_token,
-            time_min=time_min,
-            time_max=time_max,
-            user_id=user_id,
-        )
-
-        logger.info(
-            f"Found {len(search_results.get('matching_events', []))} matching events for query: {query}"
-        )
-
-        color_map, name_map = await get_calendar_metadata_map(access_token)
-
-        calendar_search_data = [
-            format_event_for_frontend(event, color_map, name_map)
-            for event in search_results.get("matching_events", [])
-        ]
-
-        writer(
-            {
-                "calendar_data": {"calendar_search_results": search_results},
-                "calendar_fetch_data": calendar_search_data,
-            }
-        )
-
-        return "Calendar search results sent to frontend"
-
-    except Exception as e:
-        error_msg = f"Error searching calendar events: {str(e)}"
-        logger.error(error_msg)
-        return error_msg
-
-
-@tool(parse_docstring=True)
-@with_doc(VIEW_CALENDAR_EVENT)
-@with_rate_limiting("calendar_management")
-@require_integration("calendar")
-async def view_calendar_event(
-    event_id: str,
-    config: RunnableConfig,
-    calendar_id: str = "primary",
-) -> str:
-    """View a specific calendar event."""
-    try:
-        # Get auth credentials
-        auth_result = await get_calendar_auth(config)
-        if auth_result[0] is None:
-            return auth_result[1]
-
-        user_id, access_token = auth_result
-
-        url = f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events/{event_id}"
-        headers = {"Authorization": f"Bearer {access_token}"}
-
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers)
-
-        if response.status_code == 200:
-            event = response.json()
-            logger.info(f"Retrieved event: {event.get('summary', 'Unknown')}")
-
-            return json.dumps(
-                {
-                    "event": event,
-                    "event_id": event_id,
-                    "calendar_id": calendar_id,
-                }
-            )
+        # Determine target date
+        now = datetime.now(tz)
+        if request.date:
+            try:
+                target_date = datetime.strptime(request.date, "%Y-%m-%d").replace(
+                    tzinfo=tz
+                )
+            except ValueError as e:
+                raise ValueError(
+                    f"Invalid date format: {request.date}. Use YYYY-MM-DD."
+                ) from e
         else:
-            error_msg = (
-                f"Event not found or access denied (Status: {response.status_code})"
-            )
-            logger.error(error_msg)
-            return error_msg
+            target_date = now
 
-    except Exception as e:
-        error_msg = f"Error viewing calendar event: {str(e)}"
-        logger.error(error_msg)
-        return error_msg
+        day_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
 
-
-@tool()
-@with_rate_limiting("calendar_management")
-@with_doc(DELETE_CALENDAR_EVENT)
-@require_integration("calendar")
-async def delete_calendar_event(
-    event_lookup_data: EventLookupRequest,
-    config: RunnableConfig,
-) -> str:
-    """Delete a calendar event."""
-    try:
-        # Get auth credentials
-        auth_result = await get_calendar_auth(config)
-        if auth_result[0] is None:
-            return auth_result[1]
-
-        user_id, access_token = auth_result
-
-        writer = get_stream_writer()
-        try:
-            target_event = await find_event_for_action(
-                access_token=access_token,
-                user_id=user_id,
-                event_lookup_data=event_lookup_data,
-            )
-        except Exception as e:
-            logger.error(f"Error finding event for deletion: {str(e)}")
-            return f"Error finding event for deletion: {str(e)}"
-
-        if not target_event:
-            return "No matching event found to delete."
-
-        # Prepare deletion confirmation data
-        delete_option = {
-            "action": "delete",
-            "event_id": target_event.get("id"),
-            "calendar_id": target_event.get("calendarId", "primary"),
-            "summary": target_event.get("summary", ""),
-            "description": target_event.get("description", ""),
-            "start": target_event.get("start", {}),
-            "end": target_event.get("end", {}),
-            "original_query": event_lookup_data.query,
-        }
-
-        # Send deletion options to frontend via writer
-        writer(
-            {
-                "calendar_delete_options": [delete_option],
-            }
+        result = calendar_service.get_calendar_events(
+            user_id=user_id,
+            access_token=access_token,
+            selected_calendars=None,
+            time_min=day_start.isoformat(),
+            time_max=day_end.isoformat(),
+            max_results=100,
         )
 
-        logger.info("Calendar event deletion options sent to frontend")
-        return f"Found event '{target_event.get('summary', 'Unknown')}' matching your search. Please confirm the deletion."
+        events = result.get("events", [])
 
-    except Exception as e:
-        error_msg = f"Error searching for calendar event to delete: {str(e)}"
-        logger.error(error_msg)
-        return error_msg
+        try:
+            color_map, name_map = calendar_service.get_calendar_metadata_map(
+                access_token
+            )
+            formatted_events = [
+                calendar_service.format_event_for_frontend(event, color_map, name_map)
+                for event in events
+            ]
+        except Exception:
+            formatted_events = events
 
-
-@tool()
-@with_rate_limiting("calendar_management")
-@with_doc(docstring=EDIT_CALENDAR_EVENT)
-@require_integration("calendar")
-async def edit_calendar_event(
-    event_lookup_data: EventLookupRequest,
-    config: RunnableConfig,
-    summary: Optional[str] = None,
-    description: Optional[str] = None,
-    start: Optional[str] = None,
-    end: Optional[str] = None,
-    is_all_day: Optional[bool] = None,
-    timezone_offset: Optional[str] = None,
-    recurrence: Optional[dict] = None,
-    location: Optional[str] = None,
-    attendees: Optional[List[str]] = None,
-    reminders: Optional[dict] = None,
-    visibility: Optional[str] = None,
-    color_id: Optional[str] = None,
-) -> str:
-    """Edit a calendar event."""
-    try:
-        configurable = config.get("configurable", {})
-        user_time_str = configurable.get("user_time", "")
-
-        if not user_time_str:
-            logger.error("Missing user_time in config")
-            return "User time is required for calendar event processing."
-
-        # Get auth credentials
-        auth_result = await get_calendar_auth(config)
-        if auth_result[0] is None:
-            return auth_result[1]
-
-        user_id, access_token = auth_result
-
-        # Process timezone for start/end times if provided
-        processed_start = start
-        processed_end = end
-
-        if start is not None or end is not None:
-            try:
-                # Convert recurrence dict to RecurrenceData if provided
-                recurrence_data = None
-                if recurrence is not None:
-                    from app.models.calendar_models import RecurrenceData
-
-                    recurrence_data = (
-                        RecurrenceData(**recurrence)
-                        if isinstance(recurrence, dict)
-                        else recurrence
+        # Calculate busy hours
+        busy_minutes: float = 0.0
+        for event in events:
+            start = event.get("start", {})
+            end = event.get("end", {})
+            if "dateTime" in start and "dateTime" in end:
+                try:
+                    start_dt = datetime.fromisoformat(
+                        start["dateTime"].replace("Z", "+00:00")
                     )
+                    end_dt = datetime.fromisoformat(
+                        end["dateTime"].replace("Z", "+00:00")
+                    )
+                    duration = (end_dt - start_dt).total_seconds() / 60
+                    busy_minutes += duration
+                except Exception:  # nosec B110
+                    pass
 
-                tool_request = CalendarEventUpdateToolRequest(
-                    event_lookup=event_lookup_data,
-                    user_time=user_time_str,
-                    start=start,
-                    end=end,
-                    timezone_offset=timezone_offset,
-                    summary=summary,
-                    description=description,
-                    is_all_day=is_all_day,
-                    recurrence=recurrence_data,
+        next_event = None
+        if day_start.date() == now.date():
+            for event in events:
+                start = event.get("start", {})
+                if "dateTime" in start:
+                    try:
+                        event_start = datetime.fromisoformat(
+                            start["dateTime"].replace("Z", "+00:00")
+                        )
+                        if event_start > now:
+                            next_event = event
+                            break
+                    except Exception:  # nosec B110
+                        pass
+
+        return {
+            "date": day_start.strftime("%Y-%m-%d"),
+            "timezone": user_timezone,
+            "events": formatted_events,
+            "next_event": next_event,
+            "busy_hours": round(busy_minutes / 60, 1),
+        }
+
+    @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
+    @with_doc(CUSTOM_FETCH_EVENTS_DOC)
+    def CUSTOM_FETCH_EVENTS(
+        request: FetchEventsInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        access_token = _get_access_token(auth_credentials)
+        user_id = _get_user_id(auth_credentials)
+
+        time_min = request.time_min or datetime.now(timezone.utc).isoformat()
+
+        result = calendar_service.get_calendar_events(
+            user_id=user_id,
+            access_token=access_token,
+            selected_calendars=request.calendar_ids if request.calendar_ids else None,
+            time_min=time_min,
+            time_max=request.time_max,
+            max_results=request.max_results,
+        )
+
+        events = result.get("events", [])
+
+        # Format events for frontend
+        try:
+            color_map, name_map = calendar_service.get_calendar_metadata_map(
+                access_token
+            )
+            calendar_fetch_data = [
+                calendar_service.format_event_for_frontend(event, color_map, name_map)
+                for event in events
+            ]
+        except Exception:
+            calendar_fetch_data = events
+
+        return {
+            "calendar_fetch_data": calendar_fetch_data,
+            "has_more": result.get("has_more", False),
+        }
+
+    @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
+    @with_doc(CUSTOM_FIND_EVENT_DOC)
+    def CUSTOM_FIND_EVENT(
+        request: FindEventInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        access_token = _get_access_token(auth_credentials)
+        user_id = _get_user_id(auth_credentials)
+
+        result = calendar_service.search_calendar_events_native(
+            query=request.query,
+            user_id=user_id,
+            access_token=access_token,
+            time_min=request.time_min,
+            time_max=request.time_max,
+        )
+
+        events = result.get("matching_events", [])
+
+        # Format events for frontend
+        try:
+            color_map, name_map = calendar_service.get_calendar_metadata_map(
+                access_token
+            )
+            calendar_search_data = [
+                calendar_service.format_event_for_frontend(event, color_map, name_map)
+                for event in events
+            ]
+        except Exception:
+            calendar_search_data = events
+
+        return {
+            "events": events,
+            "calendar_search_data": calendar_search_data,
+        }
+
+    @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
+    @with_doc(CUSTOM_GET_EVENT_DOC)
+    def CUSTOM_GET_EVENT(
+        request: GetEventInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        access_token = _get_access_token(auth_credentials)
+        headers = _auth_headers(access_token)
+
+        results = []
+        errors = []
+
+        for event_ref in request.events:
+            url = f"{CALENDAR_API_BASE}/calendars/{event_ref.calendar_id}/events/{event_ref.event_id}"
+            try:
+                resp = _http_client.get(url, headers=headers)
+                resp.raise_for_status()
+                results.append(
+                    {
+                        "event_id": event_ref.event_id,
+                        "calendar_id": event_ref.calendar_id,
+                        "event": resp.json(),
+                    }
+                )
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Error getting event {event_ref.event_id}: {e}")
+                errors.append(
+                    {
+                        "event_id": event_ref.event_id,
+                        "calendar_id": event_ref.calendar_id,
+                        "error": f"Event not found: {e}",
+                    }
                 )
 
-                update_request = tool_request.to_update_request()
-                processed_start = update_request.start
-                processed_end = update_request.end
+        # If all events failed, raise an exception
+        if errors and not results:
+            raise RuntimeError(f"Failed to get events: {errors}")
 
-            except Exception as e:
-                logger.error(f"Error processing timezone for calendar update: {e}")
-                return f"Error processing timezone: {e}"
+        return {"events": results}
 
-        writer = get_stream_writer()
-        # Use service method to find the event for action (edit)
-        try:
-            target_event = await find_event_for_action(
-                access_token=access_token,
-                user_id=user_id,
-                event_lookup_data=event_lookup_data,
-            )
-        except Exception as e:
-            logger.error(f"Error finding event for edit: {str(e)}")
-            return f"Error finding event for edit: {str(e)}"
-        if not target_event:
-            return "No matching event found to edit."
+    @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
+    @with_doc(CUSTOM_DELETE_EVENT_DOC)
+    def CUSTOM_DELETE_EVENT(
+        request: DeleteEventInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        access_token = _get_access_token(auth_credentials)
+        headers = _auth_headers(access_token)
+        params = {"sendUpdates": request.send_updates}
 
-        # Prepare the updated event data
-        edit_option = {
-            "action": "edit",
-            "event_id": target_event.get("id"),
-            "calendar_id": target_event.get("calendarId", "primary"),
-            "original_summary": target_event.get("summary", ""),
-            "original_description": target_event.get("description", ""),
-            "original_start": target_event.get("start", {}),
-            "original_end": target_event.get("end", {}),
-            "original_query": event_lookup_data.query,
+        deleted = []
+        errors = []
+
+        for event_ref in request.events:
+            url = f"{CALENDAR_API_BASE}/calendars/{event_ref.calendar_id}/events/{event_ref.event_id}"
+            try:
+                resp = _http_client.delete(url, headers=headers, params=params)
+                resp.raise_for_status()
+                deleted.append(
+                    {
+                        "event_id": event_ref.event_id,
+                        "calendar_id": event_ref.calendar_id,
+                    }
+                )
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Error deleting event {event_ref.event_id}: {e}")
+                errors.append(
+                    {
+                        "event_id": event_ref.event_id,
+                        "calendar_id": event_ref.calendar_id,
+                        "error": f"Failed to delete: {e}",
+                    }
+                )
+
+        # If all deletions failed, raise an exception
+        if errors and not deleted:
+            raise RuntimeError(f"Failed to delete events: {errors}")
+
+        return {
+            "deleted": deleted,
         }
 
-        # Add updated fields only if they are provided (compatible with create event parameters)
-        if summary is not None:
-            edit_option["summary"] = summary
-        if description is not None:
-            edit_option["description"] = description
-        if start is not None:
-            edit_option["start"] = processed_start
-        if end is not None:
-            edit_option["end"] = processed_end
-        if is_all_day is not None:
-            edit_option["is_all_day"] = is_all_day
-        if recurrence is not None:
-            # Pass recurrence data as is - it will be validated and converted by the service layer
-            edit_option["recurrence"] = recurrence
-        if location is not None:
-            edit_option["location"] = location
-        if attendees is not None:
-            edit_option["attendees"] = attendees
-        if reminders is not None:
-            edit_option["reminders"] = reminders
-        if visibility is not None:
-            edit_option["visibility"] = visibility
-        if color_id is not None:
-            edit_option["color_id"] = color_id
+    @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
+    @with_doc(CUSTOM_PATCH_EVENT_DOC)
+    def CUSTOM_PATCH_EVENT(
+        request: PatchEventInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        access_token = _get_access_token(auth_credentials)
 
-        # Send edit options to frontend via writer
-        writer(
-            {
-                "calendar_edit_options": [edit_option],
+        url = f"{CALENDAR_API_BASE}/calendars/{request.calendar_id}/events/{request.event_id}"
+        headers = _auth_headers(access_token)
+        headers["Content-Type"] = "application/json"
+        params = {"sendUpdates": request.send_updates}
+
+        body: Dict[str, Any] = {}
+        if request.summary is not None:
+            body["summary"] = request.summary
+        if request.description is not None:
+            body["description"] = request.description
+        if request.location is not None:
+            body["location"] = request.location
+        if request.start_datetime is not None:
+            body["start"] = {"dateTime": request.start_datetime}
+        if request.end_datetime is not None:
+            body["end"] = {"dateTime": request.end_datetime}
+        if request.attendees is not None:
+            body["attendees"] = [{"email": email} for email in request.attendees]
+
+        resp = _http_client.patch(url, headers=headers, json=body, params=params)
+        resp.raise_for_status()
+        return {"event": resp.json()}
+
+    @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
+    @with_doc(CUSTOM_ADD_RECURRENCE_DOC)
+    def CUSTOM_ADD_RECURRENCE(
+        request: AddRecurrenceInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        access_token = _get_access_token(auth_credentials)
+
+        url = f"{CALENDAR_API_BASE}/calendars/{request.calendar_id}/events/{request.event_id}"
+        headers = _auth_headers(access_token)
+
+        get_resp = _http_client.get(url, headers=headers)
+        get_resp.raise_for_status()
+        event = get_resp.json()
+
+        # Build RRULE string
+        rrule_parts = [f"FREQ={request.frequency}"]
+        if request.interval != 1:
+            rrule_parts.append(f"INTERVAL={request.interval}")
+        if request.count > 0:
+            rrule_parts.append(f"COUNT={request.count}")
+        if request.until_date:
+            until_formatted = request.until_date.replace("-", "")
+            rrule_parts.append(f"UNTIL={until_formatted}")
+        if request.by_day:
+            rrule_parts.append(f"BYDAY={','.join(request.by_day)}")
+
+        rrule = "RRULE:" + ";".join(rrule_parts)
+        event["recurrence"] = [rrule]
+
+        headers["Content-Type"] = "application/json"
+        put_resp = _http_client.put(url, headers=headers, json=event)
+        put_resp.raise_for_status()
+
+        return {
+            "event": put_resp.json(),
+            "recurrence_rule": rrule,
+        }
+
+    @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
+    @with_doc(CUSTOM_CREATE_EVENT_DOC)
+    def CUSTOM_CREATE_EVENT(
+        request: CreateEventInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        access_token = _get_access_token(auth_credentials)
+        headers = _auth_headers(access_token)
+        headers["Content-Type"] = "application/json"
+
+        # Get calendar metadata for enrichment
+        try:
+            color_map, name_map = calendar_service.get_calendar_metadata_map(
+                access_token
+            )
+        except Exception:
+            color_map, name_map = {}, {}
+
+        created_events = []
+        calendar_options = []
+        errors = []
+
+        for index, event in enumerate(request.events):
+            try:
+                start_dt = datetime.fromisoformat(event.start_datetime)
+            except ValueError as e:
+                errors.append(
+                    {
+                        "index": index,
+                        "summary": event.summary,
+                        "error": f"Invalid start_datetime format: {e}",
+                    }
+                )
+                continue
+
+            duration = timedelta(
+                hours=event.duration_hours, minutes=event.duration_minutes
+            )
+            end_dt = start_dt + duration
+
+            # Ensure timezone info is present (Google Calendar API requires it)
+            if start_dt.tzinfo is None:
+                # Default to UTC if no timezone provided
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+                end_dt = end_dt.replace(tzinfo=timezone.utc)
+
+            body: Dict[str, Any] = {"summary": event.summary}
+
+            if event.is_all_day:
+                body["start"] = {"date": start_dt.strftime("%Y-%m-%d")}
+                body["end"] = {"date": end_dt.strftime("%Y-%m-%d")}
+            else:
+                body["start"] = {"dateTime": start_dt.isoformat()}
+                body["end"] = {"dateTime": end_dt.isoformat()}
+
+            if event.description:
+                body["description"] = event.description
+            if event.location:
+                body["location"] = event.location
+            if event.attendees:
+                body["attendees"] = [{"email": email} for email in event.attendees]
+
+            if request.confirm_immediately:
+                # Create immediately
+                url = f"{CALENDAR_API_BASE}/calendars/{event.calendar_id}/events"
+                resp = _http_client.post(
+                    url,
+                    headers=headers,
+                    json=body,
+                    params={"sendUpdates": "all"},
+                )
+                resp.raise_for_status()
+                created_event = resp.json()
+                created_events.append(
+                    {
+                        "index": index,
+                        "summary": event.summary,
+                        "event_id": created_event.get("id"),
+                        "calendar_id": event.calendar_id,
+                        "link": created_event.get("htmlLink"),
+                        "start": body["start"],
+                        "end": body["end"],
+                    }
+                )
+            else:
+                # Prepare for frontend confirmation
+                calendar_option = {
+                    "index": index,
+                    "summary": event.summary,
+                    "description": event.description or "",
+                    "is_all_day": event.is_all_day,
+                    "start": body["start"],
+                    "end": body["end"],
+                    "calendar_id": event.calendar_id,
+                    "color": color_map.get(event.calendar_id, "#4285f4"),
+                    "calendar_name": name_map.get(event.calendar_id, "Calendar"),
+                }
+                if event.location:
+                    calendar_option["location"] = event.location
+                if event.attendees:
+                    calendar_option["attendees"] = event.attendees
+                calendar_options.append(calendar_option)
+
+        # If all events failed with validation errors, raise
+        if errors and not created_events and not calendar_options:
+            raise ValueError(f"All events failed validation: {errors}")
+
+        if request.confirm_immediately:
+            return {
+                "created": len(created_events) > 0,
+                "created_events": created_events,
             }
-        )
+        else:
+            return {
+                "created": False,
+                "calendar_options": calendar_options,
+                "message": f"{len(calendar_options)} event(s) prepared for confirmation.",
+            }
 
-        logger.info("Calendar event edit options sent to frontend")
-
-        # Build changes summary
-        changes_summary = []
-        if summary is not None:
-            changes_summary.append(f"title to '{summary}'")
-        if description is not None:
-            changes_summary.append(f"description to '{description}'")
-        if start is not None or end is not None:
-            changes_summary.append("time/date")
-        if location is not None:
-            changes_summary.append(f"location to '{location}'")
-        if attendees is not None:
-            changes_summary.append("attendees")
-        if recurrence is not None:
-            changes_summary.append("recurrence pattern")
-        if is_all_day is not None:
-            changes_summary.append(f"all-day status to {is_all_day}")
-        if reminders is not None:
-            changes_summary.append("reminders")
-        if visibility is not None:
-            changes_summary.append(f"visibility to '{visibility}'")
-        if color_id is not None:
-            changes_summary.append("color")
-
-        changes_text = (
-            ", ".join(changes_summary) if changes_summary else "the specified fields"
-        )
-        return f"Found event '{target_event.get('summary', 'Unknown')}' matching your search. Ready to update {changes_text}. Please confirm the changes."
-
-    except Exception as e:
-        error_msg = f"Error searching for calendar event to edit: {str(e)}"
-        logger.error(error_msg)
-        return error_msg
-
-
-tools = [
-    fetch_calendar_list,
-    create_calendar_event,
-    delete_calendar_event,
-    edit_calendar_event,
-    fetch_calendar_events,
-    search_calendar_events,
-    view_calendar_event,
-]
+    return [
+        "GOOGLECALENDAR_CUSTOM_CREATE_EVENT",
+        "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS",
+        "GOOGLECALENDAR_CUSTOM_GET_DAY_SUMMARY",
+        "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
+        "GOOGLECALENDAR_CUSTOM_FIND_EVENT",
+        "GOOGLECALENDAR_CUSTOM_GET_EVENT",
+        "GOOGLECALENDAR_CUSTOM_DELETE_EVENT",
+        "GOOGLECALENDAR_CUSTOM_PATCH_EVENT",
+        "GOOGLECALENDAR_CUSTOM_ADD_RECURRENCE",
+    ]

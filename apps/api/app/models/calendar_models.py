@@ -669,3 +669,168 @@ class CalendarEventUpdateToolRequest(BaseModel):
             original_summary=None,
             recurrence=self.recurrence,
         )
+
+
+class SingleEventInput(BaseModel):
+    """Single event definition for creation."""
+
+    summary: str = Field(..., description="Title of the event")
+    start_datetime: str = Field(
+        ...,
+        description="Start time in ISO format (e.g., '2024-01-15T10:00:00'). Use user's timezone.",
+    )
+    duration_hours: float = Field(
+        default=0, description="Duration hours (0-23)", ge=0, le=23
+    )
+    duration_minutes: float = Field(
+        default=30, description="Duration minutes (0-59)", ge=0, le=59
+    )
+    calendar_id: str = Field(default="primary", description="Calendar ID")
+    description: Optional[str] = Field(default=None, description="Event description")
+    location: Optional[str] = Field(default=None, description="Event location")
+    attendees: Optional[List[str]] = Field(
+        default=None, description="List of attendee email addresses"
+    )
+    is_all_day: bool = Field(default=False, description="All-day event")
+
+
+class CreateEventInput(BaseModel):
+    """Input for creating one or more calendar events."""
+
+    events: List[SingleEventInput] = Field(
+        ...,
+        description="List of events to create",
+    )
+    confirm_immediately: bool = Field(
+        default=False,
+        description="If True, create events immediately. If False (default), send to frontend for confirmation.",
+    )
+
+
+class ListCalendarsInput(BaseModel):
+    short: bool = Field(
+        default=True,
+        description="Return only essential fields (id, summary, description, backgroundColor)",
+    )
+
+
+class FetchEventsInput(BaseModel):
+    """Input for fetching events from one or more calendars."""
+
+    calendar_ids: list[str] = Field(
+        default_factory=list,
+        description="Calendar IDs to fetch from. If empty, fetches from all user's selected calendars. Use ['primary'] for just the primary calendar.",
+    )
+    time_min: str | None = Field(
+        default=None,
+        description="Start time filter (ISO format). Defaults to current time.",
+    )
+    time_max: str | None = Field(
+        default=None, description="End time filter (ISO format)"
+    )
+    max_results: int = Field(
+        default=30, description="Maximum events to return (1-250)", ge=1, le=250
+    )
+
+
+class GetDaySummaryInput(BaseModel):
+    """Input for getting a day's schedule summary."""
+
+    date: Optional[str] = Field(
+        default_factory=lambda: datetime.now().strftime("%Y-%m-%d"),
+        description="Date to get summary for (YYYY-MM-DD format). Defaults to today.",
+    )
+
+
+class FindEventInput(BaseModel):
+    query: str = Field(..., description="Search query text")
+    calendar_id: str = Field(default="primary", description="Calendar ID to search")
+    time_min: Optional[str] = Field(
+        default=None, description="Start time filter (ISO format)"
+    )
+    time_max: Optional[str] = Field(
+        default=None, description="End time filter (ISO format)"
+    )
+
+
+class EventReference(BaseModel):
+    """Reference to a specific event by ID and calendar."""
+
+    event_id: str = Field(..., description="Event ID")
+    calendar_id: str = Field(default="primary", description="Calendar ID")
+
+
+class GetEventInput(BaseModel):
+    """Input for getting one or more events by ID."""
+
+    events: List[EventReference] = Field(
+        ...,
+        description="List of events to get (each with event_id and calendar_id)",
+    )
+
+
+class DeleteEventInput(BaseModel):
+    """Input for deleting one or more events."""
+
+    events: List[EventReference] = Field(
+        ...,
+        description="List of events to delete (each with event_id and calendar_id)",
+    )
+    send_updates: str = Field(
+        default="all",
+        description="Notify attendees: 'all', 'externalOnly', 'none'",
+    )
+
+
+class PatchEventInput(BaseModel):
+    event_id: str = Field(..., description="Event ID to update")
+    calendar_id: str = Field(default="primary", description="Calendar ID")
+    summary: Optional[str] = Field(default=None, description="New title")
+    description: Optional[str] = Field(default=None, description="New description")
+    start_datetime: Optional[str] = Field(
+        default=None, description="New start time (ISO format)"
+    )
+    end_datetime: Optional[str] = Field(
+        default=None, description="New end time (ISO format)"
+    )
+    location: Optional[str] = Field(default=None, description="New location")
+    attendees: Optional[List[str]] = Field(
+        default=None, description="New attendees list"
+    )
+    send_updates: str = Field(default="all", description="Notify attendees")
+
+
+class AddRecurrenceInput(BaseModel):
+    event_id: str = Field(..., description="Event ID to add recurrence to")
+    calendar_id: str = Field(default="primary", description="Calendar ID")
+    frequency: Literal["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] = Field(
+        ..., description="Recurrence frequency"
+    )
+    interval: int = Field(default=1, description="Interval between occurrences", ge=1)
+    count: int = Field(
+        default=0, description="Number of occurrences (don't use with until_date)"
+    )
+    until_date: str = Field(
+        default="",
+        description="End date for recurrence (YYYY-MM-DD) (don't use with count)",
+    )
+    by_day: list[str] = Field(
+        default_factory=list,
+        description="Days of week: 'SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'",
+    )
+
+    @field_validator("by_day")
+    @classmethod
+    def validate_by_day(cls, v):
+        if v:
+            valid_days = {"SU", "MO", "TU", "WE", "TH", "FR", "SA"}
+            for day in v:
+                if day not in valid_days:
+                    raise ValueError(f"Invalid day: {day}. Must be one of {valid_days}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_recurrence(self):
+        if self.count > 0 and self.until_date:
+            raise ValueError("Cannot specify both 'count' and 'until_date'")
+        return self

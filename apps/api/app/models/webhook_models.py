@@ -5,7 +5,6 @@ Clean webhook models for Dodo Payments based on actual webhook format.
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from app.models.oauth_models import TRIGGER_TYPES
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -142,7 +141,7 @@ class DodoWebhookProcessingResult(BaseModel):
 class ComposioWebhookEvent(BaseModel):
     """Composio webhook event structure."""
 
-    type: TRIGGER_TYPES
+    type: str
     timestamp: str
     data: Dict[str, Any]
     connection_id: str

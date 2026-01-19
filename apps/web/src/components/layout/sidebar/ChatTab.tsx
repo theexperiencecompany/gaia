@@ -1,10 +1,11 @@
 "use client";
+import { SystemPurpose } from "@/features/chat/api/chatApi";
+import { ChatBotIcon, Mail01Icon, StarIcon } from "@/icons";
+import { useChatStore } from "@/stores/chatStore";
 import { Button } from "@heroui/button";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { type FC, useEffect, useState } from "react";
-import { SystemPurpose } from "@/features/chat/api/chatApi";
-import { ChatBotIcon, Mail01Icon, StarIcon } from "@/icons";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
 const ICON_WIDTH = "20";
@@ -30,6 +31,12 @@ export const ChatTab: FC<ChatTabProps> = ({
   const [currentConvoId, setCurrentConvoId] = useState<string | null>(null);
   const pathname = usePathname();
   const [buttonHovered, setButtonHovered] = useState(false);
+
+  // Check if this conversation is currently streaming
+  const streamingConversationId = useChatStore(
+    (state) => state.streamingConversationId
+  );
+  const isStreaming = streamingConversationId === id;
 
   useEffect(() => {
     const pathParts = pathname.split("/");
@@ -87,10 +94,15 @@ export const ChatTab: FC<ChatTabProps> = ({
         }
       >
         <div className="flex items-center truncate justify-start w-full gap-2">
-          {isUnread && (
-            // <div className="rounded-full text-xs border border-primary/40 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-primary bg-primary/10">
-            //   UNREAD
-            // </div>
+          {/* Streaming indicator - pulsing dot */}
+          {isStreaming && (
+            <div
+              className="size-2 bg-primary rounded-full animate-pulse"
+              title="Streaming..."
+            />
+          )}
+          {/* Unread indicator */}
+          {!isStreaming && isUnread && (
             <div className="size-2.5 bg-primary rounded-full" />
           )}
           <span>{name.replace('"', "")}</span>

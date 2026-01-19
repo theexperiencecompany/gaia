@@ -6,14 +6,28 @@ import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { notificationsApi } from "../api";
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// Check if running in Expo Go
+const isExpoGo = Constants.appOwnership === "expo";
+
+// Only setup notification handler if not in Expo Go on Android
+if (!(isExpoGo && Platform.OS === "android")) {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+  } catch (e) {
+    // Silently fail in Expo Go but log for debugging
+    console.warn(
+      "[Notifications] Handler setup failed (expected in Expo Go):",
+      e,
+    );
+  }
+}
 
 interface UseNotificationsReturn {
   expoPushToken: string | null;
@@ -40,6 +54,15 @@ export function useNotifications(): UseNotificationsReturn {
     async function setupNotifications() {
       try {
         setIsLoading(true);
+
+        // Skip push notification setup in Expo Go on Android (not supported since SDK 53)
+        if (isExpoGo && Platform.OS === "android") {
+          setError(
+            "Push notifications are not supported in Expo Go. Use a development build.",
+          );
+          setIsLoading(false);
+          return;
+        }
 
         // Setup Android notification channel
         if (Platform.OS === "android") {
@@ -146,18 +169,20 @@ export function useNotifications(): UseNotificationsReturn {
 
     setupNotifications();
 
-    // Setup listeners
-    notificationListener.current =
-      Notifications.addNotificationReceivedListener((receivedNotification) => {
-        setNotification(receivedNotification);
-      });
+    // Setup listeners (skip in Expo Go on Android)
+    if (!(isExpoGo && Platform.OS === "android")) {
+      notificationListener.current =
+        Notifications.addNotificationReceivedListener(
+          (receivedNotification) => {
+            setNotification(receivedNotification);
+          },
+        );
 
-    responseListener.current =
-      Notifications.addNotificationResponseReceivedListener((response) => {
-        const data = response.notification.request.content.data;
-        if (data) {
-        }
-      });
+      responseListener.current =
+        Notifications.addNotificationResponseReceivedListener((_response) => {
+          // TODO: Handle notification response when navigation is implemented
+        });
+    }
 
     return () => {
       isMounted = false;

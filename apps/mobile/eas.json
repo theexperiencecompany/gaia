@@ -4,15 +4,33 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "base": {
+      "android": {
+        "env": {
+          "GOOGLE_SERVICES_JSON": "@GOOGLE_SERVICES_JSON"
+        }
+      }
+    },
     "development": {
+      "extends": "base",
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "NODE_ENV": "development",
+        "EXPO_PUBLIC_API_URL": "http://localhost:8000"
+      }
     },
     "preview": {
+      "extends": "base",
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "extends": "base",
+      "autoIncrement": true,
+      "env": {
+        "NODE_ENV": "production",
+        "EXPO_PUBLIC_API_URL": "https://api.heygaia.io"
+      }
     }
   },
   "submit": {

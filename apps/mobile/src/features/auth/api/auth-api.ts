@@ -1,6 +1,6 @@
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
-import { API_ORIGIN as OAUTH_BASE_URL } from "../../../lib/constants";
+import { API_BASE_URL } from "../../../lib/constants";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -20,7 +20,7 @@ export interface UserInfoResponse {
 export async function getLoginUrl(callbackUri: string): Promise<string> {
   try {
     const response = await fetch(
-      `${OAUTH_BASE_URL}/api/v1/oauth/login/workos/mobile?redirect_uri=${encodeURIComponent(callbackUri)}`,
+      `${API_BASE_URL}/oauth/login/workos/mobile?redirect_uri=${encodeURIComponent(callbackUri)}`,
     );
 
     if (!response.ok) {
@@ -61,12 +61,11 @@ export async function startOAuthFlow(): Promise<string> {
 
 export async function fetchUserInfo(token: string): Promise<UserInfoResponse> {
   try {
-    const response = await fetch(`${OAUTH_BASE_URL}/api/v1/user/me`, {
+    const response = await fetch(`${API_BASE_URL}/user/me`, {
       method: "GET",
       headers: {
-        Cookie: `wos_session=${token}`,
+        Authorization: `Bearer ${token}`,
       },
-      credentials: "include",
     });
 
     if (!response.ok) {
@@ -88,12 +87,11 @@ export async function fetchUserInfo(token: string): Promise<UserInfoResponse> {
 
 export async function logout(token: string): Promise<void> {
   try {
-    await fetch(`${OAUTH_BASE_URL}/api/v1/oauth/logout`, {
+    await fetch(`${API_BASE_URL}/oauth/logout`, {
       method: "POST",
       headers: {
-        Cookie: `wos_session=${token}`,
+        Authorization: `Bearer ${token}`,
       },
-      credentials: "include",
     });
   } catch (error) {
     console.error("Error during logout:", error);

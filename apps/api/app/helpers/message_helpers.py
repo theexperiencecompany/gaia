@@ -1,5 +1,8 @@
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
+from zoneinfo import ZoneInfo
+
+from langchain_core.messages import SystemMessage
 
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
@@ -21,7 +24,6 @@ from app.services.workflow import WorkflowService
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
 )
-from langchain_core.messages import SystemMessage
 
 
 def create_system_message(
@@ -70,7 +72,6 @@ async def get_memory_message(
     Returns:
         SystemMessage with user context and memories
     """
-    from zoneinfo import ZoneInfo
 
     try:
         context_parts = []

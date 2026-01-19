@@ -10,10 +10,9 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import Spinner from "@/components/ui/spinner";
-import {
-  useConversationList,
-  useFetchConversations,
-} from "@/features/chat/hooks/useConversationList";
+import { useConversationList } from "@/features/chat/hooks/useConversationList";
+import { useInfiniteConversations } from "@/features/chat/hooks/useInfiniteConversations";
+import { useSyncStatus } from "@/hooks/useBackgroundSync";
 import { cn } from "@/lib";
 import type { IConversation } from "@/lib/db/chatDb";
 import { ChatTab } from "./ChatTab";
@@ -50,21 +49,13 @@ const timeFramePriority = (timeFrame: string): number => {
 };
 
 export default function ChatsList() {
-  const {
-    conversations: apiConversations,
-    loading,
-    error,
-  } = useConversationList();
-  const fetchConversations = useFetchConversations();
-  const hasFetchedRef = useRef(false);
+  const { conversations: apiConversations } = useConversationList();
+  const { initialSyncCompleted } = useSyncStatus();
+  const { loadMoreConversations, isLoadingMore, hasMore } =
+    useInfiniteConversations();
 
-  useEffect(() => {
-    // Only fetch once on initial mount if store is empty
-    if (!hasFetchedRef.current && apiConversations.length === 0 && !loading) {
-      hasFetchedRef.current = true;
-      fetchConversations(1, 20);
-    }
-  }, [apiConversations.length, loading, fetchConversations]);
+  // Sentinel element ref for IntersectionObserver
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const conversations: IConversation[] = useMemo(() => {
     return apiConversations.map((conv) => ({
@@ -121,8 +112,8 @@ export default function ChatsList() {
       };
     }, [conversations]);
 
-  const isLoading = loading;
-  const isError = !!error;
+  // Show loading only when there are no cached conversations and initial sync hasn't completed
+  const isLoading = conversations.length === 0 && !initialSyncCompleted;
 
   // Calculate which accordions should be open - controlled state
   const getAccordionValues = () => {
@@ -159,117 +150,131 @@ export default function ChatsList() {
     sortedTimeFrames.length,
   ]);
 
+  // Direct scroll listener for infinite scroll - throttled with requestAnimationFrame
+  useEffect(() => {
+    // Skip if still loading (sentinel not rendered yet)
+    if (isLoading) return;
+
+    // Find the scrollable parent (SidebarContent with overflow-auto)
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    let scrollContainer: HTMLElement | null = sentinel.parentElement;
+    while (scrollContainer) {
+      const style = window.getComputedStyle(scrollContainer);
+      if (style.overflowY === "auto" || style.overflowY === "scroll") {
+        break;
+      }
+      scrollContainer = scrollContainer.parentElement;
+    }
+
+    if (!scrollContainer) return;
+
+    let ticking = false;
+
+    const handleScroll = () => {
+      if (ticking) return;
+
+      ticking = true;
+      requestAnimationFrame(() => {
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainer!;
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+        if (distanceFromBottom < 100 && hasMore && !isLoadingMore) {
+          loadMoreConversations();
+        }
+        ticking = false;
+      });
+    };
+
+    scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
+
+    // Check immediately in case we're already near bottom
+    handleScroll();
+
+    return () => {
+      scrollContainer?.removeEventListener("scroll", handleScroll);
+    };
+  }, [
+    isLoading,
+    hasMore,
+    isLoadingMore,
+    loadMoreConversations,
+    conversations.length,
+  ]);
+
   return (
     <>
-      {isLoading && conversations.length === 0 ? (
+      {isLoading ? (
         <div className="flex items-center justify-center p-10">
           <Spinner />
         </div>
-      ) : isError ? (
-        <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
-          <p className="text-sm text-foreground-500">
-            We couldn&apos;t load your conversations. Please try again.
-          </p>
-        </div>
       ) : (
-        <Accordion
-          type="multiple"
-          className="w-full p-0"
-          value={openAccordions}
-          onValueChange={setOpenAccordions}
-        >
-          {/* System-generated conversations */}
-          {systemConversations.length > 0 && (
-            <AccordionItem
-              value="system-conversations"
-              className={accordionItemStyles.item}
-            >
-              <AccordionTrigger
-                className={cn(
-                  accordionItemStyles.trigger,
-                  "hover:text-zinc-500",
-                )}
+        <>
+          <Accordion
+            type="multiple"
+            className="w-full p-0"
+            value={openAccordions}
+            onValueChange={setOpenAccordions}
+          >
+            {/* System-generated conversations */}
+            {systemConversations.length > 0 && (
+              <AccordionItem
+                value="system-conversations"
+                className={accordionItemStyles.item}
               >
-                Created by GAIA
-              </AccordionTrigger>
-              <AccordionContent className={accordionItemStyles.content}>
-                <div className={accordionItemStyles.chatContainer}>
-                  {systemConversations
-                    .sort(
-                      (a: IConversation, b: IConversation) =>
-                        b.createdAt.getTime() - a.createdAt.getTime(),
-                    )
-                    .map((conversation: IConversation) => (
-                      <ChatTab
-                        key={conversation.id}
-                        id={conversation.id}
-                        name={conversation.title || "System Actions"}
-                        starred={conversation.starred ?? false}
-                        isSystemGenerated={
-                          conversation.isSystemGenerated ?? false
-                        }
-                        systemPurpose={conversation.systemPurpose ?? undefined}
-                        isUnread={conversation.isUnread ?? false}
-                      />
-                    ))}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          )}
+                <AccordionTrigger
+                  className={cn(
+                    accordionItemStyles.trigger,
+                    "hover:text-zinc-500",
+                  )}
+                >
+                  Created by GAIA
+                </AccordionTrigger>
+                <AccordionContent className={accordionItemStyles.content}>
+                  <div className={accordionItemStyles.chatContainer}>
+                    {systemConversations
+                      .sort(
+                        (a: IConversation, b: IConversation) =>
+                          b.createdAt.getTime() - a.createdAt.getTime(),
+                      )
+                      .map((conversation: IConversation) => (
+                        <ChatTab
+                          key={conversation.id}
+                          id={conversation.id}
+                          name={conversation.title || "System Actions"}
+                          starred={conversation.starred ?? false}
+                          isSystemGenerated={
+                            conversation.isSystemGenerated ?? false
+                          }
+                          systemPurpose={
+                            conversation.systemPurpose ?? undefined
+                          }
+                          isUnread={conversation.isUnread ?? false}
+                        />
+                      ))}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            )}
 
-          {/* Starred conversations */}
-          {starredConversations.length > 0 && (
-            <AccordionItem
-              value="starred-chats"
-              className={accordionItemStyles.item}
-            >
-              <AccordionTrigger
-                className={cn(
-                  accordionItemStyles.trigger,
-                  "hover:text-zinc-500",
-                )}
+            {/* Starred conversations */}
+            {starredConversations.length > 0 && (
+              <AccordionItem
+                value="starred-chats"
+                className={accordionItemStyles.item}
               >
-                Starred Chats
-              </AccordionTrigger>
-              <AccordionContent className={accordionItemStyles.content}>
-                <div className="-mr-4 flex w-full flex-col">
-                  {starredConversations.map((conversation: IConversation) => (
-                    <ChatTab
-                      key={conversation.id}
-                      id={conversation.id}
-                      name={conversation.title || "New chat"}
-                      starred={conversation.starred ?? false}
-                      isUnread={conversation.isUnread ?? false}
-                    />
-                  ))}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          )}
-
-          {/* Grouped Conversations by Time Frame */}
-          {sortedTimeFrames.map(([timeFrame, conversationsGroup]) => (
-            <AccordionItem
-              key={timeFrame}
-              value={timeFrame.toLowerCase().replace(/\s+/g, "-")}
-              className={accordionItemStyles.item}
-            >
-              <AccordionTrigger
-                className={cn(
-                  accordionItemStyles.trigger,
-                  "hover:text-zinc-500",
-                )}
-              >
-                {timeFrame}
-              </AccordionTrigger>
-              <AccordionContent className={accordionItemStyles.content}>
-                <div className={accordionItemStyles.chatContainer}>
-                  {conversationsGroup
-                    .sort(
-                      (a: IConversation, b: IConversation) =>
-                        b.createdAt.getTime() - a.createdAt.getTime(),
-                    )
-                    .map((conversation: IConversation) => (
+                <AccordionTrigger
+                  className={cn(
+                    accordionItemStyles.trigger,
+                    "hover:text-zinc-500",
+                  )}
+                >
+                  Starred Chats
+                </AccordionTrigger>
+                <AccordionContent className={accordionItemStyles.content}>
+                  <div className="-mr-4 flex w-full flex-col">
+                    {starredConversations.map((conversation: IConversation) => (
                       <ChatTab
                         key={conversation.id}
                         id={conversation.id}
@@ -278,11 +283,65 @@ export default function ChatsList() {
                         isUnread={conversation.isUnread ?? false}
                       />
                     ))}
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            )}
+
+            {/* Grouped Conversations by Time Frame */}
+            {sortedTimeFrames.map(([timeFrame, conversationsGroup]) => (
+              <AccordionItem
+                key={timeFrame}
+                value={timeFrame.toLowerCase().replace(/\s+/g, "-")}
+                className={accordionItemStyles.item}
+              >
+                <AccordionTrigger
+                  className={cn(
+                    accordionItemStyles.trigger,
+                    "hover:text-zinc-500",
+                  )}
+                >
+                  {timeFrame}
+                </AccordionTrigger>
+                <AccordionContent className={accordionItemStyles.content}>
+                  <div className={accordionItemStyles.chatContainer}>
+                    {conversationsGroup
+                      .sort(
+                        (a: IConversation, b: IConversation) =>
+                          b.createdAt.getTime() - a.createdAt.getTime(),
+                      )
+                      .map((conversation: IConversation) => (
+                        <ChatTab
+                          key={conversation.id}
+                          id={conversation.id}
+                          name={conversation.title || "New chat"}
+                          starred={conversation.starred ?? false}
+                          isUnread={conversation.isUnread ?? false}
+                        />
+                      ))}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+
+          {/* Sentinel element for IntersectionObserver - detects when user scrolls near bottom */}
+          <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+
+          {/* Loading indicator for infinite scroll */}
+          {isLoadingMore && (
+            <div className="flex items-center justify-center py-4">
+              <Spinner />
+            </div>
+          )}
+
+          {/* End of list indicator */}
+          {!hasMore && conversations.length > 0 && (
+            <div className="py-4 text-center text-xs text-zinc-500">
+              No more conversations
+            </div>
+          )}
+        </>
       )}
     </>
   );

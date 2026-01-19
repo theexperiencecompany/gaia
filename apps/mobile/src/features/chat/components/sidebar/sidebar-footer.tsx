@@ -6,12 +6,14 @@ import { ActivityIndicator, Pressable, View } from "react-native";
 import { ArrowDown01Icon, HugeiconsIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth";
+import { useResponsive } from "@/lib/responsive";
 import { SettingsBottomSheet } from "./settings-bottom-sheet";
 
 export function SidebarFooter() {
   const { user, isLoading, signOut } = useAuth();
   const bottomSheetRef = useRef<BottomSheetModal>(null);
   const router = useRouter();
+  const { spacing, fontSize, iconSize } = useResponsive();
 
   const handleSignOut = useCallback(async () => {
     bottomSheetRef.current?.dismiss();
@@ -36,8 +38,20 @@ export function SidebarFooter() {
 
   if (isLoading) {
     return (
-      <View className="border-t border-border py-2">
-        <View className="py-6 items-center justify-center">
+      <View
+        style={{
+          borderTopWidth: 1,
+          borderTopColor: "rgba(255,255,255,0.1)",
+          paddingVertical: spacing.sm,
+        }}
+      >
+        <View
+          style={{
+            paddingVertical: spacing.lg,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
           <ActivityIndicator size="small" color="#00bbff" />
         </View>
       </View>
@@ -46,9 +60,21 @@ export function SidebarFooter() {
 
   return (
     <>
-      <View className="border-t border-border py-3">
+      <View
+        style={{
+          borderTopWidth: 1,
+          borderTopColor: "rgba(255,255,255,0.1)",
+          paddingVertical: spacing.md,
+        }}
+      >
         <Pressable
-          className="flex-row items-center px-4 py-2 gap-3"
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
+            gap: spacing.md,
+          }}
           onPress={handleOpenSettings}
         >
           <Avatar alt={user?.name || "User"} size="sm" color="accent">
@@ -58,15 +84,30 @@ export function SidebarFooter() {
               <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
             )}
           </Avatar>
-          <View className="flex-1">
-            <Text className="text-sm font-semibold" numberOfLines={1}>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{ fontSize: fontSize.sm, fontWeight: "600" }}
+              numberOfLines={1}
+            >
               {user?.name || "User"}
             </Text>
-            <Text className="text-[9px] text-muted uppercase font-bold tracking-[0.15em]">
+            <Text
+              style={{
+                fontSize: fontSize.xs - 1,
+                color: "#8e8e93",
+                textTransform: "uppercase",
+                fontWeight: "bold",
+                letterSpacing: 1.5,
+              }}
+            >
               GAIA Free
             </Text>
           </View>
-          <HugeiconsIcon icon={ArrowDown01Icon} size={16} color="#8e8e93" />
+          <HugeiconsIcon
+            icon={ArrowDown01Icon}
+            size={iconSize.sm}
+            color="#8e8e93"
+          />
         </Pressable>
       </View>
 
