@@ -7,9 +7,8 @@ based on their name, description, tools, and server URL domain.
 
 from urllib.parse import urlparse
 
-from openai import AsyncOpenAI
-
 from app.config.loggers import app_logger as logger
+from openai import AsyncOpenAI
 
 # Fixed list of valid integration categories
 INTEGRATION_CATEGORIES = [
@@ -63,8 +62,11 @@ async def infer_integration_category(
     try:
         client = AsyncOpenAI()
 
-        # Extract first 10 tool names for context
-        tools_str = ", ".join([t.get("name", "") for t in tools[:10]]) or "None"
+        # Extract first 10 tool names for context, filtering out empty names
+        tool_names: list[str] = [
+            str(t.get("name")) for t in tools[:10] if t.get("name")
+        ]
+        tools_str = ", ".join(tool_names) or "None"
 
         # Extract domain from server URL
         try:
@@ -93,6 +95,7 @@ async def infer_integration_category(
                 f"LLM returned empty content for integration '{name}', falling back to 'other'"
             )
             return "other"
+
         category = content.strip().lower()
 
         # Validate response is a known category

@@ -16,8 +16,8 @@ from langsmith import traceable
 from opik.integrations.langchain import OpikTracer
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
-from app.config.settings import settings
 from app.config.loggers import langchain_logger as logger
+from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
@@ -34,7 +34,6 @@ from app.utils.agent_utils import (
     process_custom_event_for_tools,
     store_agent_progress,
 )
-
 
 # Cache key pattern and TTL for custom integration metadata
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
@@ -66,16 +65,24 @@ async def get_custom_integration_metadata(tool_name: str, user_id: str) -> dict:
 
     # Extract integration_id from MCP category
     # Category format: mcp_{integration_id} or mcp_{integration_id}_{user_id}
-    # User IDs are UUIDs with dashes (e.g., 550e8400-e29b-41d4-a716-446655440000)
-    # Custom integration IDs have hex suffixes WITHOUT dashes (e.g., custom_reposearch_6966a2fb964b5991c13ab887)
+    #
+    # Format assumptions for distinguishing integration_id from user_id suffix:
+    # - User IDs are UUIDs with dashes (e.g., 550e8400-e29b-41d4-a716-446655440000)
+    # - Custom integration IDs have hex suffixes WITHOUT dashes (e.g., custom_reposearch_6966a2fb964b5991c13ab887)
+    #
+    # This logic is fragile if:
+    # - UUID formats change to not include dashes
+    # - Custom IDs start using dashes
+    # A more robust approach would use a consistent delimiter or explicit marker.
     if not tool_category.startswith("mcp_"):
         return {}
 
     without_prefix = tool_category[4:]
     parts = without_prefix.rsplit("_", 1)
-    # Only strip suffix if it looks like a UUID (contains dashes) - not a hex ID
-    if len(parts) == 2 and "-" in parts[-1]:
-        # Last part is a user ID (UUID with dashes)
+    # Only strip suffix if it looks like a UUID (contains dashes and is ~36 chars)
+    # This is more specific than just checking for dashes
+    if len(parts) == 2 and "-" in parts[-1] and len(parts[-1]) >= 32:
+        # Last part is likely a user ID (UUID with dashes)
         integration_id = parts[0]
     else:
         integration_id = without_prefix

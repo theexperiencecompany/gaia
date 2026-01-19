@@ -82,7 +82,7 @@ export default function UseCaseDetailLayout({
 
         {similarContent}
 
-        <YouMightAlsoLike currentSlug={id} categories={categories} />
+        <YouMightAlsoLike currentId={id} categories={categories} />
 
         <PublishWorkflowCTA />
       </div>

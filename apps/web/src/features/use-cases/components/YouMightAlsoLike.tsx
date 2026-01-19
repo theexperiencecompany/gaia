@@ -8,12 +8,12 @@ import { workflowApi } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 
 interface YouMightAlsoLikeProps {
-  currentSlug: string;
+  currentId: string;
   categories?: string[];
 }
 
 export default function YouMightAlsoLike({
-  currentSlug,
+  currentId,
   categories = [],
 }: YouMightAlsoLikeProps) {
   const [items, setItems] = useState<CommunityWorkflow[]>([]);
@@ -23,7 +23,7 @@ export default function YouMightAlsoLike({
     const fetchItems = async () => {
       try {
         const resp = await workflowApi.getExploreWorkflows(50, 0);
-        let workflows = resp.workflows.filter((w) => w.id !== currentSlug);
+        let workflows = resp.workflows.filter((w) => w.id !== currentId);
 
         // If categories are provided, prioritize workflows in the same category
         if (categories.length > 0) {
@@ -71,7 +71,7 @@ export default function YouMightAlsoLike({
     };
 
     fetchItems();
-  }, [currentSlug, categories]);
+  }, [currentId, categories]);
 
   if (items.length === 0) return null;
 

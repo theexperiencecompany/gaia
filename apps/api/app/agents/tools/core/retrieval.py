@@ -71,7 +71,8 @@ async def _get_custom_integration_names(
 
     result = {}
     async for doc in cursor:
-        result[doc["integration_id"]] = doc.get("name", doc["integration_id"])
+        integration_id = doc["integration_id"]
+        result[integration_id] = doc.get("name") or integration_id
 
     return result
 
@@ -350,8 +351,8 @@ def get_retrieve_tools_function(
                             continue
 
                 # Include if it's in available tools
-                if item.key in available_tool_names:
-                    all_results.append({"id": item.key, "score": item.score})
+                if tool_key in available_tool_names:
+                    all_results.append({"id": tool_key, "score": item.score})
 
         # Remove duplicates and sort by score
         seen = set()

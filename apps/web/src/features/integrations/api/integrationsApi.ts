@@ -9,6 +9,32 @@ import type {
   UserIntegrationsResponse,
 } from "../types";
 
+/**
+ * Sanitizes a redirect URL to prevent XSS attacks.
+ * Only allows http: and https: protocols.
+ * Blocks dangerous schemes like javascript:, data:, vbscript:, etc.
+ *
+ * @param url - The URL to sanitize
+ * @returns The sanitized URL if safe, null if dangerous
+ */
+function sanitizeRedirectUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+
+    // Only allow http and https protocols
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      console.warn(`Blocked redirect to unsafe URL scheme: ${parsed.protocol}`);
+      return null;
+    }
+
+    return url;
+  } catch {
+    // Invalid URL format
+    console.warn(`Blocked redirect to malformed URL: ${url}`);
+    return null;
+  }
+}
+
 export interface IntegrationStatusResponse {
   integrations: Array<{
     integrationId: string;
@@ -89,7 +115,11 @@ export const integrationsApi = {
     };
 
     if (response.status === "redirect" && response.redirectUrl) {
-      window.location.href = response.redirectUrl;
+      const safeUrl = sanitizeRedirectUrl(response.redirectUrl);
+      if (!safeUrl) {
+        throw new Error("Invalid redirect URL received from server");
+      }
+      window.location.href = safeUrl;
       return { status: "redirecting" };
     }
 
@@ -334,7 +364,11 @@ export const integrationsApi = {
 
     // Handle OAuth redirect
     if (response.status === "redirect" && response.redirectUrl) {
-      window.location.href = response.redirectUrl;
+      const safeUrl = sanitizeRedirectUrl(response.redirectUrl);
+      if (!safeUrl) {
+        throw new Error("Invalid redirect URL received from server");
+      }
+      window.location.href = safeUrl;
       return { ...response, status: "redirecting" };
     }
 

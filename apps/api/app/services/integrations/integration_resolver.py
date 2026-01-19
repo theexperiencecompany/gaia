@@ -9,6 +9,7 @@ across mcp_client.py, integrations.py, and integration_service.py.
 from dataclasses import dataclass
 from typing import Optional
 
+from app.config.loggers import common_logger as logger
 from app.config.oauth_config import get_integration_by_id
 from app.db.mongodb.collections import integrations_collection
 from app.models.oauth_models import MCPConfig, OAuthIntegration
@@ -97,11 +98,23 @@ class IntegrationResolver:
 
             if custom_doc.get("mcp_config"):
                 mcp_config = MCPConfig(**custom_doc["mcp_config"])
-                # Override with mcp_config values if present
-                requires_auth = mcp_config.requires_auth
-                auth_type = mcp_config.auth_type or (
-                    "oauth" if requires_auth else "none"
+                # mcp_config is authoritative, but log if document-level values conflict
+                doc_requires_auth = custom_doc.get("requires_auth", False)
+                mcp_requires_auth = mcp_config.requires_auth
+                mcp_auth_type = mcp_config.auth_type or (
+                    "oauth" if mcp_requires_auth else "none"
                 )
+
+                # Warn about inconsistencies - helps identify data integrity issues
+                if doc_requires_auth != mcp_requires_auth:
+                    logger.warning(
+                        f"Integration {integration_id}: mcp_config.requires_auth "
+                        f"({mcp_requires_auth}) differs from document requires_auth "
+                        f"({doc_requires_auth}). Using mcp_config value."
+                    )
+
+                requires_auth = mcp_requires_auth
+                auth_type = mcp_auth_type
 
             return ResolvedIntegration(
                 integration_id=integration_id,

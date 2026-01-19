@@ -474,7 +474,7 @@ class MCPTokenStore:
         return await do_introspect(
             introspection_endpoint=introspection_endpoint,
             token=access_token,
-            token_type_hint="access_token",
+            token_type_hint="access_token",  # nosec B106 - OAuth token type hint, not a password
             client_id=client_id,
             client_secret=client_secret,
         )

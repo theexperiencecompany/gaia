@@ -212,22 +212,31 @@ export const useChatStream = () => {
     }
   };
 
-  const handleToolOutput = (toolOutput: {
-    tool_call_id: string;
-    output: string;
-  }) => {
-    // Find and update the matching tool call entry with output
+  /**
+   * Helper to update tool_data entries by tool_call_id.
+   * Reduces duplication between handleToolOutput and handleToolInputs.
+   */
+  const updateToolDataEntry = (
+    toolCallId: string,
+    updateFn: (data: Record<string, unknown>) => Record<string, unknown>,
+  ) => {
     const existingToolData = refs.current.botMessage?.tool_data ?? [];
     const updatedToolData = existingToolData.map((entry): ToolDataEntry => {
+      // Only update entries that:
+      // 1. Have tool_name === "tool_calls_data"
+      // 2. Have a valid data object with a matching tool_call_id
       if (entry.tool_name === "tool_calls_data") {
         const data = entry.data as Record<string, unknown>;
-        if (data.tool_call_id === toolOutput.tool_call_id) {
+        // Validate that the entry has a tool_call_id and it matches
+        if (
+          data &&
+          typeof data === "object" &&
+          "tool_call_id" in data &&
+          data.tool_call_id === toolCallId
+        ) {
           return {
             ...entry,
-            data: {
-              ...data,
-              output: toolOutput.output,
-            } as ToolDataEntry["data"],
+            data: updateFn(data) as ToolDataEntry["data"],
           };
         }
       }
@@ -247,39 +256,24 @@ export const useChatStream = () => {
     }
   };
 
+  const handleToolOutput = (toolOutput: {
+    tool_call_id: string;
+    output: string;
+  }) => {
+    updateToolDataEntry(toolOutput.tool_call_id, (data) => ({
+      ...data,
+      output: toolOutput.output,
+    }));
+  };
+
   const handleToolInputs = (toolInputs: {
     tool_call_id: string;
     inputs: Record<string, unknown>;
   }) => {
-    // Find and update the matching tool call entry with inputs
-    const existingToolData = refs.current.botMessage?.tool_data ?? [];
-    const updatedToolData = existingToolData.map((entry): ToolDataEntry => {
-      if (entry.tool_name === "tool_calls_data") {
-        const data = entry.data as Record<string, unknown>;
-        if (data.tool_call_id === toolInputs.tool_call_id) {
-          return {
-            ...entry,
-            data: {
-              ...data,
-              inputs: toolInputs.inputs,
-            } as ToolDataEntry["data"],
-          };
-        }
-      }
-      return entry;
-    });
-
-    updateBotMessage({
-      tool_data: updatedToolData,
-    });
-
-    // Sync to store for persistence
-    const conversationId =
-      refs.current.newConversation.id ||
-      useChatStore.getState().activeConversationId;
-    if (refs.current.botMessage?.message_id && conversationId) {
-      updateBotMessageInStore(conversationId);
-    }
+    updateToolDataEntry(toolInputs.tool_call_id, (data) => ({
+      ...data,
+      inputs: toolInputs.inputs,
+    }));
   };
 
   const handleImageGeneration = (data: Record<string, unknown>) => {

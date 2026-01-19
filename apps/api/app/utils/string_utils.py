@@ -1,6 +1,7 @@
 """String utilities for the API."""
 
 import re
+from collections.abc import Awaitable, Callable
 
 
 def slugify(text: str, max_length: int = 50) -> str:
@@ -29,7 +30,8 @@ def slugify(text: str, max_length: int = 50) -> str:
 
     # Truncate to max length (at word boundary if possible)
     if len(slug) > max_length:
-        slug = slug[:max_length].rsplit("-", 1)[0]
+        parts = slug[:max_length].rsplit("-", 1)
+        slug = parts[0] if parts else slug[:max_length]
 
     return slug
 
@@ -37,7 +39,7 @@ def slugify(text: str, max_length: int = 50) -> str:
 async def generate_unique_slug(
     name: str,
     user_id: str,
-    check_exists_func,
+    check_exists_func: Callable[[str], Awaitable[bool]],
     max_length: int = 50,
 ) -> str:
     """

@@ -52,6 +52,10 @@ def create_stub_tools_from_cache(
 
     These stub tools have the correct name/description for indexing
     but will connect to the MCP server on-demand when actually executed.
+
+    Note: These stubs are short-lived, recreated per-request by the tool registry.
+    The closure capturing mcp_client is intentional and doesn't cause memory leaks
+    since both the stubs and client are garbage collected after the request completes.
     """
 
     def make_stub_executor(mcp_client: "MCPClient", int_id: str, tool_name: str):
@@ -90,6 +94,9 @@ def create_stub_tools_from_cache(
                     error_str = str(e).lower()
 
                     # Check for 401/unauthorized - try token refresh and retry once
+                    # Note: MCP client exceptions don't expose HTTP status as typed attributes,
+                    # so we check the string representation. This is fragile but matches
+                    # how the mcp-use library surfaces errors from httpx responses.
                     if "401" in str(e) or "unauthorized" in error_str:
                         logger.info(f"Got 401 for {int_id}, attempting token refresh")
                         if await mcp_client.try_token_refresh(int_id):
@@ -122,7 +129,7 @@ def create_stub_tools_from_cache(
                             # Force reconnect on retry
                             try:
                                 await mcp_client.disconnect(int_id)
-                            except Exception:
+                            except Exception:  # nosec B110 - intentional cleanup, errors don't matter
                                 pass
                             continue
 
@@ -190,7 +197,9 @@ def create_stub_tools_from_cache(
             DynamicSchema = None
 
         stub_tool = StructuredTool.from_function(
-            func=lambda **kwargs: None,
+            # func is required by StructuredTool but not used when coroutine is provided
+            # Setting to None is safe since we always use the async coroutine
+            func=None,  # type: ignore[arg-type]
             coroutine=make_stub_executor(client, integration_id, name),
             name=name,
             description=description,

@@ -7,9 +7,6 @@ Connection/disconnection is handled by the unified /integrations endpoints.
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse, RedirectResponse
-
 from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.loggers import auth_logger as logger
@@ -21,6 +18,8 @@ from app.helpers.mcp_helpers import (
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_client import get_mcp_client
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse, RedirectResponse
 
 router = APIRouter()
 
@@ -124,6 +123,8 @@ async def mcp_oauth_callback(
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
+    frontend_url = get_frontend_url()
+
     # Parse state: "token:integration_id:redirect_path"
     try:
         parts = state.split(":", 2)
@@ -134,12 +135,9 @@ async def mcp_oauth_callback(
         redirect_path = parts[2] if len(parts) > 2 else "/integrations"
     except Exception as e:
         logger.error(f"Failed to parse OAuth state: {e}")
-        frontend_url = get_frontend_url()
         return RedirectResponse(
             url=f"{frontend_url}/integrations?status=failed&error=invalid_state"
         )
-
-    frontend_url = get_frontend_url()
 
     # Handle OAuth error response from authorization server
     if error:
@@ -148,9 +146,7 @@ async def mcp_oauth_callback(
         )
         # Map common OAuth errors to user-friendly codes
         error_code = error
-        if error == "access_denied":
-            error_code = "access_denied"  # User declined
-        elif error == "server_error":
+        if error == "server_error":
             error_code = "oauth_server_error"
         elif error not in [
             "access_denied",

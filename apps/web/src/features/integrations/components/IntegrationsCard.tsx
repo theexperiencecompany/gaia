@@ -138,7 +138,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
         variant="light"
-        isCompact
         className="px-0!"
         selectedKeys={selectedKeys}
         onSelectionChange={handleSelectionChange}
@@ -147,6 +146,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
           trigger: "cursor-pointer",
           title: "pl-1",
         }}
+        isCompact
       >
         <AccordionItem
           key="integrations"

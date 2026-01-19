@@ -30,6 +30,20 @@ class CalendarEventsQueryRequest(BaseModel):
         description="Max events per calendar (only used if fetch_all=false)",
     )
 
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def validate_date_format(cls, v):
+        """Validate date format is YYYY-MM-DD and date is valid."""
+        if v is not None:
+            date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+            if not date_pattern.match(v):
+                raise ValueError(f"Invalid date format: {v}. Use YYYY-MM-DD format.")
+            try:
+                datetime.fromisoformat(v)
+            except ValueError:
+                raise ValueError(f"Invalid date: {v}")
+        return v
+
 
 class EventDeleteRequest(BaseModel):
     event_id: str = Field(..., title="Event ID to delete")

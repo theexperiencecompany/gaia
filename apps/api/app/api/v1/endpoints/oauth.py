@@ -55,7 +55,7 @@ async def get_client_metadata():
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
             # MUST be "none" - no client secrets allowed per spec Section 4.1
-            "token_endpoint_auth_method": "none",
+            "token_endpoint_auth_method": "none",  # nosec B105 - OAuth spec requires literal "none"
         },
         media_type="application/json",
     )

@@ -73,6 +73,15 @@ class DynamicToolNode(ToolNode):
         # Fall back to parent's tools_by_name
         return self.tools_by_name.get(name)
 
+    def _func(self, input, config, **kwargs):
+        """Override to inject dynamically added tools before execution."""
+        # Sync tools_by_name with current registry state before execution
+        for name in self._tool_registry:
+            if name not in self.tools_by_name:
+                self.tools_by_name[name] = self._tool_registry[name]
+
+        return super()._func(input, config, **kwargs)
+
     async def _afunc(self, input, config, **kwargs):
         """Override to inject dynamically added tools before execution."""
         # Sync tools_by_name with current registry state before execution

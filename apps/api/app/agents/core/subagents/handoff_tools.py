@@ -9,8 +9,8 @@ Subagents are lazy-loaded on first invocation via providers.aget().
 All metadata comes from oauth_config.py OAUTH_INTEGRATIONS.
 """
 
-from datetime import datetime
 import re
+from datetime import datetime
 from typing import Annotated, Optional, TypedDict
 
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
@@ -107,13 +107,21 @@ async def _get_subagent_by_id(subagent_id: str):
             if integ.subagent_config and integ.subagent_config.has_subagent:
                 return integ
 
+    # Escape regex metacharacters to prevent ReDoS attacks
+    escaped_search_id = re.escape(search_id)
+
     # Search by integration_id (case-insensitive)
     custom = await integrations_collection.find_one(
         {
             "source": "custom",
             "$or": [
-                {"integration_id": {"$regex": f"^{search_id}$", "$options": "i"}},
-                {"name": {"$regex": f"^{search_id}$", "$options": "i"}},
+                {
+                    "integration_id": {
+                        "$regex": f"^{escaped_search_id}$",
+                        "$options": "i",
+                    }
+                },
+                {"name": {"$regex": f"^{escaped_search_id}$", "$options": "i"}},
             ],
         }
     )
@@ -219,8 +227,8 @@ async def handoff(
     Args:
         subagent_id: ID of the subagent from retrieve_tools. Supports formats:
             - "subagent:gmail" (platform integration)
-            - "subagent:semantic_scholar (fb9dfd7e05f8)" (custom integration with name and ID)
-            - "gmail" or "fb9dfd7e05f8" (bare IDs)
+            - "subagent:semantic_scholar (fb9dfd7e05f8)" (custom integration with name and ID)  # pragma: allowlist secret
+            - "gmail" or "fb9dfd7e05f8" (bare IDs)  # pragma: allowlist secret
         task: Complete task description with all necessary context
     """
     try:
@@ -232,15 +240,14 @@ async def handoff(
             logger.warning(f"handoff received non-dict config: {type(config).__name__}")
         user_id = configurable.get("user_id")
 
-        # Parse subagent ID from various formats:
-        # - "subagent:gmail" -> "gmail"
-        # - "subagent:semantic_scholar (fb9dfd7e05f8)" -> "fb9dfd7e05f8"
-        # - "gmail" -> "gmail"
-        # - "fb9dfd7e05f8" -> "fb9dfd7e05f8"
         clean_id = subagent_id.replace("subagent:", "").strip()
 
         # Check for format with parentheses: "name (id)" -> extract id
-        paren_match = re.search(r"\(([a-f0-9]+)\)$", clean_id)
+        # Note: Integration IDs are currently 12 hex chars (uuid.uuid4().hex[:12])
+        # but we use a more flexible pattern to support future ID format changes
+        paren_match = re.search(
+            r"\(([a-zA-Z0-9_]+)\)$", clean_id
+        )  # pragma: allowlist secret
         if paren_match:
             clean_id = paren_match.group(1)
 

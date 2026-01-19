@@ -28,10 +28,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
-from langchain_core.tools import BaseTool
-from mcp_use import MCPClient as BaseMCPClient
-from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
-
 from app.config.loggers import langchain_logger as logger
 from app.constants.mcp import OAUTH_DISCOVERY_PREFIX
 from app.core.lazy_loader import providers
@@ -75,6 +71,9 @@ from app.utils.mcp_utils import (
     generate_pkce_pair,
     wrap_tools_with_null_filter,
 )
+from langchain_core.tools import BaseTool
+from mcp_use import MCPClient as BaseMCPClient
+from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
 
 
 class DCRNotSupportedException(Exception):
@@ -609,7 +608,7 @@ class MCPClient:
             # RFC 8707: resource parameter required for token binding
             resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))
 
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient() as http_client:
                 token_data = {
                     "grant_type": "refresh_token",
                     "refresh_token": refresh_token,
@@ -625,7 +624,7 @@ class MCPClient:
                 else:
                     token_data["client_id"] = client_id
 
-                response = await client.post(
+                response = await http_client.post(
                     token_endpoint, data=token_data, headers=headers, timeout=30
                 )
 
@@ -830,15 +829,15 @@ class MCPClient:
             ValueError: For other registration failures
         """
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
+            async with httpx.AsyncClient() as http_client:
+                response = await http_client.post(
                     registration_endpoint,
                     json={
                         "client_name": "GAIA AI Assistant",
                         "redirect_uris": [redirect_uri],
                         "grant_types": ["authorization_code", "refresh_token"],
                         "response_types": ["code"],
-                        "token_endpoint_auth_method": "none",
+                        "token_endpoint_auth_method": "none",  # nosec B105 - OAuth spec requires literal "none"
                     },
                     headers={"MCP-Protocol-Version": MCP_PROTOCOL_VERSION},
                     timeout=30,
@@ -931,7 +930,7 @@ class MCPClient:
         resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))
 
         # Exchange code for tokens
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient() as http_client:
             token_data = {
                 "grant_type": "authorization_code",
                 "code": code,
@@ -955,7 +954,7 @@ class MCPClient:
             else:
                 token_data["client_id"] = client_id
 
-            response = await client.post(
+            response = await http_client.post(
                 token_endpoint, data=token_data, headers=headers, timeout=30
             )
 
@@ -1099,7 +1098,7 @@ class MCPClient:
                 success = await revoke_token(
                     revocation_endpoint=revocation_endpoint,
                     token=refresh_token,
-                    token_type_hint="refresh_token",
+                    token_type_hint="refresh_token",  # nosec B106 - OAuth token type hint, not a password
                     client_id=client_id,
                     client_secret=client_secret,
                 )
@@ -1111,7 +1110,7 @@ class MCPClient:
                 success = await revoke_token(
                     revocation_endpoint=revocation_endpoint,
                     token=access_token,
-                    token_type_hint="access_token",
+                    token_type_hint="access_token",  # nosec B106 - OAuth token type hint, not a password
                     client_id=client_id,
                     client_secret=client_secret,
                 )

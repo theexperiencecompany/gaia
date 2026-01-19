@@ -157,7 +157,8 @@ def serialize_args_schema(tool: BaseTool) -> dict | None:
         if not isinstance(args_schema, type) or not issubclass(args_schema, BaseModel):
             logger.debug(f"Tool {tool.name} args_schema is not a BaseModel")
             return None
-        schema = args_schema.model_json_schema()
+        # Call model_json_schema on the class, not the type object
+        schema = args_schema.model_json_schema()  # type: ignore[attr-defined]
         result = {
             "properties": schema.get("properties", {}),
             "required": schema.get("required", []),

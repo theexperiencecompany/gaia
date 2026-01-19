@@ -5,8 +5,8 @@ This module is separated to avoid circular imports between
 oauth_service.py and integration_service.py.
 """
 
-from datetime import datetime, UTC
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any, Dict, Literal
 
 from app.config.loggers import app_logger as logger
 from app.db.mongodb.collections import user_integrations_collection
@@ -17,7 +17,7 @@ from app.decorators.caching import CacheInvalidator
 async def update_user_integration_status(
     user_id: str,
     integration_id: str,
-    status: str,
+    status: Literal["created", "connected"],
 ) -> bool:
     """
     Update or create user integration status (upsert).
@@ -31,7 +31,7 @@ async def update_user_integration_status(
         status: New status ('created' or 'connected')
 
     Returns:
-        True if updated or created
+        True if operation was successful (update, insert, or matched existing)
     """
     update_data: Dict[str, Any] = {
         "status": status,
@@ -50,7 +50,9 @@ async def update_user_integration_status(
         upsert=True,
     )
 
-    if result.modified_count > 0 or result.upserted_id:
+    # Operation is successful if document was modified, inserted, or matched
+    # (matched_count > 0 means document exists with same values - still success)
+    if result.modified_count > 0 or result.upserted_id or result.matched_count > 0:
         logger.info(
             f"Updated user {user_id} integration {integration_id} status to {status}"
         )

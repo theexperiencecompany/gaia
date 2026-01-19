@@ -380,11 +380,15 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   isIconOnly={useIconOnly}
                   className="w-full"
                   color="default"
-                  onPress={() => {
-                    navigator.clipboard.writeText(
-                      `${window.location.origin}/marketplace/${integration.id}`,
-                    );
-                    toast.success("Link copied to clipboard!");
+                  onPress={async () => {
+                    try {
+                      await navigator.clipboard.writeText(
+                        `${window.location.origin}/marketplace/${integration.id}`,
+                      );
+                      toast.success("Link copied to clipboard!");
+                    } catch {
+                      toast.error("Failed to copy link to clipboard");
+                    }
                   }}
                   aria-label="Share"
                   startContent={<Share08Icon width={18} height={18} />}

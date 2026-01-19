@@ -59,7 +59,15 @@ export default function IntegrationsSidebar() {
       closeRightSidebar,
       setRightSidebarContent,
     };
-  });
+  }, [
+    connectIntegration,
+    disconnectIntegration,
+    deleteCustomIntegration,
+    publishIntegration,
+    unpublishIntegration,
+    closeRightSidebar,
+    setRightSidebarContent,
+  ]);
 
   // Update sidebar content when integrations change (e.g., after publish/unpublish)
   useEffect(() => {
@@ -123,53 +131,56 @@ export default function IntegrationsSidebar() {
     [openRightSidebar],
   );
 
-  const renderIntegrationItem = (integration: Integration) => {
-    const isConnected = integration.status === "connected";
-    const isCreated = integration.status === "created";
-    const isPublic = integration.isPublic === true;
+  const renderIntegrationItem = useCallback(
+    (integration: Integration) => {
+      const isConnected = integration.status === "connected";
+      const isCreated = integration.status === "created";
+      const isPublic = integration.isPublic === true;
 
-    return (
-      <Button
-        key={integration.id}
-        fullWidth
-        onPress={() => handleIntegrationClick(integration)}
-        className="justify-start px-2 text-start text-sm text-zinc-500 hover:text-zinc-300"
-        variant="light"
-        radius="sm"
-        size="sm"
-        startContent={
-          <div className="relative">
-            {getToolCategoryIcon(
-              integration.id,
-              {
-                size: 18,
-                width: 18,
-                height: 18,
-                showBackground: false,
-              },
-              integration.iconUrl,
-            )}
-          </div>
-        }
-      >
-        <div className="flex items-center justify-between w-full">
-          <span className="truncate">{integration.name}</span>
+      return (
+        <Button
+          key={integration.id}
+          fullWidth
+          onPress={() => handleIntegrationClick(integration)}
+          className="justify-start px-2 text-start text-sm text-zinc-500 hover:text-zinc-300"
+          variant="light"
+          radius="sm"
+          size="sm"
+          startContent={
+            <div className="relative">
+              {getToolCategoryIcon(
+                integration.id,
+                {
+                  size: 18,
+                  width: 18,
+                  height: 18,
+                  showBackground: false,
+                },
+                integration.iconUrl,
+              )}
+            </div>
+          }
+        >
+          <div className="flex items-center justify-between w-full">
+            <span className="truncate">{integration.name}</span>
 
-          <div className="flex items-center gap-2">
-            {isPublic && (
-              <InternetIcon width={14} height={14} className="text-primary" />
-            )}
-            {isConnected && (
-              <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            )}
-            {isCreated && (
-              <span className="h-1.5 w-1.5 rounded-full bg-warning" />
-            )}
+            <div className="flex items-center gap-2">
+              {isPublic && (
+                <InternetIcon width={14} height={14} className="text-primary" />
+              )}
+              {isConnected && (
+                <span className="h-1.5 w-1.5 rounded-full bg-success" />
+              )}
+              {isCreated && (
+                <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+              )}
+            </div>
           </div>
-        </div>
-      </Button>
-    );
-  };
+        </Button>
+      );
+    },
+    [handleIntegrationClick],
+  );
 
   return (
     <>

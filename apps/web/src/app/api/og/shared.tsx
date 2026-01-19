@@ -401,7 +401,6 @@ export async function fetchImageAsBase64(url: string): Promise<string | null> {
     // Skip ICO files upfront - Satori cannot render them
     const lowercaseUrl = url.toLowerCase();
     if (lowercaseUrl.includes(".ico")) {
-      console.log(`[OG Image] Skipping ICO file (unsupported): ${url}`);
       return null;
     }
 
@@ -413,23 +412,16 @@ export async function fetchImageAsBase64(url: string): Promise<string | null> {
     });
 
     if (!response.ok) {
-      console.warn(
-        `[OG Image] Failed to fetch image: ${url} (${response.status})`,
-      );
       return null;
     }
 
     const contentType = response.headers.get("content-type") || "image/png";
     const mimeType = contentType.split(";")[0].trim();
 
-    // Skip ICO files detected by content-type - Satori cannot render them
     if (
       mimeType === "image/x-icon" ||
       mimeType === "image/vnd.microsoft.icon"
     ) {
-      console.log(
-        `[OG Image] Skipping ICO file (unsupported content-type): ${url}`,
-      );
       return null;
     }
 
@@ -460,24 +452,15 @@ export async function fetchSvgContent(
   url: string,
 ): Promise<{ viewBox: string; paths: string[] } | null> {
   try {
-    console.log("[OG Image] Fetching SVG from:", url);
     const response = await fetch(url, {
       headers: {
         Accept: "image/svg+xml",
       },
     });
 
-    console.log("[OG Image] SVG fetch response:", {
-      ok: response.ok,
-      status: response.status,
-      contentType: response.headers.get("content-type"),
-    });
-
     if (!response.ok) return null;
 
     const svgText = await response.text();
-    console.log("[OG Image] SVG content length:", svgText.length);
-    console.log("[OG Image] SVG preview:", svgText.substring(0, 500));
 
     // Extract viewBox attribute
     const viewBoxMatch = svgText.match(/viewBox=["']([^"']+)["']/i);
@@ -494,11 +477,7 @@ export async function fetchSvgContent(
       }
     }
 
-    console.log("[OG Image] Extracted paths count:", paths.length);
-
-    // If no paths found, return null and let fallback handle it
     if (paths.length === 0) {
-      console.log("[OG Image] No paths found in SVG, using fallback");
       return null;
     }
 

@@ -3,8 +3,6 @@
 from functools import lru_cache
 from typing import Literal
 
-from mcp_use.exceptions import OAuthAuthenticationError
-
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_scopes
 from app.config.token_repository import token_repository
@@ -29,6 +27,7 @@ from app.services.integrations.user_integration_status import (
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.utils.oauth_utils import build_google_oauth_url
+from mcp_use.exceptions import OAuthAuthenticationError
 
 
 @lru_cache(maxsize=1)
@@ -89,12 +88,14 @@ async def connect_mcp_integration(
     # Check if probe detected auth requirement
     if probe_result and not requires_auth and probe_result.get("requires_auth"):
         logger.info(f"Probe detected OAuth for {integration_id}")
-        requires_auth = True
-        # Update MongoDB with discovered auth requirements
+        # Update MongoDB FIRST before local state to ensure consistency
+        # If this fails, we don't want to proceed with requires_auth=True locally
         auth_type = probe_result.get("auth_type", "oauth")
         await mcp_client.update_integration_auth_status(
             integration_id, requires_auth=True, auth_type=auth_type
         )
+        # Only update local state after MongoDB update succeeds
+        requires_auth = True
 
     if requires_auth:
         if not is_platform:

@@ -185,7 +185,7 @@ async def get_integration_details(integration_id: str) -> Optional[IntegrationRe
                         "name": creator_doc.get("name"),
                         "picture": creator_doc.get("picture"),
                     }
-            except Exception:
+            except Exception:  # nosec B110 - invalid ObjectId is expected, skip gracefully
                 # Invalid ObjectId (e.g., "system_seed"), skip creator lookup
                 pass
         except Exception as e:
