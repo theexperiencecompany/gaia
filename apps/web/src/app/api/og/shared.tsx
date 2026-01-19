@@ -494,11 +494,11 @@ export async function fetchSvgContent(
       }
     }
 
-    console.log("[OG Image] Extracted paths count:", paths.length);
+    // console.log("[OG Image] Extracted paths count:", paths.length);
 
     // If no paths found, return null and let fallback handle it
     if (paths.length === 0) {
-      console.log("[OG Image] No paths found in SVG, using fallback");
+      // console.log("[OG Image] No paths found in SVG, using fallback");
       return null;
     }
 
