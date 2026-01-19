@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useState } from "react";
 
 import { wallpapers } from "@/config/wallpapers";
-import { useLoginModalActions } from "@/features/auth/hooks/useLoginModal";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -20,7 +20,6 @@ import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps"
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplay } from "@/features/workflows/utils/triggerDisplay";
 import { UserCircle02Icon } from "@/icons";
-import { useUserStore } from "@/stores/userStore";
 
 interface UseCaseDetailClientProps {
   useCase: UseCase | null;
@@ -39,9 +38,7 @@ export default function UseCaseDetailClient({
   const { integrations } = useIntegrations();
 
   // Auth check
-  const userEmail = useUserStore((state) => state.email);
-  const isAuthenticated = Boolean(userEmail);
-  const { openModal: openLoginModal } = useLoginModalActions();
+  const { isAuthenticated, openLoginModal } = useAuth();
 
   const handleCreateWorkflow = async () => {
     // Check authentication first - open login modal if not authenticated

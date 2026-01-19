@@ -12,7 +12,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { RaisedButton } from "@/components";
 import { wallpapers } from "@/config/wallpapers";
-import { useLoginModalActions } from "@/features/auth/hooks/useLoginModal";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
@@ -24,7 +24,6 @@ import {
   PackageOpenIcon,
   UserCircle02Icon,
 } from "@/icons";
-import { useUserStore } from "@/stores/userStore";
 
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
@@ -37,12 +36,8 @@ export function IntegrationDetailClient({
   const [isAdding, setIsAdding] = useState(false);
   const [isAdded, setIsAdded] = useState(false);
 
-  // Check if user is authenticated (has email in store)
-  const userEmail = useUserStore((state) => state.email);
-  const isAuthenticated = Boolean(userEmail);
-
-  // Login modal controls
-  const { openModal: openLoginModal } = useLoginModalActions();
+  // Auth check
+  const { isAuthenticated, openLoginModal } = useAuth();
 
   // Fetch user's integrations (only when authenticated) to check for duplicates
   const { data: userIntegrationsData } = useQuery({

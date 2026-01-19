@@ -2,19 +2,7 @@
 
 from typing import List
 
-
-# Blocked keywords for spam prevention
-BLOCKED_KEYWORDS = [
-    "free money",
-    "hack",
-    "crack",
-    "keygen",
-    "warez",
-    "xxx",
-    "porn",
-    "casino",
-    "gambling",
-]
+from profanity_check import predict
 
 
 class PublishIntegrationValidator:
@@ -51,13 +39,12 @@ class PublishIntegrationValidator:
         elif len(name) > cls.MAX_NAME_LENGTH:
             errors.append(f"Name must be at most {cls.MAX_NAME_LENGTH} characters")
 
-        # Check for blocked keywords
-        name_lower = name.lower()
-        desc_lower = (description or "").lower()
-        for keyword in BLOCKED_KEYWORDS:
-            if keyword in name_lower or keyword in desc_lower:
-                errors.append("Content contains blocked keywords")
-                break
+        # Check for profanity using ML model
+        # predict() returns an array of 0s and 1s (1 = profane)
+        if predict([name])[0] == 1:
+            errors.append("Content contains profanity")
+        elif description and predict([description])[0] == 1:
+            errors.append("Content contains profanity")
 
         # Description length
         if description and len(description) > cls.MAX_DESCRIPTION_LENGTH:

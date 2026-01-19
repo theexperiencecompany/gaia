@@ -909,7 +909,6 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
     No authentication required.
     """
 
-
     try:
         if not q or not q.strip():
             return SearchIntegrationsResponse(integrations=[], query=q)

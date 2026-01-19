@@ -10,10 +10,8 @@ This service handles:
 
 import asyncio
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Literal, Optional
-
-from bson import ObjectId
 
 from app.config.loggers import app_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
@@ -37,6 +35,7 @@ from app.models.integration_models import (
 from app.models.oauth_models import MCPConfig
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from bson import ObjectId
 
 
 async def get_all_integrations(
@@ -396,9 +395,7 @@ async def create_custom_integration(
         ValueError: If integration with same ID already exists
     """
     # Generate short UUID for integration_id (12 hex chars)
-    integration_id = uuid.uuid4().hex[:12]
-
-    # Note: No duplicate check needed since UUIDs are unique
+    integration_id = uuid.uuid4()
 
     # Clean up orphaned user_integration if exists (from failed previous creation)
     orphaned = await user_integrations_collection.find_one(
@@ -411,7 +408,7 @@ async def create_custom_integration(
         )
 
     integration = Integration(
-        integration_id=integration_id,
+        integration_id=str(integration_id),
         name=request.name,
         description=request.description or "",
         category=request.category,
@@ -437,7 +434,9 @@ async def create_custom_integration(
     # Auto-add to user's workspace with status='created'
     # The probe/connect flow in the endpoint will update to 'connected' after success
     try:
-        await add_user_integration(user_id, integration_id, initial_status="created")
+        await add_user_integration(
+            user_id, str(integration_id), initial_status="created"
+        )
     except Exception as e:
         # Rollback: remove the orphaned integration if user_integration creation fails
         logger.error(f"Failed to add user_integration, rolling back integration: {e}")
@@ -583,10 +582,9 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
 
             # Clean up MCP credentials from PostgreSQL
             try:
-                from sqlalchemy import delete
-
                 from app.db.postgresql import get_db_session
                 from app.models.oauth_models import MCPCredential
+                from sqlalchemy import delete
 
                 async with get_db_session() as session:
                     await session.execute(
@@ -633,10 +631,9 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
         if result.deleted_count > 0:
             # Also clean up this user's MCP credentials for this integration
             try:
-                from sqlalchemy import delete
-
                 from app.db.postgresql import get_db_session
                 from app.models.oauth_models import MCPCredential
+                from sqlalchemy import delete
 
                 async with get_db_session() as session:
                     await session.execute(

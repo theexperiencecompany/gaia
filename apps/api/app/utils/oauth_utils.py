@@ -43,7 +43,7 @@ async def build_google_oauth_url(
                 str(user_id), "google", renew_if_expired=False
             )
             if token:
-                existing_scopes = str(token.get("scope", "")).split()
+                existing_scopes = (token.get("scope") or "").split()
         except Exception as e:
             logger.debug(f"Could not get existing scopes for user {user_id}: {e}")
 

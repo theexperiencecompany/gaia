@@ -501,16 +501,11 @@ export function getIconPath(category: string): string | null {
 
 /**
  * WebP to OG-compatible format mapping
- * OG image generation (Satori) doesn't support WebP, so we map to PNG/SVG alternatives
+ * OG image generation (Satori) doesn't support WebP, so we map to PNG/SVG alternatives.
+ * WebP icons not listed here will return null from getOgIconPath(), triggering a fallback icon.
  */
 const webpToOgFormat: Record<string, string> = {
-  "/images/icons/google_docs.webp": "/images/icons/google_docs.webp", // No alternative, will fallback
-  "/images/icons/googlesheets.webp": "/images/icons/googlesheets.webp", // No alternative, will fallback
-  "/images/icons/weather.webp": "/images/icons/weather.webp", // No alternative, will fallback
-  "/images/icons/notion.webp": "/images/icons/notion.webp", // No alternative, will fallback
-  "/images/icons/twitter.webp": "/images/icons/x.svg", // Use X logo
-  "/images/icons/googlecalendar.webp": "/images/icons/googlemeet.svg", // Use similar Google icon
-  "/images/icons/deepwiki.webp": "/images/icons/deepwiki.webp", // No alternative, will fallback
+  "/images/icons/twitter.webp": "/images/icons/x.svg",
 };
 
 /**

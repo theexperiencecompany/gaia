@@ -27,6 +27,7 @@ import {
 } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
 import { CommunityBanner } from "./CommunityBanner";
+import CreateWorkflowModal from "./CreateWorkflowModal";
 import EditWorkflowModal from "./EditWorkflowModal";
 import UnifiedWorkflowCard from "./shared/UnifiedWorkflowCard";
 import { WorkflowListSkeleton } from "./WorkflowSkeletons";
@@ -42,6 +43,12 @@ export default function WorkflowPage() {
     isOpen: isEditOpen,
     onOpen: onEditOpen,
     onOpenChange: onEditOpenChange,
+  } = useDisclosure();
+
+  const {
+    isOpen: isCreateOpen,
+    onOpen: onCreateOpen,
+    onOpenChange: onCreateOpenChange,
   } = useDisclosure();
 
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(
@@ -248,14 +255,7 @@ export default function WorkflowPage() {
         <>
           {/* Community Banner */}
           <div className="mb-6">
-            <CommunityBanner
-              onCreateWorkflow={() => {
-                const btn = document.querySelector(
-                  '[data-keyboard-shortcut="create-workflow"]',
-                ) as HTMLButtonElement;
-                btn?.click();
-              }}
-            />
+            <CommunityBanner onCreateWorkflow={onCreateOpen} />
           </div>
 
           <div className="flex flex-col gap-6">
@@ -321,6 +321,11 @@ export default function WorkflowPage() {
         onWorkflowUpdated={() => refetch()}
         onWorkflowDeleted={handleWorkflowDeleted}
         workflow={selectedWorkflow}
+      />
+
+      <CreateWorkflowModal
+        isOpen={isCreateOpen}
+        onOpenChange={onCreateOpenChange}
       />
     </div>
   );

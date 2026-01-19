@@ -55,8 +55,10 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
     """Internal function to build the tools response.
 
     Separated from get_available_tools to enable request coalescing.
+
+    Args:
+        user_id: Used to fetch user's custom integrations for personalized tools
     """
-    _ = user_id  # Reserved for future use (e.g., user-specific tool filtering)
 
     tool_infos: list[ToolInfo] = []
     categories: set[str] = set()
@@ -333,7 +335,7 @@ async def get_user_custom_tools(user_id: str) -> list[ToolInfo]:
                 continue
 
             for tool_dict in custom_tools:
-                tool_name = tool_dict["name"]
+                tool_name = tool_dict.get("name")
                 # Skip duplicate tool names
                 if tool_name in seen_tool_names:
                     continue

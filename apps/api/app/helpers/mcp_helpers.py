@@ -8,8 +8,10 @@ Contains helper functions for MCP operations:
 """
 
 from typing import TYPE_CHECKING, Any, Sequence
+import asyncio
 
 from langchain_core.tools import BaseTool, StructuredTool
+from mcp_use.client.exceptions import OAuthAuthenticationError
 from pydantic import Field, create_model
 
 from app.config.loggers import langchain_logger as logger
@@ -62,8 +64,6 @@ def create_stub_tools_from_cache(
         """Factory to create stub executor with proper closure."""
 
         async def _stub_execute(**kwargs):
-            import asyncio
-
             filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
             logger.debug(
                 f"Stub {tool_name}: raw args={kwargs}, filtered={filtered_kwargs}"
@@ -88,6 +88,27 @@ def create_stub_tools_from_cache(
                         # Call _arun directly to bypass schema re-validation
                         return await real_tool._arun(**filtered_kwargs)
                     raise ValueError(f"Tool {tool_name} not found after connecting")
+
+                except OAuthAuthenticationError:
+                    # mcp-use raises OAuthAuthenticationError for 401/authentication failures
+                    logger.info(
+                        f"Got authentication error for {int_id}, attempting token refresh"
+                    )
+                    if await mcp_client.try_token_refresh(int_id):
+                        # Force reconnect with new token
+                        try:
+                            await mcp_client.disconnect(int_id)
+                            tools = await mcp_client.connect(int_id)
+                            real_tool = next(
+                                (t for t in tools if t.name == tool_name), None
+                            )
+                            if real_tool:
+                                return await real_tool._arun(**filtered_kwargs)
+                        except Exception as retry_error:
+                            raise Exception(
+                                f"Tool invocation failed after token refresh: {retry_error}"
+                            ) from retry_error
+                    raise  # No refresh token or refresh failed
 
                 except Exception as e:
                     last_error = e
@@ -197,9 +218,7 @@ def create_stub_tools_from_cache(
             DynamicSchema = None
 
         stub_tool = StructuredTool.from_function(
-            # func is required by StructuredTool but not used when coroutine is provided
-            # Setting to None is safe since we always use the async coroutine
-            func=None,  # type: ignore[arg-type]
+            func=None,
             coroutine=make_stub_executor(client, integration_id, name),
             name=name,
             description=description,
