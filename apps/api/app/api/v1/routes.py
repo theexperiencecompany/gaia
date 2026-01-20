@@ -76,4 +76,3 @@ router.include_router(tools.router, tags=["Tools"])
 router.include_router(models.router, tags=["Models"])
 router.include_router(bot.router, prefix="/bot", tags=["Bot"])
 router.include_router(bot_auth.router, prefix="/bot-auth", tags=["Bot Auth"])
-

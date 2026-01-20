@@ -2,14 +2,13 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
-
 from app.agents.core.agent import call_agent_silent
 from app.config.loggers import chat_logger as logger
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
 from app.models.message_models import MessageRequestWithHistory
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -39,18 +38,17 @@ async def verify_bot_api_key(x_bot_api_key: str = Header(..., alias="X-Bot-API-K
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
-async def get_user_by_platform_id(platform: str, platform_user_id: str) -> Optional[dict]:
-    return await users_collection.find_one({
-        f"platform_links.{platform}": platform_user_id
-    })
+async def get_user_by_platform_id(
+    platform: str, platform_user_id: str
+) -> Optional[dict]:
+    return await users_collection.find_one(
+        {f"platform_links.{platform}": platform_user_id}
+    )
 
 
 async def get_or_create_session(
-    platform: str,
-    platform_user_id: str,
-    channel_id: Optional[str]
+    platform: str, platform_user_id: str, channel_id: Optional[str]
 ) -> str:
-    session_key = f"{platform}:{platform_user_id}:{channel_id or 'dm'}"
     return str(uuid4())
 
 
@@ -59,11 +57,10 @@ async def get_or_create_session(
     response_model=BotChatResponse,
     status_code=200,
     summary="Authenticated Bot Chat",
-    description="Process a chat message from an authenticated bot user."
+    description="Process a chat message from an authenticated bot user.",
 )
 async def bot_chat(
-    request: BotChatRequest,
-    _: None = Depends(verify_bot_api_key)
+    request: BotChatRequest, _: None = Depends(verify_bot_api_key)
 ) -> BotChatResponse:
     """
     Handle an authenticated chat request from a bot platform.
@@ -80,36 +77,32 @@ async def bot_chat(
         return BotChatResponse(
             response="Please authenticate first using /auth",
             conversation_id="",
-            authenticated=False
+            authenticated=False,
         )
 
     conversation_id = await get_or_create_session(
-        request.platform,
-        request.platform_user_id,
-        request.channel_id
+        request.platform, request.platform_user_id, request.channel_id
     )
 
     message_request = MessageRequestWithHistory(
         message=request.message,
         conversation_id=conversation_id,
-        messages=[{"role": "user", "content": request.message}]
+        messages=[{"role": "user", "content": request.message}],
     )
 
     try:
-        response_text, _ = await call_agent_silent(
+        response_text, _meta = await call_agent_silent(
             request=message_request,
             conversation_id=conversation_id,
             user=user,
-            user_time=datetime.now(timezone.utc)
+            user_time=datetime.now(timezone.utc),
         )
     except Exception as e:
         logger.error(f"Bot chat error: {e}")
         response_text = "An error occurred while processing your request."
 
     return BotChatResponse(
-        response=response_text,
-        conversation_id=conversation_id,
-        authenticated=True
+        response=response_text, conversation_id=conversation_id, authenticated=True
     )
 
 
@@ -118,15 +111,14 @@ async def bot_chat(
     response_model=BotChatResponse,
     status_code=200,
     summary="Public Bot Chat",
-    description="Process a public (unauthenticated) chat message."
+    description="Process a public (unauthenticated) chat message.",
 )
 async def bot_chat_public(
-    request: BotChatRequest,
-    _: None = Depends(verify_bot_api_key)
+    request: BotChatRequest, _: None = Depends(verify_bot_api_key)
 ) -> BotChatResponse:
     """
     Handle an unauthenticated public chat request.
-    
+
     This endpoint creates a temporary session and bot user context.
 
     Args:
@@ -140,30 +132,28 @@ async def bot_chat_public(
     bot_user = {
         "user_id": f"bot_{request.platform}",
         "email": f"bot@{request.platform}.gaia",
-        "name": "GAIA Bot"
+        "name": "GAIA Bot",
     }
 
     message_request = MessageRequestWithHistory(
         message=request.message,
         conversation_id=conversation_id,
-        messages=[{"role": "user", "content": request.message}]
+        messages=[{"role": "user", "content": request.message}],
     )
 
     try:
-        response_text, _ = await call_agent_silent(
+        response_text, _meta = await call_agent_silent(
             request=message_request,
             conversation_id=conversation_id,
             user=bot_user,
-            user_time=datetime.now(timezone.utc)
+            user_time=datetime.now(timezone.utc),
         )
     except Exception as e:
         logger.error(f"Bot public chat error: {e}")
         response_text = "An error occurred while processing your request."
 
     return BotChatResponse(
-        response=response_text,
-        conversation_id=conversation_id,
-        authenticated=False
+        response=response_text, conversation_id=conversation_id, authenticated=False
     )
 
 
@@ -172,13 +162,13 @@ async def bot_chat_public(
     response_model=SessionResponse,
     status_code=200,
     summary="Get Session",
-    description="Retrieve or create a session for a platform user."
+    description="Retrieve or create a session for a platform user.",
 )
 async def get_session(
     platform: str,
     platform_user_id: str,
     channel_id: Optional[str] = None,
-    _: None = Depends(verify_bot_api_key)
+    _: None = Depends(verify_bot_api_key),
 ) -> SessionResponse:
     """
     Get the active conversation ID for a user.
@@ -191,9 +181,11 @@ async def get_session(
     Returns:
         SessionResponse: The session details.
     """
-    conversation_id = await get_or_create_session(platform, platform_user_id, channel_id)
+    conversation_id = await get_or_create_session(
+        platform, platform_user_id, channel_id
+    )
     return SessionResponse(
         conversation_id=conversation_id,
         platform=platform,
-        platform_user_id=platform_user_id
+        platform_user_id=platform_user_id,
     )
