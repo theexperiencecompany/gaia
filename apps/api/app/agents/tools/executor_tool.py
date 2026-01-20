@@ -123,7 +123,7 @@ async def call_executor(
                             if progress_data:
                                 writer(progress_data)
 
-                    content = str(chunk.content)
+                    content = chunk.text()
                     if content:
                         complete_message += content
 

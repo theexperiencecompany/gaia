@@ -5,7 +5,7 @@ type ToolDataUnion = {
 
 function getTypedData<K extends ToolName>(
   entry: ToolDataUnion,
-  toolName: K
+  toolName: K,
 ): ToolDataMap[K] | undefined {
   return entry.tool_name === toolName
     ? (entry.data as ToolDataMap[K])
@@ -365,7 +365,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
 function renderTool<K extends ToolName>(
   name: K,
   data: ToolDataMap[K],
-  index: number
+  index: number,
 ): React.ReactNode {
   const renderer = TOOL_RENDERERS[name] as
     | ((data: ToolDataMap[K], index: number) => React.ReactNode)
@@ -408,7 +408,7 @@ export default function TextBubble({
         tool_category: "",
         data: dataArray as ToolDataMap[ToolName],
         timestamp: null,
-      })
+      }),
     );
 
     return [...groupedEntries, ...individual];
@@ -444,7 +444,7 @@ export default function TextBubble({
 
           const renderBubbleContent = (
             content: string,
-            showDisclaimer: boolean
+            showDisclaimer: boolean,
           ) => (
             <div className="flex flex-col gap-3">
               <MarkdownRenderer content={content} isStreaming={loading} />

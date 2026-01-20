@@ -232,12 +232,7 @@ async def handoff(
         task: Complete task description with all necessary context
     """
     try:
-        # Defensive check - config may be passed as list in edge cases
-        if isinstance(config, dict):
-            configurable = config.get("configurable", {})
-        else:
-            configurable = {}
-            logger.warning(f"handoff received non-dict config: {type(config).__name__}")
+        configurable = config.get("configurable", {})
         user_id = configurable.get("user_id")
 
         clean_id = subagent_id.replace("subagent:", "").strip()
@@ -273,7 +268,6 @@ async def handoff(
                 f"name={integration.get('name')}, icon_url={integration.get('icon_url')}"
             )
 
-        if is_custom:
             # Custom MCP - create subagent on-the-fly
             integration_id = integration.get("id")
             integration_name = integration.get("name", integration_id)
@@ -471,7 +465,7 @@ async def handoff(
                                     "args", {}
                                 )
 
-                    content = str(chunk.content)
+                    content = chunk.text()
                     if content:
                         complete_message += content
 
