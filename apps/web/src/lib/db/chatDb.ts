@@ -180,6 +180,10 @@ export class ChatDexie extends Dexie {
       .sortBy("createdAt");
   }
 
+  public getAllMessages(): Promise<IMessage[]> {
+    return this.messages.orderBy("createdAt").toArray();
+  }
+
   public async getConversationIdsWithMessages(): Promise<string[]> {
     const conversationIds = await this.messages
       .orderBy("conversationId")

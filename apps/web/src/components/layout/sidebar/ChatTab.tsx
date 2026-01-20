@@ -1,11 +1,11 @@
 "use client";
-import { SystemPurpose } from "@/features/chat/api/chatApi";
-import { ChatBotIcon, Mail01Icon, StarIcon } from "@/icons";
-import { useChatStore } from "@/stores/chatStore";
 import { Button } from "@heroui/button";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { type FC, useEffect, useState } from "react";
+import { SystemPurpose } from "@/features/chat/api/chatApi";
+import { ChatBotIcon, Mail01Icon, StarIcon } from "@/icons";
+import { useChatStore } from "@/stores/chatStore";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
 const ICON_WIDTH = "20";
@@ -34,7 +34,7 @@ export const ChatTab: FC<ChatTabProps> = ({
 
   // Check if this conversation is currently streaming
   const streamingConversationId = useChatStore(
-    (state) => state.streamingConversationId
+    (state) => state.streamingConversationId,
   );
   const isStreaming = streamingConversationId === id;
 
