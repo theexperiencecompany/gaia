@@ -15,6 +15,7 @@ from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
 from langchain_core.messages import BaseMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
@@ -337,7 +338,7 @@ def get_free_llm_chain() -> List[BaseChatModel]:
 async def invoke_with_fallback(
     llm_chain: List[BaseChatModel],
     messages: Sequence[BaseMessage],
-    config: Optional[Dict[str, Any]] = None,
+    config: Optional[RunnableConfig] = None,
 ) -> BaseMessage:
     """
     Invoke LLMs in sequence until one succeeds.

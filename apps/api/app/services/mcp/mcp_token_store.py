@@ -10,9 +10,6 @@ import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
-from cryptography.fernet import Fernet
-from sqlalchemy import select
-
 from app.config.loggers import langchain_logger as logger
 from app.config.settings import settings
 from app.constants.mcp import (
@@ -23,8 +20,10 @@ from app.constants.mcp import (
 )
 from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
-from app.models.oauth_models import MCPAuthType, MCPCredential
+from app.models.oauth_models import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.utils.mcp_oauth_utils import introspect_token as do_introspect
+from cryptography.fernet import Fernet
+from sqlalchemy import select
 
 
 class MCPTokenStore:
@@ -140,11 +139,11 @@ class MCPTokenStore:
                     MCPCredential.integration_id == integration_id,
                 )
             )
-            cred = result.scalar_one_or_none()
+            cred: Optional[MCPCredential] = result.scalar_one_or_none()
 
             if cred:
                 cred.access_token = encrypted
-                cred.status = "connected"
+                cred.status = MCPCredentialStatus.CONNECTED
                 cred.connected_at = now
                 cred.error_message = None
                 session.add(cred)
@@ -154,7 +153,7 @@ class MCPTokenStore:
                     integration_id=integration_id,
                     auth_type=MCPAuthType.BEARER,
                     access_token=encrypted,
-                    status="connected",
+                    status=MCPCredentialStatus.CONNECTED,
                     connected_at=now,
                 )
                 session.add(cred)
@@ -182,14 +181,14 @@ class MCPTokenStore:
                     MCPCredential.integration_id == integration_id,
                 )
             )
-            cred = result.scalar_one_or_none()
+            cred: Optional[MCPCredential] = result.scalar_one_or_none()
 
             if cred:
                 cred.access_token = encrypted_access
                 cred.refresh_token = encrypted_refresh
                 cred.token_expires_at = expires_at
                 # Set status to connected so get_oauth_token() can retrieve it
-                cred.status = "connected"
+                cred.status = MCPCredentialStatus.CONNECTED
                 cred.connected_at = now
                 session.add(cred)
             else:
@@ -200,7 +199,7 @@ class MCPTokenStore:
                     access_token=encrypted_access,
                     refresh_token=encrypted_refresh,
                     token_expires_at=expires_at,
-                    status="connected",  # Required for get_oauth_token() to work
+                    status=MCPCredentialStatus.CONNECTED,  # Required for get_oauth_token() to work
                     connected_at=now,
                 )
                 session.add(cred)
@@ -229,7 +228,7 @@ class MCPTokenStore:
                     user_id=self.user_id,
                     integration_id=integration_id,
                     auth_type=MCPAuthType.NONE,
-                    status="active",  # Informational only
+                    status=MCPCredentialStatus.PENDING,  # Informational only
                 )
                 session.add(cred)
                 await session.commit()
@@ -323,9 +322,9 @@ class MCPTokenStore:
                     MCPCredential.integration_id == integration_id,
                 )
             )
-            cred = result.scalar_one_or_none()
+            cred: Optional[MCPCredential] = result.scalar_one_or_none()
             if cred:
-                cred.status = status
+                cred.status = MCPCredentialStatus(status)
                 cred.error_message = error
                 session.add(cred)
                 await session.commit()
@@ -391,7 +390,7 @@ class MCPTokenStore:
                     user_id=self.user_id,
                     integration_id=integration_id,
                     auth_type="oauth",
-                    status="pending",
+                    status=MCPCredentialStatus.PENDING,
                     client_registration=json.dumps(dcr_data),
                 )
                 session.add(cred)
