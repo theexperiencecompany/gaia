@@ -1,0 +1,160 @@
+---
+title: "How Does GAIA Learn Your Preferences?"
+description: "Understanding how AI systems observe your behavior, identify patterns, store learned preferences, and adapt to your personal work style over time."
+---
+
+# How Does GAIA Learn Your Preferences?
+
+GAIA learns your preferences by continuously observing your behavior, identifying patterns in how you work, storing these patterns as structured knowledge, and using them to personalize its behavior. The learning is passive (you don't have to explicitly teach) and continuous (it improves over time), making GAIA increasingly aligned with your specific work style.
+
+The goal of preference learning is personalization. Everyone works differently - different schedules, different priorities, different communication styles, different organizational preferences. Generic AI that treats everyone the same can't be as helpful as AI that adapts to your specific way of working. Preference learning enables this personalization.
+
+## What Gets Learned
+
+GAIA learns multiple types of preferences across different dimensions of your work. Scheduling preferences include when you prefer meetings (mornings vs afternoons), how much buffer time you like between meetings, what days you prefer to keep meeting-free, and how long different types of meetings typically run for you.
+
+Task management preferences include how you prioritize different types of tasks, what level of detail you prefer in task descriptions, how you organize tasks into projects, what labels or tags you use, and when you typically work on different types of tasks.
+
+Communication preferences include your writing style and tone, how quickly you typically respond to different types of messages, which types of emails you typically file vs act on, and how you prefer to be notified about different types of events.
+
+Workflow preferences include which types of actions you want automated vs manual approval, what triggers you want for different workflows, how you prefer information to be presented, and what level of proactivity you're comfortable with.
+
+Work patterns include your typical work hours, when you're most productive for different types of work, how you structure your day, and what your energy patterns are throughout the day and week.
+
+## Observation-Based Learning
+
+The primary learning mechanism is observation. GAIA watches what you do and identifies patterns. When you consistently do something a certain way, that becomes a learned preference. This observation is passive - you don't have to explicitly teach the system. You just work normally, and the system learns from your behavior.
+
+When you create tasks, the system observes how you title them, what priority you assign, what projects you put them in, and what deadlines you set. When you schedule meetings, it observes what times you choose, how long you make them, and who you invite. When you process emails, it observes which ones you respond to quickly, which ones you file, and which ones you create tasks from.
+
+These observations accumulate over time. A single observation doesn't create a preference - it's just data. But when the same pattern appears repeatedly, it becomes a learned preference. If you consistently schedule team meetings on Tuesday mornings, that becomes a preference. If you always mark client emails as high priority, that becomes a preference.
+
+GAIA uses Mem0AI for storing these learned preferences. Instead of requiring massive datasets and model retraining, Mem0AI allows storing observations as structured knowledge that can be immediately queried and applied. This makes learning fast and responsive.
+
+## Pattern Identification
+
+Identifying patterns from observations requires statistical analysis and machine learning. The system needs to distinguish between consistent patterns (preferences) and random variations (one-off behaviors).
+
+If you schedule a meeting on Tuesday morning once, that's not a pattern. If you schedule meetings on Tuesday morning 8 out of 10 times, that's a pattern. The system uses frequency analysis to identify consistent behaviors.
+
+Patterns can be simple (always do X) or conditional (do X when Y). Simple patterns are straightforward - "user prefers afternoon meetings." Conditional patterns are more nuanced - "user prefers afternoon meetings for external calls but morning meetings for internal discussions."
+
+GAIA's pattern identification considers context. It doesn't just learn "user assigns high priority" - it learns "user assigns high priority to tasks from clients" or "user assigns high priority to tasks with deadlines within 3 days." These contextual patterns are more useful than context-free patterns.
+
+The system also identifies negative patterns - things you consistently don't do. If you never schedule meetings on Fridays, that's a preference to keep Fridays meeting-free. If you consistently delete certain types of emails without reading, that's a preference to filter those emails.
+
+## Confidence and Strength
+
+Not all learned preferences are equally strong. Some are based on many observations and are very reliable. Others are based on few observations and might not be accurate. GAIA maintains confidence scores for learned preferences.
+
+High confidence preferences (based on many consistent observations) are applied automatically. If you've scheduled 20 team meetings and 19 were on Tuesday mornings, the system is confident you prefer Tuesday mornings for team meetings.
+
+Medium confidence preferences (based on moderate observations or some inconsistency) are applied but might trigger confirmation. "I'm scheduling the team meeting for Tuesday morning based on your usual preference. Is that okay?"
+
+Low confidence preferences (based on few observations or high inconsistency) are treated as suggestions rather than rules. "You've scheduled team meetings on Tuesday mornings a few times. Would you like me to suggest Tuesday mornings for future team meetings?"
+
+The confidence scores update as new observations are added. A low confidence preference becomes high confidence as more supporting observations accumulate. A high confidence preference might decrease if contradictory observations appear.
+
+## Explicit Preference Setting
+
+While observation-based learning is powerful, sometimes you want to explicitly state a preference rather than waiting for the system to learn it. GAIA supports explicit preference setting through natural language.
+
+You can say "I prefer to schedule meetings in the afternoon" and that becomes a stored preference immediately. You can say "Always mark emails from clients as high priority" and that becomes a rule. You can say "I don't like meetings on Fridays" and that becomes a constraint.
+
+Explicit preferences take precedence over learned preferences. If you explicitly state a preference, the system follows it even if observed behavior suggests otherwise. This allows you to set preferences for new situations where the system hasn't had a chance to learn yet.
+
+Explicit preferences can also override learned preferences that are wrong. If the system learned an incorrect preference from early observations, you can explicitly correct it rather than waiting for enough contradictory observations to change the learned preference.
+
+## Contextual Preferences
+
+Many preferences are contextual - they apply in some situations but not others. You might prefer morning meetings for internal discussions but afternoon meetings for client calls. You might assign high priority to work tasks but low priority to personal tasks. You might want detailed task descriptions for complex projects but minimal descriptions for routine tasks.
+
+GAIA learns these contextual preferences by observing patterns in different contexts. It identifies that your behavior differs based on context and learns separate preferences for each context.
+
+The contexts can be based on many factors: who's involved (internal vs external, specific people), what type of work (client work vs internal projects), when (weekdays vs weekends, busy periods vs slow periods), and where (office vs remote, different time zones).
+
+These contextual preferences make the system more intelligent. Instead of applying one-size-fits-all rules, it adapts its behavior to the specific context of each situation.
+
+## Temporal Adaptation
+
+Preferences change over time. You might start a new role with different responsibilities. You might change your work schedule. You might develop new organizational habits. GAIA needs to adapt to these changes.
+
+The system implements temporal decay - older observations have less weight than recent observations. If you used to prefer morning meetings but have been scheduling afternoon meetings for the past month, the system adapts to your new preference.
+
+The adaptation is gradual, not abrupt. A few contradictory observations don't immediately override a well-established preference. But consistent contradictory observations over time cause the preference to update. This prevents the system from being too sensitive to temporary changes while still adapting to genuine preference shifts.
+
+GAIA also detects preference changes explicitly. If a strong preference suddenly shows contradictory behavior, the system might ask "I noticed you've been scheduling meetings in the afternoon lately, but your preference was for morning meetings. Has your preference changed?" This allows quick adaptation when preferences genuinely change.
+
+## Learning from Corrections
+
+When you correct something GAIA did, that's valuable learning data. If the system created a task with medium priority and you changed it to high priority, that teaches the system. If it scheduled a meeting at 2pm and you moved it to 10am, that teaches the system.
+
+These corrections are immediate learning opportunities. The system doesn't just note that you made a change - it analyzes why. What was different about this situation that made your preference different? Was it the type of task? The people involved? The deadline? Understanding the context of corrections allows learning more nuanced preferences.
+
+GAIA stores corrections as explicit learning examples. "User changed priority from medium to high for client-related tasks" becomes a learned pattern. Future client-related tasks are more likely to be assigned high priority automatically.
+
+The system also learns from patterns in corrections. If you consistently change one type of thing, that indicates the system's current behavior doesn't match your preference. The system adjusts to reduce the need for corrections.
+
+## Privacy in Learning
+
+Learning from your behavior requires analyzing your work patterns, which raises privacy concerns. GAIA addresses this through several mechanisms.
+
+All learning happens within your personal instance. Your learned preferences are stored in your personal knowledge graph, not shared with other users. The system learns from your behavior to serve you better, but that learning doesn't benefit other users or train shared models.
+
+For self-hosted deployments, all learning happens on your infrastructure. Your behavioral data never leaves your control. You can inspect what preferences have been learned and delete any you don't want stored.
+
+The learning is transparent. You can see what preferences GAIA has learned about you. You can understand why it behaves certain ways. You can correct learned preferences that are wrong. This transparency builds trust in the learning system.
+
+## Preference Conflicts
+
+Sometimes preferences conflict. You might prefer morning meetings but also prefer to keep mornings free for focused work. You might want tasks to be created automatically but also want to review them before they're added to your list. The system needs to handle these conflicts.
+
+GAIA resolves conflicts through prioritization and context. Some preferences are more important than others. Explicit preferences override learned preferences. Recent preferences override old preferences. Context-specific preferences override general preferences.
+
+When conflicts can't be resolved automatically, the system might ask for guidance. "You prefer morning meetings but also prefer to keep mornings free for focused work. This meeting could be scheduled at 10am or 2pm. Which do you prefer?" This allows you to resolve the conflict for the specific situation.
+
+## Sharing Preferences Across Devices
+
+Your preferences should be consistent across all devices and platforms. If you set a preference on the web app, it should apply on mobile. If the system learns a preference from your desktop usage, it should apply on your phone.
+
+GAIA synchronizes learned preferences across all your devices through the cloud. Your preference data is stored centrally and accessed by all your devices. This ensures consistent behavior regardless of which device you're using.
+
+For self-hosted deployments, preferences are stored in your database and accessed by all instances connecting to that database. The synchronization is automatic and immediate.
+
+## Real-World Learning Example
+
+Let's see preference learning in action over time. You start using GAIA and in the first week, you create several tasks. The system observes that you typically assign high priority to tasks related to clients, medium priority to internal project tasks, and low priority to administrative tasks. These observations start forming patterns.
+
+In week two, you schedule several meetings. The system observes that you schedule team meetings on Tuesday mornings, client calls on Wednesday and Thursday afternoons, and one-on-ones on Friday mornings. You never schedule meetings before 9am or after 5pm. These patterns are noted.
+
+In week three, you process a lot of email. The system observes that you immediately respond to emails from your boss, create tasks from emails from clients that mention deadlines, file newsletters without reading, and archive promotional emails. These email handling patterns are learned.
+
+By week four, GAIA has learned enough to start applying these preferences automatically. When a client email arrives mentioning a deadline, the system automatically creates a high-priority task. When you need to schedule a team meeting, it suggests Tuesday morning. When a newsletter arrives, it's automatically filed.
+
+You notice the system is getting better at predicting what you want. You're making fewer manual adjustments. The tasks it creates are usually right. The meeting times it suggests are usually what you would have chosen. The email handling is usually what you would have done.
+
+In month two, your role changes and you start having more external meetings. The system notices you're scheduling more afternoon meetings with external people. It adapts its suggestions accordingly. When you need to schedule a meeting with an external person, it suggests afternoon times.
+
+By month three, GAIA feels like it understands you. It handles routine work the way you would handle it. It suggests things you were about to do anyway. It organizes information the way you prefer. The system has learned your work style and adapted to it.
+
+That's preference learning in action - continuous observation, pattern identification, and adaptation that makes the AI increasingly personalized to your specific way of working.
+
+---
+
+**Related Reading:**
+- [How Does AI Memory Work?](/knowledge/how/ai-memory-works)
+- [What is Context-Aware AI?](/knowledge/what-is/context-aware-ai)
+- [How Does GAIA Understand User Intent?](/knowledge/how/gaia-understands-intent)
+
+---
+
+## Get Started with GAIA
+
+Ready to experience AI-powered productivity? GAIA is available as a hosted service or self-hosted solution.
+
+**Try GAIA Today:**
+- 🌐 [heygaia.io](https://heygaia.io) - Start using GAIA in minutes
+- 💻 [GitHub Repository](https://github.com/theexperiencecompany/gaia) - Self-host or contribute to the project
+- 🏢 [The Experience Company](https://experience.heygaia.io) - Learn about the team building GAIA
+
+GAIA is open source and privacy-first. Your data stays yours, whether you use our hosted service or run it on your own infrastructure.

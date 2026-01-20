@@ -1,0 +1,110 @@
+---
+title: "OAuth"
+description: "Understanding OAuth, how it enables secure authorization without sharing passwords, and why it's essential for modern app integrations."
+---
+
+# OAuth
+
+OAuth is an open standard for authorization that allows applications to access your data from other services without requiring your password. When you click "Sign in with Google" or grant an app permission to access your calendar, you're using OAuth. It's the technology that enables secure integrations between different services while keeping your credentials private.
+
+The fundamental problem OAuth solves is delegation of access. You want to let one application access your data in another application, but you don't want to give it your password. OAuth provides a secure way to grant limited access without sharing credentials. The application gets permission to access specific data for a specific period, and you can revoke that permission at any time.
+
+## How OAuth Works
+
+OAuth involves three parties working together. There's you, the resource owner who controls the data. There's the client application that wants to access your data, like GAIA requesting access to your Google Calendar. And there's the authorization server, which is the service that holds your data, like Google.
+
+The OAuth flow starts when the client application redirects you to the authorization server. You log in to the authorization server using your normal credentials, but importantly, you're logging in directly to the service, not giving your password to the client application. The authorization server shows you what permissions the client is requesting and asks if you approve.
+
+If you approve, the authorization server gives the client an access token. This token is like a temporary key that grants specific permissions. The client uses this token to access your data through the service's API. The token has limited scope, meaning it only grants access to what you approved, and it typically expires after a period of time.
+
+## Why OAuth Matters
+
+Before OAuth, integrations between services required sharing passwords. If you wanted an app to access your email, you had to give it your email password. This created serious security problems. The app had full access to your account, not just what it needed. You couldn't revoke access without changing your password. If the app was compromised, your password was exposed. And you had no visibility into what the app was doing with your account.
+
+OAuth solves all of these problems. The client never sees your password. Access is limited to specific permissions you grant. You can revoke access at any time without changing your password. If the client is compromised, the attacker only gets a limited-scope token, not your credentials. And you can see what permissions you've granted and to which applications.
+
+## Scopes and Permissions
+
+A key feature of OAuth is scopes - the specific permissions an application requests. When an app asks for OAuth access, it specifies what it needs. An app might request read-only access to your calendar, or read and write access to your email, or permission to create tasks in your task manager.
+
+You see these scopes when you approve the OAuth request. The authorization server shows you exactly what the app is asking for. You can choose to approve or deny the request based on whether you trust the app and whether the requested permissions seem appropriate.
+
+This granular permission model means apps only get the access they actually need. A calendar app doesn't need access to your email. An email app doesn't need to modify your files. OAuth enforces this principle of least privilege.
+
+## Access Tokens and Refresh Tokens
+
+OAuth uses two types of tokens. Access tokens are short-lived credentials that grant access to your data. They typically expire after an hour or a day. This limits the damage if a token is compromised - it only works for a short time.
+
+Refresh tokens are long-lived credentials that can be used to obtain new access tokens. When an access token expires, the client uses the refresh token to get a new access token without requiring you to log in again. Refresh tokens are stored securely by the client and are never sent to the resource server.
+
+This two-token system balances security and convenience. Access tokens are used frequently but expire quickly. Refresh tokens are used rarely but last longer. If an access token is intercepted, it's only useful briefly. Refresh tokens are more valuable but are used less frequently, reducing exposure.
+
+## OAuth in Practice
+
+When you use GAIA and connect it to your Google Calendar, Gmail, or other services, you're using OAuth. GAIA redirects you to Google, you log in and approve the requested permissions, and Google gives GAIA an access token. GAIA uses this token to read your calendar, create events, access your email, or perform other actions you've authorized.
+
+You remain in control. You can see what permissions GAIA has in your Google account settings. You can revoke access at any time. And GAIA never sees your Google password - it only has the limited access you explicitly granted.
+
+## Security Considerations
+
+While OAuth is much more secure than sharing passwords, it's not foolproof. Users need to be careful about which applications they grant access to. A malicious app with OAuth access can still do damage within the scope of its permissions. Phishing attacks can trick users into granting OAuth permissions to malicious apps. And if an application is compromised, the attacker gains access to all the OAuth tokens it has stored.
+
+Best practices include only granting OAuth access to applications you trust, reviewing the requested permissions carefully before approving, periodically reviewing and revoking unused OAuth grants, and being suspicious of unexpected OAuth requests.
+
+## OAuth Versions
+
+There are two main versions of OAuth in use today. OAuth 1.0 was the original standard, released in 2010. It's secure but complex to implement. OAuth 2.0, released in 2012, is simpler and more flexible. It's the version most services use today.
+
+OAuth 2.0 isn't a single protocol but a framework that supports different flows for different use cases. The authorization code flow is used by web applications. The implicit flow was designed for browser-based apps but is now discouraged. The client credentials flow is for server-to-server communication. And the device flow is for devices without browsers, like smart TVs.
+
+## OpenID Connect
+
+OpenID Connect is an identity layer built on top of OAuth 2.0. While OAuth handles authorization (granting access to resources), OpenID Connect handles authentication (verifying who you are). When you "Sign in with Google," you're typically using OpenID Connect.
+
+OpenID Connect adds an ID token that contains information about the authenticated user. This allows applications to verify your identity without needing to access your profile information through separate API calls.
+
+## OAuth for AI Assistants
+
+OAuth is particularly important for AI assistants like GAIA that need to integrate with multiple services. The assistant needs to access your calendar, email, tasks, and other data to provide intelligent help. OAuth allows this while maintaining security and user control.
+
+When you set up GAIA, you grant it OAuth access to the services you want it to integrate with. GAIA can then work with your data to provide assistance. But you remain in control - you can see what permissions GAIA has and revoke them if you choose.
+
+## Revoking Access
+
+One of OAuth's key features is the ability to revoke access at any time. If you no longer want an application to access your data, you can revoke its OAuth token through the authorization server's settings. The application immediately loses access without you needing to change your password or take any other action.
+
+This is particularly useful if you stop using an application, if you're concerned about how an application is using your data, or if you believe an application may have been compromised.
+
+## The Future of OAuth
+
+OAuth continues to evolve. OAuth 2.1 is in development, consolidating best practices and deprecating insecure flows. There's ongoing work on improving security, simplifying implementation, and supporting new use cases like IoT devices and mobile apps.
+
+The fundamental principle remains the same - enabling secure delegation of access without sharing credentials. As more services adopt OAuth and as AI assistants become more prevalent, OAuth will become even more central to how we manage access to our data.
+
+## OAuth and Privacy
+
+OAuth is primarily an authorization protocol, not a privacy protocol. It controls what access an application has, but it doesn't control what the application does with that access. An application with OAuth access to your email can read all your emails within the scope of its permissions.
+
+This is why trust in the application is still important. OAuth ensures the application only has the access you granted, but you need to trust that the application will use that access appropriately. For sensitive data, consider using applications that are open source, can be self-hosted, or have strong privacy commitments.
+
+GAIA addresses this by being open source and offering self-hosting options. You can see exactly what GAIA does with your OAuth tokens and run it on your own infrastructure for complete control.
+
+---
+
+**Related Reading:**
+- [What is API Integration?](/knowledge/glossary/api-integration)
+- [What is a Webhook?](/knowledge/glossary/webhook)
+- [What is Self-Hosting?](/knowledge/glossary/self-hosting)
+
+---
+
+## Get Started with GAIA
+
+Ready to experience AI-powered productivity? GAIA is available as a hosted service or self-hosted solution.
+
+**Try GAIA Today:**
+- 🌐 [heygaia.io](https://heygaia.io) - Start using GAIA in minutes
+- 💻 [GitHub Repository](https://github.com/theexperiencecompany/gaia) - Self-host or contribute to the project
+- 🏢 [The Experience Company](https://experience.heygaia.io) - Learn about the team building GAIA
+
+GAIA is open source and privacy-first. Your data stays yours, whether you use our hosted service or run it on your own infrastructure.

@@ -1,0 +1,81 @@
+---
+title: "How to Build AI Workflows"
+description: "Learn how GAIA makes it easy to create powerful automation workflows using natural language and visual tools"
+---
+
+Building automation workflows used to require technical knowledge, programming skills, or at least a deep understanding of complex automation platforms. GAIA changes this completely by letting you create sophisticated workflows using natural language descriptions or a visual drag-and-drop interface. You describe what you want to automate, and GAIA figures out how to make it happen.
+
+The key innovation is that GAIA understands intent. You don't need to think in terms of triggers, actions, and conditions like traditional automation tools. Instead, you describe your workflow the way you'd explain it to a human assistant, and GAIA translates that into a working automation.
+
+## Natural Language Workflow Creation
+
+The simplest way to build a workflow in GAIA is to just describe it in plain English. You might say something like "Every morning at 9am, send me a summary of my unread emails from yesterday and create tasks for any that need responses." GAIA's AI understands this description and automatically creates a workflow with the appropriate trigger (time-based at 9am), actions (fetch unread emails, analyze them, create summary, create tasks), and logic (filter for emails needing responses).
+
+This natural language approach works for both simple and complex workflows. You can describe multi-step processes, conditional logic, and integrations across multiple apps without needing to understand the technical details. GAIA handles the complexity behind the scenes.
+
+For example, you could say "When I receive an email from a client with an attachment, save the attachment to Google Drive in the appropriate client folder, create a task to review it, and send me a Slack notification." GAIA would create a workflow that monitors your email, identifies client emails with attachments, determines the correct folder based on the sender, saves the file, creates the task, and sends the notification. All from a single sentence.
+
+## Visual Workflow Builder
+
+For people who prefer a more hands-on approach, GAIA also offers a visual workflow builder. This drag-and-drop interface lets you see exactly how your workflow is structured and gives you fine-grained control over every step.
+
+The builder shows your workflow as a series of connected nodes. Each node represents a trigger, action, or decision point. You can add nodes by clicking or dragging from a palette, connect them by drawing lines, and configure each one by clicking to open its settings.
+
+What makes GAIA's visual builder special is that it's still AI-powered. When you add a node, GAIA suggests the most likely next steps based on what you're trying to accomplish. If you add an email trigger, it might suggest actions like "create task," "save attachment," or "send notification." This guidance makes it much faster to build workflows compared to traditional automation tools where you need to know exactly which actions are available.
+
+## Workflow Templates and Community Workflows
+
+You don't always need to build workflows from scratch. GAIA offers a marketplace of pre-built workflows created by the GAIA team and community. These templates cover common use cases like email management, meeting preparation, task organization, and project tracking.
+
+You can browse workflows by category, search for specific functionality, or let GAIA recommend workflows based on your usage patterns. When you find a workflow you like, you can deploy it with one click or customize it to fit your specific needs.
+
+The community aspect is powerful because it means you benefit from the collective knowledge of thousands of GAIA users. Someone has probably already created a workflow for what you're trying to accomplish, and you can use their work as a starting point rather than building from zero.
+
+## Integration with 200+ Apps
+
+GAIA workflows can integrate with over 200 apps and services through the Composio integration platform. This means your workflows can span across your entire productivity stack. You can create workflows that move data between Gmail, Slack, Google Calendar, Notion, Linear, GitHub, and dozens of other tools.
+
+The AI understands how these apps work together. When you describe a workflow that involves multiple apps, GAIA automatically handles authentication, data formatting, and error handling. You don't need to worry about API keys, webhooks, or technical integration details.
+
+For example, a workflow might monitor your Linear issues, create calendar events for upcoming deadlines, send Slack notifications to relevant team members, and update a Notion database with progress. GAIA handles all the connections between these systems automatically.
+
+## Triggers and Scheduling
+
+Workflows can be triggered in several ways. Time-based triggers run workflows on a schedule using cron expressions (though you can describe schedules in natural language like "every weekday at 9am" and GAIA converts it). Integration-based triggers respond to events in connected apps, like receiving an email, creating a calendar event, or updating a task. Manual triggers let you run workflows on demand.
+
+GAIA is smart about trigger timing. If you create a workflow that should run "at the start of each workday," it considers your timezone, typical work hours, and even holidays. The system adapts to your patterns rather than requiring you to specify every detail.
+
+## Error Handling and Reliability
+
+One of the challenges with automation is that things can go wrong. An API might be temporarily unavailable, a file might not exist, or data might be in an unexpected format. GAIA's workflows include automatic error handling and retry logic.
+
+If a step fails, GAIA attempts to retry it with exponential backoff. If the failure persists, it notifies you with context about what went wrong and suggestions for fixing it. The workflow execution logs show exactly what happened at each step, making it easy to debug issues.
+
+This reliability is crucial for workflows you depend on. You need to trust that your email follow-ups will be sent, your tasks will be created, and your notifications will arrive. GAIA's robust error handling ensures your workflows work consistently.
+
+## Learning and Adaptation
+
+As you use GAIA, the system learns your preferences and patterns. It notices which workflows you use most often, which steps you frequently modify, and which integrations you rely on. This learning informs future workflow suggestions and makes the creation process faster over time.
+
+GAIA might notice that you always add a Slack notification step to your workflows and start suggesting it automatically. Or it might observe that you prefer certain phrasing in automated messages and adjust its templates accordingly.
+
+## Workflow Execution and Monitoring
+
+Once a workflow is active, GAIA runs it in the background automatically. You can monitor execution through the workflow dashboard, which shows recent runs, success rates, average execution time, and any errors. This visibility helps you understand how your workflows are performing and identify opportunities for optimization.
+
+You can also see detailed logs for individual workflow runs, showing exactly what happened at each step. This is valuable for understanding how your automation is working and troubleshooting any issues.
+
+Building workflows in GAIA is fundamentally different from traditional automation tools. Instead of requiring technical knowledge and manual configuration, GAIA lets you describe what you want to accomplish and handles the implementation details. Whether you use natural language, the visual builder, or community templates, you can create powerful automation that saves hours of manual work every week.
+
+---
+
+## Get Started with GAIA
+
+Ready to experience AI-powered productivity? GAIA is available as a hosted service or self-hosted solution.
+
+**Try GAIA Today:**
+- 🌐 [heygaia.io](https://heygaia.io) - Start using GAIA in minutes
+- 💻 [GitHub Repository](https://github.com/theexperiencecompany/gaia) - Self-host or contribute to the project
+- 🏢 [The Experience Company](https://experience.heygaia.io) - Learn about the team building GAIA
+
+GAIA is open source and privacy-first. Your data stays yours, whether you use our hosted service or run it on your own infrastructure.

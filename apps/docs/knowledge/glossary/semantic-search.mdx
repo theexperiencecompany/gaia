@@ -1,0 +1,106 @@
+---
+title: "Semantic Search"
+description: "Understanding semantic search, how it finds information based on meaning rather than keywords, and why it's transforming how we interact with data."
+---
+
+# Semantic Search
+
+Semantic search is a search technique that understands the meaning and intent behind a query rather than just matching keywords. Instead of looking for exact word matches, semantic search comprehends what you're actually asking for and finds relevant results even if they use different words.
+
+The difference between traditional keyword search and semantic search is like the difference between a dictionary and a conversation. A dictionary requires you to know the exact word you're looking for. A conversation allows you to describe what you mean, and the other person understands even if you don't use precise terminology.
+
+## The Limitations of Keyword Search
+
+Traditional search works by matching the words in your query to words in documents. If you search for "project deadline," it finds documents containing those exact words. This works well when you know the right keywords, but it has significant limitations.
+
+Keyword search misses relevant results that use different terminology. A document about "project due dates" won't be found by a search for "project deadlines" even though they mean the same thing. It returns irrelevant results that happen to contain your keywords but aren't actually about what you're looking for. It requires you to think like a database, formulating queries with the right keywords rather than just describing what you need.
+
+And it can't understand context or intent. Searching for "apple" might return results about fruit, technology companies, or anything else that mentions the word, with no understanding of which meaning you intended.
+
+## How Semantic Search Works
+
+Semantic search uses machine learning models to understand the meaning of text. These models, often called embedding models, convert text into numerical representations called vectors that capture semantic meaning. Text with similar meanings produces similar vectors, even if the words are different.
+
+When you perform a semantic search, your query is converted into a vector. The system then finds documents whose vectors are closest to your query vector in this semantic space. This means it finds documents that mean similar things to your query, not just documents that contain the same words.
+
+The magic is that "project deadline" and "project due date" produce similar vectors because they mean similar things. So a semantic search for one will find documents containing the other. The system understands synonyms, related concepts, and contextual meaning without you having to specify them.
+
+## Understanding Intent
+
+Semantic search goes beyond understanding individual words to understanding the intent behind a query. If you search for "how to prepare for client meetings," the system understands you're looking for guidance and best practices, not just documents that mention client meetings.
+
+It can distinguish between different intents even with similar words. "Apple stock price" and "apple pie recipe" both contain "apple," but semantic search understands these are completely different queries and returns appropriate results for each.
+
+This intent understanding makes search feel more natural. You can ask questions the way you'd ask a person, and the system figures out what you're really looking for.
+
+## Context-Aware Search
+
+Advanced semantic search considers context beyond just the query itself. It might consider your previous searches, your current work context, your role and responsibilities, the time and situation, and patterns in what you typically search for.
+
+This allows for more personalized and relevant results. If you search for "the project," a context-aware semantic search knows which project you mean based on what you're currently working on. It doesn't just find all documents mentioning any project - it finds documents about your specific project.
+
+## Applications in Productivity
+
+Semantic search is particularly valuable in productivity applications where you need to find information quickly without remembering exact keywords. Email search becomes much more powerful when you can search by meaning. Instead of trying to remember if someone said "deadline" or "due date," you just describe what you're looking for and the system finds it.
+
+Task search allows you to find tasks by describing what they're about, not just by exact title matches. Document search helps you find relevant documents even if you don't remember the exact title or contents. Communication search across email, chat, and other channels finds relevant conversations regardless of which platform they occurred on.
+
+And knowledge retrieval for AI assistants allows the AI to find relevant information from your work history to provide context-aware help.
+
+## Vector Embeddings
+
+The technical foundation of semantic search is vector embeddings. These are numerical representations of text that capture semantic meaning. Each piece of text - whether a word, sentence, or document - is converted into a vector of hundreds or thousands of numbers.
+
+The key property of these embeddings is that semantically similar text produces similar vectors. "happy" and "joyful" have similar embeddings. "project deadline" and "project due date" have similar embeddings. This similarity can be measured mathematically, allowing the system to find text that means similar things.
+
+Modern embedding models are trained on vast amounts of text and learn to capture nuanced semantic relationships. They understand synonyms, related concepts, contextual meaning, and even some level of reasoning about relationships between concepts.
+
+## Hybrid Search
+
+The most effective search systems combine semantic search with traditional keyword search. Semantic search is powerful for understanding meaning and intent, but keyword search is still valuable for exact matches and specific terminology.
+
+A hybrid approach uses semantic search to understand what you're looking for and find conceptually relevant results, while also using keyword search to ensure exact matches are prioritized. This gives you the best of both worlds - the intelligence of semantic understanding and the precision of keyword matching.
+
+## Challenges and Limitations
+
+Semantic search isn't perfect. It can sometimes return results that are semantically related but not actually what you're looking for. It requires significant computational resources compared to simple keyword search. The quality depends heavily on the embedding model used. And it can be harder to understand why certain results were returned compared to keyword search where the matching words are obvious.
+
+However, for most use cases, the benefits far outweigh these limitations. The ability to find information based on meaning rather than exact keywords is transformative.
+
+## Semantic Search in GAIA
+
+GAIA uses semantic search to help you find information across your tasks, emails, calendar, and communications. You can search by describing what you're looking for in natural language, and the system finds relevant information even if it doesn't contain your exact words.
+
+This is combined with context awareness, so the search understands your current work and priorities. And it's integrated with the knowledge graph, so search results include related information connected through the graph structure.
+
+## Improving Over Time
+
+Semantic search can improve over time by learning from your behavior. When you click on certain results and ignore others, the system learns what kinds of results you find relevant. When you rephrase queries, it learns how you describe things. This feedback helps refine the search to better match your needs.
+
+## The Future of Search
+
+Semantic search represents a fundamental shift in how we interact with information. Instead of having to think like a database and formulate precise queries, we can describe what we need in natural language and trust the system to understand.
+
+As embedding models become more sophisticated, semantic search will get even better at understanding nuance, context, and intent. We'll see search that feels less like querying a database and more like asking a knowledgeable colleague who understands what you're looking for.
+
+The combination of semantic search, knowledge graphs, and AI reasoning will enable truly intelligent information retrieval where you can ask complex questions and get comprehensive answers that pull together relevant information from across your entire work context.
+
+---
+
+**Related Reading:**
+- [What is a Knowledge Graph?](/knowledge/glossary/knowledge-graph)
+- [What are Vector Embeddings?](/knowledge/glossary/vector-embeddings)
+- [What is Context Awareness?](/knowledge/glossary/context-awareness)
+
+---
+
+## Get Started with GAIA
+
+Ready to experience AI-powered productivity? GAIA is available as a hosted service or self-hosted solution.
+
+**Try GAIA Today:**
+- 🌐 [heygaia.io](https://heygaia.io) - Start using GAIA in minutes
+- 💻 [GitHub Repository](https://github.com/theexperiencecompany/gaia) - Self-host or contribute to the project
+- 🏢 [The Experience Company](https://experience.heygaia.io) - Learn about the team building GAIA
+
+GAIA is open source and privacy-first. Your data stays yours, whether you use our hosted service or run it on your own infrastructure.

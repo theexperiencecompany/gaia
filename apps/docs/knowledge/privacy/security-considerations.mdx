@@ -1,0 +1,69 @@
+---
+title: "Security Considerations for Self-Hosted AI Assistants"
+description: "Understanding security when self-hosting AI. Learn about threats, best practices, and how to keep your self-hosted AI assistant secure."
+---
+
+# Security Considerations for Self-Hosted AI Assistants
+
+Security is one of the most compelling reasons to self-host an AI assistant, but it's also one of the most significant responsibilities. When you run GAIA on your own infrastructure, you gain control over security practices and eliminate entire categories of risk associated with cloud services. However, you also become responsible for implementing and maintaining security measures that cloud providers typically handle for you. Understanding the security landscape helps you make informed decisions and implement appropriate protections for your self-hosted AI assistant.
+
+The security advantages of self-hosting start with eliminating third-party access to your data. With cloud-based AI services, your data travels across the internet to the provider's servers, where it's processed and stored. This creates multiple points where data could be intercepted, accessed by unauthorized parties, or exposed through breaches. Every company that handles your data is a potential security vulnerability. When you self-host GAIA, your data never leaves your infrastructure, eliminating these third-party risks entirely.
+
+Cloud service providers are attractive targets for attackers because they hold vast amounts of valuable user data. A successful breach of a major AI service could expose emails, documents, conversations, and personal information for millions of users. These high-value targets face constant attack attempts from sophisticated adversaries. While reputable companies invest heavily in security, breaches still happen with alarming regularity. When you self-host, you're not part of these massive honeypots that attract the most sophisticated attackers.
+
+However, self-hosting doesn't automatically make you more secure—it shifts the security responsibility to you. You need to implement proper security measures, keep software updated, monitor for threats, and respond to security issues. For users without security expertise, this responsibility can be daunting. The key is understanding what security measures are necessary and implementing them systematically rather than hoping for the best.
+
+Network security is the first line of defense for self-hosted applications. If you're running GAIA on your home network, you need to ensure your router is properly configured with a strong password and up-to-date firmware. If you're exposing GAIA to the internet for remote access, you need to implement proper access controls. This typically means using a VPN to create a secure tunnel to your home network, or using a reverse proxy with HTTPS encryption and authentication. Never expose your self-hosted applications directly to the internet without proper security measures.
+
+Authentication and access control are crucial for protecting your self-hosted GAIA instance. You need strong passwords or, better yet, passkeys or multi-factor authentication. If multiple people have access to your GAIA instance, you need proper user management with appropriate permissions. The principle of least privilege applies—users should only have access to what they need, not blanket access to everything. GAIA's authentication system supports these security practices, but you need to configure and enforce them.
+
+Encryption protects your data both in transit and at rest. When accessing GAIA over a network, connections should be encrypted using HTTPS to prevent eavesdropping. If you're storing sensitive data, consider encrypting the database files themselves so that even if someone gains physical access to your server, they can't read the data without the encryption keys. GAIA supports these encryption practices, and implementing them is an important part of a comprehensive security strategy.
+
+Software updates are one of the most critical security practices for self-hosted applications. When security vulnerabilities are discovered in GAIA or its dependencies, fixes are released as updates. You need to apply these updates promptly to protect against known vulnerabilities. With cloud services, updates happen automatically. With self-hosting, you're responsible for monitoring for updates and applying them. GAIA's open source nature means security issues are disclosed transparently, and the community often identifies vulnerabilities quickly, but you need to actually apply the fixes.
+
+Dependency management is related to updates but deserves special attention. GAIA relies on numerous open source libraries and components—Python packages, Node.js modules, database software, and more. Vulnerabilities in any of these dependencies could affect GAIA's security. Keeping dependencies updated is important, but it's also complex because updates can sometimes break functionality. GAIA's Docker-based deployment helps by packaging tested combinations of dependencies, but you still need to update to new container versions when they're released.
+
+Backup security is often overlooked but critically important. Your backups contain all your data, so they need to be protected as carefully as your live system. Backups should be encrypted, stored securely, and tested regularly to ensure they can actually be restored. If you're backing up to cloud storage, ensure the backup files are encrypted before they leave your infrastructure. If you're backing up to external drives, ensure those drives are stored securely and encrypted. A backup that's stolen or exposed defeats the entire purpose of self-hosting for privacy.
+
+Monitoring and logging help you detect security issues before they become serious problems. GAIA generates logs of activity, errors, and access attempts. Reviewing these logs regularly can help you identify suspicious activity, failed authentication attempts, or unusual patterns that might indicate a security issue. Setting up automated alerts for certain types of events—like repeated failed login attempts—can help you respond quickly to potential threats.
+
+Physical security matters for self-hosted systems. If you're running GAIA on a home server, that server needs to be physically secure. Someone with physical access to your server could potentially access your data, install malicious software, or steal the entire machine. This doesn't mean you need a locked server room, but you should consider who has physical access to your infrastructure and whether additional protections are needed.
+
+API keys and credentials management is a critical security consideration. GAIA needs API keys for AI models and credentials for integrations like Gmail or Google Calendar. These credentials need to be stored securely, not hardcoded in configuration files or stored in plain text. GAIA uses environment variables and secure storage mechanisms for credentials, but you need to ensure these are properly configured and that the credentials themselves are strong and unique.
+
+The security of integrated services affects your overall security posture. When you connect GAIA to services like Gmail or Slack, you're granting it access to those services. If your GAIA instance is compromised, an attacker could potentially access those integrated services. This is true for both cloud and self-hosted deployments, but with self-hosting, you have more control over the security measures protecting those integrations. Using OAuth tokens with limited scopes, regularly reviewing connected applications, and revoking access when it's no longer needed are all important practices.
+
+Container security is relevant if you're using GAIA's Docker-based deployment. Containers provide isolation between applications, but they're not perfect security boundaries. You should run containers with minimal privileges, avoid running processes as root inside containers, and keep the container runtime (Docker) updated. Container images should come from trusted sources—in GAIA's case, the official repositories—and you should verify image signatures when possible.
+
+Database security deserves special attention because databases hold all your data. MongoDB, PostgreSQL, and Redis should be configured to require authentication, should only be accessible from trusted sources (typically just the GAIA application itself), and should be kept updated with security patches. Database backups should be encrypted and stored securely. If you're running databases in containers, ensure they're properly isolated and that data volumes are protected.
+
+Incident response planning is important even for personal self-hosted systems. What would you do if you discovered your GAIA instance had been compromised? Having a plan helps you respond effectively rather than panicking. This might include steps like disconnecting from the network, reviewing logs to understand what happened, restoring from clean backups, changing all credentials, and investigating how the compromise occurred. Even a simple written plan is better than trying to figure out what to do in the moment.
+
+The security trade-offs between cloud and self-hosted deployments are nuanced. Cloud providers have professional security teams, sophisticated monitoring systems, and resources that individual users can't match. However, they're also high-value targets facing constant sophisticated attacks, and a breach affects millions of users. Self-hosted systems are lower-value targets less likely to attract sophisticated attackers, but they depend on the user's security practices. For many users, especially those handling sensitive information, the reduced attack surface and elimination of third-party risk make self-hosting more secure despite the increased responsibility.
+
+Security is not a one-time setup but an ongoing practice. Threats evolve, new vulnerabilities are discovered, and security best practices change over time. Staying informed about security issues relevant to GAIA and its dependencies, participating in the community where security topics are discussed, and maintaining good security hygiene are all part of responsible self-hosting. This ongoing commitment is part of the trade-off you make when choosing self-hosting over cloud services.
+
+For users concerned about their ability to maintain security, there are middle-ground options. You could self-host on a managed VPS where the hosting provider handles some security aspects like network security and physical security, while you handle application-level security. You could use security tools and services that automate some security tasks like vulnerability scanning or intrusion detection. You could start with GAIA's cloud service and migrate to self-hosting once you've developed the knowledge and confidence to handle security responsibilities.
+
+Understanding security considerations helps you make realistic assessments about whether self-hosting is right for you. If you're comfortable with technology, willing to learn about security practices, and committed to ongoing maintenance, self-hosting can provide excellent security. If security feels overwhelming or you don't want to invest time in learning and maintaining security measures, cloud services with professional security teams might be more appropriate. The important thing is to make this decision consciously, understanding both the benefits and responsibilities of self-hosting.
+
+## Related Topics
+
+- [Self-Hosted Explained](/knowledge/privacy/self-hosted-explained)
+- [Running GAIA Locally](/knowledge/privacy/running-gaia-locally)
+- [Data Ownership](/knowledge/privacy/data-ownership)
+- [Who Should Self-Host](/knowledge/privacy/who-should-self-host)
+- [Trust in Automation](/knowledge/privacy/trust-in-automation)
+
+---
+
+## Get Started with GAIA
+
+Ready to experience AI-powered productivity? GAIA is available as a hosted service or self-hosted solution.
+
+**Try GAIA Today:**
+- 🌐 [heygaia.io](https://heygaia.io) - Start using GAIA in minutes
+- 💻 [GitHub Repository](https://github.com/theexperiencecompany/gaia) - Self-host or contribute to the project
+- 🏢 [The Experience Company](https://experience.heygaia.io) - Learn about the team building GAIA
+
+GAIA is open source and privacy-first. Your data stays yours, whether you use our hosted service or run it on your own infrastructure.

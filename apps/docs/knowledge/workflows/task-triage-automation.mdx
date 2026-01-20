@@ -1,0 +1,91 @@
+---
+title: "Task Triage Automation"
+description: "Automatically prioritize, categorize, and schedule tasks based on deadlines, dependencies, and goal alignment"
+---
+
+# Task Triage Automation
+
+A task list is only useful if it's organized in a way that helps you decide what to work on next. Most people's task lists are chaotic collections of items with no clear prioritization, making it difficult to know where to focus attention. GAIA's task triage automation solves this problem by continuously analyzing your tasks and organizing them based on multiple factors—deadlines, dependencies, goal alignment, estimated effort, and your current context. Instead of manually sorting through dozens of tasks trying to figure out what's most important, you open your task list and immediately see what you should work on right now.
+
+The intelligence of this workflow lies in its multi-dimensional analysis of task importance. A task isn't just important because it has a deadline—it might be important because it's blocking other people, because it aligns with your top quarterly goal, because it's been pending for too long, or because it's a quick win that will clear mental space. GAIA evaluates all these factors simultaneously to create a dynamic priority ranking that adapts as circumstances change. The task that was medium priority yesterday becomes high priority today because its deadline is approaching and someone just asked about it.
+
+## How the Workflow Operates
+
+The task triage automation runs continuously in the background, re-evaluating your task list whenever anything changes—a new task is added, a deadline approaches, a dependency is completed, or your calendar updates. This continuous analysis ensures your task priorities are always current rather than based on outdated information. When you open your task list at any moment, you see an up-to-date view of what matters most right now.
+
+The workflow begins with deadline analysis, examining when each task is due and how much time remains. Tasks due today get highest priority, followed by tasks due tomorrow, then this week, then this month. But the analysis is more sophisticated than simple date sorting—GAIA considers the estimated effort for each task. A task that will take four hours and is due tomorrow gets higher priority than a task that will take fifteen minutes and is also due tomorrow, because you need to start the longer task sooner to ensure completion.
+
+Dependency tracking is another critical factor. GAIA analyzes which tasks are blocking other people or other tasks. If you have a task "Review Sarah's proposal" and Sarah is waiting for your feedback before she can proceed, that task gets elevated priority even if its formal deadline is several days away. The workflow understands that blocking others is costly—it delays their work and potentially impacts team morale. Tasks that unblock others get prioritized over tasks that only affect you.
+
+Goal alignment analysis connects your daily tasks to your quarterly objectives. If you've defined a goal like "Launch new product feature" and tagged related tasks, GAIA prioritizes those tasks higher than unrelated work. This alignment ensures you're making consistent progress on what matters most rather than just clearing your task list with whatever's easiest or most urgent. The workflow can also alert you when you're spending too much time on tasks that don't align with any of your goals, suggesting you might be working on the wrong things.
+
+Effort estimation helps balance quick wins with important deep work. GAIA learns to estimate how long tasks will take based on your historical completion times and task descriptions. It then uses this information to suggest optimal task sequencing. When you have a thirty-minute gap before a meeting, it surfaces tasks estimated at fifteen to twenty minutes. When you have a three-hour focus block, it suggests your most important deep work tasks. This context-aware prioritization helps you make the most of whatever time you have available.
+
+The workflow also performs staleness detection, identifying tasks that have been sitting in your list for weeks without progress. These stale tasks either need to be prioritized and completed, or they need to be acknowledged as not actually important and archived. GAIA flags tasks that are more than two weeks old without any activity, prompting you to make a decision—either commit to doing it this week or remove it from your list. This staleness detection prevents your task list from becoming a graveyard of abandoned intentions.
+
+Context awareness adapts task priorities based on your current situation. If you're at your computer with a three-hour focus block, GAIA surfaces deep work tasks that require concentration. If you're on your phone with fifteen minutes before a meeting, it surfaces quick administrative tasks you can knock out. If you're in a specific location like your office, it surfaces tasks that can only be done there. This contextual filtering ensures you're always seeing tasks that are actually actionable in your current situation.
+
+The workflow also handles recurring tasks intelligently. Instead of cluttering your task list with every instance of a recurring task, GAIA shows only the current instance and automatically creates the next instance when you complete the current one. It also learns your patterns—if you consistently complete your weekly report on Friday afternoons, it automatically schedules that task for Friday afternoon rather than just saying "due Friday."
+
+## Setting Up Your Task Triage Automation
+
+Creating this workflow starts with ensuring your tasks have sufficient metadata for intelligent triage. When creating tasks in GAIA, include due dates, estimated effort, project assignments, and goal tags. The more information you provide, the better GAIA can prioritize. If you're migrating from another task system, take time to enrich your tasks with this metadata—it's a one-time investment that pays ongoing dividends.
+
+Navigate to the workflow builder and search for "Task Triage" in the community templates. The default workflow provides good baseline prioritization, but you'll want to customize it to match your work style and priorities. Start by defining your priority factors and their relative weights. You might decide that deadlines are most important (40% weight), followed by goal alignment (30%), dependencies (20%), and staleness (10%). Or you might prioritize differently based on your role and responsibilities.
+
+Configure your deadline urgency thresholds to match your work pace. The default might be: due today = urgent, due this week = high priority, due this month = medium priority, due later = low priority. But if you work in a fast-paced environment where things change quickly, you might want tighter thresholds: due today = urgent, due tomorrow = high priority, due this week = medium priority. Adjust these thresholds based on how far ahead you typically plan.
+
+Set up your dependency tracking by teaching GAIA how to identify blocking tasks. Create rules like "tasks assigned to others that mention 'waiting for' are blocked," "tasks with 'review' in the title that are assigned to me are blocking others," and "tasks in projects with multiple team members should check for dependencies." You can also manually mark tasks as blocking or blocked, and GAIA will factor this into prioritization.
+
+Define your goal alignment by creating quarterly goals in GAIA and tagging related tasks. Be specific about which goals are most important—if you have five goals but two are significantly more critical, weight those higher in the prioritization algorithm. You can also set minimum weekly progress thresholds for each goal, and GAIA will ensure at least some tasks from each goal appear in your daily priorities.
+
+Configure your effort estimation by providing initial estimates for your tasks and letting GAIA learn from your actual completion times. After a few weeks, GAIA will have enough data to estimate task duration fairly accurately. You can also set up effort categories—quick (under 15 minutes), short (15-30 minutes), medium (30-60 minutes), long (1-3 hours), and project (multiple sessions). These categories help with context-aware task suggestions.
+
+Set up your context rules to define when different types of tasks should be surfaced. Create contexts like "at computer," "on phone," "in office," "at home," "high energy," and "low energy." Then tag tasks with appropriate contexts—"write proposal" requires computer and high energy, "review expense reports" can be done on phone with low energy, "meet with team" requires being in office. GAIA will filter your task list based on your current context.
+
+Define your staleness thresholds and actions. Decide how long a task can sit without progress before it gets flagged—two weeks is a good default, but you might want shorter or longer depending on your work style. Configure what happens to stale tasks—do they get automatically archived, moved to a "someday/maybe" list, or just flagged for your review? This staleness management keeps your active task list focused on things you're actually going to do.
+
+## Outcomes and Benefits
+
+The task triage automation eliminates the decision paralysis that often comes with long task lists. Instead of staring at fifty tasks wondering where to start, you see a clear priority order based on objective criteria. This clarity reduces procrastination—when you know what's most important, it's easier to just start working rather than spending time deciding what to work on. Users report that this clarity alone saves them fifteen to thirty minutes per day previously spent on task list management and decision-making.
+
+The workflow ensures important work doesn't fall through the cracks. When tasks are automatically prioritized based on deadlines, dependencies, and goal alignment, you're much less likely to miss a deadline or forget a commitment. The system surfaces what needs attention before it becomes urgent, giving you time to do quality work rather than rushing at the last minute. This reliability improves your professional reputation and reduces stress.
+
+Goal alignment becomes automatic rather than requiring constant conscious effort. When your task list automatically surfaces work that advances your quarterly objectives, you make consistent progress on what matters most without having to constantly remind yourself to work on strategic priorities. Over time, this consistent progress compounds into significant achievement on your most important goals.
+
+The context-aware task suggestions help you make optimal use of whatever time and energy you have available. When you have a three-hour focus block, you work on your most important deep work. When you have fifteen minutes between meetings, you knock out quick administrative tasks. When you're low on energy at the end of the day, you do simple review tasks rather than trying to force creative work. This context matching increases your overall productivity by ensuring you're always working on tasks that fit your current capacity.
+
+The staleness detection prevents your task list from becoming overwhelming. Many people's task lists grow to hundreds of items because they never remove tasks that aren't actually going to get done. By automatically flagging stale tasks and prompting decisions, GAIA keeps your active task list focused on things you're genuinely committed to completing. This focused list is less overwhelming and more actionable.
+
+The workflow also improves team coordination by surfacing tasks that are blocking others. When you consistently prioritize unblocking your colleagues, you become known as someone who's responsive and team-oriented. This reputation builds trust and makes collaboration smoother. Teams that use GAIA's task triage collectively report fewer bottlenecks and faster project completion.
+
+The automatic re-prioritization adapts to changing circumstances without requiring manual updates. When a deadline moves up, priorities shift automatically. When you complete a blocking task, dependent tasks automatically rise in priority. When your calendar changes and you suddenly have a free afternoon, your task list adapts to suggest how to use that time. This dynamic adaptation means your task list is always relevant to your current situation.
+
+## Advanced Customizations
+
+Power users can enhance task triage automation with sophisticated intelligence and coordination. Add machine learning that analyzes your task completion patterns to predict which tasks you're likely to procrastinate on. When the AI detects a task that matches your procrastination patterns, it can surface it earlier or suggest breaking it into smaller subtasks. This predictive intelligence helps you overcome your own tendencies toward avoidance.
+
+Create energy-aware prioritization that adapts based on your physical and mental state. Integrate with your fitness tracker to detect when you had poor sleep or high stress, and adjust task priorities accordingly—on low-energy days, the workflow surfaces easier tasks and defers cognitively demanding work. On high-energy days, it prioritizes your most challenging and important work. This energy matching helps you work with your natural rhythms rather than against them.
+
+Set up team coordination that considers your colleagues' priorities and dependencies. When multiple people are working on related tasks, GAIA can coordinate sequencing to minimize blocking and maximize parallel work. It might suggest "work on task A before task B because Sarah needs your output from A to start her work" or "defer task C because John hasn't finished his prerequisite task yet." This team-aware prioritization improves overall team throughput.
+
+Integrate with your calendar to automatically schedule time blocks for high-priority tasks. When a task becomes urgent, GAIA can find time in your calendar and block it for working on that task. This integration ensures you not only know what's important but actually allocate time to do it. The workflow can also move these time blocks if your calendar changes, maintaining the commitment to complete the task while adapting to schedule shifts.
+
+Create project-level prioritization that considers task interdependencies within projects. Instead of just prioritizing individual tasks, GAIA can identify the critical path through a project and prioritize tasks on that path. This project-aware prioritization helps you complete projects faster by focusing on tasks that actually move the project forward rather than getting distracted by peripheral work.
+
+Add automatic task breakdown for large, intimidating tasks. When a task has been sitting in your list for a week without progress and has a high effort estimate, GAIA can suggest breaking it into smaller subtasks. It might propose "Write proposal" becomes "Outline proposal structure," "Draft introduction," "Write main sections," and "Edit and finalize." This automatic breakdown makes large tasks less intimidating and more actionable.
+
+The task triage automation represents GAIA's vision of intelligent task management—not just storing your tasks but actively helping you decide what to work on and when. By continuously analyzing and prioritizing based on multiple factors, it transforms your task list from a source of overwhelm into a trusted guide for productive action.
+
+---
+
+## Get Started with GAIA
+
+Ready to experience AI-powered productivity? GAIA is available as a hosted service or self-hosted solution.
+
+**Try GAIA Today:**
+- 🌐 [heygaia.io](https://heygaia.io) - Start using GAIA in minutes
+- 💻 [GitHub Repository](https://github.com/theexperiencecompany/gaia) - Self-host or contribute to the project
+- 🏢 [The Experience Company](https://experience.heygaia.io) - Learn about the team building GAIA
+
+GAIA is open source and privacy-first. Your data stays yours, whether you use our hosted service or run it on your own infrastructure.

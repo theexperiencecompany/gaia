@@ -1,0 +1,128 @@
+---
+title: "Self-Hosting"
+description: "Understanding self-hosting, why it matters for privacy and control, and how it differs from cloud-based software services."
+---
+
+# Self-Hosting
+
+Self-hosting is the practice of running software on your own infrastructure rather than using a vendor's cloud service. Instead of accessing an application through a website or app that runs on someone else's servers, you install and run the software on your own computer, server, or cloud account. This gives you complete control over your data, how the software is configured, and how it's used.
+
+The distinction is fundamental. With cloud-based software, you're essentially renting access to an application running on the vendor's infrastructure. With self-hosted software, you own and operate the infrastructure yourself. The software runs on hardware you control, using resources you manage, with data stored where you decide.
+
+## Why Self-Hosting Matters
+
+Self-hosting addresses several important concerns that cloud-based services can't fully resolve. Privacy is the most obvious benefit. When you self-host, your data never leaves your infrastructure. You're not trusting a third party to handle your sensitive information appropriately. For personal productivity data - your emails, calendar, tasks, and communications - this can be significant.
+
+Control is equally important. With self-hosted software, you decide when to update, what features to enable, how to configure the system, and what integrations to use. You're not subject to changes the vendor makes to their service. If a cloud service changes its pricing, features, or terms of service, you have to accept it or leave. With self-hosted software, you're in control.
+
+Data ownership is clear with self-hosting. The data is yours, stored on your infrastructure, and you can do whatever you want with it. You can back it up, export it, analyze it, or delete it without depending on vendor tools or policies.
+
+## The Tradeoffs
+
+Self-hosting isn't without costs. You're responsible for maintaining the infrastructure, keeping the software updated, ensuring security, backing up data, and handling any problems that arise. Cloud services handle all of this for you, which is convenient but means giving up control.
+
+There's also a technical barrier. Self-hosting typically requires some technical knowledge to set up and maintain. While modern self-hosted applications are becoming easier to deploy, they're still more complex than simply signing up for a cloud service.
+
+Resource costs can go either way. For small-scale use, self-hosting might be cheaper than paying for a cloud service. For large-scale use, cloud services benefit from economies of scale. The crossover point depends on your specific situation.
+
+## Self-Hosting Options
+
+Self-hosting doesn't necessarily mean running a server in your home, though that's one option. You can self-host on a personal computer or server in your home, on a virtual private server (VPS) from a hosting provider, on cloud infrastructure like AWS or Google Cloud that you control, or on specialized platforms designed for self-hosting like Cloudron or YunoHost.
+
+The key distinction is control. Even if you're using a cloud provider's infrastructure, if you're running the software yourself and controlling the data, it's self-hosting. You're using their infrastructure but not their application service.
+
+## Docker and Containerization
+
+Modern self-hosting is often built on containerization technologies like Docker. Containers package software with all its dependencies, making it easy to deploy consistently across different environments. Instead of manually installing and configuring software, you can run a container that has everything pre-configured.
+
+This has made self-hosting much more accessible. Many self-hosted applications provide Docker images that you can run with a single command. The complexity of installation and configuration is hidden inside the container.
+
+Docker Compose allows you to define multi-container applications, making it easy to run complex systems that involve multiple services working together. This is particularly useful for applications like GAIA that integrate multiple components.
+
+## Security Considerations
+
+Self-hosting puts security responsibility on you. You need to keep the software updated with security patches, configure firewalls and access controls appropriately, use strong authentication, encrypt sensitive data, and monitor for security issues.
+
+This is both a benefit and a burden. You have complete control over security, which means you can implement exactly the measures you want. But you're also responsible if something goes wrong. Cloud services have dedicated security teams, but they're also attractive targets for attackers.
+
+For many users, the security benefits of self-hosting - particularly keeping sensitive data on infrastructure you control - outweigh the burden of managing security yourself.
+
+## Backup and Reliability
+
+With cloud services, backup and reliability are the vendor's responsibility. With self-hosting, they're yours. You need to implement backup strategies, test that backups work, plan for hardware failures, and ensure you can recover from disasters.
+
+This requires more effort but also gives you more control. You decide what backup strategy to use, where backups are stored, how long they're retained, and how recovery works. You're not dependent on a vendor's backup policies or recovery procedures.
+
+## Updates and Maintenance
+
+Cloud services update automatically, which is convenient but means you have no control over when changes happen. Self-hosted software requires you to manage updates yourself. You decide when to update, can test updates before deploying them, and can skip updates if they introduce problems.
+
+This control is valuable but requires ongoing attention. You need to monitor for updates, particularly security updates, and apply them in a timely manner. Neglecting updates can leave your system vulnerable.
+
+## Self-Hosting for AI Assistants
+
+Self-hosting is particularly relevant for AI assistants like GAIA that work with sensitive personal and professional data. An AI assistant needs access to your emails, calendar, tasks, and communications to be helpful. Self-hosting ensures this sensitive data stays on infrastructure you control.
+
+GAIA is designed to be self-hosted, giving you complete control over your data and how the AI assistant operates. You can run it on your own hardware, configure it to your needs, and ensure your productivity data never leaves your infrastructure.
+
+## The Open Source Connection
+
+Self-hosting is closely connected to open source software. To self-host effectively, you need software that you can install and run yourself. Proprietary cloud services don't offer this option - they're designed to run only on the vendor's infrastructure.
+
+Open source software can be self-hosted because the source code is available and you have the right to run it on your own infrastructure. This is why the open source community has a strong culture of self-hosting.
+
+GAIA is open source specifically to enable self-hosting. You can see exactly what the software does, modify it if needed, and run it on your own infrastructure with complete transparency and control.
+
+## Hybrid Approaches
+
+Some applications offer hybrid approaches that combine aspects of cloud services and self-hosting. You might self-host the core application but use cloud services for specific features like email delivery or file storage. Or you might use a managed hosting service that runs the software for you but on dedicated infrastructure that you control.
+
+These hybrid approaches can provide some benefits of self-hosting while reducing the operational burden. The tradeoff is that you're giving up some control and privacy compared to pure self-hosting.
+
+## The Self-Hosting Community
+
+There's a vibrant community around self-hosting, sharing knowledge about how to run various applications, troubleshooting problems, and developing tools to make self-hosting easier. Communities like r/selfhosted on Reddit and various forums provide support and resources.
+
+This community aspect makes self-hosting more accessible. You're not alone in figuring out how to run software - there are others who have done it and can help.
+
+## Cost Considerations
+
+The cost of self-hosting depends on your approach. Running software on a computer you already own has minimal additional cost. Renting a VPS might cost $5-20 per month. Using cloud infrastructure can range from very cheap to expensive depending on usage.
+
+Compare this to cloud service pricing, which often starts free or cheap but scales up as you use more features or have more users. For personal use, self-hosting is often cheaper. For team or enterprise use, the calculation is more complex.
+
+Don't forget to factor in your time. Self-hosting requires time for setup, maintenance, and troubleshooting. If your time is valuable, this cost can be significant.
+
+## When to Self-Host
+
+Self-hosting makes sense when privacy and data control are important to you, when you have the technical skills or willingness to learn, when you want control over features and updates, when you're concerned about vendor lock-in, or when you want to avoid recurring subscription costs.
+
+It's less appropriate when you lack technical skills and support, when you need guaranteed uptime and professional support, when you want someone else to handle security and maintenance, or when you need to scale rapidly and unpredictably.
+
+## The Future of Self-Hosting
+
+Self-hosting is becoming easier as tools improve and containerization becomes standard. We're seeing better deployment tools, more applications designed for self-hosting, improved documentation and community support, and platforms that make self-hosting as easy as using cloud services.
+
+At the same time, cloud services are becoming more powerful and convenient. The future likely involves both options coexisting, with users choosing based on their priorities around privacy, control, convenience, and cost.
+
+GAIA embraces this future by being designed for self-hosting while also offering cloud deployment options for those who prefer convenience over complete control.
+
+---
+
+**Related Reading:**
+- [What is Open Source?](/knowledge/glossary/open-source)
+- [What is a Self-Hosted AI Assistant?](/knowledge/what-is/self-hosted-ai-assistant)
+- [How Does Self-Hosting Work?](/knowledge/how/self-hosting-works)
+
+---
+
+## Get Started with GAIA
+
+Ready to experience AI-powered productivity? GAIA is available as a hosted service or self-hosted solution.
+
+**Try GAIA Today:**
+- 🌐 [heygaia.io](https://heygaia.io) - Start using GAIA in minutes
+- 💻 [GitHub Repository](https://github.com/theexperiencecompany/gaia) - Self-host or contribute to the project
+- 🏢 [The Experience Company](https://experience.heygaia.io) - Learn about the team building GAIA
+
+GAIA is open source and privacy-first. Your data stays yours, whether you use our hosted service or run it on your own infrastructure.
