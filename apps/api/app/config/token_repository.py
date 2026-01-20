@@ -505,7 +505,7 @@ class TokenRepository:
         result = {
             "user_id": user_id,
             "available_providers": [],
-            "token_count": 0,
+            "token_count": 0,  # nosec
             "tokens": [],
         }
 
@@ -572,7 +572,7 @@ class TokenRepository:
                 params={
                     "access_token": token_record.access_token,
                     "refresh_token": token_record.refresh_token,
-                    "token_type": "Bearer",
+                    "token_type": "Bearer",  # nosec
                     "expires_at": int(token_record.expires_at.timestamp())
                     if token_record.expires_at
                     else None,

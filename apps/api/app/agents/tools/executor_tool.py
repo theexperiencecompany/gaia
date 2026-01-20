@@ -67,6 +67,7 @@ async def call_executor(
             agent_name="executor_agent",
             configurable=configurable,
             query=task,
+            thread_id=thread_id,  # Use thread_id for acontext session consistency
         )
 
         initial_state = {

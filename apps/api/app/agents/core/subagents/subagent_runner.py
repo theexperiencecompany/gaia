@@ -139,6 +139,7 @@ async def prepare_subagent_execution(
         configurable=configurable,
         user_id=user_id,
         query=task,
+        thread_id=conversation_id,  # Use conversation_id for acontext session consistency
     )
 
     initial_state = {

@@ -52,7 +52,7 @@ class DeviceToken(BaseModel):
         json_schema_extra = {
             "example": {
                 "user_id": "user123",
-                "token": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]",
+                "token": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]",  # nosec
                 "platform": "ios",
                 "device_id": "iPhone 15 Pro",
                 "is_active": True,
