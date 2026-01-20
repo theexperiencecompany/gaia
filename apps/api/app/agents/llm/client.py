@@ -1,5 +1,6 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
+from app.config.loggers import chat_logger as logger
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_FREE_MODEL_NAME,
@@ -13,6 +14,7 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
+from langchain_core.messages import BaseMessage
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
@@ -281,3 +283,92 @@ def register_llm_providers():
     init_openai_llm()
     init_gemini_llm()
     init_openrouter_llm()
+
+
+def get_free_llm_chain() -> List[BaseChatModel]:
+    """
+    Get a chain of free/low-cost LLMs for auxiliary tasks with fallback support.
+
+    Returns a list of LLMs in priority order:
+    1. OpenRouter free models (Gemini 2.0 Flash free tier)
+    2. Direct Gemini API (as fallback if OpenRouter fails)
+
+    Returns:
+        List of LLM instances to try in order
+    """
+    llms: List[BaseChatModel] = []
+
+    # Primary: OpenRouter free model with automatic model fallback
+    if settings.OPENROUTER_API_KEY:
+        llms.append(
+            ChatOpenAI(
+                model=DEFAULT_GEMINI_FREE_MODEL_NAME,
+                temperature=0.1,
+                streaming=False,
+                api_key=settings.OPENROUTER_API_KEY,
+                base_url=OPENROUTER_BASE_URL,
+                default_headers={
+                    "HTTP-Referer": settings.FRONTEND_URL,
+                    "X-Title": "GAIA",
+                },
+                extra_body={
+                    "models": GEMINI_FREE_FALLBACK_MODELS,
+                },
+            )
+        )
+
+    # Fallback: Direct Gemini API
+    if settings.GOOGLE_API_KEY:
+        llms.append(
+            ChatGoogleGenerativeAI(
+                model=DEFAULT_GEMINI_MODEL_NAME,
+                temperature=0.1,
+            )
+        )
+
+    if not llms:
+        raise RuntimeError(
+            "No free LLM providers configured. Set OPENROUTER_API_KEY or GOOGLE_API_KEY."
+        )
+
+    return llms
+
+
+async def invoke_with_fallback(
+    llm_chain: List[BaseChatModel],
+    messages: Sequence[BaseMessage],
+    config: Optional[Dict[str, Any]] = None,
+) -> BaseMessage:
+    """
+    Invoke LLMs in sequence until one succeeds.
+
+    Tries each LLM in the chain, falling back to the next on failure.
+    Useful for auxiliary tasks like follow-up actions and description generation.
+
+    Args:
+        llm_chain: List of LLM instances to try in order
+        messages: Messages to send to the LLM
+        config: Optional config to pass to the LLM
+
+    Returns:
+        The response from the first successful LLM
+
+    Raises:
+        RuntimeError: If all LLMs in the chain fail
+    """
+    last_error: Optional[Exception] = None
+
+    for i, llm in enumerate(llm_chain):
+        try:
+            return await llm.ainvoke(messages, config=config)
+        except Exception as e:
+            provider_name = type(llm).__name__
+            last_error = e
+            if i < len(llm_chain) - 1:
+                logger.warning(
+                    f"LLM {provider_name} failed, falling back to next provider: {e}"
+                )
+            else:
+                logger.error(f"All LLM providers failed. Last error: {e}")
+
+    raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")

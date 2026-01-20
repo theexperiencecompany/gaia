@@ -33,6 +33,8 @@ import inspect
 from collections.abc import Mapping
 from typing import Any, Awaitable, Callable, TypedDict, Union
 
+from typing import TYPE_CHECKING
+
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -45,6 +47,9 @@ from langgraph.types import Send
 from langgraph.utils.runnable import RunnableCallable
 from langgraph_bigtool.graph import State
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
+
+if TYPE_CHECKING:
+    from langgraph.runtime import Runtime
 
 from app.constants.general import NEW_MESSAGE_BREAKER
 
@@ -73,23 +78,23 @@ class DynamicToolNode(ToolNode):
         # Fall back to parent's tools_by_name
         return self.tools_by_name.get(name)
 
-    def _func(self, input, config, **kwargs):
+    def _func(self, input, config, runtime: "Runtime"):
         """Override to inject dynamically added tools before execution."""
         # Sync tools_by_name with current registry state before execution
         for name in self._tool_registry:
             if name not in self.tools_by_name:
-                self.tools_by_name[name] = self._tool_registry[name]
+                self.tools_by_name[name] = self._tool_registry[name]  # type: ignore[assignment]
 
-        return super()._func(input, config, **kwargs)
+        return super()._func(input, config, runtime)
 
-    async def _afunc(self, input, config, **kwargs):
+    async def _afunc(self, input, config, runtime: "Runtime"):
         """Override to inject dynamically added tools before execution."""
         # Sync tools_by_name with current registry state before execution
         for name in self._tool_registry:
             if name not in self.tools_by_name:
-                self.tools_by_name[name] = self._tool_registry[name]
+                self.tools_by_name[name] = self._tool_registry[name]  # type: ignore[assignment]
 
-        return await super()._afunc(input, config, **kwargs)
+        return await super()._afunc(input, config, runtime)
 
 
 class RetrieveToolsResult(TypedDict):

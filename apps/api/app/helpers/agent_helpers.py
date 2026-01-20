@@ -232,7 +232,7 @@ def build_agent_config(
 
     config = {
         "configurable": configurable,
-        "recursion_limit": 25,
+        "recursion_limit": 35,
         "metadata": {"user_id": user.get("user_id")},
         "callbacks": callbacks,
         "agent_name": agent_name,
@@ -431,7 +431,7 @@ async def execute_graph_streaming(
                 continue
 
             if chunk and isinstance(chunk, AIMessageChunk):
-                content = chunk.text()
+                content = chunk.text
                 tool_calls = chunk.tool_calls
 
                 # Track tool calls and emit progress on first detection

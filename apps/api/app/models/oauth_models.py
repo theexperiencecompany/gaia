@@ -73,9 +73,12 @@ class MCPCredential(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     integration_id: Mapped[str] = mapped_column(String(100), nullable=False)
-    auth_type: Mapped[MCPAuthType] = mapped_column(SQLEnum(MCPAuthType), nullable=False)
+    auth_type: Mapped[MCPAuthType] = mapped_column(
+        SQLEnum(MCPAuthType, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+    )
     status: Mapped[MCPCredentialStatus] = mapped_column(
-        SQLEnum(MCPCredentialStatus),
+        SQLEnum(MCPCredentialStatus, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         default=MCPCredentialStatus.PENDING,
     )

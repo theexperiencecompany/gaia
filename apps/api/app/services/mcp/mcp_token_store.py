@@ -23,7 +23,7 @@ from app.constants.mcp import (
 )
 from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
-from app.models.oauth_models import MCPCredential
+from app.models.oauth_models import MCPAuthType, MCPCredential
 from app.utils.mcp_oauth_utils import introspect_token as do_introspect
 
 
@@ -152,7 +152,7 @@ class MCPTokenStore:
                 cred = MCPCredential(
                     user_id=self.user_id,
                     integration_id=integration_id,
-                    auth_type="bearer",
+                    auth_type=MCPAuthType.BEARER,
                     access_token=encrypted,
                     status="connected",
                     connected_at=now,
@@ -196,7 +196,7 @@ class MCPTokenStore:
                 cred = MCPCredential(
                     user_id=self.user_id,
                     integration_id=integration_id,
-                    auth_type="oauth",
+                    auth_type=MCPAuthType.OAUTH,
                     access_token=encrypted_access,
                     refresh_token=encrypted_refresh,
                     token_expires_at=expires_at,
@@ -228,7 +228,7 @@ class MCPTokenStore:
                 cred = MCPCredential(
                     user_id=self.user_id,
                     integration_id=integration_id,
-                    auth_type="none",
+                    auth_type=MCPAuthType.NONE,
                     status="active",  # Informational only
                 )
                 session.add(cred)
