@@ -68,6 +68,9 @@ class SubAgentFactory:
                 scoped_tool_dict[t.name] = t.tool
                 initial_tool_ids.append(t.name)
 
+        # Add search_memory to scoped_tool_dict so subagents can access user memories
+        scoped_tool_dict[search_memory.name] = search_memory
+
         common_kwargs = {
             "llm": llm,
             "tool_registry": scoped_tool_dict,  # Use scoped dict instead of global
@@ -89,6 +92,7 @@ class SubAgentFactory:
             )
         else:
             # Use retrieve_tools with scoped tool_space (no subagent nesting)
+            # No initial_tool_ids needed - subagent will retrieve tools dynamically
             common_kwargs.update(
                 {
                     "retrieve_tools_coroutine": get_retrieve_tools_function(

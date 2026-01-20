@@ -214,7 +214,7 @@ class StreamManager:
         finally:
             try:
                 await pubsub.unsubscribe(channel)
-                await pubsub.close()
+                await pubsub.aclose()
             except Exception:  # nosec B110 - Intentional: cleanup should not raise
                 pass
 

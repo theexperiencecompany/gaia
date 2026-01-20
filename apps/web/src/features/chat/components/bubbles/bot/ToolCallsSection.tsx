@@ -158,7 +158,12 @@ export default function ToolCallsSection({
                 call.show_category !== false &&
                 call.tool_category &&
                 call.tool_category !== "unknown";
-              const hasDetails = call.inputs || call.output;
+              const hasInputs =
+                call.inputs &&
+                typeof call.inputs === "object" &&
+                Object.keys(call.inputs).length > 0;
+              const hasOutput = call.output && call.output.trim().length > 0;
+              const hasDetails = hasInputs || hasOutput;
               const isCallExpanded = expandedCalls.has(index);
 
               return (
@@ -223,7 +228,7 @@ export default function ToolCallsSection({
 
                     {isCallExpanded && hasDetails && (
                       <div className="mt-2 space-y-2 text-[11px] bg-zinc-800/50 rounded-xl p-3 mb-3 w-fit ">
-                        {call.inputs && Object.keys(call.inputs).length > 0 && (
+                        {hasInputs && (
                           <div className="flex flex-col">
                             <span className="text-zinc-500 font-medium mb-1">
                               Input
@@ -231,7 +236,7 @@ export default function ToolCallsSection({
                             <CompactMarkdown content={call.inputs} />
                           </div>
                         )}
-                        {call.output && (
+                        {hasOutput && (
                           <div className="flex flex-col">
                             <span className="text-zinc-500 font-medium mb-1">
                               Output

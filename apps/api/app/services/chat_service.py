@@ -71,15 +71,15 @@ async def run_chat_stream_background(
             selectedTool = body.selectedTool if body.selectedTool else None
             selectedWorkflow = body.selectedWorkflow if body.selectedWorkflow else None
 
-        description_task = asyncio.create_task(
-            generate_and_update_description(
-                conversation_id,
-                last_message,
-                user,
-                selectedTool,
-                selectedWorkflow,
+            description_task = asyncio.create_task(
+                generate_and_update_description(
+                    conversation_id,
+                    last_message,
+                    user,
+                    selectedTool,
+                    selectedWorkflow,
+                )
             )
-        )
 
         # Get user model config
         user_id = user.get("user_id")

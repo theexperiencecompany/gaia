@@ -127,7 +127,7 @@ async def process_email_comprehensive_analysis(
         if isinstance(response, str):
             response_text = response.strip()
         else:
-            response_text = response.text()
+            response_text = response.text
 
         # Parse response following agent.py pattern
         try:
