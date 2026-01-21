@@ -384,35 +384,19 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
         if data.get("follow_up_actions") is not None:
             other_data["follow_up_actions"] = data["follow_up_actions"]
 
-        # Step 2: Extract tool_data from one of three sources (in priority order)
+        # Step 2: Extract tool_data from one of two sources (in priority order)
         tool_data_entries: List[ToolDataEntry] = []
 
-        # Source A: Already in unified format
+        # Source A: Already in unified format (from backend tool_data emission)
         if "tool_data" in data:
-            tool_data_entries = data["tool_data"]
+            # Single entry or list
+            td = data["tool_data"]
+            if isinstance(td, list):
+                tool_data_entries = td
+            else:
+                tool_data_entries = [td]
 
-        # Source B: Progress events - convert to tool_calls_data format
-        elif "progress" in data and isinstance(data["progress"], dict):
-            progress = data["progress"]
-            if progress.get("tool_name"):
-                tool_data_entries = [
-                    {
-                        "tool_name": "tool_calls_data",
-                        "data": {
-                            "tool_name": progress.get("tool_name"),
-                            "tool_category": progress.get("tool_category", ""),
-                            "message": progress.get("message", ""),
-                            "show_category": progress.get("show_category", True),
-                            "tool_call_id": progress.get("tool_call_id"),
-                            "inputs": progress.get("inputs"),
-                            "icon_url": progress.get("icon_url"),
-                            "integration_name": progress.get("integration_name"),
-                        },
-                        "timestamp": timestamp,
-                    }
-                ]
-
-        # Source C: Legacy individual tool fields
+        # Source B: Legacy individual tool fields
         else:
             for field_name in tool_fields:
                 if data.get(field_name) is not None:

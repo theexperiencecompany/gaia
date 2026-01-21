@@ -28,7 +28,7 @@ from app.core.lazy_loader import providers
 from app.helpers.agent_helpers import build_agent_config
 from app.models.models_models import ModelConfig
 from app.services.oauth.oauth_service import check_integration_status
-from app.utils.agent_utils import format_tool_progress
+from app.utils.stream_utils import extract_tool_entries_from_update
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
@@ -213,156 +213,87 @@ async def prepare_subagent_execution(
 async def execute_subagent_stream(
     ctx: SubagentExecutionContext,
     stream_writer=None,
-    include_updates_mode: bool = False,
-    track_tool_io: bool = False,
     integration_metadata: Optional[dict] = None,
 ) -> str:
     """
-    Execute subagent with streaming and configurable tool tracking.
-
-    This is the unified streaming function used by handoff, executor, and call_subagent.
-    It supports different levels of tool tracking based on the caller's needs.
+    Execute subagent with streaming and tool tracking.
 
     Args:
         ctx: SubagentExecutionContext from prepare_subagent_execution
         stream_writer: Callback for custom events (from get_stream_writer())
-        include_updates_mode: Include "updates" stream for complete tool args
-        track_tool_io: Emit tool_inputs/tool_outputs events (for handoff)
         integration_metadata: Optional dict with {icon_url, integration_id, name}
                               for custom MCP icon display
 
     Returns:
         Complete message string
+
+    Stream Event Flow:
+        1. "updates" - Emit tool_data with complete args when tool is called
+        2. "messages" - Stream content, emit tool_output when ToolMessage arrives
+        3. "custom" - Forward custom events (progress messages, etc.) to parent
     """
     complete_message = ""
-    pending_tool_calls: dict[str, dict] = {}
-
-    # Configure stream modes based on needs
-    stream_modes = ["messages", "custom"]
-    if include_updates_mode:
-        stream_modes.append("updates")
+    emitted_tool_calls: set[str] = set()
 
     async for event in ctx.subagent_graph.astream(
         ctx.initial_state,
-        stream_mode=stream_modes,
+        stream_mode=["messages", "custom", "updates"],
         config=ctx.config,
     ):
-        # Handle both 2-tuple and 3-tuple formats
-        if len(event) == 2:
-            stream_mode, payload = event
-        else:
+        # Handle 2-tuple format only (no subgraphs)
+        if len(event) != 2:
             continue
+        stream_mode, payload = event
 
-        # Handle updates stream (for complete tool args tracking)
+        # ─────────────────────────────────────────────────────────────────────
+        # UPDATES STREAM: Emit tool_data when tool calls are detected
+        # ─────────────────────────────────────────────────────────────────────
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
-                if isinstance(state_update, dict) and "messages" in state_update:
-                    for msg in state_update["messages"]:
-                        if hasattr(msg, "tool_calls") and msg.tool_calls:
-                            for tc in msg.tool_calls:
-                                tc_id = tc.get("id")
-                                if tc_id:
-                                    pending_tool_calls[tc_id] = {
-                                        "name": tc.get("name"),
-                                        "args": tc.get("args", {}),
-                                    }
+                # Use shared helper to extract and format tool entries
+                entries = await extract_tool_entries_from_update(
+                    state_update=state_update,
+                    emitted_tool_calls=emitted_tool_calls,
+                    integration_metadata=integration_metadata,
+                )
+                for tc_id, tool_entry in entries:
+                    if stream_writer:
+                        stream_writer({"tool_data": tool_entry})
             continue
 
-        if stream_mode == "custom":
-            if stream_writer:
-                stream_writer(payload)
-
-        elif stream_mode == "messages":
+        # ─────────────────────────────────────────────────────────────────────
+        # MESSAGES STREAM: Stream content and emit tool_output
+        # ─────────────────────────────────────────────────────────────────────
+        if stream_mode == "messages":
             chunk, metadata = payload
-
             if metadata.get("silent"):
                 continue
 
+            # Accumulate AI response content
             if chunk and isinstance(chunk, AIMessageChunk):
-                # Track tool calls and emit progress
-                if chunk.tool_calls:
-                    for tool_call in chunk.tool_calls:
-                        tc_id = tool_call.get("id")
-                        if tc_id and tc_id not in pending_tool_calls:
-                            # Emit tool progress with optional metadata
-                            progress_data = await format_tool_progress(
-                                tool_call,
-                                icon_url=(
-                                    integration_metadata.get("icon_url")
-                                    if integration_metadata
-                                    else None
-                                ),
-                                integration_id=(
-                                    integration_metadata.get("integration_id")
-                                    if integration_metadata
-                                    else None
-                                ),
-                                integration_name=(
-                                    integration_metadata.get("name")
-                                    if integration_metadata
-                                    else None
-                                ),
-                            )
-                            if progress_data and stream_writer:
-                                stream_writer(progress_data)
-
-                            pending_tool_calls[tc_id] = {
-                                "name": tool_call.get("name"),
-                                "args": tool_call.get("args", {}),
-                            }
-                        elif tc_id:
-                            # Update stored args (they accumulate across chunks)
-                            pending_tool_calls[tc_id]["args"] = tool_call.get(
-                                "args", {}
-                            )
-
-                # Extract text content
                 content = chunk.text() if hasattr(chunk, "text") else str(chunk.content)
                 if content:
                     complete_message += content
 
-            # Handle ToolMessage for inputs/outputs (when tracking enabled)
-            elif track_tool_io and chunk and isinstance(chunk, ToolMessage):
-                tc_id = chunk.tool_call_id
-
-                # Emit tool_inputs when tool completes
-                if tc_id and tc_id in pending_tool_calls and stream_writer:
-                    stored_call = pending_tool_calls[tc_id]
-                    if stored_call.get("args"):
-                        stream_writer(
-                            {
-                                "tool_inputs": {
-                                    "tool_call_id": tc_id,
-                                    "inputs": stored_call["args"],
-                                    "tool_category": (
-                                        integration_metadata.get("integration_id")
-                                        if integration_metadata
-                                        else None
-                                    ),
-                                    "icon_url": (
-                                        integration_metadata.get("icon_url")
-                                        if integration_metadata
-                                        else None
-                                    ),
-                                }
-                            }
-                        )
-                    del pending_tool_calls[tc_id]
-
-                # Emit tool_output
+            # Emit tool_output when ToolMessage arrives
+            elif chunk and isinstance(chunk, ToolMessage):
                 if stream_writer:
                     stream_writer(
                         {
                             "tool_output": {
-                                "tool_call_id": tc_id,
-                                "output": (
-                                    chunk.content[:3000]
-                                    if isinstance(chunk.content, str)
-                                    else str(chunk.content)[:3000]
-                                ),
+                                "tool_call_id": chunk.tool_call_id,
+                                "output": chunk.text()[:3000],
                             }
                         }
                     )
+            continue
+
+        # ─────────────────────────────────────────────────────────────────────
+        # CUSTOM STREAM: Forward custom events from tools
+        # ─────────────────────────────────────────────────────────────────────
+        if stream_mode == "custom":
+            if stream_writer:
+                stream_writer(payload)
 
     return complete_message if complete_message else "Task completed"
 
@@ -479,6 +410,8 @@ async def call_subagent(
     """
     Directly invoke a subagent with streaming - drop-in for call_agent in chat_service.
 
+    Primarily used for testing subagents directly without going through the main agent.
+
     Args:
         subagent_id: e.g., "google_calendar", "gmail", "github"
         query: The user's message/query
@@ -486,20 +419,18 @@ async def call_subagent(
         conversation_id: Conversation thread ID
         user_time: User's local time
         skip_integration_check: Skip OAuth check (default True for testing)
+        user_model_config: Optional model configuration
 
     Yields:
         SSE-formatted strings compatible with chat_service streaming
 
-    Usage in chat_service.py:
-        from app.agents.core.subagents.subagent_runner import call_subagent
-
+    Usage:
         async for chunk in call_subagent(
             subagent_id="google_calendar",
-            query=body.message,
+            query="What's on my calendar today?",
             user=user,
             conversation_id=conversation_id,
             user_time=user_time,
-            user_model_config=user_model_config,
         ):
             yield chunk
     """
@@ -538,65 +469,58 @@ async def call_subagent(
     )
 
     # Stream execution with SSE formatting
-    # Uses "updates" mode for complete tool args (same as handoff)
     complete_message = ""
-    pending_tool_calls: dict[str, dict] = {}
+    emitted_tool_calls: set[str] = set()
 
     async for event in ctx.subagent_graph.astream(
         ctx.initial_state,
         stream_mode=["messages", "custom", "updates"],
         config=ctx.config,
     ):
-        # Handle both 2-tuple and 3-tuple formats
-        if len(event) == 2:
-            stream_mode, payload = event
-        else:
+        # Handle 2-tuple format only (no subgraphs)
+        if len(event) != 2:
             continue
+        stream_mode, payload = event
 
-        # Handle updates stream (for complete tool args)
+        # ─────────────────────────────────────────────────────────────────────
+        # UPDATES STREAM: Emit tool_data when tool calls are detected
+        # ─────────────────────────────────────────────────────────────────────
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
-                if isinstance(state_update, dict) and "messages" in state_update:
-                    for msg in state_update["messages"]:
-                        if hasattr(msg, "tool_calls") and msg.tool_calls:
-                            for tc in msg.tool_calls:
-                                tc_id = tc.get("id")
-                                if tc_id:
-                                    pending_tool_calls[tc_id] = {
-                                        "name": tc.get("name"),
-                                        "args": tc.get("args", {}),
-                                    }
+                # Use shared helper to extract and format tool entries
+                entries = await extract_tool_entries_from_update(
+                    state_update=state_update,
+                    emitted_tool_calls=emitted_tool_calls,
+                )
+                for tc_id, tool_entry in entries:
+                    yield f"data: {json.dumps({'tool_data': tool_entry})}\n\n"
             continue
 
-        if stream_mode == "custom":
-            yield f"data: {json.dumps(payload)}\n\n"
-        elif stream_mode == "messages":
+        # ─────────────────────────────────────────────────────────────────────
+        # MESSAGES STREAM: Stream content and emit tool_output
+        # ─────────────────────────────────────────────────────────────────────
+        if stream_mode == "messages":
             chunk, metadata = payload
             if metadata.get("silent"):
                 continue
 
+            # Stream AI response content
             if chunk and isinstance(chunk, AIMessageChunk):
-                # Track tool calls and emit progress
-                if chunk.tool_calls:
-                    for tool_call in chunk.tool_calls:
-                        tc_id = tool_call.get("id")
-                        if tc_id and tc_id not in pending_tool_calls:
-                            progress_data = await format_tool_progress(tool_call)
-                            if progress_data:
-                                yield f"data: {json.dumps(progress_data)}\n\n"
-                            pending_tool_calls[tc_id] = {
-                                "name": tool_call.get("name"),
-                                "args": tool_call.get("args", {}),
-                            }
-                        elif tc_id:
-                            pending_tool_calls[tc_id]["args"] = tool_call.get(
-                                "args", {}
-                            )
-
                 content = chunk.text() if hasattr(chunk, "text") else str(chunk.content)
                 if content:
                     complete_message += content
                     yield f"data: {json.dumps({'response': content})}\n\n"
+
+            # Emit tool_output when ToolMessage arrives
+            elif chunk and isinstance(chunk, ToolMessage):
+                yield f"data: {json.dumps({'tool_output': {'tool_call_id': chunk.tool_call_id, 'output': chunk.text()[:3000]}})}\n\n"
+            continue
+
+        # ─────────────────────────────────────────────────────────────────────
+        # CUSTOM STREAM: Forward custom events from tools
+        # ─────────────────────────────────────────────────────────────────────
+        if stream_mode == "custom":
+            yield f"data: {json.dumps(payload)}\n\n"
 
     # Final message for DB storage
     yield f"nostream: {json.dumps({'complete_message': complete_message})}"
