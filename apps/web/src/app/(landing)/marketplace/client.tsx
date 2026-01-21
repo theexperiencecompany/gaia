@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { IntegrationsFilters } from "@/features/integrations/components/IntegrationsFilters";
 import {
@@ -15,6 +15,7 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 export function IntegrationsPageClient() {
   const [integrations, setIntegrations] = useState<CommunityIntegration[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFiltering, setIsFiltering] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState<{
@@ -26,10 +27,14 @@ export function IntegrationsPageClient() {
     category: "all",
     sort: "popular",
   });
+  const isInitialMount = useRef(true);
 
   const loadIntegrations = useCallback(
-    async (reset = false) => {
+    async (reset = false, showFilteringSkeleton = false) => {
       setIsLoading(true);
+      if (showFilteringSkeleton) {
+        setIsFiltering(true);
+      }
       try {
         const response = await integrationsApi.getCommunityIntegrations({
           sort: filters.sort,
@@ -50,13 +55,20 @@ export function IntegrationsPageClient() {
         console.error("Failed to load integrations:", error);
       } finally {
         setIsLoading(false);
+        setIsFiltering(false);
       }
     },
     [filters, integrations.length],
   );
 
   useEffect(() => {
-    loadIntegrations(true);
+    // Skip showing filtering skeleton on initial mount
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      loadIntegrations(true, false);
+    } else {
+      loadIntegrations(true, true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.search, filters.category, filters.sort]);
 
@@ -71,6 +83,8 @@ export function IntegrationsPageClient() {
       sort: (newFilters.sort as "popular" | "recent" | "name") || prev.sort,
     }));
   };
+
+  const showSkeletons = isLoading && (integrations.length === 0 || isFiltering);
 
   return (
     <div className="min-h-screen pt-32 pb-16">
@@ -102,13 +116,16 @@ export function IntegrationsPageClient() {
           initialFilters={filters}
         />
 
+        {showSkeletons && (
+          <p className="mb-6 text-sm text-zinc-500">Loading...</p>
+        )}
         {!isLoading && (
           <p className="mb-6 text-sm text-zinc-500">
             {total} integration{total !== 1 ? "s" : ""} found
           </p>
         )}
 
-        {isLoading && integrations.length === 0 ? (
+        {showSkeletons ? (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             <PublicIntegrationCardSkeletonGrid count={6} />
           </div>

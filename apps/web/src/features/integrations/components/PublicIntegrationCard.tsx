@@ -48,7 +48,7 @@ const IntegrationIcon: React.FC<{
           alt="Integration icon"
           width={28}
           height={28}
-          className="aspect-square object-contain"
+          className="aspect-square object-contain rounded-lg max-w-7 max-h-7 min-w-7 min-h-7"
           onError={() => setHasError(true)}
         />
       );
@@ -57,9 +57,9 @@ const IntegrationIcon: React.FC<{
       <Image
         src={iconUrl}
         alt="Integration icon"
-        width={28}
-        height={28}
-        className="aspect-square object-contain"
+        width={100}
+        height={100}
+        className="aspect-square object-contain rounded-lg max-w-7 max-h-7 min-w-7 min-h-7"
         onError={() => setHasError(true)}
       />
     );

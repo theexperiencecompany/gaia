@@ -13,10 +13,10 @@ const CATEGORIES = [
   { key: "developer", label: "Developer" },
   { key: "analytics", label: "Analytics" },
   { key: "finance", label: "Finance" },
-  { key: "marketing", label: "Marketing" },
-  { key: "storage", label: "Storage" },
   { key: "ai-ml", label: "AI & ML" },
-  { key: "automation", label: "Automation" },
+  { key: "education", label: "Education" },
+  { key: "personal", label: "Personal" },
+  { key: "capabilities", label: "Capabilities" },
   { key: "other", label: "Other" },
 ];
 

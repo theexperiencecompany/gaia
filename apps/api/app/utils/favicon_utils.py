@@ -3,10 +3,11 @@ Favicon fetching utilities with Redis caching.
 
 Strategy:
 1. Check Redis cache by root domain (e.g., smithery.ai)
-2. Try 'favicon' library (parses HTML for link tags) - runs in thread pool
-3. Try standard /favicon.ico path
-4. Parse HTML for link[rel=icon] tags
-5. Cache result in Redis for 180 days
+2. Try Google's favicon service (fastest, most reliable)
+3. Try 'favicon' library (parses HTML for link tags) - runs in thread pool
+4. Try standard /favicon.ico path
+5. Parse HTML for link[rel=icon] tags
+6. Cache result in Redis for 180 days
 """
 
 import asyncio
@@ -27,6 +28,9 @@ FAVICON_CACHE_TTL = 180 * 24 * 3600
 # HTTP client settings
 HTTP_TIMEOUT = 3.0
 FAVICON_LIB_TIMEOUT = 3
+
+# Google Favicon Service - fast and reliable
+GOOGLE_FAVICON_URL = "https://www.google.com/s2/favicons?domain={domain}&sz=256"
 
 # Known favicon extensions that don't need validation
 KNOWN_FAVICON_EXTENSIONS = (".ico", ".png", ".svg", ".webp")
@@ -207,17 +211,63 @@ async def _try_html_link_parsing(url: str) -> str | None:
     return None
 
 
+async def _try_google_favicon_service(domain: str) -> str | None:
+    """
+    Try Google's favicon service - fast and reliable.
+
+    Returns the Google favicon URL if it returns a valid image.
+    Google returns a default globe icon for missing favicons,
+    so we check content-length to detect that.
+    """
+    favicon_url = GOOGLE_FAVICON_URL.format(domain=domain)
+
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.head(favicon_url, follow_redirects=True)
+            if response.status_code != 200:
+                return None
+
+            content_type = response.headers.get("content-type", "").lower()
+            if "image" not in content_type:
+                return None
+
+            # Google returns a small default globe icon (~318 bytes at sz=128)
+            # Real favicons are typically larger. Skip if too small.
+            content_length = response.headers.get("content-length", "")
+            if content_length and int(content_length) < 400:
+                logger.debug(f"Google favicon too small for {domain}, likely default")
+                return None
+
+            return favicon_url
+
+    except Exception as e:
+        logger.debug(f"Google favicon service failed for {domain}: {e}")
+    return None
+
+
 async def _fetch_favicon_impl(server_url: str) -> str | None:
     """
     Fetch favicon from external sources.
 
     Uses root domain only. Strategy:
-    1. favicon library (thread pool, with timeout)
-    2. Standard /favicon.ico path
-    3. Parse HTML for link[rel=icon]
+    1. Google's favicon service (fastest, most reliable)
+    2. favicon library (thread pool, with timeout)
+    3. Standard /favicon.ico path
+    4. Parse HTML for link[rel=icon]
     """
     url = _get_root_domain_url(server_url)
-    logger.debug(f"Fetching favicon from root domain: {url}")
+    extracted = tldextract.extract(server_url)
+    domain = extracted.top_domain_under_public_suffix
+    logger.debug(f"Fetching favicon for domain: {domain}")
+
+    # For non-Smithery domains, just return Google S2 URL directly - no need to fetch
+    if domain != "smithery.ai":
+        return GOOGLE_FAVICON_URL.format(domain=domain)
+
+    # Try Google's favicon service first (fastest)
+    result = await _try_google_favicon_service(domain)
+    if result:
+        return result
 
     # Try favicon library (runs in thread pool)
     result = await _try_favicon_library(url)

@@ -16,6 +16,7 @@ from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
 )
+from app.db.redis import delete_cache_by_pattern, get_cache, set_cache
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
     CreateCustomIntegrationRequest as CreateCustomIntegrationRequestModel,
@@ -36,7 +37,6 @@ from app.schemas.integrations.responses import (
     AddIntegrationResponse,
     AddUserIntegrationResponse,
     CommunityIntegrationCreator,
-    CommunityIntegrationItem,
     CommunityListResponse,
     ConnectIntegrationResponse,
     CreateCustomIntegrationResponse,
@@ -69,8 +69,10 @@ from app.services.integrations.integration_connection_service import (
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.integration_service import (
     add_user_integration,
+    build_creator_lookup_stages,
     create_custom_integration,
     delete_custom_integration,
+    format_community_integrations,
     get_all_integrations,
     get_integration_details,
     get_user_integrations,
@@ -247,12 +249,16 @@ async def list_community_integrations(
         search: Optional search query (triggers semantic search via ChromaDB)
 
     This is an UNAUTHENTICATED endpoint for browsing the marketplace.
+    Results are cached for 5 minutes (except search queries).
     """
+    CACHE_TTL = 300  # 5 minutes
+
     try:
         # Clamp limit to max 100
         limit = min(limit, 100)
 
         # If search query provided, try ChromaDB semantic search first, fallback to MongoDB
+        # Search queries are NOT cached (dynamic content)
         if search and search.strip():
             search_query = search.strip()
 
@@ -279,7 +285,7 @@ async def list_community_integrations(
                             "is_public": True,
                         }
                     },
-                    *_build_creator_lookup_stages(),
+                    *build_creator_lookup_stages(),
                 ]
                 cursor = integrations_collection.aggregate(pipeline)
                 docs = await cursor.to_list(length=limit)
@@ -290,7 +296,7 @@ async def list_community_integrations(
                     docs_map[iid] for iid in integration_ids if iid in docs_map
                 ]
 
-                integrations = _format_community_integrations(ordered_docs)
+                integrations = format_community_integrations(ordered_docs)
 
                 return CommunityListResponse(
                     integrations=integrations,
@@ -325,12 +331,12 @@ async def list_community_integrations(
                 {"$sort": {"clone_count": -1, "published_at": -1}},
                 {"$skip": offset},
                 {"$limit": limit},
-                *_build_creator_lookup_stages(),
+                *build_creator_lookup_stages(),
             ]
             cursor = integrations_collection.aggregate(mongo_pipeline)
             docs = await cursor.to_list(length=limit)
 
-            integrations = _format_community_integrations(docs)
+            integrations = format_community_integrations(docs)
 
             return CommunityListResponse(
                 integrations=integrations,
@@ -338,8 +344,16 @@ async def list_community_integrations(
                 has_more=(offset + len(docs)) < total,
             )
 
-        # MongoDB query path (without search)
-        query: dict = {"is_public": True}
+        # MongoDB query path (without search) - CHECK CACHE FIRST
+        cache_key = f"marketplace:community:{sort}:{category}:{limit}:{offset}"
+        cached = await get_cache(cache_key)
+        if cached:
+            return CommunityListResponse(**cached)
+
+        query: dict = {
+            "is_public": True,
+            "published_at": {"$ne": None},  # Only show published integrations
+        }
 
         # Apply category filter
         if category and category != "all":
@@ -364,105 +378,30 @@ async def list_community_integrations(
             {"$sort": sort_dict},
             {"$skip": offset},
             {"$limit": limit},
-            *_build_creator_lookup_stages(),
+            *build_creator_lookup_stages(),
         ]
 
         cursor = integrations_collection.aggregate(sort_pipeline)
         docs = await cursor.to_list(length=limit)
 
-        integrations = _format_community_integrations(docs)
+        integrations = format_community_integrations(docs)
 
-        return CommunityListResponse(
+        response = CommunityListResponse(
             integrations=integrations,
             total=total,
             has_more=(offset + len(docs)) < total,
         )
+
+        # Cache the response for 5 minutes
+        await set_cache(cache_key, response.model_dump(), ttl=CACHE_TTL)
+
+        return response
 
     except Exception as e:
         logger.error(f"Error fetching community integrations: {e}")
         raise HTTPException(
             status_code=500, detail="Failed to fetch community integrations"
         )
-
-
-def _build_creator_lookup_stages() -> list[dict]:
-    """Build aggregation stages to join creator info from users collection.
-
-    Handles cases where created_by is not a valid ObjectId (e.g., "system_seed").
-    """
-    return [
-        {
-            "$lookup": {
-                "from": "users",
-                "let": {
-                    "creator_id": {
-                        "$convert": {
-                            "input": "$created_by",
-                            "to": "objectId",
-                            "onError": None,  # Return null if conversion fails
-                            "onNull": None,
-                        }
-                    }
-                },
-                "pipeline": [
-                    {"$match": {"$expr": {"$eq": ["$_id", "$$creator_id"]}}},
-                    {"$project": {"name": 1, "picture": 1}},
-                ],
-                "as": "creator_info",
-            }
-        },
-        {
-            "$addFields": {
-                "creator": {
-                    "$cond": {
-                        "if": {"$gt": [{"$size": "$creator_info"}, 0]},
-                        "then": {"$arrayElemAt": ["$creator_info", 0]},
-                        "else": None,
-                    }
-                }
-            }
-        },
-        {"$project": {"creator_info": 0}},
-    ]
-
-
-def _format_community_integrations(docs: list) -> list[CommunityIntegrationItem]:
-    """Format MongoDB documents into CommunityIntegrationItem responses."""
-    result = []
-    for doc in docs:
-        tools = doc.get("tools", [])
-        tool_items = [
-            IntegrationTool(
-                name=t.get("name", ""),
-                description=t.get("description"),
-            )
-            for t in tools[:10]  # Limit to first 10 tools
-        ]
-
-        # Creator info is now populated via aggregation pipeline
-        creator = None
-        creator_data = doc.get("creator")
-        if creator_data:
-            creator = CommunityIntegrationCreator(
-                name=creator_data.get("name"),
-                picture=creator_data.get("picture"),
-            )
-
-        result.append(
-            CommunityIntegrationItem(
-                integration_id=doc["integration_id"],
-                name=doc["name"],
-                description=doc.get("description", ""),
-                category=doc.get("category", "custom"),
-                icon_url=doc.get("icon_url"),
-                clone_count=doc.get("clone_count", 0),
-                tool_count=len(tools),
-                tools=tool_items,
-                published_at=doc.get("published_at"),
-                creator=creator,
-            )
-        )
-    return result
 
 
 @router.get("/users/me/integrations", response_model=UserIntegrationsListResponse)
@@ -699,11 +638,6 @@ async def delete_custom_mcp_integration(
     except Exception as e:
         logger.error(f"Error deleting integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete integration")
-
-
-# ============================================================================
-# Public Integration Endpoints (2.4, 2.5, 2.6)
-# ============================================================================
 
 
 @router.get("/public/{integration_id}", response_model=PublicIntegrationDetailResponse)
@@ -1075,6 +1009,9 @@ async def publish_integration(
             tools=tools,
         )
 
+        # Invalidate marketplace cache so new integration appears
+        await delete_cache_by_pattern("marketplace:community:*")
+
         public_url = f"/marketplace/{integration_id}"
         logger.info(f"Published integration {integration_id}")
 
@@ -1134,6 +1071,9 @@ async def unpublish_integration(
 
         # Remove from ChromaDB index
         await remove_public_integration(integration_id)
+
+        # Invalidate marketplace cache so integration is removed
+        await delete_cache_by_pattern("marketplace:community:*")
 
         logger.info(f"Unpublished integration {integration_id}")
 
