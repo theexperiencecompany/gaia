@@ -347,7 +347,8 @@ export const integrationsApi = {
     }
 
     // After OAuth, redirect to integrations page with sidebar open
-    const redirectPath = `/integrations?id=${integrationId}`;
+    // Include refresh=true to signal fresh data is needed (avoid stale cache)
+    const redirectPath = `/integrations?id=${integrationId}&refresh=true`;
 
     const response = (await apiService.post(
       `/integrations/public/${integrationId}/add`,

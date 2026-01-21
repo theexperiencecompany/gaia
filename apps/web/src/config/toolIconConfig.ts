@@ -330,6 +330,30 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#ffffff",
     isImage: true,
   },
+  browserbase: {
+    icon: "https://www.google.com/s2/favicons?domain=browserbase.com&sz=128",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
+  posthog: {
+    icon: "https://www.google.com/s2/favicons?domain=posthog.com&sz=128",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
+  agentmail: {
+    icon: "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://agentmail.to&size=256",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
 
   // Category icons (non-image, use React components in toolIcons.tsx)
   // OG images use auto-generated paths from iconPaths.generated.ts via icon name

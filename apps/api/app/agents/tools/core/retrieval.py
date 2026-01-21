@@ -23,24 +23,22 @@ from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore
 
 
-def _format_subagent_key(integration_id: str, name: str | None) -> str:
-    """Format subagent key with name for LLM readability.
+def _format_subagent_key(integration_id: str, name: str | None = None) -> str:
+    """Format subagent key for tool retrieval.
+
+    Format: 'subagent:{id}' or 'subagent:{id} ({name})' when name differs.
+    ID comes first for easy extraction, name provides LLM readability.
 
     Args:
         integration_id: The integration ID (e.g., 'gmail' or 'fb9dfd7e05f8')
-        name: Human-readable name (e.g., 'Semantic Scholar')
+        name: Human-readable name for display (e.g., 'Semantic Scholar')
 
     Returns:
-        Formatted key like 'subagent:semantic_scholar (fb9dfd7e05f8)' or 'subagent:gmail'
+        Formatted key like 'subagent:gmail' or 'subagent:fb9dfd7e05f8 (Semantic Scholar)'
     """
     if name and name.lower() != integration_id.lower():
-        # Custom integration with a different name - include both for clarity
-        # Normalize name: lowercase, replace spaces with underscores
-        normalized_name = name.lower().replace(" ", "_").replace("-", "_")
-        return f"subagent:{normalized_name} ({integration_id})"
-    else:
-        # Platform integration or name matches ID - just use ID
-        return f"subagent:{integration_id}"
+        return f"subagent:{integration_id} ({name})"
+    return f"subagent:{integration_id}"
 
 
 async def _get_custom_integration_names(
@@ -156,7 +154,7 @@ def get_retrieve_tools_function(
 
         —TOOL NAME FORMATS
         - Regular tools: "GMAIL_SEND_DRAFT", "CREATE_TODO"
-        - Subagent tools: "subagent:gmail", "subagent:semantic_scholar (fb9dfd7e05f8)"
+        - Subagent tools: "subagent:gmail", "subagent:fb9dfd7e05f8"
 
         Note:
         - Subagent tools require delegation via the `handoff` tool
@@ -221,11 +219,15 @@ def get_retrieve_tools_function(
 
         # BINDING MODE: Validate and bind exact tool names
         if exact_tool_names:
-            validated_tool_names = [
-                tool_name
-                for tool_name in exact_tool_names
-                if tool_name in available_tool_names
-            ]
+            validated_tool_names = []
+            for tool_name in exact_tool_names:
+                # Subagent keys (e.g., "subagent:gmail", "subagent:fb9dfd7e05f8")
+                # are not in the tool registry - they're used with the handoff tool
+                # and don't need binding. Pass them through for discovery response.
+                if tool_name.startswith("subagent:"):
+                    validated_tool_names.append(tool_name)
+                elif tool_name in available_tool_names:
+                    validated_tool_names.append(tool_name)
             return RetrieveToolsResult(
                 tools_to_bind=validated_tool_names,
                 response=validated_tool_names,

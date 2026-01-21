@@ -172,6 +172,8 @@ class MCPTokenStore:
         encrypted_refresh = self._encrypt(refresh_token) if refresh_token else None
         # Use naive UTC datetime for PostgreSQL TIMESTAMP WITHOUT TIME ZONE column
         now = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Also strip timezone from expires_at if provided
+        naive_expires_at = expires_at.replace(tzinfo=None) if expires_at else None
 
         async with get_db_session() as session:
             # Query within this session
@@ -186,7 +188,7 @@ class MCPTokenStore:
             if cred:
                 cred.access_token = encrypted_access
                 cred.refresh_token = encrypted_refresh
-                cred.token_expires_at = expires_at
+                cred.token_expires_at = naive_expires_at
                 # Set status to connected so get_oauth_token() can retrieve it
                 cred.status = MCPCredentialStatus.CONNECTED
                 cred.connected_at = now
@@ -198,7 +200,7 @@ class MCPTokenStore:
                     auth_type=MCPAuthType.OAUTH,
                     access_token=encrypted_access,
                     refresh_token=encrypted_refresh,
-                    token_expires_at=expires_at,
+                    token_expires_at=naive_expires_at,
                     status=MCPCredentialStatus.CONNECTED,  # Required for get_oauth_token() to work
                     connected_at=now,
                 )
