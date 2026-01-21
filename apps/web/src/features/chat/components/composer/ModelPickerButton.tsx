@@ -101,9 +101,10 @@ const ModelPickerButton: React.FC = () => {
       className="w-fit! max-w-none!"
       popoverProps={{
         classNames: {
-          content: "min-w-[300px] max-w-none bg-zinc-800",
+          content: "min-w-[370px] max-w-none bg-zinc-800",
         },
       }}
+      
       classNames={{
         trigger:
           "cursor-pointer bg-transparent transition hover:bg-zinc-800 !min-w-fit !w-auto !max-w-none whitespace-nowrap pl-3 pr-8",
@@ -149,41 +150,52 @@ const ModelPickerButton: React.FC = () => {
                 key={model.model_id}
                 textValue={`${model.name}${model.is_default ? " (Default)" : ""}`}
                 classNames={{
+                  base: "py-2.5 px-2 data-[hover=true]:bg-zinc-700/50 gap-3 items-start",
                   title: "text-zinc-200",
                   description: "text-zinc-400 mt-1",
                 }}
                 startContent={
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-700/50 shrink-0 mt-1">
                     {model.logo_url && (
                       <Image
                         src={model.logo_url}
                         alt={model.name}
                         height={40}
                         width={40}
-                        className="h-4 w-4 object-contain"
+                        className="h-5 w-5 object-contain"
                       />
                     )}
                   </div>
                 }
               >
-                <div className="flex items-center justify-between gap-2 w-full">
-                  <span className="text-nowrap">{model.name}</span>
-                  <div className="flex items-center gap-1">
-                    {model.is_default && (
-                      <Chip size="sm" color="success" variant="flat">
-                        Default
-                      </Chip>
-                    )}
-                    {isFree ? (
-                      <Chip size="sm" color="default" variant="flat">
-                        Free
-                      </Chip>
-                    ) : (
-                      <Chip size="sm" color="warning" variant="flat">
-                        Pro
-                      </Chip>
-                    )}
+                <div className="flex flex-col gap-0.5 w-full min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-zinc-100 truncate">
+                      {model.name}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {model.is_default && (
+                        <Chip size="sm" color="success" variant="flat" classNames={{ content: "text-xs px-1" }}>
+                          Default
+                        </Chip>
+                      )}
+                      {!isFree && (
+                        <Chip size="sm" color="warning" variant="flat" classNames={{ content: "text-xs px-1" }}>
+                          Pro
+                        </Chip>
+                      )}
+                    </div>
                   </div>
+                  {model.description && (
+                    <p className="text-xs text-zinc-400 line-clamp-3 leading-relaxed">
+                      {model.description}
+                    </p>
+                  )}
+                  {model.provider_model_name && (
+                    <code className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                      {model.provider_model_name}
+                    </code>
+                  )}
                 </div>
               </SelectItem>
             );

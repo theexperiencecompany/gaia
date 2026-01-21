@@ -43,8 +43,17 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 # Import app modules after path setup  # noqa: E402
-from app.db.mongodb.collections import ai_models_collection  # noqa: E402
+from app.db.mongodb.collections import ai_models_collection, users_collection  # noqa: E402
+from app.db.redis import delete_cache_by_pattern  # noqa: E402
 from app.models.models_models import ModelProvider, PlanType  # noqa: E402
+
+# Redis cache key patterns for chat models (from model_service.py)
+CHAT_MODELS_CACHE_PATTERNS = [
+    "chat_models:available_models:*",
+    "chat_models:model_by_id:*",
+    "chat_models:selected_model:*",
+    "chat_models:default_model",
+]
 
 
 def get_models_configuration() -> List[Dict[str, Any]]:
@@ -53,115 +62,42 @@ def get_models_configuration() -> List[Dict[str, Any]]:
     This is the single source of truth for what models should exist.
     """
     return [
-        # OpenAI Models
+        # Google Gemini 3 Models (preview - latest generation)
         {
-            "model_id": "gpt-4o",
-            "name": "GPT-4o",
-            "model_provider": ModelProvider.OPENAI.value,
-            "inference_provider": ModelProvider.OPENAI.value,
-            "provider_model_name": "gpt-4o",
-            "description": "OpenAI's most capable model, great for complex reasoning tasks",
-            "logo_url": "/images/icons/chatgpt.webp",
-            "max_tokens": 48_000,
+            "model_id": "gemini-3-flash",
+            "name": "Gemini 3 Flash",
+            "model_provider": ModelProvider.GEMINI.value,
+            "inference_provider": ModelProvider.GEMINI.value,
+            "provider_model_name": "gemini-3-flash-preview",
+            "description": "Google's most balanced model built for speed, scale, and frontier intelligence with 1M context",
+            "logo_url": "/images/icons/gemini.webp",
+            "max_tokens": 1_000_000,
+            "supports_streaming": True,
+            "supports_function_calling": True,
+            "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
+            "lowest_tier": PlanType.FREE.value,
+            "is_active": True,
+            "is_default": False,
+            "pricing_per_1k_input_tokens": 0.0005,
+            "pricing_per_1k_output_tokens": 0.003,
+        },
+        {
+            "model_id": "gemini-3-pro",
+            "name": "Gemini 3 Pro",
+            "model_provider": ModelProvider.GEMINI.value,
+            "inference_provider": ModelProvider.GEMINI.value,
+            "provider_model_name": "gemini-3-pro-preview",
+            "description": "Google's most intelligent model with state-of-the-art reasoning for complex multimodal tasks",
+            "logo_url": "/images/icons/gemini.webp",
+            "max_tokens": 1_000_000,
             "supports_streaming": True,
             "supports_function_calling": True,
             "available_in_plans": [PlanType.PRO.value],
             "lowest_tier": PlanType.PRO.value,
             "is_active": True,
             "is_default": False,
-            "pricing_per_1k_input_tokens": 0.0025,  # $2.50 per million tokens
-            "pricing_per_1k_output_tokens": 0.0075,  # $7.50 per million tokens
-        },
-        {
-            "model_id": "gpt-4o-mini",
-            "name": "GPT-4o Mini",
-            "model_provider": ModelProvider.OPENAI.value,
-            "inference_provider": ModelProvider.OPENAI.value,
-            "provider_model_name": "gpt-4o-mini",
-            "description": "OpenAI's efficient model, fast and cost-effective for most tasks",
-            "logo_url": "/images/icons/chatgpt.webp",
-            "max_tokens": 120_000,
-            "supports_streaming": True,
-            "supports_function_calling": True,
-            "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
-            "lowest_tier": PlanType.FREE.value,
-            "is_active": True,
-            "is_default": False,
-            "pricing_per_1k_input_tokens": 0.00015,  # $0.15 per million tokens
-            "pricing_per_1k_output_tokens": 0.0006,  # $0.60 per million tokens
-        },
-        {
-            "model_id": "gpt-5-mini",
-            "name": "GPT-5 Mini",
-            "model_provider": ModelProvider.OPENAI.value,
-            "inference_provider": ModelProvider.OPENAI.value,
-            "provider_model_name": "gpt-5-mini",
-            "description": "OpenAI's latest efficient model with improved reasoning and speed",
-            "logo_url": "/images/icons/chatgpt.webp",
-            "max_tokens": 128_000,
-            "supports_streaming": True,
-            "supports_function_calling": True,
-            "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
-            "lowest_tier": PlanType.FREE.value,
-            "is_active": True,
-            "is_default": False,
-            "pricing_per_1k_input_tokens": 0.00025,  # $0.25 per million tokens
-            "pricing_per_1k_output_tokens": 0.002,  # $2.00 per million tokens
-        },
-        # Google Gemini Models
-        {
-            "model_id": "gemini-2.0-flash",
-            "name": "Gemini 2.0 Flash",
-            "model_provider": ModelProvider.GEMINI.value,
-            "inference_provider": ModelProvider.GEMINI.value,
-            "provider_model_name": "gemini-2.0-flash",
-            "description": "Google's latest fast model with improved performance",
-            "logo_url": "/images/icons/gemini.webp",
-            "max_tokens": 120_000,
-            "supports_streaming": True,
-            "supports_function_calling": True,
-            "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
-            "lowest_tier": PlanType.FREE.value,
-            "is_active": True,
-            "is_default": False,
-            "pricing_per_1k_input_tokens": 0.0001,  # $0.10 per million tokens
-            "pricing_per_1k_output_tokens": 0.0004,  # $0.40 per million tokens
-        },
-        {
-            "model_id": "gemini-2.5-flash",
-            "name": "Gemini 2.5 Flash",
-            "model_provider": ModelProvider.GEMINI.value,
-            "inference_provider": ModelProvider.GEMINI.value,
-            "provider_model_name": "gemini-2.5-flash",
-            "description": "Google's advanced fast model with enhanced capabilities",
-            "logo_url": "/images/icons/gemini.webp",
-            "max_tokens": 120_000,
-            "supports_streaming": True,
-            "supports_function_calling": True,
-            "available_in_plans": [PlanType.PRO.value, PlanType.FREE.value],
-            "lowest_tier": PlanType.FREE.value,
-            "is_active": True,
-            "is_default": False,
-            "pricing_per_1k_input_tokens": 0.0003,  # $0.30 per million tokens
-            "pricing_per_1k_output_tokens": 0.0025,  # $2.50 per million tokens
-        },
-        {
-            "model_id": "gemini-2.5-pro",
-            "name": "Gemini 2.5 Pro",
-            "model_provider": ModelProvider.GEMINI.value,
-            "inference_provider": ModelProvider.GEMINI.value,
-            "provider_model_name": "gemini-2.5-pro",
-            "description": "Google's most advanced model with superior reasoning and creativity",
-            "logo_url": "/images/icons/gemini.webp",
-            "max_tokens": 120_000,
-            "supports_streaming": True,
-            "supports_function_calling": True,
-            "available_in_plans": [PlanType.PRO.value],
-            "lowest_tier": PlanType.PRO.value,
-            "is_active": True,
-            "is_default": False,
-            "pricing_per_1k_input_tokens": 0.00125,  # $1.25 per million tokens
-            "pricing_per_1k_output_tokens": 0.01,  # $10.00 per million tokens
+            "pricing_per_1k_input_tokens": 0.002,
+            "pricing_per_1k_output_tokens": 0.012,
         },
         # Grok Models (via OpenRouter)
         {
@@ -170,7 +106,7 @@ def get_models_configuration() -> List[Dict[str, Any]]:
             "model_provider": ModelProvider.GROK.value,
             "inference_provider": ModelProvider.OPENROUTER.value,
             "provider_model_name": "x-ai/grok-4.1-fast",
-            "description": "xAI's fast and efficient Grok model with strong reasoning capabilities",
+            "description": "xAI's fast Grok model with strong reasoning capabilities",
             "logo_url": "/images/icons/grok.webp",
             "max_tokens": 128_000,
             "supports_streaming": True,
@@ -179,27 +115,8 @@ def get_models_configuration() -> List[Dict[str, Any]]:
             "lowest_tier": PlanType.FREE.value,
             "is_active": True,
             "is_default": True,
-            "pricing_per_1k_input_tokens": 0.0004,  # $0.40 per million tokens
-            "pricing_per_1k_output_tokens": 0.0010,  # $1.00 per million tokens
-        },
-        # OpenAI Open Source Models (via OpenRouter)
-        {
-            "model_id": "openai/gpt-oss-120b:free",
-            "name": "GPT-OSS 120B",
-            "model_provider": ModelProvider.OPENAI.value,
-            "inference_provider": ModelProvider.OPENROUTER.value,
-            "provider_model_name": "openai/gpt-oss-120b:free",
-            "description": "OpenAI's open-weight 117B MoE model optimized for reasoning and agentic use. Free tier.",
-            "logo_url": "/images/icons/chatgpt.webp",
-            "max_tokens": 131_000,
-            "supports_streaming": True,
-            "supports_function_calling": True,
-            "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
-            "lowest_tier": PlanType.FREE.value,
-            "is_active": True,
-            "is_default": False,
-            "pricing_per_1k_input_tokens": 0.0,  # Free
-            "pricing_per_1k_output_tokens": 0.0,  # Free
+            "pricing_per_1k_input_tokens": 0.0004,
+            "pricing_per_1k_output_tokens": 0.001,
         },
     ]
 
@@ -405,12 +322,33 @@ async def sync_models(
 
         # Remove obsolete models
         if models_to_remove:
+            # First, reset users who have selected a model being removed
+            default_model = next(
+                (m["model_id"] for m in desired_models if m.get("is_default")),
+                desired_models[0]["model_id"] if desired_models else None,
+            )
+            if default_model:
+                reset_result = await users_collection.update_many(
+                    {"selected_model": {"$in": list(models_to_remove)}},
+                    {"$set": {"selected_model": default_model}},
+                )
+                if reset_result.modified_count > 0:
+                    print(
+                        f"✅ Reset {reset_result.modified_count} users' selected model to {default_model}"
+                    )
+
             result = await ai_models_collection.delete_many(
                 {"model_id": {"$in": list(models_to_remove)}}
             )
             print(f"✅ Removed {result.deleted_count} obsolete models")
 
         print("\n🎉 Synchronization completed successfully!")
+
+        # Clear Redis cache for chat models
+        print("\n🧹 Clearing Redis cache for chat models...")
+        for pattern in CHAT_MODELS_CACHE_PATTERNS:
+            await delete_cache_by_pattern(pattern)
+        print("✅ Redis cache cleared")
 
         # Final summary
         final_count = await ai_models_collection.count_documents({})
