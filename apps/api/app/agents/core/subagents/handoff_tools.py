@@ -228,18 +228,21 @@ async def _resolve_subagent(
     """
     Resolve subagent from ID and get the graph.
 
+    Accepts formats:
+        - 'subagent:gmail'
+        - 'subagent:fb9dfd7e05f8 (Semantic Scholar)'
+        - 'gmail' (bare ID)
+
     Returns:
         Tuple of (subagent_graph, agent_name, integration_id, is_custom)
         or (None, None, error_message, False) on failure
     """
+    # Strip 'subagent:' prefix if present
     clean_id = subagent_id.replace("subagent:", "").strip()
 
-    # Check for format with parentheses: "name (id)" -> extract id
-    paren_match = re.search(
-        r"\(([a-zA-Z0-9_]+)\)$", clean_id
-    )  # pragma: allowlist secret
-    if paren_match:
-        clean_id = paren_match.group(1)
+    # Extract ID from 'id (Name)' format - just take everything before ' ('
+    if " (" in clean_id:
+        clean_id = clean_id.split(" (")[0]
 
     integration = await _get_subagent_by_id(clean_id)
 
@@ -351,7 +354,7 @@ async def _resolve_subagent(
 async def handoff(
     subagent_id: Annotated[
         str,
-        "The ID of the subagent to delegate to (e.g., 'gmail', 'subagent:gmail', 'subagent:semantic_scholar (fb9dfd7e05f8)'). "
+        "The ID of the subagent to delegate to (e.g., 'gmail', 'subagent:gmail'). "
         "Get this from retrieve_tools results (subagent IDs have 'subagent:' prefix).",
     ],
     task: Annotated[
@@ -370,10 +373,7 @@ async def handoff(
     2. Return the result of the completed task
 
     Args:
-        subagent_id: ID of the subagent from retrieve_tools. Supports formats:
-            - "subagent:gmail" (platform integration)
-            - "subagent:semantic_scholar (fb9dfd7e05f8)" (custom integration with name and ID)  # pragma: allowlist secret
-            - "gmail" or "fb9dfd7e05f8" (bare IDs)  # pragma: allowlist secret
+        subagent_id: ID of the subagent from retrieve_tools (e.g., 'subagent:gmail', 'gmail')
         task: Complete task description with all necessary context
     """
     try:
@@ -456,11 +456,8 @@ async def handoff(
         # This is used by execute_subagent_stream for the subagent's tool calls
         integration_metadata = None
         if is_custom:
-            clean_id = subagent_id.replace("subagent:", "").strip()
-            paren_match = re.search(r"\(([a-zA-Z0-9_]+)\)$", clean_id)
-            if paren_match:
-                clean_id = paren_match.group(1)
-            integration = await _get_subagent_by_id(clean_id)
+            # For custom MCPs, we need to get the integration data again
+            integration = await _get_subagent_by_id(int_id)
             if isinstance(integration, dict):
                 integration_metadata = {
                     "icon_url": integration.get("icon_url"),

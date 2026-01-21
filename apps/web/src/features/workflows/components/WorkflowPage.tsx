@@ -57,6 +57,7 @@ export default function WorkflowPage() {
 
   const { workflows, isLoading, error, refetch } = useWorkflows();
   const [exploreWorkflows, setExploreWorkflows] = useState<UseCase[]>([]);
+  const [exploreWorkflowsTotal, setExploreWorkflowsTotal] = useState(0);
   const [isLoadingExplore, setIsLoadingExplore] = useState(false);
 
   const [communityWorkflows, setCommunityWorkflows] = useState<
@@ -99,6 +100,7 @@ export default function WorkflowPage() {
         const response = await workflowApi.getExploreWorkflows(25, 0);
         const useCases = response.workflows.map(convertToUseCase);
         setExploreWorkflows(useCases);
+        setExploreWorkflowsTotal(response.total);
       } catch (error) {
         console.error("Error loading explore workflows:", error);
       } finally {
@@ -220,12 +222,18 @@ export default function WorkflowPage() {
     description: string,
     children: ReactNode,
     icon?: ReactElement<IconProps>,
+    count?: number,
   ) => (
     <div className="mt-12 flex flex-col gap-3">
       <div className="flex flex-col space-y-1">
         <div className="flex items-center gap-2">
           {icon && <span> {React.cloneElement(icon)}</span>}
           <h2 className="text-2xl font-medium text-zinc-100">{title}</h2>
+          {count !== undefined && count > 0 && (
+            <span className="rounded-full bg-zinc-800 px-2.5 py-0.5 text-sm font-medium text-zinc-400">
+              {count}
+            </span>
+          )}
         </div>
         <p className="font-light text-zinc-500">{description}</p>
       </div>
@@ -289,6 +297,8 @@ export default function WorkflowPage() {
                 hideUserWorkflows={true}
                 exploreWorkflows={exploreWorkflows}
               />,
+              undefined,
+              exploreWorkflowsTotal,
             )}
 
           {renderSection(

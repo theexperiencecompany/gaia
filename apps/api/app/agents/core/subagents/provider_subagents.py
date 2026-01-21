@@ -230,6 +230,7 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
 
     # Use user-specific category name to avoid conflicts
     category_name = f"mcp_{integration_id}_{user_id}"
+    tools = None  # Track tools for count-based strategy decision
 
     if category_name not in tool_registry._categories:
         # Lazy import to avoid circular dependency
@@ -269,19 +270,35 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
         )
         await tool_registry._index_category_tools(category_name)
         logger.info(f"Registered {len(tools)} custom MCP tools for {integration_id}")
+    else:
+        # Category exists - get tool count from registry
+        category = tool_registry.get_category(category_name)
+        if category:
+            tools = category.tools
 
     llm = init_llm()
     agent_name = f"custom_mcp_{integration_id}"
 
     logger.info(f"Creating custom MCP subagent {agent_name} for user {user_id}")
 
+    # Check tool count to decide binding strategy
+    # For small MCPs (<= 5 tools): bind all directly for lower latency
+    # For larger MCPs: use retrieve_tools to avoid context pollution
+    tool_count = len(tools) if tools else 0
+    use_direct = tool_count <= 5
+
+    logger.info(
+        f"Custom MCP {integration_id} has {tool_count} tools - "
+        f"using {'direct binding' if use_direct else 'retrieve_tools'}"
+    )
+
     graph = await SubAgentFactory.create_provider_subagent(
         provider=integration_id,
         llm=llm,
         tool_space=integration_id,
         name=agent_name,
-        use_direct_tools=True,  # Custom MCPs use direct tools
-        disable_retrieve_tools=True,  # No nested retrieval needed
+        use_direct_tools=use_direct,
+        disable_retrieve_tools=use_direct,  # Only disable if using direct binding
     )
 
     logger.info(f"Custom MCP subagent {agent_name} created successfully")

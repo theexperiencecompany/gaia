@@ -21,6 +21,7 @@ import {
   RemoveCircleIcon,
   Share08Icon,
   Unlink04Icon,
+  UserCircle02Icon,
 } from "@/icons";
 import { useUserStore } from "@/stores/userStore";
 
@@ -218,12 +219,16 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                     radius="sm"
                     className="text-xs font-light relative text-foreground-500"
                     startContent={
-                      <Avatar
-                        src={integration.creator.picture || undefined}
-                        name={integration.creator.name || undefined}
-                        size="sm"
-                        className="h-4 w-4"
-                      />
+                      integration.creator.picture ? (
+                        <Avatar
+                          src={integration.creator.picture || undefined}
+                          name={integration.creator.name || undefined}
+                          size="sm"
+                          className="h-4 w-4"
+                        />
+                      ) : (
+                        <UserCircle02Icon width={16} height={16} />
+                      )
                     }
                   >
                     <div className="flex items-center gap-1.5 text-xs pl-0.5">
