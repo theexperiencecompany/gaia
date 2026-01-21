@@ -11,7 +11,6 @@ import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionS
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
 import type { MessageType } from "@/types/features/convoTypes";
-import type { ToolProgressData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared";
 import fetchDate from "@/utils/date/dateUtils";
@@ -145,51 +144,41 @@ export const useChatStream = () => {
     };
   };
 
-  const handleProgressUpdate = (progressData: string | ToolProgressData) => {
-    if (typeof progressData === "string") {
-      setLoadingText(progressData);
-    } else if (typeof progressData === "object" && progressData.message) {
-      // Update loading indicator
-      setLoadingText(progressData.message, {
-        toolName: progressData.tool_name,
-        toolCategory: progressData.tool_category,
-        showCategory: progressData.show_category ?? true,
-      });
+  const handleToolData = (toolData: ToolDataEntry) => {
+    // Append tool_data entry to botMessage.tool_data
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    updateBotMessage({
+      tool_data: [...existingToolData, toolData],
+    });
 
-      // Accumulate into tool_data for ToolCallsSection
-      const existingToolData = refs.current.botMessage?.tool_data ?? [];
-      const toolEntry: ToolDataEntry = {
-        tool_name: "tool_calls_data",
-        tool_category: progressData.tool_category ?? "",
-        data: {
-          tool_name: progressData.tool_name,
-          tool_category: progressData.tool_category ?? "",
-          message: progressData.message,
-          show_category: progressData.show_category,
-          tool_call_id: progressData.tool_call_id,
-          inputs: progressData.inputs,
-          icon_url: progressData.icon_url,
-          integration_name: progressData.integration_name,
-        } as ToolDataEntry["data"],
-        timestamp: new Date().toISOString(),
-      };
-      updateBotMessage({
-        tool_data: [...existingToolData, toolEntry],
-      });
-
-      // Sync to store for persistence
-      const conversationId =
-        refs.current.newConversation.id ||
-        useChatStore.getState().activeConversationId;
-      if (refs.current.botMessage?.message_id && conversationId) {
-        updateBotMessageInStore(conversationId);
+    // Extract loading text from tool_data.data.message for UI indicator
+    if (
+      toolData.tool_name === "tool_calls_data" &&
+      typeof toolData.data === "object" &&
+      toolData.data !== null
+    ) {
+      const data = toolData.data as Record<string, unknown>;
+      if (data.message && typeof data.message === "string") {
+        setLoadingText(data.message, {
+          toolName: data.tool_name as string | undefined,
+          toolCategory: data.tool_category as string | undefined,
+          showCategory: (data.show_category as boolean) ?? true,
+        });
       }
+    }
+
+    // Sync to store for persistence
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
     }
   };
 
   /**
    * Helper to update tool_data entries by tool_call_id.
-   * Reduces duplication between handleToolOutput and handleToolInputs.
+   * Used by handleToolOutput to add output to existing entries.
    */
   const updateToolDataEntry = (
     toolCallId: string,
@@ -238,16 +227,6 @@ export const useChatStream = () => {
     updateToolDataEntry(toolOutput.tool_call_id, (data) => ({
       ...data,
       output: toolOutput.output,
-    }));
-  };
-
-  const handleToolInputs = (toolInputs: {
-    tool_call_id: string;
-    inputs: Record<string, unknown>;
-  }) => {
-    updateToolDataEntry(toolInputs.tool_call_id, (data) => ({
-      ...data,
-      inputs: toolInputs.inputs,
     }));
   };
 
@@ -420,7 +399,13 @@ export const useChatStream = () => {
       refs.current.accumulatedResponse += data.response;
     }
 
-    const streamUpdates = parseStreamData(data, refs.current.botMessage);
+    // Skip tool_data and tool_output - they're handled separately
+    // to avoid double-processing in parseStreamData
+    const { tool_data: _, tool_output: __, ...restData } = data;
+    const streamUpdates = parseStreamData(
+      restData as Partial<MessageType>,
+      refs.current.botMessage,
+    );
 
     updateBotMessage({
       ...streamUpdates,
@@ -509,16 +494,14 @@ export const useChatStream = () => {
         return;
       }
 
-      if (data.progress) {
-        handleProgressUpdate(data.progress);
+      // Handle tool_data events (tool calls with complete inputs)
+      if (data.tool_data) {
+        handleToolData(data.tool_data);
       }
 
+      // Handle tool_output events (tool execution results)
       if (data.tool_output) {
         handleToolOutput(data.tool_output);
-      }
-
-      if (data.tool_inputs) {
-        handleToolInputs(data.tool_inputs);
       }
 
       if (handleImageGeneration(data)) return;

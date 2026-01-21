@@ -23,17 +23,17 @@ UUID_PATTERN = re.compile(
 )
 
 
-async def format_tool_progress(
+async def format_tool_call_entry(
     tool_call: ToolCall,
     icon_url: Optional[str] = None,
     integration_id: Optional[str] = None,
     integration_name: Optional[str] = None,
 ) -> Optional[dict]:
-    """Format tool execution progress data for streaming UI updates.
+    """Format tool call as tool_data entry for frontend streaming.
 
-    Transforms a LangChain ToolCall object into a structured progress update
-    that can be displayed in the frontend. Extracts tool name, formats it for
-    display, and retrieves the tool category from the registry.
+    Creates a unified tool_data entry that the frontend can directly append
+    to the message's tool_data array. This is emitted once per tool call
+    from the 'updates' stream when complete args are available.
 
     Args:
         tool_call: LangChain ToolCall object containing tool execution details
@@ -42,29 +42,38 @@ async def format_tool_progress(
         integration_name: Optional friendly name for display (e.g., 'Researcher')
 
     Returns:
-        Dictionary with progress information including formatted message,
-        tool name, category, and show_category flag, or None if tool name is missing
+        Dictionary in tool_data entry format with tool_name="tool_calls_data",
+        or None if tool name is missing
     """
-
     tool_registry = await get_tool_registry()
     tool_name_raw = tool_call.get("name")
     if not tool_name_raw:
         return None
 
-    # Tools that emit their own progress messages - skip generic emission
-    if tool_name_raw == "handoff":
-        return None
-
-    # Special tools with custom display names and hidden categories
-    # Format: (category, display_name) - these tools don't show category text
+    # Special tools with custom display names and categories
+    # Format: (category, display_name, show_category)
     special_tools = {
-        "retrieve_tools": ("retrieve_tools", "Retrieving tools"),
-        "call_executor": ("executor", "Delegating to executor"),
+        "retrieve_tools": ("retrieve_tools", "Retrieving tools", False),
+        "call_executor": ("executor", "Delegating to executor", False),
+        "handoff": ("handoff", None, False),  # message will be set from args
     }
 
     if tool_name_raw in special_tools:
-        tool_category, tool_display_name = special_tools[tool_name_raw]
-        show_category = False
+        tool_category, tool_display_name, show_category = special_tools[tool_name_raw]
+
+        # For handoff, create dynamic message from args
+        if tool_name_raw == "handoff":
+            args = tool_call.get("args", {})
+            subagent_id = args.get("subagent_id", "subagent")
+            # Clean up subagent_id for display
+            clean_name = subagent_id.replace("subagent:", "").replace("_", " ").title()
+            # Extract name from format "name (id)" if present
+            import re
+
+            paren_match = re.search(r"^([^(]+)", clean_name)
+            if paren_match:
+                clean_name = paren_match.group(1).strip()
+            tool_display_name = f"Handing off to {clean_name}"
     else:
         # Use provided integration_id for custom MCPs, otherwise look up from registry
         if integration_id:
@@ -73,15 +82,10 @@ async def format_tool_progress(
             tool_category = tool_registry.get_category_of_tool(tool_name_raw)
             # Extract integration name from MCP categories
             # Category format: mcp_{integration_id} or mcp_{integration_id}_{user_id}
-            # User IDs are UUIDs v4 (e.g., 550e8400-e29b-41d4-a716-446655440000)
-            # Custom integration IDs have hex suffixes (e.g., custom_reposearch_6966a2fb964b5991c13ab887)
             if tool_category and tool_category.startswith("mcp_"):
-                # Strip "mcp_" prefix
                 without_prefix = tool_category[4:]
-                # Only strip suffix if it matches UUID v4 pattern
                 parts = without_prefix.rsplit("_", 1)
                 if len(parts) == 2 and UUID_PATTERN.match(parts[-1]):
-                    # Last part is a valid UUID (user ID)
                     tool_category = parts[0]
                 else:
                     tool_category = without_prefix
@@ -89,21 +93,22 @@ async def format_tool_progress(
         tool_display_name = tool_name_raw.replace("_", " ").title()
         show_category = True
 
-    # Get tool_call_id and args from the tool call
-    tool_call_id = tool_call.get("id")
-    tool_args = tool_call.get("args", {})
+    timestamp = datetime.now(timezone.utc).isoformat()
 
     return {
-        "progress": {
-            "message": tool_display_name,
+        "tool_name": "tool_calls_data",
+        "tool_category": tool_category or "",
+        "data": {
             "tool_name": tool_name_raw,
-            "tool_category": tool_category,
+            "tool_category": tool_category or "",
+            "message": tool_display_name,
             "show_category": show_category,
-            "tool_call_id": tool_call_id,
-            "inputs": tool_args,
+            "tool_call_id": tool_call.get("id"),
+            "inputs": tool_call.get("args", {}),
             "icon_url": icon_url,
             "integration_name": integration_name,
-        }
+        },
+        "timestamp": timestamp,
     }
 
 

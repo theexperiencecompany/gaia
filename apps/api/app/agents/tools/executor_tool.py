@@ -66,8 +66,6 @@ async def call_executor(
         return await execute_subagent_stream(
             ctx=ctx,
             stream_writer=writer,
-            include_updates_mode=True,
-            track_tool_io=True,
         )
 
     except Exception as e:

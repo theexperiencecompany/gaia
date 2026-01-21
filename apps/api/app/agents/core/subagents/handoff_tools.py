@@ -30,6 +30,7 @@ from app.config.oauth_config import (
 )
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import integrations_collection
+from app.db.redis import get_cache, set_cache
 from app.helpers.agent_helpers import build_agent_config
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -42,6 +43,10 @@ from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore, PutOp
 
 SUBAGENTS_NAMESPACE = ("subagents",)
+
+# Cache settings for subagent lookups
+SUBAGENT_CACHE_PREFIX = "subagent_info"
+SUBAGENT_CACHE_TTL = 3600  # 1 hour
 
 
 class SubagentInfo(TypedDict):
@@ -91,20 +96,27 @@ async def _get_subagent_by_id(subagent_id: str):
     Get subagent integration by ID or short_name.
 
     Checks both platform integrations (OAUTH_INTEGRATIONS) and
-    custom MCPs from MongoDB.
+    custom MCPs from MongoDB. Uses Redis caching to avoid repeated DB queries.
 
     Returns:
         Integration config or dict with custom MCP info, or None if not found
     """
     search_id = subagent_id.lower().strip()
 
-    # Check platform integrations first
+    # Check platform integrations first (no caching needed - in-memory)
     for integ in OAUTH_INTEGRATIONS:
         if integ.id.lower() == search_id or (
             integ.short_name and integ.short_name.lower() == search_id
         ):
             if integ.subagent_config and integ.subagent_config.has_subagent:
                 return integ
+
+    # Check Redis cache for custom integrations
+    cache_key = f"{SUBAGENT_CACHE_PREFIX}:{search_id}"
+    cached = await get_cache(cache_key)
+    if cached is not None:
+        # Return cached result (could be empty dict for negative cache)
+        return cached if cached else None
 
     # Escape regex metacharacters to prevent ReDoS attacks
     escaped_search_id = re.escape(search_id)
@@ -127,7 +139,7 @@ async def _get_subagent_by_id(subagent_id: str):
 
     if custom:
         # Return a dict that mimics the integration structure
-        return {
+        result = {
             "id": custom.get("integration_id"),
             "name": custom.get("name"),
             "source": "custom",
@@ -136,6 +148,9 @@ async def _get_subagent_by_id(subagent_id: str):
             "icon_url": custom.get("icon_url"),
             "subagent_config": None,  # Custom MCPs don't have static subagent config
         }
+        # Cache the result
+        await set_cache(cache_key, result, ttl=SUBAGENT_CACHE_TTL)
+        return result
 
     # Fallback: Try IntegrationResolver which checks multiple sources
     # This handles cases where integration is in user_integrations but not integrations
@@ -143,7 +158,7 @@ async def _get_subagent_by_id(subagent_id: str):
     resolved = await IntegrationResolver.resolve(search_id)
     if resolved and resolved.source == "custom" and resolved.custom_doc:
         doc = resolved.custom_doc
-        return {
+        result = {
             "id": doc.get("integration_id"),
             "name": doc.get("name"),
             "source": "custom",
@@ -152,7 +167,12 @@ async def _get_subagent_by_id(subagent_id: str):
             "icon_url": doc.get("icon_url"),
             "subagent_config": None,
         }
+        # Cache the result
+        await set_cache(cache_key, result, ttl=SUBAGENT_CACHE_TTL)
+        return result
 
+    # Cache negative result to avoid repeated DB queries
+    await set_cache(cache_key, {}, ttl=SUBAGENT_CACHE_TTL)
     return None
 
 
@@ -430,55 +450,29 @@ async def handoff(
             user_id=user_id,
         )
 
-        # Emit handoff progress
         writer = get_stream_writer()
 
-        # Get display name for progress message
-        display_name: str = agent_name.replace("_", " ").title()
-        handoff_icon_url: Optional[str] = None
-
+        # Build integration metadata for tool tracking (custom MCPs only)
+        # This is used by execute_subagent_stream for the subagent's tool calls
+        integration_metadata = None
         if is_custom:
-            # For custom MCPs, we need to get the integration data again
             clean_id = subagent_id.replace("subagent:", "").strip()
             paren_match = re.search(r"\(([a-zA-Z0-9_]+)\)$", clean_id)
             if paren_match:
                 clean_id = paren_match.group(1)
             integration = await _get_subagent_by_id(clean_id)
             if isinstance(integration, dict):
-                display_name = str(integration.get("name", int_id))
-                handoff_icon_url = integration.get("icon_url")
-        else:
-            integration = get_integration_by_id(int_id)
-            if integration and hasattr(integration, "name"):
-                display_name = integration.name
-
-        writer(
-            {
-                "progress": {
-                    "message": f"Handing off to {display_name}",
-                    "tool_name": "handoff",
-                    "tool_category": "handoff",
-                    "show_category": False,
-                    "icon_url": handoff_icon_url,
+                integration_metadata = {
+                    "icon_url": integration.get("icon_url"),
+                    "integration_id": int_id,
+                    "name": str(integration.get("name", int_id)),
                 }
-            }
-        )
-
-        # Build integration metadata for tool tracking
-        integration_metadata = None
-        if is_custom:
-            integration_metadata = {
-                "icon_url": handoff_icon_url,
-                "integration_id": int_id,
-                "name": display_name,
-            }
 
         # Execute using shared streaming function
+        # Note: handoff tool_data is emitted by parent graph's updates stream
         return await execute_subagent_stream(
             ctx=ctx,
             stream_writer=writer,
-            include_updates_mode=True,
-            track_tool_io=True,
             integration_metadata=integration_metadata,
         )
 
