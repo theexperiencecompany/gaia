@@ -1401,6 +1401,35 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_direct_tools=True,
         ),
     ),
+    # AgentMail MCP (OAuth via MCP spec discovery)
+    OAuthIntegration(
+        id="agentmail",
+        name="AgentMail",
+        description="AI-powered email management and automation. Send, receive, and manage emails programmatically.",
+        category="communication",
+        provider="agentmail",
+        scopes=[],
+        available=True,
+        is_featured=True,
+        short_name="agentmail",
+        managed_by="mcp",
+        icon_url="https://www.google.com/s2/favicons?domain=agentmail.to&sz=256",
+        mcp_config=MCPConfig(
+            server_url="https://mcp.agentmail.to",
+            requires_auth=True,
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="agentmail_agent",
+            tool_space="agentmail",
+            handoff_tool_name="call_agentmail_agent",
+            domain="email management and automation",
+            capabilities="sending emails, receiving emails, managing inboxes, email automation, programmatic email handling",
+            use_cases="sending automated emails, managing email workflows, email integration, inbox management",
+            system_prompt="You are an AgentMail assistant. Help users send, receive, and manage emails programmatically through the AgentMail API.",
+            use_direct_tools=True,
+        ),
+    ),
 ]
 
 

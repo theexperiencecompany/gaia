@@ -70,7 +70,7 @@ class MCPTokenStore:
     async def get_bearer_token(self, integration_id: str) -> Optional[str]:
         """Get decrypted bearer token."""
         cred = await self.get_credential(integration_id)
-        if cred and cred.access_token and cred.status == "connected":
+        if cred and cred.access_token and cred.status == MCPCredentialStatus.CONNECTED:
             return self._decrypt(cred.access_token)
         return None
 
@@ -85,7 +85,7 @@ class MCPTokenStore:
             logger.debug(f"[{integration_id}] Credential exists but no access_token")
             return None
 
-        if cred.status != "connected":
+        if cred.status != MCPCredentialStatus.CONNECTED:
             logger.debug(
                 f"[{integration_id}] Credential status is '{cred.status}', expected 'connected'"
             )
@@ -228,7 +228,7 @@ class MCPTokenStore:
                     user_id=self.user_id,
                     integration_id=integration_id,
                     auth_type=MCPAuthType.NONE,
-                    status=MCPCredentialStatus.PENDING,  # Informational only
+                    status=MCPCredentialStatus.CONNECTED,  # Ready to use immediately
                 )
                 session.add(cred)
                 await session.commit()
@@ -306,7 +306,7 @@ class MCPTokenStore:
     async def update_status(
         self,
         integration_id: str,
-        status: str,
+        status: MCPCredentialStatus,
         error: Optional[str] = None,
     ) -> None:
         """Update PostgreSQL credential status (informational only).
@@ -344,7 +344,7 @@ class MCPTokenStore:
         Returns True if credential exists and has 'connected' status.
         """
         cred = await self.get_credential(integration_id)
-        return cred is not None and cred.status == "connected"
+        return cred is not None and cred.status == MCPCredentialStatus.CONNECTED
 
     async def get_integrations_with_credentials(self) -> list[str]:
         """Get all MCP integration IDs that have stored credentials.
@@ -389,7 +389,7 @@ class MCPTokenStore:
                 cred = MCPCredential(
                     user_id=self.user_id,
                     integration_id=integration_id,
-                    auth_type="oauth",
+                    auth_type=MCPAuthType.OAUTH,
                     status=MCPCredentialStatus.PENDING,
                     client_registration=json.dumps(dcr_data),
                 )

@@ -14,19 +14,31 @@ from openai import AsyncOpenAI
 INTEGRATION_CATEGORIES = [
     "productivity",  # Notion, Todoist, project management
     "communication",  # Slack, Discord, email
-    "developer",  # GitHub, GitLab, CI/CD
+    "developer",  # GitHub, GitLab, CI/CD, databases, infrastructure
     "analytics",  # Data tools, dashboards
     "finance",  # Payments, accounting
-    "marketing",  # Social media, SEO, ads
-    "storage",  # Cloud storage, databases
-    "ai-ml",  # AI services, ML tools
-    "automation",  # Zapier-like, webhooks
+    "ai-ml",  # AI services, ML tools, model hosting
+    "education",  # Learning platforms, courses, academic tools
+    "personal",  # Health, fitness, lifestyle (Strava, etc.)
+    "capabilities",  # Agent reasoning & cognitive enhancements only
     "other",  # Fallback
 ]
 
 CATEGORY_INFERENCE_PROMPT = """
 Given the following MCP integration details, classify it into ONE of these categories:
 {categories}
+
+Category Guidelines:
+- productivity: Task management, notes, project planning, document collaboration
+- communication: Messaging, email, team chat, video conferencing
+- developer: Code hosting, CI/CD, infrastructure, databases, API tools, deployment platforms
+- analytics: Data analysis, dashboards, business intelligence, metrics
+- finance: Payments, invoicing, accounting, transactions
+- ai-ml: AI model APIs, ML platforms, model hosting services
+- education: Learning platforms, academic research, courses, educational content
+- personal: Health, fitness, lifestyle, personal tracking
+- capabilities: Agent capabilities - reasoning enhancements (thinking frameworks, problem-solving methods), web interaction tools (web search, URL fetching, browser automation), and other fundamental agent abilities. NOT for business services, infrastructure platforms, or domain-specific external APIs.
+- other: Anything that doesn't clearly fit the above
 
 Integration Name: {name}
 Description: {description}

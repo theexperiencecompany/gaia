@@ -12,10 +12,10 @@ export type IntegrationCategoryValue =
   | "developer"
   | "analytics"
   | "finance"
-  | "marketing"
-  | "storage"
   | "ai-ml"
-  | "automation"
+  | "education"
+  | "personal"
+  | "capabilities"
   | "other";
 
 export interface Integration {

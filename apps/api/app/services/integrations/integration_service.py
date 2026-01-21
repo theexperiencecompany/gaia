@@ -714,3 +714,97 @@ async def get_user_available_tool_namespaces(user_id: str) -> set[str]:
         logger.warning(f"Failed to get custom integrations from MongoDB: {e}")
 
     return namespaces
+
+
+def build_creator_lookup_stages() -> list[dict]:
+    """Build aggregation stages to join creator info from users collection.
+
+    Handles cases where created_by is not a valid ObjectId (e.g., "system_seed").
+    """
+    return [
+        {
+            "$lookup": {
+                "from": "users",
+                "let": {
+                    "creator_id": {
+                        "$convert": {
+                            "input": "$created_by",
+                            "to": "objectId",
+                            "onError": None,  # Return null if conversion fails
+                            "onNull": None,
+                        }
+                    }
+                },
+                "pipeline": [
+                    {"$match": {"$expr": {"$eq": ["$_id", "$$creator_id"]}}},
+                    {"$project": {"name": 1, "picture": 1}},
+                ],
+                "as": "creator_info",
+            }
+        },
+        {
+            "$addFields": {
+                "creator": {
+                    "$cond": {
+                        "if": {"$gt": [{"$size": "$creator_info"}, 0]},
+                        "then": {"$arrayElemAt": ["$creator_info", 0]},
+                        "else": None,
+                    }
+                }
+            }
+        },
+        {"$project": {"creator_info": 0}},
+    ]
+
+
+def format_community_integrations(docs: list) -> list:
+    """Format MongoDB documents into CommunityIntegrationItem responses.
+
+    Args:
+        docs: List of MongoDB documents with integration data
+
+    Returns:
+        List of CommunityIntegrationItem objects
+    """
+    # Import here to avoid circular dependency
+    from app.schemas.integrations.responses import (
+        CommunityIntegrationCreator,
+        CommunityIntegrationItem,
+        IntegrationTool,
+    )
+
+    result = []
+    for doc in docs:
+        tools = doc.get("tools", [])
+        tool_items = [
+            IntegrationTool(
+                name=t.get("name", ""),
+                description=t.get("description"),
+            )
+            for t in tools[:10]  # Limit to first 10 tools
+        ]
+
+        # Creator info is now populated via aggregation pipeline
+        creator = None
+        creator_data = doc.get("creator")
+        if creator_data:
+            creator = CommunityIntegrationCreator(
+                name=creator_data.get("name"),
+                picture=creator_data.get("picture"),
+            )
+
+        result.append(
+            CommunityIntegrationItem(
+                integration_id=doc["integration_id"],
+                name=doc["name"],
+                description=doc.get("description", ""),
+                category=doc.get("category", "custom"),
+                icon_url=doc.get("icon_url"),
+                clone_count=doc.get("clone_count", 0),
+                tool_count=len(tools),
+                tools=tool_items,
+                published_at=doc.get("published_at"),
+                creator=creator,
+            )
+        )
+    return result

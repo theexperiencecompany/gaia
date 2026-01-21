@@ -139,7 +139,7 @@ export function IntegrationDetailClient({
           <div className="flex w-full items-start justify-between gap-2">
             <div className="flex-1 space-y-2">
               <div className="flex items-center gap-4">
-                <div className="flex h-16 w-16 items-center justify-center">
+                <div className="flex max-w-12 min-w-12 min-h-12 max-h-12 items-center justify-center rounded-lg overflow-hidden">
                   {getToolCategoryIcon(
                     integration.integrationId,
                     { size: 48, width: 48, height: 48, showBackground: false },
@@ -150,7 +150,7 @@ export function IntegrationDetailClient({
                     </div>
                   )}
                 </div>
-                <h1 className="text-5xl font-normal text-foreground">
+                <h1 className="text-5xl font-medium text-foreground">
                   {integration.name}
                 </h1>
               </div>
