@@ -789,13 +789,15 @@ async def add_public_integration(
             logger.info(f"User {user_id} re-attempting connection to {integration_id}")
         else:
             # 3. Add to user_integrations (pointing to ORIGINAL, not a copy)
-            user_integration_doc = {
-                "user_id": user_id,
-                "integration_id": integration_id,  # Same as original
-                "status": "created",
-                "created_at": datetime.now(timezone.utc),
-            }
-            await user_integrations_collection.insert_one(user_integration_doc)
+            try:
+                await add_user_integration(
+                    user_id=user_id,
+                    integration_id=integration_id,
+                    initial_status="created",
+                )
+            except ValueError:
+                # Already added (race condition) - continue to connection
+                pass
 
             # 4. Increment clone_count on original
             await integrations_collection.update_one(
