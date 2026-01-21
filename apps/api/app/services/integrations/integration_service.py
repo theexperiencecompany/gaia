@@ -20,7 +20,8 @@ from app.db.mongodb.collections import (
     user_integrations_collection,
     users_collection,
 )
-from app.decorators.caching import CacheInvalidator
+from app.constants.cache import ONE_DAY_TTL
+from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_models import (
     CreateCustomIntegrationRequest,
     Integration,
@@ -35,6 +36,7 @@ from app.models.integration_models import (
 from app.models.oauth_models import MCPConfig
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.db.redis import delete_cache_by_pattern
 from bson import ObjectId
 
 
@@ -234,6 +236,7 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
     )
 
 
+@Cacheable(key_pattern="tools:user:{user_id}:integrations", ttl=ONE_DAY_TTL)
 async def get_user_connected_integrations(user_id: str) -> List[Dict[str, Any]]:
     """
     Get only the integrations that user has connected (status='connected').
@@ -260,6 +263,7 @@ async def get_user_connected_integrations(user_id: str) -> List[Dict[str, Any]]:
     return results
 
 
+@CacheInvalidator(key_patterns=["tools:user:{user_id}:*"])
 async def add_user_integration(
     user_id: str,
     integration_id: str,
@@ -325,7 +329,7 @@ async def add_user_integration(
     return user_integration
 
 
-@CacheInvalidator(key_patterns=["tools:user:{user_id}"])
+@CacheInvalidator(key_patterns=["tools:user:{user_id}:*"])
 async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     """
     Remove an integration from user's workspace.
@@ -406,6 +410,8 @@ async def create_custom_integration(
         await user_integrations_collection.delete_one(
             {"integration_id": integration_id, "user_id": user_id}
         )
+        # Invalidate user's tools cache for orphan cleanup
+        await delete_cache_by_pattern(f"tools:user:{user_id}:*")
 
     integration = Integration(
         integration_id=str(integration_id),
@@ -544,6 +550,8 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
             await user_integrations_collection.delete_one(
                 {"user_id": user_id, "integration_id": integration_id}
             )
+            # Invalidate user's tools cache
+            await delete_cache_by_pattern(f"tools:user:{user_id}:*")
             logger.info(
                 f"User {user_id} removed orphaned user_integration for {integration_id}"
             )
@@ -575,10 +583,25 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
         )
 
         if result.deleted_count > 0:
+            # Get all affected users BEFORE deleting (for cache invalidation)
+            affected_users_cursor = user_integrations_collection.find(
+                {"integration_id": integration_id}, {"user_id": 1}
+            )
+            affected_user_ids = [doc["user_id"] async for doc in affected_users_cursor]
+
             # Clean up ALL user_integrations for this integration (all users who added it)
             await user_integrations_collection.delete_many(
                 {"integration_id": integration_id}
             )
+
+            # Invalidate cache for ALL affected users
+            for affected_user_id in affected_user_ids:
+                try:
+                    await delete_cache_by_pattern(f"tools:user:{affected_user_id}:*")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to invalidate cache for user {affected_user_id}: {e}"
+                    )
 
             # Clean up MCP credentials from PostgreSQL
             try:
@@ -629,6 +652,9 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
         )
 
         if result.deleted_count > 0:
+            # Invalidate user's tools cache
+            await delete_cache_by_pattern(f"tools:user:{user_id}:*")
+
             # Also clean up this user's MCP credentials for this integration
             try:
                 from app.db.postgresql import get_db_session

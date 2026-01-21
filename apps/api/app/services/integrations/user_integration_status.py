@@ -13,7 +13,7 @@ from app.db.mongodb.collections import user_integrations_collection
 from app.decorators.caching import CacheInvalidator
 
 
-@CacheInvalidator(key_patterns=["tools:user:{user_id}"])
+@CacheInvalidator(key_patterns=["tools:user:{user_id}:*"])
 async def update_user_integration_status(
     user_id: str,
     integration_id: str,
