@@ -137,18 +137,18 @@ class ComposioService:
         )
         master_schema_mod = schema_modifier(tools=tool_names)(master_schema_modifier)
 
-        # Single API call with hooks applied
         tools = await asyncio.to_thread(
-            self.composio.tools.get,
-            user_id="",
-            toolkits=[tool_kit],
-            tools=custom_tool_names,
-            modifiers=[
-                master_schema_mod,
-                master_before_modifier,
-                master_after_modifier,
-            ],
-            limit=1000,
+            lambda: self.composio.tools.get(  # type: ignore[call-overload]
+                user_id="",
+                toolkits=[tool_kit],
+                tools=custom_tool_names,
+                modifiers=[
+                    master_schema_mod,
+                    master_before_modifier,
+                    master_after_modifier,
+                ],
+                limit=1000,
+            )
         )
 
         # Filter excluded tools after fetch

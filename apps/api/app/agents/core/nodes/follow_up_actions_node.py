@@ -5,7 +5,7 @@ This module provides functionality to suggest contextual follow-up actions
 to users based on the conversation context and tool usage patterns.
 """
 
-from typing import List
+from typing import List, cast
 
 from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
 from app.config.loggers import chat_logger as logger
@@ -84,7 +84,7 @@ async def follow_up_actions_node(
                 SystemMessage(content=prompt),
                 HumanMessage(content=_pretty_print_messages(recent_messages)),
             ],
-            config={**config, "silent": True},
+            config=cast(RunnableConfig, {**config, "silent": True}),
         )
         try:
             actions = parser.parse(result if isinstance(result, str) else result.text)

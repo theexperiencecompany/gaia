@@ -10,9 +10,6 @@ import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
-from cryptography.fernet import Fernet
-from sqlalchemy import select
-
 from app.config.loggers import langchain_logger as logger
 from app.config.settings import settings
 from app.constants.mcp import (
@@ -25,6 +22,8 @@ from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
 from app.models.oauth_models import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.utils.mcp_oauth_utils import introspect_token as do_introspect
+from cryptography.fernet import Fernet
+from sqlalchemy import select
 
 
 class MCPTokenStore:
@@ -140,7 +139,7 @@ class MCPTokenStore:
                     MCPCredential.integration_id == integration_id,
                 )
             )
-            cred = result.scalar_one_or_none()
+            cred: Optional[MCPCredential] = result.scalar_one_or_none()
 
             if cred:
                 cred.access_token = encrypted
@@ -182,7 +181,7 @@ class MCPTokenStore:
                     MCPCredential.integration_id == integration_id,
                 )
             )
-            cred = result.scalar_one_or_none()
+            cred: Optional[MCPCredential] = result.scalar_one_or_none()
 
             if cred:
                 cred.access_token = encrypted_access
@@ -323,9 +322,9 @@ class MCPTokenStore:
                     MCPCredential.integration_id == integration_id,
                 )
             )
-            cred = result.scalar_one_or_none()
+            cred: Optional[MCPCredential] = result.scalar_one_or_none()
             if cred:
-                cred.status = status
+                cred.status = MCPCredentialStatus(status)
                 cred.error_message = error
                 session.add(cred)
                 await session.commit()
