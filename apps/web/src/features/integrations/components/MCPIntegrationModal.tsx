@@ -11,7 +11,7 @@ import {
   ModalHeader,
   Textarea,
 } from "@heroui/react";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { useModalForm } from "@/hooks/ui/useModalForm";
 import { usePlatform } from "@/hooks/ui/usePlatform";
@@ -41,7 +41,11 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
   onIntegrationCreated,
 }) => {
   const { isMac, modifierKeyName } = usePlatform();
-  const { createCustomIntegration, refetch } = useIntegrations();
+  const { createCustomIntegration } = useIntegrations();
+
+  // Use ref to always get latest callback (avoids stale closure in useModalForm)
+  const onIntegrationCreatedRef = useRef(onIntegrationCreated);
+  onIntegrationCreatedRef.current = onIntegrationCreated;
 
   const initialData = useMemo<MCPFormData>(
     () => ({
@@ -57,7 +61,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
   );
 
   const { formData, loading, handleSubmit, updateField, resetForm } =
-    useModalForm<MCPFormData>({
+    useModalForm<MCPFormData, string>({
       initialData,
       validate: [
         { field: "name", required: true, message: "Name is required" },
@@ -108,16 +112,13 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
           toast.success("Custom integration created successfully!");
         }
 
-        refetch();
-
         // Return the integration ID to be passed to onSuccess
         return result.integrationId;
       },
       onSuccess: (integrationId?: string) => {
         handleClose();
-        // Open the integration sidebar for the newly created integration
         if (integrationId) {
-          onIntegrationCreated?.(integrationId);
+          onIntegrationCreatedRef.current?.(integrationId);
         }
       },
       resetOnSuccess: true,

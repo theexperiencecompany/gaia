@@ -13,7 +13,7 @@ export interface ValidationRule<T> {
 
 export interface UseModalFormOptions<T, R = void> {
   initialData: T | (() => T);
-  onSubmit: (data: T) => Promise<R | void>;
+  onSubmit: (data: T) => Promise<R | undefined>;
   validate?: ValidationRule<T>[] | ((data: T) => string | null);
   onSuccess?: (result?: R) => void;
   onError?: (error: unknown) => void;

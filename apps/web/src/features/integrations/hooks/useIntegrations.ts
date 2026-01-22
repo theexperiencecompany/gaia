@@ -34,7 +34,7 @@ export interface UseIntegrationsReturn {
   unpublishIntegration: (integrationId: string) => Promise<void>;
 
   // Refresh
-  refetch: () => void;
+  refetch: () => Promise<void>;
 }
 
 type UseFetchIntegrationStatusParams = {
@@ -285,8 +285,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   );
 
   // Simple refetch all
-  const refetch = useCallback(() => {
-    queryClient.refetchQueries({ queryKey: ["integrations"] });
+  const refetch = useCallback(async () => {
+    await queryClient.refetchQueries({ queryKey: ["integrations"] });
   }, [queryClient]);
 
   return {
