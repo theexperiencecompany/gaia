@@ -236,33 +236,6 @@ class ToolRegistry:
         self._add_category("creative", tools=[image_tool.generate_image])
         self._add_category("weather", tools=[weather_tool.get_weather])
 
-    async def register_mcp_tools(self, server_name: str = "deepwiki"):
-        """
-        Register MCP server tools.
-        Connects to an MCP server and adds its tools to the registry.
-        """
-        if server_name in self._categories:
-            return self._categories[server_name]
-
-        try:
-            from app.services.mcp.mcp_client import get_mcp_client
-
-            # Use system user for unauthenticated MCP connections at startup
-            mcp_client = await get_mcp_client(user_id="_system")
-            tools = await mcp_client.connect(server_name)
-
-            if tools:
-                self._add_category(
-                    name=f"mcp_{server_name}",
-                    tools=tools,
-                    space="mcp",
-                )
-                await self._index_category_tools(f"mcp_{server_name}")
-                logger.info(f"Registered {len(tools)} MCP tools from {server_name}")
-                return self._categories[f"mcp_{server_name}"]
-        except Exception as e:
-            logger.error(f"Failed to register MCP tools from {server_name}: {e}")
-
     async def register_provider_tools(
         self,
         toolkit_name: str,
@@ -344,21 +317,6 @@ class ToolRegistry:
 
         # Load all providers in parallel
         await asyncio.gather(*[load_provider(i) for i in integrations_to_load])
-
-    async def load_all_mcp_tools(self):
-        """
-        Load all tools from MCP-managed integrations.
-
-        NOTE: MCP tools are now user-specific. Unauthenticated MCPs require
-        explicit user connection just like authenticated ones. All MCP tools
-        are loaded per-user via load_user_mcp_tools() at agent runtime.
-
-        This method is kept for backward compatibility but is now a no-op.
-        """
-        logger.info(
-            "MCP tools are now user-specific - skipping global startup load. "
-            "Tools loaded per-user via load_user_mcp_tools()"
-        )
 
     async def _index_category_tools(self, category_name: str):
         """Index tools from a category into ChromaDB store.
@@ -478,42 +436,6 @@ class ToolRegistry:
 
         return loaded
 
-    def get_user_mcp_tool_dict(self, user_id: str) -> Dict[str, BaseTool]:
-        """
-        Get tool dict for user's MCP tools only.
-
-        Returns mapping of tool name -> tool instance for user-specific MCP tools.
-        """
-        tools: Dict[str, BaseTool] = {}
-
-        # Get categories this user has access to
-        user_categories = getattr(self, "_user_mcp_categories", {}).get(user_id, set())
-
-        for category_name in user_categories:
-            category = self._categories.get(category_name)
-            if category:
-                for tool in category.tools:
-                    tools[tool.name] = tool.tool
-
-        return tools
-
-    def get_mcp_category_for_integration(self, integration_id: str) -> Optional[str]:
-        """
-        Get the MCP category name for a given integration ID.
-
-        This provides consistent lookup for MCP tools by integration.
-
-        Args:
-            integration_id: The integration ID (e.g., "linear", "notion")
-
-        Returns:
-            Category name (e.g., "mcp_linear") or None if not found
-        """
-        category_name = f"mcp_{integration_id}"
-        if category_name in self._categories:
-            return category_name
-        return None
-
     @cache
     def get_category_of_tool(self, tool_name: str) -> str:
         """Get the category of a specific tool by name."""
@@ -521,25 +443,6 @@ class ToolRegistry:
             for tool in category.tools:
                 if tool.name == tool_name:
                     return category.name
-        return "unknown"
-
-    def get_icon_category_of_tool(self, tool_name: str) -> str:
-        """Get the best category identifier for icon display.
-
-        For MCP and Composio tools, returns the integration_name (e.g., 'notion')
-        which matches frontend icon configs. For other tools, returns the category name.
-
-        Args:
-            tool_name: Name of the tool to look up
-
-        Returns:
-            Integration name or category name for icon lookup, or 'unknown' if not found
-        """
-        for category in self._categories.values():
-            for tool in category.tools:
-                if tool.name == tool_name:
-                    # Prefer integration_name for icon lookup (matches toolIcons.tsx)
-                    return category.integration_name or category.name
         return "unknown"
 
     def get_all_tools_for_search(self, include_delegated: bool = True) -> List[Tool]:

@@ -12,7 +12,8 @@ from typing import Optional
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import get_integration_by_id
 from app.db.mongodb.collections import integrations_collection
-from app.models.oauth_models import MCPConfig, OAuthIntegration
+from app.models.mcp_config import MCPConfig
+from app.models.oauth_models import OAuthIntegration
 
 
 @dataclass
@@ -171,9 +172,3 @@ class IntegrationResolver:
         """Check if an integration requires authentication."""
         resolved = await IntegrationResolver.resolve(integration_id)
         return resolved.requires_auth if resolved else False
-
-
-# Convenience function for backward compatibility
-async def resolve_integration(integration_id: str) -> Optional[ResolvedIntegration]:
-    """Resolve an integration from either platform config or MongoDB."""
-    return await IntegrationResolver.resolve(integration_id)

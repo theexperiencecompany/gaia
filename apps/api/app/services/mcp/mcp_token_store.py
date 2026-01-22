@@ -12,7 +12,7 @@ from typing import Optional
 
 from app.config.loggers import langchain_logger as logger
 from app.config.settings import settings
-from app.constants.mcp import (
+from app.constants.cache import (
     OAUTH_DISCOVERY_PREFIX,
     OAUTH_DISCOVERY_TTL,
     OAUTH_STATE_PREFIX,
@@ -20,7 +20,7 @@ from app.constants.mcp import (
 )
 from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
-from app.models.oauth_models import MCPAuthType, MCPCredential, MCPCredentialStatus
+from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.utils.mcp_oauth_utils import introspect_token as do_introspect
 from cryptography.fernet import Fernet
 from sqlalchemy import select

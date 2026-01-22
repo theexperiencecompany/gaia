@@ -20,10 +20,8 @@ import tldextract
 from bs4 import BeautifulSoup
 
 from app.config.loggers import app_logger as logger
+from app.constants.cache import FAVICON_CACHE_TTL
 from app.db.redis import get_cache, set_cache
-
-# Cache favicon URLs for 180 days (favicons rarely change)
-FAVICON_CACHE_TTL = 180 * 24 * 3600
 
 # HTTP client settings
 HTTP_TIMEOUT = 3.0

@@ -277,8 +277,3 @@ def get_feature_info(feature_key: str) -> Dict[str, str]:
         "title": feature_key.replace("_", " ").title(),
         "description": f"Usage for {feature_key}",
     }
-
-
-def list_all_features() -> list[str]:
-    """Get a list of all available feature keys."""
-    return list(FEATURE_LIMITS.keys())

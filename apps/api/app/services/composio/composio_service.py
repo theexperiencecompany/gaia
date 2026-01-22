@@ -6,7 +6,7 @@ from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.models.oauth_models import TriggerConfig
+from app.models.trigger_config import TriggerConfig
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import LangchainProvider
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
@@ -25,7 +25,6 @@ class ComposioService:
     def __init__(self, api_key: str):
         from app.config.oauth_config import OAUTH_INTEGRATIONS
 
-        # Build toolkit_versions from oauth_config for version pinning
         toolkit_versions: dict[str, str] = {}
         for integration in OAUTH_INTEGRATIONS:
             if (
@@ -48,14 +47,6 @@ class ComposioService:
     async def connect_account(
         self, provider: str, user_id: str, state_token: Optional[str] = None
     ) -> dict:
-        """
-        Initiates connection flow for a given provider and user.
-
-        Args:
-            provider: The provider to connect (e.g., 'gmail', 'notion')
-            user_id: The user ID initiating the connection
-            state_token: Secure state token for OAuth flow (replaces frontend_redirect_path)
-        """
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
 
@@ -72,7 +63,6 @@ class ComposioService:
                 else settings.COMPOSIO_REDIRECT_URI
             )
 
-            # Run the synchronous Composio call in a thread pool
             loop = asyncio.get_event_loop()
             connection_request = await loop.run_in_executor(
                 None,
@@ -94,24 +84,11 @@ class ComposioService:
             raise
 
     async def get_tools(self, tool_kit: str, exclude_tools: Optional[list[str]] = None):
-        """
-        Get tools for a specific toolkit with unified master hooks.
-
-        OPTIMIZED: Single API call instead of two. We apply hooks to all tools
-        in the toolkit, then filter excluded tools after fetch.
-
-        The master hooks handle ALL tools automatically including:
-        - User ID extraction from RunnableConfig metadata
-        - Frontend streaming setup
-        - All registered tool-specific hooks (Gmail, etc.)
-        - Schema modifications for tool descriptions and defaults
-        """
-
+        """Get tools for a toolkit with unified master hooks."""
         logger.info(f"Loading {tool_kit} toolkit...")
 
         custom_tool_names = custom_tools_registry.get_tool_names(tool_kit.lower())
 
-        # Run the first tools.get() call asynchronously
         tools = await asyncio.to_thread(
             lambda: self.composio.tools.get(  # type: ignore[call-overload]
                 user_id="",
@@ -122,12 +99,6 @@ class ComposioService:
         )
 
         exclude_tools = exclude_tools or []
-
-        # Build hook modifiers upfront - these will be applied to all toolkit tools
-        # We can't filter by tool name before the API call since we don't know them yet,
-        # but applying hooks to all tools and filtering after is equivalent and faster
-        # NOTE: before_execute/after_execute/schema_modifier expect List[str] of tool names,
-        # NOT tool objects. Extract the .name from each tool.
         tool_names = [t.name for t in tools]
         master_before_modifier = before_execute(tools=tool_names)(
             master_before_execute_hook
@@ -151,39 +122,18 @@ class ComposioService:
             )
         )
 
-        # Filter excluded tools after fetch
         result = [tool for tool in tools if tool.name not in exclude_tools]
-
-        # Store tool names/descriptions in MongoDB for frontend visibility
         await self._store_tool_metadata(tool_kit, result)
-
         return result
 
-    async def _store_tool_metadata(
-        self,
-        toolkit_name: str,
-        tools: list,
-    ) -> None:
-        """
-        Store Composio tool metadata in MongoDB for frontend visibility.
-
-        This ensures Composio tools appear in the same tool discovery flow
-        as MCP tools, providing a unified frontend experience.
-
-        Args:
-            toolkit_name: The Composio toolkit name (e.g., "GMAIL", "NOTION")
-            tools: List of Composio tool objects
-        """
+    async def _store_tool_metadata(self, toolkit_name: str, tools: list) -> None:
+        """Store Composio tool metadata in MongoDB for frontend visibility."""
         if not tools:
             return
 
         try:
-            # Build lightweight metadata (name and description only)
             tool_metadata = [
-                {
-                    "name": t.name,
-                    "description": getattr(t, "description", ""),
-                }
+                {"name": t.name, "description": getattr(t, "description", "")}
                 for t in tools
             ]
 
@@ -204,27 +154,17 @@ class ComposioService:
         use_after_hook: bool = True,
         use_schema_modifier: bool = True,
     ):
-        """
-        Get specific tools by names with unified master hooks.
-
-        The master hooks handle ALL tools automatically including:
-        - User ID extraction from RunnableConfig metadata
-        - Frontend streaming setup
-        - All registered tool-specific hooks (Gmail, etc.)
-        - Schema modifications for tool descriptions and defaults
-        """
+        """Get specific tools by names with unified master hooks."""
         start_time = time.time()
 
         modifiers = []
 
-        # Add schema modifier first (modifies schema before agent sees it)
         if use_schema_modifier:
             master_schema_mod = schema_modifier(tools=tool_names)(
                 master_schema_modifier
             )
             modifiers.append(master_schema_mod)
 
-        # Add hooks based on flags
         if use_before_hook:
             master_before_modifier = before_execute(tools=tool_names)(
                 master_before_execute_hook
@@ -237,7 +177,6 @@ class ComposioService:
             )
             modifiers.append(master_after_modifier)
 
-        # Run the tools.get() call asynchronously
         result = await asyncio.to_thread(
             self.composio.tools.get,
             tools=tool_names,
@@ -257,29 +196,16 @@ class ComposioService:
         use_schema_modifier: bool = True,
         user_id: str = "",
     ):
-        """
-        Get a specific tool by name with configurable hooks.
-
-        Args:
-            tool_name: Name of the specific tool to retrieve (e.g., 'GMAIL_SEND_EMAIL')
-            use_before_hook: Whether to apply master before execute hook
-            use_after_hook: Whether to apply master after execute hook
-            use_schema_modifier: Whether to apply schema modifiers
-
-        Returns:
-            The specific tool with selected hooks applied, or None if not found
-        """
+        """Get a specific tool by name with configurable hooks."""
         try:
             modifiers = []
 
-            # Add schema modifier first
             if use_schema_modifier:
                 master_schema_mod = schema_modifier(tools=[tool_name])(
                     master_schema_modifier
                 )
                 modifiers.append(master_schema_mod)
 
-            # Add hooks based on flags
             if use_before_hook:
                 master_before_modifier = before_execute(tools=[tool_name])(
                     master_before_execute_hook
@@ -306,14 +232,10 @@ class ComposioService:
     async def check_connection_status(
         self, providers: list[str], user_id: str
     ) -> dict[str, bool]:
-        """
-        Check if a user has active connections for given providers.
-        Returns a dictionary mapping provider names to connection status.
-        """
+        """Check if a user has active connections for given providers."""
         result = {}
         required_auth_config_ids = []
 
-        # Initialize all providers as disconnected
         for provider in providers:
             result[provider] = False
             if provider in COMPOSIO_SOCIAL_CONFIGS:
@@ -322,7 +244,6 @@ class ComposioService:
                 )
 
         try:
-            # Get all connected accounts for the user (run in thread pool)
             loop = asyncio.get_event_loop()
             user_accounts = await loop.run_in_executor(
                 None,
@@ -333,16 +254,13 @@ class ComposioService:
                 ),
             )
 
-            # Create a mapping of auth_config_ids to check
             auth_config_provider_map = {}
             for provider in providers:
                 if provider in COMPOSIO_SOCIAL_CONFIGS:
                     auth_config_id = COMPOSIO_SOCIAL_CONFIGS[provider].auth_config_id
                     auth_config_provider_map[auth_config_id] = provider
 
-            # Check each account against our providers
             for account in user_accounts.items:
-                # Only check active accounts
                 if not account.auth_config.is_disabled and account.status == "ACTIVE":
                     account_auth_config_id = account.auth_config.id
                     if account_auth_config_id in auth_config_provider_map:
@@ -357,14 +275,10 @@ class ComposioService:
             return result
 
     def get_connected_account_by_id(self, connected_account_id: str):
-        """
-        Retrieve a connected account by its ID.
-        """
         try:
             connected_account = self.composio.connected_accounts.get(
                 nanoid=connected_account_id,
             )
-
             return connected_account
         except Exception as e:
             logger.error(
@@ -375,19 +289,6 @@ class ComposioService:
     async def delete_connected_account(
         self, user_id: str, provider: str
     ) -> dict[str, str]:
-        """
-        Delete a connected account for a given provider and user.
-
-        Args:
-            user_id: The user ID who owns the connected account
-            provider: The provider name (e.g., 'gmail', 'slack', 'github')
-
-        Returns:
-            dict with status message
-
-        Raises:
-            ValueError: If provider is not supported or no account found
-        """
         if provider not in COMPOSIO_SOCIAL_CONFIGS:
             raise ValueError(f"Provider '{provider}' not supported")
 
@@ -444,11 +345,7 @@ class ComposioService:
     async def handle_subscribe_trigger(
         self, user_id: str, triggers: list[TriggerConfig]
     ):
-        """
-        Handle the subscription trigger for a specific provider.
-        Only subscribes to triggers marked with auto_activate=True.
-        """
-        # Filter triggers that should be auto-activated
+        """Subscribe to auto-active triggers for a user."""
         active_triggers = [t for t in triggers if t.auto_activate]
 
         if not active_triggers:
@@ -460,7 +357,7 @@ class ComposioService:
         )
 
         try:
-            # Create tasks for each trigger to run them concurrently
+
             def create_trigger(trigger: TriggerConfig):
                 return self.composio.triggers.create(
                     user_id=user_id,
@@ -473,7 +370,6 @@ class ComposioService:
                 for trigger in active_triggers
             ]
 
-            # Execute all trigger creation tasks concurrently
             return await asyncio.gather(*tasks)
         except Exception as e:
             logger.error(f"Error handling subscribe trigger for {user_id}: {e}")
@@ -485,11 +381,8 @@ class ComposioService:
     strategy=MissingKeyStrategy.WARN,
 )
 def init_composio_service():
-    # This condition is just for type checking purposes and will never be false at runtime
-    # because of the required_keys in the lazy_provider decorator
     if settings.COMPOSIO_KEY is None:
         raise RuntimeError("COMPOSIO_KEY is not set in settings")
-
     return ComposioService(settings.COMPOSIO_KEY)
 
 

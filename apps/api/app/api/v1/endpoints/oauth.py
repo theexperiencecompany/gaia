@@ -6,7 +6,7 @@ from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings
 from app.config.token_repository import token_repository
-from app.constants.general import MOBILE_REDIRECT_TTL
+from app.constants.cache import MOBILE_REDIRECT_TTL
 from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache, redis_cache
 from app.helpers.mcp_helpers import get_api_base_url

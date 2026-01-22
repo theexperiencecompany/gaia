@@ -10,7 +10,8 @@ This module defines Pydantic models for:
 from datetime import datetime, timezone
 from typing import Dict, List, Literal, Optional, cast
 
-from app.models.oauth_models import MCPConfig, OAuthIntegration
+from app.models.mcp_config import MCPConfig
+from app.models.oauth_models import OAuthIntegration
 from pydantic import BaseModel, Field, field_validator
 
 # Type alias for auth_type

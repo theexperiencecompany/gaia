@@ -98,9 +98,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
     ].map((id) => id.toLowerCase());
 
     return tools.filter((tool) =>
-      integrationIds.includes(
-        tool.integration?.requiredIntegration.toLowerCase() || "",
-      ),
+      integrationIds.includes(tool.category.toLowerCase()),
     );
   }, [tools, integration.id, integration.includedIntegrations]);
 

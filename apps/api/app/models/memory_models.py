@@ -101,32 +101,3 @@ class MemorySearchResult(BaseModel):
         default_factory=list, description="List of relationships between entities"
     )
     total_count: int = Field(default=0, description="Total number of matching memories")
-
-
-class MemoryConfiguration(BaseModel):
-    """Configuration for memory operations."""
-
-    max_memories_per_search: int = Field(
-        default=5, description="Maximum memories to retrieve per search"
-    )
-    auto_store_conversations: bool = Field(
-        default=True, description="Automatically store conversations"
-    )
-    memory_ttl_days: Optional[int] = Field(
-        default=None, description="Days to retain memories (None = forever)"
-    )
-    enable_semantic_search: bool = Field(
-        default=True, description="Use semantic search for memory retrieval"
-    )
-
-
-class ConversationMemory(BaseModel):
-    """Represents a conversation to be stored in memory."""
-
-    user_message: str = Field(description="The user's message")
-    assistant_response: str = Field(description="The assistant's response")
-    conversation_id: str = Field(description="Conversation thread ID")
-    user_id: str = Field(description="User ID")
-    metadata: Dict[str, Any] = Field(
-        default_factory=dict, description="Additional context"
-    )

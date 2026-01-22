@@ -7,31 +7,6 @@ from typing import List, Optional, Union
 from pydantic import BaseModel, Field, model_validator
 
 
-class EmailProcessingResult(BaseModel):
-    """Result of processing a single email."""
-
-    message_id: str = Field(description="Gmail message ID")
-    success: bool = Field(description="Whether processing succeeded")
-    memory_id: Optional[str] = Field(
-        default=None, description="Mem0 memory ID if successful"
-    )
-    error: Optional[str] = Field(default=None, description="Error message if failed")
-
-
-class EmailBatchResult(BaseModel):
-    """Result of processing a batch of emails."""
-
-    total_emails: int = Field(description="Total emails processed")
-    successful_count: int = Field(description="Number of successful memories created")
-    failed_count: int = Field(description="Number of failed email processings")
-    memory_ids: List[str] = Field(
-        default_factory=list, description="List of created memory IDs"
-    )
-    errors: List[str] = Field(
-        default_factory=list, description="List of errors encountered"
-    )
-
-
 class EmailRequest(BaseModel):
     prompt: str
     subject: Optional[str] = None
@@ -63,23 +38,6 @@ class EmailActionRequest(BaseModel):
     """Request model for performing actions on emails like star, trash, archive."""
 
     message_ids: List[str]
-
-
-class EmailSearchRequest(BaseModel):
-    """Request model for advanced email search functionality."""
-
-    query: Optional[str] = None
-    sender: Optional[str] = None
-    recipient: Optional[str] = None
-    subject: Optional[str] = None
-    has_attachment: Optional[bool] = None
-    attachment_type: Optional[str] = None
-    date_from: Optional[Union[datetime, str]] = None
-    date_to: Optional[Union[datetime, str]] = None
-    labels: Optional[List[str]] = None
-    is_read: Optional[bool] = None
-    max_results: Optional[int] = Field(default=20, ge=1, le=100)
-    page_token: Optional[str] = None
 
 
 class LabelRequest(BaseModel):
@@ -149,13 +107,6 @@ class EmailWebhookMessage(BaseModel):
         return values
 
 
-class EmailWebhookRequest(BaseModel):
-    """Request model for handling email webhooks."""
-
-    message: EmailWebhookMessage
-    subscription: str
-
-
 class EmailWorkflowFilterDecision(BaseModel):
     """Model for LLM decision on whether to process an email for a specific workflow"""
 
@@ -204,45 +155,3 @@ class EmailComprehensiveAnalysis(BaseModel):
     semantic_labels: List[str] = Field(
         description="List of semantic labels that categorize the email content and context"
     )
-
-
-class EmailComposeRequest(BaseModel):
-    """Model for email composition requests."""
-
-    body: str = Field(
-        ...,
-        min_length=0,
-        max_length=10000,
-        description="Body content of the email",
-    )
-    subject: str = Field(
-        ...,
-        min_length=0,
-        max_length=200,
-        description="Subject line for the email",
-    )
-    to: List[str] = Field(
-        ...,
-        description="List of recipient email addresses",
-    )
-    draft_id: Optional[str] = Field(
-        None,
-        description="ID of the created draft email",
-    )
-    thread_id: Optional[str] = Field(
-        None,
-        description="ID of the email thread this reply belongs to",
-    )
-
-    @model_validator(mode="after")
-    def validate_emails(self) -> "EmailComposeRequest":
-        """Validate that all email addresses are valid."""
-        import re
-
-        email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-
-        for email in self.to:
-            if not re.match(email_pattern, email.strip()):
-                raise ValueError(f"Invalid email address: {email}")
-
-        return self

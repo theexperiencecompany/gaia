@@ -13,7 +13,7 @@ import secrets
 from typing import Optional
 
 from app.config.loggers import app_logger as logger
-from app.constants.general import STATE_KEY_PREFIX, STATE_TOKEN_TTL
+from app.constants.cache import STATE_KEY_PREFIX, STATE_TOKEN_TTL
 from app.db.redis import redis_cache
 
 
