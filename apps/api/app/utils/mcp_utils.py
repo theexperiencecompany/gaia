@@ -55,11 +55,6 @@ def wrap_tool_with_null_filter(tool: BaseTool) -> BaseTool:
         )
         try:
             result = await original_arun(**filtered_kwargs)
-
-            # Check if result contains an error message from MCP server
-            if isinstance(result, str) and "Error" in result:
-                logger.warning(f"MCP tool '{tool.name}' returned error: {result}")
-
             return result
         except Exception as e:
             error_msg = str(e)
