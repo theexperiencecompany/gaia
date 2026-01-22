@@ -483,6 +483,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         confirmText={integration.isPublic ? "Unpublish" : "Publish"}
         cancelText="Cancel"
         variant={integration.isPublic ? "destructive" : "default"}
+        isLoading={isPublishing}
         onConfirm={confirmPublish}
         onCancel={() => setShowPublishDialog(false)}
       />

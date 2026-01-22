@@ -169,15 +169,19 @@ export default function ChatRenderer({
       {isLoading && (
         <div className="flex items-center gap-4 pl-12 text-sm font-medium">
           {toolInfo?.toolCategory &&
-            getToolCategoryIcon(toolInfo.toolCategory, {
-              size: 18,
-              width: 18,
-              height: 18,
-              iconOnly: true,
-            })}
+            getToolCategoryIcon(
+              toolInfo.toolCategory,
+              {
+                size: 18,
+                width: 18,
+                height: 18,
+                iconOnly: true,
+              },
+              toolInfo.iconUrl,
+            )}
           <span>
             {toolInfo?.showCategory !== false && toolInfo?.toolCategory
-              ? `${formatCategoryName(toolInfo.toolCategory)}: `
+              ? `${toolInfo.integrationName || formatCategoryName(toolInfo.toolCategory)}: `
               : ""}
             {loadingText || "GAIA is thinking..."}
           </span>

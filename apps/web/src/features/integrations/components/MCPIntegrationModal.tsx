@@ -21,6 +21,7 @@ import { useIntegrations } from "../hooks/useIntegrations";
 interface MCPIntegrationModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onIntegrationCreated?: (integrationId: string) => void;
 }
 
 interface MCPFormData {
@@ -37,6 +38,7 @@ interface MCPFormData {
 export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
   isOpen,
   onClose,
+  onIntegrationCreated,
 }) => {
   const { isMac, modifierKeyName } = usePlatform();
   const { createCustomIntegration, refetch } = useIntegrations();
@@ -107,9 +109,16 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
         }
 
         refetch();
+
+        // Return the integration ID to be passed to onSuccess
+        return result.integrationId;
       },
-      onSuccess: () => {
+      onSuccess: (integrationId?: string) => {
         handleClose();
+        // Open the integration sidebar for the newly created integration
+        if (integrationId) {
+          onIntegrationCreated?.(integrationId);
+        }
       },
       resetOnSuccess: true,
     });

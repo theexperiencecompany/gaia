@@ -11,11 +11,11 @@ export interface ValidationRule<T> {
   message?: string;
 }
 
-export interface UseModalFormOptions<T> {
+export interface UseModalFormOptions<T, R = void> {
   initialData: T | (() => T);
-  onSubmit: (data: T) => Promise<void>;
+  onSubmit: (data: T) => Promise<R | void>;
   validate?: ValidationRule<T>[] | ((data: T) => string | null);
-  onSuccess?: () => void;
+  onSuccess?: (result?: R) => void;
   onError?: (error: unknown) => void;
   resetOnSuccess?: boolean;
   closeOnSuccess?: boolean;
@@ -38,7 +38,7 @@ export interface UseModalFormReturn<T> {
   updateField: (field: keyof T, value: T[keyof T]) => void;
 }
 
-export function useModalForm<T extends Record<string, unknown>>({
+export function useModalForm<T extends Record<string, unknown>, R = void>({
   initialData,
   onSubmit,
   validate,
@@ -48,7 +48,7 @@ export function useModalForm<T extends Record<string, unknown>>({
   closeOnSuccess: _closeOnSuccess = true,
   successMessage,
   errorMessage,
-}: UseModalFormOptions<T>): UseModalFormReturn<T> {
+}: UseModalFormOptions<T, R>): UseModalFormReturn<T> {
   const [formData, setFormData] = useState<T>(() =>
     typeof initialData === "function" ? initialData() : initialData,
   );
@@ -194,7 +194,7 @@ export function useModalForm<T extends Record<string, unknown>>({
 
     setLoading(true);
     try {
-      await onSubmit(formData);
+      const result = await onSubmit(formData);
 
       if (successMessage) {
         toast.success(successMessage);
@@ -204,7 +204,7 @@ export function useModalForm<T extends Record<string, unknown>>({
         resetForm();
       }
 
-      onSuccess?.();
+      onSuccess?.(result as R);
     } catch (error) {
       console.error("Form submission error:", error);
 
