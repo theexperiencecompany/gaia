@@ -30,7 +30,12 @@ async def get_available_tools(user_id: Optional[str] = None) -> ToolsListRespons
     return await _build_tools_response(user_id)
 
 
-async def _fetch_user_custom_integrations(user_id: Optional[str]) -> list[dict]:
+async def _fetch_user_mcp_integrations(user_id: Optional[str]) -> list[dict]:
+    """Fetch all MCP integrations connected by user that have tools stored.
+
+    Includes both custom MCP integrations (source='custom') and platform
+    MCP integrations (managed_by='mcp') - any integration with stored tools.
+    """
     if not user_id:
         return []
     try:
@@ -45,18 +50,20 @@ async def _fetch_user_custom_integrations(user_id: Optional[str]) -> list[dict]:
                 }
             },
             {"$unwind": "$integration"},
-            {"$match": {"integration.source": "custom"}},
+            # Include any integration with stored tools (custom + platform MCP)
+            {"$match": {"integration.tools": {"$exists": True, "$ne": []}}},
             {
                 "$project": {
                     "integration_id": 1,
                     "name": "$integration.name",
                     "icon_url": "$integration.icon_url",
+                    "source": "$integration.source",
                 }
             },
         ]
         return await user_integrations_collection.aggregate(pipeline).to_list(None)
     except Exception as e:
-        logger.warning(f"Failed to fetch custom integrations: {e}")
+        logger.warning(f"Failed to fetch user MCP integrations: {e}")
         return []
 
 
@@ -99,7 +106,7 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
     try:
         global_mcp_tools, custom_integrations = await asyncio.gather(
             mcp_store.get_all_mcp_tools(),
-            _fetch_user_custom_integrations(user_id),
+            _fetch_user_mcp_integrations(user_id),
         )
     except Exception as e:
         logger.warning(f"Failed to fetch MCP tools: {e}")
@@ -215,8 +222,12 @@ async def get_tool_categories() -> Dict[str, int]:
     return category_counts
 
 
-async def get_user_custom_tools(user_id: str) -> list[ToolInfo]:
-    """Fetch only user's custom MCP integration tools."""
+async def get_user_mcp_tools(user_id: str) -> list[ToolInfo]:
+    """Fetch user's connected MCP integration tools (custom + platform).
+
+    Returns tools from all MCP integrations the user has connected that
+    have stored tools in MongoDB. This overlays on top of cached global tools.
+    """
     if not user_id:
         return []
 
@@ -236,7 +247,8 @@ async def get_user_custom_tools(user_id: str) -> list[ToolInfo]:
                 }
             },
             {"$unwind": "$integration"},
-            {"$match": {"integration.source": "custom"}},
+            # Include any integration with stored tools (custom + platform MCP)
+            {"$match": {"integration.tools": {"$exists": True, "$ne": []}}},
             {
                 "$project": {
                     "integration_id": 1,
@@ -246,20 +258,20 @@ async def get_user_custom_tools(user_id: str) -> list[ToolInfo]:
             },
         ]
 
-        custom_integrations = await user_integrations_collection.aggregate(
+        mcp_integrations = await user_integrations_collection.aggregate(
             pipeline
         ).to_list(None)
 
-        for custom in custom_integrations:
-            integration_id = custom.get("integration_id")
-            icon_url = custom.get("icon_url")
-            custom_name = custom.get("name")
+        for mcp_integration in mcp_integrations:
+            integration_id = mcp_integration.get("integration_id")
+            icon_url = mcp_integration.get("icon_url")
+            display_name = mcp_integration.get("name")
 
-            custom_tools = await mcp_store.get_tools(integration_id)
-            if not custom_tools:
+            integration_tools = await mcp_store.get_tools(integration_id)
+            if not integration_tools:
                 continue
 
-            for tool_dict in custom_tools:
+            for tool_dict in integration_tools:
                 tool_name = tool_dict.get("name")
                 if not tool_name or tool_name in seen_tool_names:
                     continue
@@ -269,19 +281,18 @@ async def get_user_custom_tools(user_id: str) -> list[ToolInfo]:
                     ToolInfo(
                         name=tool_name,
                         category=integration_id,
-                        category_display_name=custom_name,
-                        integration_name=custom_name,
-                        required_integration=integration_id,
+                        display_name=display_name
+                        or integration_id.replace("_", " ").title(),
                         icon_url=icon_url,
                     )
                 )
 
             logger.debug(
-                f"Fetched {len(custom_tools)} tools from custom MCP {integration_id}"
+                f"Fetched {len(integration_tools)} tools from MCP {integration_id}"
             )
 
     except Exception as e:
-        logger.warning(f"Failed to fetch user custom tools: {e}")
+        logger.warning(f"Failed to fetch user MCP tools: {e}")
 
     return tool_infos
 
