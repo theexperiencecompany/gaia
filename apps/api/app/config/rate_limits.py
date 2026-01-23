@@ -105,12 +105,12 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
             description="Create, execute, and manage AI workflows",
         ),
     ),
-    "email_workflow_executions": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),
+    "trigger_workflow_executions": TieredRateLimits(
+        free=RateLimitConfig(day=5, month=20),
         pro=RateLimitConfig(day=100, month=3000),
         info=FeatureInfo(
-            title="Email Workflow Executions",
-            description="Automated workflow executions triggered by incoming emails",
+            title="Trigger Workflow Executions",
+            description="Automated workflow executions triggered by integrations (email, calendar, etc.)",
         ),
     ),
     "goal_tracking": TieredRateLimits(
