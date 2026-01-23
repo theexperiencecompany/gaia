@@ -16,7 +16,7 @@ import httpx
 from app.config.loggers import token_repository_logger as logger
 from app.config.settings import settings
 from app.db.postgresql import get_db_session
-from app.models.oauth_models import OAuthToken
+from app.models.db_oauth import OAuthToken
 from authlib.integrations.starlette_client import OAuth
 from authlib.oauth2.rfc6749 import OAuth2Token
 from fastapi import HTTPException

@@ -93,23 +93,6 @@ def deserialize_any(json_str: str, model: Optional[type] = None) -> Any:
     return adapter.validate_json(json_str)
 
 
-class DateTimeEncoder(json.JSONEncoder):
-    """
-    Custom JSON encoder for datetime objects.
-
-    Converts datetime objects to ISO 8601 format strings during JSON serialization.
-    Used as fallback for objects that can't be serialized by Pydantic TypeAdapter.
-
-    Note: This is primarily kept for backward compatibility. Pydantic TypeAdapter
-    handles most serialization needs including datetime objects.
-    """
-
-    def default(self, o):
-        if isinstance(o, datetime):
-            return o.isoformat()
-        return super().default(o)
-
-
 class RedisCache:
     def __init__(self, redis_url="redis://localhost:6379", default_ttl=3600):
         self.redis_url = settings.REDIS_URL or redis_url

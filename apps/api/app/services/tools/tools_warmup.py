@@ -7,12 +7,9 @@ eliminating cold-start latency for the /tools endpoint.
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import app_logger as logger
+from app.constants.cache import GLOBAL_TOOLS_CACHE_KEY, GLOBAL_TOOLS_CACHE_TTL
 from app.db.redis import set_cache
 from app.services.tools.tools_service import get_available_tools
-
-# Global tools cache key - shared across all users
-GLOBAL_TOOLS_CACHE_KEY = "tools:global"
-GLOBAL_TOOLS_CACHE_TTL = 21600  # 6 hours
 
 
 async def warmup_tools_cache() -> None:

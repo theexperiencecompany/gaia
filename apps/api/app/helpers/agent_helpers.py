@@ -7,6 +7,7 @@ These functions are tightly coupled to agent-specific logic and LangGraph execut
 """
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
@@ -16,8 +17,15 @@ from langsmith import traceable
 from opik.integrations.langchain import OpikTracer
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
+from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import langchain_logger as logger
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.config.settings import settings
+from app.constants.cache import (
+    CUSTOM_INT_METADATA_CACHE_PREFIX,
+    CUSTOM_INT_METADATA_TTL,
+    HANDOFF_METADATA_CACHE_PREFIX,
+)
 from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
@@ -32,13 +40,10 @@ from app.utils.agent_utils import (
     format_sse_data,
     format_sse_response,
     format_tool_call_entry,
+    parse_subagent_id,
     process_custom_event_for_tools,
     store_agent_progress,
 )
-
-# Cache key pattern and TTL for custom integration metadata
-CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
-CUSTOM_INT_METADATA_TTL = 3600  # 1 hour
 
 
 async def get_custom_integration_metadata(tool_name: str, user_id: str) -> dict:
@@ -56,7 +61,6 @@ async def get_custom_integration_metadata(tool_name: str, user_id: str) -> dict:
         Dict with icon_url, integration_id, integration_name if found,
         empty dict otherwise
     """
-    from app.agents.tools.core.registry import get_tool_registry
 
     tool_registry = await get_tool_registry()
     tool_category = tool_registry.get_category_of_tool(tool_name)
@@ -87,10 +91,6 @@ async def get_custom_integration_metadata(tool_name: str, user_id: str) -> dict:
         integration_id = parts[0]
     else:
         integration_id = without_prefix
-
-    # Only lookup for custom integrations
-    if not integration_id.startswith("custom_"):
-        return {}
 
     # Check Redis cache first
     cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
@@ -124,10 +124,6 @@ async def get_custom_integration_metadata(tool_name: str, user_id: str) -> dict:
         return {}
 
 
-# Cache key pattern for handoff subagent metadata
-HANDOFF_METADATA_CACHE_PREFIX = "handoff_metadata"
-
-
 async def get_handoff_metadata(subagent_id: str) -> dict:
     """Look up icon_url, integration_id, integration_name for handoff subagents.
 
@@ -141,17 +137,9 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
         Dict with icon_url, integration_id, integration_name if found,
         empty dict otherwise
     """
-    import re
 
-    from app.config.oauth_config import OAUTH_INTEGRATIONS
-
-    # Clean up subagent_id
-    clean_id = subagent_id.replace("subagent:", "").strip().lower()
-
-    # Extract ID from format "name (id)" if present
-    paren_match = re.search(r"\(([a-zA-Z0-9_]+)\)$", clean_id)
-    if paren_match:
-        clean_id = paren_match.group(1)
+    clean_id, _ = parse_subagent_id(subagent_id)
+    clean_id = clean_id.lower()
 
     # Check platform integrations first (in-memory, no caching needed)
     for integ in OAUTH_INTEGRATIONS:
@@ -174,13 +162,14 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
     # Escape regex metacharacters for safety
     escaped_id = re.escape(clean_id)
 
-    # Query MongoDB for custom MCP
+    # Query MongoDB to find the integration by ID or name.
+    # No source filter - we need to find ANY integration (custom OR public).
+    # Public integrations created by OTHER users also need metadata lookup.
     try:
         custom = await integrations_collection.find_one(
             {
-                "source": "custom",
                 "$or": [
-                    {"integration_id": {"$regex": f"^{escaped_id}$", "$options": "i"}},
+                    {"integration_id": {"$regex": f"^{escaped_id}", "$options": "i"}},
                     {"name": {"$regex": f"^{escaped_id}$", "$options": "i"}},
                 ],
             },

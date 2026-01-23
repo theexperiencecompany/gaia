@@ -162,6 +162,8 @@ export const useChatStream = () => {
         setLoadingText(data.message, {
           toolName: data.tool_name as string | undefined,
           toolCategory: data.tool_category as string | undefined,
+          integrationName: data.integration_name as string | undefined,
+          iconUrl: data.icon_url as string | undefined,
           showCategory: (data.show_category as boolean) ?? true,
         });
       }

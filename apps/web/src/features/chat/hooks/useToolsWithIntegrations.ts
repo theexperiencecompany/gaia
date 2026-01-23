@@ -53,47 +53,18 @@ export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
     if (!toolsData?.tools) return [];
 
     return toolsData.tools.map((tool: ToolInfo): EnhancedToolInfo => {
-      let isLocked = false;
+      // Check if integration is connected (use category as integration ID)
+      const integration = integrations.find(
+        (int) => int.id.toLowerCase() === tool.category.toLowerCase(),
+      );
+      const isLocked = !integration || integration.status !== "connected";
 
-      if (tool.required_integration) {
-        // Normalize to lowercase for case-insensitive matching (backend returns uppercase)
-        const normalizedRequiredIntegration =
-          tool.required_integration.toLowerCase();
-
-        // Check if required integration is connected
-        const requiredIntegration = integrations.find(
-          (integration) =>
-            integration.id.toLowerCase() === normalizedRequiredIntegration,
-        );
-
-        isLocked =
-          !requiredIntegration || requiredIntegration.status !== "connected";
-      }
-
-      // Find integration details (normalize for case-insensitive lookup)
-      const integrationDetails = tool.required_integration
-        ? integrations.find(
-            (integration) =>
-              integration.id.toLowerCase() ===
-              tool.required_integration!.toLowerCase(),
-          )
-        : undefined;
-
+      // Simple, direct property access - no fallbacks needed
       return {
         name: tool.name,
         category: tool.category,
-        integration: tool.required_integration
-          ? {
-              toolName: tool.name,
-              category: tool.category,
-              // Store normalized (lowercase) integration ID for consistent matching
-              requiredIntegration: tool.required_integration.toLowerCase(),
-              integrationName:
-                integrationDetails?.name || tool.required_integration,
-              iconUrl: integrationDetails?.iconUrl,
-              isRequired: true,
-            }
-          : undefined,
+        displayName: tool.display_name, // Single source of truth from backend
+        iconUrl: tool.icon_url,
         isLocked,
       };
     });

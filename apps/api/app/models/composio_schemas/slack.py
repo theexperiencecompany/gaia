@@ -8,10 +8,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# =============================================================================
-# Trigger Payloads
-# =============================================================================
-
 
 class SlackReceiveMessagePayload(BaseModel):
     """Payload for SLACK_RECEIVE_MESSAGE trigger."""
@@ -37,11 +33,6 @@ class SlackChannelCreatedPayload(BaseModel):
     name: str | None = Field(None, description="Channel name")
 
 
-# =============================================================================
-# Tool Output Schemas
-# =============================================================================
-
-
 class SlackChannel(BaseModel):
     """Slack channel info."""
 
@@ -49,19 +40,6 @@ class SlackChannel(BaseModel):
 
     id: str | None = None
     name: str | None = None
-
-
-class SlackMessage(BaseModel):
-    """Single Slack message from search results."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    text: str | None = None
-    username: str | None = None
-    user: str | None = None
-    channel: SlackChannel | None = None
-    ts: str | None = None
-    permalink: str | None = None
 
 
 class SlackSearchMessagesData(BaseModel):

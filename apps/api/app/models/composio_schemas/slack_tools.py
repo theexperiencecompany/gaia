@@ -40,14 +40,6 @@ class SlackChannel(BaseModel):
     num_members: int | None = None
 
 
-class SlackResponseMetadata(BaseModel):
-    """Slack response metadata for pagination."""
-
-    model_config = ConfigDict(from_attributes=True, extra="ignore")
-
-    next_cursor: str | None = None
-
-
 class SlackListAllChannelsData(BaseModel):
     """Data inside ToolExecutionResponse.data for SLACK_LIST_ALL_CHANNELS."""
 

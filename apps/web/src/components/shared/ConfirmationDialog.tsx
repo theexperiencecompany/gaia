@@ -18,6 +18,7 @@ interface ConfirmationDialogProps {
   confirmText?: string;
   cancelText?: string;
   variant?: "default" | "destructive";
+  isLoading?: boolean;
   onConfirm: () => void | Promise<void>;
   onCancel: () => void;
 }
@@ -29,6 +30,7 @@ export function ConfirmationDialog({
   confirmText = "Confirm",
   cancelText = "Cancel",
   variant = "default",
+  isLoading = false,
   onConfirm,
   onCancel,
 }: ConfirmationDialogProps) {
@@ -95,6 +97,7 @@ export function ConfirmationDialog({
                 }}
                 className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
                 endContent={<Kbd keys={["escape"]} />}
+                isDisabled={isLoading}
               >
                 {cancelText}
               </Button>
@@ -105,7 +108,9 @@ export function ConfirmationDialog({
                   handleConfirmPress();
                   onClose();
                 }}
-                endContent={<Kbd keys={["enter"]} />}
+                endContent={!isLoading && <Kbd keys={["enter"]} />}
+                isLoading={isLoading}
+                isDisabled={isLoading}
               >
                 {confirmText}
               </Button>

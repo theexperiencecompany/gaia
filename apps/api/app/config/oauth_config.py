@@ -41,17 +41,19 @@ from app.agents.prompts.subagent_prompts import (
 from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
 from app.langchain.core.subgraphs.slack_subgraph import SLACK_TOOLS
-from app.models.oauth_models import (
+from app.models.mcp_config import (
     ComposioConfig,
     MCPConfig,
-    OAuthIntegration,
     OAuthScope,
     ProviderMetadataConfig,
     SubAgentConfig,
+)
+from app.models.trigger_config import (
     TriggerConfig,
     TriggerConfigFieldSchema,
     WorkflowTriggerSchema,
 )
+from app.models.oauth_models import OAuthIntegration
 
 # Define all integrations dynamically
 OAUTH_INTEGRATIONS: List[OAuthIntegration] = [

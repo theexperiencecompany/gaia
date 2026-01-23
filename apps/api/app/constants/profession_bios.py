@@ -219,13 +219,3 @@ def get_random_bio_for_profession(name: str, profession: str) -> str:
     # Select a random bio and format with the name
     selected_bio = random.choice(bios)  # nosec: B311
     return selected_bio.format(name=name)
-
-
-def get_all_professions() -> Tuple[str, ...]:
-    """Get tuple of all available professions."""
-    return PROFESSIONS
-
-
-def validate_profession(profession: str) -> bool:
-    """Check if a profession is in our predefined list."""
-    return profession.lower().strip() in PROFESSIONS

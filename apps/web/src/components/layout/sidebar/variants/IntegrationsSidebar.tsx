@@ -2,21 +2,22 @@
 
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
-import { useDisclosure } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Tooltip } from "@heroui/tooltip";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { MCPIntegrationModal } from "@/features/integrations/components/MCPIntegrationModal";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
 import { CursorAddSelectionIcon, InternetIcon } from "@/icons";
+import { useIntegrationModalStore } from "@/stores/integrationModalStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function IntegrationsSidebar() {
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const openIntegrationModal = useIntegrationModalStore(
+    (state) => state.openModal,
+  );
   const {
     integrations,
     connectIntegration,
@@ -202,7 +203,7 @@ export default function IntegrationsSidebar() {
             startContent={
               <CursorAddSelectionIcon className="h-4 w-4 outline-0" />
             }
-            onPress={onOpen}
+            onPress={openIntegrationModal}
             data-keyboard-shortcut="create-integration"
           >
             Create Custom Integration
@@ -219,8 +220,6 @@ export default function IntegrationsSidebar() {
           </div>
         )}
       </div>
-
-      <MCPIntegrationModal isOpen={isOpen} onClose={() => onOpenChange()} />
     </>
   );
 }

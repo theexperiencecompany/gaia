@@ -236,7 +236,6 @@ export default function IntegrationsPage() {
   useEffect(() => {
     if (!pendingIntegrationId) return;
 
-    // Check if integration is now available in the refreshed data
     const integration = integrations.find((i) => i.id === pendingIntegrationId);
     if (integration) {
       handleIntegrationClick(pendingIntegrationId);

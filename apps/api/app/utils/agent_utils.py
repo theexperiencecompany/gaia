@@ -14,6 +14,9 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
     tool_fields,
 )
+from app.config.oauth_config import get_integration_by_id
+from app.db.mongodb.collections import integrations_collection
+from app.decorators.caching import Cacheable
 from app.services.conversation_service import update_messages
 
 # UUID v4 pattern for identifying user ID suffixes
@@ -21,6 +24,57 @@ from app.services.conversation_service import update_messages
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
 )
+
+
+def parse_subagent_id(subagent_id: str) -> tuple[str, Optional[str]]:
+    """Parse subagent ID from various formats and extract clean ID and display name.
+
+    Handles:
+      - 'subagent:Name [uuid]' -> ('uuid', 'Name')
+      - 'subagent:id (Name)' -> ('id', 'Name')
+      - 'subagent:id' -> ('id', None)
+      - 'id' -> ('id', None)
+    """
+    clean = subagent_id.replace("subagent:", "").strip()
+
+    if " [" in clean:
+        name = clean.split(" [")[0].strip()
+        clean_id = clean.split("[")[1].rstrip("]")
+        return clean_id, name
+
+    if " (" in clean:
+        clean_id = clean.split(" (")[0].strip()
+        name = clean.split("(")[1].rstrip(")")
+        return clean_id, name
+
+    return clean, None
+
+
+@Cacheable(key_pattern="handoff_name:{clean_id}", ttl=3600)
+async def _lookup_custom_integration_name(clean_id: str) -> Optional[str]:
+    """Look up custom integration name from MongoDB with caching."""
+    custom = await integrations_collection.find_one(
+        {"integration_id": {"$regex": f"^{clean_id}", "$options": "i"}}, {"name": 1}
+    )
+    return custom.get("name") if custom else None
+
+
+async def _resolve_handoff_display_name(subagent_id: str) -> str:
+    """Resolve human-readable display name for a subagent handoff."""
+    clean_id, parsed_name = parse_subagent_id(subagent_id)
+
+    if parsed_name:
+        return parsed_name
+
+    platform_integ = get_integration_by_id(clean_id)
+    if platform_integ:
+        return platform_integ.name
+
+    cached_name = await _lookup_custom_integration_name(clean_id)
+    if cached_name:
+        return cached_name
+
+    return clean_id.replace("_", " ").title()
 
 
 async def format_tool_call_entry(
@@ -61,19 +115,11 @@ async def format_tool_call_entry(
     if tool_name_raw in special_tools:
         tool_category, tool_display_name, show_category = special_tools[tool_name_raw]
 
-        # For handoff, create dynamic message from args
         if tool_name_raw == "handoff":
             args = tool_call.get("args", {})
             subagent_id = args.get("subagent_id", "subagent")
-            # Clean up subagent_id for display
-            clean_name = subagent_id.replace("subagent:", "").replace("_", " ").title()
-            # Extract name from format "name (id)" if present
-            import re
-
-            paren_match = re.search(r"^([^(]+)", clean_name)
-            if paren_match:
-                clean_name = paren_match.group(1).strip()
-            tool_display_name = f"Handing off to {clean_name}"
+            display_name = await _resolve_handoff_display_name(subagent_id)
+            tool_display_name = f"Handing off to {display_name}"
     else:
         # Use provided integration_id for custom MCPs, otherwise look up from registry
         if integration_id:

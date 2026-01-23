@@ -11,7 +11,6 @@ import type { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
-import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { Cancel01Icon, GridIcon, SearchIcon } from "@/icons";
 import { posthog } from "@/lib/posthog";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
@@ -234,9 +233,6 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     useState<string>("all");
   const selectedCategory = externalSelectedCategory ?? internalSelectedCategory;
 
-  // Get integrations to look up custom names/icons
-  const { integrations } = useIntegrations();
-
   // Focus the dropdown when it becomes visible (only when opened via button)
   useEffect(() => {
     if (isVisible && openedViaButton && dropdownRef.current) {
@@ -364,23 +360,14 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     const map: Record<string, { displayName: string; iconUrl?: string }> = {};
     matches.forEach((match) => {
       if (!map[match.tool.category]) {
-        // First try to find matching integration if tool requires one (which custom MCPs do)
-        const integrationId =
-          match.tool.required_integration || match.tool.category;
-        const integration = integrations?.find((i) => i.id === integrationId);
-
         map[match.tool.category] = {
-          displayName:
-            integration?.name ||
-            match.tool.integration_name ||
-            match.tool.category_display_name ||
-            match.tool.category,
-          iconUrl: integration?.iconUrl || match.tool.icon_url,
+          displayName: match.tool.display_name, // Single source of truth from backend
+          iconUrl: match.tool.icon_url,
         };
       }
     });
     return map;
-  }, [matches, integrations]);
+  }, [matches]);
 
   // Filter matches based on selected category and search query
   const filteredMatches = useMemo(() => {
@@ -466,22 +453,15 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     // Add locked categories with their tools
     Object.entries(lockedCategories).forEach(([category, categoryMatches]) => {
       const firstTool = categoryMatches[0];
-      const requiredIntegration = firstTool.tool.required_integration;
 
-      if (!requiredIntegration) return;
-
-      const integrationName =
-        firstTool.enhancedTool?.integration?.integrationName ||
-        requiredIntegration;
-
-      // Add category header
+      // Add category header - use display_name directly from backend
       items.push({
         type: "locked-category-header",
         category,
         tools: categoryMatches,
         requiredIntegration: {
-          id: requiredIntegration,
-          name: integrationName,
+          id: firstTool.tool.category,
+          name: firstTool.tool.display_name, // Single source of truth
         },
       });
 

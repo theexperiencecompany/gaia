@@ -19,7 +19,6 @@ Features:
 """
 
 import base64
-import os
 import re
 import secrets
 import time
@@ -29,7 +28,7 @@ from typing import Optional
 
 import httpx
 from app.config.loggers import langchain_logger as logger
-from app.constants.mcp import OAUTH_DISCOVERY_PREFIX
+from app.constants.cache import OAUTH_DISCOVERY_PREFIX
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
 from app.db.mongodb.collections import (
@@ -38,9 +37,9 @@ from app.db.mongodb.collections import (
 )
 from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import get_api_base_url
-from app.models.oauth_models import MCPConfig
+from app.models.mcp_config import MCPConfig
 from app.services.integrations.integration_resolver import IntegrationResolver
-from app.services.integrations.integration_service import (
+from app.services.integrations.user_integrations import (
     get_user_connected_integrations,
 )
 from app.services.integrations.user_integration_status import (
@@ -49,21 +48,22 @@ from app.services.integrations.user_integration_status import (
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.mcp.oauth_discovery import (
+    discover_oauth_config,
+    probe_mcp_connection,
+)
+from app.services.mcp.token_management import (
+    resolve_client_credentials,
+    revoke_tokens,
+    try_refresh_token,
+)
 from app.utils.mcp_oauth_utils import (
     MCP_PROTOCOL_VERSION,
-    OAuthDiscoveryError,
     OAuthSecurityError,
-    extract_auth_challenge,
-    fetch_auth_server_metadata,
-    fetch_protected_resource_metadata,
-    find_protected_resource_metadata,
     get_client_metadata_document_url,
     parse_oauth_error_response,
-    revoke_token,
-    select_authorization_server,
     validate_https_url,
     validate_jwt_issuer,
-    validate_oauth_endpoints,
     validate_pkce_support,
     validate_token_response,
 )
@@ -116,41 +116,8 @@ class MCPClient:
         self._tools: dict[str, list[BaseTool]] = {}
 
     async def probe_connection(self, server_url: str) -> dict:
-        """
-        Probe an MCP server to determine auth requirements.
-
-        Returns:
-            {
-                "requires_auth": bool,
-                "auth_type": "none" | "oauth",
-                "oauth_challenge": dict,  # if OAuth, contains WWW-Authenticate data
-                "error": str,  # if probe failed
-            }
-        """
-        try:
-            challenge = await extract_auth_challenge(server_url)
-
-            if challenge.get("raw"):
-                logger.debug(f"OAuth required for {server_url}")
-                return {
-                    "requires_auth": True,
-                    "auth_type": "oauth",
-                    "oauth_challenge": challenge,
-                }
-
-            logger.debug(f"No auth required for {server_url}")
-            return {
-                "requires_auth": False,
-                "auth_type": "none",
-            }
-
-        except Exception as e:
-            logger.warning(f"Probe failed for {server_url}: {e}")
-            return {
-                "requires_auth": False,
-                "auth_type": "unknown",
-                "error": str(e),
-            }
+        """Probe an MCP server to determine auth requirements."""
+        return await probe_mcp_connection(server_url)
 
     async def update_integration_auth_status(
         self,
@@ -193,151 +160,10 @@ class MCPClient:
         mcp_config: MCPConfig,
         challenge_data: Optional[dict] = None,
     ) -> dict:
-        """
-        Full MCP OAuth discovery flow per specification.
-
-        Args:
-            integration_id: The integration identifier
-            mcp_config: MCP configuration with server URL
-            challenge_data: Optional pre-fetched WWW-Authenticate challenge (avoids re-probe)
-
-        Returns dict with all OAuth endpoints and metadata.
-
-        Raises:
-            OAuthSecurityError: If endpoints fail HTTPS validation
-            OAuthDiscoveryError: If discovery completely fails
-        """
-        cached = await self.token_store.get_oauth_discovery(integration_id)
-        if cached:
-            logger.debug(f"Using cached OAuth discovery for {integration_id}")
-            return cached
-
-        if mcp_config.oauth_metadata:
-            logger.debug(f"Using explicit OAuth metadata for {integration_id}")
-            # Validate HTTPS for explicit metadata
-            validate_oauth_endpoints(mcp_config.oauth_metadata)
-            return mcp_config.oauth_metadata
-
-        server_url = mcp_config.server_url.rstrip("/")
-
-        # Validate server URL uses HTTPS
-        try:
-            validate_https_url(server_url)
-        except OAuthSecurityError as e:
-            logger.warning(f"Server URL security warning for {integration_id}: {e}")
-            # Continue anyway - some dev servers may use HTTP
-
-        # Phase 1: Use provided challenge or probe server for WWW-Authenticate
-        # If challenge_data was passed (from prior probe), use it to avoid duplicate HTTP call
-        challenge = challenge_data or await extract_auth_challenge(server_url)
-        initial_scope = challenge.get("scope")
-
-        # Phase 2: Try RFC 9728 Protected Resource Metadata discovery
-        prm = None
-        prm_error = None
-
-        try:
-            prm_url = challenge.get("resource_metadata")
-            if not prm_url:
-                prm_url = await find_protected_resource_metadata(server_url)
-
-            if prm_url:
-                prm = await fetch_protected_resource_metadata(prm_url)
-                logger.info(f"Fetched PRM for {integration_id} from {prm_url}")
-
-        except Exception as e:
-            prm_error = str(e)
-            logger.info(f"RFC 9728 PRM discovery failed for {integration_id}: {e}")
-
-        if prm and prm.get("authorization_servers"):
-            # Select authorization server (supports multiple servers per spec)
-            preferred_server = None
-            if mcp_config.oauth_metadata:
-                preferred_server = mcp_config.oauth_metadata.get(
-                    "preferred_auth_server"
-                )
-
-            auth_server_url = await select_authorization_server(
-                prm["authorization_servers"],
-                preferred_server=preferred_server,
-            )
-            logger.info(f"Using auth server from PRM: {auth_server_url}")
-
-            auth_metadata = await fetch_auth_server_metadata(auth_server_url)
-
-            discovery = {
-                "resource": prm.get("resource", server_url),
-                "scopes_supported": prm.get("scopes_supported", []),
-                "initial_scope": initial_scope,
-                "authorization_endpoint": auth_metadata.get("authorization_endpoint"),
-                "token_endpoint": auth_metadata.get("token_endpoint"),
-                "registration_endpoint": auth_metadata.get("registration_endpoint"),
-                "revocation_endpoint": auth_metadata.get("revocation_endpoint"),
-                "introspection_endpoint": auth_metadata.get("introspection_endpoint"),
-                "issuer": auth_metadata.get("issuer"),
-                "code_challenge_methods_supported": auth_metadata.get(
-                    "code_challenge_methods_supported", []
-                ),
-                "client_id_metadata_document_supported": auth_metadata.get(
-                    "client_id_metadata_document_supported", False
-                ),
-                "discovery_method": "rfc9728_prm",
-                "authorization_servers": prm.get("authorization_servers", []),
-            }
-
-            # Validate HTTPS for all discovered endpoints
-            try:
-                validate_oauth_endpoints(discovery)
-            except OAuthSecurityError as e:
-                logger.warning(f"OAuth endpoint security warning: {e}")
-
-            await self.token_store.store_oauth_discovery(integration_id, discovery)
-            return discovery
-
-        # Phase 3: Fallback - Direct OAuth Discovery on MCP server (RFC 8414)
-        logger.info(
-            f"Trying direct OAuth discovery for {integration_id} "
-            f"(PRM failed: {prm_error or 'no authorization_servers'})"
+        """Full MCP OAuth discovery flow per specification."""
+        return await discover_oauth_config(
+            self.token_store, integration_id, mcp_config, challenge_data
         )
-
-        try:
-            auth_metadata = await fetch_auth_server_metadata(server_url)
-
-            discovery = {
-                "resource": server_url,
-                "scopes_supported": auth_metadata.get("scopes_supported", []),
-                "initial_scope": initial_scope,
-                "authorization_endpoint": auth_metadata.get("authorization_endpoint"),
-                "token_endpoint": auth_metadata.get("token_endpoint"),
-                "registration_endpoint": auth_metadata.get("registration_endpoint"),
-                "revocation_endpoint": auth_metadata.get("revocation_endpoint"),
-                "introspection_endpoint": auth_metadata.get("introspection_endpoint"),
-                "issuer": auth_metadata.get("issuer"),
-                "code_challenge_methods_supported": auth_metadata.get(
-                    "code_challenge_methods_supported", []
-                ),
-                "client_id_metadata_document_supported": auth_metadata.get(
-                    "client_id_metadata_document_supported", False
-                ),
-                "discovery_method": "direct_oauth",
-            }
-
-            # Validate HTTPS for all discovered endpoints
-            try:
-                validate_oauth_endpoints(discovery)
-            except OAuthSecurityError as e:
-                logger.warning(f"OAuth endpoint security warning: {e}")
-
-            await self.token_store.store_oauth_discovery(integration_id, discovery)
-            logger.info(f"Direct OAuth discovery succeeded for {integration_id}")
-            return discovery
-
-        except Exception as direct_error:
-            raise OAuthDiscoveryError(
-                f"OAuth discovery failed for {integration_id}. "
-                f"RFC 9728 PRM: {prm_error or 'no authorization_servers'}. "
-                f"Direct OAuth (RFC 8414): {direct_error}"
-            )
 
     async def _build_config(
         self,
@@ -362,17 +188,11 @@ class MCPClient:
         # Per MCP spec 2025-06-18, streamable HTTP is preferred over deprecated SSE
         if mcp_config.transport:
             server_config["transport"] = mcp_config.transport
-            logger.debug(
-                f"[{integration_id}] Using explicit transport: {mcp_config.transport}"
-            )
         else:
-            # Default to streamable-http per MCP spec 2025-06-18 (SSE is deprecated)
             server_config["transport"] = "streamable-http"
-            logger.debug(f"[{integration_id}] Using default transport: streamable-http")
 
         # Check for stored OAuth token if auth is required
         if mcp_config.requires_auth:
-            logger.debug(f"[{integration_id}] Auth required, checking for stored token")
             # Check if token is expiring soon and try to refresh
             if await self.token_store.is_token_expiring_soon(integration_id):
                 logger.info(
@@ -397,19 +217,13 @@ class MCPClient:
                 # discovery fails (e.g., Smithery servers that don't expose
                 # .well-known/oauth-authorization-server endpoints)
                 server_config["headers"] = {"Authorization": f"Bearer {raw_token}"}
-                logger.debug(
-                    f"[{integration_id}] Config built with auth string and Authorization header"
-                )
             else:
                 logger.warning(
                     f"No valid OAuth token for {integration_id} - connection may fail. "
                     "Token store returned None (check status='connected' requirement)"
                 )
         else:
-            # CRITICAL: Explicitly set auth to None to prevent mcp-use from
-            # defaulting to {} which triggers OAuth discovery and causes lag.
-            # When auth is None, HttpConnector skips OAuth initialization entirely.
-            logger.debug(f"[{integration_id}] Auth not required, setting auth=None")
+            # No auth required - explicitly set auth to None
             server_config["auth"] = None
 
         return {"mcpServers": {integration_id: server_config}}
@@ -577,109 +391,17 @@ class MCPClient:
     async def _try_refresh_token(
         self, integration_id: str, mcp_config: MCPConfig
     ) -> bool:
-        """
-        Attempt to refresh OAuth token using stored refresh_token.
-
-        Returns True if refresh succeeded, False otherwise.
-        """
-        refresh_token = await self.token_store.get_refresh_token(integration_id)
-        if not refresh_token:
-            logger.debug(f"No refresh token for {integration_id}")
-            return False
-
-        try:
-            # Get OAuth discovery for token endpoint
-            oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
-            token_endpoint = oauth_config.get("token_endpoint")
-            if not token_endpoint:
-                return False
-
-            # Get client credentials
-            client_id, client_secret = self._resolve_client_credentials(mcp_config)
-            if not client_id:
-                dcr_data = await self.token_store.get_dcr_client(integration_id)
-                if dcr_data:
-                    client_id = dcr_data.get("client_id")
-                    client_secret = dcr_data.get("client_secret")
-
-            if not client_id:
-                return False
-
-            # RFC 8707: resource parameter required for token binding
-            resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))
-
-            async with httpx.AsyncClient() as http_client:
-                token_data = {
-                    "grant_type": "refresh_token",
-                    "refresh_token": refresh_token,
-                    "resource": resource,
-                }
-
-                headers = {"Content-Type": "application/x-www-form-urlencoded"}
-
-                if client_secret:
-                    credentials = f"{client_id}:{client_secret}"
-                    encoded = base64.b64encode(credentials.encode()).decode()
-                    headers["Authorization"] = f"Basic {encoded}"
-                else:
-                    token_data["client_id"] = client_id
-
-                response = await http_client.post(
-                    token_endpoint, data=token_data, headers=headers, timeout=30
-                )
-
-                if response.status_code != 200:
-                    logger.warning(f"Token refresh failed for {integration_id}")
-                    return False
-
-                tokens = response.json()
-
-                # Calculate new expiry
-                expires_at = None
-                if tokens.get("expires_in"):
-                    expires_at = datetime.now(timezone.utc) + timedelta(
-                        seconds=tokens["expires_in"]
-                    )
-
-                # Store refreshed tokens
-                await self.token_store.store_oauth_tokens(
-                    integration_id=integration_id,
-                    access_token=tokens.get("access_token", ""),
-                    refresh_token=tokens.get("refresh_token", refresh_token),
-                    expires_at=expires_at,
-                )
-
-                logger.info(f"Successfully refreshed token for {integration_id}")
-                return True
-
-        except Exception as e:
-            logger.warning(f"Token refresh failed for {integration_id}: {e}")
-            return False
+        """Attempt to refresh OAuth token using stored refresh_token."""
+        oauth_config = await self._discover_oauth_config(integration_id, mcp_config)
+        return await try_refresh_token(
+            self.token_store, integration_id, mcp_config, oauth_config
+        )
 
     def _resolve_client_credentials(
         self, mcp_config: MCPConfig
     ) -> tuple[Optional[str], Optional[str]]:
-        """
-        Resolve OAuth client credentials from MCPConfig.
-
-        Supports two patterns:
-        1. Direct values: client_id and client_secret set directly
-        2. Environment variables: client_id_env and client_secret_env reference settings
-
-        Returns:
-            Tuple of (client_id, client_secret), either may be None
-        """
-        client_id = mcp_config.client_id
-        client_secret = mcp_config.client_secret
-
-        # Resolve from environment variables if direct values not set
-        if not client_id and mcp_config.client_id_env:
-            client_id = os.getenv(mcp_config.client_id_env)
-
-        if not client_secret and mcp_config.client_secret_env:
-            client_secret = os.getenv(mcp_config.client_secret_env)
-
-        return client_id, client_secret
+        """Resolve OAuth client credentials from config or environment."""
+        return resolve_client_credentials(mcp_config)
 
     async def build_oauth_auth_url(
         self,
@@ -1053,72 +775,19 @@ class MCPClient:
         logger.info(f"Disconnected MCP {integration_id}")
 
     async def _revoke_tokens(self, integration_id: str) -> None:
-        """
-        Revoke OAuth tokens at authorization server per RFC 7009.
-
-        This is called during disconnect to properly invalidate tokens
-        rather than just deleting them locally.
-        """
+        """Revoke OAuth tokens at authorization server per RFC 7009."""
         try:
-            # Get OAuth discovery to find revocation endpoint
             oauth_config = await self.token_store.get_oauth_discovery(integration_id)
             if not oauth_config:
-                logger.debug(
-                    f"No OAuth discovery for {integration_id}, skipping revocation"
-                )
                 return
 
-            revocation_endpoint = oauth_config.get("revocation_endpoint")
-            if not revocation_endpoint:
-                logger.debug(f"No revocation endpoint for {integration_id}")
-                return
-
-            # Get tokens to revoke
-            access_token = await self.token_store.get_oauth_token(integration_id)
-            refresh_token = await self.token_store.get_refresh_token(integration_id)
-
-            # Get client credentials for revocation request
-            client_id = None
-            client_secret = None
-
-            dcr_data = await self.token_store.get_dcr_client(integration_id)
-            if dcr_data:
-                client_id = dcr_data.get("client_id")
-                client_secret = dcr_data.get("client_secret")
-
-            if not client_id:
-                resolved = await IntegrationResolver.resolve(integration_id)
-                if resolved and resolved.mcp_config:
-                    client_id, client_secret = self._resolve_client_credentials(
-                        resolved.mcp_config
-                    )
-
-            # Revoke refresh token first (it can be used to get new access tokens)
-            if refresh_token:
-                success = await revoke_token(
-                    revocation_endpoint=revocation_endpoint,
-                    token=refresh_token,
-                    token_type_hint="refresh_token",  # nosec B106 - OAuth token type hint, not a password
-                    client_id=client_id,
-                    client_secret=client_secret,
+            resolved = await IntegrationResolver.resolve(integration_id)
+            mcp_config = resolved.mcp_config if resolved else None
+            if mcp_config:
+                await revoke_tokens(
+                    self.token_store, integration_id, mcp_config, oauth_config
                 )
-                if success:
-                    logger.info(f"Revoked refresh token for {integration_id}")
-
-            # Then revoke access token
-            if access_token:
-                success = await revoke_token(
-                    revocation_endpoint=revocation_endpoint,
-                    token=access_token,
-                    token_type_hint="access_token",  # nosec B106 - OAuth token type hint, not a password
-                    client_id=client_id,
-                    client_secret=client_secret,
-                )
-                if success:
-                    logger.info(f"Revoked access token for {integration_id}")
-
         except Exception as e:
-            # Token revocation is best-effort - don't fail disconnect
             logger.warning(f"Token revocation failed for {integration_id}: {e}")
 
     async def get_tools(self, integration_id: str) -> list[BaseTool]:

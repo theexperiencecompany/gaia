@@ -12,20 +12,18 @@ interface LockedCategorySectionProps {
   tools: SlashCommandMatch[];
   requiredIntegration: {
     id: string;
-    name: string;
+    name: string; // Display name from backend - single source of truth
   };
   onConnect?: () => void;
 }
 
 export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
-  category,
   tools,
   requiredIntegration,
   onConnect,
 }) => {
   const { connectIntegration, integrations } = useIntegrations();
 
-  // Find the integration
   const integration = integrations.find(
     (int) => int.id.toLowerCase() === requiredIntegration.id.toLowerCase(),
   );
@@ -39,9 +37,6 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
     }
   };
 
-  // Check if integration is available
-  const isAvailable =
-    integration?.source === "custom" || integration?.available;
   const isConnected = integration?.status === "connected";
 
   return (
@@ -53,17 +48,15 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
           </div>
           <div>
             <div className="text-sm font-medium text-zinc-200">
-              {tools.length} {integration?.name || category.replace("_", " ")}{" "}
-              tools locked
+              {tools.length} {requiredIntegration.name} tools locked
             </div>
             <div className="text-xs text-zinc-500">
-              Requires {integration?.name || requiredIntegration.name}{" "}
-              connection
+              Requires {requiredIntegration.name} connection
             </div>
           </div>
         </div>
 
-        {isAvailable && !isConnected && (
+        {!isConnected && (
           <Button
             size="sm"
             color="primary"
@@ -82,18 +75,6 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
             onPress={handleConnect}
           >
             Connect
-          </Button>
-        )}
-
-        {!isAvailable && (
-          <Button
-            size="sm"
-            variant="flat"
-            color="default"
-            disabled
-            className="text-xs"
-          >
-            Soon
           </Button>
         )}
       </div>

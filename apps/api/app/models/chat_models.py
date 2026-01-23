@@ -1,9 +1,10 @@
 from enum import Enum
 from typing import List, Optional, Union
 
-from app.models.message_models import FileData, ReplyToMessageData, SelectedWorkflowData
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing_extensions import TypedDict
+
+from app.models.message_models import FileData, ReplyToMessageData, SelectedWorkflowData
 
 
 class ImageData(BaseModel):
@@ -12,48 +13,12 @@ class ImageData(BaseModel):
     improved_prompt: Optional[str] = None
 
 
-class SupportTicketData(BaseModel):
-    """Data structure for support ticket creation."""
-
-    type: str = Field(
-        ..., description="Type of support request: 'support' or 'feature'"
-    )
-    title: str = Field(
-        ...,
-        min_length=1,
-        max_length=200,
-        description="Brief title of the issue or request",
-    )
-    description: str = Field(
-        ...,
-        min_length=10,
-        max_length=5000,
-        description="Detailed description of the issue or request",
-    )
-    user_name: Optional[str] = Field(None, description="Name of the user")
-    user_email: Optional[str] = Field(None, description="Email of the user")
-
-
 class ToolDataEntry(TypedDict):
     """Unified structure for tool execution data."""
 
     tool_name: str
     data: Union[dict, List, str, int, float, bool]
     timestamp: Optional[str]
-
-
-class ToolProgressData(BaseModel):
-    """Progress data for tool execution updates sent to frontend."""
-
-    message: str = Field(..., description="Display message for the tool execution")
-    tool_name: str = Field(..., description="Raw tool name identifier")
-    tool_category: Optional[str] = Field(None, description="Category for icon display")
-    show_category: bool = Field(True, description="Whether to show category text in UI")
-    tool_call_id: Optional[str] = Field(
-        None, description="Unique ID for this tool call"
-    )
-    inputs: Optional[dict] = Field(None, description="Tool input arguments")
-    output: Optional[str] = Field(None, description="Tool output result")
 
 
 tool_fields = [

@@ -21,10 +21,8 @@ from app.schemas.integrations.responses import (
 )
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_resolver import IntegrationResolver
-from app.services.integrations.integration_service import (
-    delete_custom_integration,
-    remove_user_integration,
-)
+from app.services.integrations.custom_crud import delete_custom_integration
+from app.services.integrations.user_integrations import remove_user_integration
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
@@ -41,7 +39,6 @@ def build_integrations_config() -> IntegrationsConfigResponse:
         if integration.managed_by == "internal":
             continue
 
-        # Cast to Literal type for mypy
         auth_type_literal: Literal["none", "oauth", "bearer"] | None = None
         if integration.mcp_config:
             auth_type_literal = (
@@ -130,7 +127,6 @@ async def connect_mcp_integration(
             integration_id=integration_id,
             redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
             redirect_path=redirect_path,
-            # No probe_result here - connection failed, need fresh discovery
         )
         return ConnectIntegrationResponse(
             status="redirect",
@@ -142,8 +138,6 @@ async def connect_mcp_integration(
     tools_count = len(tools) if tools else 0
 
     await invalidate_mcp_status_cache(user_id)
-
-    # Subagent indexing handled in MCPClient._handle_custom_integration_connect
 
     return ConnectIntegrationResponse(
         status="connected",

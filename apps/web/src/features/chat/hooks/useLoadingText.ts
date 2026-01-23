@@ -4,6 +4,8 @@ import { useLoadingStore } from "@/stores/loadingStore";
 interface ToolInfo {
   toolName?: string;
   toolCategory?: string;
+  integrationName?: string;
+  iconUrl?: string;
   showCategory?: boolean;
 }
 

@@ -13,7 +13,7 @@ from app.services.tools.tools_service import (
     get_available_tools,
     get_tools_by_category,
     get_tool_categories,
-    get_user_custom_tools,
+    get_user_mcp_tools,
     merge_tools_responses,
 )
 from app.services.tools.tools_warmup import GLOBAL_TOOLS_CACHE_KEY
@@ -48,11 +48,11 @@ async def list_available_tools(
         # Try global cache first (warmed at startup, 6 hour TTL)
         cached_global = await get_cache(GLOBAL_TOOLS_CACHE_KEY, model=ToolsListResponse)
         if cached_global is not None:
-            # Overlay user's custom MCP tools on top of cached global tools
+            # Overlay user's MCP tools on top of cached global tools
             if user_id:
-                custom_tools = await get_user_custom_tools(user_id)
-                if custom_tools:
-                    return merge_tools_responses(cached_global, custom_tools)
+                mcp_tools = await get_user_mcp_tools(user_id)
+                if mcp_tools:
+                    return merge_tools_responses(cached_global, mcp_tools)
             return cached_global
 
         # Cache miss - build tools response (will also populate cache)

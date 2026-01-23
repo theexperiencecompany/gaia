@@ -11,7 +11,7 @@ All metadata comes from oauth_config.py OAUTH_INTEGRATIONS.
 
 import re
 from datetime import datetime
-from typing import Annotated, Optional, TypedDict
+from typing import Annotated, Optional
 
 from app.agents.core.subagents.provider_subagents import create_subagent_for_user
 from app.agents.core.subagents.subagent_helpers import (
@@ -37,24 +37,15 @@ from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_service import (
     check_integration_status,
 )
+from app.utils.agent_utils import parse_subagent_id
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore, PutOp
 
+from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
+
 SUBAGENTS_NAMESPACE = ("subagents",)
-
-# Cache settings for subagent lookups
-SUBAGENT_CACHE_PREFIX = "subagent_info"
-SUBAGENT_CACHE_TTL = 3600  # 1 hour
-
-
-class SubagentInfo(TypedDict):
-    """Subagent information structure."""
-
-    id: str
-    name: str
-    connected: bool
 
 
 async def check_integration_connection(
@@ -124,11 +115,10 @@ async def _get_subagent_by_id(subagent_id: str):
     # Search by integration_id (case-insensitive)
     custom = await integrations_collection.find_one(
         {
-            "source": "custom",
             "$or": [
                 {
                     "integration_id": {
-                        "$regex": f"^{escaped_search_id}$",
+                        "$regex": f"^{escaped_search_id}",
                         "$options": "i",
                     }
                 },
@@ -138,17 +128,15 @@ async def _get_subagent_by_id(subagent_id: str):
     )
 
     if custom:
-        # Return a dict that mimics the integration structure
         result = {
             "id": custom.get("integration_id"),
             "name": custom.get("name"),
-            "source": "custom",
-            "managed_by": "mcp",
+            "source": custom.get("source", "custom"),
+            "managed_by": custom.get("managed_by", "mcp"),
             "mcp_config": custom.get("mcp_config"),
             "icon_url": custom.get("icon_url"),
-            "subagent_config": None,  # Custom MCPs don't have static subagent config
+            "subagent_config": None,
         }
-        # Cache the result
         await set_cache(cache_key, result, ttl=SUBAGENT_CACHE_TTL)
         return result
 
@@ -156,18 +144,17 @@ async def _get_subagent_by_id(subagent_id: str):
     # This handles cases where integration is in user_integrations but not integrations
 
     resolved = await IntegrationResolver.resolve(search_id)
-    if resolved and resolved.source == "custom" and resolved.custom_doc:
+    if resolved and resolved.custom_doc:
         doc = resolved.custom_doc
         result = {
             "id": doc.get("integration_id"),
             "name": doc.get("name"),
-            "source": "custom",
+            "source": resolved.source,
             "managed_by": "mcp",
             "mcp_config": doc.get("mcp_config"),
             "icon_url": doc.get("icon_url"),
             "subagent_config": None,
         }
-        # Cache the result
         await set_cache(cache_key, result, ttl=SUBAGENT_CACHE_TTL)
         return result
 
@@ -237,12 +224,7 @@ async def _resolve_subagent(
         Tuple of (subagent_graph, agent_name, integration_id, is_custom)
         or (None, None, error_message, False) on failure
     """
-    # Strip 'subagent:' prefix if present
-    clean_id = subagent_id.replace("subagent:", "").strip()
-
-    # Extract ID from 'id (Name)' format - just take everything before ' ('
-    if " (" in clean_id:
-        clean_id = clean_id.split(" (")[0]
+    clean_id, _ = parse_subagent_id(subagent_id)
 
     integration = await _get_subagent_by_id(clean_id)
 
@@ -452,17 +434,22 @@ async def handoff(
 
         writer = get_stream_writer()
 
-        # Build integration metadata for tool tracking (custom MCPs only)
-        # This is used by execute_subagent_stream for the subagent's tool calls
         integration_metadata = None
         if is_custom:
-            # For custom MCPs, we need to get the integration data again
             integration = await _get_subagent_by_id(int_id)
             if isinstance(integration, dict):
                 integration_metadata = {
                     "icon_url": integration.get("icon_url"),
                     "integration_id": int_id,
                     "name": str(integration.get("name", int_id)),
+                }
+        else:
+            platform_integ = get_integration_by_id(int_id)
+            if platform_integ:
+                integration_metadata = {
+                    "icon_url": getattr(platform_integ, "icon_url", None),
+                    "integration_id": int_id,
+                    "name": platform_integ.name,
                 }
 
         # Execute using shared streaming function

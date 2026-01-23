@@ -18,26 +18,17 @@ from app.db.mongodb.collections import integrations_collection
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
+from app.utils.agent_utils import parse_subagent_id
 from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore
 
 
 def _format_subagent_key(integration_id: str, name: str | None = None) -> str:
-    """Format subagent key for tool retrieval.
-
-    Format: 'subagent:{id}' or 'subagent:{id} ({name})' when name differs.
-    ID comes first for easy extraction, name provides LLM readability.
-
-    Args:
-        integration_id: The integration ID (e.g., 'gmail' or 'fb9dfd7e05f8')
-        name: Human-readable name for display (e.g., 'Semantic Scholar')
-
-    Returns:
-        Formatted key like 'subagent:gmail' or 'subagent:fb9dfd7e05f8 (Semantic Scholar)'
-    """
+    """Format subagent key as 'subagent:{name} [{short_id}]' or 'subagent:{id}'."""
     if name and name.lower() != integration_id.lower():
-        return f"subagent:{integration_id} ({name})"
+        short_id = integration_id[:8] if len(integration_id) > 8 else integration_id
+        return f"subagent:{name} [{short_id}]"
     return f"subagent:{integration_id}"
 
 
@@ -341,9 +332,8 @@ def get_retrieve_tools_function(
                     all_results.append({"id": formatted_key, "score": item.score})
                     continue
 
-                # Filter subagents with prefix (legacy format)
                 if tool_key.startswith("subagent:"):
-                    integration_id = tool_key.replace("subagent:", "")
+                    integration_id, _ = parse_subagent_id(tool_key)
                     # Internal subagents (todos) always pass, others need connection
                     if (
                         integration_id not in connected_integrations
