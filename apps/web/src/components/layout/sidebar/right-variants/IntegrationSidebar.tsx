@@ -58,22 +58,23 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const [isConnecting, setIsConnecting] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
 
+  const currentUserId = useUserStore((state) => state.userId);
   const currentUserName = useUserStore((state) => state.name);
   const currentUserPicture = useUserStore((state) => state.profilePicture);
 
   // Determine if this is a custom integration created by the current user
   const isOwnIntegration = React.useMemo(() => {
     if (integration.source !== "custom") return false;
-    if (!integration.creator) return false;
-    return integration.creator.name === currentUserName;
-  }, [integration.source, integration.creator, currentUserName]);
+    if (!integration.createdBy) return false;
+    return integration.createdBy === currentUserId;
+  }, [integration.source, integration.createdBy, currentUserId]);
 
   // Determine if this is a forked integration (added from marketplace, created by someone else)
   const isForkedIntegration = React.useMemo(() => {
     if (integration.source !== "custom") return false;
-    if (!integration.creator) return false;
-    return integration.creator.name !== currentUserName;
-  }, [integration.source, integration.creator, currentUserName]);
+    if (!integration.createdBy) return false;
+    return integration.createdBy !== currentUserId;
+  }, [integration.source, integration.createdBy, currentUserId]);
 
   // Show delete/remove button for non-connected custom integrations
   const showDeleteButton =

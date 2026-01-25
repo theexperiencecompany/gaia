@@ -399,6 +399,7 @@ export const useOnboarding = () => {
         // Sync user store with the updated user data from backend
         if (response.user) {
           setUser({
+            userId: response.user.user_id,
             name: response.user.name,
             email: response.user.email,
             profilePicture: response.user.picture,

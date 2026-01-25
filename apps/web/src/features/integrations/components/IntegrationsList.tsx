@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationModalStore } from "@/stores/integrationModalStore";
 import { useIntegrationsStore } from "@/stores/integrationsStore";
+import { useUserStore } from "@/stores/userStore";
 import {
   getCategoryLabel,
   getUniqueCategories,
@@ -132,6 +133,7 @@ export const IntegrationsList: React.FC<{
     (state) => state.setSelectedCategory,
   );
   const clearFilters = useIntegrationsStore((state) => state.clearFilters);
+  const currentUserId = useUserStore((state) => state.userId);
 
   const { filteredIntegrations } = useIntegrationSearch(integrations);
 
@@ -147,18 +149,20 @@ export const IntegrationsList: React.FC<{
   const availableCategories = useMemo(() => {
     const uniqueCategories = getUniqueCategories(integrations);
     const sorted = sortCategories(uniqueCategories);
-    // Add "created_by_you" at the start if user has custom integrations
-    const hasCreatedByYou = integrations.some((i) => i.createdBy);
+    // Add "created_by_you" at the start if user has custom integrations they created
+    const hasCreatedByYou = integrations.some(
+      (i) => i.createdBy === currentUserId,
+    );
     if (hasCreatedByYou) {
       return ["created_by_you", ...sorted];
     }
     return sorted;
-  }, [integrations]);
+  }, [integrations, currentUserId]);
 
-  // Integrations created by the user
+  // Integrations created by the current user
   const createdByYouIntegrations = useMemo(() => {
-    return filteredIntegrations.filter((i) => i.createdBy);
-  }, [filteredIntegrations]);
+    return filteredIntegrations.filter((i) => i.createdBy === currentUserId);
+  }, [filteredIntegrations, currentUserId]);
 
   // Separate featured integrations
   const featuredIntegrations = useMemo(() => {
