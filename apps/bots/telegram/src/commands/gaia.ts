@@ -1,6 +1,6 @@
-import type { Bot } from "grammy";
 import type { GaiaClient } from "@gaia/shared";
-import { truncateResponse, formatError } from "@gaia/shared";
+import { formatError, truncateResponse } from "@gaia/shared";
+import type { Bot } from "grammy";
 
 /**
  * Registers the /gaia command handler.
@@ -29,7 +29,7 @@ export function registerGaiaCommand(bot: Bot, gaia: GaiaClient) {
         message,
         platform: "telegram",
         platformUserId: userId,
-        channelId: chatId
+        channelId: chatId,
       });
 
       if (!response.authenticated) {

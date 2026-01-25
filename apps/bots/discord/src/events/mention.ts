@@ -1,6 +1,6 @@
-import type { Message } from "discord.js";
 import type { GaiaClient } from "@gaia/shared";
-import { truncateResponse, formatError } from "@gaia/shared";
+import { formatError, truncateResponse } from "@gaia/shared";
+import type { Message } from "discord.js";
 
 /**
  * Handles messages where the bot is mentioned.
@@ -18,14 +18,14 @@ export async function handleMention(message: Message, gaia: GaiaClient) {
   }
 
   try {
-    if ('sendTyping' in message.channel) {
+    if ("sendTyping" in message.channel) {
       await message.channel.sendTyping();
     }
 
     const response = await gaia.chatPublic({
       message: content,
       platform: "discord",
-      platformUserId: message.author.id
+      platformUserId: message.author.id,
     });
 
     const truncated = truncateResponse(response.response, "discord");

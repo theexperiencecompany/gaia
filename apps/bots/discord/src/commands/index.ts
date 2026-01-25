@@ -1,17 +1,23 @@
-import { 
-  Collection, 
-  SlashCommandBuilder, 
-  ChatInputCommandInteraction,
-  SlashCommandOptionsOnlyBuilder,
-  SlashCommandSubcommandsOnlyBuilder
-} from "discord.js";
 import type { GaiaClient } from "@gaia/shared";
-import * as gaia from "./gaia";
+import {
+  type ChatInputCommandInteraction,
+  Collection,
+  type SlashCommandBuilder,
+  type SlashCommandOptionsOnlyBuilder,
+  type SlashCommandSubcommandsOnlyBuilder,
+} from "discord.js";
 import * as auth from "./auth";
+import * as gaia from "./gaia";
 
 export interface Command {
-  data: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder | SlashCommandSubcommandsOnlyBuilder;
-  execute: (interaction: ChatInputCommandInteraction, client: GaiaClient) => Promise<void>;
+  data:
+    | SlashCommandBuilder
+    | SlashCommandOptionsOnlyBuilder
+    | SlashCommandSubcommandsOnlyBuilder;
+  execute: (
+    interaction: ChatInputCommandInteraction,
+    client: GaiaClient,
+  ) => Promise<void>;
 }
 
 export function registerCommands(): Collection<string, Command> {

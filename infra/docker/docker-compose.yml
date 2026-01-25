@@ -217,14 +217,6 @@ services:
     networks:
       - gaia_network
 
-  chromadb_admin:
-    image: fengzhichao/chromadb-admin
-    container_name: chromadb_admin
-    networks:
-      - gaia_network
-    ports:
-      - "8082:3001"
-
 volumes:
   chroma_data:
   pgdata:

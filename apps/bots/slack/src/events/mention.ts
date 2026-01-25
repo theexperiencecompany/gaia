@@ -1,6 +1,6 @@
-import type { App } from "@slack/bolt";
 import type { GaiaClient } from "@gaia/shared";
-import { truncateResponse, formatError } from "@gaia/shared";
+import { formatError, truncateResponse } from "@gaia/shared";
+import type { App } from "@slack/bolt";
 
 /**
  * Registers the app_mention event listener.
@@ -25,7 +25,7 @@ export function registerMentionEvent(app: App, gaia: GaiaClient) {
       const response = await gaia.chatPublic({
         message: content,
         platform: "slack",
-        platformUserId: userId
+        platformUserId: userId,
       });
 
       const truncated = truncateResponse(response.response, "slack");

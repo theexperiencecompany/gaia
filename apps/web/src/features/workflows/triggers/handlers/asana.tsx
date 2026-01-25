@@ -8,7 +8,6 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { useState } from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";

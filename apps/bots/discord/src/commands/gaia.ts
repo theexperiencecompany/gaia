@@ -1,6 +1,10 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from "discord.js";
 import type { GaiaClient } from "@gaia/shared";
-import { truncateResponse, formatError } from "@gaia/shared";
+import { formatError, truncateResponse } from "@gaia/shared";
+import {
+  type ChatInputCommandInteraction,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "discord.js";
 
 export const data = new SlashCommandBuilder()
   .setName("gaia")
@@ -9,7 +13,7 @@ export const data = new SlashCommandBuilder()
     option
       .setName("message")
       .setDescription("Your message to GAIA")
-      .setRequired(true)
+      .setRequired(true),
   );
 
 /**
@@ -22,7 +26,7 @@ export const data = new SlashCommandBuilder()
  */
 export async function execute(
   interaction: ChatInputCommandInteraction,
-  gaia: GaiaClient
+  gaia: GaiaClient,
 ) {
   const message = interaction.options.getString("message", true);
   const userId = interaction.user.id;
@@ -35,13 +39,13 @@ export async function execute(
       message,
       platform: "discord",
       platformUserId: userId,
-      channelId
+      channelId,
     });
 
     if (!response.authenticated) {
       const authUrl = gaia.getAuthUrl("discord", userId);
       await interaction.editReply({
-        content: `Please authenticate first: ${authUrl}`
+        content: `Please authenticate first: ${authUrl}`,
       });
       return;
     }

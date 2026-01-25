@@ -19,6 +19,49 @@
         "command": "pnpm tsx watch src/index.ts",
         "cwd": "{projectRoot}"
       }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm lint",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/biome.json"]
+    },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm lint:fix",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm format",
+        "cwd": "{projectRoot}"
+      },
+      "cache": false
+    },
+    "format:check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "biome format --check .",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/biome.json"]
+    },
+    "type-check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm type-check",
+        "cwd": "{projectRoot}"
+      },
+      "cache": true,
+      "inputs": ["default", "{projectRoot}/tsconfig.json", "^production"]
     }
   }
 }

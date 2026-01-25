@@ -1,5 +1,5 @@
-import type { Bot } from "grammy";
 import type { GaiaClient } from "@gaia/shared";
+import type { Bot } from "grammy";
 
 /**
  * Registers the /auth command handler.

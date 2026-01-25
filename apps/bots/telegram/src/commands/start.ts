@@ -10,10 +10,10 @@ export function registerStartCommand(bot: Bot) {
   bot.command("start", async (ctx) => {
     await ctx.reply(
       "Welcome to GAIA!\n\n" +
-      "Commands:\n" +
-      "/gaia <message> - Chat with GAIA\n" +
-      "/auth - Link your Telegram account\n\n" +
-      "You can also send messages directly in private chats."
+        "Commands:\n" +
+        "/gaia <message> - Chat with GAIA\n" +
+        "/auth - Link your Telegram account\n\n" +
+        "You can also send messages directly in private chats.",
     );
   });
 }

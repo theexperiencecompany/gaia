@@ -1,5 +1,9 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from "discord.js";
 import type { GaiaClient } from "@gaia/shared";
+import {
+  type ChatInputCommandInteraction,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "discord.js";
 
 /**
  * Slash command definition for /auth.
@@ -17,13 +21,13 @@ export const data = new SlashCommandBuilder()
  */
 export async function execute(
   interaction: ChatInputCommandInteraction,
-  gaia: GaiaClient
+  gaia: GaiaClient,
 ) {
   const userId = interaction.user.id;
   const authUrl = gaia.getAuthUrl("discord", userId);
 
   await interaction.reply({
     content: `Click to link your Discord account to GAIA: ${authUrl}`,
-    flags: MessageFlags.Ephemeral
+    flags: MessageFlags.Ephemeral,
   });
 }

@@ -1,11 +1,11 @@
-import type { Interaction, Collection } from "discord.js";
 import type { GaiaClient } from "@gaia/shared";
+import type { Collection, Interaction } from "discord.js";
 import type { Command } from "../commands";
 
 export async function handleInteraction(
   interaction: Interaction,
   gaia: GaiaClient,
-  commands: Collection<string, Command>
+  commands: Collection<string, Command>,
 ) {
   if (!interaction.isChatInputCommand()) return;
 

@@ -43,10 +43,11 @@ async def login_workos():
     return RedirectResponse(url=authorization_url)
 
 
-
 async def _store_mobile_redirect(state: str, redirect_uri: str) -> None:
     """Store mobile redirect URI in Redis with TTL."""
-    await redis_cache.client.setex(f"mobile_redirect:{state}", MOBILE_REDIRECT_TTL, redirect_uri)
+    await redis_cache.client.setex(
+        f"mobile_redirect:{state}", MOBILE_REDIRECT_TTL, redirect_uri
+    )
 
 
 async def _get_and_delete_mobile_redirect(state: str) -> str | None:
@@ -62,24 +63,26 @@ async def _get_and_delete_mobile_redirect(state: str) -> str | None:
 async def login_workos_mobile(redirect_uri: Optional[str] = None):
     """
     Start WorkOS SSO flow for mobile apps (Expo).
-    
+
     Args:
         redirect_uri: The deep link URI to redirect back to (from Linking.createURL)
     """
     # Generate a unique state to track this auth flow
     state = secrets.token_urlsafe(32)
-    
+
     # Store the mobile app's redirect URI
     # Default to gaiamobile:// scheme if not provided
     mobile_callback = redirect_uri or "gaiamobile://auth/callback"
     await _store_mobile_redirect(state, mobile_callback)
-    
-    logger.info(f"Mobile OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}...")
-    
+
+    logger.info(
+        f"Mobile OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}..."
+    )
+
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
         redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
-        state=state
+        state=state,
     )
     return {"url": authorization_url}
 
@@ -97,13 +100,15 @@ async def workos_mobile_callback(
     mobile_redirect: str | None = None
     if state:
         mobile_redirect = await _get_and_delete_mobile_redirect(state)
-    
+
     if not mobile_redirect:
         mobile_redirect = "gaiamobile://auth/callback"
-        logger.warning(f"No stored redirect URI for state, using default: {mobile_redirect}")
-    
+        logger.warning(
+            f"No stored redirect URI for state, using default: {mobile_redirect}"
+        )
+
     logger.info(f"Mobile OAuth callback, redirecting to: {mobile_redirect}")
-    
+
     try:
         if not code:
             logger.error("No authorization code received from WorkOS (mobile)")

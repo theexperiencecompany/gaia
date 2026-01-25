@@ -1,8 +1,8 @@
-import { Client, GatewayIntentBits, Events } from "discord.js";
 import { GaiaClient, loadConfig } from "@gaia/shared";
+import { Client, Events, GatewayIntentBits } from "discord.js";
 import { registerCommands } from "./commands";
-import { handleMention } from "./events/mention";
 import { handleInteraction } from "./events/interaction";
+import { handleMention } from "./events/mention";
 
 /**
  * Initializes and starts the Discord bot.
@@ -23,8 +23,8 @@ export async function createBot() {
     intents: [
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
-      GatewayIntentBits.MessageContent
-    ]
+      GatewayIntentBits.MessageContent,
+    ],
   });
 
   const gaia = new GaiaClient(config.gaiaApiUrl, config.gaiaApiKey);

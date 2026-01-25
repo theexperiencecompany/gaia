@@ -1,5 +1,5 @@
-import { Bot } from "grammy";
 import { GaiaClient, loadConfig } from "@gaia/shared";
+import { Bot } from "grammy";
 import { registerCommands } from "./commands";
 import { registerHandlers } from "./handlers";
 
@@ -29,7 +29,7 @@ export async function createBot() {
   });
 
   bot.start({
-    onStart: () => console.log("Telegram bot is running")
+    onStart: () => console.log("Telegram bot is running"),
   });
 
   return bot;

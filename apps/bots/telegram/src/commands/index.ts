@@ -1,8 +1,8 @@
-import type { Bot } from "grammy";
 import type { GaiaClient } from "@gaia/shared";
-import { registerStartCommand } from "./start";
-import { registerGaiaCommand } from "./gaia";
+import type { Bot } from "grammy";
 import { registerAuthCommand } from "./auth";
+import { registerGaiaCommand } from "./gaia";
+import { registerStartCommand } from "./start";
 
 export function registerCommands(bot: Bot, gaia: GaiaClient) {
   registerStartCommand(bot);

@@ -1,5 +1,5 @@
-import type { App } from "@slack/bolt";
 import type { GaiaClient } from "@gaia/shared";
+import type { App } from "@slack/bolt";
 
 /**
  * Registers the /auth slash command listener.
@@ -17,7 +17,7 @@ export function registerAuthCommand(app: App, gaia: GaiaClient) {
 
     await respond({
       text: `Click to link your Slack account to GAIA: ${authUrl}`,
-      response_type: "ephemeral"
+      response_type: "ephemeral",
     });
   });
 }

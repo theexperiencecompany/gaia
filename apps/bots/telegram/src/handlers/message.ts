@@ -1,6 +1,6 @@
-import type { Bot } from "grammy";
 import type { GaiaClient } from "@gaia/shared";
-import { truncateResponse, formatError } from "@gaia/shared";
+import { formatError, truncateResponse } from "@gaia/shared";
+import type { Bot } from "grammy";
 
 /**
  * Registers the text message handler for private chats.
@@ -24,7 +24,7 @@ export function registerMessageHandler(bot: Bot, gaia: GaiaClient) {
         message: ctx.message.text,
         platform: "telegram",
         platformUserId: userId,
-        channelId: ctx.chat.id.toString()
+        channelId: ctx.chat.id.toString(),
       });
 
       if (!response.authenticated) {

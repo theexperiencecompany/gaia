@@ -154,6 +154,22 @@ run = "mise worker"
 description = "Run ONLY voice agent worker"
 run = "nx dev voice-agent"
 
+[tasks."dev:bots"]
+description = "Run all bots in parallel (starts Docker automatically)"
+run = "nx run docker:docker:up && nx run-many -t dev --projects=api,bot-discord,bot-slack,bot-telegram --parallel=4"
+
+[tasks."dev:bot:discord"]
+description = "Run Discord bot only (starts Docker automatically)"
+run = "nx run docker:docker:up && nx run-many -t dev --projects=api,bot-discord --parallel=2"
+
+[tasks."dev:bot:slack"]
+description = "Run Slack bot only (starts Docker automatically)"
+run = "nx run docker:docker:up && nx run-many -t dev --projects=api,bot-slack --parallel=2"
+
+[tasks."dev:bot:telegram"]
+description = "Run Telegram bot only (starts Docker automatically)"
+run = "nx run docker:docker:up && nx run-many -t dev --projects=api,bot-telegram --parallel=2"
+
 [tasks."dev:full"]
 description = "Run API + web + arq worker + voice agent in parallel"
 run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web,voice-agent --parallel=4"
@@ -226,6 +242,10 @@ run = "nx lint web"
 description = "Lint mobile only"
 run = "nx lint mobile"
 
+[tasks."lint:bots"]
+description = "Lint all bots (Discord, Slack, Telegram)"
+run = "nx run-many -t lint --projects=bot-discord,bot-slack,bot-telegram --parallel=3"
+
 [tasks."lint:affected"]
 description = "Lint only affected projects (parallel with caching)"
 run = "nx affected -t lint --parallel=3"
@@ -246,6 +266,10 @@ run = "nx format api"
 description = "Format and write changes to web only"
 run = "nx format web"
 
+[tasks."format:bots"]
+description = "Format all bots (Discord, Slack, Telegram)"
+run = "nx run-many -t format --projects=bot-discord,bot-slack,bot-telegram --parallel=3"
+
 [tasks."format:affected"]
 description = "Format and write changes to affected projects (parallel)"
 run = "nx affected -t format --parallel=3"
@@ -253,6 +277,10 @@ run = "nx affected -t format --parallel=3"
 [tasks."type-check"]
 description = "Type-check all apps (parallel with caching)"
 run = "nx run-many -t type-check --parallel=3"
+
+[tasks."type-check:bots"]
+description = "Type-check all bots (Discord, Slack, Telegram)"
+run = "nx run-many -t type-check --projects=bot-discord,bot-slack,bot-telegram --parallel=3"
 
 [tasks."type-check:affected"]
 description = "Type-check only affected projects (parallel with caching)"

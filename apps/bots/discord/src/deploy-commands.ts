@@ -1,6 +1,6 @@
 import { REST, Routes } from "discord.js";
-import { data as gaiaCommand } from "./commands/gaia";
 import { data as authCommand } from "./commands/auth";
+import { data as gaiaCommand } from "./commands/gaia";
 
 const commands = [gaiaCommand.toJSON(), authCommand.toJSON()];
 
