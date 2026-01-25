@@ -1,87 +1,45 @@
-from datetime import datetime, timezone
-from typing import Optional
-from uuid import uuid4
+"""
+Bot platform endpoints for Discord, Slack, Telegram, etc.
+"""
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends
 
-from app.agents.core.agent import call_agent_silent
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.loggers import chat_logger as logger
-from app.config.settings import settings
-from app.db.mongodb.collections import users_collection
-from app.models.message_models import MessageRequestWithHistory
+from app.helpers.bot_helpers import (
+    get_or_create_session,
+    get_user_by_platform_id,
+    get_user_context,
+    process_chat_message,
+    validate_platform,
+)
+from app.schemas.bot.request import BotChatRequest
+from app.schemas.bot.response import AuthStatusResponse, BotChatResponse
+from app.api.v1.dependencies.bot_dependencies import verify_bot_api_key
 
 router = APIRouter()
-
-
-class BotChatRequest(BaseModel):
-    message: str
-    platform: str
-    platform_user_id: str
-    channel_id: Optional[str] = None
-
-
-class BotChatResponse(BaseModel):
-    response: str
-    conversation_id: str
-    authenticated: bool
-
-
-class SessionResponse(BaseModel):
-    conversation_id: str
-    platform: str
-    platform_user_id: str
-
-
-async def verify_bot_api_key(x_bot_api_key: str = Header(..., alias="X-Bot-API-Key")):
-    bot_api_key = getattr(settings, "GAIA_BOT_API_KEY", None)
-    if not bot_api_key or x_bot_api_key != bot_api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-
-
-async def get_user_by_platform_id(
-    platform: str, platform_user_id: str
-) -> Optional[dict]:
-    """Find user by platform ID using structured format."""
-    return await users_collection.find_one(
-        {f"platform_links.{platform}.{platform}_id": platform_user_id}
-    )
-
-
-async def get_or_create_session(
-    platform: str, platform_user_id: str, channel_id: Optional[str]
-) -> str:
-    # TODO: Replace with persistent session storage (e.g., Redis, MongoDB)
-    # Temporary workaround: always return a new conversation ID (stateless)
-    # session_key = f"{platform}:{platform_user_id}:{channel_id or 'dm'}"
-    return str(uuid4())
 
 
 @router.post(
     "/chat",
     response_model=BotChatResponse,
-    status_code=200,
     summary="Authenticated Bot Chat",
-    description="Process a chat message from an authenticated bot user.",
+    description="Process chat from authenticated bot user with full GAIA context",
 )
 async def bot_chat(
-    request: BotChatRequest, _: None = Depends(verify_bot_api_key)
+    request: BotChatRequest,
+    _: None = Depends(verify_bot_api_key),
 ) -> BotChatResponse:
     """
-    Handle an authenticated chat request from a bot platform.
-
-    Args:
-        request (BotChatRequest): The chat request containing message and user details.
-
-    Returns:
-        BotChatResponse: The agent's response and session info.
+    Handle authenticated chat from bot platforms.
+    Returns unauthenticated response if user not linked.
     """
-    user = await get_user_by_platform_id(request.platform, request.platform_user_id)
+    validate_platform(request.platform)
 
+    # Check if user is linked
+    user = await get_user_by_platform_id(request.platform, request.platform_user_id)
     if not user:
         return BotChatResponse(
-            response="Please authenticate first using /auth",
+            response="Please link your account first",
             conversation_id="",
             authenticated=False,
         )
@@ -90,154 +48,112 @@ async def bot_chat(
         request.platform, request.platform_user_id, request.channel_id
     )
 
-    message_request = MessageRequestWithHistory(
-        message=request.message,
-        conversation_id=conversation_id,
-        messages=[{"role": "user", "content": request.message}],
-    )
+    # Get user context (model config, timezone)
+    user_model_config, user_time = await get_user_context(user)
 
+    # Process message through agent
     try:
-        response_text, _ = await call_agent_silent(
-            request=message_request,
+        response_text = await process_chat_message(
+            message=request.message,
             conversation_id=conversation_id,
             user=user,
-            user_time=datetime.now(timezone.utc),
+            user_model_config=user_model_config,
+            user_time=user_time,
         )
     except Exception as e:
-        logger.error(f"Bot chat error: {e}")
-        response_text = "An error occurred while processing your request."
+        logger.error(
+            f"Bot chat error for {request.platform}/{request.platform_user_id}: {e}",
+            exc_info=True,
+        )
+        response_text = (
+            "Sorry, something went wrong processing your message. Please try again."
+        )
 
     return BotChatResponse(
-        response=response_text, conversation_id=conversation_id, authenticated=True
-    )
-
-
-@router.post(
-    "/chat/public",
-    response_model=BotChatResponse,
-    status_code=200,
-    summary="Public Bot Chat",
-    description="Process a public (unauthenticated) chat message.",
-)
-async def bot_chat_public(
-    request: BotChatRequest, _: None = Depends(verify_bot_api_key)
-) -> BotChatResponse:
-    """
-    Handle an unauthenticated public chat request.
-
-    This endpoint creates a temporary session and bot user context.
-
-    Args:
-        request (BotChatRequest): The chat request.
-
-    Returns:
-        BotChatResponse: The agent's response.
-    """
-    conversation_id = str(uuid4())
-
-    bot_user = {
-        "user_id": f"bot_{request.platform}",
-        "email": f"bot@{request.platform}.gaia",
-        "name": "GAIA Bot",
-    }
-
-    message_request = MessageRequestWithHistory(
-        message=request.message,
+        response=response_text,
         conversation_id=conversation_id,
-        messages=[{"role": "user", "content": request.message}],
+        authenticated=True,
     )
 
-    try:
-        response_text, _ = await call_agent_silent(
-            request=message_request,
-            conversation_id=conversation_id,
-            user=bot_user,
-            user_time=datetime.now(timezone.utc),
-        )
-    except Exception as e:
-        logger.error(f"Bot public chat error: {e}")
-        response_text = "An error occurred while processing your request."
 
-    return BotChatResponse(
-        response=response_text, conversation_id=conversation_id, authenticated=False
-    )
+# TODO: Temporarily disabled - require authentication for all bot interactions
+# @router.post(
+#     "/chat/public",
+#     response_model=BotChatResponse,
+#     summary="Public Bot Chat",
+#     description="Process unauthenticated chat with limited capabilities",
+# )
+# async def bot_chat_public(
+#     request: BotChatRequest,
+#     _: None = Depends(verify_bot_api_key),
+# ) -> BotChatResponse:
+#     """
+#     Handle public (unauthenticated) chat from bot platforms.
+#
+#     Creates temporary session with no user context. Limited capabilities:
+#     - No access to integrations
+#     - No personalization
+#     - No memory retention
+#     - Uses default model
+#
+#     Used for public mentions or before user links account.
+#     """
+#     validate_platform(request.platform)
+#
+#     conversation_id = str(uuid4())
+#
+#     # Create temporary bot user context
+#     bot_user = {
+#         "user_id": f"bot_{request.platform}",
+#         "email": f"bot@{request.platform}.gaia",
+#         "name": "GAIA Bot",
+#         "timezone": "UTC",
+#     }
+#
+#     # Process message with minimal context
+#     try:
+#         response_text = await process_chat_message(
+#             message=request.message,
+#             conversation_id=conversation_id,
+#             user=bot_user,
+#             user_model_config=None,
+#             user_time=datetime.now(timezone.utc),
+#         )
+#     except Exception as e:
+#         logger.error(
+#             f"Bot public chat error for {request.platform}: {e}", exc_info=True
+#         )
+#         response_text = "Sorry, something went wrong. Please try again."
+#
+#     return BotChatResponse(
+#         response=response_text,
+#         conversation_id=conversation_id,
+#         authenticated=False,
+#     )
 
 
 @router.get(
-    "/session/{platform}/{platform_user_id}",
-    response_model=SessionResponse,
-    status_code=200,
-    summary="Get Session",
-    description="Retrieve or create a session for a platform user.",
+    "/auth/status/{platform}/{platform_user_id}",
+    response_model=AuthStatusResponse,
+    summary="Check Auth Status",
+    description="Check if platform user is linked to GAIA account",
 )
-async def get_session(
+async def check_auth_status(
     platform: str,
     platform_user_id: str,
-    channel_id: Optional[str] = None,
     _: None = Depends(verify_bot_api_key),
-) -> SessionResponse:
+) -> AuthStatusResponse:
     """
-    Get the active conversation ID for a user.
+    Check if a platform user has linked their GAIA account.
 
-    Args:
-        platform (str): The platform name.
-        platform_user_id (str): The user's ID on the platform.
-        channel_id (Optional[str]): The channel ID.
-
-    Returns:
-        SessionResponse: The session details.
+    Used by bots to determine whether to show auth prompt or process chat.
     """
-    conversation_id = await get_or_create_session(
-        platform, platform_user_id, channel_id
-    )
-    return SessionResponse(
-        conversation_id=conversation_id,
+    validate_platform(platform)
+
+    user = await get_user_by_platform_id(platform, platform_user_id)
+
+    return AuthStatusResponse(
+        authenticated=user is not None,
         platform=platform,
         platform_user_id=platform_user_id,
     )
-
-
-# ============================================================================
-# Bot Authentication Endpoints
-# ============================================================================
-
-
-@router.post("/auth/link/{platform}")
-async def link_platform_account_authenticated(
-    platform: str,
-    platform_user_id: str = Query(...),
-    user: dict = Depends(get_current_user),
-) -> dict:
-    """Link a platform account to the authenticated user's GAIA account."""
-    if platform not in ["discord", "slack", "telegram"]:
-        raise HTTPException(status_code=400, detail="Invalid platform")
-
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="User not authenticated")
-
-    result = await users_collection.update_one(
-        {"user_id": user_id}, {"$set": {f"platform_links.{platform}": platform_user_id}}
-    )
-
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    return {
-        "success": True,
-        "message": f"Your {platform.title()} account has been linked to GAIA.",
-        "platform": platform,
-    }
-
-
-@router.get("/auth/status/{platform}/{platform_user_id}")
-async def check_auth_status(platform: str, platform_user_id: str) -> dict:
-    """Check if a platform user is linked to a GAIA account."""
-    user = await users_collection.find_one(
-        {f"platform_links.{platform}.{platform}_id": platform_user_id}
-    )
-    return {
-        "authenticated": user is not None,
-        "platform": platform,
-        "platform_user_id": platform_user_id,
-    }

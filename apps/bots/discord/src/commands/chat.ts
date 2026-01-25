@@ -5,6 +5,7 @@ import {
   MessageFlags,
   SlashCommandBuilder,
 } from "discord.js";
+import { delay, splitMessageByBreaks } from "../utils/messageUtils";
 
 export const data = new SlashCommandBuilder()
   .setName("chat")
@@ -50,8 +51,22 @@ export async function execute(
       return;
     }
 
-    const truncated = truncateResponse(response.response, "discord");
-    await interaction.editReply({ content: truncated });
+    // Split response by message breaks and send each part separately
+    const messageParts = splitMessageByBreaks(response.response);
+
+    for (let i = 0; i < messageParts.length; i++) {
+      const truncated = truncateResponse(messageParts[i], "discord");
+
+      if (i === 0) await interaction.editReply({ content: truncated });
+      else {
+        // Add small delay between messages for natural flow
+        await delay(500);
+        await interaction.followUp({
+          content: truncated,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+    }
   } catch (error) {
     await interaction.editReply({ content: formatError(error) });
   }
