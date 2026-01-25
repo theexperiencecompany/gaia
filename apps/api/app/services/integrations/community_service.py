@@ -1,6 +1,6 @@
 """Community marketplace service functions."""
 
-from typing import Optional
+from typing import Any, Optional
 
 from app.config.loggers import app_logger as logger
 from app.constants.cache import COMMUNITY_CACHE_TTL
@@ -71,14 +71,16 @@ async def _search_community_integrations(
 
     # Fallback to MongoDB regex search
     logger.info(f"ChromaDB returned no results for '{query}', falling back to MongoDB")
-    mongo_query = {"is_public": True}
     search_regex = {"$regex": query, "$options": "i"}
-    mongo_query["$or"] = [
-        {"name": search_regex},
-        {"description": search_regex},
-        {"tools.name": search_regex},
-        {"tools.description": search_regex},
-    ]
+    mongo_query: dict[str, Any] = {
+        "is_public": True,
+        "$or": [
+            {"name": search_regex},
+            {"description": search_regex},
+            {"tools.name": search_regex},
+            {"tools.description": search_regex},
+        ],
+    }
 
     if category and category != "all":
         mongo_query["category"] = category

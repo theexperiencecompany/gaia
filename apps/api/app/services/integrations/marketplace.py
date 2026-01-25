@@ -130,7 +130,7 @@ async def get_integration_details(integration_id: str) -> Optional[IntegrationRe
                     "name": creator_doc.get("name"),
                     "picture": creator_doc.get("picture"),
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to fetch creator info for {response.created_by}: {e}")
 
     return response

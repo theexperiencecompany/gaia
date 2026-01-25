@@ -1,7 +1,7 @@
 """Profession-based bio templates for users without Gmail integration."""
 
 import random
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 # Profession enum matching frontend options
 PROFESSIONS = (

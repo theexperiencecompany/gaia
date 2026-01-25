@@ -9,7 +9,6 @@ Flow:
 6. Return validated profile URLs ready for crawling
 """
 
-import asyncio
 import json
 import os
 import re

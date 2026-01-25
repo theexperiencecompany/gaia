@@ -19,8 +19,6 @@ Pattern deletion:
     await delete_cache("user:*")  # Delete all user keys
 """
 
-import json
-from datetime import datetime
 from typing import Any, Optional
 
 import redis.asyncio as redis

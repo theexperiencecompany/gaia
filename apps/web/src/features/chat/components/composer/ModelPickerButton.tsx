@@ -104,7 +104,6 @@ const ModelPickerButton: React.FC = () => {
           content: "min-w-[370px] max-w-none bg-zinc-800",
         },
       }}
-      
       classNames={{
         trigger:
           "cursor-pointer bg-transparent transition hover:bg-zinc-800 !min-w-fit !w-auto !max-w-none whitespace-nowrap pl-3 pr-8",
@@ -175,12 +174,22 @@ const ModelPickerButton: React.FC = () => {
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
                       {model.is_default && (
-                        <Chip size="sm" color="success" variant="flat" classNames={{ content: "text-xs px-1" }}>
+                        <Chip
+                          size="sm"
+                          color="success"
+                          variant="flat"
+                          classNames={{ content: "text-xs px-1" }}
+                        >
                           Default
                         </Chip>
                       )}
                       {!isFree && (
-                        <Chip size="sm" color="warning" variant="flat" classNames={{ content: "text-xs px-1" }}>
+                        <Chip
+                          size="sm"
+                          color="warning"
+                          variant="flat"
+                          classNames={{ content: "text-xs px-1" }}
+                        >
                           Pro
                         </Chip>
                       )}

@@ -12,7 +12,7 @@ Flow:
 import asyncio
 import time
 import traceback
-from typing import Dict, List, Set
+from typing import Dict
 
 from app.config.loggers import memory_logger as logger
 from crawl4ai import AsyncWebCrawler

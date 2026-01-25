@@ -1,7 +1,7 @@
 const LIMITS: Record<string, number> = {
   discord: 2000,
   slack: 4000,
-  telegram: 4096
+  telegram: 4096,
 };
 
 /**
@@ -13,7 +13,7 @@ const LIMITS: Record<string, number> = {
  */
 export function truncateResponse(
   text: string,
-  platform: "discord" | "slack" | "telegram"
+  platform: "discord" | "slack" | "telegram",
 ): string {
   const limit = LIMITS[platform];
   if (text.length <= limit) {

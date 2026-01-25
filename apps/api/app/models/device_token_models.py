@@ -2,7 +2,6 @@
 Device Token Models for Push Notifications
 """
 
-from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 

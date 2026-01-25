@@ -12,7 +12,6 @@ from typing import Optional
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import get_integration_by_id
-from app.models.oauth_models import OAuthIntegration
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from langchain_core.messages import SystemMessage

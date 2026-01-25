@@ -186,6 +186,7 @@ export async function GET(request: Request) {
                     backgroundColor: iconConfig?.bgColorRaw || "#3f3f46",
                   }}
                 >
+                  {/** biome-ignore lint/a11y/noSvgWithoutTitle: og image */}
                   <svg
                     width="80"
                     height="80"

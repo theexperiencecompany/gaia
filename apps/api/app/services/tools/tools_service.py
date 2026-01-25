@@ -1,7 +1,7 @@
 """Tools service for managing and retrieving tool information."""
 
 import asyncio
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import langchain_logger as logger
@@ -101,8 +101,8 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
 
     mcp_store = get_mcp_tools_store()
 
-    global_mcp_tools: dict[str, list[dict]] = {}
-    custom_integrations: list[dict] = []
+    global_mcp_tools: dict[str, dict[str, Any]] = {}
+    custom_integrations: list[dict[str, Any]] = []
     try:
         global_mcp_tools, custom_integrations = await asyncio.gather(
             mcp_store.get_all_mcp_tools(),

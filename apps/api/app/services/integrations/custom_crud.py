@@ -176,8 +176,10 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
             for affected_user_id in affected_user_ids:
                 try:
                     await delete_cache_by_pattern(f"tools:user:{affected_user_id}:*")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(
+                        f"Cache deletion failed for user {affected_user_id}: {e}"
+                    )
 
             try:
                 async with get_db_session() as session:
@@ -192,15 +194,15 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
 
             try:
                 await delete_cache("mcp:tools:all")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Cache deletion for mcp:tools:all failed: {e}")
 
             try:
                 store = await providers.aget("chroma_tools_store")
                 if store:
                     await store.adelete(namespace=("subagents",), key=integration_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Chroma store deletion failed for {integration_id}: {e}")
 
             return True
         return False
@@ -221,8 +223,10 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
                         )
                     )
                     await session.commit()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(
+                    f"MCP credential deletion failed for {integration_id}: {e}"
+                )
 
             return True
         return False
@@ -241,20 +245,22 @@ async def create_and_connect_custom_integration(
     {"status": "failed", "error": "..."}
     """
     # Parallel: Favicon fetch + MCP probe
-    favicon_result, probe_result = await asyncio.gather(
+    results = await asyncio.gather(
         fetch_favicon_from_url(request.server_url),
         mcp_client.probe_connection(request.server_url),
         return_exceptions=True,
     )
+    favicon_result: str | BaseException | None = results[0]
+    probe_result: Dict[str, Any] | BaseException = results[1]
 
-    icon_url = None
-    if favicon_result and not isinstance(favicon_result, Exception):
+    icon_url: str | None = None
+    if favicon_result and not isinstance(favicon_result, BaseException):
         icon_url = favicon_result
 
     integration = await create_custom_integration(user_id, request, icon_url)
 
     # Determine connection result based on probe
-    if isinstance(probe_result, Exception):
+    if isinstance(probe_result, BaseException):
         return integration, {"status": "failed", "error": str(probe_result)}
 
     if probe_result.get("error"):

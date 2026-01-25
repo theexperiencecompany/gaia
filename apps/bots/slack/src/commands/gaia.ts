@@ -1,6 +1,6 @@
-import type { App } from "@slack/bolt";
 import type { GaiaClient } from "@gaia/shared";
-import { truncateResponse, formatError } from "@gaia/shared";
+import { formatError, truncateResponse } from "@gaia/shared";
+import type { App } from "@slack/bolt";
 
 /**
  * Registers the /gaia slash command listener.
@@ -20,7 +20,7 @@ export function registerGaiaCommand(app: App, gaia: GaiaClient) {
     if (!message) {
       await respond({
         text: "Please provide a message. Usage: /gaia <your message>",
-        response_type: "ephemeral"
+        response_type: "ephemeral",
       });
       return;
     }
@@ -30,14 +30,14 @@ export function registerGaiaCommand(app: App, gaia: GaiaClient) {
         message,
         platform: "slack",
         platformUserId: userId,
-        channelId
+        channelId,
       });
 
       if (!response.authenticated) {
         const authUrl = gaia.getAuthUrl("slack", userId);
         await respond({
           text: `Please authenticate first: ${authUrl}`,
-          response_type: "ephemeral"
+          response_type: "ephemeral",
         });
         return;
       }
@@ -45,12 +45,12 @@ export function registerGaiaCommand(app: App, gaia: GaiaClient) {
       const truncated = truncateResponse(response.response, "slack");
       await respond({
         text: truncated,
-        response_type: "ephemeral"
+        response_type: "ephemeral",
       });
     } catch (error) {
       await respond({
         text: formatError(error),
-        response_type: "ephemeral"
+        response_type: "ephemeral",
       });
     }
   });
