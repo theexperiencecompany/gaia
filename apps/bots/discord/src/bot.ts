@@ -1,8 +1,22 @@
 import { GaiaClient, loadConfig } from "@gaia/shared";
-import { Client, Events, GatewayIntentBits } from "discord.js";
-import { registerCommands } from "./commands";
+import { Client, Events, GatewayIntentBits, REST, Routes } from "discord.js";
+import { getAllCommands, registerCommands } from "./commands";
 import { handleInteraction } from "./events/interaction";
 import { handleMention } from "./events/mention";
+
+async function deployCommands(
+  token: string,
+  clientId: string,
+  guildId?: string,
+) {
+  const rest = new REST().setToken(token);
+  const commands = getAllCommands();
+  const route = guildId
+    ? Routes.applicationGuildCommands(clientId, guildId)
+    : Routes.applicationCommands(clientId);
+  await rest.put(route, { body: commands });
+  return { count: commands.length, isGuild: !!guildId };
+}
 
 /**
  * Initializes and starts the Discord bot.
@@ -14,6 +28,8 @@ import { handleMention } from "./events/mention";
 export async function createBot() {
   const config = loadConfig();
   const token = process.env.DISCORD_BOT_TOKEN;
+  const clientId = process.env.DISCORD_CLIENT_ID;
+  const guildId = process.env.DISCORD_GUILD_ID;
 
   if (!token) {
     throw new Error("DISCORD_BOT_TOKEN is required");
@@ -30,8 +46,21 @@ export async function createBot() {
   const gaia = new GaiaClient(config.gaiaApiUrl, config.gaiaApiKey);
   const commands = registerCommands();
 
-  client.once(Events.ClientReady, (c) => {
+  client.once(Events.ClientReady, async (c) => {
     console.log(`Discord bot ready as ${c.user.tag}`);
+    if (clientId) {
+      try {
+        const { count, isGuild } = await deployCommands(
+          token,
+          clientId,
+          guildId,
+        );
+        const scope = isGuild ? `guild ${guildId}` : "globally";
+        console.log(`Registered ${count} slash commands ${scope}`);
+      } catch (error) {
+        console.error("Failed to deploy slash commands:", error);
+      }
+    }
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {

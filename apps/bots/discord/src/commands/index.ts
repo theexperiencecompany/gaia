@@ -1,5 +1,6 @@
 import type { GaiaClient } from "@gaia/shared";
 import {
+  type AutocompleteInteraction,
   type ChatInputCommandInteraction,
   Collection,
   type SlashCommandBuilder,
@@ -8,6 +9,7 @@ import {
 } from "discord.js";
 import * as auth from "./auth";
 import * as gaia from "./gaia";
+import * as help from "./help";
 
 export interface Command {
   data:
@@ -18,11 +20,23 @@ export interface Command {
     interaction: ChatInputCommandInteraction,
     client: GaiaClient,
   ) => Promise<void>;
+  autocomplete?: (interaction: AutocompleteInteraction) => Promise<void>;
 }
+
+const commandModules = [gaia, auth, help];
 
 export function registerCommands(): Collection<string, Command> {
   const commands = new Collection<string, Command>();
-  commands.set(gaia.data.name, gaia);
-  commands.set(auth.data.name, auth);
+  for (const cmd of commandModules) {
+    commands.set(cmd.data.name, cmd);
+  }
   return commands;
+}
+
+/**
+ * Returns all command data as JSON for Discord API registration.
+ * Used by deploy-commands.ts to register slash commands.
+ */
+export function getAllCommands() {
+  return commandModules.map((cmd) => cmd.data.toJSON());
 }

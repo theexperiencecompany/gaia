@@ -21,7 +21,7 @@ pnpm dev
 - `GAIA_BOT_API_KEY` - API key
 
 **Platform-specific:**
-- Discord: `DISCORD_BOT_TOKEN`
+- Discord: `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_GUILD_ID` (dev only, instant updates)
 - Slack: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`
 - Telegram: `TELEGRAM_BOT_TOKEN`
 
