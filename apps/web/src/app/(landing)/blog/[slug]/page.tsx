@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 
 import BlogPostClient from "@/app/(landing)/blog/client";
 import { getAllBlogSlugs, getBlogPost } from "@/lib/blog";
@@ -7,12 +8,18 @@ import {
   generateBreadcrumbSchema,
   siteConfig,
 } from "@/lib/seo";
+import { generateBlogMetadata } from "@/utils/seoUtils";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-export const revalidate = 3600; // Revalidate every hour
+export const revalidate = 3600;
+export const dynamicParams = true;
+
+const getCachedBlogPost = cache(async (slug: string) => {
+  return getBlogPost(slug);
+});
 
 export async function generateStaticParams() {
   const slugs = await getAllBlogSlugs();
@@ -27,8 +34,7 @@ export async function generateMetadata({
   const { slug } = await params;
 
   try {
-    // Read blog post from markdown file
-    const blog = await getBlogPost(slug);
+    const blog = await getCachedBlogPost(slug);
     if (!blog) {
       return {
         title: "Blog Post Not Found",
@@ -36,18 +42,7 @@ export async function generateMetadata({
       };
     }
 
-    // Generate metadata from the blog post
-    return {
-      title: blog.title,
-      description: blog.content.slice(0, 160),
-      openGraph: {
-        title: blog.title,
-        description: blog.content.slice(0, 160),
-        images: [blog.image],
-        type: "article",
-        publishedTime: blog.date,
-      },
-    };
+    return generateBlogMetadata(blog);
   } catch {
     return {
       title: "Blog Post Not Found",
@@ -60,8 +55,7 @@ export default async function BlogPostPage({ params }: PageProps) {
   const { slug } = await params;
 
   try {
-    // Read blog post from markdown file
-    const blog = await getBlogPost(slug);
+    const blog = await getCachedBlogPost(slug);
 
     if (!blog) {
       return (

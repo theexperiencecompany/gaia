@@ -24,7 +24,6 @@ export interface Integration {
   description: string;
   category: IntegrationCategoryValue;
   status: "connected" | "not_connected" | "created" | "error";
-  // New properties for unified integrations
   isSpecial?: boolean;
   displayPriority?: number;
   includedIntegrations?: string[];
@@ -32,19 +31,17 @@ export interface Integration {
   managedBy?: "self" | "composio" | "mcp" | "internal";
   available?: boolean;
   authType?: "oauth" | "bearer" | "none";
-  // Marketplace properties
   source?: "platform" | "custom";
   requiresAuth?: boolean;
   isPublic?: boolean;
   createdBy?: string;
   tools?: Array<{ name: string; description?: string }>;
-  // Custom integration icon (favicon from MCP server)
   iconUrl?: string;
-  // Creator info (populated from users collection)
   creator?: {
     name: string | null;
     picture: string | null;
   } | null;
+  slug?: string;
 }
 
 export interface IntegrationStatus {
@@ -183,6 +180,7 @@ export interface CommunityIntegrationCreator {
 
 export interface CommunityIntegration {
   integrationId: string;
+  slug: string;
   name: string;
   description: string;
   category: string;

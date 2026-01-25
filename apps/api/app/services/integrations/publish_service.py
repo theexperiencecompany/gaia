@@ -103,11 +103,6 @@ async def publish_custom_integration(
         integration_id=integration_id,
         name=integration.get("name", ""),
         description=integration.get("description", ""),
-        category=category,
-        created_by=user_id,
-        clone_count=integration.get("clone_count", 0),
-        published_at=now.isoformat(),
-        tool_count=len(tools),
         tools=tools,
     )
 

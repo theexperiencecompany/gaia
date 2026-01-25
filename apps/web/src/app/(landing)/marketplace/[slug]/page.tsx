@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 
 import JsonLd from "@/components/seo/JsonLd";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
@@ -9,7 +10,8 @@ import { IntegrationDetailClient } from "./client";
 export const revalidate = 60;
 
 // Fetch integration data for metadata and page
-async function getIntegration(id: string) {
+// Backend accepts both slug and UUID for backward compatibility
+const getIntegration = cache(async (slug: string) => {
   const apiUrl =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
   const baseUrl = apiUrl.replace(/\/$/, "");
@@ -18,7 +20,7 @@ async function getIntegration(id: string) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-    const response = await fetch(`${baseUrl}/integrations/public/${id}`, {
+    const response = await fetch(`${baseUrl}/integrations/public/${slug}`, {
       next: { revalidate: 60 },
       signal: controller.signal,
     });
@@ -28,10 +30,10 @@ async function getIntegration(id: string) {
     if (!response.ok) return null;
     return response.json();
   } catch (error) {
-    console.error(`[marketplace/${id}] Failed to fetch integration:`, error);
+    console.error(`[marketplace/${slug}] Failed to fetch integration:`, error);
     return null;
   }
-}
+});
 
 // Fetch all integrations for static generation
 async function getAllIntegrations() {
@@ -40,15 +42,35 @@ async function getAllIntegrations() {
   const baseUrl = apiUrl.replace(/\/$/, "");
 
   try {
-    const response = await fetch(
-      `${baseUrl}/integrations/community?limit=100`,
-      {
-        next: { revalidate: 60 },
-      },
-    );
-    if (!response.ok) return [];
-    const data = await response.json();
-    return data.integrations || [];
+    const isDev = process.env.NODE_ENV === "development";
+
+    if (isDev) {
+      const response = await fetch(
+        `${baseUrl}/integrations/community?limit=50`,
+        { next: { revalidate: 60 } },
+      );
+      if (!response.ok) return [];
+      const data = await response.json();
+      return data.integrations || [];
+    }
+
+    const { fetchAllPaginated } = await import("@/lib/fetchAll");
+    const allIntegrations = await fetchAllPaginated(async (limit, offset) => {
+      const response = await fetch(
+        `${baseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
+        { next: { revalidate: 60 } },
+      );
+      if (!response.ok) return { items: [], total: 0, hasMore: false };
+
+      const data = await response.json();
+      return {
+        items: data.integrations || [],
+        total: data.total || 0,
+        hasMore: data.hasMore !== false,
+      };
+    }, 100);
+
+    return allIntegrations;
   } catch (error) {
     console.error("[marketplace] Failed to fetch integrations for SSG:", error);
     return [];
@@ -58,21 +80,25 @@ async function getAllIntegrations() {
 /**
  * Generate static params for all public integrations.
  * This enables search engines to crawl and index all integration pages.
+ * Uses slug for SEO-friendly URLs.
  */
 export async function generateStaticParams() {
   const integrations = await getAllIntegrations();
-  return integrations.map((i: { integrationId: string }) => ({
-    id: i.integrationId,
+  console.log(`[SSG Marketplace] Generating ${integrations.length} pages`);
+  return integrations.map((i: { slug: string }) => ({
+    slug: i.slug,
   }));
 }
 
+export const dynamicParams = true;
+
 interface Props {
-  params: Promise<{ id: string }>;
+  params: Promise<{ slug: string }>;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { id } = await params;
-  const integration = await getIntegration(id);
+  const { slug } = await params;
+  const integration = await getIntegration(slug);
 
   if (!integration) {
     return {
@@ -80,11 +106,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     };
   }
 
-  const url = `${siteConfig.url}/marketplace/${id}`;
-  const ogImage = `/api/og/integration?id=${id}`;
+  const url = `${siteConfig.url}/marketplace/${slug}`;
+  const ogImage = `/api/og/integration?slug=${slug}`;
 
   return {
-    title: `${integration.name} | GAIA Marketplace`,
+    title: `${integration.name} MCP Integration for AI Agents | GAIA`,
     description: integration.description,
     alternates: {
       canonical: url,
@@ -92,12 +118,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     keywords: [
       integration.name,
       "MCP integration",
+      "MCP server",
       "AI integration",
+      "AI agents",
+      "Model Context Protocol",
       integration.category,
       "GAIA",
     ].filter(Boolean),
     openGraph: {
-      title: `${integration.name} - MCP Integration`,
+      title: `${integration.name} - MCP Integration for AI Agents`,
       description: integration.description,
       url,
       siteName: siteConfig.fullName,
@@ -106,7 +135,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
     twitter: {
       card: "summary_large_image",
-      title: `${integration.name} - MCP Integration`,
+      title: `${integration.name} - MCP Integration for AI Agents`,
       description: integration.description,
       images: [ogImage],
     },
@@ -114,8 +143,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function IntegrationPage({ params }: Props) {
-  const { id } = await params;
-  const integration = await getIntegration(id);
+  const { slug } = await params;
+  const integration = await getIntegration(slug);
 
   if (!integration) {
     notFound();
@@ -125,7 +154,7 @@ export default async function IntegrationPage({ params }: Props) {
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
     { name: "Marketplace", url: `${siteConfig.url}/marketplace` },
-    { name: integration.name, url: `${siteConfig.url}/marketplace/${id}` },
+    { name: integration.name, url: `${siteConfig.url}/marketplace/${slug}` },
   ]);
 
   const integrationSchema = {
@@ -133,7 +162,7 @@ export default async function IntegrationPage({ params }: Props) {
     "@type": "SoftwareApplication" as const,
     name: integration.name,
     description: integration.description,
-    url: `${siteConfig.url}/marketplace/${id}`,
+    url: `${siteConfig.url}/marketplace/${slug}`,
     applicationCategory: "Integration",
     operatingSystem: "Web",
     offers: {

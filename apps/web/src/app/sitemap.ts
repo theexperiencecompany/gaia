@@ -2,6 +2,8 @@ import type { MetadataRoute } from "next";
 
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { getAllBlogPosts } from "@/lib/blog";
+import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
+import { siteConfig } from "@/lib/seo";
 
 /**
  * Sitemap IDs for different content types.
@@ -30,92 +32,41 @@ export async function generateSitemaps() {
   ];
 }
 
-const BASE_URL = "https://heygaia.io";
+const BASE_URL = siteConfig.url;
 
-/**
- * Static pages with their priorities and update frequencies
- */
+type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
+const STATIC_PAGES: Array<{
+  path: string;
+  freq: ChangeFreq;
+  priority: number;
+}> = [
+  { path: "", freq: "daily", priority: 1.0 },
+  { path: "/pricing", freq: "weekly", priority: 0.9 },
+  { path: "/marketplace", freq: "weekly", priority: 0.9 },
+  { path: "/blog", freq: "daily", priority: 0.9 },
+  { path: "/use-cases", freq: "weekly", priority: 0.9 },
+  { path: "/download", freq: "weekly", priority: 0.9 },
+  { path: "/faq", freq: "monthly", priority: 0.8 },
+  { path: "/manifesto", freq: "monthly", priority: 0.8 },
+  { path: "/about", freq: "monthly", priority: 0.8 },
+  { path: "/docs", freq: "weekly", priority: 0.8 },
+  { path: "/contact", freq: "monthly", priority: 0.7 },
+  { path: "/brand", freq: "monthly", priority: 0.7 },
+  { path: "/login", freq: "monthly", priority: 0.6 },
+  { path: "/signup", freq: "monthly", priority: 0.6 },
+  { path: "/status", freq: "daily", priority: 0.6 },
+  { path: "/terms", freq: "monthly", priority: 0.5 },
+  { path: "/privacy", freq: "monthly", priority: 0.5 },
+  { path: "/request-feature", freq: "monthly", priority: 0.5 },
+  { path: "/thanks", freq: "monthly", priority: 0.4 },
+];
+
 function getStaticPages(): MetadataRoute.Sitemap {
-  return [
-    {
-      url: BASE_URL,
-      lastModified: new Date(),
-      changeFrequency: "daily",
-      priority: 1.0,
-    },
-    {
-      url: `${BASE_URL}/pricing`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    {
-      url: `${BASE_URL}/manifesto`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${BASE_URL}/about`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${BASE_URL}/contact`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.7,
-    },
-    {
-      url: `${BASE_URL}/blog`,
-      lastModified: new Date(),
-      changeFrequency: "daily",
-      priority: 0.9,
-    },
-    {
-      url: `${BASE_URL}/use-cases`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    {
-      url: `${BASE_URL}/login`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.6,
-    },
-    {
-      url: `${BASE_URL}/signup`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.6,
-    },
-    {
-      url: `${BASE_URL}/terms`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.5,
-    },
-    {
-      url: `${BASE_URL}/privacy`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.5,
-    },
-    {
-      url: `${BASE_URL}/brand`,
-      lastModified: new Date(),
-      changeFrequency: "monthly",
-      priority: 0.7,
-    },
-    {
-      url: `${BASE_URL}/marketplace`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-  ];
+  return STATIC_PAGES.map((p) => ({
+    url: `${BASE_URL}${p.path}`,
+    changeFrequency: p.freq,
+    priority: p.priority,
+  }));
 }
 
 /**
@@ -137,11 +88,12 @@ async function getBlogPages(): Promise<MetadataRoute.Sitemap> {
 }
 
 /**
- * Explore workflows (GAIA team curated) - no limit on curated content
+ * Explore workflows (GAIA team curated)
  */
 async function getExploreWorkflowPages(): Promise<MetadataRoute.Sitemap> {
   try {
-    const exploreResp = await workflowApi.getExploreWorkflows(500, 0);
+    const limit = isDevelopment() ? 50 : 1000;
+    const exploreResp = await workflowApi.getExploreWorkflows(limit, 0);
     return exploreResp.workflows.map((wc) => ({
       url: `${BASE_URL}/use-cases/${wc.id}`,
       lastModified: new Date(wc.created_at),
@@ -155,12 +107,34 @@ async function getExploreWorkflowPages(): Promise<MetadataRoute.Sitemap> {
 }
 
 /**
- * Community workflows - increased limit for scalability
+ * Community workflows
  */
 async function getCommunityWorkflowPages(): Promise<MetadataRoute.Sitemap> {
   try {
-    const communityResponse = await workflowApi.getCommunityWorkflows(1000, 0);
-    return communityResponse.workflows.map((workflow) => ({
+    if (isDevelopment()) {
+      const communityResponse = await workflowApi.getCommunityWorkflows(50, 0);
+      return communityResponse.workflows.map((workflow) => ({
+        url: `${BASE_URL}/use-cases/${workflow.id}`,
+        lastModified: new Date(workflow.created_at),
+        changeFrequency: "weekly" as const,
+        priority: 0.6,
+      }));
+    }
+
+    const allWorkflows = await fetchAllPaginated(async (limit, offset) => {
+      const resp = await workflowApi.getCommunityWorkflows(limit, offset);
+      return {
+        items: resp.workflows,
+        total: resp.total || 0,
+        hasMore: resp.workflows.length === limit,
+      };
+    }, 100);
+
+    console.log(
+      `[Sitemap] Generated ${allWorkflows.length} community workflow pages`,
+    );
+
+    return allWorkflows.map((workflow) => ({
       url: `${BASE_URL}/use-cases/${workflow.id}`,
       lastModified: new Date(workflow.created_at),
       changeFrequency: "weekly" as const,
@@ -173,37 +147,76 @@ async function getCommunityWorkflowPages(): Promise<MetadataRoute.Sitemap> {
 }
 
 /**
- * Marketplace integration pages - increased limit for scalability
+ * Marketplace integration pages
  */
 async function getIntegrationPages(): Promise<MetadataRoute.Sitemap> {
   try {
     const apiUrl =
       process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
     const apiBaseUrl = apiUrl.replace(/\/$/, "");
-    const response = await fetch(
-      `${apiBaseUrl}/integrations/community?limit=500`,
-      {
-        next: { revalidate: 3600 },
-      },
-    );
-    if (response.ok) {
-      const data = await response.json();
-      return (data.integrations || []).map(
-        (integration: {
-          integrationId: string;
-          publishedAt?: string;
-          createdAt?: string;
-        }) => ({
-          url: `${BASE_URL}/marketplace/${integration.integrationId}`,
-          lastModified: new Date(
-            integration.publishedAt || integration.createdAt || Date.now(),
-          ),
-          changeFrequency: "weekly" as const,
-          priority: 0.7,
-        }),
+
+    if (isDevelopment()) {
+      const response = await fetch(
+        `${apiBaseUrl}/integrations/community?limit=50`,
+        { next: { revalidate: 3600 } },
       );
+      if (response.ok) {
+        const data = await response.json();
+        return (data.integrations || []).map(
+          (integration: {
+            slug: string;
+            publishedAt?: string;
+            createdAt?: string;
+          }) => ({
+            url: `${BASE_URL}/marketplace/${integration.slug}`,
+            lastModified: new Date(
+              integration.publishedAt || integration.createdAt || Date.now(),
+            ),
+            changeFrequency: "weekly" as const,
+            priority: 0.7,
+          }),
+        );
+      }
+      return [];
     }
-    return [];
+
+    const allIntegrations: Array<{
+      slug: string;
+      publishedAt?: string;
+      createdAt?: string;
+    }> = await fetchAllPaginated(async (limit, offset) => {
+      const response = await fetch(
+        `${apiBaseUrl}/integrations/community?limit=${limit}&offset=${offset}`,
+        { next: { revalidate: 3600 } },
+      );
+      if (!response.ok) return { items: [], total: 0, hasMore: false };
+
+      const data = await response.json();
+      return {
+        items: data.integrations || [],
+        total: data.total || 0,
+        hasMore: data.hasMore !== false,
+      };
+    }, 100);
+
+    console.log(
+      `[Sitemap] Generated ${allIntegrations.length} integration pages`,
+    );
+
+    return allIntegrations.map(
+      (integration: {
+        slug: string;
+        publishedAt?: string;
+        createdAt?: string;
+      }) => ({
+        url: `${BASE_URL}/marketplace/${integration.slug}`,
+        lastModified: new Date(
+          integration.publishedAt || integration.createdAt || Date.now(),
+        ),
+        changeFrequency: "weekly" as const,
+        priority: 0.7,
+      }),
+    );
   } catch (error) {
     console.error("Error fetching integrations for sitemap:", error);
     return [];

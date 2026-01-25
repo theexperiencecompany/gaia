@@ -24,9 +24,11 @@ export const runtime = "edge";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
+    const slug = searchParams.get("slug");
     const id = searchParams.get("id");
+    const identifier = slug || id;
 
-    if (!id) {
+    if (!identifier) {
       return createFallbackResponse("GAIA Marketplace");
     }
 
@@ -36,9 +38,12 @@ export async function GET(request: Request) {
 
     let integration = null;
     try {
-      const response = await fetch(`${apiBaseUrl}/integrations/public/${id}`, {
-        cache: "no-store",
-      });
+      const response = await fetch(
+        `${apiBaseUrl}/integrations/public/${identifier}`,
+        {
+          cache: "no-store",
+        },
+      );
       if (response.ok) {
         integration = await response.json();
       }
@@ -80,7 +85,7 @@ export async function GET(request: Request) {
 
     const categoryLabel =
       category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
-    const truncatedDesc = truncateText(description, 140);
+    const truncatedDesc = truncateText(description, 200);
 
     const allText = `${name}${truncatedDesc}${categoryLabel}by ${creatorName}${cloneCount} clones${toolCount} toolsGAIA`;
     const loadedFonts = await loadFonts(name, allText);
@@ -187,7 +192,6 @@ export async function GET(request: Request) {
                     viewBox={iconPathData.viewBox}
                     fill={iconConfig?.iconColorRaw || "#a1a1aa"}
                   >
-                    <title>Integration icon</title>
                     {iconPathData.paths.map((d, i) => (
                       // biome-ignore lint/suspicious/noArrayIndexKey: SVG paths are static and won't reorder
                       <path key={`integration-path-${i}`} d={d} />
@@ -242,12 +246,11 @@ export async function GET(request: Request) {
 
             <div
               style={{
-                fontSize: 40,
+                fontSize: 30,
                 color: colors.mutedLight,
                 lineHeight: 1.45,
                 fontFamily: fonts.sans,
                 fontWeight: 100,
-                maxWidth: 820,
                 display: "flex",
                 textShadow: "0 2px 8px rgba(0,0,0,0.4)",
               }}

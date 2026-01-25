@@ -17,6 +17,7 @@ from app.schemas.integrations.responses import (
     IntegrationTool,
 )
 from app.services.oauth.oauth_service import get_all_integrations_status
+from app.helpers.integration_helpers import generate_integration_slug
 
 
 async def get_user_available_tool_namespaces(user_id: str) -> Set[str]:
@@ -119,9 +120,17 @@ def format_community_integrations(docs: list) -> list:
                 picture=creator_data.get("picture"),
             )
 
+        # Compute slug from name + category + integration_id
+        slug = generate_integration_slug(
+            name=doc.get("name", ""),
+            category=doc.get("category", "custom"),
+            integration_id=doc["integration_id"],
+        )
+
         result.append(
             CommunityIntegrationItem(
                 integration_id=doc["integration_id"],
+                slug=slug,
                 name=doc["name"],
                 description=doc.get("description", ""),
                 category=doc.get("category", "custom"),

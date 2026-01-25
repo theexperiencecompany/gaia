@@ -125,7 +125,29 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         };
       });
 
-    return [...userIntegrationsList, ...availablePlatformIntegrations];
+    // Sort by status: pending (created) first, then connected, then not_connected
+    // Within each status group, sort alphabetically by name
+    const statusPriority: Record<string, number> = {
+      created: 0,
+      connected: 1,
+      not_connected: 2,
+    };
+
+    const allIntegrations = [
+      ...userIntegrationsList,
+      ...availablePlatformIntegrations,
+    ];
+
+    return allIntegrations.sort((a, b) => {
+      const priorityA = statusPriority[a.status] ?? 3;
+      const priorityB = statusPriority[b.status] ?? 3;
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+
+      return a.name.localeCompare(b.name);
+    });
   }, [configData, userIntegrationsData, statusData]);
 
   // Get status for a specific integration

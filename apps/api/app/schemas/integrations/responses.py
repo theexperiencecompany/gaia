@@ -156,6 +156,7 @@ class CommunityIntegrationItem(CamelModel, CloneCountMixin):
     """Integration item for community marketplace listing."""
 
     integration_id: str
+    slug: str
     name: str
     description: str
     category: str
@@ -187,6 +188,7 @@ class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
     """Full public integration details for public pages (SEO/sharing)."""
 
     integration_id: str
+    slug: str
     name: str
     description: str
     category: str
@@ -223,6 +225,7 @@ class SearchIntegrationItem(CamelModel, CloneCountMixin):
     """Integration item in search results."""
 
     integration_id: str
+    slug: str
     name: str
     description: str
     category: str

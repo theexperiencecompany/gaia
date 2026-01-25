@@ -10,9 +10,6 @@ from app.db.mongodb.collections import (
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     AddIntegrationResponse,
-    CommunityIntegrationCreator,
-    IntegrationTool,
-    MCPConfigDetail,
     PublicIntegrationDetailResponse,
     SearchIntegrationItem,
     SearchIntegrationsResponse,
@@ -21,102 +18,46 @@ from app.services.integrations.integration_connection_service import (
     connect_mcp_integration,
 )
 from app.services.integrations.user_integrations import add_user_integration
+from app.helpers.integration_helpers import (
+    build_public_integration_pipeline,
+    format_public_integration_response,
+    generate_integration_slug,
+    parse_integration_slug,
+)
 from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter()
 
 
-@router.get("/public/{integration_id}", response_model=PublicIntegrationDetailResponse)
+@router.get("/public/{identifier}", response_model=PublicIntegrationDetailResponse)
 async def get_public_integration(
-    integration_id: str,
+    identifier: str,
 ) -> PublicIntegrationDetailResponse:
-    """Get public integration details - no auth required for SEO/sharing."""
+    """Get public integration details by slug."""
     try:
-        pipeline = [
-            {"$match": {"integration_id": integration_id, "is_public": True}},
-            {
-                "$lookup": {
-                    "from": "users",
-                    "let": {
-                        "creator_id": {
-                            "$convert": {
-                                "input": "$created_by",
-                                "to": "objectId",
-                                "onError": None,
-                                "onNull": None,
-                            }
-                        }
-                    },
-                    "pipeline": [
-                        {"$match": {"$expr": {"$eq": ["$_id", "$$creator_id"]}}},
-                        {"$project": {"name": 1, "picture": 1}},
-                    ],
-                    "as": "creator_info",
-                }
-            },
-            {
-                "$addFields": {
-                    "creator": {
-                        "$cond": {
-                            "if": {"$gt": [{"$size": "$creator_info"}, 0]},
-                            "then": {"$arrayElemAt": ["$creator_info", 0]},
-                            "else": None,
-                        }
-                    }
-                }
-            },
-            {"$project": {"creator_info": 0}},
-        ]
+        slug_parts = parse_integration_slug(identifier)
+        short_id = slug_parts.get("shortid")
 
+        if not short_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Invalid slug format. Expected: {name}-mcp-{category}-{id}",
+            )
+
+        pipeline = build_public_integration_pipeline(short_id)
         cursor = integrations_collection.aggregate(pipeline)
         docs = await cursor.to_list(length=1)
 
         if not docs:
             raise HTTPException(status_code=404, detail="Integration not found")
 
-        doc = docs[0]
-        mcp_config_doc = doc.get("mcp_config", {})
-        mcp_config = None
-        if mcp_config_doc:
-            mcp_config = MCPConfigDetail(
-                server_url=mcp_config_doc.get("server_url"),
-                requires_auth=mcp_config_doc.get("requires_auth", False),
-                auth_type=mcp_config_doc.get("auth_type"),
-            )
-
-        creator = None
-        creator_data = doc.get("creator")
-        if creator_data:
-            creator = CommunityIntegrationCreator(
-                name=creator_data.get("name"),
-                picture=creator_data.get("picture"),
-            )
-
-        tools = doc.get("tools", [])
-
-        return PublicIntegrationDetailResponse(
-            integration_id=doc["integration_id"],
-            name=doc["name"],
-            description=doc.get("description", ""),
-            category=doc.get("category", "custom"),
-            icon_url=doc.get("icon_url"),
-            creator=creator,
-            mcp_config=mcp_config,
-            tools=[
-                IntegrationTool(
-                    name=t.get("name", ""), description=t.get("description")
-                )
-                for t in tools
-            ],
-            clone_count=doc.get("clone_count", 0),
-            tool_count=len(tools),
-            published_at=doc.get("published_at"),
-        )
+        response_data = format_public_integration_response(docs[0])
+        return PublicIntegrationDetailResponse(**response_data)
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching public integration {integration_id}: {e}")
+        logger.error(f"Error fetching public integration {identifier}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch integration")
 
 
@@ -196,42 +137,46 @@ async def add_public_integration(
 
 @router.get("/search", response_model=SearchIntegrationsResponse)
 async def search_integrations(q: str) -> SearchIntegrationsResponse:
-    """Search public integrations using semantic search - no auth required."""
+    """Search public integrations using semantic search."""
     try:
         if not q or not q.strip():
             return SearchIntegrationsResponse(integrations=[], query=q)
 
         results = await search_public_integrations(query=q.strip(), limit=20)
-
         if not results:
             return SearchIntegrationsResponse(integrations=[], query=q)
 
-        integration_ids = [
-            r.get("integration_id") for r in results if r.get("integration_id")
-        ]
+        relevance_map = {r["integration_id"]: r["relevance_score"] for r in results}
+        integration_ids = list(relevance_map.keys())
 
-        docs_map = {}
-        if integration_ids:
-            cursor = integrations_collection.find(
-                {"integration_id": {"$in": integration_ids}, "is_public": True}
-            )
-            docs = await cursor.to_list(length=20)
-            docs_map = {doc["integration_id"]: doc for doc in docs}
+        cursor = integrations_collection.find(
+            {"integration_id": {"$in": integration_ids}, "is_public": True}
+        )
+        docs = await cursor.to_list(length=20)
+        docs_map = {doc["integration_id"]: doc for doc in docs}
 
         formatted = []
-        for r in results:
-            iid = r.get("integration_id")
-            doc = docs_map.get(iid, {}) if iid else {}
+        for iid in integration_ids:
+            doc = docs_map.get(iid)
+            if not doc:
+                continue
+
+            slug = generate_integration_slug(
+                name=doc.get("name", ""),
+                category=doc.get("category", "custom"),
+                integration_id=iid,
+            )
 
             formatted.append(
                 SearchIntegrationItem(
-                    integration_id=iid or r.get("id", "unknown"),
-                    name=r.get("name", doc.get("name", "")),
-                    description=r.get("description", doc.get("description", "")),
-                    category=r.get("category", doc.get("category", "custom")),
-                    relevance_score=r.get("relevance_score", 0.0),
-                    clone_count=r.get("clone_count", doc.get("clone_count", 0)),
-                    tool_count=r.get("tool_count", len(doc.get("tools", []))),
+                    integration_id=iid,
+                    slug=slug,
+                    name=doc.get("name", ""),
+                    description=doc.get("description", ""),
+                    category=doc.get("category", "custom"),
+                    relevance_score=relevance_map.get(iid, 0.0),
+                    clone_count=doc.get("clone_count", 0),
+                    tool_count=len(doc.get("tools", [])),
                     icon_url=doc.get("icon_url"),
                 )
             )

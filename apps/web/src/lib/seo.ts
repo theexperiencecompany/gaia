@@ -198,17 +198,30 @@ export function generatePageMetadata({
 
 /**
  * Generate Organization structured data (JSON-LD)
+ * Enhanced for GAIA brand disambiguation in Google Knowledge Graph
  */
 export function generateOrganizationSchema(): WithContext<Organization> {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
     name: siteConfig.short_name,
-    alternateName: "General-purpose AI Assistant",
+    alternateName: [
+      "GAIA AI",
+      "GAIA AI Assistant",
+      "Hey GAIA",
+      "GAIA Assistant",
+      "GAIA Personal AI",
+      "heygaia",
+    ],
     url: siteConfig.url,
     logo: `${siteConfig.url}/images/logos/logo.webp`,
+    image: `${siteConfig.url}/og-image.webp`,
     description: siteConfig.description,
-    foundingDate: "2024",
+    foundingDate: "2025",
+    foundingLocation: {
+      "@type": "Place",
+      name: "India",
+    },
     founders: siteConfig.founders.map(
       (founder): Person => ({
         "@type": "Person",
@@ -222,12 +235,17 @@ export function generateOrganizationSchema(): WithContext<Organization> {
       siteConfig.links.github,
       siteConfig.links.linkedin,
       siteConfig.links.youtube,
+      siteConfig.links.discord,
+      "https://heygaia.io",
     ],
     contactPoint: {
       "@type": "ContactPoint",
       contactType: "Customer Support",
       url: `${siteConfig.url}/contact`,
+      availableLanguage: ["English"],
     },
+    slogan: "Your Personal AI Assistant",
+    keywords: "AI assistant, personal AI, productivity, automation, GAIA",
   };
 }
 

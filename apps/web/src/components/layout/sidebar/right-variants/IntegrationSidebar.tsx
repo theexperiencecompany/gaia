@@ -315,7 +315,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   className="w-full"
                   isIconOnly={useIconOnly}
                   as={Link}
-                  href={`/marketplace/${integration.id}`}
+                  href={`/marketplace/${integration.slug || integration.id}`}
                   color="primary"
                   aria-label="View on Marketplace"
                   startContent={
@@ -386,7 +386,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   onPress={async () => {
                     try {
                       await navigator.clipboard.writeText(
-                        `${window.location.origin}/marketplace/${integration.id}`,
+                        `${window.location.origin}/marketplace/${integration.slug || integration.id}`,
                       );
                       toast.success("Link copied to clipboard!");
                     } catch {
