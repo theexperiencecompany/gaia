@@ -11,7 +11,7 @@ export function registerStartCommand(bot: Bot) {
     await ctx.reply(
       "Welcome to GAIA!\n\n" +
         "Commands:\n" +
-        "/gaia <message> - Chat with GAIA\n" +
+        "/chat <message> - Chat with GAIA\n" +
         "/auth - Link your Telegram account\n\n" +
         "You can also send messages directly in private chats.",
     );

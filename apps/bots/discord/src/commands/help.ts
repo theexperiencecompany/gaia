@@ -23,20 +23,18 @@ export async function execute(
       {
         name: "📝 Slash Commands",
         value: [
-          "`/gaia <message>` - Chat with GAIA privately (ephemeral)",
-          "`/auth` - Link your Discord account to GAIA",
+          "`/chat <message>` - Chat with GAIA privately (ephemeral)",
           "`/help` - Show this help message",
         ].join("\n"),
       },
       {
         name: "💬 Mentions",
-        value:
-          "You can also @mention me in any channel to chat publicly. This is great for quick questions or when you want others to see the conversation.",
+        value: "Mention me to see available commands and get started!",
       },
       {
         name: "🔗 Account Linking",
         value:
-          "Use `/auth` to link your Discord account with GAIA. This enables personalized features like accessing your calendar, tasks, and integrations.",
+          "To use GAIA with your personal data (calendar, tasks, emails), sign in at [heygaia.io](https://heygaia.io) and link Discord in Settings → Linked Accounts.",
       },
       {
         name: "🌐 Links",

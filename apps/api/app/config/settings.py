@@ -124,6 +124,12 @@ class CommonSettings(BaseAppSettings):
         """Google OAuth callback URL."""
         return f"{self.HOST}/api/v1/oauth/google/callback"
 
+    @computed_field  # type: ignore
+    @property
+    def DISCORD_CALLBACK_URL(self) -> str:
+        """Discord OAuth callback URL."""
+        return f"{self.HOST}/api/v1/oauth/discord/callback"
+
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         extra="allow",
@@ -245,6 +251,7 @@ class ProductionSettings(CommonSettings):
     GAIA_BOT_API_KEY: str
     DISCORD_BOT_TOKEN: str
     DISCORD_CLIENT_ID: str
+    DISCORD_CLIENT_SECRET: str
     SLACK_BOT_TOKEN: str
     SLACK_SIGNING_SECRET: str
     SLACK_APP_TOKEN: str
@@ -381,6 +388,7 @@ class DevelopmentSettings(CommonSettings):
     GAIA_BOT_API_KEY: Optional[str] = None
     DISCORD_BOT_TOKEN: Optional[str] = None
     DISCORD_CLIENT_ID: Optional[str] = None
+    DISCORD_CLIENT_SECRET: Optional[str] = None
     SLACK_BOT_TOKEN: Optional[str] = None
     SLACK_SIGNING_SECRET: Optional[str] = None
     SLACK_APP_TOKEN: Optional[str] = None

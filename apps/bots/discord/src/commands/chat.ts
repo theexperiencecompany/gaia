@@ -7,7 +7,7 @@ import {
 } from "discord.js";
 
 export const data = new SlashCommandBuilder()
-  .setName("gaia")
+  .setName("chat")
   .setDescription("Chat with GAIA")
   .addStringOption((option) =>
     option
@@ -17,7 +17,7 @@ export const data = new SlashCommandBuilder()
   );
 
 /**
- * Executes the /gaia slash command.
+ * Executes the /chat slash command.
  * Sends the user's message to GAIA and replies with the response.
  * Handles authentication if the user is not linked.
  *
@@ -43,9 +43,9 @@ export async function execute(
     });
 
     if (!response.authenticated) {
-      const authUrl = gaia.getAuthUrl("discord", userId);
+      const authUrl = gaia.getAuthUrl();
       await interaction.editReply({
-        content: `Please authenticate first: ${authUrl}`,
+        content: `🔗 Link your Discord account to GAIA to chat:\n${authUrl}\n\nSign in to GAIA and connect Discord in Settings → Linked Accounts.`,
       });
       return;
     }

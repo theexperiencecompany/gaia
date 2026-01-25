@@ -42,7 +42,7 @@ const IntegrationItem: React.FC<{
       onClick={handleClick}
     >
       <div className="flex items-center gap-3">
-        <div className="flex-shrink-0">
+        <div className="shrink-0">
           {getToolCategoryIcon(integration.id, {
             size: 26,
             width: 26,
@@ -62,7 +62,7 @@ const IntegrationItem: React.FC<{
           <div className="flex-1 text-sm font-medium">{integration.name}</div>
         )}
 
-        <div className="flex-shrink-0">
+        <div className="shrink-0">
           {isConnected && (
             <Chip size="sm" variant="flat" color="success">
               Connected

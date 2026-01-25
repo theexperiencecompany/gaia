@@ -45,7 +45,6 @@ def _build_integrations_config():
                 if integration.available
                 else None
             ),
-            isSpecial=integration.is_special,
             displayPriority=integration.display_priority,
             includedIntegrations=integration.included_integrations,
             isFeatured=integration.is_featured,

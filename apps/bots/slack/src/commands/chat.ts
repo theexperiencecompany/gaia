@@ -3,14 +3,14 @@ import { formatError, truncateResponse } from "@gaia/shared";
 import type { App } from "@slack/bolt";
 
 /**
- * Registers the /gaia slash command listener.
+ * Registers the /chat slash command listener.
  * Handles authenticated chat with the GAIA agent.
  *
  * @param {App} app - The Slack App instance.
  * @param {GaiaClient} gaia - The GAIA API client.
  */
-export function registerGaiaCommand(app: App, gaia: GaiaClient) {
-  app.command("/gaia", async ({ command, ack, respond }) => {
+export function registerChatCommand(app: App, gaia: GaiaClient) {
+  app.command("/chat", async ({ command, ack, respond }) => {
     await ack();
 
     const userId = command.user_id;
@@ -19,7 +19,7 @@ export function registerGaiaCommand(app: App, gaia: GaiaClient) {
 
     if (!message) {
       await respond({
-        text: "Please provide a message. Usage: /gaia <your message>",
+        text: "Please provide a message. Usage: /chat <your message>",
         response_type: "ephemeral",
       });
       return;

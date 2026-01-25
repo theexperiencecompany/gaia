@@ -162,7 +162,7 @@ export default function SettingsMenu({
     key: platform.platform,
     label: platform.shortName,
     iconElement: (
-      <div className="relative h-[18px] w-[18px]">
+      <div className="relative h-4.5 w-4.5">
         <Image
           src={platform.iconPath}
           alt={platform.displayName}

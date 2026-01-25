@@ -43,7 +43,11 @@ export async function createBot() {
     ],
   });
 
-  const gaia = new GaiaClient(config.gaiaApiUrl, config.gaiaApiKey);
+  const gaia = new GaiaClient(
+    config.gaiaApiUrl,
+    config.gaiaApiKey,
+    config.gaiaWebUrl,
+  );
   const commands = registerCommands();
 
   client.once(Events.ClientReady, async (c) => {

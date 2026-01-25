@@ -4,6 +4,7 @@ import {
   ChartLineData02Icon,
   CreditCardIcon,
   DiscordIcon,
+  Link01Icon,
   MessageMultiple02Icon,
   SparklesIcon,
   TwitterIcon,
@@ -58,6 +59,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Memories",
     icon: AiBrain01Icon,
     href: "/settings?section=memory",
+  },
+  {
+    key: "linked-accounts",
+    label: "Linked Accounts",
+    icon: Link01Icon,
+    href: "/settings?section=linked-accounts",
   },
 ];
 

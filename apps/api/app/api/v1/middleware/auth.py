@@ -47,6 +47,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/oauth/login",
             "/oauth/workos/callback",
             "/oauth/google/callback",
+            "/oauth/discord/callback",
             "/user/logout",
             "/health",
         ]

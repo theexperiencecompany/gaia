@@ -7,6 +7,7 @@ from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
+from app.db.mongodb.collections import users_collection
 from app.db.redis import delete_cache, redis_cache
 from app.services.calendar_service import initialize_calendar_preferences
 from app.services.composio.composio_service import get_composio_service
@@ -516,3 +517,148 @@ async def callback(
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/discord/callback", response_class=RedirectResponse)
+async def discord_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+) -> RedirectResponse:
+    """
+    Handle Discord OAuth callback for account linking.
+
+    This securely links a Discord account to a GAIA user by:
+    1. Validating the state token (CSRF protection)
+    2. Exchanging the code for an access token with Discord
+    3. Fetching the user's Discord profile to get their Discord ID
+    4. Storing the Discord ID in platform_links
+    """
+    redirect_path = "/settings?section=linked-accounts"
+
+    # Validate state token first
+    if not state:
+        logger.error("Discord OAuth callback received without state token")
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=invalid_state"
+        )
+
+    state_data = await validate_and_consume_oauth_state(state)
+    if not state_data:
+        logger.error(f"Invalid OAuth state token: {state}")
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=invalid_state"
+        )
+
+    redirect_path = state_data.get("redirect_path", redirect_path)
+    user_id = state_data["user_id"]
+
+    # Handle OAuth errors
+    if error:
+        logger.warning(f"Discord OAuth error: {error}")
+        error_type = "cancelled" if error == "access_denied" else "failed"
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error={error_type}"
+        )
+
+    if not code:
+        logger.error("No authorization code provided in Discord callback")
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=no_code"
+        )
+
+    try:
+        # Exchange code for access token
+        token_response = await http_async_client.post(
+            "https://discord.com/api/oauth2/token",
+            data={
+                "client_id": settings.DISCORD_CLIENT_ID,
+                "client_secret": settings.DISCORD_CLIENT_SECRET,
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": settings.DISCORD_CALLBACK_URL,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+        if token_response.status_code != 200:
+            logger.error(f"Discord token exchange failed: {token_response.text}")
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=token_failed"
+            )
+
+        token_data = token_response.json()
+        access_token = token_data.get("access_token")
+
+        if not access_token:
+            logger.error("No access token in Discord response")
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=token_failed"
+            )
+
+        # Fetch Discord user profile
+        user_response = await http_async_client.get(
+            "https://discord.com/api/users/@me",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        if user_response.status_code != 200:
+            logger.error(f"Discord user fetch failed: {user_response.text}")
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=user_fetch_failed"
+            )
+
+        discord_user = user_response.json()
+        discord_id = discord_user.get("id")
+        discord_username = discord_user.get("username")
+
+        if not discord_id:
+            logger.error("No Discord ID in user response")
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=no_discord_id"
+            )
+
+        # Store Discord data in user's platform_links with metadata
+        from datetime import datetime, timezone
+
+        discord_data = {
+            "discord_id": discord_id,
+            "username": discord_username,
+            "linked_at": datetime.now(timezone.utc),
+        }
+
+        from bson import ObjectId
+
+        result = await users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"platform_links.discord": discord_data}},
+        )
+
+        if result.matched_count == 0:
+            logger.error(f"User not found when linking Discord: {user_id}")
+            return RedirectResponse(
+                url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=user_not_found"
+            )
+
+        # Invalidate OAuth status cache
+        try:
+            cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
+            await delete_cache(cache_key)
+        except Exception as e:
+            logger.warning(f"Failed to invalidate OAuth status cache: {e}")
+
+        logger.info(
+            f"Successfully linked Discord account {discord_username} ({discord_id}) "
+            f"to user {user_id}"
+        )
+
+        separator = "&" if "?" in redirect_path else "?"
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}{redirect_path}{separator}oauth_success=true"
+        )
+
+    except Exception as e:
+        logger.error(f"Unexpected error in Discord callback: {e}", exc_info=True)
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=failed"
+        )

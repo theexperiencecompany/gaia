@@ -189,7 +189,7 @@ class IntegrationConfigResponse(BaseModel):
     provider: str
     available: bool
     loginEndpoint: Optional[str]
-    isSpecial: bool
+    isSpecial: bool = False
     displayPriority: int
     includedIntegrations: List[str]
     isFeatured: bool

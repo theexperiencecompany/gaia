@@ -12,16 +12,17 @@ import type {
  */
 export class GaiaClient {
   private client: AxiosInstance;
-  private baseUrl: string;
+  private webUrl: string;
 
   /**
    * Creates a new GaiaClient instance.
    *
    * @param baseUrl - The base URL of the GAIA API (e.g., http://localhost:8000)
    * @param apiKey - The secure bot API key for server-to-server communication
+   * @param webUrl - The base URL of the GAIA web app (e.g., https://heygaia.io)
    */
-  constructor(baseUrl: string, apiKey: string) {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl: string, apiKey: string, webUrl = "https://heygaia.io") {
+    this.webUrl = webUrl;
     this.client = axios.create({
       baseURL: baseUrl,
       headers: {
@@ -40,7 +41,11 @@ export class GaiaClient {
    */
   async chat(request: ChatRequest): Promise<ChatResponse> {
     try {
-      const { data } = await this.client.post<any>("/api/v1/bot/chat", {
+      const { data } = await this.client.post<{
+        response: string;
+        conversation_id: string;
+        authenticated: boolean;
+      }>("/api/v1/bot/chat", {
         message: request.message,
         platform: request.platform,
         platform_user_id: request.platformUserId,
@@ -52,8 +57,13 @@ export class GaiaClient {
         conversationId: data.conversation_id,
         authenticated: data.authenticated,
       };
-    } catch (error: any) {
-      throw new Error(`API error: ${error.response?.status || error.message}`);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status || "unknown";
+        const message = error.response?.data?.detail || error.message;
+        throw new Error(`API error (${status}): ${message}`);
+      }
+      throw error instanceof Error ? error : new Error("Unknown error");
     }
   }
 
@@ -67,7 +77,11 @@ export class GaiaClient {
    */
   async chatPublic(request: ChatRequest): Promise<ChatResponse> {
     try {
-      const { data } = await this.client.post<any>("/api/v1/bot/chat/public", {
+      const { data } = await this.client.post<{
+        response: string;
+        conversation_id: string;
+        authenticated: boolean;
+      }>("/api/v1/bot/chat/public", {
         message: request.message,
         platform: request.platform,
         platform_user_id: request.platformUserId,
@@ -78,8 +92,13 @@ export class GaiaClient {
         conversationId: data.conversation_id,
         authenticated: false,
       };
-    } catch (error: any) {
-      throw new Error(`API error: ${error.response?.status || error.message}`);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status || "unknown";
+        const message = error.response?.data?.detail || error.message;
+        throw new Error(`API error (${status}): ${message}`);
+      }
+      throw error instanceof Error ? error : new Error("Unknown error");
     }
   }
 
@@ -107,8 +126,13 @@ export class GaiaClient {
         `/api/v1/bot/session/${platform}/${platformUserId}?${params.toString()}`,
       );
       return data;
-    } catch (error: any) {
-      throw new Error(`API error: ${error.response?.status || error.message}`);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status || "unknown";
+        const message = error.response?.data?.detail || error.message;
+        throw new Error(`API error (${status}): ${message}`);
+      }
+      throw error instanceof Error ? error : new Error("Unknown error");
     }
   }
 
@@ -126,26 +150,27 @@ export class GaiaClient {
   ): Promise<AuthStatus> {
     try {
       const { data } = await this.client.get<AuthStatus>(
-        `/api/v1/bot-auth/status/${platform}/${platformUserId}`,
+        `/api/v1/bot/auth/status/${platform}/${platformUserId}`,
       );
       return data;
-    } catch (error: any) {
-      throw new Error(`API error: ${error.response?.status || error.message}`);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status || "unknown";
+        const message = error.response?.data?.detail || error.message;
+        throw new Error(`API error (${status}): ${message}`);
+      }
+      throw error instanceof Error ? error : new Error("Unknown error");
     }
   }
 
   /**
-   * Generates a URL for the user to authenticate and link their account.
+   * Generates a URL for the user to authenticate and link their platform account.
+   * Users should be directed to the GAIA Settings → Linked Accounts page to connect
+   * their platform account securely via OAuth.
    *
-   * @param platform - The platform name.
-   * @param platformUserId - The platform user ID.
-   * @returns The full URL for authentication.
+   * @returns The URL to the GAIA settings/linked-accounts page.
    */
-  getAuthUrl(platform: string, platformUserId: string): string {
-    const params = new URLSearchParams({
-      platform,
-      platform_user_id: platformUserId,
-    });
-    return `${this.baseUrl}/bot-auth/link/${platform}?${params.toString()}`; // Adjusted URL path to match backend
+  getAuthUrl(): string {
+    return `${this.webUrl}/settings?section=linked-accounts`;
   }
 }

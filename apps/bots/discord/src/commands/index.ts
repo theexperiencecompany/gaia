@@ -7,8 +7,7 @@ import {
   type SlashCommandOptionsOnlyBuilder,
   type SlashCommandSubcommandsOnlyBuilder,
 } from "discord.js";
-import * as auth from "./auth";
-import * as gaia from "./gaia";
+import * as chat from "./chat";
 import * as help from "./help";
 
 export interface Command {
@@ -23,7 +22,7 @@ export interface Command {
   autocomplete?: (interaction: AutocompleteInteraction) => Promise<void>;
 }
 
-const commandModules = [gaia, auth, help];
+const commandModules = [chat, help];
 
 export function registerCommands(): Collection<string, Command> {
   const commands = new Collection<string, Command>();

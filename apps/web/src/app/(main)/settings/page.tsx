@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { ConfirmAction } from "@/components/shared/ConfirmActionDialog";
 import { ConfirmActionDialog } from "@/components/shared/ConfirmActionDialog";
 import AccountSettings from "@/features/settings/components/AccountSettings";
+import { LinkedAccountsSettings } from "@/features/settings/components/LinkedAccountsSettings";
 import MemorySettings from "@/features/settings/components/MemorySettings";
 import PreferencesSettings from "@/features/settings/components/PreferencesSettings";
 import ProfileCardSettings from "@/features/settings/components/ProfileCardSettings";
@@ -39,6 +40,8 @@ export default function SettingsPage() {
         return <PreferencesSettings setModalAction={setModalAction} />;
       case "memory":
         return <MemorySettings />;
+      case "linked-accounts":
+        return <LinkedAccountsSettings />;
       default:
         return <ProfileCardSettings />;
     }

@@ -3,14 +3,14 @@ import { formatError, truncateResponse } from "@gaia/shared";
 import type { Bot } from "grammy";
 
 /**
- * Registers the /gaia command handler.
+ * Registers the /chat command handler.
  * Allows users to chat with the GAIA agent directly.
  *
  * @param {Bot} bot - The Telegram Bot instance.
  * @param {GaiaClient} gaia - The GAIA API client.
  */
-export function registerGaiaCommand(bot: Bot, gaia: GaiaClient) {
-  bot.command("gaia", async (ctx) => {
+export function registerChatCommand(bot: Bot, gaia: GaiaClient) {
+  bot.command("chat", async (ctx) => {
     const message = ctx.match;
     const userId = ctx.from?.id.toString();
     const chatId = ctx.chat.id.toString();
@@ -18,7 +18,7 @@ export function registerGaiaCommand(bot: Bot, gaia: GaiaClient) {
     if (!userId) return;
 
     if (!message) {
-      await ctx.reply("Usage: /gaia <your message>");
+      await ctx.reply("Usage: /chat <your message>");
       return;
     }
 

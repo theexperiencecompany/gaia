@@ -44,6 +44,8 @@ export interface BotConfig {
   gaiaApiUrl: string;
   /** The secure API key for authenticating with the backend. */
   gaiaApiKey: string;
+  /** The base URL of the GAIA web app (for auth links). */
+  gaiaWebUrl: string;
 }
 
 /**

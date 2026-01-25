@@ -2,10 +2,11 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 
 from app.agents.core.agent import call_agent_silent
+from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.loggers import chat_logger as logger
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
@@ -42,8 +43,9 @@ async def verify_bot_api_key(x_bot_api_key: str = Header(..., alias="X-Bot-API-K
 async def get_user_by_platform_id(
     platform: str, platform_user_id: str
 ) -> Optional[dict]:
+    """Find user by platform ID using structured format."""
     return await users_collection.find_one(
-        {f"platform_links.{platform}": platform_user_id}
+        {f"platform_links.{platform}.{platform}_id": platform_user_id}
     )
 
 
@@ -193,3 +195,49 @@ async def get_session(
         platform=platform,
         platform_user_id=platform_user_id,
     )
+
+
+# ============================================================================
+# Bot Authentication Endpoints
+# ============================================================================
+
+
+@router.post("/auth/link/{platform}")
+async def link_platform_account_authenticated(
+    platform: str,
+    platform_user_id: str = Query(...),
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """Link a platform account to the authenticated user's GAIA account."""
+    if platform not in ["discord", "slack", "telegram"]:
+        raise HTTPException(status_code=400, detail="Invalid platform")
+
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    result = await users_collection.update_one(
+        {"user_id": user_id}, {"$set": {f"platform_links.{platform}": platform_user_id}}
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "success": True,
+        "message": f"Your {platform.title()} account has been linked to GAIA.",
+        "platform": platform,
+    }
+
+
+@router.get("/auth/status/{platform}/{platform_user_id}")
+async def check_auth_status(platform: str, platform_user_id: str) -> dict:
+    """Check if a platform user is linked to a GAIA account."""
+    user = await users_collection.find_one(
+        {f"platform_links.{platform}.{platform}_id": platform_user_id}
+    )
+    return {
+        "authenticated": user is not None,
+        "platform": platform,
+        "platform_user_id": platform_user_id,
+    }
