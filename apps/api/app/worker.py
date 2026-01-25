@@ -8,7 +8,6 @@ from app.workers.tasks import (
     cleanup_stuck_personalization,
     execute_workflow_by_id,
     generate_workflow_steps,
-    process_email_task,
     process_gmail_emails_to_memory,
     process_personalization_task,
     process_reminder,
@@ -20,7 +19,6 @@ from app.workers.tasks import (
 # Configure the worker settings with all task functions and lifecycle hooks
 WorkerSettings.functions = [
     process_reminder,
-    process_email_task,
     cleanup_expired_reminders,
     check_inactive_users,
     process_workflow_generation_task,
