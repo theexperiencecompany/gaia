@@ -11,9 +11,12 @@
   /* Font Family */
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-serif: var(--font-instrument-serif), serif;
+  --font-mono:
+    var(--font-anonymous-pro), ui-monospace, "Cascadia Code", "Source Code Pro",
+    Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
-  --color-secondary-bg: #141414; /* darker */
-  --color-primary-bg: #1a1a1a; /*  lighter*/
+  --color-secondary-bg: #1a1a1a; /* sidebar */
+  --color-primary-bg: #111111; /*  main */
 
   /* Colors */
   --color-primary: #00bbff;

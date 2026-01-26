@@ -22,6 +22,7 @@ from app.db.mongodb.collections import (
     device_tokens_collection,
     files_collection,
     goals_collection,
+    integrations_collection,
     mail_collection,
     notes_collection,
     notifications_collection,
@@ -32,6 +33,7 @@ from app.db.mongodb.collections import (
     subscriptions_collection,
     todos_collection,
     usage_snapshots_collection,
+    user_integrations_collection,
     users_collection,
     workflows_collection,
 )
@@ -69,6 +71,8 @@ async def create_all_indexes():
             create_payment_indexes(),
             create_usage_indexes(),
             create_ai_models_indexes(),
+            create_integration_indexes(),
+            create_user_integration_indexes(),
             create_device_token_indexes(),
         ]
 
@@ -92,6 +96,8 @@ async def create_all_indexes():
             "payments",
             "usage",
             "ai_models",
+            "integrations",
+            "user_integrations",
             "device_tokens",
         ]
 
@@ -589,6 +595,129 @@ async def create_ai_models_indexes():
 
     except Exception as e:
         logger.error(f"Error creating AI models indexes: {str(e)}")
+        raise
+
+
+async def _create_index_safe(collection, keys, **kwargs):
+    """
+    Create an index safely, handling IndexOptionsConflict gracefully.
+
+    MongoDB raises IndexOptionsConflict (code 85) when an index with the same
+    key pattern already exists but with a different name. This is fine - the
+    index functionality exists, so we skip silently.
+    """
+    try:
+        await collection.create_index(keys, **kwargs)
+    except Exception as e:
+        error_str = str(e)
+        # IndexOptionsConflict (code 85) - index exists with different name
+        if "IndexOptionsConflict" in error_str or "'code': 85" in error_str:
+            return  # Silently skip - equivalent index already exists
+        raise
+
+
+async def create_integration_indexes():
+    """
+    Create indexes for integrations collection.
+
+    Query patterns:
+    - List all integrations (marketplace browsing)
+    - Filter by source (platform vs custom)
+    - Filter by category
+    - Featured integrations lookup
+    - Public custom integrations for marketplace
+    """
+    try:
+        await asyncio.gather(
+            # Primary unique index on integration_id
+            _create_index_safe(
+                integrations_collection,
+                "integration_id",
+                unique=True,
+                name="integration_id_unique",
+            ),
+            # Source filtering (platform vs custom)
+            _create_index_safe(integrations_collection, "source", name="source_1"),
+            # Category filtering for marketplace browsing
+            _create_index_safe(integrations_collection, "category", name="category_1"),
+            # Featured integrations display
+            _create_index_safe(
+                integrations_collection,
+                [("is_featured", 1), ("display_priority", -1)],
+                name="featured_priority",
+            ),
+            # Public custom integrations for marketplace
+            _create_index_safe(
+                integrations_collection,
+                [("source", 1), ("is_public", 1), ("created_at", -1)],
+                name="source_public_created",
+            ),
+            # Creator lookup for custom integrations
+            _create_index_safe(
+                integrations_collection,
+                "created_by",
+                sparse=True,
+                name="created_by_sparse",
+            ),
+            # Text search for integration discovery
+            _create_index_safe(
+                integrations_collection,
+                [("name", "text"), ("description", "text")],
+                name="text_search",
+            ),
+            # Community marketplace listing (public integrations sorted by popularity)
+            _create_index_safe(
+                integrations_collection,
+                [("is_public", 1), ("clone_count", -1), ("published_at", -1)],
+                name="public_popular",
+            ),
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating integration indexes: {str(e)}")
+        raise
+
+
+async def create_user_integration_indexes():
+    """
+    Create indexes for user_integrations collection.
+
+    Query patterns:
+    - Get all integrations for a user
+    - Get user's connected integrations only
+    - Check if user has added a specific integration
+    """
+    try:
+        await asyncio.gather(
+            # Primary compound index for user's integrations
+            _create_index_safe(
+                user_integrations_collection,
+                [("user_id", 1), ("integration_id", 1)],
+                unique=True,
+                name="user_integration_unique",
+            ),
+            # User's integrations with status filtering
+            _create_index_safe(
+                user_integrations_collection,
+                [("user_id", 1), ("status", 1), ("created_at", -1)],
+                name="user_status_created",
+            ),
+            # Recent additions lookup
+            _create_index_safe(
+                user_integrations_collection,
+                [("user_id", 1), ("created_at", -1)],
+                name="user_created",
+            ),
+            # Connected integrations only (for tool loading)
+            _create_index_safe(
+                user_integrations_collection,
+                [("user_id", 1), ("status", 1)],
+                name="user_status",
+            ),
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating user integration indexes: {str(e)}")
         raise
 
 

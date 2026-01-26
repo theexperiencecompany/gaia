@@ -9,9 +9,10 @@ Background streaming decouples LangGraph execution from HTTP request lifecycle,
 ensuring conversations are always saved even if client disconnects.
 """
 
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from app.agents.core.agent import call_agent
@@ -33,10 +34,6 @@ from app.services.model_service import get_user_selected_model
 from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation, generate_and_update_description
 from langchain_core.callbacks import UsageMetadataCallbackHandler
-
-# =============================================================================
-# Background Streaming (New - Redis Pub/Sub)
-# =============================================================================
 
 
 async def run_chat_stream_background(
@@ -65,8 +62,25 @@ async def run_chat_stream_background(
     bot_message_id = str(uuid4())
     is_new_conversation = body.conversation_id is None
     usage_metadata: Dict[str, Any] = {}
+    follow_up_actions: List[str] = []
 
     try:
+        description_task = None
+        if is_new_conversation:
+            last_message = body.messages[-1] if body.messages else None
+            selectedTool = body.selectedTool if body.selectedTool else None
+            selectedWorkflow = body.selectedWorkflow if body.selectedWorkflow else None
+
+            description_task = asyncio.create_task(
+                generate_and_update_description(
+                    conversation_id,
+                    last_message,
+                    user,
+                    selectedTool,
+                    selectedWorkflow,
+                )
+            )
+
         # Get user model config
         user_id = user.get("user_id")
         user_model_config = None
@@ -113,6 +127,18 @@ async def run_chat_stream_background(
             if chunk == "data: [DONE]\n\n":
                 continue
 
+            if description_task and description_task.done():
+                try:
+                    description = description_task.result()
+                    await stream_manager.publish_chunk(
+                        stream_id,
+                        f"""data: {json.dumps({"conversation_description": description})}\n\n""",
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to get conversation description: {e}")
+                finally:
+                    description_task = None  # Clear to prevent duplicate sends
+
             # Process complete message marker (internal, not sent to client)
             if chunk.startswith("nostream: "):
                 chunk_json = json.loads(chunk.replace("nostream: ", ""))
@@ -123,13 +149,24 @@ async def run_chat_stream_background(
             if chunk.startswith("data: "):
                 try:
                     new_data = extract_tool_data(chunk[6:])
-                    if new_data and "tool_data" in new_data:
-                        for tool_entry in new_data["tool_data"]:
-                            tool_data["tool_data"].append(tool_entry)
-                            await stream_manager.publish_chunk(
-                                stream_id,
-                                f"data: {json.dumps({'tool_data': tool_entry})}\n\n",
-                            )
+                    if new_data:
+                        if "other_data" in new_data:
+                            other_data_dict = new_data["other_data"]
+                            if "follow_up_actions" in other_data_dict:
+                                follow_up_actions = other_data_dict["follow_up_actions"]
+                                # Stream follow_up_actions to frontend
+                                await stream_manager.publish_chunk(
+                                    stream_id,
+                                    f"data: {json.dumps({'follow_up_actions': follow_up_actions})}\n\n",
+                                )
+
+                        if "tool_data" in new_data:
+                            for tool_entry in new_data["tool_data"]:
+                                tool_data["tool_data"].append(tool_entry)
+                                await stream_manager.publish_chunk(
+                                    stream_id,
+                                    f"data: {json.dumps({'tool_data': tool_entry})}\n\n",
+                                )
                     else:
                         await stream_manager.publish_chunk(stream_id, chunk)
 
@@ -150,23 +187,19 @@ async def run_chat_stream_background(
         # Get usage metadata
         usage_metadata = usage_metadata_callback.usage_metadata or {}
 
-        # Generate description for new conversations
-        if is_new_conversation:
+        # Await description task if still pending
+        if description_task:
             try:
-                last_message = body.messages[-1] if body.messages else None
-                description = await generate_and_update_description(
-                    conversation_id,
-                    last_message,
-                    user,
-                    body.selectedTool,
-                    body.selectedWorkflow,
-                )
+                description = await description_task
                 await stream_manager.publish_chunk(
                     stream_id,
-                    f"data: {json.dumps({'conversation_description': description})}\n\n",
+                    f"""data: {json.dumps({"conversation_description": description})}\n\n""",
                 )
             except Exception as e:
-                logger.error(f"Failed to generate description: {e}")
+                logger.error(f"Failed to get conversation description: {e}")
+
+        # Send [DONE] marker to signal stream completion
+        await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
 
         # Mark stream complete
         await stream_manager.complete_stream(stream_id)
@@ -325,37 +358,65 @@ async def _save_conversation_async(
     )
 
 
-# =============================================================================
-# Shared Utilities
-# =============================================================================
-
-
 def extract_tool_data(json_str: str) -> Dict[str, Any]:
     """
     Parse and extract structured tool output from an agent's JSON response chunk.
+
+    Converts individual tool fields (e.g., calendar_options, search_results, etc.)
+    into unified ToolDataEntry array format for consistent frontend handling.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing:
+            - "tool_data": Array of ToolDataEntry objects (if any tool data found)
+            - "other_data": Dict with non-tool fields like follow_up_actions
+
+    Notes:
+        - This function converts legacy individual tool fields into the unified tool_data array structure
+        - If the JSON is malformed or does not match known tool structures, an empty dict is returned
+        - This function is tolerant to missing keys and safe for runtime use in an async stream
     """
     try:
         data = json.loads(json_str)
-
-        if "tool_data" in data:
-            return {"tool_data": data["tool_data"]}
-
-        tool_data_entries = []
         timestamp = datetime.now(timezone.utc).isoformat()
 
-        for field_name in tool_fields:
-            if field_name in data and data[field_name] is not None:
-                tool_entry: ToolDataEntry = {
-                    "tool_name": field_name,
-                    "data": data[field_name],
-                    "timestamp": timestamp,
-                }
-                tool_data_entries.append(tool_entry)
+        # Step 1: Extract non-tool data (e.g., follow_up_actions)
+        other_data: Dict[str, Any] = {}
+        if data.get("follow_up_actions") is not None:
+            other_data["follow_up_actions"] = data["follow_up_actions"]
+
+        # Step 2: Extract tool_data from one of two sources (in priority order)
+        tool_data_entries: List[ToolDataEntry] = []
+
+        # Source A: Already in unified format (from backend tool_data emission)
+        if "tool_data" in data:
+            # Single entry or list
+            td = data["tool_data"]
+            if isinstance(td, list):
+                tool_data_entries = td
+            else:
+                tool_data_entries = [td]
+
+        # Source B: Legacy individual tool fields
+        else:
+            for field_name in tool_fields:
+                if data.get(field_name) is not None:
+                    tool_data_entries.append(
+                        {
+                            "tool_name": field_name,
+                            "data": data[field_name],
+                            "timestamp": timestamp,
+                        }
+                    )
+
+        # Step 3: Build result from collected data
+        result: Dict[str, Any] = {}
 
         if tool_data_entries:
-            return {"tool_data": tool_data_entries}
+            result["tool_data"] = tool_data_entries
+        if other_data:
+            result["other_data"] = other_data
 
-        return {}
+        return result
 
     except json.JSONDecodeError:
         return {}
@@ -423,6 +484,7 @@ def update_conversation_messages(
     metadata: Dict[str, Any] = {},
     user_message_id: Optional[str] = None,
     bot_message_id: Optional[str] = None,
+    follow_up_actions: List[str] = [],
 ) -> None:
     """Schedule conversation update in the background (legacy)."""
     if metadata and user.get("user_id"):
@@ -459,6 +521,7 @@ def update_conversation_messages(
         date=bot_timestamp.isoformat(),
         fileIds=body.fileIds,
         metadata=metadata,
+        follow_up_actions=follow_up_actions,
     )
 
     if bot_message_id:

@@ -1,10 +1,11 @@
 import { apiService } from "@/lib/api";
 
 export interface UserInfo {
+  user_id: string;
   name: string;
   email: string;
   picture: string;
-  timezone?: string; // User's timezone
+  timezone?: string;
   onboarding?: {
     completed: boolean;
     completed_at?: string;

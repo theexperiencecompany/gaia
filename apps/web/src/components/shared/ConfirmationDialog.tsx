@@ -18,7 +18,8 @@ interface ConfirmationDialogProps {
   confirmText?: string;
   cancelText?: string;
   variant?: "default" | "destructive";
-  onConfirm: () => void;
+  isLoading?: boolean;
+  onConfirm: () => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -29,13 +30,20 @@ export function ConfirmationDialog({
   confirmText = "Confirm",
   cancelText = "Cancel",
   variant = "default",
+  isLoading = false,
   onConfirm,
   onCancel,
 }: ConfirmationDialogProps) {
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  // Track if confirm was just pressed to avoid triggering onCancel
+  const confirmPressedRef = useRef(false);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      // Reset the flag when dialog closes
+      confirmPressedRef.current = false;
+      return;
+    }
 
     // Focus the confirm button when dialog opens
     const timer = setTimeout(() => {
@@ -45,6 +53,7 @@ export function ConfirmationDialog({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
         e.preventDefault();
+        confirmPressedRef.current = true;
         onConfirm();
       } else if (e.key === "Escape") {
         e.preventDefault();
@@ -60,9 +69,14 @@ export function ConfirmationDialog({
   }, [isOpen, onConfirm, onCancel]);
 
   const handleOpenChange = (open: boolean) => {
-    if (!open) {
+    if (!open && !confirmPressedRef.current) {
       onCancel();
     }
+  };
+
+  const handleConfirmPress = () => {
+    confirmPressedRef.current = true;
+    onConfirm();
   };
 
   return (
@@ -83,6 +97,7 @@ export function ConfirmationDialog({
                 }}
                 className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
                 endContent={<Kbd keys={["escape"]} />}
+                isDisabled={isLoading}
               >
                 {cancelText}
               </Button>
@@ -90,10 +105,12 @@ export function ConfirmationDialog({
                 ref={confirmButtonRef}
                 color={variant === "destructive" ? "danger" : "primary"}
                 onPress={() => {
-                  onConfirm();
+                  handleConfirmPress();
                   onClose();
                 }}
-                endContent={<Kbd keys={["enter"]} />}
+                endContent={!isLoading && <Kbd keys={["enter"]} />}
+                isLoading={isLoading}
+                isDisabled={isLoading}
               >
                 {confirmText}
               </Button>

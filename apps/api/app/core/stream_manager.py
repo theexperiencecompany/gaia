@@ -43,14 +43,16 @@ from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
 
 from app.config.loggers import chat_logger as logger
-from app.constants.streaming import (
-    STREAM_CANCELLED_SIGNAL,
+from app.constants.cache import (
     STREAM_CHANNEL_PREFIX,
-    STREAM_DONE_SIGNAL,
-    STREAM_ERROR_SIGNAL,
     STREAM_PROGRESS_PREFIX,
     STREAM_SIGNAL_PREFIX,
     STREAM_TTL,
+)
+from app.constants.streaming import (
+    STREAM_CANCELLED_SIGNAL,
+    STREAM_DONE_SIGNAL,
+    STREAM_ERROR_SIGNAL,
 )
 from app.db.redis import redis_cache
 
@@ -214,7 +216,7 @@ class StreamManager:
         finally:
             try:
                 await pubsub.unsubscribe(channel)
-                await pubsub.close()
+                await pubsub.aclose()
             except Exception:  # nosec B110 - Intentional: cleanup should not raise
                 pass
 

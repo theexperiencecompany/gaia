@@ -14,8 +14,8 @@ from app.api.v1.endpoints import (
     file,
     goals,
     image,
-    integrations,
     mail,
+    mcp,
     memory,
     models,
     notes,
@@ -37,6 +37,7 @@ from app.api.v1.endpoints import (
     websocket,
     workflows,
 )
+from app.api.v1.endpoints.integrations import router as integrations_router
 from fastapi import APIRouter
 
 router = APIRouter()
@@ -52,8 +53,9 @@ router.include_router(memory.router, tags=["Memory"], prefix="/memory")
 router.include_router(goals.router, tags=["Goals"])
 router.include_router(oauth.router, prefix="/oauth", tags=["OAuth"])
 router.include_router(
-    integrations.router, prefix="/integrations", tags=["Integrations"]
+    integrations_router, prefix="/integrations", tags=["Integrations"]
 )
+router.include_router(mcp.router, prefix="/mcp", tags=["MCP"])
 router.include_router(onboarding.router, prefix="/onboarding", tags=["Onboarding"])
 router.include_router(user.router, prefix="/user", tags=["User"])
 router.include_router(mail.router, tags=["Mail"])
@@ -74,4 +76,3 @@ router.include_router(tools.router, tags=["Tools"])
 router.include_router(models.router, tags=["Models"])
 router.include_router(bot.router, prefix="/bot", tags=["Bot"])
 router.include_router(bot_auth.router, prefix="/bot-auth", tags=["Bot Auth"])
-

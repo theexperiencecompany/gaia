@@ -56,9 +56,13 @@ def trim_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> T:
         provider = model_configurations.get("provider", None)
         max_tokens = model_configurations.get("max_tokens", None)
 
+        # Skip trimming if max_tokens is not configured
+        if max_tokens is None or not isinstance(max_tokens, int):
+            return state
+
         # Trim messages using langchain's trim_messages utility
         trimmed_messages = trim_messages(
-            messages,
+            list(messages_list),
             strategy="last",  # Keep the most recent messages
             include_system=False,  # Preserve system messages
             max_tokens=max_tokens,

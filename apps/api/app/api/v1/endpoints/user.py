@@ -7,7 +7,7 @@ from app.config.loggers import auth_logger as logger
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import UserUpdateResponse
-from app.services.onboarding_service import get_user_onboarding_status
+from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
 from bson import ObjectId
 from fastapi import (

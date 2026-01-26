@@ -9,9 +9,9 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
+from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import get_integration_by_id
-from app.models.oauth_models import OAuthIntegration
 from app.services.acontext_service import get_acontext_skills
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
@@ -46,6 +46,11 @@ async def build_subagent_system_prompt(
     integration = get_integration_by_id(integration_id)
 
     if not integration:
+        # Handle custom/public MCPs - use universal prompt
+        # If not in OAUTH_INTEGRATIONS, it's a custom or public MCP integration
+        if integration_id:
+            return base_system_prompt or CUSTOM_MCP_SUBAGENT_PROMPT
+
         logger.warning(f"Integration {integration_id} not found")
         return base_system_prompt or ""
 
@@ -110,21 +115,6 @@ async def create_subagent_system_message(
     )
 
     return SystemMessage(content=system_prompt)
-
-
-def get_integration_info(integration_id: str) -> Optional[OAuthIntegration]:
-    """
-    Get integration configuration by ID.
-
-    This is a simple wrapper around get_integration_by_id for convenience.
-
-    Args:
-        integration_id: The integration ID
-
-    Returns:
-        The OAuthIntegration object or None if not found
-    """
-    return get_integration_by_id(integration_id)
 
 
 async def create_agent_context_message(

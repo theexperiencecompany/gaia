@@ -38,6 +38,7 @@ from app.db.rabbitmq import init_rabbitmq_publisher
 from app.helpers.lifespan_helpers import (
     _process_results,
     close_checkpointer_manager,
+    close_mcp_client_pool,
     close_postgresql_async,
     close_publisher_async,
     close_reminder_scheduler,
@@ -50,7 +51,9 @@ from app.helpers.lifespan_helpers import (
     # setup_event_loop_policy,
 )
 from app.services.composio.composio_service import init_composio_service
+from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.startup_validation import validate_startup_requirements
+from app.services.tools.tools_warmup import warmup_tools_cache
 from pydantic import PydanticDeprecatedSince20
 
 
@@ -92,6 +95,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     init_checkpointer_manager()
     init_tool_registry()
     init_composio_service()
+    init_mcp_client_pool()
     init_embeddings()
     initialize_chroma_tools_store()
     init_cloudinary()
@@ -120,6 +124,10 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     # Add auto-initialization of providers marked with auto_initialize=True
     startup_tasks.append(providers.initialize_auto_providers())
     service_names.append("lazy_providers_auto_initializer")
+
+    # Warm up tools cache (loads provider tools and pre-caches global tools response)
+    startup_tasks.append(warmup_tools_cache())
+    service_names.append("tools_cache_warmup")
 
     try:
         # Execute all tasks in parallel (return_exceptions prevents cascade failures)
@@ -155,6 +163,7 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         (close_reminder_scheduler, "reminder_scheduler"),
         (close_workflow_scheduler, "workflow_scheduler"),
         (close_checkpointer_manager, "checkpointer_manager"),
+        (close_mcp_client_pool, "mcp_client_pool"),
     ]
 
     # Context-specific cleanup: additional services only for FastAPI

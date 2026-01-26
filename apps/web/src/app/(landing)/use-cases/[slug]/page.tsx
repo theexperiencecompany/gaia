@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-
 import UseCaseDetailClient from "@/app/(landing)/use-cases/[slug]/client";
 import JsonLd from "@/components/seo/JsonLd";
 import type { UseCase } from "@/features/use-cases/types";
@@ -8,7 +7,7 @@ import {
   type Workflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
-import { generateBreadcrumbSchema } from "@/lib/seo";
+import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 import {
   generateUseCaseMetadata,
   generateUseCaseStructuredData,
@@ -21,15 +20,48 @@ interface PageProps {
 export const revalidate = 3600; // Revalidate every hour
 
 export async function generateStaticParams() {
-  // Generate params from explore workflows API
   try {
-    const resp = await workflowApi.getExploreWorkflows(200, 0);
-    return resp.workflows.map((w) => ({ slug: w.id }));
+    const isDev = process.env.NODE_ENV === "development";
+
+    if (isDev) {
+      const resp = await workflowApi.getExploreWorkflows(50, 0);
+      console.log(
+        `[SSG Use Cases] Generating ${resp.workflows.length} pages (dev mode)`,
+      );
+      return resp.workflows.map((w) => ({ slug: w.id }));
+    }
+
+    const exploreLimit = 1000;
+    const exploreResp = await workflowApi.getExploreWorkflows(exploreLimit, 0);
+    const exploreParams = exploreResp.workflows.map((w) => ({ slug: w.id }));
+
+    const { fetchAllPaginated } = await import("@/lib/fetchAll");
+    const communityWorkflows = await fetchAllPaginated(
+      async (limit, offset) => {
+        const resp = await workflowApi.getCommunityWorkflows(limit, offset);
+        return {
+          items: resp.workflows,
+          total: resp.total || 0,
+          hasMore: resp.workflows.length === limit,
+        };
+      },
+      100,
+    );
+    const communityParams = communityWorkflows.map((w) => ({ slug: w.id }));
+
+    const allParams = [...exploreParams, ...communityParams];
+    console.log(
+      `[SSG Use Cases] Generating ${allParams.length} pages (${exploreParams.length} explore + ${communityParams.length} community)`,
+    );
+
+    return allParams;
   } catch (error) {
     console.error("Error generating static params for use-cases:", error);
     return [];
   }
 }
+
+export const dynamicParams = true;
 
 export async function generateMetadata({
   params,
@@ -165,17 +197,28 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // Generate structured data
   const structuredData = useCase
     ? generateUseCaseStructuredData(useCase)
-    : null;
+    : communityWorkflow
+      ? generateUseCaseStructuredData({
+          title: communityWorkflow.title,
+          description: communityWorkflow.description || "",
+          slug: communityWorkflow.id,
+          action_type: "workflow",
+          integrations: communityWorkflow.steps?.map((s) => s.category) || [],
+          categories: ["Community"],
+          published_id: communityWorkflow.id,
+          creator: communityWorkflow.creator,
+          steps: communityWorkflow.steps,
+        })
+      : null;
 
   const breadcrumbSchema = generateBreadcrumbSchema([
-    { name: "Home", url: "https://heygaia.io" },
-    { name: "Use Cases", url: "https://heygaia.io/use-cases" },
+    { name: "Home", url: siteConfig.url },
+    { name: "Use Cases", url: `${siteConfig.url}/use-cases` },
     {
       name: useCase?.title || communityWorkflow?.title || "",
-      url: `https://heygaia.io/use-cases/${slug}`,
+      url: `${siteConfig.url}/use-cases/${slug}`,
     },
   ]);
 

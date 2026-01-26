@@ -11,7 +11,7 @@ from app.config.loggers import general_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import workflows_collection
 from app.decorators.caching import Cacheable
-from app.models.oauth_models import WorkflowTriggerSchema
+from app.models.trigger_config import WorkflowTriggerSchema
 from app.models.workflow_models import TriggerConfig
 from app.services.triggers import get_handler_by_name
 from app.utils.exceptions import TriggerRegistrationError

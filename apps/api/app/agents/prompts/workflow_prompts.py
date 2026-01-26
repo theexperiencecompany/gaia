@@ -5,9 +5,6 @@ Workflow generation prompts for GAIA workflow system.
 # Template for generating workflow descriptions from todo items
 TODO_WORKFLOW_DESCRIPTION_TEMPLATE = """This workflow was automatically generated from a todo item to help the user accomplish their task.
 
-**Todo Task:** {title}
-{details_section}
-
 **Purpose:** Break down this todo into actionable automated steps. The user will click "Run Workflow" when they're ready to execute it, and the AI assistant will carry out each step in sequence.
 
 **Important Context:**
@@ -16,17 +13,13 @@ TODO_WORKFLOW_DESCRIPTION_TEMPLATE = """This workflow was automatically generate
 - Keep steps minimal and efficient - only include what's necessary to complete the todo
 - The user expects this workflow to help them finish their todo item faster
 
+**Todo Task:** {title}
+{details_section}
+
 Generate practical, executable steps that will help the user complete: "{title}"
 """
 
 WORKFLOW_GENERATION_SYSTEM_PROMPT = """Create a practical workflow plan for this goal using ONLY the available tools listed below.
-
-TITLE: {title}
-DESCRIPTION: {description}
-
-{trigger_context}
-
-AVAILABLE TOOL CATEGORIES: {categories}
 
 ## HOW WORKFLOWS WORK (User's Perspective):
 
@@ -97,11 +90,11 @@ A workflow is an automated sequence of 1-5 HIGHLY OPTIMIZED steps that accomplis
 
 CRITICAL REQUIREMENTS:
 1. Use ONLY the exact category names from the AVAILABLE TOOL CATEGORIES above
-2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "google_calendar", "productivity")
+2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "google_calendar", "todos", "reminders")
 3. Create 3-5 HIGHLY OPTIMIZED steps that accomplish the goal with maximum efficiency
 4. The execution agent will use `handoff` to delegate to subagents based on category
 5. Categories like gmail, notion, github, slack, google_calendar route to specialized subagents
-6. Categories like productivity, search, development use direct tool execution
+6. Categories like todos, reminders, search, development use direct tool execution
 7. ELIMINATE any step that doesn't directly contribute to the end goal
 
 ## ABSTRACT STEP DESIGN:
@@ -115,7 +108,7 @@ CRITICAL REQUIREMENTS:
 
 **Step Structure:**
 - `title`: Human-readable step name (what action to take)
-- `category`: Which system/subagent handles this step (gmail, notion, productivity, etc.)
+- `category`: Which system/subagent handles this step (gmail, notion, todos, reminders, etc.)
 - `description`: Detailed context about what this step should accomplish
 - `inputs`: Optional hints/parameters, but the executor makes final decisions
 
@@ -165,7 +158,7 @@ JSON OUTPUT REQUIREMENTS:
 - Use only valid JSON syntax with no explanatory comments
 - All string values must be properly quoted
 - No trailing commas or syntax errors
-- Use the exact category name for routing (e.g., "gmail", "notion", "productivity")
+- Use the exact category name for routing (e.g., "gmail", "notion", "todos", "reminders")
 
 BAD WORKFLOW EXAMPLES (DO NOT CREATE):
 ❌ "Analyze project requirements" → LLM does this inherently, no external tool needed
@@ -196,20 +189,21 @@ ANTI-PATTERNS TO AVOID (INEFFICIENT WORKFLOWS):
    ↳ INSTEAD: 1) Search filtered emails 2) Batch create and apply labels
    ↳ INSTEAD: 1) Comprehensive research 2) Generate complete project plan
 
+   
+TITLE: {title}
+DESCRIPTION: {description}
+
+{trigger_context}
+
+AVAILABLE TOOL CATEGORIES: {categories}
+
 Available Tools:
 {tools}
 
 {format_instructions}"""
 
 
-WORKFLOW_EXECUTION_PROMPT = """You are executing a workflow manually for the user. The user has selected a specific workflow to run in this chat session.
-
-**Workflow Details:**
-Title: {workflow_title}
-Description: {workflow_description}
-
-**Steps to Execute:**
-{workflow_steps}
+WORKFLOW_EXECUTION_PROMPT = """You are executing a workflow manually for the user. 
 
 **INTELLIGENT WORKFLOW EXECUTION:**
 
@@ -255,29 +249,18 @@ For specialized provider services, use the `handoff` tool to delegate to expert 
 **Execution Approach:**
 For each workflow step, use the `category` to determine routing:
 - category: gmail, notion, twitter, linkedin, github, slack, etc. → `handoff(subagent_id="<category>", task="[step title]: [step description]")`
-- category: productivity, search, development, creative, etc. → Execute directly with `retrieve_tools` and call tools
+- category: todos, reminders, search, development, creative, etc. → Execute directly with `retrieve_tools` and call tools
 
 **Execution Guidelines:**
 1. Process steps in the exact order shown
 2. Use sub-agent handoffs for provider-specific categories (gmail, notion, github, etc.)
-3. Execute directly for general categories (productivity, search, development, creative)
+3. Execute directly for general categories (todos, reminders, search, development, creative)
 4. Provide clear updates on progress and tool results
 5. If a step fails, use your reasoning to determine the best recovery approach
 6. Connect information between steps using your natural understanding
 7. Adapt handoff descriptions based on user context and previous step results
 
-**User's Request:**
-{user_message}
-
-Begin executing the workflow steps. Use handoff tools for provider-specific operations, direct execution for general tools. Start with step 1."""
-
-EMAIL_TRIGGERED_WORKFLOW_PROMPT = """You are executing a workflow that was automatically triggered by an incoming email.
-
-**EMAIL TRIGGER DETAILS:**
-- From: {email_sender}
-- Subject: {email_subject}
-- Content Preview: {email_content_preview}
-- Received: {trigger_timestamp}
+The user has selected a specific workflow to run in this chat session.
 
 **Workflow Details:**
 Title: {workflow_title}
@@ -286,6 +269,13 @@ Description: {workflow_description}
 **Steps to Execute:**
 {workflow_steps}
 
+**User's Request:**
+{user_message}
+
+Begin executing the workflow steps. Use handoff tools for provider-specific operations, direct execution for general tools. Start with step 1."""
+
+EMAIL_TRIGGERED_WORKFLOW_PROMPT = """You are executing a workflow that was automatically triggered by an incoming email.
+
 **INTELLIGENT EXECUTION WITH EMAIL CONTEXT:**
 
 You have complete access to the triggering email context and should use your natural intelligence to:
@@ -293,8 +283,8 @@ You have complete access to the triggering email context and should use your nat
 1. **Understand the email content fully** - You don't need tools to analyze or summarize; you can comprehend the email's intent, urgency, and key information inherently
 
 2. **Make context-aware tool decisions** - When executing each step, intelligently reference the email context:
-   - Use the sender email ({email_sender}) when composing replies or searches
-   - Reference the subject ({email_subject}) for context and threading
+   - Use the sender email when composing replies or searches
+   - Reference the subject for context and threading
    - Extract relevant information from the email content for tool inputs
    - Understand relationships and implications automatically
 
@@ -352,4 +342,18 @@ For each workflow step:
 **Your Task:**
 Execute the workflow steps using handoff tools for provider-specific operations while maintaining email context awareness.
 
-Begin executing the workflow steps now, starting with step 1."""
+Begin executing the workflow steps now, starting with step 1.
+
+**EMAIL TRIGGER DETAILS:**
+- From: {email_sender}
+- Subject: {email_subject}
+- Content Preview: {email_content_preview}
+- Received: {trigger_timestamp}
+
+**Workflow Details:**
+Title: {workflow_title}
+Description: {workflow_description}
+
+**Steps to Execute:**
+{workflow_steps}
+"""

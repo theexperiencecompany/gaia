@@ -1,0 +1,155 @@
+---
+title: "How Does GAIA Decide What to Automate?"
+description: "Understanding the decision-making process that determines when GAIA takes action automatically versus when it asks for approval or guidance."
+---
+
+import GetStarted from "/snippets/get-started.mdx";
+
+# How Does GAIA Decide What to Automate?
+
+GAIA decides what to automate by analyzing patterns in your behavior, evaluating the risk and reversibility of actions, considering your explicitly stated preferences, and maintaining confidence scores for its decisions. The system starts conservative and becomes more autonomous as it learns what you're comfortable with and builds a track record of good decisions.
+
+The challenge of deciding what to automate is balancing efficiency with control. Automate too little and you're not getting productivity benefits. Automate too much and you feel like you've lost control. The sweet spot is automating routine, predictable tasks while keeping you in the loop for decisions that require judgment or have significant consequences.
+
+## The Decision Framework
+
+GAIA uses a multi-factor framework to decide whether to automate an action. The first factor is pattern recognition. Has this situation occurred before? How did you handle it? If you've consistently handled similar situations the same way, that's a strong signal that automation is appropriate.
+
+The second factor is risk assessment. What are the consequences if the automation makes a mistake? Automatically filing a newsletter is low risk - worst case, you have to search for it later. Automatically sending an email on your behalf is higher risk - a mistake could damage a relationship. The system weighs risk when deciding whether to act automatically or ask for approval.
+
+The third factor is reversibility. Can the action be easily undone if it's wrong? Creating a task is easily reversible - you can delete it. Declining a meeting invitation is less reversible - you might have to explain why you declined. More reversible actions are more likely to be automated.
+
+The fourth factor is confidence. How certain is the system that it understands the situation correctly? High confidence enables automatic action. Lower confidence triggers a request for approval or clarification. Confidence is based on how well the current situation matches learned patterns and how clear the context is.
+
+The fifth factor is explicit preferences. Have you told the system what you want automated? Explicit preferences override other factors. If you've said "always create tasks from emails from my boss," the system does that regardless of other considerations.
+
+## Learning from Patterns
+
+Pattern learning is central to automation decisions. GAIA observes your behavior and identifies patterns that indicate automation opportunities. If you consistently create tasks from certain types of emails, that's a pattern. If you always file emails from certain senders, that's a pattern. If you typically schedule certain types of meetings at certain times, that's a pattern.
+
+These patterns are stored in memory as learned preferences. "User creates high-priority tasks from emails from clients that mention deadlines." "User files newsletters immediately without reading." "User schedules team meetings on Tuesday or Wednesday mornings." These learned patterns guide automation decisions.
+
+The learning is continuous and adaptive. As your behavior changes, the patterns update. If you start handling a certain type of email differently, the system notices and adjusts. If a pattern that was consistent becomes inconsistent, the system reduces confidence in that pattern and might start asking for confirmation.
+
+GAIA uses Mem0AI for pattern storage and retrieval. When a situation arises, the system queries memory for relevant patterns. If a strong pattern matches, automation proceeds. If no pattern matches or patterns conflict, the system asks for guidance.
+
+## Risk-Based Automation Levels
+
+Different actions have different risk levels, and GAIA adjusts automation accordingly. Low-risk actions can be fully automated. Medium-risk actions might be automated but with notification. High-risk actions require approval before execution.
+
+Low-risk actions include filing emails, creating tasks, adding labels or tags, setting reminders, and gathering information. These are easily reversible and have minimal consequences if wrong. GAIA automates these freely once patterns are established.
+
+Medium-risk actions include scheduling calendar time, archiving emails, updating task priorities, and sharing information within your team. These have some consequences but are generally reversible. GAIA might automate these but notify you so you can review and undo if needed.
+
+High-risk actions include sending emails on your behalf, declining meeting invitations, deleting information, and making commitments to others. These have significant consequences and aren't easily reversible. GAIA requires approval before taking these actions, even if patterns suggest they're appropriate.
+
+You can adjust these risk levels through settings. If you're comfortable with GAIA sending certain types of emails automatically, you can enable that. If you want to review all task creations before they happen, you can require approval. The system adapts to your comfort level.
+
+## Confidence Scoring
+
+Every automation decision has a confidence score indicating how certain the system is that it's making the right choice. Confidence is based on multiple factors: how well the situation matches learned patterns, how clear the context is, how consistent your past behavior has been, and how much relevant information is available.
+
+High confidence (above 90%) enables automatic action for low and medium-risk tasks. The system is very sure it knows what you want and proceeds without asking.
+
+Medium confidence (70-90%) triggers notification. The system takes the action but tells you what it did so you can review and undo if needed. "I created a task from Sarah's email about the Q4 review. Let me know if this isn't what you wanted."
+
+Low confidence (below 70%) triggers a request for approval. The system suggests an action but asks before proceeding. "This email from John seems to need a task. Should I create one?"
+
+Very low confidence (below 50%) triggers a request for guidance. The system isn't sure what to do and asks you to decide. "I'm not sure how to handle this email. What would you like me to do?"
+
+These confidence thresholds are adjustable. If you want more automation, you can lower the threshold for automatic action. If you want more control, you can raise it.
+
+## Explicit Preference Setting
+
+While learning from patterns is powerful, sometimes you want to explicitly tell the system what to automate. GAIA supports explicit preference setting through natural language.
+
+You can say "always create tasks from emails from my boss" and that becomes a rule. You can say "never automatically archive emails from clients" and that becomes a constraint. You can say "file all newsletters in the Reading folder" and that becomes an automation.
+
+These explicit preferences take precedence over learned patterns. Even if the system hasn't observed a pattern yet, it follows your explicit instructions. This allows you to set up automation immediately rather than waiting for patterns to be learned.
+
+Explicit preferences can be conditional. "Create high-priority tasks from client emails that mention deadlines." "Schedule team meetings on Tuesdays unless I'm traveling." "Notify me before sending any email on my behalf unless it's a simple confirmation." The system understands these conditional rules and applies them appropriately.
+
+## Graduated Autonomy
+
+GAIA implements graduated autonomy - starting conservative and becoming more autonomous as trust builds. When you first start using GAIA, it asks for approval frequently. As it learns your patterns and you approve its suggestions, it gains confidence and starts acting more automatically.
+
+This graduation happens at multiple levels. For each type of action (email handling, task creation, calendar scheduling), the system starts conservative and becomes more autonomous as it demonstrates good judgment. For each context (work email vs personal email, internal meetings vs client meetings), autonomy is graduated separately.
+
+You can see this progression in action. In the first week, GAIA might ask "Should I create a task from this email?" After you approve similar suggestions several times, it starts creating tasks automatically but notifying you. After those notifications consistently match what you want, it stops notifying for routine cases and only notifies for unusual ones.
+
+This graduated approach builds trust. You see the system making good decisions before it starts acting fully automatically. You can correct mistakes early when the system is still asking for approval, teaching it your preferences before it has autonomy.
+
+## Context-Aware Decisions
+
+Automation decisions are context-aware. The same action might be appropriate in one context but not another. An email from your boss might need a task during a busy project but not during a slow period. A meeting invitation might be acceptable on Tuesday but not on Friday when you keep meeting-free.
+
+GAIA considers context when deciding whether to automate. It looks at your current workload, upcoming deadlines, calendar availability, and project priorities. An action that would be automated in one context might require approval in another.
+
+This context awareness prevents automation from being rigid. The system adapts its decisions to your current situation rather than applying fixed rules regardless of context.
+
+## Handling Uncertainty
+
+Sometimes the system encounters situations it hasn't seen before or where patterns conflict. In these cases of uncertainty, GAIA errs on the side of asking rather than guessing.
+
+When uncertainty is detected, the system explains what it's uncertain about. "This email seems to need a task, but I'm not sure if it should be high priority or normal priority. What do you think?" This explanation helps you understand why the system is asking and makes it easy to provide guidance.
+
+Your response to uncertainty becomes learning data. If you consistently choose high priority in certain situations, the system learns that pattern and won't be uncertain next time. Uncertainty decreases over time as the system learns more about your preferences.
+
+## Transparency and Explainability
+
+For automation to be trustworthy, you need to understand why the system made a decision. GAIA provides explanations for automation decisions, especially when they're not obvious.
+
+When the system takes an action automatically, it can explain why. "I created a task from this email because it's from a client, mentions a deadline, and you always create tasks from similar emails." This transparency builds trust and helps you understand the system's reasoning.
+
+When the system asks for approval, it explains what it's proposing and why. "I suggest creating a high-priority task because this email is from your boss and mentions an urgent deadline. Should I proceed?" This explanation helps you make an informed decision.
+
+You can also ask the system why it didn't automate something. "Why didn't you create a task from that email?" The system can explain: "That email was informational without action items, and you typically just file those emails." This helps you understand the system's decision-making and correct it if needed.
+
+## Feedback and Correction
+
+Every automation decision is an opportunity for feedback. When the system does something you don't want, you can correct it. When it asks for approval and you provide guidance, that's feedback. When it doesn't do something you expected, you can tell it.
+
+GAIA uses this feedback to improve decision-making. If you undo an automated action, the system learns that similar actions shouldn't be automated in the future. If you approve a suggested action, the system gains confidence in similar suggestions. If you provide explicit guidance, that becomes a preference.
+
+The feedback loop is immediate. Corrections affect the next decision, not just future retraining. This makes the system responsive to your feedback and allows it to adapt quickly.
+
+## Balancing Efficiency and Control
+
+The ultimate goal is finding the right balance between efficiency and control for you. Some people want maximum automation and are comfortable with the system taking lots of actions automatically. Others want more control and prefer to approve most actions.
+
+GAIA accommodates both preferences through adjustable autonomy settings. You can set how much automation you want overall, and you can set different levels for different types of actions. You might want full automation for email filing but require approval for calendar scheduling.
+
+The system also provides an "automation dashboard" where you can see what's being automated, review recent automated actions, and adjust settings. This visibility and control ensure you're always comfortable with the level of automation.
+
+## Real-World Example
+
+Let's see the decision-making process in action. An email arrives from a colleague asking if you can review a document by tomorrow. Here's how GAIA decides what to do.
+
+First, it analyzes the email. It identifies this is a request for action (review document), has a deadline (tomorrow), and is from a colleague (not a client or boss, so medium importance).
+
+It queries memory for patterns. It finds that you typically create tasks from emails requesting document reviews. It finds that you usually set these as medium priority unless they're from clients or have same-day deadlines. It finds that you typically add these tasks to the relevant project.
+
+It assesses risk. Creating a task is low risk and easily reversible. It calculates confidence at 85% - high enough for automatic action but not certain enough to skip notification.
+
+It checks for explicit preferences. You haven't set any specific rules about document review requests, so it relies on learned patterns.
+
+It decides to create the task automatically but notify you. It creates a task titled "Review document for Sarah" with due date tomorrow, medium priority, added to the project you and Sarah share. It includes the document link from the email in the task description.
+
+You receive a notification: "Created task: Review document for Sarah (due tomorrow) from her email. I've added it to the Project X task list. The document link is in the task description."
+
+You see the notification, verify it's correct, and continue working. The task is created, properly prioritized, and organized without you having to do anything. But you were notified so you could review and correct if needed.
+
+Over time, as you consistently approve these task creations, GAIA's confidence increases. Eventually, it might stop notifying for routine document review requests and only notify for unusual cases. The automation becomes more seamless as trust builds.
+
+That's how GAIA decides what to automate - through a combination of pattern learning, risk assessment, confidence scoring, and respect for your preferences and comfort level.
+
+---
+
+**Related Reading:**
+- [How Does AI Balance Autonomy and Control?](/knowledge/how/ai-balances-autonomy-control)
+- [What is Proactive vs Reactive AI?](/knowledge/what-is/proactive-vs-reactive-ai)
+- [How Does a Proactive AI Assistant Work?](/knowledge/how/proactive-ai-assistant-works)
+
+---
+
+<GetStarted />

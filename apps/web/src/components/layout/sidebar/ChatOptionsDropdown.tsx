@@ -73,7 +73,6 @@ export default function ChatOptionsDropdown({
       await db.updateConversationFields(chatId, {
         starred: newStarredValue,
       });
-      // No need to fetchConversations - IndexedDB events update Zustand automatically
     } catch (error) {
       console.error("Failed to update star", error);
     }
@@ -123,7 +122,6 @@ export default function ChatOptionsDropdown({
       });
 
       closeEditModal();
-      // No need to fetchConversations - IndexedDB events update Zustand automatically
     } catch (error) {
       console.error("Failed to update chat name", error);
     }
@@ -144,7 +142,6 @@ export default function ChatOptionsDropdown({
     try {
       router.push("/c");
       await deleteConversation(chatId);
-      // No need to fetchConversations - IndexedDB events update Zustand automatically
     } catch (error) {
       console.error("Failed to delete chat", error);
     }

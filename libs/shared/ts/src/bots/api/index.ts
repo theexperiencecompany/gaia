@@ -1,5 +1,10 @@
-import type { ChatRequest, ChatResponse, SessionInfo, AuthStatus } from "../types";
 import axios, { type AxiosInstance } from "axios";
+import type {
+  AuthStatus,
+  ChatRequest,
+  ChatResponse,
+  SessionInfo,
+} from "../types";
 
 /**
  * Client for interacting with the GAIA Backend Bot API.
@@ -21,8 +26,8 @@ export class GaiaClient {
       baseURL: baseUrl,
       headers: {
         "Content-Type": "application/json",
-        "X-Bot-API-Key": apiKey
-      }
+        "X-Bot-API-Key": apiKey,
+      },
     });
   }
 
@@ -39,13 +44,13 @@ export class GaiaClient {
         message: request.message,
         platform: request.platform,
         platform_user_id: request.platformUserId,
-        channel_id: request.channelId
+        channel_id: request.channelId,
       });
 
       return {
         response: data.response,
         conversationId: data.conversation_id,
-        authenticated: data.authenticated
+        authenticated: data.authenticated,
       };
     } catch (error: any) {
       throw new Error(`API error: ${error.response?.status || error.message}`);
@@ -65,13 +70,13 @@ export class GaiaClient {
       const { data } = await this.client.post<any>("/api/v1/bot/chat/public", {
         message: request.message,
         platform: request.platform,
-        platform_user_id: request.platformUserId
+        platform_user_id: request.platformUserId,
       });
 
       return {
         response: data.response,
         conversationId: data.conversation_id,
-        authenticated: false
+        authenticated: false,
       };
     } catch (error: any) {
       throw new Error(`API error: ${error.response?.status || error.message}`);
@@ -90,7 +95,7 @@ export class GaiaClient {
   async getSession(
     platform: string,
     platformUserId: string,
-    channelId?: string
+    channelId?: string,
   ): Promise<SessionInfo> {
     const params = new URLSearchParams();
     if (channelId) {
@@ -99,7 +104,7 @@ export class GaiaClient {
 
     try {
       const { data } = await this.client.get<SessionInfo>(
-        `/api/v1/bot/session/${platform}/${platformUserId}?${params.toString()}`
+        `/api/v1/bot/session/${platform}/${platformUserId}?${params.toString()}`,
       );
       return data;
     } catch (error: any) {
@@ -115,10 +120,13 @@ export class GaiaClient {
    * @returns Authentication status.
    * @throws Error if the API request fails.
    */
-  async checkAuthStatus(platform: string, platformUserId: string): Promise<AuthStatus> {
+  async checkAuthStatus(
+    platform: string,
+    platformUserId: string,
+  ): Promise<AuthStatus> {
     try {
       const { data } = await this.client.get<AuthStatus>(
-        `/api/v1/bot-auth/status/${platform}/${platformUserId}`
+        `/api/v1/bot-auth/status/${platform}/${platformUserId}`,
       );
       return data;
     } catch (error: any) {
@@ -136,7 +144,7 @@ export class GaiaClient {
   getAuthUrl(platform: string, platformUserId: string): string {
     const params = new URLSearchParams({
       platform,
-      platform_user_id: platformUserId
+      platform_user_id: platformUserId,
     });
     return `${this.baseUrl}/bot-auth/link/${platform}?${params.toString()}`; // Adjusted URL path to match backend
   }

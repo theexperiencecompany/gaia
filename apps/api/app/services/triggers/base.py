@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 from app.config.loggers import general_logger as logger
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
+from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
 
 
@@ -221,3 +222,59 @@ class TriggerHandler(ABC):
             Empty list if no dynamic options available
         """
         return []
+
+    async def process_event(
+        self,
+        event_type: str,
+        trigger_id: Optional[str],
+        user_id: Optional[str],
+        data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Process an incoming webhook event and queue matching workflows.
+
+        Default implementation:
+        1. Finds workflows using handler's find_workflows method
+        2. Queues each workflow for execution via WorkflowQueueService
+
+        Each handler's find_workflows() determines how to match workflows:
+        - Most handlers match by trigger_id (stored in composio_trigger_ids)
+        - Gmail matches by user_id (account-level triggers)
+
+        Args:
+            event_type: The Composio event type (e.g., 'GMAIL_NEW_GMAIL_MESSAGE')
+            trigger_id: The Composio trigger ID from the webhook (may be None)
+            user_id: User ID from webhook metadata (may be None)
+            data: The complete webhook payload data
+
+        Returns:
+            Dict with 'status' and 'message' keys
+        """
+        # Find matching workflows using handler's find_workflows method
+        # Each handler decides what identifiers it needs (trigger_id, user_id, etc.)
+        workflows = await self.find_workflows(event_type, trigger_id or "", data)
+
+        if not workflows:
+            logger.info(f"No matching workflows for event: {event_type}")
+            return {"status": "success", "message": "No matching workflows"}
+
+        # Queue execution for each matching workflow
+        queued_count = 0
+        for workflow in workflows:
+            try:
+                if workflow.id is None:
+                    logger.error("Workflow has no id, skipping")
+                    continue
+                await WorkflowQueueService.queue_workflow_execution(
+                    workflow.id,
+                    workflow.user_id,
+                    context={"trigger_data": data},
+                )
+                queued_count += 1
+                logger.info(f"Queued workflow {workflow.id} for event {event_type}")
+            except Exception as e:
+                logger.error(f"Failed to queue workflow {workflow.id}: {e}")
+
+        return {
+            "status": "success",
+            "message": f"Queued {queued_count} workflows",
+        }

@@ -2,10 +2,17 @@
 Subagent Execution Core - Shared logic for subagent invocation.
 
 This module contains the reusable classes and functions for invoking subagents.
-Both handoff_tools.py and direct call_subagent use these.
+Both handoff_tools.py, executor_tool.py, and direct call_subagent use these.
 
 Keeping shared code here avoids cyclic dependencies since handoff_tools.py
 imports from this file, not the other way around.
+
+Key exports:
+- SubagentExecutionContext: Container for execution data
+- build_initial_messages(): Construct standard message list with context
+- execute_subagent_stream(): Unified streaming with configurable tool tracking
+- prepare_subagent_execution(): Prepare context for platform subagents
+- prepare_executor_execution(): Prepare context for executor agent
 """
 
 from datetime import datetime
@@ -20,8 +27,14 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.core.lazy_loader import providers
 from app.helpers.agent_helpers import build_agent_config
 from app.models.models_models import ModelConfig
-from app.services.oauth_service import check_integration_status
-from langchain_core.messages import AIMessageChunk, HumanMessage
+from app.services.oauth.oauth_service import check_integration_status
+from app.utils.stream_utils import extract_tool_entries_from_update
+from langchain_core.messages import (
+    AIMessageChunk,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 
 
 class SubagentExecutionContext:
@@ -65,6 +78,48 @@ def get_subagent_by_id(subagent_id: str):
             if integ.subagent_config and integ.subagent_config.has_subagent:
                 return integ
     return None
+
+
+async def build_initial_messages(
+    system_message: SystemMessage,
+    agent_name: str,
+    configurable: dict,
+    task: str,
+    user_id: Optional[str] = None,
+) -> list:
+    """
+    Build the standard message list for subagent/executor execution.
+
+    Creates a consistent message structure with:
+    1. System message (agent-specific instructions)
+    2. Context message (time, timezone, memories)
+    3. Human message (the task)
+
+    Args:
+        system_message: Pre-built system message for the agent
+        agent_name: Name of the agent (for visibility metadata)
+        configurable: Config dict with user_time, user_name, etc.
+        task: The task/query to execute
+        user_id: Optional user ID for memory retrieval
+
+    Returns:
+        List of [system_message, context_message, human_message]
+    """
+    context_message = await create_agent_context_message(
+        agent_name=agent_name,
+        configurable=configurable,
+        user_id=user_id,
+        query=task,
+    )
+
+    return [
+        system_message,
+        context_message,
+        HumanMessage(
+            content=task,
+            additional_kwargs={"visible_to": {agent_name}},
+        ),
+    ]
 
 
 async def prepare_subagent_execution(
@@ -127,28 +182,22 @@ async def prepare_subagent_execution(
     )
     configurable = config.get("configurable", {})
 
-    # Create messages
+    # Create messages using shared helper
     system_message = await create_subagent_system_message(
         integration_id=integration.id,
         agent_name=agent_name,
         user_id=user_id,
     )
 
-    context_message = await create_agent_context_message(
+    messages = await build_initial_messages(
+        system_message=system_message,
         agent_name=agent_name,
         configurable=configurable,
+        task=task,
         user_id=user_id,
-        query=task,
-        thread_id=conversation_id,  # Use conversation_id for acontext session consistency
     )
 
-    initial_state = {
-        "messages": [
-            system_message,
-            context_message,
-            HumanMessage(content=task),
-        ]
-    }
+    initial_state = {"messages": messages}
 
     return SubagentExecutionContext(
         subagent_graph=subagent_graph,
@@ -164,41 +213,168 @@ async def prepare_subagent_execution(
 async def execute_subagent_stream(
     ctx: SubagentExecutionContext,
     stream_writer=None,
+    integration_metadata: Optional[dict] = None,
 ) -> str:
     """
-    Execute subagent and stream results.
+    Execute subagent with streaming and tool tracking.
 
     Args:
         ctx: SubagentExecutionContext from prepare_subagent_execution
-        stream_writer: Optional callback for custom events (for handoff tool)
+        stream_writer: Callback for custom events (from get_stream_writer())
+        integration_metadata: Optional dict with {icon_url, integration_id, name}
+                              for custom MCP icon display
 
     Returns:
         Complete message string
+
+    Stream Event Flow:
+        1. "updates" - Emit tool_data with complete args when tool is called
+        2. "messages" - Stream content, emit tool_output when ToolMessage arrives
+        3. "custom" - Forward custom events (progress messages, etc.) to parent
     """
     complete_message = ""
+    emitted_tool_calls: set[str] = set()
 
     async for event in ctx.subagent_graph.astream(
         ctx.initial_state,
-        stream_mode=["messages", "custom"],
+        stream_mode=["messages", "custom", "updates"],
         config=ctx.config,
     ):
+        # Handle 2-tuple format only (no subgraphs)
+        if len(event) != 2:
+            continue
         stream_mode, payload = event
 
-        if stream_mode == "custom":
-            if stream_writer:
-                stream_writer(payload)
-        elif stream_mode == "messages":
-            chunk, metadata = payload
+        # ─────────────────────────────────────────────────────────────────────
+        # UPDATES STREAM: Emit tool_data when tool calls are detected
+        # ─────────────────────────────────────────────────────────────────────
+        if stream_mode == "updates":
+            for node_name, state_update in payload.items():
+                # Use shared helper to extract and format tool entries
+                entries = await extract_tool_entries_from_update(
+                    state_update=state_update,
+                    emitted_tool_calls=emitted_tool_calls,
+                    integration_metadata=integration_metadata,
+                )
+                for tc_id, tool_entry in entries:
+                    if stream_writer:
+                        stream_writer({"tool_data": tool_entry})
+            continue
 
+        # ─────────────────────────────────────────────────────────────────────
+        # MESSAGES STREAM: Stream content and emit tool_output
+        # ─────────────────────────────────────────────────────────────────────
+        if stream_mode == "messages":
+            chunk, metadata = payload
             if metadata.get("silent"):
                 continue
 
+            # Accumulate AI response content
             if chunk and isinstance(chunk, AIMessageChunk):
-                content = str(chunk.content)
+                content = chunk.text() if hasattr(chunk, "text") else str(chunk.content)
                 if content:
                     complete_message += content
 
+            # Emit tool_output when ToolMessage arrives
+            elif chunk and isinstance(chunk, ToolMessage):
+                if stream_writer:
+                    stream_writer(
+                        {
+                            "tool_output": {
+                                "tool_call_id": chunk.tool_call_id,
+                                "output": chunk.text()[:3000],
+                            }
+                        }
+                    )
+            continue
+
+        # ─────────────────────────────────────────────────────────────────────
+        # CUSTOM STREAM: Forward custom events from tools
+        # ─────────────────────────────────────────────────────────────────────
+        if stream_mode == "custom":
+            if stream_writer:
+                stream_writer(payload)
+
     return complete_message if complete_message else "Task completed"
+
+
+async def prepare_executor_execution(
+    task: str,
+    configurable: dict,
+    user_time: datetime,
+) -> tuple[Optional[SubagentExecutionContext], Optional[str]]:
+    """
+    Prepare execution context for the executor agent.
+
+    Similar to prepare_subagent_execution but:
+    - Uses GraphManager for graph resolution (not providers)
+    - Uses create_system_message for executor-specific prompts
+
+    Args:
+        task: The task/query to execute
+        configurable: Config dict from RunnableConfig (with user_id, user_time, etc.)
+        user_time: User's local time
+
+    Returns:
+        Tuple of (SubagentExecutionContext, None) on success, or
+        (None, error_message) on failure
+    """
+    # Lazy import to avoid circular dependency
+    from app.agents.core.graph_manager import GraphManager
+    from app.helpers.message_helpers import create_system_message
+
+    user_id = configurable.get("user_id")
+    thread_id = configurable.get("thread_id", "")
+    executor_thread_id = f"executor_{thread_id}"
+
+    # Load executor graph
+    executor_graph = await GraphManager.get_graph("executor_agent")
+    if not executor_graph:
+        return None, "Executor agent not available"
+
+    # Build user dict for config
+    user = {
+        "user_id": user_id,
+        "email": configurable.get("email"),
+        "name": configurable.get("user_name"),
+    }
+
+    # Build config
+    config = build_agent_config(
+        conversation_id=thread_id,
+        user=user,
+        user_time=user_time,
+        thread_id=executor_thread_id,
+        base_configurable=configurable,
+        agent_name="executor_agent",
+    )
+    new_configurable = config.get("configurable", {})
+
+    # Create system message (executor-specific)
+    system_message = create_system_message(
+        user_id=user_id,
+        agent_type="executor",
+        user_name=configurable.get("user_name"),
+    )
+
+    # Build messages using shared helper
+    messages = await build_initial_messages(
+        system_message=system_message,
+        agent_name="executor_agent",
+        configurable=new_configurable,
+        task=task,
+        user_id=user_id,
+    )
+
+    return SubagentExecutionContext(
+        subagent_graph=executor_graph,
+        agent_name="executor_agent",
+        config=config,
+        configurable=new_configurable,
+        integration_id="executor",
+        initial_state={"messages": messages},
+        user_id=user_id,
+    ), None
 
 
 async def check_subagent_integration(
@@ -234,6 +410,8 @@ async def call_subagent(
     """
     Directly invoke a subagent with streaming - drop-in for call_agent in chat_service.
 
+    Primarily used for testing subagents directly without going through the main agent.
+
     Args:
         subagent_id: e.g., "google_calendar", "gmail", "github"
         query: The user's message/query
@@ -241,20 +419,18 @@ async def call_subagent(
         conversation_id: Conversation thread ID
         user_time: User's local time
         skip_integration_check: Skip OAuth check (default True for testing)
+        user_model_config: Optional model configuration
 
     Yields:
         SSE-formatted strings compatible with chat_service streaming
 
-    Usage in chat_service.py:
-        from app.agents.core.subagents.subagent_runner import call_subagent
-
+    Usage:
         async for chunk in call_subagent(
             subagent_id="google_calendar",
-            query=body.message,
+            query="What's on my calendar today?",
             user=user,
             conversation_id=conversation_id,
             user_time=user_time,
-            user_model_config=user_model_config,
         ):
             yield chunk
     """
@@ -294,25 +470,57 @@ async def call_subagent(
 
     # Stream execution with SSE formatting
     complete_message = ""
+    emitted_tool_calls: set[str] = set()
 
     async for event in ctx.subagent_graph.astream(
         ctx.initial_state,
-        stream_mode=["messages", "custom"],
+        stream_mode=["messages", "custom", "updates"],
         config=ctx.config,
     ):
+        # Handle 2-tuple format only (no subgraphs)
+        if len(event) != 2:
+            continue
         stream_mode, payload = event
 
-        if stream_mode == "custom":
-            yield f"data: {json.dumps(payload)}\n\n"
-        elif stream_mode == "messages":
+        # ─────────────────────────────────────────────────────────────────────
+        # UPDATES STREAM: Emit tool_data when tool calls are detected
+        # ─────────────────────────────────────────────────────────────────────
+        if stream_mode == "updates":
+            for node_name, state_update in payload.items():
+                # Use shared helper to extract and format tool entries
+                entries = await extract_tool_entries_from_update(
+                    state_update=state_update,
+                    emitted_tool_calls=emitted_tool_calls,
+                )
+                for tc_id, tool_entry in entries:
+                    yield f"data: {json.dumps({'tool_data': tool_entry})}\n\n"
+            continue
+
+        # ─────────────────────────────────────────────────────────────────────
+        # MESSAGES STREAM: Stream content and emit tool_output
+        # ─────────────────────────────────────────────────────────────────────
+        if stream_mode == "messages":
             chunk, metadata = payload
             if metadata.get("silent"):
                 continue
+
+            # Stream AI response content
             if chunk and isinstance(chunk, AIMessageChunk):
-                content = str(chunk.content)
+                content = chunk.text() if hasattr(chunk, "text") else str(chunk.content)
                 if content:
                     complete_message += content
                     yield f"data: {json.dumps({'response': content})}\n\n"
+
+            # Emit tool_output when ToolMessage arrives
+            elif chunk and isinstance(chunk, ToolMessage):
+                yield f"data: {json.dumps({'tool_output': {'tool_call_id': chunk.tool_call_id, 'output': chunk.text()[:3000]}})}\n\n"
+            continue
+
+        # ─────────────────────────────────────────────────────────────────────
+        # CUSTOM STREAM: Forward custom events from tools
+        # ─────────────────────────────────────────────────────────────────────
+        if stream_mode == "custom":
+            yield f"data: {json.dumps(payload)}\n\n"
 
     # Final message for DB storage
     yield f"nostream: {json.dumps({'complete_message': complete_message})}"

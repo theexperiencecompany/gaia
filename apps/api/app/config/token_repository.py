@@ -16,7 +16,7 @@ import httpx
 from app.config.loggers import token_repository_logger as logger
 from app.config.settings import settings
 from app.db.postgresql import get_db_session
-from app.models.oauth_models import OAuthToken
+from app.models.db_oauth import OAuthToken
 from authlib.integrations.starlette_client import OAuth
 from authlib.oauth2.rfc6749 import OAuth2Token
 from fastapi import HTTPException
@@ -505,7 +505,7 @@ class TokenRepository:
         result = {
             "user_id": user_id,
             "available_providers": [],
-            "token_count": 0,  # nosec
+            "token_count": 0,  # nosec B105 - integer count, not a password
             "tokens": [],
         }
 
@@ -572,7 +572,7 @@ class TokenRepository:
                 params={
                     "access_token": token_record.access_token,
                     "refresh_token": token_record.refresh_token,
-                    "token_type": "Bearer",  # nosec
+                    "token_type": "Bearer",  # nosec B105 - OAuth2 token type, not a password
                     "expires_at": int(token_record.expires_at.timestamp())
                     if token_record.expires_at
                     else None,
