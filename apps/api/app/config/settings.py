@@ -209,7 +209,6 @@ class ProductionSettings(CommonSettings):
     MEM0_API_KEY: str
     MEM0_ORG_ID: str
     MEM0_PROJECT_ID: str
-    ACONTEXT_API_KEY: str
 
     # ----------------------------------------------
     # Code Execution Environment
@@ -349,7 +348,6 @@ class DevelopmentSettings(CommonSettings):
     MEM0_API_KEY: Optional[str] = None
     MEM0_ORG_ID: Optional[str] = None
     MEM0_PROJECT_ID: Optional[str] = None
-    ACONTEXT_API_KEY: Optional[str] = None
 
     # ----------------------------------------------
     # Code Execution Environment

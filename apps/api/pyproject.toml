@@ -8,7 +8,7 @@ requires-python = ">=3.11"
 dependencies = [
   "gaia-shared",
   "uvloop>=0.21.0; sys_platform != 'win32'",
-  "pydantic>=2.11.0",
+  "pydantic>=2.12.3",
   "stackprinter>=0.2.12",
   "beartype>=0.21.0",
   "python-jose",
@@ -18,7 +18,7 @@ dependencies = [
   "slowapi>=0.1.9",
   "fastapi-cache2[redis]>=0.1.8",
   "aiolimiter>=1.2.1",
-  "typing-extensions==4.12.2",
+  "typing-extensions>=4.14.1",
   "pendulum>=3.0.0",
   "uuid7>=0.1.0",
   "croniter>=3.0.0",

@@ -9,61 +9,19 @@ This module provides the retrieve_tools function factory that supports:
 """
 
 import asyncio
-from typing import Annotated, Awaitable, Callable, Optional, TypedDict
+from typing import Annotated, Any, Awaitable, Callable, List, Optional, TypedDict, Union
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
-from app.db.mongodb.collections import integrations_collection
+from app.db.chroma.public_integrations_store import search_public_integrations
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
 from app.utils.agent_utils import parse_subagent_id
 from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import InjectedStore
-from langgraph.store.base import BaseStore
-
-
-def _format_subagent_key(integration_id: str, name: str | None = None) -> str:
-    """Format subagent key as 'subagent:{name} [{short_id}]' or 'subagent:{id}'."""
-    if name and name.lower() != integration_id.lower():
-        short_id = integration_id[:8] if len(integration_id) > 8 else integration_id
-        return f"subagent:{name} [{short_id}]"
-    return f"subagent:{integration_id}"
-
-
-async def _get_custom_integration_names(
-    integration_ids: set[str],
-) -> dict[str, str]:
-    """Fetch names for custom integrations from MongoDB.
-
-    Args:
-        integration_ids: Set of integration IDs to look up
-
-    Returns:
-        Dict mapping integration_id -> name
-    """
-    if not integration_ids:
-        return {}
-
-    # Filter to only non-platform integrations (custom/public)
-    custom_ids = {iid for iid in integration_ids if get_integration_by_id(iid) is None}
-
-    if not custom_ids:
-        return {}
-
-    # Batch fetch from MongoDB
-    cursor = integrations_collection.find(
-        {"integration_id": {"$in": list(custom_ids)}},
-        {"integration_id": 1, "name": 1},
-    )
-
-    result = {}
-    async for doc in cursor:
-        integration_id = doc["integration_id"]
-        result[integration_id] = doc.get("name") or integration_id
-
-    return result
+from langgraph.store.base import BaseStore, SearchItem
 
 
 class RetrieveToolsResult(TypedDict):
@@ -280,7 +238,9 @@ def get_retrieve_tools_function(
 
         # Build search tasks - only search general + subagents
         # Individual integration tools are accessed via handoff to subagents
-        search_tasks = []
+        search_tasks: List[
+            Awaitable[Union[List[SearchItem], List[dict[str, Any]]]]
+        ] = []
 
         # Search in tool_space (general for main agent, or specific space for subagent)
         if tool_space in user_namespaces or tool_space == "general":
@@ -289,6 +249,9 @@ def get_retrieve_tools_function(
         # Include subagents search for main agent context
         if include_subagents:
             search_tasks.append(store.asearch(("subagents",), query=query, limit=15))
+            # Search public integrations to discover unconnected tools
+            # query is guaranteed to be str here due to checks above, but mypy doesn't know
+            search_tasks.append(search_public_integrations(query=query or "", limit=15))
 
         # Execute all searches
         if search_tasks:
@@ -297,76 +260,76 @@ def get_retrieve_tools_function(
             results = []
 
         all_results = []
-        subagent_names: dict[str, str] = {}  # integration_id -> name
 
         for result in results:
             if isinstance(result, BaseException):
                 logger.warning(f"Search error: {result}")
                 continue
-            # result is now known to be list[SearchItem]
-            for item in result:
-                tool_key = str(item.key)
+            # result is now known to be list[SearchItem] or list[dict]
+            if not result:
+                continue
 
-                # Check if this is a subagent result from the subagents namespace
-                # (key won't have 'subagent:' prefix, it's just the integration_id)
-                if hasattr(item, "namespace") and item.namespace == ("subagents",):
-                    integration_id = tool_key
-                    # Check if user has access
-                    if (
-                        integration_id not in connected_integrations
-                        and integration_id not in internal_subagents
+            # Check first item to determine if this is a list of dicts (public integrations)
+            # or list of SearchItems (Chroma store results)
+            is_public_search = isinstance(result[0], dict)
+
+            if is_public_search:
+                # Handle public integration search results
+                public_result: List[dict[str, Any]] = result  # type: ignore[assignment]
+                for public_item in public_result:
+                    integration_id = public_item.get("integration_id")
+                    if integration_id:
+                        subagent_key = f"subagent:{integration_id}"
+                        all_results.append(
+                            {
+                                "id": subagent_key,
+                                "score": public_item.get("relevance_score", 0),
+                            }
+                        )
+            else:
+                # Handle Chroma store SearchItems
+                search_result: List[SearchItem] = result  # type: ignore[assignment]
+                for search_item in search_result:
+                    tool_key = str(search_item.key)
+
+                    # Check if this is a subagent result from the subagents namespace
+                    if hasattr(search_item, "namespace") and search_item.namespace == (
+                        "subagents",
                     ):
-                        logger.debug(
-                            f"Filtering out subagent {integration_id} - user not connected"
+                        subagent_key = tool_key
+                        # Ensure it starts with subagent:
+                        if not subagent_key.startswith("subagent:"):
+                            subagent_key = f"subagent:{subagent_key}"
+                        all_results.append(
+                            {"id": subagent_key, "score": search_item.score}
                         )
                         continue
-                    # Extract name from search result value
-                    if hasattr(item, "value") and isinstance(item.value, dict):
-                        subagent_names[integration_id] = item.value.get(
-                            "name", integration_id
-                        )
-                    # Format as subagent key with name
-                    formatted_key = _format_subagent_key(
-                        integration_id, subagent_names.get(integration_id)
-                    )
-                    all_results.append({"id": formatted_key, "score": item.score})
-                    continue
 
-                if tool_key.startswith("subagent:"):
-                    integration_id, _ = parse_subagent_id(tool_key)
-                    # Internal subagents (todos) always pass, others need connection
-                    if (
-                        integration_id not in connected_integrations
-                        and integration_id not in internal_subagents
-                    ):
-                        logger.debug(
-                            f"Filtering out {tool_key} - user not connected to {integration_id}"
-                        )
+                    if tool_key.startswith("subagent:"):
+                        integration_id, _ = parse_subagent_id(tool_key)
+                        all_results.append({"id": tool_key, "score": search_item.score})
                         continue
-                    # Extract name from search result value for display
-                    if hasattr(item, "value") and isinstance(item.value, dict):
-                        subagent_names[integration_id] = item.value.get(
-                            "name", integration_id
-                        )
-                    all_results.append({"id": tool_key, "score": item.score})
-                    continue
 
-                # Filter out tools from delegated categories ONLY in main agent context
-                # When include_subagents=False, we're inside a subagent and should
-                # NOT filter out delegated tools (the subagent needs its own tools)
-                if include_subagents:
-                    tool_category_name = tool_registry.get_category_of_tool(tool_key)
-                    if tool_category_name:
-                        category = tool_registry.get_category(name=tool_category_name)
-                        if category and category.is_delegated:
-                            logger.debug(
-                                f"Filtering out {tool_key} - delegated category {tool_category_name}"
+                    # Filter out tools from delegated categories ONLY in main agent context
+                    # When include_subagents=False, we're inside a subagent and should
+                    # NOT filter out delegated tools (the subagent needs its own tools)
+                    if include_subagents:
+                        tool_category_name = tool_registry.get_category_of_tool(
+                            tool_key
+                        )
+                        if tool_category_name:
+                            category = tool_registry.get_category(
+                                name=tool_category_name
                             )
-                            continue
+                            if category and category.is_delegated:
+                                logger.debug(
+                                    f"Filtering out {tool_key} - delegated category {tool_category_name}"
+                                )
+                                continue
 
-                # Include if it's in available tools
-                if tool_key in available_tool_names:
-                    all_results.append({"id": tool_key, "score": item.score})
+                    # Include if it's in available tools
+                    if tool_key in available_tool_names:
+                        all_results.append({"id": tool_key, "score": search_item.score})
 
         # Remove duplicates and sort by score
         seen = set()
@@ -379,32 +342,16 @@ def get_retrieve_tools_function(
         # Always inject available subagents that user has access to
         # This ensures subagents appear regardless of semantic match quality
         if include_subagents:
-            # Fetch names for custom integrations that weren't in search results
-            custom_integration_names = await _get_custom_integration_names(
-                connected_integrations
-            )
-            # Merge with names from search results
-            subagent_names.update(custom_integration_names)
-
             # Add internal subagents (always available - not integrations)
             for integration_id in internal_subagents:
-                # Get name from platform integration
-                integ = get_integration_by_id(integration_id)
-                name = integ.name if integ else integration_id
-                subagent_key = _format_subagent_key(integration_id, name)
+                subagent_key = f"subagent:{integration_id}"
                 if subagent_key not in seen:
                     seen.add(subagent_key)
                     unique_results.append({"id": subagent_key, "score": 0.5})
 
             # Add connected integration subagents
             for integration_id in connected_integrations:
-                # Get name from platform or custom integration
-                integ = get_integration_by_id(integration_id)
-                if integ:
-                    name = integ.name
-                else:
-                    name = subagent_names.get(integration_id, integration_id)
-                subagent_key = _format_subagent_key(integration_id, name)
+                subagent_key = f"subagent:{integration_id}"
                 if subagent_key not in seen:
                     seen.add(subagent_key)
                     unique_results.append({"id": subagent_key, "score": 0.5})

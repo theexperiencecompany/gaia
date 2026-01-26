@@ -1,7 +1,10 @@
 "use client";
 
+import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { format, parseISO } from "date-fns";
+import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { TwitterIcon } from "@/components/shared/icons";
 import {
   Calendar01Icon,
   CheckmarkBadge02Icon,
@@ -147,10 +150,16 @@ export default function TwitterUserSection({
   twitter_user_data,
   title,
   onFollow,
+  backgroundColor = "bg-zinc-800",
+  maxHeight = "max-h-[400px]",
+  isCollapsible = true,
 }: {
   twitter_user_data: TwitterUserData[];
   title?: string;
   onFollow?: (userId: string) => void;
+  backgroundColor?: string;
+  maxHeight?: string;
+  isCollapsible?: boolean;
 }) {
   if (!twitter_user_data || twitter_user_data.length === 0) {
     return (
@@ -160,14 +169,27 @@ export default function TwitterUserSection({
     );
   }
 
-  return (
-    <div className="mt-3 flex w-full flex-col gap-3">
-      {title && <p className="text-xs text-default-500 px-1">{title}</p>}
-      <div className="flex flex-col gap-2">
+  const content = (
+    <div
+      className={`w-full max-w-2xl rounded-3xl ${backgroundColor} p-3 text-white`}
+    >
+      {/* Twitter User List */}
+      <ScrollShadow className={`${maxHeight} flex flex-col gap-2`}>
         {twitter_user_data.map((user) => (
           <TwitterUserCard key={user.id} user={user} onFollow={onFollow} />
         ))}
-      </div>
+      </ScrollShadow>
     </div>
+  );
+
+  return (
+    <CollapsibleListWrapper
+      icon={<TwitterIcon width={20} height={20} />}
+      count={twitter_user_data.length}
+      label={title || "Twitter User"}
+      isCollapsible={isCollapsible}
+    >
+      {content}
+    </CollapsibleListWrapper>
   );
 }

@@ -12,7 +12,6 @@ from typing import Optional
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import get_integration_by_id
-from app.services.acontext_service import get_acontext_skills
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from langchain_core.messages import SystemMessage
@@ -125,24 +124,23 @@ async def create_agent_context_message(
     thread_id: Optional[str] = None,
 ) -> SystemMessage:
     """
-    Create a context message with time, timezone, memories, and acontext skills for executor/subagents.
+    Create a context message with time, timezone and memories for executor/subagents.
 
     This ensures executor and subagents have the same temporal awareness as the main agent,
     including:
     - Current UTC time
     - User's timezone and local time (extracted from user_time)
     - Conversation memories
-    - Acontext skills (contextual capabilities)
 
     Args:
         agent_name: The agent name for visibility metadata
         configurable: The config["configurable"] dict from RunnableConfig
         user_id: Optional user ID (extracted from configurable if not provided)
         query: Optional search query for memory retrieval
-        thread_id: Optional thread ID for acontext session management (use conversation_id)
+        thread_id: Optional thread ID for memory session management (use conversation_id)
 
     Returns:
-        SystemMessage with time/timezone/memories/skills context
+        SystemMessage with time/timezone/memories context
     """
     context_parts = []
 
@@ -197,24 +195,6 @@ async def create_agent_context_message(
         except Exception as e:
             logger.warning(f"Error retrieving memories for subagent: {e}")
 
-    # Fetch acontext skills for contextual capabilities
-    # Use thread_id (conversation_id) to maintain session consistency
-    acontext_section = ""
-    effective_thread_id = thread_id or configurable.get("conversation_id")
-    if query and effective_thread_id:
-        try:
-            skills = await get_acontext_skills(
-                query=query,
-                thread_id=effective_thread_id,
-                agent_name=agent_name,
-                user_id=user_id,
-            )
-            if skills:
-                acontext_section = skills
-                logger.info(f"Added acontext skills to {agent_name} context")
-        except Exception as e:
-            logger.warning(f"Error fetching acontext skills: {e}")
-
-    content = "\n".join(context_parts) + memories_section + acontext_section
+    content = "\n".join(context_parts) + memories_section
 
     return SystemMessage(content=content, memory_message=True)

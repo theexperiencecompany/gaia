@@ -11,7 +11,7 @@ This script handles:
 IMPORTANT: Run this script from the correct directory!
 
 1. If running locally:
-   cd /path/to/your/gaia/backend
+   cd /path/to/your/gaia/apps/api
    python scripts/seed_models.py
 
 2. If running inside Docker container:
@@ -43,7 +43,10 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 # Import app modules after path setup  # noqa: E402
-from app.db.mongodb.collections import ai_models_collection, users_collection  # noqa: E402
+from app.db.mongodb.collections import (  # noqa: E402
+    ai_models_collection,
+    users_collection,
+)
 from app.db.redis import delete_cache_by_pattern  # noqa: E402
 from app.models.models_models import ModelProvider, PlanType  # noqa: E402
 
