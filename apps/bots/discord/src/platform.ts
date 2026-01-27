@@ -67,7 +67,7 @@ export class DiscordBot implements PlatformBot {
       if (message.author.bot) return;
       if (!this.client.user) return;
       if (!message.mentions.has(this.client.user)) return;
-      await handleMention(message, this.gaia);
+      await handleMention(message);
     });
   }
 

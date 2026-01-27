@@ -241,7 +241,11 @@ async def get_user_context(user: dict) -> Tuple[Optional[ModelConfig], datetime]
     Shared utility used by both web chat and bot chat flows.
 
     Args:
-        user: User document from database
+        user: User dictionary with standard format:
+              - user_id (str): User ID for business logic
+              - email (str): User email
+              - timezone (str, optional): User timezone
+              Note: user dict should NOT contain MongoDB "_id" field
 
     Returns:
         Tuple of (model_config, user_time)
@@ -249,8 +253,9 @@ async def get_user_context(user: dict) -> Tuple[Optional[ModelConfig], datetime]
         - user_time: Current time in user's timezone
     """
     # Get user's selected model preference
+    # All auth flows (web, bot) provide user_id as string, not _id (ObjectId)
     user_model_config = None
-    user_id = user.get("_id")
+    user_id = user.get("user_id")
     if user_id:
         try:
             user_model_config = await get_user_selected_model(str(user_id))

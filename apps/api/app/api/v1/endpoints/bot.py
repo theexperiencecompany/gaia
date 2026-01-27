@@ -295,19 +295,19 @@ async def get_bot_settings(
         except Exception as e:
             logger.warning(f"Failed to get user integrations: {e}")
 
-    # Get account creation date from MongoDB _id or created_at field
+    # Get account creation date from MongoDB created_at field or user_id (ObjectId string)
     created_at: Union[str, datetime, None] = user.get("created_at")
     # Convert datetime to ISO string if needed
     if isinstance(created_at, datetime):
         created_at = created_at.isoformat()
-    if not created_at and user.get("_id"):
-        # Extract timestamp from ObjectId
+    if not created_at and user.get("user_id"):
+        # Extract timestamp from ObjectId string (user_id is stringified _id)
         from bson import ObjectId
 
         try:
-            created_at = ObjectId(user["_id"]).generation_time.isoformat()
+            created_at = ObjectId(user["user_id"]).generation_time.isoformat()
         except Exception:
-            logger.debug("Could not extract creation date from ObjectId")
+            logger.debug("Could not extract creation date from user_id")
 
     return BotSettingsResponse(
         authenticated=True,
