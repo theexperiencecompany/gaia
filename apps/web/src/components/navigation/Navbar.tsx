@@ -47,11 +47,12 @@ export default function Navbar() {
   // Define navbar items - can be single links or dropdown menus
   const navbarItems = [
     { type: "dropdown", label: "Product", menu: "product" },
-    { type: "dropdown", label: "Resources", menu: "resources" },
     { type: "link", label: "Pricing", href: "/pricing" },
-    { type: "link", label: "Download", href: "/download" },
-    { type: "dropdown", label: "Company", menu: "company" },
-    { type: "dropdown", label: "Socials", menu: "socials" },
+    { type: "link", label: "Manifesto", href: "/manifesto" },
+    { type: "dropdown", label: "Resources", menu: "resources" },
+    // { type: "link", label: "Download", href: "/download" },
+    // { type: "dropdown", label: "Company", menu: "company" },
+    // { type: "dropdown", label: "Socials", menu: "socials" },
   ] as const;
 
   // Function to control backdrop blur
