@@ -24,7 +24,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "@/src": ["./src/*"],
-      "@/icons": ["./src/components/shared/icons"]
+      "@/icons": ["./src/components/shared/icons"],
+      "@gaia/shared": ["../../libs/shared/ts/src/index.ts"]
     }
   },
   "include": [

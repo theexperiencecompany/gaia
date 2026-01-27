@@ -1,5 +1,5 @@
+import { appConfig as sharedAppConfig } from "@gaia/shared";
 import type { ReactElement } from "react";
-
 import {
   BlushBrush02Icon,
   BookOpen02Icon,
@@ -37,12 +37,8 @@ export interface LinkSection {
 }
 
 export const appConfig = {
-  // Site information
-  site: {
-    name: "GAIA",
-    copyright: "Copyright © 2025 The Experience Company. All rights reserved.",
-    domain: "heygaia.io",
-  },
+  // Site information (imported from shared config)
+  site: sharedAppConfig.site,
 
   // Core link definitions - single source of truth
   links: {

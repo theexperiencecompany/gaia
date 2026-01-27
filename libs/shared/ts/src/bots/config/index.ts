@@ -17,7 +17,6 @@ export function loadConfig(): BotConfig {
   ensureEnvLoaded();
   const gaiaApiUrl = process.env.GAIA_API_URL;
   const gaiaApiKey = process.env.GAIA_BOT_API_KEY;
-  const gaiaWebUrl = process.env.GAIA_WEB_URL || "https://heygaia.io";
 
   if (!gaiaApiUrl) {
     throw new Error("GAIA_API_URL is required");
@@ -26,5 +25,5 @@ export function loadConfig(): BotConfig {
     throw new Error("GAIA_BOT_API_KEY is required");
   }
 
-  return { gaiaApiUrl, gaiaApiKey, gaiaWebUrl };
+  return { gaiaApiUrl, gaiaApiKey };
 }

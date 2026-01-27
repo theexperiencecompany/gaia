@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance } from "axios";
+import { appConfig } from "../../config/appConfig";
 import type {
   ChatRequest,
   ChatResponse,
@@ -12,17 +13,14 @@ import type {
  */
 export class GaiaClient {
   private client: AxiosInstance;
-  private webUrl: string;
 
   /**
    * Creates a new GaiaClient instance.
    *
    * @param baseUrl - The base URL of the GAIA API (e.g., http://localhost:8000)
    * @param apiKey - The secure bot API key for server-to-server communication
-   * @param webUrl - The base URL of the GAIA web app (e.g., https://heygaia.io)
    */
-  constructor(baseUrl: string, apiKey: string, webUrl = "https://heygaia.io") {
-    this.webUrl = webUrl;
+  constructor(baseUrl: string, apiKey: string) {
     this.client = axios.create({
       baseURL: baseUrl,
       headers: {
@@ -110,7 +108,7 @@ export class GaiaClient {
    * @returns The URL to the GAIA settings/linked-accounts page.
    */
   getAuthUrl(): string {
-    return `${this.webUrl}/settings?section=linked-accounts`;
+    return `${appConfig.site.webUrl}/settings?section=linked-accounts`;
   }
 
   /**
